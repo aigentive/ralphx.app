@@ -515,7 +515,8 @@ pub fn classify_provider_error(error_text: &str) -> Option<StreamError> {
 
 /// Parse a retry-after timestamp from error messages.
 /// Looks for patterns like "will reset at 2026-02-15 14:15:20"
-fn parse_retry_after_from_message(error_text: &str) -> Option<String> {
+#[doc(hidden)]
+pub fn parse_retry_after_from_message(error_text: &str) -> Option<String> {
     // Pattern: "reset at YYYY-MM-DD HH:MM:SS"
     if let Some(idx) = error_text.find("reset at ") {
         let after = &error_text[idx + "reset at ".len()..];
@@ -539,7 +540,8 @@ fn parse_retry_after_from_message(error_text: &str) -> Option<String> {
 }
 
 /// Truncate error message to reasonable length for storage.
-fn truncate_error_message(msg: &str) -> String {
+#[doc(hidden)]
+pub fn truncate_error_message(msg: &str) -> String {
     if msg.len() > 500 {
         format!("{}...", truncate_str(msg, 500))
     } else {
@@ -572,7 +574,3 @@ pub fn classify_agent_error(
     }
     AppError::Agent(error_message.to_string())
 }
-
-#[cfg(test)]
-#[path = "chat_service_errors_tests.rs"]
-mod tests;

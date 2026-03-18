@@ -73,6 +73,9 @@ cargo test --manifest-path src-tauri/Cargo.toml --test steps_handlers
 cargo test --manifest-path src-tauri/Cargo.toml --test teams_handlers
 cargo test --manifest-path src-tauri/Cargo.toml --test http_helpers
 cargo test --manifest-path src-tauri/Cargo.toml --test task_scheduler_service
+cargo test --manifest-path src-tauri/Cargo.toml --test chat_service_context
+cargo test --manifest-path src-tauri/Cargo.toml --test chat_service_errors
+cargo test --manifest-path src-tauri/Cargo.toml --test chat_service_merge
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 ```
@@ -173,6 +176,35 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Adding a new repo suite | Start from a suite-local `setup_*()` helper; only introduce a shared helper when repetition appears in multiple files |
 | Verifying a migration | Test the migration itself explicitly; do not force every repo test to replay the full migration chain |
 | Considering `cargo-nextest` tuning | Adjust `src-tauri/.config/nextest.toml` groups/profiles instead of ad hoc command-line concurrency flags |
+
+## Adding Tests Framework
+
+| Question | Decision |
+|---|---|
+| Is this pure logic with no DB/git/process/AppState setup? | Keep it in `src-tauri/src/**` as a normal `--lib` test |
+| Does it need real SQLite schema/repositories? | Start with `SqliteTestDb` / `SqliteStateFixture` |
+| Does it mostly exercise handlers, orchestration, state machines, worktrees, or large service flows? | Put it in `src-tauri/tests/<suite>.rs` as a dedicated integration target |
+| Did you move a suite out of `--lib`? | Import through `ralphx_lib::*`, not `super::*` / `crate::*` |
+| Does the moved suite need internals? | Expose the smallest seam: re-export, `#[doc(hidden)] pub`, or `*_for_test()` |
+| Are you repeating a setup graph twice? | Extract a suite helper now; promote to `src-tauri/src/testing/` once a second file needs it |
+| Are you validating several targeted suites? | Run them sequentially; do not launch parallel Cargo jobs against the same target dir |
+
+## Move Decision Framework
+
+| Question | If yes | If no |
+|---|---|---|
+| Is the suite large enough to materially bloat `--lib` compile scope? | Prefer moving it to `src-tauri/tests/<suite>.rs` | Keep it in `--lib` |
+| Does the suite mostly exercise public behavior or explicit internal helpers? | Move it | Keep it local if it only probes private implementation details |
+| Does the suite rely on SQLite migrations or real git/process setup? | Move it and give it a dedicated integration target | Keep pure logic tests in `--lib` |
+| Can the suite work with `ralphx_lib::*` imports plus a few narrow helper exports? | Move it | Do not widen large surfaces just to move it |
+| Would moving require exposing raw mutable fields or broad internal modules? | Add narrow `#[doc(hidden)] pub` helpers or `*_for_test()` accessors first | If that still needs broad exposure, leave the suite in place |
+
+| Preferred seam | Use when |
+|---|---|
+| Re-export existing public helper from module root | The helper is already stable and test-appropriate |
+| `#[doc(hidden)] pub` free function/const | Integration test needs one narrow private helper |
+| `*_for_test()` accessor | Integration test needs to observe internal state without exposing fields |
+| Keep suite in `--lib` | The only alternative is broad visibility churn or leaking implementation-only APIs |
 
 ## Ongoing Tuning
 

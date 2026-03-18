@@ -1,6 +1,19 @@
-use super::*;
+use ralphx_lib::application::chat_service::{
+    merge_completion_watcher_loop, resolve_watcher_context, verify_merge_on_target,
+    AutoCompleteGuard, MergeVerification,
+};
+use ralphx_lib::application::git_service::checkout_free::update_branch_ref;
+use ralphx_lib::application::GitService;
+use ralphx_lib::application::interactive_process_registry::InteractiveProcessKey;
+use ralphx_lib::application::InteractiveProcessRegistry;
+use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::entities::*;
+use ralphx_lib::domain::repositories::*;
+use ralphx_lib::infrastructure::memory::{self, *};
 use std::fs;
+use std::path::Path;
 use std::process::Command;
+use std::sync::Arc;
 
 /// Create a temp git repo with an initial commit, returns the repo path
 fn setup_test_repo() -> tempfile::TempDir {
@@ -312,8 +325,6 @@ fn test_conflict_metadata_target_branch_not_contaminated_by_base_branch() {
 
 #[test]
 fn test_auto_complete_guard_prevents_duplicate() {
-    use crate::commands::ExecutionState;
-
     let exec_state = ExecutionState::new();
     let task_id = "task-abc123";
 
@@ -325,8 +336,6 @@ fn test_auto_complete_guard_prevents_duplicate() {
 
 #[test]
 fn test_auto_complete_guard_allows_different_tasks() {
-    use crate::commands::ExecutionState;
-
     let exec_state = ExecutionState::new();
 
     assert!(exec_state.try_start_auto_complete("task-a"));
@@ -337,8 +346,6 @@ fn test_auto_complete_guard_allows_different_tasks() {
 
 #[test]
 fn test_auto_complete_guard_cleanup_allows_retry() {
-    use crate::commands::ExecutionState;
-
     let exec_state = ExecutionState::new();
     let task_id = "task-abc123";
 
@@ -352,18 +359,13 @@ fn test_auto_complete_guard_cleanup_allows_retry() {
 
 #[test]
 fn test_auto_complete_raii_guard_cleans_up_on_drop() {
-    use crate::commands::ExecutionState;
-
     let exec_state = Arc::new(ExecutionState::new());
     let task_id = "task-abc123";
 
     // Simulate inserting and creating a guard
     assert!(exec_state.try_start_auto_complete(task_id));
     {
-        let _guard = super::AutoCompleteGuard {
-            execution_state: Arc::clone(&exec_state),
-            task_id: task_id.to_string(),
-        };
+        let _guard = AutoCompleteGuard::for_test(Arc::clone(&exec_state), task_id);
         // While guard is alive, duplicate is blocked
         assert!(!exec_state.try_start_auto_complete(task_id));
         // Re-insert since try_start failed (it wasn't actually added again)
@@ -463,8 +465,6 @@ fn test_toctou_cached_target_same_as_resolved_no_override() {
 /// returns NotMerged because the merge commit lives only on merge-resolve.
 #[tokio::test]
 async fn test_merge_resolve_branch_fast_forwards_target_before_verification() {
-    use crate::application::git_service::checkout_free::update_branch_ref;
-
     let dir = setup_test_repo();
     let repo = dir.path();
     let task_id = "task-rc7-test";
@@ -621,20 +621,11 @@ async fn test_merge_resolve_branch_fast_forwards_target_before_verification() {
 // Merge Completion Watcher Tests
 // ============================================================================
 //
-// Tests for `resolve_watcher_context` (private helper) and
-// `merge_completion_watcher_loop` (private background task).
-// Both are accessible via `super::` because this file is a child module of
-// `chat_service_merge`.
-
-use crate::application::interactive_process_registry::InteractiveProcessKey;
-use crate::application::InteractiveProcessRegistry;
-use crate::domain::entities::{Project, ProjectId, TaskId};
-use crate::domain::repositories::{ProjectRepository, TaskRepository};
-use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
+// Tests for `resolve_watcher_context` and `merge_completion_watcher_loop`.
 
 // ---- Shared watcher test helpers ------------------------------------------
 
-fn make_test_repos() -> (Arc<MemoryTaskRepository>, Arc<MemoryProjectRepository>) {
+fn make_test_repos() -> (Arc<memory::MemoryTaskRepository>, Arc<memory::MemoryProjectRepository>) {
     (
         Arc::new(MemoryTaskRepository::new()),
         Arc::new(MemoryProjectRepository::new()),
@@ -642,8 +633,8 @@ fn make_test_repos() -> (Arc<MemoryTaskRepository>, Arc<MemoryProjectRepository>
 }
 
 async fn seed_project_and_merging_task(
-    task_repo: &Arc<MemoryTaskRepository>,
-    project_repo: &Arc<MemoryProjectRepository>,
+    task_repo: &Arc<memory::MemoryTaskRepository>,
+    project_repo: &Arc<memory::MemoryProjectRepository>,
     repo_path: &Path,
     source_branch: &str,
 ) -> String {
@@ -740,7 +731,7 @@ async fn wait_until_done(watcher: &tokio::task::JoinHandle<()>, timeout_secs: u6
 async fn watcher_context_returns_none_for_missing_task() {
     let (task_repo, project_repo) = make_test_repos();
 
-    let result = super::resolve_watcher_context(
+    let result = resolve_watcher_context(
         "does-not-exist",
         &(Arc::clone(&task_repo) as Arc<dyn TaskRepository>),
         &(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>),
@@ -764,7 +755,7 @@ async fn watcher_context_returns_none_for_missing_project() {
     let task_id = task.id.as_str().to_string();
     task_repo.create(task).await.unwrap();
 
-    let result = super::resolve_watcher_context(
+    let result = resolve_watcher_context(
         &task_id,
         &(Arc::clone(&task_repo) as Arc<dyn TaskRepository>),
         &(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>),
@@ -789,7 +780,7 @@ async fn watcher_context_returns_source_target_and_repo_path() {
     )
     .await;
 
-    let result = super::resolve_watcher_context(
+    let result = resolve_watcher_context(
         &task_id,
         &(Arc::clone(&task_repo) as Arc<dyn TaskRepository>),
         &(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>),
@@ -831,7 +822,7 @@ async fn watcher_exits_when_no_ipr_entry() {
 
     // No IPR entry registered — watcher should exit at first poll because has_process=false.
     // Use 1ms grace/poll so only a few mock-seconds of advancement are needed.
-    let watcher = tokio::spawn(super::merge_completion_watcher_loop(
+    let watcher = tokio::spawn(merge_completion_watcher_loop(
         task_id,
         dir.path().to_path_buf(),
         Arc::clone(&ipr),
@@ -872,7 +863,7 @@ async fn watcher_exits_without_closing_ipr_when_task_leaves_merging() {
     let mut child = register_ipr_cat(&ipr, &key).await;
 
     // Use 1ms grace/poll — only needs a few mock-seconds total.
-    let watcher = tokio::spawn(super::merge_completion_watcher_loop(
+    let watcher = tokio::spawn(merge_completion_watcher_loop(
         task_id.clone(),
         dir.path().to_path_buf(),
         Arc::clone(&ipr),
@@ -942,7 +933,7 @@ async fn watcher_closes_ipr_when_merge_verified_on_target() {
     let mut child = register_ipr_cat(&ipr, &key).await;
 
     // 0ms grace (enter loop immediately), 50ms poll — watcher completes after ~1 poll.
-    let watcher = tokio::spawn(super::merge_completion_watcher_loop(
+    let watcher = tokio::spawn(merge_completion_watcher_loop(
         task_id.clone(),
         repo.to_path_buf(),
         Arc::clone(&ipr),
@@ -1011,7 +1002,7 @@ async fn watcher_skips_merge_check_in_validation_recovery_mode() {
     let mut child = register_ipr_cat(&ipr, &key).await;
 
     // 0ms grace, 50ms poll — watcher should NOT close IPR (no merge check, no consecutive_clean)
-    let watcher = tokio::spawn(super::merge_completion_watcher_loop(
+    let watcher = tokio::spawn(merge_completion_watcher_loop(
         task_id.clone(),
         repo.to_path_buf(),
         Arc::clone(&ipr),
@@ -1071,7 +1062,7 @@ async fn watcher_keeps_running_when_merge_not_verified() {
     let mut child = register_ipr_cat(&ipr, &key).await;
 
     // 0ms grace, 50ms poll — watcher should keep running (merge not verified)
-    let watcher = tokio::spawn(super::merge_completion_watcher_loop(
+    let watcher = tokio::spawn(merge_completion_watcher_loop(
         task_id.clone(),
         repo.to_path_buf(),
         Arc::clone(&ipr),
@@ -1368,8 +1359,6 @@ fn test_source_update_max_retries_escalates_to_incomplete() {
 /// and attempt_merge_auto_complete should skip redundant work.
 #[test]
 fn test_merge_commit_sha_prevents_duplicate_completion() {
-    use crate::domain::entities::Task;
-
     let project_id = ProjectId::from_string("proj-test".to_string());
     let mut task = Task::new(project_id, "Test task".to_string());
     task.internal_status = InternalStatus::Merging;
@@ -1399,8 +1388,6 @@ fn test_merge_commit_sha_prevents_duplicate_completion() {
 /// Verify that clearing merge_commit_sha would re-enable merge completion.
 #[test]
 fn test_merge_commit_sha_cleared_allows_recompletion() {
-    use crate::domain::entities::Task;
-
     let project_id = ProjectId::from_string("proj-test".to_string());
     let mut task = Task::new(project_id, "Test task".to_string());
     task.merge_commit_sha = Some("abc123".to_string());

@@ -558,7 +558,8 @@ pub fn build_resume_initial_prompt(
 }
 
 /// Determine if a file is text-based from mime type or extension
-pub(super) fn is_text_file(mime_type: Option<&str>, file_name: &str) -> bool {
+#[doc(hidden)]
+pub fn is_text_file(mime_type: Option<&str>, file_name: &str) -> bool {
     // Check mime type first
     if let Some(mime) = mime_type {
         if mime.starts_with("text/")
@@ -616,7 +617,8 @@ pub(super) fn is_text_file(mime_type: Option<&str>, file_name: &str) -> bool {
 }
 
 /// Format attachments for inclusion in agent context
-pub(super) async fn format_attachments_for_agent(
+#[doc(hidden)]
+pub async fn format_attachments_for_agent(
     attachments: &[ChatAttachment],
 ) -> Result<String, String> {
     if attachments.is_empty() {
@@ -1114,7 +1116,3 @@ pub fn create_assistant_message(
 
     msg
 }
-
-#[cfg(test)]
-#[path = "chat_service_context_tests.rs"]
-mod tests;

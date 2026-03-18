@@ -1,4 +1,11 @@
-use super::*;
+use ralphx_lib::application::chat_service::{
+    classify_agent_error, classify_provider_error, parse_retry_after_from_message, PauseReason,
+    ProviderErrorCategory, ProviderErrorMetadata, StreamError, truncate_error_message,
+};
+use ralphx_lib::domain::entities::{
+    ChatContextType, ChatConversationId, ExecutionFailureSource, InternalStatus,
+};
+use ralphx_lib::error::AppError;
 
 #[test]
 fn test_classify_stale_session_error() {
@@ -1496,8 +1503,6 @@ fn test_truncate_error_message_short() {
 
 #[test]
 fn to_execution_failure_source_timeout_maps_to_transient_timeout() {
-    use crate::domain::entities::ExecutionFailureSource;
-
     let err = StreamError::Timeout {
         context_type: ChatContextType::TaskExecution,
         elapsed_secs: 600,
@@ -1507,8 +1512,6 @@ fn to_execution_failure_source_timeout_maps_to_transient_timeout() {
 
 #[test]
 fn to_execution_failure_source_parse_stall_maps_to_parse_stall() {
-    use crate::domain::entities::ExecutionFailureSource;
-
     let err = StreamError::ParseStall {
         context_type: ChatContextType::TaskExecution,
         elapsed_secs: 180,
@@ -1520,8 +1523,6 @@ fn to_execution_failure_source_parse_stall_maps_to_parse_stall() {
 
 #[test]
 fn to_execution_failure_source_agent_exit_maps_to_agent_crash() {
-    use crate::domain::entities::ExecutionFailureSource;
-
     let err = StreamError::AgentExit {
         exit_code: Some(1),
         stderr: "SIGKILL".into(),
@@ -1531,8 +1532,6 @@ fn to_execution_failure_source_agent_exit_maps_to_agent_crash() {
 
 #[test]
 fn to_execution_failure_source_provider_error_maps_to_unknown() {
-    use crate::domain::entities::ExecutionFailureSource;
-
     let err = StreamError::ProviderError {
         category: ProviderErrorCategory::RateLimit,
         message: "Rate limited".into(),

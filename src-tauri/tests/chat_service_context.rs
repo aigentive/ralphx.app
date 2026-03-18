@@ -1,6 +1,14 @@
-use super::*;
-use crate::domain::entities::ChatAttachment;
-use crate::domain::repositories::{StateHistoryMetadata, StatusTransition};
+use async_trait::async_trait;
+use ralphx_lib::application::chat_service::{
+    build_command, build_initial_prompt, build_resume_command, build_resume_initial_prompt,
+    format_attachments_for_agent, format_session_history, get_entity_status_for_resume,
+    is_text_file, resolve_working_directory,
+};
+use ralphx_lib::domain::entities::{self, *};
+use ralphx_lib::domain::repositories::{self, *};
+use ralphx_lib::error::AppResult;
+use ralphx_lib::infrastructure::memory::*;
+use std::sync::Arc;
 
 #[test]
 fn test_is_text_file_by_mime_type() {
@@ -188,10 +196,6 @@ async fn test_format_attachments_file_read_error() {
 }
 
 // Tests for get_entity_status_for_resume
-use crate::domain::entities::{IdeationSession, IdeationSessionStatus, ProjectId, VerificationStatus};
-use crate::domain::repositories::IdeationSessionRepository;
-use crate::error::AppResult;
-use async_trait::async_trait;
 
 // Mock for testing
 struct MockIdeationRepo {
@@ -307,7 +311,7 @@ impl IdeationSessionRepository for MockIdeationRepo {
     async fn reset_and_begin_reverify(
         &self,
         _session_id: &str,
-    ) -> AppResult<(i32, crate::domain::entities::VerificationMetadata)> {
+    ) -> AppResult<(i32, entities::VerificationMetadata)> {
         unimplemented!()
     }
 
@@ -371,8 +375,7 @@ impl IdeationSessionRepository for MockIdeationRepo {
     async fn get_group_counts(
         &self,
         _project_id: &ProjectId,
-    ) -> AppResult<crate::domain::repositories::ideation_session_repository::SessionGroupCounts>
-    {
+    ) -> AppResult<repositories::ideation_session_repository::SessionGroupCounts> {
         unimplemented!()
     }
 
@@ -382,7 +385,10 @@ impl IdeationSessionRepository for MockIdeationRepo {
         _group: &str,
         _offset: u32,
         _limit: u32,
-    ) -> AppResult<(Vec<crate::domain::repositories::ideation_session_repository::IdeationSessionWithProgress>, u32)> {
+    ) -> AppResult<(
+        Vec<repositories::ideation_session_repository::IdeationSessionWithProgress>,
+        u32,
+    )> {
         unimplemented!()
     }
 }
@@ -393,30 +399,30 @@ struct MockTaskRepo;
 impl TaskRepository for MockTaskRepo {
     async fn create(
         &self,
-        task: crate::domain::entities::Task,
-    ) -> AppResult<crate::domain::entities::Task> {
+        task: entities::Task,
+    ) -> AppResult<entities::Task> {
         Ok(task)
     }
 
-    async fn get_by_id(&self, _id: &TaskId) -> AppResult<Option<crate::domain::entities::Task>> {
+    async fn get_by_id(&self, _id: &TaskId) -> AppResult<Option<entities::Task>> {
         Ok(None)
     }
 
     async fn get_by_project(
         &self,
         _project_id: &ProjectId,
-    ) -> AppResult<Vec<crate::domain::entities::Task>> {
+    ) -> AppResult<Vec<entities::Task>> {
         Ok(vec![])
     }
 
-    async fn update(&self, _task: &crate::domain::entities::Task) -> AppResult<()> {
+    async fn update(&self, _task: &entities::Task) -> AppResult<()> {
         Ok(())
     }
 
     async fn update_with_expected_status(
         &self,
-        _task: &crate::domain::entities::Task,
-        _expected_status: crate::domain::entities::InternalStatus,
+        _task: &entities::Task,
+        _expected_status: entities::InternalStatus,
     ) -> AppResult<bool> {
         Ok(true)
     }
@@ -432,16 +438,16 @@ impl TaskRepository for MockTaskRepo {
     async fn get_by_status(
         &self,
         _project_id: &ProjectId,
-        _status: crate::domain::entities::InternalStatus,
-    ) -> AppResult<Vec<crate::domain::entities::Task>> {
+        _status: entities::InternalStatus,
+    ) -> AppResult<Vec<entities::Task>> {
         Ok(vec![])
     }
 
     async fn persist_status_change(
         &self,
         _id: &TaskId,
-        _from: crate::domain::entities::InternalStatus,
-        _to: crate::domain::entities::InternalStatus,
+        _from: entities::InternalStatus,
+        _to: entities::InternalStatus,
         _trigger: &str,
     ) -> AppResult<()> {
         Ok(())
@@ -454,7 +460,7 @@ impl TaskRepository for MockTaskRepo {
     async fn get_status_entered_at(
         &self,
         _task_id: &TaskId,
-        _status: crate::domain::entities::InternalStatus,
+        _status: entities::InternalStatus,
     ) -> AppResult<Option<chrono::DateTime<chrono::Utc>>> {
         Ok(None)
     }
@@ -462,14 +468,14 @@ impl TaskRepository for MockTaskRepo {
     async fn get_next_executable(
         &self,
         _project_id: &ProjectId,
-    ) -> AppResult<Option<crate::domain::entities::Task>> {
+    ) -> AppResult<Option<entities::Task>> {
         Ok(None)
     }
 
     async fn get_by_ideation_session(
         &self,
-        _session_id: &crate::domain::entities::IdeationSessionId,
-    ) -> AppResult<Vec<crate::domain::entities::Task>> {
+        _session_id: &entities::IdeationSessionId,
+    ) -> AppResult<Vec<entities::Task>> {
         Ok(vec![])
     }
 
@@ -477,15 +483,15 @@ impl TaskRepository for MockTaskRepo {
         &self,
         _project_id: &ProjectId,
         _include_archived: bool,
-    ) -> AppResult<Vec<crate::domain::entities::Task>> {
+    ) -> AppResult<Vec<entities::Task>> {
         Ok(vec![])
     }
 
-    async fn archive(&self, _task_id: &TaskId) -> AppResult<crate::domain::entities::Task> {
+    async fn archive(&self, _task_id: &TaskId) -> AppResult<entities::Task> {
         unimplemented!()
     }
 
-    async fn restore(&self, _task_id: &TaskId) -> AppResult<crate::domain::entities::Task> {
+    async fn restore(&self, _task_id: &TaskId) -> AppResult<entities::Task> {
         unimplemented!()
     }
 
@@ -500,14 +506,14 @@ impl TaskRepository for MockTaskRepo {
     async fn list_paginated(
         &self,
         _project_id: &ProjectId,
-        _statuses: Option<Vec<crate::domain::entities::InternalStatus>>,
+        _statuses: Option<Vec<entities::InternalStatus>>,
         _offset: u32,
         _limit: u32,
         _include_archived: bool,
         _ideation_session_id: Option<&str>,
         _execution_plan_id: Option<&str>,
         _categories: Option<&[String]>,
-    ) -> AppResult<Vec<crate::domain::entities::Task>> {
+    ) -> AppResult<Vec<entities::Task>> {
         Ok(vec![])
     }
 
@@ -526,25 +532,25 @@ impl TaskRepository for MockTaskRepo {
         _project_id: &ProjectId,
         _query: &str,
         _include_archived: bool,
-    ) -> AppResult<Vec<crate::domain::entities::Task>> {
+    ) -> AppResult<Vec<entities::Task>> {
         Ok(vec![])
     }
 
-    async fn get_oldest_ready_task(&self) -> AppResult<Option<crate::domain::entities::Task>> {
+    async fn get_oldest_ready_task(&self) -> AppResult<Option<entities::Task>> {
         Ok(None)
     }
 
     async fn get_oldest_ready_tasks(
         &self,
         _limit: u32,
-    ) -> AppResult<Vec<crate::domain::entities::Task>> {
+    ) -> AppResult<Vec<entities::Task>> {
         Ok(vec![])
     }
 
     async fn get_stale_ready_tasks(
         &self,
         _threshold_secs: u64,
-    ) -> AppResult<Vec<crate::domain::entities::Task>> {
+    ) -> AppResult<Vec<entities::Task>> {
         Ok(vec![])
     }
 
@@ -559,18 +565,18 @@ impl TaskRepository for MockTaskRepo {
     async fn has_task_in_states(
         &self,
         _project_id: &ProjectId,
-        _statuses: &[crate::domain::entities::InternalStatus],
+        _statuses: &[entities::InternalStatus],
     ) -> AppResult<bool> {
         Ok(false)
     }
 
     async fn get_status_history_batch(
         &self,
-        _task_ids: &[crate::domain::entities::TaskId],
+        _task_ids: &[entities::TaskId],
     ) -> AppResult<
         std::collections::HashMap<
-            crate::domain::entities::TaskId,
-            Vec<crate::domain::repositories::StatusTransition>,
+            entities::TaskId,
+            Vec<repositories::StatusTransition>,
         >,
     > {
         Ok(std::collections::HashMap::new())
@@ -655,8 +661,6 @@ async fn test_get_entity_status_for_resume_project_context() {
     // Project context doesn't have status-based agent resolution
     assert_eq!(status, None);
 }
-
-use crate::infrastructure::memory::MemoryChatAttachmentRepository;
 
 #[tokio::test]
 async fn test_build_command_with_team_mode_true() {
@@ -911,11 +915,11 @@ fn format_session_history_subagent_roles_filtered_out() {
     let sid = IdeationSessionId::new();
     // Worker, Reviewer, Merger roles should be excluded (not User or Orchestrator)
     let mut worker_msg = ChatMessage::user_in_session(sid.clone(), "worker output");
-    worker_msg.role = crate::domain::entities::MessageRole::Worker;
+    worker_msg.role = MessageRole::Worker;
     let mut reviewer_msg = ChatMessage::user_in_session(sid.clone(), "reviewer output");
-    reviewer_msg.role = crate::domain::entities::MessageRole::Reviewer;
+    reviewer_msg.role = MessageRole::Reviewer;
     let mut merger_msg = ChatMessage::user_in_session(sid.clone(), "merger output");
-    merger_msg.role = crate::domain::entities::MessageRole::Merger;
+    merger_msg.role = MessageRole::Merger;
     let user_msg = make_user_msg(&sid, "user message");
 
     let msgs = vec![worker_msg, reviewer_msg, merger_msg, user_msg];
@@ -1305,9 +1309,6 @@ fn integration_ideation_spawn_truncated_history_uses_db_count_not_slice_len() {
 // Tests for resolve_working_directory — merge context worktree prefix filter
 // Fix: commit cfb57e0e — accept both merge- and rebase- prefixes for merge worktrees
 // ──────────────────────────────────────────────────────────────────────────────
-
-use crate::domain::entities::{Project, Task};
-use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
 
 /// Test 1: Merger agent spawn accepts rebase-{task_id} worktree path.
 ///

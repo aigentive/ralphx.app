@@ -37,7 +37,8 @@ use crate::application::chat_service::freshness_routing;
 
 /// RAII guard that removes a task from ExecutionState::auto_completes_in_flight on drop.
 /// Ensures cleanup on all return paths, including early returns and panics.
-struct AutoCompleteGuard {
+#[doc(hidden)]
+pub struct AutoCompleteGuard {
     execution_state: Arc<ExecutionState>,
     task_id: String,
 }
@@ -45,6 +46,16 @@ struct AutoCompleteGuard {
 impl Drop for AutoCompleteGuard {
     fn drop(&mut self) {
         self.execution_state.finish_auto_complete(&self.task_id);
+    }
+}
+
+impl AutoCompleteGuard {
+    #[doc(hidden)]
+    pub fn for_test(execution_state: Arc<ExecutionState>, task_id: impl Into<String>) -> Self {
+        Self {
+            execution_state,
+            task_id: task_id.into(),
+        }
     }
 }
 
@@ -1193,7 +1204,8 @@ pub(crate) async fn reconcile_merge_auto_complete<R: Runtime>(
 
 /// Result of merge verification on target branch
 #[derive(Debug, PartialEq)]
-pub(crate) enum MergeVerification {
+#[doc(hidden)]
+pub enum MergeVerification {
     /// Source branch was successfully merged to target (includes merge commit SHA)
     Merged(String),
     /// Source branch exists but is not merged to target
@@ -1212,7 +1224,8 @@ pub(crate) enum MergeVerification {
 /// - `NotMerged` if source exists but is not on target
 /// - `SourceBranchMissing` if source branch doesn't exist or can't be resolved
 /// - `TargetBranchMissing` if target branch doesn't exist or can't be resolved
-pub(crate) async fn verify_merge_on_target(
+#[doc(hidden)]
+pub async fn verify_merge_on_target(
     main_repo: &Path,
     source_branch: &str,
     target_branch: &str,
@@ -1277,7 +1290,8 @@ pub(crate) fn spawn_merge_completion_watcher(
     });
 }
 
-async fn merge_completion_watcher_loop(
+#[doc(hidden)]
+pub async fn merge_completion_watcher_loop(
     task_id: String,
     _worktree_path: PathBuf,
     ipr: Arc<InteractiveProcessRegistry>,
@@ -1369,7 +1383,8 @@ async fn merge_completion_watcher_loop(
 
 /// Resolve branches and main repo path for the watcher.
 /// Returns None if task/project can't be found or branches can't be resolved.
-async fn resolve_watcher_context(
+#[doc(hidden)]
+pub async fn resolve_watcher_context(
     task_id: &str,
     task_repo: &Arc<dyn TaskRepository>,
     project_repo: &Arc<dyn ProjectRepository>,
@@ -1387,7 +1402,3 @@ async fn resolve_watcher_context(
 
     Some((source, target, PathBuf::from(&project.working_directory)))
 }
-
-#[cfg(test)]
-#[path = "chat_service_merge_tests.rs"]
-mod chat_service_merge_tests;

@@ -60,13 +60,23 @@ pub const AGENT_ERROR_PREFIX: &str = "[Agent error:";
 
 // Re-exports from extracted modules
 pub use chat_service_errors::{
-    classify_agent_error, PauseReason, ProviderErrorCategory, ProviderErrorMetadata, StreamError,
-    STALE_SESSION_ERROR,
+    classify_agent_error, classify_provider_error, parse_retry_after_from_message, PauseReason,
+    ProviderErrorCategory, ProviderErrorMetadata, StreamError, STALE_SESSION_ERROR,
+    truncate_error_message,
+};
+pub use chat_service_context::{
+    build_command, build_initial_prompt, build_resume_command, build_resume_initial_prompt,
+    format_attachments_for_agent, format_session_history, get_entity_status_for_resume,
+    is_text_file, resolve_working_directory,
 };
 pub use chat_service_helpers::{
     context_type_to_process, get_agent_name, get_assistant_role, resolve_agent_with_team_mode,
 };
 pub(crate) use chat_service_merge::{MergeAutoCompleteContext, reconcile_merge_auto_complete};
+pub use chat_service_merge::{
+    merge_completion_watcher_loop, resolve_watcher_context, verify_merge_on_target,
+    AutoCompleteGuard, MergeVerification,
+};
 pub use chat_service_mock::{MockChatResponse, MockChatService};
 pub use chat_service_replay::{build_rehydration_prompt, ConversationReplay, ReplayBuilder, Turn};
 pub use chat_service_streaming::process_stream_background;
