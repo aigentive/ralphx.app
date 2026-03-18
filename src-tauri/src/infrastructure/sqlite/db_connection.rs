@@ -7,12 +7,17 @@
 #[path = "db_connection_tests.rs"]
 mod tests;
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::Weak;
 
+use lazy_static::lazy_static;
 use rusqlite::Connection;
 use tokio::sync::Mutex;
 
 use crate::error::{AppError, AppResult};
+
+use super::open_connection;
 
 /// Newtype wrapper around a shared SQLite connection.
 ///
@@ -35,23 +40,50 @@ use crate::error::{AppError, AppResult};
 /// ```
 #[derive(Clone)]
 pub struct DbConnection {
-    conn: Arc<Mutex<Connection>>,
+    backend: Arc<DbBackend>,
+}
+
+enum DbBackend {
+    Single(Arc<Mutex<Connection>>),
+    Pool(ConnectionPool),
+}
+
+struct ConnectionPool {
+    primary: Arc<Mutex<Connection>>,
+    connections: Vec<Arc<Mutex<Connection>>>,
+    next_index: AtomicUsize,
+}
+
+lazy_static! {
+    static ref FILE_BACKED_POOLS: std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, Weak<DbBackend>>> =
+        std::sync::Mutex::new(std::collections::HashMap::new());
 }
 
 impl DbConnection {
     pub fn new(conn: Connection) -> Self {
         Self {
-            conn: Arc::new(Mutex::new(conn)),
+            backend: Arc::new(DbBackend::Single(Arc::new(Mutex::new(conn)))),
         }
     }
 
     pub fn from_shared(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
+        if let Some(path) = Self::file_backed_path(&conn) {
+            if let Some(backend) = Self::pooled_backend(path, Arc::clone(&conn)) {
+                return Self { backend };
+            }
+        }
+
+        Self {
+            backend: Arc::new(DbBackend::Single(conn)),
+        }
     }
 
     /// Returns the inner Arc for legacy interop during migration.
     pub fn inner(&self) -> &Arc<Mutex<Connection>> {
-        &self.conn
+        match self.backend.as_ref() {
+            DbBackend::Single(conn) => conn,
+            DbBackend::Pool(pool) => &pool.primary,
+        }
     }
 
     /// Execute a blocking DB operation on the tokio blocking thread pool.
@@ -66,7 +98,7 @@ impl DbConnection {
         F: FnOnce(&Connection) -> AppResult<T> + Send + 'static,
         T: Send + 'static,
     {
-        let conn = Arc::clone(&self.conn);
+        let conn = self.pick_connection();
         tokio::task::spawn_blocking(move || {
             #[cfg(debug_assertions)]
             let lock_start = std::time::Instant::now();
@@ -123,7 +155,7 @@ impl DbConnection {
         F: FnOnce(&Connection) -> AppResult<T> + Send + 'static,
         T: Send + 'static,
     {
-        let conn = Arc::clone(&self.conn);
+        let conn = self.pick_connection();
         tokio::task::spawn_blocking(move || {
             #[cfg(debug_assertions)]
             let lock_start = std::time::Instant::now();
@@ -193,5 +225,92 @@ impl DbConnection {
             Err(e) => Err(AppError::Database(e.to_string())),
         })
         .await
+    }
+
+    fn pick_connection(&self) -> Arc<Mutex<Connection>> {
+        match self.backend.as_ref() {
+            DbBackend::Single(conn) => Arc::clone(conn),
+            DbBackend::Pool(pool) => {
+                let idx = pool.next_index.fetch_add(1, Ordering::Relaxed) % pool.connections.len();
+                Arc::clone(&pool.connections[idx])
+            }
+        }
+    }
+
+    fn file_backed_path(conn: &Arc<Mutex<Connection>>) -> Option<std::path::PathBuf> {
+        let guard = conn.try_lock().ok()?;
+        let path: String = guard
+            .query_row(
+                "SELECT file FROM pragma_database_list WHERE name = 'main'",
+                [],
+                |row| row.get(0),
+            )
+            .ok()?;
+
+        let path = path.trim();
+        if path.is_empty() || path == ":memory:" || path.contains("mode=memory") {
+            return None;
+        }
+
+        Some(std::path::PathBuf::from(path))
+    }
+
+    fn pooled_backend(
+        path: std::path::PathBuf,
+        primary: Arc<Mutex<Connection>>,
+    ) -> Option<Arc<DbBackend>> {
+        let mut cache = FILE_BACKED_POOLS.lock().ok()?;
+        if let Some(existing) = cache.get(&path).and_then(Weak::upgrade) {
+            return Some(existing);
+        }
+
+        match ConnectionPool::new(&path, Arc::clone(&primary)) {
+            Ok(pool) => {
+                let backend = Arc::new(DbBackend::Pool(pool));
+                cache.insert(path, Arc::downgrade(&backend));
+                Some(backend)
+            }
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "Failed to create pooled SQLite backend; falling back to single connection"
+                );
+                None
+            }
+        }
+    }
+}
+
+impl ConnectionPool {
+    fn new(path: &std::path::PathBuf, primary: Arc<Mutex<Connection>>) -> AppResult<Self> {
+        let pool_size = Self::pool_size();
+        let mut connections = Vec::with_capacity(pool_size);
+        connections.push(Arc::clone(&primary));
+
+        for _ in 1..pool_size {
+            let conn = open_connection(path)?;
+            connections.push(Arc::new(Mutex::new(conn)));
+        }
+
+        tracing::info!(
+            path = %path.display(),
+            pool_size,
+            "Initialized pooled SQLite backend"
+        );
+
+        Ok(Self {
+            primary,
+            connections,
+            next_index: AtomicUsize::new(0),
+        })
+    }
+
+    fn pool_size() -> usize {
+        const DEFAULT_POOL_SIZE: usize = 4;
+        const MAX_POOL_SIZE: usize = 8;
+
+        std::thread::available_parallelism()
+            .map(|parallelism| parallelism.get().clamp(2, MAX_POOL_SIZE))
+            .unwrap_or(DEFAULT_POOL_SIZE)
     }
 }

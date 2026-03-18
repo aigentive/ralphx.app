@@ -1,6 +1,7 @@
 use super::*;
 use crate::infrastructure::sqlite::connection::open_connection;
 use tempfile::tempdir;
+use tokio::sync::Mutex;
 
 #[tokio::test]
 async fn test_run_transaction_commits_on_success() {
@@ -49,7 +50,9 @@ async fn test_run_transaction_rolls_back_on_error() {
         .run_transaction(|conn| {
             conn.execute("INSERT INTO items VALUES (2, 'second')", [])?;
             // Simulate error — returns Err to trigger rollback
-            Err(crate::error::AppError::Database("simulated failure".to_string()))
+            Err(crate::error::AppError::Database(
+                "simulated failure".to_string(),
+            ))
         })
         .await;
 
@@ -61,7 +64,10 @@ async fn test_run_transaction_rolls_back_on_error() {
         .await
         .unwrap();
 
-    assert_eq!(count, 1, "Rolled-back row should not be present; only the first row remains");
+    assert_eq!(
+        count, 1,
+        "Rolled-back row should not be present; only the first row remains"
+    );
 }
 
 #[tokio::test]
@@ -81,7 +87,10 @@ async fn test_run_transaction_returns_value_from_closure() {
         .await
         .unwrap();
 
-    assert_eq!(inserted_id, 42, "Should return last_insert_rowid from the transaction");
+    assert_eq!(
+        inserted_id, 42,
+        "Should return last_insert_rowid from the transaction"
+    );
 }
 
 #[tokio::test]
@@ -135,8 +144,14 @@ async fn test_run_transaction_multiple_operations_atomic() {
         .await
         .unwrap();
 
-    assert_eq!(count_a2, 1, "Rolled-back insert in table a should not persist");
-    assert_eq!(count_b2, 1, "Rolled-back insert in table b should not persist");
+    assert_eq!(
+        count_a2, 1,
+        "Rolled-back insert in table a should not persist"
+    );
+    assert_eq!(
+        count_b2, 1,
+        "Rolled-back insert in table b should not persist"
+    );
 }
 
 // ============================================================================
@@ -229,5 +244,41 @@ async fn test_wal_two_writers_serialised() {
         .await
         .expect("db3 read should not fail");
 
-    assert_eq!(count, 2, "Both writes must be visible to a third connection");
+    assert_eq!(
+        count, 2,
+        "Both writes must be visible to a third connection"
+    );
+}
+
+#[tokio::test]
+async fn test_from_shared_file_backed_reuses_pooled_backend() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("pooled_shared.db");
+    let conn = open_connection(&db_path).unwrap();
+    conn.execute_batch("CREATE TABLE items (id INTEGER PRIMARY KEY, val TEXT)")
+        .unwrap();
+
+    let shared = Arc::new(Mutex::new(conn));
+    let db1 = DbConnection::from_shared(Arc::clone(&shared));
+    let db2 = DbConnection::from_shared(Arc::clone(&shared));
+
+    assert!(
+        matches!(db1.backend.as_ref(), DbBackend::Pool(_)),
+        "File-backed shared connections should use the pooled backend"
+    );
+    assert!(
+        Arc::ptr_eq(&db1.backend, &db2.backend),
+        "Shared file-backed connections should reuse the cached pooled backend"
+    );
+}
+
+#[tokio::test]
+async fn test_from_shared_in_memory_uses_single_backend() {
+    let shared = Arc::new(Mutex::new(Connection::open_in_memory().unwrap()));
+    let db = DbConnection::from_shared(Arc::clone(&shared));
+
+    assert!(
+        matches!(db.backend.as_ref(), DbBackend::Single(_)),
+        "In-memory shared connections should stay on the isolated single-connection path"
+    );
 }
