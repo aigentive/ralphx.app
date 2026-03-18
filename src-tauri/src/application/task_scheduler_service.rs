@@ -259,6 +259,26 @@ impl<R: Runtime> TaskSchedulerService<R> {
         None
     }
 
+    #[doc(hidden)]
+    pub async fn find_oldest_schedulable_task_for_test(&self) -> Option<Task> {
+        self.find_oldest_schedulable_task().await
+    }
+
+    #[doc(hidden)]
+    pub async fn lock_scheduling_for_test(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.scheduling_lock.lock().await
+    }
+
+    #[doc(hidden)]
+    pub fn contention_retry_pending_for_test(&self) -> u32 {
+        self.contention_retry_pending.load(Ordering::Relaxed)
+    }
+
+    #[doc(hidden)]
+    pub fn set_contention_retry_pending_for_test(&self, value: u32) {
+        self.contention_retry_pending.store(value, Ordering::Relaxed);
+    }
+
     /// Check if a task's plan branch is no longer Active (Merged or Abandoned).
     /// Returns true if the task should NOT be scheduled. Fail-open on errors.
     /// Uses `execution_plan_id` (not `session_id`) to handle re-accept flows where
@@ -982,6 +1002,16 @@ impl ReadyWatchdog {
         self
     }
 
+    #[doc(hidden)]
+    pub fn stale_threshold_secs_for_test(&self) -> u64 {
+        self.stale_threshold_secs
+    }
+
+    #[doc(hidden)]
+    pub fn interval_secs_for_test(&self) -> u64 {
+        self.interval_secs
+    }
+
     /// Run one watchdog cycle: scan for stale Ready tasks and reschedule if any are found.
     ///
     /// Returns the number of stale tasks found (0 means no action was taken).
@@ -1026,7 +1056,3 @@ impl ReadyWatchdog {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "task_scheduler_service_tests.rs"]
-mod tests;
