@@ -8,9 +8,8 @@
 use ralphx_lib::domain::entities::{InternalStatus, ProjectId, TaskId};
 use ralphx_lib::domain::entities::{Project, Task};
 use ralphx_lib::domain::repositories::{ProjectRepository, TaskRepository};
-use ralphx_lib::infrastructure::sqlite::{
-    open_memory_connection, run_migrations, SqliteProjectRepository, SqliteTaskRepository,
-};
+use ralphx_lib::infrastructure::sqlite::{SqliteProjectRepository, SqliteTaskRepository};
+use ralphx_lib::testing::SqliteTestDb;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -20,13 +19,14 @@ use tokio::sync::Mutex;
 
 /// Helper to set up a test environment with multiple projects and tasks
 async fn setup_multi_project_test() -> (
+    SqliteTestDb,
     Arc<dyn TaskRepository>,
     Arc<dyn ProjectRepository>,
     ProjectId,
     ProjectId,
 ) {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+    let db = SqliteTestDb::new("per-project-execution-scoping");
+    let conn = db.new_connection();
     let shared_conn = Arc::new(Mutex::new(conn));
 
     let task_repo: Arc<dyn TaskRepository> =
@@ -48,7 +48,7 @@ async fn setup_multi_project_test() -> (
     let project1_id = ProjectId::from_string("proj-1".to_string());
     let project2_id = ProjectId::from_string("proj-2".to_string());
 
-    (task_repo, project_repo, project1_id, project2_id)
+    (db, task_repo, project_repo, project1_id, project2_id)
 }
 
 /// Helper to create a task in a specific project with a given status
@@ -74,7 +74,7 @@ async fn create_task(
 /// count Ready tasks in that project, not Ready tasks from other projects.
 #[tokio::test]
 async fn test_queued_count_scoped_to_project() {
-    let (task_repo, _, project1_id, project2_id) = setup_multi_project_test().await;
+    let (_db, task_repo, _, project1_id, project2_id) = setup_multi_project_test().await;
 
     // Create Ready tasks in both projects
     // Project 1: 3 Ready tasks
@@ -114,7 +114,7 @@ async fn test_queued_count_scoped_to_project() {
 /// Test: Non-Ready tasks are excluded from queued count
 #[tokio::test]
 async fn test_queued_count_excludes_non_ready_tasks() {
-    let (task_repo, _, project1_id, _) = setup_multi_project_test().await;
+    let (_db, task_repo, _, project1_id, _) = setup_multi_project_test().await;
 
     // Create tasks in various states
     create_task(
@@ -165,7 +165,7 @@ async fn test_queued_count_excludes_non_ready_tasks() {
 /// This verifies the underlying query that the scheduler uses.
 #[tokio::test]
 async fn test_oldest_ready_tasks_ordering() {
-    let (task_repo, _, project1_id, _) = setup_multi_project_test().await;
+    let (_db, task_repo, _, project1_id, _) = setup_multi_project_test().await;
 
     // Create Ready tasks with different timestamps
     // (created_at is set at creation time, so order of creation matters)
@@ -205,7 +205,7 @@ async fn test_oldest_ready_tasks_ordering() {
 /// Test: get_oldest_ready_tasks respects limit
 #[tokio::test]
 async fn test_oldest_ready_tasks_limit() {
-    let (task_repo, _, project1_id, _) = setup_multi_project_test().await;
+    let (_db, task_repo, _, project1_id, _) = setup_multi_project_test().await;
 
     // Create more Ready tasks than the limit
     for i in 0..10 {
@@ -229,7 +229,7 @@ async fn test_oldest_ready_tasks_limit() {
 /// from all projects.
 #[tokio::test]
 async fn test_scheduler_considers_all_projects_by_default() {
-    let (task_repo, _, project1_id, project2_id) = setup_multi_project_test().await;
+    let (_db, task_repo, _, project1_id, project2_id) = setup_multi_project_test().await;
 
     // Create Ready tasks in both projects
     create_task(&task_repo, "task-1", &project1_id, InternalStatus::Ready).await;
@@ -259,7 +259,7 @@ async fn test_scheduler_considers_all_projects_by_default() {
 /// which is used by pause/stop commands to only affect the active project.
 #[tokio::test]
 async fn test_agent_active_tasks_by_project() {
-    let (task_repo, _, project1_id, project2_id) = setup_multi_project_test().await;
+    let (_db, task_repo, _, project1_id, project2_id) = setup_multi_project_test().await;
 
     // Create executing tasks in both projects
     create_task(
@@ -327,7 +327,7 @@ async fn test_agent_active_tasks_by_project() {
 /// The actual pause_execution command uses project_id to filter tasks.
 #[tokio::test]
 async fn test_project_scoped_pause_does_not_affect_other_projects() {
-    let (task_repo, _, project1_id, project2_id) = setup_multi_project_test().await;
+    let (_db, task_repo, _, project1_id, project2_id) = setup_multi_project_test().await;
 
     // Create executing tasks in both projects
     let task1 = create_task(
