@@ -1,16 +1,14 @@
 use super::*;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 
-fn setup_conn() -> Arc<Mutex<Connection>> {
-    let conn = open_memory_connection().expect("open memory connection");
-    run_migrations(&conn).expect("run migrations");
-    Arc::new(Mutex::new(conn))
+fn setup_conn() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite-running-agent-registry")
 }
 
 #[tokio::test]
 async fn test_register_and_get() {
-    let conn = setup_conn();
-    let registry = SqliteRunningAgentRegistry::new(conn);
+    let db = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(db.shared_conn());
     let key = RunningAgentKey::new("ideation", "session-123");
 
     registry
@@ -34,8 +32,8 @@ async fn test_register_and_get() {
 
 #[tokio::test]
 async fn test_register_with_cancellation_token() {
-    let conn = setup_conn();
-    let registry = SqliteRunningAgentRegistry::new(conn);
+    let db = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(db.shared_conn());
     let key = RunningAgentKey::new("task", "task-cancel");
     let token = CancellationToken::new();
 
@@ -61,8 +59,8 @@ async fn test_register_with_cancellation_token() {
 
 #[tokio::test]
 async fn test_unregister() {
-    let conn = setup_conn();
-    let registry = SqliteRunningAgentRegistry::new(conn);
+    let db = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(db.shared_conn());
     let key = RunningAgentKey::new("task", "task-456");
 
     registry
@@ -90,8 +88,8 @@ async fn test_unregister() {
 
 #[tokio::test]
 async fn test_is_running() {
-    let conn = setup_conn();
-    let registry = SqliteRunningAgentRegistry::new(conn);
+    let db = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(db.shared_conn());
     let key = RunningAgentKey::new("review", "review-789");
 
     assert!(!registry.is_running(&key).await);
@@ -112,8 +110,8 @@ async fn test_is_running() {
 
 #[tokio::test]
 async fn test_list_all() {
-    let conn = setup_conn();
-    let registry = SqliteRunningAgentRegistry::new(conn);
+    let db = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(db.shared_conn());
 
     registry
         .register(
@@ -142,8 +140,8 @@ async fn test_list_all() {
 
 #[tokio::test]
 async fn test_stop_all_clears_table() {
-    let conn = setup_conn();
-    let registry = SqliteRunningAgentRegistry::new(conn);
+    let db = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(db.shared_conn());
 
     registry
         .register(
@@ -176,8 +174,8 @@ async fn test_stop_all_clears_table() {
 
 #[tokio::test]
 async fn test_register_replaces_existing() {
-    let conn = setup_conn();
-    let registry = SqliteRunningAgentRegistry::new(conn);
+    let db = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(db.shared_conn());
     let key = RunningAgentKey::new("task", "task-1");
 
     registry
@@ -212,8 +210,8 @@ async fn test_register_replaces_existing() {
 
 #[tokio::test]
 async fn test_register_stops_orphaned_process() {
-    let conn = setup_conn();
-    let registry = SqliteRunningAgentRegistry::new(conn);
+    let db = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(db.shared_conn());
     let key = RunningAgentKey::new("task", "task-orphan");
     let old_token = CancellationToken::new();
 
@@ -269,8 +267,8 @@ async fn test_register_stops_orphaned_process() {
 
 #[tokio::test]
 async fn test_try_register_succeeds_when_empty() {
-    let conn = setup_conn();
-    let registry = SqliteRunningAgentRegistry::new(conn);
+    let db = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(db.shared_conn());
     let key = RunningAgentKey::new("task_execution", "task-fresh");
 
     let result = registry
@@ -289,8 +287,8 @@ async fn test_try_register_succeeds_when_empty() {
 
 #[tokio::test]
 async fn test_try_register_fails_when_occupied() {
-    let conn = setup_conn();
-    let registry = SqliteRunningAgentRegistry::new(conn);
+    let db = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(db.shared_conn());
     let key = RunningAgentKey::new("task_execution", "task-occupied");
 
     // First registration via register()
@@ -322,8 +320,8 @@ async fn test_try_register_fails_when_occupied() {
 
 #[tokio::test]
 async fn test_try_register_then_update_agent_process() {
-    let conn = setup_conn();
-    let registry = SqliteRunningAgentRegistry::new(conn);
+    let db = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(db.shared_conn());
     let key = RunningAgentKey::new("task_execution", "task-update");
     let token = CancellationToken::new();
 
@@ -363,8 +361,9 @@ async fn test_try_register_then_update_agent_process() {
 /// Ensures the agent is tracked even if the placeholder was pruned mid-spawn.
 #[tokio::test]
 async fn test_toctou_pruner_deletes_placeholder_then_update_reinserts() {
-    let conn = setup_conn();
-    let registry = SqliteRunningAgentRegistry::new(Arc::clone(&conn));
+    let db = setup_conn();
+    let shared_conn = db.shared_conn();
+    let registry = SqliteRunningAgentRegistry::new(Arc::clone(&shared_conn));
     let key = RunningAgentKey::new("task_execution", "task-toctou");
 
     // Step 1: Claim the slot (placeholder pid=0)
@@ -376,8 +375,8 @@ async fn test_toctou_pruner_deletes_placeholder_then_update_reinserts() {
 
     // Step 2: Simulate pruner deleting the placeholder row
     {
-        let db = conn.lock().await;
-        db.execute(
+        let conn = shared_conn.lock().await;
+        conn.execute(
             "DELETE FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
             rusqlite::params!["task_execution", "task-toctou"],
         )
@@ -418,8 +417,8 @@ async fn test_toctou_pruner_deletes_placeholder_then_update_reinserts() {
 
 #[tokio::test]
 async fn test_try_register_cleanup_on_spawn_failure() {
-    let conn = setup_conn();
-    let registry = SqliteRunningAgentRegistry::new(conn);
+    let db = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(db.shared_conn());
     let key = RunningAgentKey::new("task_execution", "task-fail");
 
     // Claim the slot
@@ -451,8 +450,8 @@ async fn test_try_register_cleanup_on_spawn_failure() {
 /// is handled exclusively by kill_worktree_processes_async in pre_merge_cleanup step 0b.
 #[tokio::test]
 async fn test_stop_completes_without_blocking_lsof_scan() {
-    let conn = setup_conn();
-    let registry = SqliteRunningAgentRegistry::new(conn);
+    let db = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(db.shared_conn());
     let key = RunningAgentKey::new("review", "task-rc-a-stop");
 
     // Register with worktree_path pointing at /tmp (exists).
@@ -485,8 +484,8 @@ async fn test_stop_completes_without_blocking_lsof_scan() {
 
 #[tokio::test]
 async fn test_try_register_blocks_concurrent_claim() {
-    let conn = setup_conn();
-    let registry = SqliteRunningAgentRegistry::new(conn);
+    let db = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(db.shared_conn());
     let key = RunningAgentKey::new("task_execution", "task-race");
 
     // First try_register claims the slot
