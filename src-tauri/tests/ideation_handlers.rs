@@ -1,14 +1,22 @@
-use super::*;
-use crate::application::AppState;
-use crate::commands::ExecutionState;
-use crate::domain::entities::{ChatMessage, IdeationSession, IdeationSessionId, ProjectId};
-use crate::domain::entities::IdeationSessionBuilder;
-use crate::domain::entities::ideation::VerificationStatus;
-use crate::http_server::project_scope::ProjectScope;
-use crate::http_server::types::{
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    Json,
+};
+use ralphx_lib::application::{AppState, InteractiveProcessKey, TeamService, TeamStateTracker};
+use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::entities::ideation::VerificationStatus;
+use ralphx_lib::domain::entities::{
+    ChatMessage, IdeationSession, IdeationSessionBuilder, IdeationSessionId, ProjectId,
+};
+use ralphx_lib::domain::services::RunningAgentKey;
+use ralphx_lib::http_server::handlers::*;
+use ralphx_lib::http_server::project_scope::ProjectScope;
+use ralphx_lib::http_server::types::{
     ChildSessionStatusParams, SendSessionMessageRequest, UpdateVerificationRequest,
     VerificationGapRequest,
 };
+use ralphx_lib::http_server::types::HttpServerState;
 use std::sync::Arc;
 
 fn unrestricted_scope() -> ProjectScope {
@@ -18,10 +26,8 @@ fn unrestricted_scope() -> ProjectScope {
 async fn setup_test_state() -> HttpServerState {
     let app_state = Arc::new(AppState::new_test());
     let execution_state = Arc::new(ExecutionState::new());
-    let tracker = crate::application::TeamStateTracker::new();
-    let team_service = Arc::new(crate::application::TeamService::new_without_events(
-        Arc::new(tracker.clone()),
-    ));
+    let tracker = TeamStateTracker::new();
+    let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
 
     HttpServerState {
         app_state,
@@ -939,7 +945,7 @@ async fn test_zombie_terminal_call_stale_generation_rejected() {
     let session = IdeationSessionBuilder::new()
         .project_id(ProjectId::new())
         .verification_generation(3)
-        .verification_status(crate::domain::entities::VerificationStatus::Reviewing)
+        .verification_status(VerificationStatus::Reviewing)
         .build();
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
@@ -982,7 +988,7 @@ async fn test_zombie_terminal_call_correct_generation_succeeds() {
     let session = IdeationSessionBuilder::new()
         .project_id(ProjectId::new())
         .verification_generation(3)
-        .verification_status(crate::domain::entities::VerificationStatus::Reviewing)
+        .verification_status(VerificationStatus::Reviewing)
         .build();
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
@@ -1023,7 +1029,7 @@ async fn test_zombie_terminal_call_no_generation_no_guard() {
     let session = IdeationSessionBuilder::new()
         .project_id(ProjectId::new())
         .verification_generation(5)
-        .verification_status(crate::domain::entities::VerificationStatus::Reviewing)
+        .verification_status(VerificationStatus::Reviewing)
         .build();
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
@@ -2642,7 +2648,7 @@ async fn test_send_child_session_message_agent_idle_spawn_path_entered() {
         .project_id(ProjectId::new())
         .team_mode("research")
         .build();
-    session.status = crate::domain::entities::ideation::IdeationSessionStatus::Active;
+    session.status = ralphx_lib::domain::entities::ideation::IdeationSessionStatus::Active;
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
@@ -2677,7 +2683,7 @@ async fn test_send_child_session_message_archived_session_returns_422() {
 
     let session = IdeationSessionBuilder::new()
         .project_id(ProjectId::new())
-        .status(crate::domain::entities::ideation::IdeationSessionStatus::Archived)
+        .status(ralphx_lib::domain::entities::ideation::IdeationSessionStatus::Archived)
         .build();
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
@@ -2705,7 +2711,7 @@ async fn test_send_child_session_message_accepted_session_returns_422() {
 
     let session = IdeationSessionBuilder::new()
         .project_id(ProjectId::new())
-        .status(crate::domain::entities::ideation::IdeationSessionStatus::Accepted)
+        .status(ralphx_lib::domain::entities::ideation::IdeationSessionStatus::Accepted)
         .build();
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
