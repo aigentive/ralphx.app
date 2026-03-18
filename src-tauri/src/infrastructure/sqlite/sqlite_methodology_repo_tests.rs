@@ -2,12 +2,10 @@ use super::*;
 use crate::domain::entities::methodology::{MethodologyPhase, MethodologyTemplate};
 use crate::domain::entities::status::InternalStatus;
 use crate::domain::entities::workflow::{WorkflowColumn, WorkflowSchema};
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().expect("Failed to open memory connection");
-    run_migrations(&conn).expect("Failed to run migrations");
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite-methodology-repo")
 }
 
 fn create_test_workflow() -> WorkflowSchema {
@@ -89,8 +87,8 @@ fn create_full_methodology() -> MethodologyExtension {
 
 #[tokio::test]
 async fn test_create_methodology() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
     let methodology = create_test_methodology();
 
     let result = repo.create(methodology.clone()).await;
@@ -103,8 +101,8 @@ async fn test_create_methodology() {
 
 #[tokio::test]
 async fn test_get_by_id_found() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
     let methodology = create_test_methodology();
 
     repo.create(methodology.clone()).await.unwrap();
@@ -119,8 +117,8 @@ async fn test_get_by_id_found() {
 
 #[tokio::test]
 async fn test_get_by_id_not_found() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
     let id = MethodologyId::new();
 
     let result = repo.get_by_id(&id).await;
@@ -130,8 +128,8 @@ async fn test_get_by_id_not_found() {
 
 #[tokio::test]
 async fn test_get_all_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let result = repo.get_all().await;
     assert!(result.is_ok());
@@ -140,8 +138,8 @@ async fn test_get_all_empty() {
 
 #[tokio::test]
 async fn test_get_all_with_methodologies() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let methodology1 = create_test_methodology();
     let methodology2 = create_full_methodology();
@@ -156,8 +154,8 @@ async fn test_get_all_with_methodologies() {
 
 #[tokio::test]
 async fn test_get_all_ordered_by_name() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let workflow = create_test_workflow();
     let z_method = MethodologyExtension::new("Zebra Method", workflow.clone());
@@ -174,8 +172,8 @@ async fn test_get_all_ordered_by_name() {
 
 #[tokio::test]
 async fn test_get_active_none() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let methodology = create_test_methodology(); // not active
     repo.create(methodology).await.unwrap();
@@ -187,8 +185,8 @@ async fn test_get_active_none() {
 
 #[tokio::test]
 async fn test_get_active_some() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let methodology = create_test_methodology();
     repo.create(methodology.clone()).await.unwrap();
@@ -203,8 +201,8 @@ async fn test_get_active_some() {
 
 #[tokio::test]
 async fn test_activate() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let methodology = create_test_methodology();
     repo.create(methodology.clone()).await.unwrap();
@@ -219,8 +217,8 @@ async fn test_activate() {
 
 #[tokio::test]
 async fn test_activate_deactivates_others() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let workflow = create_test_workflow();
     let method1 = MethodologyExtension::new("Method 1", workflow.clone());
@@ -244,8 +242,8 @@ async fn test_activate_deactivates_others() {
 
 #[tokio::test]
 async fn test_activate_not_found() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
     let id = MethodologyId::new();
 
     let result = repo.activate(&id).await;
@@ -254,8 +252,8 @@ async fn test_activate_not_found() {
 
 #[tokio::test]
 async fn test_deactivate() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let methodology = create_test_methodology();
     repo.create(methodology.clone()).await.unwrap();
@@ -269,8 +267,8 @@ async fn test_deactivate() {
 
 #[tokio::test]
 async fn test_deactivate_not_found() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
     let id = MethodologyId::new();
 
     let result = repo.deactivate(&id).await;
@@ -279,8 +277,8 @@ async fn test_deactivate_not_found() {
 
 #[tokio::test]
 async fn test_update() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let mut methodology = create_test_methodology();
     repo.create(methodology.clone()).await.unwrap();
@@ -297,8 +295,8 @@ async fn test_update() {
 
 #[tokio::test]
 async fn test_update_not_found() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let methodology = create_test_methodology();
 
@@ -308,8 +306,8 @@ async fn test_update_not_found() {
 
 #[tokio::test]
 async fn test_delete() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let methodology = create_test_methodology();
     repo.create(methodology.clone()).await.unwrap();
@@ -322,8 +320,8 @@ async fn test_delete() {
 
 #[tokio::test]
 async fn test_exists_true() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let methodology = create_test_methodology();
     repo.create(methodology.clone()).await.unwrap();
@@ -335,8 +333,8 @@ async fn test_exists_true() {
 
 #[tokio::test]
 async fn test_exists_false() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let id = MethodologyId::new();
 
@@ -347,8 +345,8 @@ async fn test_exists_false() {
 
 #[tokio::test]
 async fn test_full_methodology_preserved() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let methodology = create_full_methodology();
     repo.create(methodology.clone()).await.unwrap();
@@ -370,8 +368,8 @@ async fn test_full_methodology_preserved() {
 
 #[tokio::test]
 async fn test_phases_preserved() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let methodology = create_full_methodology();
     repo.create(methodology.clone()).await.unwrap();
@@ -392,8 +390,8 @@ async fn test_phases_preserved() {
 
 #[tokio::test]
 async fn test_templates_preserved() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let methodology = create_full_methodology();
     repo.create(methodology.clone()).await.unwrap();
@@ -416,8 +414,8 @@ async fn test_templates_preserved() {
 
 #[tokio::test]
 async fn test_hooks_config_preserved() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let methodology = create_full_methodology();
     repo.create(methodology.clone()).await.unwrap();
@@ -431,8 +429,8 @@ async fn test_hooks_config_preserved() {
 
 #[tokio::test]
 async fn test_workflow_preserved() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let methodology = create_full_methodology();
     repo.create(methodology.clone()).await.unwrap();
@@ -447,8 +445,8 @@ async fn test_workflow_preserved() {
 
 #[tokio::test]
 async fn test_timestamps_preserved() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let methodology = create_test_methodology();
     let original_created_at = methodology.created_at;
@@ -465,8 +463,8 @@ async fn test_timestamps_preserved() {
 
 #[tokio::test]
 async fn test_from_shared_connection() {
-    let conn = setup_test_db();
-    let shared = Arc::new(Mutex::new(conn));
+    let db = setup_test_db();
+    let shared = db.shared_conn();
 
     let repo1 = SqliteMethodologyRepository::from_shared(shared.clone());
     let repo2 = SqliteMethodologyRepository::from_shared(shared.clone());
@@ -482,8 +480,8 @@ async fn test_from_shared_connection() {
 
 #[tokio::test]
 async fn test_methodology_without_description() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let workflow = create_test_workflow();
     let methodology = MethodologyExtension::new("No Description", workflow);
@@ -495,8 +493,8 @@ async fn test_methodology_without_description() {
 
 #[tokio::test]
 async fn test_methodology_with_empty_collections() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let workflow = create_test_workflow();
     let methodology = MethodologyExtension::new("Empty Collections", workflow);
@@ -514,8 +512,8 @@ async fn test_methodology_with_empty_collections() {
 
 #[tokio::test]
 async fn test_seed_builtin_methodologies_seeds_two() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     let seeded_count = repo.seed_builtin_methodologies().await.unwrap();
     assert_eq!(seeded_count, 2);
@@ -526,8 +524,8 @@ async fn test_seed_builtin_methodologies_seeds_two() {
 
 #[tokio::test]
 async fn test_seed_builtin_methodologies_idempotent() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     // First seeding
     let first_count = repo.seed_builtin_methodologies().await.unwrap();
@@ -544,8 +542,8 @@ async fn test_seed_builtin_methodologies_idempotent() {
 
 #[tokio::test]
 async fn test_seed_builtin_methodologies_includes_bmad() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     repo.seed_builtin_methodologies().await.unwrap();
 
@@ -565,8 +563,8 @@ async fn test_seed_builtin_methodologies_includes_bmad() {
 
 #[tokio::test]
 async fn test_seed_builtin_methodologies_includes_gsd() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     repo.seed_builtin_methodologies().await.unwrap();
 
@@ -585,8 +583,8 @@ async fn test_seed_builtin_methodologies_includes_gsd() {
 
 #[tokio::test]
 async fn test_bmad_workflow_has_10_columns() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     repo.seed_builtin_methodologies().await.unwrap();
 
@@ -600,8 +598,8 @@ async fn test_bmad_workflow_has_10_columns() {
 
 #[tokio::test]
 async fn test_gsd_workflow_has_11_columns() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     repo.seed_builtin_methodologies().await.unwrap();
 
@@ -615,8 +613,8 @@ async fn test_gsd_workflow_has_11_columns() {
 
 #[tokio::test]
 async fn test_bmad_phases_have_correct_columns() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     repo.seed_builtin_methodologies().await.unwrap();
 
@@ -639,8 +637,8 @@ async fn test_bmad_phases_have_correct_columns() {
 
 #[tokio::test]
 async fn test_gsd_phases_have_correct_columns() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     repo.seed_builtin_methodologies().await.unwrap();
 
@@ -662,8 +660,8 @@ async fn test_gsd_phases_have_correct_columns() {
 
 #[tokio::test]
 async fn test_builtin_methodologies_have_templates() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     repo.seed_builtin_methodologies().await.unwrap();
 
@@ -678,8 +676,8 @@ async fn test_builtin_methodologies_have_templates() {
 
 #[tokio::test]
 async fn test_builtin_methodologies_have_hooks_config() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     repo.seed_builtin_methodologies().await.unwrap();
 
@@ -698,8 +696,8 @@ async fn test_builtin_methodologies_have_hooks_config() {
 
 #[tokio::test]
 async fn test_builtin_methodologies_not_active_by_default() {
-    let conn = setup_test_db();
-    let repo = SqliteMethodologyRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMethodologyRepository::new(db.new_connection());
 
     repo.seed_builtin_methodologies().await.unwrap();
 

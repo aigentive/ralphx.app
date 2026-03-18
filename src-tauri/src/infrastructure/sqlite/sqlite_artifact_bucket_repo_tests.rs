@@ -1,10 +1,8 @@
 use super::*;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().expect("Failed to open memory connection");
-    run_migrations(&conn).expect("Failed to run migrations");
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite-artifact-bucket-repo")
 }
 
 fn create_test_bucket() -> ArtifactBucket {
@@ -25,8 +23,8 @@ fn create_system_bucket() -> ArtifactBucket {
 
 #[tokio::test]
 async fn test_create_bucket() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
     let bucket = create_test_bucket();
 
     let result = repo.create(bucket.clone()).await;
@@ -39,8 +37,8 @@ async fn test_create_bucket() {
 
 #[tokio::test]
 async fn test_create_system_bucket() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
     let bucket = create_system_bucket();
 
     let result = repo.create(bucket.clone()).await;
@@ -54,8 +52,8 @@ async fn test_create_system_bucket() {
 
 #[tokio::test]
 async fn test_get_by_id_found() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
     let bucket = create_test_bucket();
 
     repo.create(bucket.clone()).await.unwrap();
@@ -70,8 +68,8 @@ async fn test_get_by_id_found() {
 
 #[tokio::test]
 async fn test_get_by_id_not_found() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
     let id = ArtifactBucketId::new();
 
     let result = repo.get_by_id(&id).await;
@@ -81,8 +79,8 @@ async fn test_get_by_id_not_found() {
 
 #[tokio::test]
 async fn test_get_by_id_preserves_accepted_types() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
     let bucket = create_test_bucket();
 
     repo.create(bucket.clone()).await.unwrap();
@@ -95,8 +93,8 @@ async fn test_get_by_id_preserves_accepted_types() {
 
 #[tokio::test]
 async fn test_get_by_id_preserves_writers() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
     let bucket = create_test_bucket();
 
     repo.create(bucket.clone()).await.unwrap();
@@ -110,14 +108,16 @@ async fn test_get_by_id_preserves_writers() {
 // ==================== GET ALL TESTS ====================
 
 /// Clears seeded buckets so tests can start from empty state
-fn clear_seeded_buckets(conn: &Connection) {
-    conn.execute("DELETE FROM artifact_buckets", []).unwrap();
+fn clear_seeded_buckets(db: &SqliteTestDb) {
+    db.with_connection(|conn| {
+        conn.execute("DELETE FROM artifact_buckets", []).unwrap();
+    });
 }
 
 #[tokio::test]
 async fn test_get_all_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
 
     // v25 migration seeds 4 system buckets, v37 adds team-findings (5 total)
     let result = repo.get_all().await;
@@ -127,8 +127,8 @@ async fn test_get_all_empty() {
 
 #[tokio::test]
 async fn test_get_all_with_buckets() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
 
     let bucket1 = create_test_bucket();
     let bucket2 = create_system_bucket();
@@ -144,9 +144,9 @@ async fn test_get_all_with_buckets() {
 
 #[tokio::test]
 async fn test_get_all_returns_sorted_by_name() {
-    let conn = setup_test_db();
-    clear_seeded_buckets(&conn);
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    clear_seeded_buckets(&db);
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
 
     let mut bucket1 = create_test_bucket();
     bucket1.name = "Zebra Bucket".to_string();
@@ -168,8 +168,8 @@ async fn test_get_all_returns_sorted_by_name() {
 
 #[tokio::test]
 async fn test_get_system_buckets_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
 
     // Create only non-system bucket
     let bucket = create_test_bucket();
@@ -183,8 +183,8 @@ async fn test_get_system_buckets_empty() {
 
 #[tokio::test]
 async fn test_get_system_buckets_returns_only_system() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
 
     let custom = create_test_bucket();
     let system = create_system_bucket();
@@ -206,8 +206,8 @@ async fn test_get_system_buckets_returns_only_system() {
 
 #[tokio::test]
 async fn test_update_bucket() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
 
     let mut bucket = create_test_bucket();
     repo.create(bucket.clone()).await.unwrap();
@@ -227,8 +227,8 @@ async fn test_update_bucket() {
 
 #[tokio::test]
 async fn test_delete_custom_bucket() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
 
     let bucket = create_test_bucket();
     repo.create(bucket.clone()).await.unwrap();
@@ -242,8 +242,8 @@ async fn test_delete_custom_bucket() {
 
 #[tokio::test]
 async fn test_delete_system_bucket_fails() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
 
     let bucket = create_system_bucket();
     repo.create(bucket.clone()).await.unwrap();
@@ -260,8 +260,8 @@ async fn test_delete_system_bucket_fails() {
 
 #[tokio::test]
 async fn test_exists_true() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
 
     let bucket = create_test_bucket();
     repo.create(bucket.clone()).await.unwrap();
@@ -273,8 +273,8 @@ async fn test_exists_true() {
 
 #[tokio::test]
 async fn test_exists_false() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
     let id = ArtifactBucketId::new();
 
     let result = repo.exists(&id).await;
@@ -286,8 +286,8 @@ async fn test_exists_false() {
 
 #[tokio::test]
 async fn test_from_shared_connection() {
-    let conn = setup_test_db();
-    let shared = Arc::new(Mutex::new(conn));
+    let db = setup_test_db();
+    let shared = db.shared_conn();
 
     let repo1 = SqliteArtifactBucketRepository::from_shared(shared.clone());
     let repo2 = SqliteArtifactBucketRepository::from_shared(shared.clone());
@@ -305,8 +305,8 @@ async fn test_from_shared_connection() {
 
 #[tokio::test]
 async fn test_seed_builtin_buckets_creates_all_five() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
 
     // v25+v37 migration already seeded them, so seed_builtin_buckets returns 0
     let count = repo.seed_builtin_buckets().await.unwrap();
@@ -321,8 +321,8 @@ async fn test_seed_builtin_buckets_creates_all_five() {
 
 #[tokio::test]
 async fn test_seed_builtin_buckets_is_idempotent() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
 
     // v25 already seeded, so both calls return 0
     let count1 = repo.seed_builtin_buckets().await.unwrap();
@@ -338,8 +338,8 @@ async fn test_seed_builtin_buckets_is_idempotent() {
 
 #[tokio::test]
 async fn test_seed_builtin_buckets_creates_research_outputs() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
 
     // Seeded by v25 migration
     let research_id = ArtifactBucketId::from_string("research-outputs");
@@ -356,8 +356,8 @@ async fn test_seed_builtin_buckets_creates_research_outputs() {
 
 #[tokio::test]
 async fn test_seed_builtin_buckets_creates_work_context() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
 
     // Seeded by v25 migration
     let work_id = ArtifactBucketId::from_string("work-context");
@@ -374,8 +374,8 @@ async fn test_seed_builtin_buckets_creates_work_context() {
 
 #[tokio::test]
 async fn test_seed_builtin_buckets_creates_code_changes() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
 
     // Seeded by v25 migration
     let code_id = ArtifactBucketId::from_string("code-changes");
@@ -392,8 +392,8 @@ async fn test_seed_builtin_buckets_creates_code_changes() {
 
 #[tokio::test]
 async fn test_seed_builtin_buckets_creates_prd_library() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
 
     // Seeded by v25 migration
     let prd_id = ArtifactBucketId::from_string("prd-library");
@@ -411,8 +411,8 @@ async fn test_seed_builtin_buckets_creates_prd_library() {
 
 #[tokio::test]
 async fn test_seed_builtin_buckets_preserves_existing() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactBucketRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactBucketRepository::new(db.new_connection());
 
     // Create a custom bucket first
     let custom = create_test_bucket();
