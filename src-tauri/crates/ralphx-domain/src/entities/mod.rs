@@ -26,6 +26,7 @@ pub mod task_context;
 pub mod task_metadata;
 pub mod task_qa;
 pub mod task_step;
+pub mod team;
 pub mod types;
 pub mod workflow;
 
@@ -105,6 +106,7 @@ pub use task_metadata::{
 };
 pub use task_qa::TaskQA;
 pub use task_step::{StepProgressSummary, TaskStep, TaskStepStatus};
+pub use team::{TeamMessageId, TeamMessageRecord, TeamSession, TeamSessionId, TeammateCost, TeammateSnapshot};
 pub use types::{
     ApiKeyId, ChatMessageId, ExecutionPlanId, IdeationSessionId, ProjectId, ReviewIssueId,
     SessionLinkId, TaskId, TaskProposalId, TaskQAId, TaskStepId,

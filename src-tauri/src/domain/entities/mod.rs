@@ -1,5 +1,4 @@
 pub mod memory_archive_job;
-pub mod team;
 
 pub use ralphx_domain::entities::*;
 pub use ralphx_domain::entities::{
@@ -7,7 +6,6 @@ pub use ralphx_domain::entities::{
     chat_conversation, execution_plan, ideation, memory_archive, memory_entry, memory_event,
     memory_rule_binding, merge_progress_event, methodology, plan_branch, plan_selection_stats,
     project, research, review, review_issue, status, task, task_context, task_metadata, task_qa,
-    task_step, types, workflow,
+    task_step, team, types, workflow,
 };
 pub use memory_archive_job::{MemoryArchiveJobStatus, MemoryArchiveJobType};
-pub use team::{TeamMessageId, TeamMessageRecord, TeamSession, TeamSessionId, TeammateSnapshot};

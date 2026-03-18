@@ -4,8 +4,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::application::team_state_tracker::TeammateCost;
-
 /// Unique identifier for a TeamSession
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TeamSessionId(pub String);
@@ -64,6 +62,16 @@ impl std::fmt::Display for TeamMessageId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
+}
+
+/// Aggregated token and dollar cost for a teammate session.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TeammateCost {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_creation_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub estimated_usd: f64,
 }
 
 /// Snapshot of a teammate's state at a point in time

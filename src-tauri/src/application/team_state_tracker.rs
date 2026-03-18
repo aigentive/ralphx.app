@@ -16,6 +16,8 @@ use tokio::process::ChildStdin;
 use tokio::sync::{oneshot, watch, RwLock};
 use tokio::task::JoinHandle;
 
+pub use crate::domain::entities::TeammateCost;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -43,16 +45,6 @@ impl std::fmt::Display for TeammateStatus {
             TeammateStatus::Shutdown => write!(f, "shutdown"),
         }
     }
-}
-
-/// Cost tracking for a teammate
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct TeammateCost {
-    pub input_tokens: u64,
-    pub output_tokens: u64,
-    pub cache_creation_tokens: u64,
-    pub cache_read_tokens: u64,
-    pub estimated_usd: f64,
 }
 
 /// Handle to a spawned teammate process (not serializable).

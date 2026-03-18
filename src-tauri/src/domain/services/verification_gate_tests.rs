@@ -4,20 +4,19 @@ use crate::domain::entities::{ArtifactId, IdeationSession, IdeationSessionId, Pr
 use crate::domain::ideation::config::{IdeationPlanMode, IdeationSettings};
 
 fn make_session(status: VerificationStatus) -> IdeationSession {
-    IdeationSession::builder()
+    with_verification_status(
+        IdeationSession::builder()
         .id(IdeationSessionId::from_string("test-session-id".to_string()))
         .project_id(ProjectId::from_string("test-project-id".to_string()))
-        .build()
-        // Override verification status after build
-        .with_verification_status(status)
+        .build(),
+        status,
+    )
 }
 
-// We use a small helper to set verification status since builder doesn't expose it after build
-impl IdeationSession {
-    fn with_verification_status(mut self, status: VerificationStatus) -> Self {
-        self.verification_status = status;
-        self
-    }
+// We use a small helper to set verification status since builder doesn't expose it after build.
+fn with_verification_status(mut session: IdeationSession, status: VerificationStatus) -> IdeationSession {
+    session.verification_status = status;
+    session
 }
 
 fn settings_with_required(required: bool) -> IdeationSettings {
