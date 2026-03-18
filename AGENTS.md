@@ -9,7 +9,7 @@ Primary project docs:
 - `CLAUDE.md`
 - `src-tauri/CLAUDE.md`
 - `.claude/rules/*.md`
-- `.claude/rules/rust-test-execution.md` for selective Rust test commands, shared SQLite test fixtures, and the no-broad-`fmt` rule
+- `.claude/rules/rust-test-execution.md` for selective Rust test commands, the standard Rust test stack, shared SQLite fixtures/builders, and the no-broad-`fmt` rule
 
 ## Codex Rules
 
