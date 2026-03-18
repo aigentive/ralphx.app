@@ -117,7 +117,7 @@ Wave 2: Dependent scopes (build on Wave 1 outputs)
 1. `get_project_analysis(project_id, task_id)` → validation commands
 2. Run for modified paths:
    - `src/` modified → `npm run typecheck`, `npm run lint`
-   - `src-tauri/` modified → `timeout 10m cargo test --lib --manifest-path src-tauri/Cargo.toml 2>&1 | tail -40`
+   - `src-tauri/` modified → `timeout 10m cargo test --lib --manifest-path src-tauri/Cargo.toml 2>&1 | tail -100`
 3. All pass → next wave | Any fail → fix loop
 
 ### Fix Loop (max 3 attempts per wave)

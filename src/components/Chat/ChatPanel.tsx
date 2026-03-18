@@ -47,6 +47,7 @@ import { StreamingToolIndicator } from "./StreamingToolIndicator";
 import { isDiffToolCall } from "./DiffToolCallView.utils";
 import { TeamFilterTabs, type TeamFilterValue } from "./TeamFilterTabs";
 import { useTeamHistory } from "@/hooks/useTeamHistory";
+import { TimeoutWarning } from "./TimeoutWarning";
 
 const COLLAPSED_WIDTH = 40;
 
@@ -244,6 +245,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const queuedMessages = useChatStore(queuedMessagesSelector);
   const agentStatusSelector = useMemo(() => selectAgentStatus(contextKey), [contextKey]);
   const agentStatus = useChatStore(agentStatusSelector);
+  const toolCallStartTimes = useChatStore((s) => s.toolCallStartTimes[contextKey] ?? {});
 
   // For execution mode, fetch execution conversations directly using task_execution context
   // For regular chat, use the standard useChat hook
@@ -327,6 +329,21 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const [streamingTasks, setStreamingTasks] = useState<Map<string, StreamingTask>>(new Map());
   const [isFinalizing, setIsFinalizing] = useState(false);
 
+  // Timeout warning state — track dismissed bash tool call ID
+  const [dismissedTimeoutCallId, setDismissedTimeoutCallId] = useState<string | null>(null);
+  const activeBashCall = streamingToolCalls.find((tc) => tc.name.toLowerCase() === "bash");
+  const bashStartTime = activeBashCall ? toolCallStartTimes[activeBashCall.id] : undefined;
+  // Context-aware threshold: 3600s for team mode, 600s otherwise
+  const effectiveTimeoutMs = isTeamActive ? 3_600_000 : 600_000;
+  const showTimeoutWarning = activeBashCall !== undefined && bashStartTime !== undefined && activeBashCall.id !== dismissedTimeoutCallId;
+
+  // Auto-reset dismissed ID when the dismissed call is no longer active
+  useEffect(() => {
+    if (dismissedTimeoutCallId && !streamingToolCalls.find((tc) => tc.id === dismissedTimeoutCallId)) {
+      setDismissedTimeoutCallId(null);
+    }
+  }, [streamingToolCalls, dismissedTimeoutCallId]);
+
   // Unified actions hook (replaces useChatPanelHandlers action logic)
   const {
     handleSend,
@@ -369,6 +386,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     setStreamingContentBlocks,
     setStreamingTasks,
     setIsFinalizing,
+    storeKey: contextKey,
   });
 
   // Hook events — listen for agent:hook Tauri events scoped to active conversation
@@ -494,6 +512,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
                 : context.selectedTaskId || null
             }
             agentStatus={agentStatus}
+            storeKey={contextKey}
           />
 
           <div className="flex items-center gap-1 shrink-0">
@@ -536,6 +555,15 @@ function ChatPanelContent({ context }: ChatPanelProps) {
             onStopTeammate={(name) => {
               teamActions.stopTeammate.mutate(name);
             }}
+          />
+        )}
+
+        {/* Timeout Warning Banner — shown when bash tool call approaches timeout */}
+        {showTimeoutWarning && (
+          <TimeoutWarning
+            toolCallStartTime={bashStartTime!}
+            effectiveTimeoutMs={effectiveTimeoutMs}
+            onDismiss={() => setDismissedTimeoutCallId(activeBashCall!.id)}
           />
         )}
 
@@ -583,7 +611,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           );
           return otherToolCalls.length > 0 ? (
             <div className="shrink-0 px-3 pb-2">
-              <StreamingToolIndicator toolCalls={otherToolCalls} isActive={true} />
+              <StreamingToolIndicator toolCalls={otherToolCalls} isActive={true} toolCallStartTimes={toolCallStartTimes} />
             </div>
           ) : null;
         })()}

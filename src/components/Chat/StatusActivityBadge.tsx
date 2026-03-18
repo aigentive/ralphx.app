@@ -11,10 +11,12 @@
  * - Agent active: Badge with status + spinner + Activity icon
  */
 
+import { useState, useEffect } from "react";
 import { Activity, Loader2, CirclePause } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useUiStore } from "@/stores/uiStore";
+import { useChatStore } from "@/stores/chatStore";
 import { AGENT_WORKER, AGENT_REVIEWER } from "@/constants/agents";
 import type { ViewType } from "@/types/chat";
 import type { AgentStatus } from "@/stores/chatStore";
@@ -38,6 +40,8 @@ export interface StatusActivityBadgeProps {
   hasActivity?: boolean;
   /** Tri-state agent status for nuanced display */
   agentStatus?: AgentStatus;
+  /** Store key for subscribing to lastAgentEventTimestamp */
+  storeKey?: string;
 }
 
 // ============================================================================
@@ -57,6 +61,51 @@ function getStatusText(agentType: AgentType): string {
   }
 }
 
+/** Format elapsed seconds as human-readable string */
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (secs === 0) return `${minutes}m ago`;
+  return `${minutes}m ${secs}s ago`;
+}
+
+/** Get color class for elapsed time */
+function getElapsedColor(seconds: number): string {
+  if (seconds < 60) return "text-green-400";
+  if (seconds < 180) return "text-yellow-400";
+  return "text-red-400";
+}
+
+// ============================================================================
+// Last Activity Display
+// ============================================================================
+
+interface LastActivityProps {
+  lastEventTimestamp: number;
+}
+
+function LastActivity({ lastEventTimestamp }: LastActivityProps) {
+  const [elapsed, setElapsed] = useState(() =>
+    Math.floor((Date.now() - lastEventTimestamp) / 1000)
+  );
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - lastEventTimestamp) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lastEventTimestamp]);
+
+  const colorClass = getElapsedColor(elapsed);
+
+  return (
+    <span className={`text-xs ${colorClass} shrink-0`}>
+      Last: {formatElapsed(elapsed)}
+    </span>
+  );
+}
+
 // ============================================================================
 // Component
 // ============================================================================
@@ -68,9 +117,13 @@ export function StatusActivityBadge({
   contextId,
   hasActivity = false,
   agentStatus = "idle",
+  storeKey,
 }: StatusActivityBadgeProps) {
   const setActivityFilter = useUiStore((s) => s.setActivityFilter);
   const setCurrentView = useUiStore((s) => s.setCurrentView);
+  const lastEventTimestamp = useChatStore((s) =>
+    storeKey ? (s.lastAgentEventTimestamp[storeKey] ?? 0) : 0
+  );
 
   // Navigate to activity view with context filter
   const handleActivityClick = () => {
@@ -127,13 +180,16 @@ export function StatusActivityBadge({
     );
   }
 
-  // Active/generating state: badge with status text, spinner, and activity button
+  // Active/generating state: badge with status text, spinner, last activity, and activity button
   return (
     <div className="flex items-center gap-1.5 shrink-0">
       <Badge variant="secondary" className="shrink-0">
         <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
         {getStatusText(agentType)}
       </Badge>
+      {storeKey && lastEventTimestamp > 0 && (
+        <LastActivity lastEventTimestamp={lastEventTimestamp} />
+      )}
       <Button
         variant="ghost"
         size="sm"

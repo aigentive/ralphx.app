@@ -16,6 +16,7 @@
 import { useMemo, useRef, useEffect, useCallback, useState } from "react";
 import { Wrench, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import type { ToolCall } from "./ToolCallIndicator";
+import { formatDuration } from "@/components/tasks/detail-views/shared/DurationDisplay";
 
 // Maximum height for the tool list content area (~20% reduced from original 200)
 const MAX_CONTENT_HEIGHT = 160;
@@ -32,6 +33,8 @@ interface StreamingToolIndicatorProps {
   toolCalls: ToolCall[];
   /** Whether the agent is still running */
   isActive?: boolean;
+  /** Start timestamps per tool call ID (toolCallId → epoch ms) — for elapsed timer display */
+  toolCallStartTimes?: Record<string, number>;
 }
 
 // ============================================================================
@@ -198,10 +201,12 @@ function getToolVerb(name: string): string {
 export function StreamingToolIndicator({
   toolCalls,
   isActive = true,
+  toolCallStartTimes,
 }: StreamingToolIndicatorProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   // Track scroll position to determine if user is near bottom
   const handleScroll = useCallback(() => {
@@ -210,6 +215,31 @@ export function StreamingToolIndicator({
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     isNearBottomRef.current = distanceFromBottom <= NEAR_BOTTOM_THRESHOLD;
   }, []);
+
+  // Find the last active (no result) non-result tool call for elapsed timer
+  const lastActiveToolCallId = useMemo(() => {
+    const active = toolCalls.filter(
+      (tc) => !tc.name.startsWith("result:toolu") && tc.result === undefined
+    );
+    return active[active.length - 1]?.id ?? null;
+  }, [toolCalls]);
+
+  const activeStartTime = lastActiveToolCallId
+    ? (toolCallStartTimes?.[lastActiveToolCallId] ?? null)
+    : null;
+
+  // Live elapsed timer — 1-second interval when a tool call is active
+  useEffect(() => {
+    if (!activeStartTime || !isActive) {
+      setElapsedSeconds(0);
+      return;
+    }
+    const update = () =>
+      setElapsedSeconds(Math.floor((Date.now() - activeStartTime) / 1000));
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [activeStartTime, isActive]);
 
   // Filter out result tools (result:toolu*) and process into summary lines
   const summaryLines = useMemo(() => {
@@ -225,9 +255,10 @@ export function StreamingToolIndicator({
           primary,
           details,
           hasError: Boolean(tc.error),
+          isActiveCall: tc.id === lastActiveToolCallId,
         };
       });
-  }, [toolCalls]);
+  }, [toolCalls, lastActiveToolCallId]);
 
   // Auto-scroll to bottom when new tool calls arrive (only if user is near bottom and expanded)
   useEffect(() => {
@@ -345,6 +376,22 @@ export function StreamingToolIndicator({
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Elapsed timer — shown only for the currently active tool call */}
+              {isActive && line.isActiveCall && elapsedSeconds > 0 && (
+                <div
+                  data-testid="elapsed-timer"
+                  className="flex gap-2"
+                >
+                  <span className="w-4 flex-shrink-0" />
+                  <span
+                    className="text-[11px] tabular-nums"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    Running {formatDuration(elapsedSeconds)}
+                  </span>
                 </div>
               )}
             </div>

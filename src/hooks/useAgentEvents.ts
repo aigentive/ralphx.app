@@ -383,6 +383,29 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
       })
     );
 
+    // Listen for synthetic heartbeat events emitted by backend during PID-alive bypass.
+    // Refreshes lastAgentEventTimestamp so the frontend watchdog doesn't false-trigger
+    // while the backend keeps the agent alive during buffered-stdout commands.
+    unsubscribes.push(
+      bus.subscribe<{
+        conversation_id: string;
+        context_id: string;
+        reason: string;
+        pid?: number;
+      }>("agent:heartbeat", (payload) => {
+        // Find the store key by scanning all generating contexts for a matching conversation
+        // The heartbeat payload has context_id, so we look up which context keys are generating
+        // and match by context_id substring (context_id is the raw id, key is "type:id")
+        const state = useChatStore.getState();
+        for (const key of Object.keys(state.agentStatus)) {
+          if (key.includes(payload.context_id)) {
+            updateLastAgentEvent(key);
+            break;
+          }
+        }
+      })
+    );
+
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
@@ -404,9 +427,7 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         if (status !== "generating") continue;
         const lastEvent = state.lastAgentEventTimestamp[key] ?? 0;
         if (now - lastEvent > WATCHDOG_TIMEOUT_MS) {
-          console.warn(
-            `[WATCHDOG] Agent ${key} stuck in generating for ${Math.round((now - lastEvent) / 1000)}s — forcing idle`
-          );
+          toast.warning('Agent appears to have stalled. Status reset to idle.');
           state.setAgentStatus(key, "idle");
         }
       }

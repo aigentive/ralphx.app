@@ -64,6 +64,7 @@ import { isDiffToolCall } from "./DiffToolCallView.utils";
 import { TeamFilterTabs, type TeamFilterValue } from "./TeamFilterTabs";
 import { useTeamHistory } from "@/hooks/useTeamHistory";
 import { getTeamStatus } from "@/api/team";
+import { TimeoutWarning } from "./TimeoutWarning";
 
 // Stable empty array to avoid new reference on every render when tasks query returns undefined
 const EMPTY_TASKS: never[] = [];
@@ -356,7 +357,23 @@ export function IntegratedChatPanel({
   const agentStatusSelector = useMemo(() => selectAgentStatus(storeContextKey), [storeContextKey]);
   const agentStatus = useChatStore(agentStatusSelector);
   const isAgentRunning = agentStatus !== "idle"; // backward-compat boolean (agent process alive)
+  const toolCallStartTimes = useChatStore((s) => s.toolCallStartTimes[storeContextKey] ?? {});
   const isSendingSelector = useMemo(() => selectIsSending(storeContextKey), [storeContextKey]);
+
+  // Timeout warning state — track dismissed bash tool call ID
+  const [dismissedTimeoutCallId, setDismissedTimeoutCallId] = useState<string | null>(null);
+  const activeBashCall = streamingToolCalls.find((tc) => tc.name.toLowerCase() === "bash");
+  const bashStartTime = activeBashCall ? toolCallStartTimes[activeBashCall.id] : undefined;
+  // Context-aware threshold: 3600s for team mode, 600s otherwise
+  const effectiveTimeoutMs = isTeamActive ? 3_600_000 : 600_000;
+  const showTimeoutWarning = activeBashCall !== undefined && bashStartTime !== undefined && activeBashCall.id !== dismissedTimeoutCallId;
+
+  // Auto-reset dismissed ID when the dismissed call is no longer active
+  useEffect(() => {
+    if (dismissedTimeoutCallId && !streamingToolCalls.find((tc) => tc.id === dismissedTimeoutCallId)) {
+      setDismissedTimeoutCallId(null);
+    }
+  }, [streamingToolCalls, dismissedTimeoutCallId]);
   const isSending = useChatStore(isSendingSelector);
   const setAgentRunning = useChatStore((s) => s.setAgentRunning);
 
@@ -571,6 +588,7 @@ export function IntegratedChatPanel({
     setStreamingContentBlocks,
     setStreamingTasks,
     setIsFinalizing,
+    storeKey: storeContextKey,
   });
 
   // Ask user question state — scoped to current context (ideation session, task, or project)
@@ -734,6 +752,7 @@ export function IntegratedChatPanel({
               contextType={chatContext.view}
               contextId={ideationSessionId || selectedTaskId || null}
               agentStatus={isHistoryMode ? "idle" : agentStatus}
+              storeKey={storeContextKey}
             />
 
             {/* Conversation Selector */}
@@ -769,6 +788,15 @@ export function IntegratedChatPanel({
               onStopTeammate={(name) => {
                 teamActions.stopTeammate.mutate(name);
               }}
+            />
+          )}
+
+          {/* Timeout Warning Banner — shown when bash tool call approaches timeout */}
+          {showTimeoutWarning && (
+            <TimeoutWarning
+              toolCallStartTime={bashStartTime!}
+              effectiveTimeoutMs={effectiveTimeoutMs}
+              onDismiss={() => setDismissedTimeoutCallId(activeBashCall!.id)}
             />
           )}
 
@@ -822,7 +850,7 @@ export function IntegratedChatPanel({
             );
             return otherToolCalls.length > 0 ? (
               <div className="shrink-0 px-3 pb-2">
-                <StreamingToolIndicator toolCalls={otherToolCalls} isActive={true} />
+                <StreamingToolIndicator toolCalls={otherToolCalls} isActive={true} toolCallStartTimes={toolCallStartTimes} />
               </div>
             ) : null;
           })()}

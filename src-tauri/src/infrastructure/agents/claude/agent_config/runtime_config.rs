@@ -139,7 +139,7 @@ pub(crate) struct TimeoutsWrapper {
 
 // ── Individual config structs ────────────────────────────────────────────
 
-/// All fields required in ralphx.yaml — no serde defaults.
+/// All fields required in ralphx.yaml — no serde defaults (except `max_wall_clock_secs` for backward compat).
 /// `Default` impl retained only for fallback/test use.
 #[derive(Debug, Clone, Deserialize)]
 pub struct StreamTimeoutsConfig {
@@ -151,6 +151,12 @@ pub struct StreamTimeoutsConfig {
     pub default_parse_stall_secs: u64,
     pub team_line_read_secs: u64,
     pub team_parse_stall_secs: u64,
+    #[serde(default = "default_max_wall_clock_secs")]
+    pub max_wall_clock_secs: u64,
+}
+
+fn default_max_wall_clock_secs() -> u64 {
+    1800
 }
 
 impl Default for StreamTimeoutsConfig {
@@ -164,6 +170,7 @@ impl Default for StreamTimeoutsConfig {
             default_parse_stall_secs: 180,
             team_line_read_secs: 3600,
             team_parse_stall_secs: 3600,
+            max_wall_clock_secs: 1800,
         }
     }
 }
@@ -504,6 +511,10 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     env_u64!(
         cfg.stream.team_parse_stall_secs,
         "RALPHX_STREAM_TEAM_PARSE_STALL_SECS"
+    );
+    env_u64!(
+        cfg.stream.max_wall_clock_secs,
+        "RALPHX_STREAM_MAX_WALL_CLOCK_SECS"
     );
 
     // Reconciliation

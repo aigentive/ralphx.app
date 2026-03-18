@@ -221,10 +221,10 @@ pub async fn process_stream_background<R: Runtime>(
 ) -> Result<StreamOutcome, StreamError> {
     let mut timeout_config = StreamTimeoutConfig::for_context(&context_type);
     // Team leads wait long periods while teammates work — use team-specific timeout
+    let stream_cfg = stream_timeouts();
     if team_mode {
-        let cfg = stream_timeouts();
-        timeout_config.line_read_timeout = Duration::from_secs(cfg.team_line_read_secs);
-        timeout_config.parse_stall_timeout = Duration::from_secs(cfg.team_parse_stall_secs);
+        timeout_config.line_read_timeout = Duration::from_secs(stream_cfg.team_line_read_secs);
+        timeout_config.parse_stall_timeout = Duration::from_secs(stream_cfg.team_parse_stall_secs);
     }
     tracing::debug!(
         conversation_id = conversation_id.as_str(),
@@ -297,6 +297,9 @@ pub async fn process_stream_background<R: Runtime>(
     let mut lines_parsed: usize = 0;
     let mut stream_seq: u64 = 0;
     let mut last_parsed_at = std::time::Instant::now();
+    // Wall-clock cap: hard kill after max_wall_clock_secs regardless of PID state
+    let stream_start = std::time::Instant::now();
+    let max_wall_clock = std::time::Duration::from_secs(stream_cfg.max_wall_clock_secs);
 
     // Debounced flush for incremental persistence (every 2 seconds)
     let mut last_flush = std::time::Instant::now();
@@ -390,22 +393,64 @@ pub async fn process_stream_background<R: Runtime>(
                     }
                     Err(_) => {
                         // Timeout — no output for configured timeout seconds
-                        // Check if agent is waiting for user input on a pending question
-                        if let Some(ref qs) = question_state {
-                            if qs.has_pending_for_session(context_id).await {
-                                tracing::info!(
-                                    conversation_id = %conversation_id_str,
-                                    context_id,
-                                    lines_seen,
-                                    "Stream no output but pending question exists, resetting timeout"
-                                );
-                                continue;
-                            }
-                        }
 
-                        // Interactive mode: process is idle between turns. Kill
-                        // silently and exit as a normal completion — not an error.
-                        if between_interactive_turns {
+                        // Gather state for kill decision (async state first)
+                        let has_pending_question = if let Some(ref qs) = question_state {
+                            qs.has_pending_for_session(context_id).await
+                        } else {
+                            false
+                        };
+                        let (pid_alive, child_exited) = if let Some(pid) = child.id() {
+                            let exited = child.try_wait().ok().flatten().is_some();
+                            let alive = crate::domain::services::is_process_alive(pid);
+                            (alive, exited)
+                        } else {
+                            (false, true)
+                        };
+
+                        if should_kill_on_timeout(
+                            stream_start.elapsed(),
+                            max_wall_clock,
+                            has_pending_question,
+                            between_interactive_turns,
+                            pid_alive,
+                            child_exited,
+                            active_task_tracker.has_active_tasks(),
+                        ) {
+                            if stream_start.elapsed() > max_wall_clock {
+                                tracing::warn!(
+                                    conversation_id = %conversation_id_str,
+                                    elapsed_secs = stream_start.elapsed().as_secs(),
+                                    "Wall-clock cap reached — killing agent"
+                                );
+                            }
+                            tracing::warn!(
+                                conversation_id = %conversation_id_str,
+                                lines_seen,
+                                lines_parsed,
+                                "Stream timeout: no output for {} seconds, killing agent",
+                                timeout_config.line_read_timeout.as_secs()
+                            );
+                            let _ = child.kill().await;
+                            flush_content_before_error(
+                                &chat_message_repo, &assistant_message_id,
+                                &processor.response_text, &processor.tool_calls, &processor.content_blocks,
+                            ).await;
+                            return Err(StreamError::Timeout {
+                                context_type,
+                                elapsed_secs: timeout_config.line_read_timeout.as_secs(),
+                            });
+                        } else if has_pending_question {
+                            tracing::info!(
+                                conversation_id = %conversation_id_str,
+                                context_id,
+                                lines_seen,
+                                "Stream no output but pending question exists, resetting timeout"
+                            );
+                            continue;
+                        } else if between_interactive_turns {
+                            // Interactive mode: process is idle between turns. Kill
+                            // silently and exit as a normal completion — not an error.
                             tracing::info!(
                                 conversation_id = %conversation_id_str,
                                 context_id,
@@ -416,12 +461,34 @@ pub async fn process_stream_background<R: Runtime>(
                             let _ = child.kill().await;
                             silent_interactive_exit = true;
                             break;
-                        }
-
-                        // Check if subagent tasks are active (sidechain work in progress).
-                        // Lead stdout goes silent while Task tool subagents work — their
-                        // output goes to JSONL sidechain files, not the lead's stdout.
-                        if active_task_tracker.has_active_tasks() {
+                        } else if pid_alive && !child_exited {
+                            // PID-alive bypass: subprocess is running but stdout is buffered
+                            // (e.g., cargo test | tail). Only bypass when wall-clock not exceeded.
+                            if let Some(pid) = child.id() {
+                                tracing::info!(
+                                    conversation_id = %conversation_id_str,
+                                    context_id,
+                                    pid,
+                                    lines_seen,
+                                    "Stream timeout but child process alive — resetting"
+                                );
+                                if let Some(ref handle) = app_handle {
+                                    let _ = handle.emit(
+                                        "agent:heartbeat",
+                                        serde_json::json!({
+                                            "conversation_id": conversation_id_str,
+                                            "context_id": context_id,
+                                            "reason": "pid_alive_bypass",
+                                            "pid": pid,
+                                        }),
+                                    );
+                                }
+                            }
+                            continue;
+                        } else {
+                            // Active tasks bypass: subagent tasks active (sidechain work in progress).
+                            // Lead stdout goes silent while Task tool subagents work — their
+                            // output goes to JSONL sidechain files, not the lead's stdout.
                             tracing::info!(
                                 conversation_id = %conversation_id_str,
                                 context_id,
@@ -432,23 +499,6 @@ pub async fn process_stream_background<R: Runtime>(
                             );
                             continue;
                         }
-
-                        tracing::warn!(
-                            conversation_id = %conversation_id_str,
-                            lines_seen,
-                            lines_parsed,
-                            "Stream timeout: no output for {} seconds, killing agent",
-                            timeout_config.line_read_timeout.as_secs()
-                        );
-                        let _ = child.kill().await;
-                        flush_content_before_error(
-                            &chat_message_repo, &assistant_message_id,
-                            &processor.response_text, &processor.tool_calls, &processor.content_blocks,
-                        ).await;
-                        return Err(StreamError::Timeout {
-                            context_type,
-                            elapsed_secs: timeout_config.line_read_timeout.as_secs(),
-                        });
                     }
                 }
             }
@@ -1433,40 +1483,44 @@ pub async fn process_stream_background<R: Runtime>(
                 }
             }
         } else if lines_seen > 0 && last_parsed_at.elapsed() >= timeout_config.parse_stall_timeout {
-            // Check if agent is waiting for user input on a pending question
+            // Gather state for kill decision (async state first)
             let has_pending_question = if let Some(ref qs) = question_state {
                 qs.has_pending_for_session(context_id).await
             } else {
                 false
             };
-
-            if has_pending_question {
-                tracing::info!(
-                    conversation_id = %conversation_id_str,
-                    context_id,
-                    lines_seen,
-                    "Stream parse stall but pending question exists, resetting stall timer"
-                );
-                last_parsed_at = std::time::Instant::now();
-                // Continue processing — the next timeout will be reset
-            } else if active_task_tracker.has_active_tasks() {
-                tracing::info!(
-                    conversation_id = %conversation_id_str,
-                    context_id,
-                    lines_seen,
-                    active_tasks = active_task_tracker.count(),
-                    "Stream parse stall but {} active subagent task(s), resetting stall timer",
-                    active_task_tracker.count()
-                );
-                last_parsed_at = std::time::Instant::now();
+            let (pid_alive, child_exited) = if let Some(pid) = child.id() {
+                let exited = child.try_wait().ok().flatten().is_some();
+                let alive = crate::domain::services::is_process_alive(pid);
+                (alive, exited)
             } else {
-                tracing::warn!(
-                    conversation_id = %conversation_id_str,
-                    lines_seen,
-                    lines_parsed,
-                    stall_secs = timeout_config.parse_stall_timeout.as_secs(),
-                    "Stream parse stall: received stdout but no parseable events, killing agent"
-                );
+                (false, true)
+            };
+
+            if should_kill_on_timeout(
+                stream_start.elapsed(),
+                max_wall_clock,
+                has_pending_question,
+                false, // parse stall path has no interactive_turns bypass
+                pid_alive,
+                child_exited,
+                active_task_tracker.has_active_tasks(),
+            ) {
+                if stream_start.elapsed() > max_wall_clock {
+                    tracing::warn!(
+                        conversation_id = %conversation_id_str,
+                        elapsed_secs = stream_start.elapsed().as_secs(),
+                        "Wall-clock cap reached in parse stall path — killing agent"
+                    );
+                } else {
+                    tracing::warn!(
+                        conversation_id = %conversation_id_str,
+                        lines_seen,
+                        lines_parsed,
+                        stall_secs = timeout_config.parse_stall_timeout.as_secs(),
+                        "Stream parse stall: received stdout but no parseable events, killing agent"
+                    );
+                }
                 let _ = child.kill().await;
                 flush_content_before_error(
                     &chat_message_repo,
@@ -1482,6 +1536,49 @@ pub async fn process_stream_background<R: Runtime>(
                     lines_seen,
                     lines_parsed,
                 });
+            } else {
+                // Bypass: reset stall timer and log reason
+                if has_pending_question {
+                    tracing::info!(
+                        conversation_id = %conversation_id_str,
+                        context_id,
+                        lines_seen,
+                        "Stream parse stall but pending question exists, resetting stall timer"
+                    );
+                } else if active_task_tracker.has_active_tasks() {
+                    tracing::info!(
+                        conversation_id = %conversation_id_str,
+                        context_id,
+                        lines_seen,
+                        active_tasks = active_task_tracker.count(),
+                        "Stream parse stall but {} active subagent task(s), resetting stall timer",
+                        active_task_tracker.count()
+                    );
+                } else {
+                    // pid_alive && !child_exited
+                    if let Some(pid) = child.id() {
+                        tracing::info!(
+                            conversation_id = %conversation_id_str,
+                            pid,
+                            "Parse stall but child process alive — resetting"
+                        );
+                        // Emit synthetic heartbeat
+                        if let Some(ref handle) = app_handle {
+                            let _ = handle.emit(
+                                "agent:heartbeat",
+                                serde_json::json!({
+                                    "conversation_id": conversation_id_str,
+                                    "context_id": context_id,
+                                    "reason": "pid_alive_bypass_parse_stall",
+                                    "pid": pid,
+                                }),
+                            );
+                        }
+                    }
+                }
+                // CRITICAL: reset last_parsed_at to prevent hot spin loop
+                last_parsed_at = std::time::Instant::now();
+                // Fall through to debounced flush (do NOT use continue)
             }
         }
 
@@ -1689,6 +1786,47 @@ pub async fn process_stream_background<R: Runtime>(
     }
 
     Ok(outcome)
+}
+
+/// Determines whether the stream should be killed on timeout.
+///
+/// Returns `true` = kill (terminate with error), `false` = reset timeout and continue.
+/// Ordering mirrors the actual `Err(_)` branch in `process_stream_background`:
+/// wall-clock → question_state → interactive_turns → PID-alive → active_tasks → kill
+///
+/// This pure function is extracted for unit testability. Side effects (tracing,
+/// heartbeat emission) remain in the calling code.
+pub(crate) fn should_kill_on_timeout(
+    wall_clock_elapsed: std::time::Duration,
+    max_wall_clock: std::time::Duration,
+    has_pending_question: bool,
+    is_interactive_turn: bool,
+    pid_alive: bool,
+    child_exited: bool,
+    has_active_tasks: bool,
+) -> bool {
+    // 1. Wall-clock cap overrides everything
+    if wall_clock_elapsed > max_wall_clock {
+        return true;
+    }
+    // 2. Pending question bypass (existing)
+    if has_pending_question {
+        return false;
+    }
+    // 3. Interactive turn bypass (existing)
+    if is_interactive_turn {
+        return false;
+    }
+    // 4. PID-alive bypass (only if child hasn't exited — PID recycling guard)
+    if pid_alive && !child_exited {
+        return false;
+    }
+    // 5. Active task bypass (existing)
+    if has_active_tasks {
+        return false;
+    }
+    // 6. Default: kill
+    true
 }
 
 #[cfg(test)]

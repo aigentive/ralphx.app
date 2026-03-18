@@ -1,6 +1,127 @@
 use super::*;
 use crate::application::chat_service::StreamError;
 
+// ── should_kill_on_timeout unit tests ────────────────────────────────────────
+
+/// Helper: build common duration values
+fn dur(secs: u64) -> Duration {
+    Duration::from_secs(secs)
+}
+
+/// 1. PID alive + not exited → reset timeout (don't kill)
+#[test]
+fn test_pid_alive_resets_timeout() {
+    assert!(!should_kill_on_timeout(
+        dur(601),  // elapsed > line_read_timeout (600s) but within wall-clock
+        dur(1800), // max_wall_clock
+        false,     // no pending question
+        false,     // not interactive turn
+        true,      // pid_alive
+        false,     // child NOT exited
+        false,     // no active tasks
+    ));
+}
+
+/// 2. PID dead → kill
+#[test]
+fn test_dead_process_killed() {
+    assert!(should_kill_on_timeout(
+        dur(601),
+        dur(1800),
+        false, // no pending question
+        false, // not interactive turn
+        false, // pid NOT alive
+        true,  // child exited
+        false, // no active tasks
+    ));
+}
+
+/// 3. Wall-clock exceeded AND pid alive → still kill (wall-clock overrides everything)
+#[test]
+fn test_wall_clock_overrides_pid_alive() {
+    assert!(should_kill_on_timeout(
+        dur(1801), // elapsed > max_wall_clock
+        dur(1800),
+        false, // no pending question
+        false, // not interactive turn
+        true,  // pid_alive — would bypass normally
+        false, // child NOT exited
+        false, // no active tasks
+    ));
+}
+
+/// 4. PID recycling guard: pid_alive=true but child_exited=true → kill
+///    (PID was recycled by OS after child exited)
+#[test]
+fn test_pid_recycling_guard() {
+    assert!(should_kill_on_timeout(
+        dur(601),
+        dur(1800),
+        false, // no pending question
+        false, // not interactive turn
+        true,  // pid_alive (recycled PID shows alive)
+        true,  // child_exited=true (try_wait returned Some(status))
+        false, // no active tasks
+    ));
+}
+
+/// 5. Interactive turn bypass → reset timeout (don't kill via error path)
+#[test]
+fn test_interactive_turn_bypass() {
+    assert!(!should_kill_on_timeout(
+        dur(601),
+        dur(1800),
+        false, // no pending question
+        true,  // is_interactive_turn
+        false, // pid not alive
+        true,  // child exited
+        false, // no active tasks
+    ));
+}
+
+/// 6. Pending question bypass → reset timeout (don't kill)
+#[test]
+fn test_pending_question_bypass() {
+    assert!(!should_kill_on_timeout(
+        dur(601),
+        dur(1800),
+        true,  // has_pending_question
+        false, // not interactive turn
+        false, // pid not alive
+        true,  // child exited
+        false, // no active tasks
+    ));
+}
+
+/// 7. Wall-clock exceeded AND pending question → kill (wall-clock wins)
+#[test]
+fn test_wall_clock_overrides_question() {
+    assert!(should_kill_on_timeout(
+        dur(1801), // exceeds wall-clock
+        dur(1800),
+        true,  // has_pending_question — would bypass normally
+        false, // not interactive turn
+        false, // pid not alive
+        true,  // child exited
+        false, // no active tasks
+    ));
+}
+
+/// 8. Parse stall path: pid_alive + not exited → don't kill
+///    (In parse stall context this causes last_parsed_at reset + flush continues)
+#[test]
+fn test_parse_stall_pid_alive_resets() {
+    assert!(!should_kill_on_timeout(
+        dur(181),  // elapsed > parse_stall_timeout (180s) but within wall-clock
+        dur(1800), // max_wall_clock
+        false,     // no pending question
+        false,     // parse stall path passes false for is_interactive_turn
+        true,      // pid_alive
+        false,     // child NOT exited
+        false,     // no active tasks
+    ));
+}
+
 #[test]
 fn test_timeout_config_task_execution() {
     let config = StreamTimeoutConfig::for_context(&ChatContextType::TaskExecution);

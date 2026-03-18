@@ -115,6 +115,8 @@ timeouts:
     team_line_read_secs: 3600 # Env: RALPHX_STREAM_TEAM_LINE_READ_SECS
     # chat_service_streaming.rs — team lead stream stall limit (generous: 1 hour)
     team_parse_stall_secs: 3600 # Env: RALPHX_STREAM_TEAM_PARSE_STALL_SECS
+    # chat_service_streaming.rs — absolute wall-clock cap for any agent stream (prevents runaway processes)
+    max_wall_clock_secs: 1800 # Env: RALPHX_STREAM_MAX_WALL_CLOCK_SECS
 
 reconciliation:
   # reconciliation.rs — overall deadline for merger agent; triggers MergeIncomplete + auto-retry if exceeded

@@ -104,7 +104,7 @@ New migration: `vN_description.rs` + register in `MIGRATIONS` + bump `SCHEMA_VER
 ❌ `cargo check` (hangs) | ❌ full `cargo test` (hangs) | ❌ `--nocapture`
 ```bash
 cargo build                                                              # build
-timeout 10m cargo test --lib --manifest-path src-tauri/Cargo.toml 2>&1 | tail -40  # tests (5-8min)
+timeout 10m cargo test --lib --manifest-path src-tauri/Cargo.toml 2>&1 | tail -100  # tests (5-8min)
 cargo clippy --all-targets --all-features -- -D warnings                 # lint
 ```
 

@@ -24,6 +24,7 @@ import type { ContextType } from "@/types/chat-conversation";
 import type { ToolCall } from "@/components/Chat/ToolCallIndicator";
 import type { StreamingTask, StreamingContentBlock } from "@/types/streaming-task";
 import type { Unsubscribe } from "@/lib/event-bus";
+import { useChatStore } from "@/stores/chatStore";
 
 // ============================================================================
 // Types
@@ -38,6 +39,8 @@ interface UseChatEventsProps {
   setStreamingTasks: Dispatch<SetStateAction<Map<string, StreamingTask>>>;
   /** Setter to mark the conversation as finalizing (between message_created and query refetch) */
   setIsFinalizing: Dispatch<SetStateAction<boolean>>;
+  /** Store key for writing tool call start times (storeKey → toolCallId → timestamp) */
+  storeKey?: string;
 }
 
 // ============================================================================
@@ -52,6 +55,7 @@ export function useChatEvents({
   setStreamingContentBlocks,
   setStreamingTasks,
   setIsFinalizing,
+  storeKey,
 }: UseChatEventsProps) {
   const bus = useEventBus();
   const queryClient = useQueryClient();
@@ -119,6 +123,11 @@ export function useChatEvents({
           // Extract tool_use_id from tool_name by stripping "result:" prefix
           const toolUseId = tool_name.slice(7); // "result:".length === 7
 
+          // Remove start time when tool call completes
+          if (storeKey) {
+            useChatStore.getState().removeToolCallStartTime(storeKey, toolUseId);
+          }
+
           // 1. Update matching entry in streamingToolCalls
           setStreamingToolCalls((prev) =>
             prev.map((tc) => {
@@ -185,6 +194,14 @@ export function useChatEvents({
         }
         if (diffContext) {
           entry.diffContext = diffContext;
+        }
+
+        // Record start time for new non-result tool calls (for elapsed timer display)
+        if (storeKey && result == null) {
+          const existingTimes = useChatStore.getState().toolCallStartTimes[storeKey];
+          if (!existingTimes?.[id]) {
+            useChatStore.getState().setToolCallStartTime(storeKey, id, Date.now());
+          }
         }
 
         // Route to parent task's childToolCalls if this is a subagent tool call
@@ -499,6 +516,11 @@ export function useChatEvents({
         setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
         setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
         setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
+
+        // Clear all tool call start times on run completion
+        if (storeKey) {
+          useChatStore.getState().clearToolCallStartTimes(storeKey);
+        }
       })
     );
 
@@ -554,6 +576,6 @@ export function useChatEvents({
     bus, queryClient, activeConversationId, contextId, contextType,
     supportsStreamingText, supportsSubagentTasks,
     setStreamingToolCalls, setStreamingContentBlocks, setStreamingTasks,
-    setIsFinalizing,
+    setIsFinalizing, storeKey,
   ]);
 }

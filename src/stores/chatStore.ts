@@ -79,6 +79,8 @@ interface ChatState {
   isTeamActive: Record<string, boolean>;
   /** Last agent event timestamp per context key — used by watchdog for stuck-generating recovery */
   lastAgentEventTimestamp: Record<string, number>;
+  /** Tool call start timestamps: storeKey → { toolCallId → epoch ms } — for elapsed timer display */
+  toolCallStartTimes: Record<string, Record<string, number>>;
 }
 
 // ============================================================================
@@ -124,6 +126,12 @@ interface ChatActions {
   setTeamActive: (contextKey: string, isActive: boolean) => void;
   /** Update last agent event timestamp for watchdog tracking */
   updateLastAgentEvent: (key: string) => void;
+  /** Record start timestamp for a tool call (for elapsed timer display) */
+  setToolCallStartTime: (storeKey: string, toolCallId: string, timestamp: number) => void;
+  /** Remove start timestamp when a tool call completes */
+  removeToolCallStartTime: (storeKey: string, toolCallId: string) => void;
+  /** Clear all tool call start times for a storeKey (on run_completed) */
+  clearToolCallStartTimes: (storeKey: string) => void;
 }
 
 // ============================================================================
@@ -143,6 +151,7 @@ export const useChatStore = create<ChatState & ChatActions>()(
     isSending: {},
     isTeamActive: {},
     lastAgentEventTimestamp: {},
+    toolCallStartTimes: {},
 
     // Actions
     setContext: (context) =>
@@ -308,6 +317,29 @@ export const useChatStore = create<ChatState & ChatActions>()(
     updateLastAgentEvent: (key) =>
       set((state) => {
         state.lastAgentEventTimestamp[key] = Date.now();
+      }),
+
+    setToolCallStartTime: (storeKey, toolCallId, timestamp) =>
+      set((state) => {
+        if (!state.toolCallStartTimes[storeKey]) {
+          state.toolCallStartTimes[storeKey] = {};
+        }
+        state.toolCallStartTimes[storeKey][toolCallId] = timestamp;
+      }),
+
+    removeToolCallStartTime: (storeKey, toolCallId) =>
+      set((state) => {
+        const times = state.toolCallStartTimes[storeKey];
+        if (!times) return;
+        delete times[toolCallId];
+        if (Object.keys(times).length === 0) {
+          delete state.toolCallStartTimes[storeKey];
+        }
+      }),
+
+    clearToolCallStartTimes: (storeKey) =>
+      set((state) => {
+        delete state.toolCallStartTimes[storeKey];
       }),
 
     processQueue: async (contextKey) => {
