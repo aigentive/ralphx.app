@@ -1,7 +1,3 @@
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use rusqlite::Connection;
-
 use super::SqliteTaskProposalRepository;
 use crate::domain::entities::{
     ArtifactId, BusinessValueFactor, Complexity, ComplexityFactor, CriticalPathFactor,
@@ -10,30 +6,36 @@ use crate::domain::entities::{
     UserHintFactor, ProjectId, TaskProposal,
 };
 use crate::domain::repositories::TaskProposalRepository;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite-task-proposal-repo")
 }
 
-fn create_test_project(conn: &Connection, id: &ProjectId, name: &str, path: &str) {
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory, git_mode, created_at, updated_at)
-         VALUES (?1, ?2, ?3, 'single_branch', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        rusqlite::params![id.as_str(), name, path],
-    )
-    .unwrap();
+fn create_test_project(db: &SqliteTestDb, id: &ProjectId, name: &str, path: &str) {
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory, git_mode, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 'single_branch', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+            rusqlite::params![id.as_str(), name, path],
+        )
+        .unwrap();
+    });
 }
 
-fn create_test_session(conn: &Connection, session_id: &IdeationSessionId, project_id: &ProjectId) {
-    conn.execute(
-        "INSERT INTO ideation_sessions (id, project_id, status, created_at, updated_at)
-         VALUES (?1, ?2, 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        rusqlite::params![session_id.as_str(), project_id.as_str()],
-    )
-    .unwrap();
+fn create_test_session(
+    db: &SqliteTestDb,
+    session_id: &IdeationSessionId,
+    project_id: &ProjectId,
+) {
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO ideation_sessions (id, project_id, status, created_at, updated_at)
+             VALUES (?1, ?2, 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+            rusqlite::params![session_id.as_str(), project_id.as_str()],
+        )
+        .unwrap();
+    });
 }
 
 fn create_test_proposal(session_id: &IdeationSessionId, title: &str) -> TaskProposal {
@@ -81,13 +83,13 @@ fn create_test_assessment(proposal_id: &TaskProposalId) -> PriorityAssessment {
 
 #[tokio::test]
 async fn test_create_inserts_proposal_and_returns_it() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
     let proposal = create_test_proposal(&session_id, "Test Proposal");
 
     let result = repo.create(proposal.clone()).await;
@@ -101,13 +103,13 @@ async fn test_create_inserts_proposal_and_returns_it() {
 
 #[tokio::test]
 async fn test_create_with_all_fields() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
     let mut proposal = create_test_proposal(&session_id, "Full Proposal");
     proposal.description = Some("Detailed description".to_string());
     proposal.steps = Some(r#"["Step 1", "Step 2"]"#.to_string());
@@ -126,13 +128,13 @@ async fn test_create_with_all_fields() {
 
 #[tokio::test]
 async fn test_create_duplicate_id_fails() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
     let proposal = create_test_proposal(&session_id, "Duplicate");
 
     repo.create(proposal.clone()).await.unwrap();
@@ -145,13 +147,13 @@ async fn test_create_duplicate_id_fails() {
 
 #[tokio::test]
 async fn test_get_by_id_retrieves_proposal_correctly() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
     let proposal = create_test_proposal(&session_id, "Get By ID Test");
 
     repo.create(proposal.clone()).await.unwrap();
@@ -168,8 +170,8 @@ async fn test_get_by_id_retrieves_proposal_correctly() {
 
 #[tokio::test]
 async fn test_get_by_id_returns_none_for_nonexistent() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
     let id = TaskProposalId::new();
 
     let result = repo.get_by_id(&id).await;
@@ -180,13 +182,13 @@ async fn test_get_by_id_returns_none_for_nonexistent() {
 
 #[tokio::test]
 async fn test_get_by_id_preserves_all_fields() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
     let mut proposal = create_test_proposal(&session_id, "Full Fields");
     proposal.description = Some("Description".to_string());
     proposal.steps = Some(r#"["step1"]"#.to_string());
@@ -219,13 +221,13 @@ async fn test_get_by_id_preserves_all_fields() {
 
 #[tokio::test]
 async fn test_get_by_session_returns_all_proposals() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
 
     let proposal1 = create_test_proposal(&session_id, "Proposal 1");
     let proposal2 = create_test_proposal(&session_id, "Proposal 2");
@@ -244,13 +246,13 @@ async fn test_get_by_session_returns_all_proposals() {
 
 #[tokio::test]
 async fn test_get_by_session_ordered_by_sort_order() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
 
     let mut proposal1 = create_test_proposal(&session_id, "Third");
     proposal1.sort_order = 3;
@@ -277,13 +279,13 @@ async fn test_get_by_session_ordered_by_sort_order() {
 
 #[tokio::test]
 async fn test_get_by_session_returns_empty_for_no_proposals() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
 
     let result = repo.get_by_session(&session_id).await;
 
@@ -293,15 +295,15 @@ async fn test_get_by_session_returns_empty_for_no_proposals() {
 
 #[tokio::test]
 async fn test_get_by_session_filters_by_session() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id1 = IdeationSessionId::new();
     let session_id2 = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id1, &project_id);
-    create_test_session(&conn, &session_id2, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id1, &project_id);
+    create_test_session(&db, &session_id2, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
 
     let proposal1 = create_test_proposal(&session_id1, "Session 1 Proposal");
     let proposal2 = create_test_proposal(&session_id2, "Session 2 Proposal");
@@ -319,13 +321,13 @@ async fn test_get_by_session_filters_by_session() {
 
 #[tokio::test]
 async fn test_update_modifies_proposal() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
     let mut proposal = create_test_proposal(&session_id, "Original");
 
     repo.create(proposal.clone()).await.unwrap();
@@ -346,13 +348,13 @@ async fn test_update_modifies_proposal() {
 
 #[tokio::test]
 async fn test_update_updates_updated_at() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
     let proposal = create_test_proposal(&session_id, "Timestamp Test");
     let original_updated = proposal.updated_at;
 
@@ -372,13 +374,13 @@ async fn test_update_updates_updated_at() {
 
 #[tokio::test]
 async fn test_update_priority_sets_assessment_fields() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
     let proposal = create_test_proposal(&session_id, "Priority Update");
 
     repo.create(proposal.clone()).await.unwrap();
@@ -394,13 +396,13 @@ async fn test_update_priority_sets_assessment_fields() {
 
 #[tokio::test]
 async fn test_update_priority_stores_factors_as_json() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
     let proposal = create_test_proposal(&session_id, "Factors JSON");
 
     repo.create(proposal.clone()).await.unwrap();
@@ -418,13 +420,13 @@ async fn test_update_priority_stores_factors_as_json() {
 
 #[tokio::test]
 async fn test_update_selection_toggles_selected() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
     let proposal = create_test_proposal(&session_id, "Selection Test");
 
     repo.create(proposal.clone()).await.unwrap();
@@ -444,13 +446,13 @@ async fn test_update_selection_toggles_selected() {
 
 #[tokio::test]
 async fn test_update_selection_updates_timestamp() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
     let proposal = create_test_proposal(&session_id, "Selection Timestamp");
     let original = proposal.updated_at;
 
@@ -466,26 +468,28 @@ async fn test_update_selection_updates_timestamp() {
 
 // ==================== SET CREATED TASK ID TESTS ====================
 
-fn create_test_task(conn: &Connection, task_id: &TaskId, project_id: &ProjectId, title: &str) {
-    conn.execute(
-        "INSERT INTO tasks (id, project_id, title, category, internal_status, created_at, updated_at)
-         VALUES (?1, ?2, ?3, 'feature', 'Ready', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        rusqlite::params![task_id.as_str(), project_id.as_str(), title],
-    )
-    .unwrap();
+fn create_test_task(db: &SqliteTestDb, task_id: &TaskId, project_id: &ProjectId, title: &str) {
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, title, category, internal_status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 'feature', 'Ready', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+            rusqlite::params![task_id.as_str(), project_id.as_str(), title],
+        )
+        .unwrap();
+    });
 }
 
 #[tokio::test]
 async fn test_set_created_task_id_links_proposal_to_task() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
     let task_id = TaskId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
-    create_test_task(&conn, &task_id, &project_id, "Created Task");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
+    create_test_task(&db, &task_id, &project_id, "Created Task");
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
     let proposal = create_test_proposal(&session_id, "Link Task");
 
     repo.create(proposal.clone()).await.unwrap();
@@ -498,15 +502,15 @@ async fn test_set_created_task_id_links_proposal_to_task() {
 
 #[tokio::test]
 async fn test_set_created_task_id_updates_timestamp() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
     let task_id = TaskId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
-    create_test_task(&conn, &task_id, &project_id, "Timestamp Task");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
+    create_test_task(&db, &task_id, &project_id, "Timestamp Task");
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
     let proposal = create_test_proposal(&session_id, "Task Link Timestamp");
     let original = proposal.updated_at;
 
@@ -524,13 +528,13 @@ async fn test_set_created_task_id_updates_timestamp() {
 
 #[tokio::test]
 async fn test_delete_removes_proposal_from_database() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
     let proposal = create_test_proposal(&session_id, "To Delete");
 
     repo.create(proposal.clone()).await.unwrap();
@@ -544,8 +548,8 @@ async fn test_delete_removes_proposal_from_database() {
 
 #[tokio::test]
 async fn test_delete_nonexistent_succeeds() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
     let id = TaskProposalId::new();
 
     let result = repo.delete(&id).await;
@@ -556,13 +560,13 @@ async fn test_delete_nonexistent_succeeds() {
 
 #[tokio::test]
 async fn test_reorder_updates_sort_order() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
 
     let mut proposal1 = create_test_proposal(&session_id, "First");
     proposal1.sort_order = 1;
@@ -590,15 +594,15 @@ async fn test_reorder_updates_sort_order() {
 
 #[tokio::test]
 async fn test_reorder_only_affects_specified_session() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id1 = IdeationSessionId::new();
     let session_id2 = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id1, &project_id);
-    create_test_session(&conn, &session_id2, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id1, &project_id);
+    create_test_session(&db, &session_id2, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
 
     let mut proposal1 = create_test_proposal(&session_id1, "Session1");
     proposal1.sort_order = 1;
@@ -620,13 +624,13 @@ async fn test_reorder_only_affects_specified_session() {
 
 #[tokio::test]
 async fn test_get_selected_by_session_returns_only_selected() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
 
     let mut selected = create_test_proposal(&session_id, "Selected");
     selected.selected = true;
@@ -647,13 +651,13 @@ async fn test_get_selected_by_session_returns_only_selected() {
 
 #[tokio::test]
 async fn test_get_selected_by_session_returns_empty_when_none_selected() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
 
     let mut unselected = create_test_proposal(&session_id, "Unselected");
     unselected.selected = false;
@@ -668,13 +672,13 @@ async fn test_get_selected_by_session_returns_empty_when_none_selected() {
 
 #[tokio::test]
 async fn test_get_selected_by_session_ordered_by_sort_order() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
 
     let mut proposal1 = create_test_proposal(&session_id, "Third");
     proposal1.sort_order = 3;
@@ -697,13 +701,13 @@ async fn test_get_selected_by_session_ordered_by_sort_order() {
 
 #[tokio::test]
 async fn test_count_by_session_returns_zero_for_no_proposals() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
 
     let result = repo.count_by_session(&session_id).await;
 
@@ -713,13 +717,13 @@ async fn test_count_by_session_returns_zero_for_no_proposals() {
 
 #[tokio::test]
 async fn test_count_by_session_counts_correctly() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
 
     let proposal1 = create_test_proposal(&session_id, "One");
     let proposal2 = create_test_proposal(&session_id, "Two");
@@ -735,15 +739,15 @@ async fn test_count_by_session_counts_correctly() {
 
 #[tokio::test]
 async fn test_count_by_session_filters_by_session() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id1 = IdeationSessionId::new();
     let session_id2 = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id1, &project_id);
-    create_test_session(&conn, &session_id2, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id1, &project_id);
+    create_test_session(&db, &session_id2, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
 
     let proposal1 = create_test_proposal(&session_id1, "Session 1");
     let proposal2 = create_test_proposal(&session_id2, "Session 2 A");
@@ -762,13 +766,13 @@ async fn test_count_by_session_filters_by_session() {
 
 #[tokio::test]
 async fn test_count_selected_by_session_counts_correctly() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
 
     let mut selected1 = create_test_proposal(&session_id, "Selected 1");
     selected1.selected = true;
@@ -792,14 +796,13 @@ async fn test_count_selected_by_session_counts_correctly() {
 
 #[tokio::test]
 async fn test_from_shared_works_correctly() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let shared_conn = Arc::new(Mutex::new(conn));
-    let repo = SqliteTaskProposalRepository::from_shared(shared_conn);
+    let repo = SqliteTaskProposalRepository::from_shared(db.shared_conn());
 
     let proposal = create_test_proposal(&session_id, "Shared Connection");
 
@@ -814,13 +817,13 @@ async fn test_from_shared_works_correctly() {
 
 #[tokio::test]
 async fn test_create_with_priority_factors() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
     let mut proposal = create_test_proposal(&session_id, "With Factors");
     proposal.priority_factors = Some(crate::domain::entities::PriorityFactors {
         dependency: 10,
@@ -842,13 +845,13 @@ async fn test_create_with_priority_factors() {
 
 #[tokio::test]
 async fn test_get_by_plan_artifact_id_returns_matching_proposals() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
 
     let mut p1 = create_test_proposal(&session_id, "Proposal With Artifact");
     p1.plan_artifact_id = Some(ArtifactId::from_string("plan-artifact-1"));
@@ -873,13 +876,13 @@ async fn test_get_by_plan_artifact_id_returns_matching_proposals() {
 
 #[tokio::test]
 async fn test_get_by_plan_artifact_id_returns_empty_when_no_match() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
     let p = create_test_proposal(&session_id, "No artifact");
     repo.create(p).await.unwrap();
 
@@ -894,16 +897,16 @@ async fn test_get_by_plan_artifact_id_returns_empty_when_no_match() {
 
 #[tokio::test]
 async fn test_clear_created_task_ids_by_session_nullifies_all_in_session() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
     let task_id = TaskId::new();
-    create_test_task(&conn, &task_id, &project_id, "FK Task");
+    create_test_task(&db, &task_id, &project_id, "FK Task");
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
 
     let p1 = create_test_proposal(&session_id, "Proposal 1");
     let p2 = create_test_proposal(&session_id, "Proposal 2");
@@ -933,14 +936,16 @@ async fn test_clear_created_task_ids_by_session_nullifies_all_in_session() {
 
 #[test]
 fn test_create_sync_inserts_and_returns_proposal() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
     let proposal = create_test_proposal(&session_id, "Sync Create");
-    let result = SqliteTaskProposalRepository::create_sync(&conn, proposal.clone());
+    let result = db.with_connection(|conn| {
+        SqliteTaskProposalRepository::create_sync(conn, proposal.clone())
+    });
 
     assert!(result.is_ok());
     let created = result.unwrap();
@@ -950,49 +955,55 @@ fn test_create_sync_inserts_and_returns_proposal() {
 
 #[test]
 fn test_count_by_session_sync_returns_correct_count() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
     let p1 = create_test_proposal(&session_id, "One");
     let p2 = create_test_proposal(&session_id, "Two");
-    SqliteTaskProposalRepository::create_sync(&conn, p1).unwrap();
-    SqliteTaskProposalRepository::create_sync(&conn, p2).unwrap();
+    db.with_connection(|conn| {
+        SqliteTaskProposalRepository::create_sync(conn, p1).unwrap();
+        SqliteTaskProposalRepository::create_sync(conn, p2).unwrap();
+    });
 
-    let count = SqliteTaskProposalRepository::count_by_session_sync(&conn, session_id.as_str());
+    let count = db
+        .with_connection(|conn| SqliteTaskProposalRepository::count_by_session_sync(conn, session_id.as_str()));
     assert!(count.is_ok());
     assert_eq!(count.unwrap(), 2);
 }
 
 #[test]
 fn test_count_by_session_sync_returns_zero_when_empty() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
-    let count = SqliteTaskProposalRepository::count_by_session_sync(&conn, session_id.as_str());
+    let count = db
+        .with_connection(|conn| SqliteTaskProposalRepository::count_by_session_sync(conn, session_id.as_str()));
     assert!(count.is_ok());
     assert_eq!(count.unwrap(), 0);
 }
 
 #[test]
 fn test_update_sync_modifies_proposal_and_returns_updated() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
     let proposal = create_test_proposal(&session_id, "Before Update");
-    SqliteTaskProposalRepository::create_sync(&conn, proposal.clone()).unwrap();
+    db.with_connection(|conn| {
+        SqliteTaskProposalRepository::create_sync(conn, proposal.clone()).unwrap();
+    });
 
     let mut updated = proposal.clone();
     updated.title = "After Update".to_string();
-    let result = SqliteTaskProposalRepository::update_sync(&conn, &updated);
+    let result = db.with_connection(|conn| SqliteTaskProposalRepository::update_sync(conn, &updated));
 
     assert!(result.is_ok());
     let returned = result.unwrap();
@@ -1003,66 +1014,70 @@ fn test_update_sync_modifies_proposal_and_returns_updated() {
 
 #[test]
 fn test_delete_sync_removes_proposal_scoped_to_session() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
     let proposal = create_test_proposal(&session_id, "To Delete Sync");
-    SqliteTaskProposalRepository::create_sync(&conn, proposal.clone()).unwrap();
+    db.with_connection(|conn| {
+        SqliteTaskProposalRepository::create_sync(conn, proposal.clone()).unwrap();
+    });
 
-    let result = SqliteTaskProposalRepository::delete_sync(
-        &conn,
-        proposal.id.as_str(),
-        session_id.as_str(),
-    );
+    let result = db.with_connection(|conn| {
+        SqliteTaskProposalRepository::delete_sync(conn, proposal.id.as_str(), session_id.as_str())
+    });
     assert!(result.is_ok());
 
     // Verify gone
-    let count = SqliteTaskProposalRepository::count_by_session_sync(&conn, session_id.as_str()).unwrap();
+    let count = db.with_connection(|conn| {
+        SqliteTaskProposalRepository::count_by_session_sync(conn, session_id.as_str()).unwrap()
+    });
     assert_eq!(count, 0);
 }
 
 #[test]
 fn test_delete_sync_with_wrong_session_is_noop() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_id = IdeationSessionId::new();
     let other_session = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_id, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_id, &project_id);
 
     let proposal = create_test_proposal(&session_id, "Wrong Session Delete");
-    SqliteTaskProposalRepository::create_sync(&conn, proposal.clone()).unwrap();
+    db.with_connection(|conn| {
+        SqliteTaskProposalRepository::create_sync(conn, proposal.clone()).unwrap();
+    });
 
     // Delete with wrong session_id — should not remove the row
-    let result = SqliteTaskProposalRepository::delete_sync(
-        &conn,
-        proposal.id.as_str(),
-        other_session.as_str(),
-    );
+    let result = db.with_connection(|conn| {
+        SqliteTaskProposalRepository::delete_sync(conn, proposal.id.as_str(), other_session.as_str())
+    });
     assert!(result.is_ok()); // no error, just no-op
 
     // Row still exists
-    let count = SqliteTaskProposalRepository::count_by_session_sync(&conn, session_id.as_str()).unwrap();
+    let count = db.with_connection(|conn| {
+        SqliteTaskProposalRepository::count_by_session_sync(conn, session_id.as_str()).unwrap()
+    });
     assert_eq!(count, 1);
 }
 
 #[tokio::test]
 async fn test_clear_created_task_ids_by_session_only_affects_target_session() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
     let session_a = IdeationSessionId::new();
     let session_b = IdeationSessionId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    create_test_session(&conn, &session_a, &project_id);
-    create_test_session(&conn, &session_b, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    create_test_session(&db, &session_a, &project_id);
+    create_test_session(&db, &session_b, &project_id);
 
     let task_id = TaskId::new();
-    create_test_task(&conn, &task_id, &project_id, "FK Task");
+    create_test_task(&db, &task_id, &project_id, "FK Task");
 
-    let repo = SqliteTaskProposalRepository::new(conn);
+    let repo = SqliteTaskProposalRepository::new(db.new_connection());
 
     let p_a = create_test_proposal(&session_a, "Proposal A");
     let p_b = create_test_proposal(&session_b, "Proposal B");
