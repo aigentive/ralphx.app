@@ -1,61 +1,49 @@
 use super::*;
 use crate::domain::entities::types::ProjectId;
 use crate::infrastructure::sqlite::{
-    run_migrations, SqliteMemoryArchiveRepository, SqliteMemoryEntryRepository,
-    SqliteMemoryEventRepository,
+    SqliteMemoryArchiveRepository, SqliteMemoryEntryRepository, SqliteMemoryEventRepository,
 };
-use rusqlite::Connection;
+use crate::testing::SqliteTestDb;
 use std::fs;
 use std::sync::Arc;
 use tempfile::TempDir;
 
-/// Helper to create test service with file-based database
-async fn create_test_service() -> (RuleIngestionService, TempDir) {
-    // Create temp dir for both test files and database
-    let temp_dir = TempDir::new().unwrap();
-    let db_path = temp_dir.path().join("test.db");
-
-    // Create three connections to the same database file
-    let conn1 = Connection::open(&db_path).unwrap();
-    run_migrations(&conn1).unwrap();
-
-    // Create test project in database
-    conn1
-        .execute(
-            "INSERT INTO projects (id, name, working_directory, created_at, updated_at)
-             VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-            ["test-project-123", "Test Project", "/tmp/test"],
-        )
-        .unwrap();
-
-    let conn2 = Connection::open(&db_path).unwrap();
-    let conn3 = Connection::open(&db_path).unwrap();
-
-    // Create repositories with Arc wrapping
-    let memory_entry_repo =
-        Arc::new(SqliteMemoryEntryRepository::new(conn1)) as Arc<dyn MemoryEntryRepository>;
-
-    let memory_event_repo =
-        Arc::new(SqliteMemoryEventRepository::new(conn2)) as Arc<dyn MemoryEventRepository>;
-
-    let memory_archive_repo =
-        Arc::new(SqliteMemoryArchiveRepository::new(conn3)) as Arc<dyn MemoryArchiveRepository>;
-
-    let service =
-        RuleIngestionService::new(memory_entry_repo, memory_event_repo, memory_archive_repo);
-
-    (service, temp_dir)
+struct TestContext {
+    _db: SqliteTestDb,
+    temp_dir: TempDir,
+    project_id: ProjectId,
+    service: RuleIngestionService,
 }
 
-/// Helper to create test project
-fn create_test_project() -> ProjectId {
-    ProjectId::from_string("test-project-123".to_string())
+impl TestContext {
+    fn new() -> Self {
+        let db = SqliteTestDb::new("rule-ingestion-service");
+        let temp_dir = TempDir::new().unwrap();
+        let project = db.seed_project("Test Project");
+
+        let memory_entry_repo = Arc::new(SqliteMemoryEntryRepository::new(db.new_connection()))
+            as Arc<dyn MemoryEntryRepository>;
+        let memory_event_repo = Arc::new(SqliteMemoryEventRepository::new(db.new_connection()))
+            as Arc<dyn MemoryEventRepository>;
+        let memory_archive_repo =
+            Arc::new(SqliteMemoryArchiveRepository::new(db.new_connection()))
+                as Arc<dyn MemoryArchiveRepository>;
+
+        let service =
+            RuleIngestionService::new(memory_entry_repo, memory_event_repo, memory_archive_repo);
+
+        Self {
+            _db: db,
+            temp_dir,
+            project_id: project.id,
+            service,
+        }
+    }
 }
 
 #[tokio::test]
 async fn test_ingest_new_rule_file() {
-    let (service, temp_dir) = create_test_service().await;
-    let project_id = create_test_project();
+    let ctx = TestContext::new();
 
     // Create a test rule file
     let rule_content = r#"---
@@ -73,12 +61,13 @@ State transitions must go through TransitionHandler.
 The TransitionHandler ensures proper side effects are executed.
 "#;
 
-    let rule_path = temp_dir.path().join("state-machine.md");
+    let rule_path = ctx.temp_dir.path().join("state-machine.md");
     fs::write(&rule_path, rule_content).unwrap();
 
     // Ingest the file
-    let result = service
-        .ingest_rule_file(project_id.clone(), &rule_path)
+    let result = ctx
+        .service
+        .ingest_rule_file(ctx.project_id.clone(), &rule_path)
         .await
         .unwrap();
 
@@ -96,8 +85,7 @@ The TransitionHandler ensures proper side effects are executed.
 
 #[tokio::test]
 async fn test_paths_preserved_in_index() {
-    let (service, temp_dir) = create_test_service().await;
-    let project_id = create_test_project();
+    let ctx = TestContext::new();
 
     let rule_content = r#"---
 paths:
@@ -111,11 +99,11 @@ paths:
 Some content here.
 "#;
 
-    let rule_path = temp_dir.path().join("test-rule.md");
+    let rule_path = ctx.temp_dir.path().join("test-rule.md");
     fs::write(&rule_path, rule_content).unwrap();
 
-    service
-        .ingest_rule_file(project_id, &rule_path)
+    ctx.service
+        .ingest_rule_file(ctx.project_id, &rule_path)
         .await
         .unwrap();
 
@@ -129,8 +117,7 @@ Some content here.
 
 #[tokio::test]
 async fn test_re_ingest_is_idempotent() {
-    let (service, temp_dir) = create_test_service().await;
-    let project_id = create_test_project();
+    let ctx = TestContext::new();
 
     let rule_content = r#"---
 paths:
@@ -142,12 +129,13 @@ paths:
 Content for testing idempotency.
 "#;
 
-    let rule_path = temp_dir.path().join("idempotent-test.md");
+    let rule_path = ctx.temp_dir.path().join("idempotent-test.md");
     fs::write(&rule_path, rule_content).unwrap();
 
     // First ingestion
-    let result1 = service
-        .ingest_rule_file(project_id.clone(), &rule_path)
+    let result1 = ctx
+        .service
+        .ingest_rule_file(ctx.project_id.clone(), &rule_path)
         .await
         .unwrap();
 
@@ -159,8 +147,9 @@ Content for testing idempotency.
     // First, restore the original content since it was rewritten
     fs::write(&rule_path, rule_content).unwrap();
 
-    let result2 = service
-        .ingest_rule_file(project_id, &rule_path)
+    let result2 = ctx
+        .service
+        .ingest_rule_file(ctx.project_id, &rule_path)
         .await
         .unwrap();
 
@@ -171,8 +160,7 @@ Content for testing idempotency.
 
 #[tokio::test]
 async fn test_multiple_chunks_ingested() {
-    let (service, temp_dir) = create_test_service().await;
-    let project_id = create_test_project();
+    let ctx = TestContext::new();
 
     let rule_content = r#"---
 paths:
@@ -192,11 +180,12 @@ Details about second discovery.
 Operational procedure details.
 "#;
 
-    let rule_path = temp_dir.path().join("multi-chunk.md");
+    let rule_path = ctx.temp_dir.path().join("multi-chunk.md");
     fs::write(&rule_path, rule_content).unwrap();
 
-    let result = service
-        .ingest_rule_file(project_id, &rule_path)
+    let result = ctx
+        .service
+        .ingest_rule_file(ctx.project_id, &rule_path)
         .await
         .unwrap();
 
