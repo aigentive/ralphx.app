@@ -91,6 +91,7 @@ New pattern → add one-liner here. Pattern name + rule only.
 | No Inline Timeout Consts | All durations → `runtime_config` + `ralphx.yaml`, never Rust `const` |
 | Rust test runner split | Use targeted `cargo test` for pinpoint Rust validation and doctests; use `cargo nextest run` for broad Rust lib runs; fixture rules and commands live in `.claude/rules/rust-test-execution.md` |
 | Oversized lib suite split | Move massive orchestration/state-machine/worktree suites out of `src/**` lib tests into `src-tauri/tests/*.rs` integration binaries, and expose only the minimum internal-facing API needed for them |
+| HTTP handler suite split | Move large handler sidecar suites to `src-tauri/tests/*.rs`; import via `ralphx_lib::http_server::{handlers,types}` and use `AppState::new_sqlite_test()` only for SQLite-backed handler cases |
 | Tokio spawn | `tokio::spawn` → async fn ONLY. Sync code → `std::thread::spawn` \| `tauri::async_runtime::spawn`. See `.claude/rules/tokio-runtime-safety.md` |
 | Rust std API stability | Avoid unstable std APIs in production code (e.g., `is_multiple_of`) — use stable equivalents (e.g., `%`). See `.claude/rules/rust-stable-apis.md` |
 

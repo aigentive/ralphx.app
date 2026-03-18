@@ -629,7 +629,7 @@ impl AppState {
     /// SQLite connection with `db`, so handlers calling `db.run_transaction()` with sync helpers
     /// see the same rows that the test inserts via the repo trait methods. All other repos use
     /// in-memory implementations as in `new_test()`.
-    #[cfg(test)]
+    #[doc(hidden)]
     pub fn new_sqlite_test() -> Self {
         let conn = open_connection(&std::path::PathBuf::from(":memory:"))
             .expect("Failed to open in-memory SQLite for handler tests");
@@ -724,7 +724,7 @@ impl AppState {
     /// Identical to `new_sqlite_test()` except the `running_agent_registry` is injected
     /// by the caller. Use `MemoryRunningAgentRegistry::set_running()` to seed it before
     /// passing it here, so freeze-check tests can control the registry state.
-    #[cfg(test)]
+    #[doc(hidden)]
     pub fn new_sqlite_test_with_registry(registry: Arc<MemoryRunningAgentRegistry>) -> Self {
         let conn = open_connection(&std::path::PathBuf::from(":memory:"))
             .expect("Failed to open in-memory SQLite for handler tests");

@@ -19,10 +19,10 @@ use crate::error::AppResult;
 // Submodules
 // ============================================================================
 
-mod handlers;
+pub mod handlers;
 pub mod helpers;
 pub mod project_scope;
-mod types;
+pub mod types;
 
 use handlers::*;
 pub use project_scope::*;
