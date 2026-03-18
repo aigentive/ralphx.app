@@ -13,7 +13,13 @@ import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } fr
 import { useShallow } from "zustand/react/shallow";
 import { type VirtuosoHandle } from "react-virtuoso";
 import { useChat, useConversation, chatKeys } from "@/hooks/useChat";
-import { useChatStore, selectQueuedMessages, selectAgentStatus, selectIsSending } from "@/stores/chatStore";
+import {
+  useChatStore,
+  selectQueuedMessages,
+  selectAgentStatus,
+  selectIsSending,
+  selectToolCallStartTimes,
+} from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskStore } from "@/stores/taskStore";
 import { useTasks, taskKeys } from "@/hooks/useTasks";
@@ -357,7 +363,11 @@ export function IntegratedChatPanel({
   const agentStatusSelector = useMemo(() => selectAgentStatus(storeContextKey), [storeContextKey]);
   const agentStatus = useChatStore(agentStatusSelector);
   const isAgentRunning = agentStatus !== "idle"; // backward-compat boolean (agent process alive)
-  const toolCallStartTimes = useChatStore((s) => s.toolCallStartTimes[storeContextKey] ?? {});
+  const toolCallStartTimesSelector = useMemo(
+    () => selectToolCallStartTimes(storeContextKey),
+    [storeContextKey],
+  );
+  const toolCallStartTimes = useChatStore(toolCallStartTimesSelector);
   const isSendingSelector = useMemo(() => selectIsSending(storeContextKey), [storeContextKey]);
 
   // Timeout warning state — track dismissed bash tool call ID

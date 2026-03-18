@@ -6,6 +6,7 @@ import {
   selectQueuedMessages,
   selectIsAgentRunning,
   selectActiveConversationId,
+  selectToolCallStartTimes,
   getContextKey,
 } from "./chatStore";
 import type { ChatMessage } from "@/types/ideation";
@@ -44,6 +45,9 @@ describe("chatStore", () => {
       queuedMessages: {},
       agentStatus: {},
       isSending: {},
+      isTeamActive: {},
+      lastAgentEventTimestamp: {},
+      toolCallStartTimes: {},
     });
   });
 
@@ -238,6 +242,27 @@ describe("chatStore", () => {
 
       const state = useChatStore.getState();
       expect(state.messages["session:session-1"]).toHaveLength(0);
+    });
+  });
+
+  describe("selectToolCallStartTimes", () => {
+    it("returns a stable empty record when a context has no tool call timestamps", () => {
+      const selector = selectToolCallStartTimes("task_execution:missing");
+
+      const first = selector(useChatStore.getState());
+      const second = selector(useChatStore.getState());
+
+      expect(first).toBe(second);
+      expect(first).toEqual({});
+    });
+
+    it("returns stored timestamps for the requested context", () => {
+      useChatStore.getState().setToolCallStartTime("task_execution:task-1", "tool-1", 123);
+      useChatStore.getState().setToolCallStartTime("task_execution:task-2", "tool-2", 456);
+
+      const selector = selectToolCallStartTimes("task_execution:task-1");
+
+      expect(selector(useChatStore.getState())).toEqual({ "tool-1": 123 });
     });
   });
 

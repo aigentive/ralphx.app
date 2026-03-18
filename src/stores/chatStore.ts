@@ -479,6 +479,18 @@ export const selectLastAgentEventTimestamp =
   (state: ChatState): number =>
     state.lastAgentEventTimestamp[contextKey] ?? 0;
 
+/**
+ * Select tool call start timestamps for a context.
+ * Uses a stable empty record to avoid infinite re-render loops from fresh `{}` fallbacks.
+ * @param contextKey - The context key to get tool call timestamps for
+ * @returns Selector function returning toolCallId -> start timestamp map
+ */
+export const selectToolCallStartTimes =
+  (contextKey: string) =>
+  (state: ChatState): Record<string, number> =>
+    state.toolCallStartTimes[contextKey] ?? EMPTY_TOOL_CALL_START_TIMES;
+
 // Stable empty arrays to avoid creating new references
 const EMPTY_MESSAGES: ChatMessage[] = [];
 const EMPTY_QUEUED_MESSAGES: QueuedMessage[] = [];
+const EMPTY_TOOL_CALL_START_TIMES: Record<string, number> = Object.freeze({});

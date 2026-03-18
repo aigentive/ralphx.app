@@ -2,7 +2,13 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useChat, chatKeys } from "@/hooks/useChat";
-import { useChatStore, selectQueuedMessages, selectAgentStatus, selectIsTeamActive } from "@/stores/chatStore";
+import {
+  useChatStore,
+  selectQueuedMessages,
+  selectAgentStatus,
+  selectIsTeamActive,
+  selectToolCallStartTimes,
+} from "@/stores/chatStore";
 import { useTeamStore, selectTeammates, selectActiveTeam } from "@/stores/teamStore";
 import { useUiStore } from "@/stores/uiStore";
 import type { ChatContext } from "@/types/chat";
@@ -245,7 +251,11 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const queuedMessages = useChatStore(queuedMessagesSelector);
   const agentStatusSelector = useMemo(() => selectAgentStatus(contextKey), [contextKey]);
   const agentStatus = useChatStore(agentStatusSelector);
-  const toolCallStartTimes = useChatStore((s) => s.toolCallStartTimes[contextKey] ?? {});
+  const toolCallStartTimesSelector = useMemo(
+    () => selectToolCallStartTimes(contextKey),
+    [contextKey],
+  );
+  const toolCallStartTimes = useChatStore(toolCallStartTimesSelector);
 
   // For execution mode, fetch execution conversations directly using task_execution context
   // For regular chat, use the standard useChat hook
