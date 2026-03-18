@@ -1,50 +1,47 @@
 // Tests for SqliteProposalDependencyRepository
 
-use std::sync::Arc;
-use tokio::sync::Mutex;
-
 use crate::domain::entities::{
     IdeationSession, IdeationSessionId, Priority, ProjectId, ProposalCategory, TaskProposal,
 };
 use crate::domain::repositories::ProposalDependencyRepository;
-use crate::infrastructure::sqlite::{
-    open_memory_connection, run_migrations, SqliteProposalDependencyRepository,
-};
-use rusqlite::Connection;
+use crate::infrastructure::sqlite::SqliteProposalDependencyRepository;
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite-proposal-dependency-repo")
 }
 
-fn create_test_project(conn: &Connection, id: &ProjectId, name: &str, path: &str) {
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory, git_mode, created_at, updated_at)
-         VALUES (?1, ?2, ?3, 'single_branch', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        rusqlite::params![id.as_str(), name, path],
-    )
-    .unwrap();
+fn create_test_project(db: &SqliteTestDb, id: &ProjectId, name: &str, path: &str) {
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory, git_mode, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 'single_branch', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+            rusqlite::params![id.as_str(), name, path],
+        )
+        .unwrap();
+    });
 }
 
-fn create_test_session(conn: &Connection, project_id: &ProjectId) -> IdeationSession {
+fn create_test_session(db: &SqliteTestDb, project_id: &ProjectId) -> IdeationSession {
     let session = IdeationSession::builder()
         .project_id(project_id.clone())
         .title("Test Session")
         .build();
 
-    conn.execute(
-        "INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at)
-         VALUES (?1, ?2, ?3, 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        rusqlite::params![session.id.as_str(), project_id.as_str(), session.title],
-    )
-    .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+            rusqlite::params![session.id.as_str(), project_id.as_str(), session.title],
+        )
+        .unwrap();
+    });
 
     session
 }
 
 fn create_test_proposal(
-    conn: &Connection,
+    db: &SqliteTestDb,
     session_id: &IdeationSessionId,
     title: &str,
 ) -> TaskProposal {
@@ -55,16 +52,18 @@ fn create_test_proposal(
         Priority::Medium,
     );
 
-    conn.execute(
-        "INSERT INTO task_proposals (
-            id, session_id, title, description, category, suggested_priority,
-            priority_score, estimated_complexity, user_modified, status, selected,
-            sort_order, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, '', 'feature', 'medium', 50, 'moderate', 0, 'pending', 1, 0,
-            strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        rusqlite::params![proposal.id.as_str(), session_id.as_str(), title],
-    )
-    .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO task_proposals (
+                id, session_id, title, description, category, suggested_priority,
+                priority_score, estimated_complexity, user_modified, status, selected,
+                sort_order, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, '', 'feature', 'medium', 50, 'moderate', 0, 'pending', 1, 0,
+                strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+            rusqlite::params![proposal.id.as_str(), session_id.as_str(), title],
+        )
+        .unwrap();
+    });
 
     proposal
 }
@@ -73,14 +72,14 @@ fn create_test_proposal(
 
 #[tokio::test]
 async fn test_add_dependency_creates_record() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     let result = repo
         .add_dependency(&proposal_a.id, &proposal_b.id, None, None)
@@ -96,14 +95,14 @@ async fn test_add_dependency_creates_record() {
 
 #[tokio::test]
 async fn test_add_dependency_duplicate_is_ignored() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // Add same dependency twice
     repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
@@ -122,15 +121,15 @@ async fn test_add_dependency_duplicate_is_ignored() {
 
 #[tokio::test]
 async fn test_add_multiple_dependencies() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
-    let proposal_c = create_test_proposal(&conn, &session.id, "Proposal C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
+    let proposal_c = create_test_proposal(&db, &session.id, "Proposal C");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // A depends on B and C
     repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
@@ -150,14 +149,14 @@ async fn test_add_multiple_dependencies() {
 
 #[tokio::test]
 async fn test_remove_dependency_deletes_record() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
         .await
@@ -172,14 +171,14 @@ async fn test_remove_dependency_deletes_record() {
 
 #[tokio::test]
 async fn test_remove_nonexistent_dependency_succeeds() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // Should not error
     let result = repo.remove_dependency(&proposal_a.id, &proposal_b.id).await;
@@ -188,15 +187,15 @@ async fn test_remove_nonexistent_dependency_succeeds() {
 
 #[tokio::test]
 async fn test_remove_only_specified_dependency() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
-    let proposal_c = create_test_proposal(&conn, &session.id, "Proposal C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
+    let proposal_c = create_test_proposal(&db, &session.id, "Proposal C");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
         .await
@@ -219,13 +218,13 @@ async fn test_remove_only_specified_dependency() {
 
 #[tokio::test]
 async fn test_get_dependencies_empty() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal = create_test_proposal(&conn, &session.id, "Proposal");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal = create_test_proposal(&db, &session.id, "Proposal");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     let deps = repo.get_dependencies(&proposal.id).await.unwrap();
     assert!(deps.is_empty());
@@ -233,14 +232,14 @@ async fn test_get_dependencies_empty() {
 
 #[tokio::test]
 async fn test_get_dependencies_returns_correct_direction() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // A depends on B
     repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
@@ -261,13 +260,13 @@ async fn test_get_dependencies_returns_correct_direction() {
 
 #[tokio::test]
 async fn test_get_dependents_empty() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal = create_test_proposal(&conn, &session.id, "Proposal");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal = create_test_proposal(&db, &session.id, "Proposal");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     let dependents = repo.get_dependents(&proposal.id).await.unwrap();
     assert!(dependents.is_empty());
@@ -275,14 +274,14 @@ async fn test_get_dependents_empty() {
 
 #[tokio::test]
 async fn test_get_dependents_returns_correct_direction() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // A depends on B (B blocks A)
     repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
@@ -301,15 +300,15 @@ async fn test_get_dependents_returns_correct_direction() {
 
 #[tokio::test]
 async fn test_get_dependents_multiple() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
-    let proposal_c = create_test_proposal(&conn, &session.id, "Proposal C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
+    let proposal_c = create_test_proposal(&db, &session.id, "Proposal C");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // A and B both depend on C
     repo.add_dependency(&proposal_a.id, &proposal_c.id, None, None)
@@ -329,12 +328,12 @@ async fn test_get_dependents_multiple() {
 
 #[tokio::test]
 async fn test_get_all_for_session_empty() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     let all = repo.get_all_for_session(&session.id).await.unwrap();
     assert!(all.is_empty());
@@ -342,15 +341,15 @@ async fn test_get_all_for_session_empty() {
 
 #[tokio::test]
 async fn test_get_all_for_session_returns_all_deps() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
-    let proposal_c = create_test_proposal(&conn, &session.id, "Proposal C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
+    let proposal_c = create_test_proposal(&db, &session.id, "Proposal C");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // A -> B, B -> C
     repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
@@ -373,27 +372,29 @@ async fn test_get_all_for_session_returns_all_deps() {
 
 #[tokio::test]
 async fn test_get_all_for_session_filters_by_session() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
+    create_test_project(&db, &project_id, "Test", "/test");
 
-    let session1 = create_test_session(&conn, &project_id);
+    let session1 = create_test_session(&db, &project_id);
     let session2_id = IdeationSessionId::new();
 
     // Create another session manually
-    conn.execute(
-        "INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at)
-         VALUES (?1, ?2, 'Session 2', 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        rusqlite::params![session2_id.as_str(), project_id.as_str()],
-    )
-    .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at)
+             VALUES (?1, ?2, 'Session 2', 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+            rusqlite::params![session2_id.as_str(), project_id.as_str()],
+        )
+        .unwrap();
+    });
 
-    let s1_proposal_a = create_test_proposal(&conn, &session1.id, "S1 Proposal A");
-    let s1_proposal_b = create_test_proposal(&conn, &session1.id, "S1 Proposal B");
-    let s2_proposal_a = create_test_proposal(&conn, &session2_id, "S2 Proposal A");
-    let s2_proposal_b = create_test_proposal(&conn, &session2_id, "S2 Proposal B");
+    let s1_proposal_a = create_test_proposal(&db, &session1.id, "S1 Proposal A");
+    let s1_proposal_b = create_test_proposal(&db, &session1.id, "S1 Proposal B");
+    let s2_proposal_a = create_test_proposal(&db, &session2_id, "S2 Proposal A");
+    let s2_proposal_b = create_test_proposal(&db, &session2_id, "S2 Proposal B");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // Create deps in both sessions
     repo.add_dependency(&s1_proposal_a.id, &s1_proposal_b.id, None, None)
@@ -422,13 +423,13 @@ async fn test_get_all_for_session_filters_by_session() {
 
 #[tokio::test]
 async fn test_would_create_cycle_self_dependency() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal = create_test_proposal(&conn, &session.id, "Proposal");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal = create_test_proposal(&db, &session.id, "Proposal");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     let result = repo.would_create_cycle(&proposal.id, &proposal.id).await;
     assert!(result.is_ok());
@@ -437,14 +438,14 @@ async fn test_would_create_cycle_self_dependency() {
 
 #[tokio::test]
 async fn test_would_create_cycle_direct_cycle() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // B depends on A
     repo.add_dependency(&proposal_b.id, &proposal_a.id, None, None)
@@ -461,15 +462,15 @@ async fn test_would_create_cycle_direct_cycle() {
 
 #[tokio::test]
 async fn test_would_create_cycle_indirect_cycle() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
-    let proposal_c = create_test_proposal(&conn, &session.id, "Proposal C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
+    let proposal_c = create_test_proposal(&db, &session.id, "Proposal C");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // B -> C, C -> A (existing chain)
     repo.add_dependency(&proposal_b.id, &proposal_c.id, None, None)
@@ -489,15 +490,15 @@ async fn test_would_create_cycle_indirect_cycle() {
 
 #[tokio::test]
 async fn test_would_create_cycle_no_cycle() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
-    let proposal_c = create_test_proposal(&conn, &session.id, "Proposal C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
+    let proposal_c = create_test_proposal(&db, &session.id, "Proposal C");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // A -> B (existing)
     repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
@@ -514,14 +515,14 @@ async fn test_would_create_cycle_no_cycle() {
 
 #[tokio::test]
 async fn test_would_create_cycle_empty_graph() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // No existing dependencies, would A -> B create a cycle? No
     let result = repo
@@ -535,15 +536,15 @@ async fn test_would_create_cycle_empty_graph() {
 
 #[tokio::test]
 async fn test_clear_dependencies_removes_outgoing() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
-    let proposal_c = create_test_proposal(&conn, &session.id, "Proposal C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
+    let proposal_c = create_test_proposal(&db, &session.id, "Proposal C");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // A -> B, A -> C
     repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
@@ -561,15 +562,15 @@ async fn test_clear_dependencies_removes_outgoing() {
 
 #[tokio::test]
 async fn test_clear_dependencies_removes_incoming() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
-    let proposal_c = create_test_proposal(&conn, &session.id, "Proposal C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
+    let proposal_c = create_test_proposal(&db, &session.id, "Proposal C");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // B -> A, C -> A
     repo.add_dependency(&proposal_b.id, &proposal_a.id, None, None)
@@ -594,15 +595,15 @@ async fn test_clear_dependencies_removes_incoming() {
 
 #[tokio::test]
 async fn test_clear_dependencies_removes_both_directions() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
-    let proposal_c = create_test_proposal(&conn, &session.id, "Proposal C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
+    let proposal_c = create_test_proposal(&db, &session.id, "Proposal C");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // A -> B (A depends on B), C -> A (C depends on A)
     repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
@@ -631,13 +632,13 @@ async fn test_clear_dependencies_removes_both_directions() {
 
 #[tokio::test]
 async fn test_count_dependencies_zero() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal = create_test_proposal(&conn, &session.id, "Proposal");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal = create_test_proposal(&db, &session.id, "Proposal");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     let count = repo.count_dependencies(&proposal.id).await.unwrap();
     assert_eq!(count, 0);
@@ -645,15 +646,15 @@ async fn test_count_dependencies_zero() {
 
 #[tokio::test]
 async fn test_count_dependencies_multiple() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
-    let proposal_c = create_test_proposal(&conn, &session.id, "Proposal C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
+    let proposal_c = create_test_proposal(&db, &session.id, "Proposal C");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // A depends on B and C
     repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
@@ -669,13 +670,13 @@ async fn test_count_dependencies_multiple() {
 
 #[tokio::test]
 async fn test_count_dependents_zero() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal = create_test_proposal(&conn, &session.id, "Proposal");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal = create_test_proposal(&db, &session.id, "Proposal");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     let count = repo.count_dependents(&proposal.id).await.unwrap();
     assert_eq!(count, 0);
@@ -683,15 +684,15 @@ async fn test_count_dependents_zero() {
 
 #[tokio::test]
 async fn test_count_dependents_multiple() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
-    let proposal_c = create_test_proposal(&conn, &session.id, "Proposal C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
+    let proposal_c = create_test_proposal(&db, &session.id, "Proposal C");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // B and C depend on A
     repo.add_dependency(&proposal_b.id, &proposal_a.id, None, None)
@@ -709,15 +710,14 @@ async fn test_count_dependents_multiple() {
 
 #[tokio::test]
 async fn test_from_shared_works_correctly() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
 
-    let shared_conn = Arc::new(Mutex::new(conn));
-    let repo = SqliteProposalDependencyRepository::from_shared(shared_conn);
+    let repo = SqliteProposalDependencyRepository::from_shared(db.shared_conn());
 
     repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
         .await
@@ -731,81 +731,92 @@ async fn test_from_shared_works_correctly() {
 
 #[tokio::test]
 async fn test_cascade_deletes_when_proposal_deleted() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
 
     // Add dependency
-    conn.execute(
-        "INSERT INTO proposal_dependencies (id, proposal_id, depends_on_proposal_id)
-         VALUES ('dep-1', ?1, ?2)",
-        rusqlite::params![proposal_a.id.as_str(), proposal_b.id.as_str()],
-    )
-    .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO proposal_dependencies (id, proposal_id, depends_on_proposal_id)
+             VALUES ('dep-1', ?1, ?2)",
+            rusqlite::params![proposal_a.id.as_str(), proposal_b.id.as_str()],
+        )
+        .unwrap();
+    });
 
     // Verify dependency exists
-    let count: i32 = conn
-        .query_row(
+    let count: i32 = db.with_connection(|conn| {
+        conn.query_row(
             "SELECT COUNT(*) FROM proposal_dependencies WHERE proposal_id = ?1",
             [proposal_a.id.as_str()],
             |row| row.get(0),
         )
-        .unwrap();
+        .unwrap()
+    });
     assert_eq!(count, 1);
 
     // Delete proposal A
-    conn.execute(
-        "DELETE FROM task_proposals WHERE id = ?1",
-        [proposal_a.id.as_str()],
-    )
-    .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+            "DELETE FROM task_proposals WHERE id = ?1",
+            [proposal_a.id.as_str()],
+        )
+        .unwrap();
+    });
 
     // Dependency should be gone due to CASCADE
-    let count_after: i32 = conn
-        .query_row(
+    let count_after: i32 = db.with_connection(|conn| {
+        conn.query_row(
             "SELECT COUNT(*) FROM proposal_dependencies WHERE proposal_id = ?1",
             [proposal_a.id.as_str()],
             |row| row.get(0),
         )
-        .unwrap();
+        .unwrap()
+    });
     assert_eq!(count_after, 0);
 }
 
 #[tokio::test]
 async fn test_cascade_deletes_when_depends_on_proposal_deleted() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
 
     // A depends on B
-    conn.execute(
-        "INSERT INTO proposal_dependencies (id, proposal_id, depends_on_proposal_id)
-         VALUES ('dep-1', ?1, ?2)",
-        rusqlite::params![proposal_a.id.as_str(), proposal_b.id.as_str()],
-    )
-    .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO proposal_dependencies (id, proposal_id, depends_on_proposal_id)
+             VALUES ('dep-1', ?1, ?2)",
+            rusqlite::params![proposal_a.id.as_str(), proposal_b.id.as_str()],
+        )
+        .unwrap();
+    });
 
     // Delete proposal B
-    conn.execute(
-        "DELETE FROM task_proposals WHERE id = ?1",
-        [proposal_b.id.as_str()],
-    )
-    .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+            "DELETE FROM task_proposals WHERE id = ?1",
+            [proposal_b.id.as_str()],
+        )
+        .unwrap();
+    });
 
     // Dependency should be gone due to CASCADE
-    let count_after: i32 = conn
-        .query_row(
+    let count_after: i32 = db.with_connection(|conn| {
+        conn.query_row(
             "SELECT COUNT(*) FROM proposal_dependencies WHERE depends_on_proposal_id = ?1",
             [proposal_b.id.as_str()],
             |row| row.get(0),
         )
-        .unwrap();
+        .unwrap()
+    });
     assert_eq!(count_after, 0);
 }
 
@@ -813,18 +824,20 @@ async fn test_cascade_deletes_when_depends_on_proposal_deleted() {
 
 #[tokio::test]
 async fn test_self_dependency_check_constraint() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal = create_test_proposal(&conn, &session.id, "Proposal");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal = create_test_proposal(&db, &session.id, "Proposal");
 
     // Direct insert should fail due to CHECK constraint
-    let result = conn.execute(
-        "INSERT INTO proposal_dependencies (id, proposal_id, depends_on_proposal_id)
-         VALUES ('dep-1', ?1, ?1)",
-        [proposal.id.as_str()],
-    );
+    let result = db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO proposal_dependencies (id, proposal_id, depends_on_proposal_id)
+             VALUES ('dep-1', ?1, ?1)",
+            [proposal.id.as_str()],
+        )
+    });
 
     assert!(result.is_err());
 }
@@ -833,14 +846,14 @@ async fn test_self_dependency_check_constraint() {
 
 #[tokio::test]
 async fn test_get_all_for_session_with_source_includes_source_field() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // Add auto-suggested dependency
     repo.add_dependency(&proposal_a.id, &proposal_b.id, None, Some("auto"))
@@ -859,14 +872,14 @@ async fn test_get_all_for_session_with_source_includes_source_field() {
 
 #[tokio::test]
 async fn test_add_dependency_with_manual_source() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // Add manual dependency
     repo.add_dependency(&proposal_a.id, &proposal_b.id, None, Some("manual"))
@@ -883,14 +896,14 @@ async fn test_add_dependency_with_manual_source() {
 
 #[tokio::test]
 async fn test_add_dependency_defaults_to_auto() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // Add dependency with None source (should default to "auto")
     repo.add_dependency(&proposal_a.id, &proposal_b.id, None, None)
@@ -907,15 +920,15 @@ async fn test_add_dependency_defaults_to_auto() {
 
 #[tokio::test]
 async fn test_clear_auto_dependencies_preserves_manual_deps() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
-    let proposal_c = create_test_proposal(&conn, &session.id, "Proposal C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
+    let proposal_c = create_test_proposal(&db, &session.id, "Proposal C");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // Add auto dependency: A -> B
     repo.add_dependency(&proposal_a.id, &proposal_b.id, None, Some("auto"))
@@ -942,27 +955,29 @@ async fn test_clear_auto_dependencies_preserves_manual_deps() {
 
 #[tokio::test]
 async fn test_clear_auto_dependencies_clears_only_in_session() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
+    create_test_project(&db, &project_id, "Test", "/test");
 
-    let session1 = create_test_session(&conn, &project_id);
+    let session1 = create_test_session(&db, &project_id);
     let session2_id = IdeationSessionId::new();
 
     // Create another session manually
-    conn.execute(
-        "INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at)
-         VALUES (?1, ?2, 'Session 2', 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        rusqlite::params![session2_id.as_str(), project_id.as_str()],
-    )
-    .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at)
+             VALUES (?1, ?2, 'Session 2', 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+            rusqlite::params![session2_id.as_str(), project_id.as_str()],
+        )
+        .unwrap();
+    });
 
-    let s1_proposal_a = create_test_proposal(&conn, &session1.id, "S1 Proposal A");
-    let s1_proposal_b = create_test_proposal(&conn, &session1.id, "S1 Proposal B");
-    let s2_proposal_a = create_test_proposal(&conn, &session2_id, "S2 Proposal A");
-    let s2_proposal_b = create_test_proposal(&conn, &session2_id, "S2 Proposal B");
+    let s1_proposal_a = create_test_proposal(&db, &session1.id, "S1 Proposal A");
+    let s1_proposal_b = create_test_proposal(&db, &session1.id, "S1 Proposal B");
+    let s2_proposal_a = create_test_proposal(&db, &session2_id, "S2 Proposal A");
+    let s2_proposal_b = create_test_proposal(&db, &session2_id, "S2 Proposal B");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // Create auto deps in both sessions
     repo.add_dependency(&s1_proposal_a.id, &s1_proposal_b.id, None, Some("auto"))
@@ -993,27 +1008,29 @@ async fn test_clear_auto_dependencies_clears_only_in_session() {
 
 #[tokio::test]
 async fn test_get_all_for_session_with_source_filters_by_session() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
+    create_test_project(&db, &project_id, "Test", "/test");
 
-    let session1 = create_test_session(&conn, &project_id);
+    let session1 = create_test_session(&db, &project_id);
     let session2_id = IdeationSessionId::new();
 
     // Create another session manually
-    conn.execute(
-        "INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at)
-         VALUES (?1, ?2, 'Session 2', 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        rusqlite::params![session2_id.as_str(), project_id.as_str()],
-    )
-    .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at)
+             VALUES (?1, ?2, 'Session 2', 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+            rusqlite::params![session2_id.as_str(), project_id.as_str()],
+        )
+        .unwrap();
+    });
 
-    let s1_proposal_a = create_test_proposal(&conn, &session1.id, "S1 Proposal A");
-    let s1_proposal_b = create_test_proposal(&conn, &session1.id, "S1 Proposal B");
-    let s2_proposal_a = create_test_proposal(&conn, &session2_id, "S2 Proposal A");
-    let s2_proposal_b = create_test_proposal(&conn, &session2_id, "S2 Proposal B");
+    let s1_proposal_a = create_test_proposal(&db, &session1.id, "S1 Proposal A");
+    let s1_proposal_b = create_test_proposal(&db, &session1.id, "S1 Proposal B");
+    let s2_proposal_a = create_test_proposal(&db, &session2_id, "S2 Proposal A");
+    let s2_proposal_b = create_test_proposal(&db, &session2_id, "S2 Proposal B");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // Create deps in both sessions
     repo.add_dependency(&s1_proposal_a.id, &s1_proposal_b.id, None, Some("auto"))
@@ -1042,15 +1059,15 @@ async fn test_get_all_for_session_with_source_filters_by_session() {
 
 #[tokio::test]
 async fn test_get_all_for_session_ignores_archived_proposal_endpoints() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
-    let proposal_c = create_test_proposal(&conn, &session.id, "Proposal C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
+    let proposal_c = create_test_proposal(&db, &session.id, "Proposal C");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     repo.add_dependency(&proposal_a.id, &proposal_b.id, None, Some("auto"))
         .await
@@ -1093,14 +1110,14 @@ async fn test_get_all_for_session_ignores_archived_proposal_endpoints() {
 
 #[tokio::test]
 async fn test_would_create_cycle_includes_both_auto_and_manual() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session = create_test_session(&conn, &project_id);
-    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
-    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session = create_test_session(&db, &project_id);
+    let proposal_a = create_test_proposal(&db, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&db, &session.id, "Proposal B");
 
-    let repo = SqliteProposalDependencyRepository::new(conn);
+    let repo = SqliteProposalDependencyRepository::new(db.new_connection());
 
     // B depends on A (manual)
     repo.add_dependency(&proposal_b.id, &proposal_a.id, None, Some("manual"))

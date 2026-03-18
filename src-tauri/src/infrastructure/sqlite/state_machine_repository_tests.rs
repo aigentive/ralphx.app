@@ -1,31 +1,31 @@
 use super::*;
 use crate::domain::state_machine::types::QaFailure;
 use crate::domain::state_machine::{FailedData, QaFailedData};
-use crate::infrastructure::sqlite::connection::open_memory_connection;
-use crate::infrastructure::sqlite::migrations::run_migrations;
+use crate::testing::SqliteTestDb;
 
-fn setup_repo() -> (TaskStateMachineRepository, TaskId) {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+fn setup_repo() -> (SqliteTestDb, TaskStateMachineRepository, TaskId) {
+    let db = SqliteTestDb::new("state-machine-repository");
 
     // Insert a project and task
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
-        [],
-    )
-    .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
 
-    conn.execute(
-        "INSERT INTO tasks (id, project_id, category, title, internal_status)
-         VALUES ('task-1', 'proj-1', 'feature', 'Test Task', 'backlog')",
-        [],
-    )
-    .unwrap();
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title, internal_status)
+             VALUES ('task-1', 'proj-1', 'feature', 'Test Task', 'backlog')",
+            [],
+        )
+        .unwrap();
+    });
 
-    let repo = TaskStateMachineRepository::new(conn);
+    let repo = TaskStateMachineRepository::new(db.new_connection());
     let task_id = TaskId::from_string("task-1".to_string());
 
-    (repo, task_id)
+    (db, repo, task_id)
 }
 
 // ==================
@@ -34,14 +34,14 @@ fn setup_repo() -> (TaskStateMachineRepository, TaskId) {
 
 #[test]
 fn test_load_state_returns_current_state() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
     let state = repo.load_state(&task_id).unwrap();
     assert_eq!(state, State::Backlog);
 }
 
 #[test]
 fn test_load_state_not_found() {
-    let (repo, _) = setup_repo();
+    let (_db, repo, _) = setup_repo();
     let nonexistent = TaskId::from_string("nonexistent".to_string());
     let result = repo.load_state(&nonexistent);
     assert!(matches!(result, Err(AppError::TaskNotFound(_))));
@@ -49,7 +49,7 @@ fn test_load_state_not_found() {
 
 #[test]
 fn test_load_state_with_qa_failed_data() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     // Manually set up qa_failed state with data
     {
@@ -81,7 +81,7 @@ fn test_load_state_with_qa_failed_data() {
 
 #[test]
 fn test_load_state_with_failed_data() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     // Manually set up failed state with data
     {
@@ -113,7 +113,7 @@ fn test_load_state_with_failed_data() {
 
 #[test]
 fn test_load_state_qa_failed_without_data() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     // Set qa_failed status but no data
     {
@@ -141,7 +141,7 @@ fn test_load_state_qa_failed_without_data() {
 
 #[test]
 fn test_persist_state_updates_status() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     repo.persist_state(&task_id, &State::Ready).unwrap();
 
@@ -151,7 +151,7 @@ fn test_persist_state_updates_status() {
 
 #[test]
 fn test_persist_state_not_found() {
-    let (repo, _) = setup_repo();
+    let (_db, repo, _) = setup_repo();
     let nonexistent = TaskId::from_string("nonexistent".to_string());
     let result = repo.persist_state(&nonexistent, &State::Ready);
     assert!(matches!(result, Err(AppError::TaskNotFound(_))));
@@ -159,7 +159,7 @@ fn test_persist_state_not_found() {
 
 #[test]
 fn test_persist_state_saves_qa_failed_data() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     let qa_data = QaFailedData::single(QaFailure::new("test_persist", "failed"));
     repo.persist_state(&task_id, &State::QaFailed(qa_data))
@@ -177,7 +177,7 @@ fn test_persist_state_saves_qa_failed_data() {
 
 #[test]
 fn test_persist_state_saves_failed_data() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     let failed_data = FailedData::new("Timeout error");
     repo.persist_state(&task_id, &State::Failed(failed_data))
@@ -194,7 +194,7 @@ fn test_persist_state_saves_failed_data() {
 
 #[test]
 fn test_persist_state_cleans_up_old_data() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     // First set to QaFailed with data
     let qa_data = QaFailedData::single(QaFailure::new("test", "error"));
@@ -224,7 +224,7 @@ fn test_persist_state_cleans_up_old_data() {
 
 #[test]
 fn test_process_event_transitions_state() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     let new_state = repo.process_event(&task_id, &TaskEvent::Schedule).unwrap();
     assert_eq!(new_state, State::Ready);
@@ -236,7 +236,7 @@ fn test_process_event_transitions_state() {
 
 #[test]
 fn test_process_event_not_found() {
-    let (repo, _) = setup_repo();
+    let (_db, repo, _) = setup_repo();
     let nonexistent = TaskId::from_string("nonexistent".to_string());
     let result = repo.process_event(&nonexistent, &TaskEvent::Schedule);
     assert!(matches!(result, Err(AppError::TaskNotFound(_))));
@@ -244,7 +244,7 @@ fn test_process_event_not_found() {
 
 #[test]
 fn test_process_event_invalid_transition() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     // ExecutionComplete is not valid in Backlog state
     let result = repo.process_event(&task_id, &TaskEvent::ExecutionComplete);
@@ -253,7 +253,7 @@ fn test_process_event_invalid_transition() {
 
 #[test]
 fn test_process_event_chain() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     // Backlog -> Ready -> Cancelled
     repo.process_event(&task_id, &TaskEvent::Schedule).unwrap();
@@ -265,7 +265,7 @@ fn test_process_event_chain() {
 
 #[test]
 fn test_process_event_with_state_data() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     // Set up a QaFailed state
     {
@@ -288,7 +288,7 @@ fn test_process_event_with_state_data() {
 
 #[test]
 fn test_load_with_state_machine_returns_state_and_machine() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     let (state, machine) = repo.load_with_state_machine(&task_id).unwrap();
 
@@ -298,7 +298,7 @@ fn test_load_with_state_machine_returns_state_and_machine() {
 
 #[test]
 fn test_load_with_state_machine_not_found() {
-    let (repo, _) = setup_repo();
+    let (_db, repo, _) = setup_repo();
     let nonexistent = TaskId::from_string("nonexistent".to_string());
     let result = repo.load_with_state_machine(&nonexistent);
     assert!(matches!(result, Err(AppError::TaskNotFound(_))));
@@ -306,7 +306,7 @@ fn test_load_with_state_machine_not_found() {
 
 #[test]
 fn test_load_with_state_machine_rehydrates_data() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     // Set up QaFailed with data
     {
@@ -341,7 +341,7 @@ fn test_load_with_state_machine_rehydrates_data() {
 
 #[test]
 fn test_process_event_is_atomic() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     // Successful event should persist
     repo.process_event(&task_id, &TaskEvent::Schedule).unwrap();
@@ -361,7 +361,7 @@ fn test_process_event_is_atomic() {
 
 #[test]
 fn test_transition_atomically_success() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     let side_effect_called = std::sync::atomic::AtomicBool::new(false);
 
@@ -383,7 +383,7 @@ fn test_transition_atomically_success() {
 
 #[test]
 fn test_transition_atomically_side_effect_failure_rollback() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     // Side effect that always fails
     let result = repo.transition_atomically(&task_id, &TaskEvent::Schedule, |_from, _to| {
@@ -398,7 +398,7 @@ fn test_transition_atomically_side_effect_failure_rollback() {
 
 #[test]
 fn test_transition_atomically_invalid_event() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     let side_effect_called = std::sync::atomic::AtomicBool::new(false);
 
@@ -419,7 +419,7 @@ fn test_transition_atomically_invalid_event() {
 
 #[test]
 fn test_transition_atomically_not_found() {
-    let (repo, _) = setup_repo();
+    let (_db, repo, _) = setup_repo();
     let nonexistent = TaskId::from_string("nonexistent".to_string());
 
     let result = repo.transition_atomically(&nonexistent, &TaskEvent::Schedule, |_, _| Ok(()));
@@ -428,7 +428,7 @@ fn test_transition_atomically_not_found() {
 
 #[test]
 fn test_transition_atomically_chain_with_side_effects() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     let transitions = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
 
@@ -465,7 +465,7 @@ fn test_transition_atomically_chain_with_side_effects() {
 
 #[test]
 fn test_transition_atomically_persists_state_data() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     // Set up Executing state first
     {
@@ -507,7 +507,7 @@ fn test_transition_atomically_persists_state_data() {
 
 #[test]
 fn test_transition_atomically_partial_failure_no_persist() {
-    let (repo, task_id) = setup_repo();
+    let (_db, repo, task_id) = setup_repo();
 
     // Schedule first
     repo.transition_atomically(&task_id, &TaskEvent::Schedule, |_, _| Ok(()))

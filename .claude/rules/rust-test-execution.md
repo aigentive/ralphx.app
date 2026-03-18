@@ -100,6 +100,8 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | One helper per suite shape | Extract `setup_*()` returning fixture + repo + seeded IDs when 2+ tests share setup |
 | Builders over repeated SQL | Promote repeated inserts into `seed_project(...)`, `seed_task(...)`, `seed_review_note(...)` helpers instead of cloning raw SQL blocks |
 | Helpers take `&SqliteTestDb` when possible | Keep seeding logic reusable across async repos, sync repos, and mixed suites |
+| Use `db.with_connection(...)` for direct SQL checks | If a suite needs repo calls plus raw SQL assertions, keep the repo on `db.new_connection()` and use `db.with_connection(...)` for direct setup or verification |
+| Use `db.shared_conn()` for shared-connection variants | For `from_shared(...)` coverage, pass `db.shared_conn()` instead of building a second ad hoc `Arc<Mutex<Connection>>` |
 | Extend `SqliteTestDb` when patterns repeat | If the same row graph appears across suites, add a shared helper in `src-tauri/src/testing/sqlite_test_db.rs` instead of copying another local setup block |
 | Service suites keep fixture ownership explicit | Prefer a small `TestContext { _db, service, ids... }` so the temp DB lifetime is obvious and setup is reused across tests |
 | Keep suite-local seed helpers when the shape is narrow | If only one suite needs a specific FK graph, add a local `setup_repo()` / `seed_*()` helper on top of `SqliteTestDb` instead of reaching through `repo.db.inner()` in each test |
