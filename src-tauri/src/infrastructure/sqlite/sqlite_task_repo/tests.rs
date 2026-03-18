@@ -3,19 +3,18 @@ use crate::domain::entities::{
 };
 use crate::domain::repositories::TaskRepository;
 use crate::infrastructure::sqlite::SqliteTaskRepository;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
-use rusqlite::Connection;
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    // Insert a test project (required for foreign key)
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory) VALUES ('test-project', 'Test Project', '/test/path')",
-        [],
-    )
-    .unwrap();
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    let db = SqliteTestDb::new("sqlite-task-repo");
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('test-project', 'Test Project', '/test/path')",
+            [],
+        )
+        .unwrap();
+    });
+    db
 }
 
 // Note: Tests use Task::new() which initializes source_proposal_id and plan_artifact_id to None
@@ -33,8 +32,8 @@ fn create_test_task(title: &str) -> Task {
 
 #[tokio::test]
 async fn test_create_inserts_task_and_returns_it() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let task = create_test_task("Test Task");
 
     let result = repo.create(task.clone()).await;
@@ -47,8 +46,8 @@ async fn test_create_inserts_task_and_returns_it() {
 
 #[tokio::test]
 async fn test_get_by_id_retrieves_task_correctly() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let task = create_test_task("Test Task");
 
     repo.create(task.clone()).await.unwrap();
@@ -66,8 +65,8 @@ async fn test_get_by_id_retrieves_task_correctly() {
 
 #[tokio::test]
 async fn test_get_by_id_returns_none_for_nonexistent() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let id = TaskId::new();
 
     let result = repo.get_by_id(&id).await;
@@ -78,8 +77,8 @@ async fn test_get_by_id_returns_none_for_nonexistent() {
 
 #[tokio::test]
 async fn test_get_by_project_returns_sorted_tasks() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     // Create tasks with different priorities
@@ -109,8 +108,8 @@ async fn test_get_by_project_returns_sorted_tasks() {
 
 #[tokio::test]
 async fn test_update_modifies_task_fields() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let mut task = create_test_task("Original Title");
 
     repo.create(task.clone()).await.unwrap();
@@ -130,8 +129,8 @@ async fn test_update_modifies_task_fields() {
 
 #[tokio::test]
 async fn test_delete_removes_task_from_database() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let task = create_test_task("To Delete");
 
     repo.create(task.clone()).await.unwrap();
@@ -145,8 +144,8 @@ async fn test_delete_removes_task_from_database() {
 
 #[tokio::test]
 async fn test_create_and_retrieve_preserves_all_fields() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
 
     let mut task = create_test_task("Full Task");
     task.description = Some("A description".to_string());
@@ -167,8 +166,8 @@ async fn test_create_and_retrieve_preserves_all_fields() {
 
 #[tokio::test]
 async fn test_get_by_project_returns_empty_for_no_tasks() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let result = repo.get_by_project(&project_id).await;
@@ -179,45 +178,43 @@ async fn test_get_by_project_returns_empty_for_no_tasks() {
 
 #[tokio::test]
 async fn test_get_by_project_only_returns_matching_project() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
 
     // Add another project
-    {
-        let lock = conn;
-        lock.execute(
+    db.with_connection(|conn| {
+        conn.execute(
             "INSERT INTO projects (id, name, working_directory) VALUES ('other-project', 'Other', '/other')",
             [],
         )
         .unwrap();
+    });
 
-        let repo = SqliteTaskRepository::new(lock);
+    let task1 = create_test_task("Task 1");
+    let task2 = Task::new_with_category(
+        ProjectId::from_string("other-project".to_string()),
+        "Task 2".to_string(),
+        TaskCategory::Regular,
+    );
 
-        let task1 = create_test_task("Task 1");
-        let task2 = Task::new_with_category(
-            ProjectId::from_string("other-project".to_string()),
-            "Task 2".to_string(),
-            TaskCategory::Regular,
-        );
+    repo.create(task1).await.unwrap();
+    repo.create(task2).await.unwrap();
 
-        repo.create(task1).await.unwrap();
-        repo.create(task2).await.unwrap();
+    let project_id = ProjectId::from_string("test-project".to_string());
+    let result = repo.get_by_project(&project_id).await;
 
-        let project_id = ProjectId::from_string("test-project".to_string());
-        let result = repo.get_by_project(&project_id).await;
-
-        assert!(result.is_ok());
-        let tasks = result.unwrap();
-        assert_eq!(tasks.len(), 1);
-        assert_eq!(tasks[0].title, "Task 1");
-    }
+    assert!(result.is_ok());
+    let tasks = result.unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].title, "Task 1");
 }
 
 // ==================== STATUS OPERATION TESTS ====================
 
 #[tokio::test]
 async fn test_persist_status_change_updates_task_status() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let task = create_test_task("Test Task");
 
     repo.create(task.clone()).await.unwrap();
@@ -240,8 +237,8 @@ async fn test_persist_status_change_updates_task_status() {
 
 #[tokio::test]
 async fn test_persist_status_change_creates_history_record() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let task = create_test_task("Test Task");
 
     repo.create(task.clone()).await.unwrap();
@@ -264,8 +261,8 @@ async fn test_persist_status_change_creates_history_record() {
 
 #[tokio::test]
 async fn test_status_change_and_history_are_atomic() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let task = create_test_task("Test Task");
 
     repo.create(task.clone()).await.unwrap();
@@ -301,8 +298,8 @@ async fn test_status_change_and_history_are_atomic() {
 
 #[tokio::test]
 async fn test_get_status_history_returns_transitions_in_order() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let task = create_test_task("Test Task");
 
     repo.create(task.clone()).await.unwrap();
@@ -346,8 +343,8 @@ async fn test_get_status_history_returns_transitions_in_order() {
 
 #[tokio::test]
 async fn test_get_status_history_returns_empty_for_no_transitions() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let task = create_test_task("Test Task");
 
     repo.create(task.clone()).await.unwrap();
@@ -358,8 +355,8 @@ async fn test_get_status_history_returns_empty_for_no_transitions() {
 
 #[tokio::test]
 async fn test_get_by_status_filters_correctly() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let mut task1 = create_test_task("Backlog Task");
@@ -392,8 +389,8 @@ async fn test_get_by_status_filters_correctly() {
 
 #[tokio::test]
 async fn test_get_by_status_returns_empty_for_no_matches() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let task = create_test_task("Backlog Task");
@@ -412,8 +409,8 @@ async fn test_get_by_status_returns_empty_for_no_matches() {
 
 #[tokio::test]
 async fn test_get_next_executable_returns_highest_priority_ready() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let mut low = create_test_task("Low");
@@ -434,8 +431,8 @@ async fn test_get_next_executable_returns_highest_priority_ready() {
 
 #[tokio::test]
 async fn test_get_next_executable_returns_none_when_no_ready_tasks() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let task = create_test_task("Backlog Task"); // Default status is Backlog
@@ -449,8 +446,8 @@ async fn test_get_next_executable_returns_none_when_no_ready_tasks() {
 
 #[tokio::test]
 async fn test_archive_sets_archived_at() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let task = create_test_task("Task to Archive");
 
     repo.create(task.clone()).await.unwrap();
@@ -464,8 +461,8 @@ async fn test_archive_sets_archived_at() {
 
 #[tokio::test]
 async fn test_restore_clears_archived_at() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let task = create_test_task("Task to Archive and Restore");
 
     repo.create(task.clone()).await.unwrap();
@@ -480,8 +477,8 @@ async fn test_restore_clears_archived_at() {
 
 #[tokio::test]
 async fn test_get_archived_count_returns_correct_count() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let task1 = create_test_task("Task 1");
@@ -502,8 +499,8 @@ async fn test_get_archived_count_returns_correct_count() {
 
 #[tokio::test]
 async fn test_get_by_project_filtered_excludes_archived_by_default() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let task1 = create_test_task("Active Task");
@@ -524,8 +521,8 @@ async fn test_get_by_project_filtered_excludes_archived_by_default() {
 
 #[tokio::test]
 async fn test_get_by_project_filtered_includes_archived_when_requested() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let task1 = create_test_task("Active Task");
@@ -545,8 +542,8 @@ async fn test_get_by_project_filtered_includes_archived_when_requested() {
 
 #[tokio::test]
 async fn test_archive_and_restore_updates_updated_at() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let task = create_test_task("Task");
 
     repo.create(task.clone()).await.unwrap();
@@ -569,8 +566,8 @@ async fn test_archive_and_restore_updates_updated_at() {
 
 #[tokio::test]
 async fn test_search_by_title() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let task1 = create_test_task("Implement authentication");
@@ -589,8 +586,8 @@ async fn test_search_by_title() {
 
 #[tokio::test]
 async fn test_search_by_description() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let mut task1 = create_test_task("Task One");
@@ -613,8 +610,8 @@ async fn test_search_by_description() {
 
 #[tokio::test]
 async fn test_search_case_insensitive() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let task = create_test_task("Add USER Authentication");
@@ -635,8 +632,8 @@ async fn test_search_case_insensitive() {
 
 #[tokio::test]
 async fn test_search_returns_no_results_for_no_match() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let task = create_test_task("Add user login");
@@ -652,8 +649,8 @@ async fn test_search_returns_no_results_for_no_match() {
 
 #[tokio::test]
 async fn test_search_excludes_archived_by_default() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let task1 = create_test_task("Active authentication task");
@@ -674,8 +671,8 @@ async fn test_search_excludes_archived_by_default() {
 
 #[tokio::test]
 async fn test_search_includes_archived_when_requested() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let task1 = create_test_task("Active authentication task");
@@ -695,8 +692,8 @@ async fn test_search_includes_archived_when_requested() {
 
 #[tokio::test]
 async fn test_search_matches_partial_strings() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let task = create_test_task("Implement user authentication system");
@@ -712,8 +709,8 @@ async fn test_search_matches_partial_strings() {
 
 #[tokio::test]
 async fn test_create_preserves_blocked_reason() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
 
     let mut task = create_test_task("Blocked Task");
     task.internal_status = InternalStatus::Blocked;
@@ -731,8 +728,8 @@ async fn test_create_preserves_blocked_reason() {
 
 #[tokio::test]
 async fn test_update_preserves_blocked_reason() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
 
     let mut task = create_test_task("Task");
     repo.create(task.clone()).await.unwrap();
@@ -752,8 +749,8 @@ async fn test_update_preserves_blocked_reason() {
 
 #[tokio::test]
 async fn test_update_clears_blocked_reason() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
 
     let mut task = create_test_task("Task");
     task.internal_status = InternalStatus::Blocked;
@@ -772,8 +769,8 @@ async fn test_update_clears_blocked_reason() {
 
 #[tokio::test]
 async fn test_blocked_reason_defaults_to_none() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
 
     let task = create_test_task("Normal Task");
     repo.create(task.clone()).await.unwrap();
@@ -786,8 +783,8 @@ async fn test_blocked_reason_defaults_to_none() {
 
 #[tokio::test]
 async fn test_get_by_ideation_session_returns_matching_tasks() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let session_id = IdeationSessionId::from_string("test-session-1");
 
     let mut task1 = create_test_task("Session Task 1");
@@ -808,8 +805,8 @@ async fn test_get_by_ideation_session_returns_matching_tasks() {
 
 #[tokio::test]
 async fn test_get_by_ideation_session_excludes_other_sessions() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let session_a = IdeationSessionId::from_string("session-a");
     let session_b = IdeationSessionId::from_string("session-b");
 
@@ -837,8 +834,8 @@ async fn test_get_by_ideation_session_excludes_other_sessions() {
 
 #[tokio::test]
 async fn test_get_by_ideation_session_returns_empty_for_nonexistent() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let session_id = IdeationSessionId::from_string("nonexistent-session");
 
     let result = repo.get_by_ideation_session(&session_id).await;
@@ -849,8 +846,8 @@ async fn test_get_by_ideation_session_returns_empty_for_nonexistent() {
 
 #[tokio::test]
 async fn test_get_by_ideation_session_sorted_by_created_at() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let session_id = IdeationSessionId::from_string("test-session-sort");
 
     // Create tasks — they get created_at = Utc::now() sequentially
@@ -872,8 +869,8 @@ async fn test_get_by_ideation_session_sorted_by_created_at() {
 
 #[tokio::test]
 async fn test_get_by_status_excludes_archived() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let mut task1 = create_test_task("Active PendingMerge");
@@ -901,8 +898,8 @@ async fn test_get_by_status_excludes_archived() {
 
 #[tokio::test]
 async fn test_update_metadata_sets_metadata_on_task_with_no_prior_metadata() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let task = create_test_task("Test Task");
 
     // Create task with no metadata
@@ -924,8 +921,8 @@ async fn test_update_metadata_sets_metadata_on_task_with_no_prior_metadata() {
 
 #[tokio::test]
 async fn test_update_metadata_replaces_existing_metadata() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let mut task = create_test_task("Test Task");
 
     // Create task with initial metadata
@@ -948,8 +945,8 @@ async fn test_update_metadata_replaces_existing_metadata() {
 
 #[tokio::test]
 async fn test_update_metadata_sets_none_to_clear_metadata() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let mut task = create_test_task("Test Task");
 
     // Create task with metadata
@@ -968,8 +965,8 @@ async fn test_update_metadata_sets_none_to_clear_metadata() {
 
 #[tokio::test]
 async fn test_update_metadata_does_not_change_internal_status() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let mut task = create_test_task("Test Task");
 
     // Set initial status
@@ -992,8 +989,8 @@ async fn test_update_metadata_does_not_change_internal_status() {
 
 #[tokio::test]
 async fn test_update_metadata_does_not_change_other_columns() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let mut task = create_test_task("Test Task");
 
     // Set up task with various fields
@@ -1033,8 +1030,8 @@ async fn test_update_metadata_does_not_change_other_columns() {
 
 #[tokio::test]
 async fn test_update_metadata_returns_ok_for_nonexistent_task() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let id = TaskId::new();
 
     // Try to update metadata on non-existent task
@@ -1049,8 +1046,8 @@ async fn test_update_metadata_returns_ok_for_nonexistent_task() {
 
 #[tokio::test]
 async fn test_update_with_expected_status_succeeds_when_status_matches() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let mut task = create_test_task("CAS Task");
     task.internal_status = InternalStatus::Ready;
     repo.create(task.clone()).await.unwrap();
@@ -1068,8 +1065,8 @@ async fn test_update_with_expected_status_succeeds_when_status_matches() {
 
 #[tokio::test]
 async fn test_update_with_expected_status_returns_false_on_status_mismatch() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let mut task = create_test_task("CAS Task");
     task.internal_status = InternalStatus::Ready;
     repo.create(task.clone()).await.unwrap();
@@ -1090,8 +1087,8 @@ async fn test_update_with_expected_status_returns_false_on_status_mismatch() {
 
 #[tokio::test]
 async fn test_list_paginated_respects_limit() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     for i in 0..5 {
@@ -1109,8 +1106,8 @@ async fn test_list_paginated_respects_limit() {
 
 #[tokio::test]
 async fn test_list_paginated_offset_skips_tasks() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     for i in 0..4 {
@@ -1135,8 +1132,8 @@ async fn test_list_paginated_offset_skips_tasks() {
 
 #[tokio::test]
 async fn test_list_paginated_filters_by_status() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let mut backlog = create_test_task("Backlog Task");
@@ -1166,8 +1163,8 @@ async fn test_list_paginated_filters_by_status() {
 
 #[tokio::test]
 async fn test_list_paginated_include_archived_flag() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let active = create_test_task("Active");
@@ -1191,8 +1188,8 @@ async fn test_list_paginated_include_archived_flag() {
 
 #[tokio::test]
 async fn test_list_paginated_filters_by_category() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let regular = Task::new_with_category(
@@ -1238,8 +1235,8 @@ async fn test_list_paginated_filters_by_category() {
 
 #[tokio::test]
 async fn test_get_oldest_ready_task_returns_oldest() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
 
     let mut task1 = create_test_task("Older Ready");
     task1.internal_status = InternalStatus::Ready;
@@ -1256,8 +1253,8 @@ async fn test_get_oldest_ready_task_returns_oldest() {
 
 #[tokio::test]
 async fn test_get_oldest_ready_task_returns_none_when_no_ready_tasks() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
 
     let task = create_test_task("Backlog Task");
     repo.create(task).await.unwrap();
@@ -1268,8 +1265,8 @@ async fn test_get_oldest_ready_task_returns_none_when_no_ready_tasks() {
 
 #[tokio::test]
 async fn test_get_oldest_ready_tasks_respects_limit() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
 
     for i in 0..5 {
         let mut task = create_test_task(&format!("Ready {}", i));
@@ -1283,8 +1280,8 @@ async fn test_get_oldest_ready_tasks_respects_limit() {
 
 #[tokio::test]
 async fn test_get_oldest_ready_tasks_returns_empty_when_no_ready_tasks() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
 
     let tasks = repo.get_oldest_ready_tasks(10).await.unwrap();
     assert!(tasks.is_empty());
@@ -1294,8 +1291,8 @@ async fn test_get_oldest_ready_tasks_returns_empty_when_no_ready_tasks() {
 
 #[tokio::test]
 async fn test_get_stale_ready_tasks_includes_tasks_at_zero_threshold() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
 
     let mut task = create_test_task("Ready Task");
     task.internal_status = InternalStatus::Ready;
@@ -1308,8 +1305,8 @@ async fn test_get_stale_ready_tasks_includes_tasks_at_zero_threshold() {
 
 #[tokio::test]
 async fn test_get_stale_ready_tasks_excludes_recent_tasks() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
 
     let mut task = create_test_task("Recent Ready Task");
     task.internal_status = InternalStatus::Ready;
@@ -1324,8 +1321,8 @@ async fn test_get_stale_ready_tasks_excludes_recent_tasks() {
 
 #[tokio::test]
 async fn test_has_task_in_states_returns_true_when_match_exists() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let mut task = create_test_task("Executing Task");
@@ -1341,8 +1338,8 @@ async fn test_has_task_in_states_returns_true_when_match_exists() {
 
 #[tokio::test]
 async fn test_has_task_in_states_returns_false_when_no_match() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let task = create_test_task("Backlog Task");
@@ -1357,8 +1354,8 @@ async fn test_has_task_in_states_returns_false_when_no_match() {
 
 #[tokio::test]
 async fn test_has_task_in_states_returns_false_for_empty_statuses() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     repo.create(create_test_task("Any Task")).await.unwrap();
@@ -1369,8 +1366,8 @@ async fn test_has_task_in_states_returns_false_for_empty_statuses() {
 
 #[tokio::test]
 async fn test_has_task_in_states_excludes_archived_tasks() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let mut task = create_test_task("Archived Ready");
@@ -1387,8 +1384,8 @@ async fn test_has_task_in_states_excludes_archived_tasks() {
 
 #[tokio::test]
 async fn test_has_task_in_states_checks_multiple_statuses() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let mut task = create_test_task("QA Task");
@@ -1409,8 +1406,8 @@ async fn test_has_task_in_states_checks_multiple_statuses() {
 
 #[tokio::test]
 async fn test_count_tasks_returns_correct_count() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     repo.create(create_test_task("T1")).await.unwrap();
@@ -1423,8 +1420,8 @@ async fn test_count_tasks_returns_correct_count() {
 
 #[tokio::test]
 async fn test_count_tasks_excludes_archived_by_default() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let active = create_test_task("Active");
@@ -1442,8 +1439,8 @@ async fn test_count_tasks_excludes_archived_by_default() {
 
 #[tokio::test]
 async fn test_count_tasks_returns_zero_for_empty_project() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let count = repo.count_tasks(&project_id, false, None, None).await.unwrap();
@@ -1452,8 +1449,8 @@ async fn test_count_tasks_returns_zero_for_empty_project() {
 
 #[tokio::test]
 async fn test_count_tasks_filters_by_ideation_session() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskRepository::new(db.new_connection());
     let project_id = ProjectId::from_string("test-project".to_string());
     let session_id = IdeationSessionId::from_string("my-session");
 
