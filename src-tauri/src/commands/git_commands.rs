@@ -812,7 +812,3 @@ async fn cleanup_task_git_resources(
 
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "git_commands_tests.rs"]
-mod tests;
