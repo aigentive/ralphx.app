@@ -1,15 +1,22 @@
 use super::*;
 use crate::domain::entities::IdeationSessionId;
-use crate::domain::repositories::ChatConversationRepository;
-use crate::infrastructure::sqlite::{
-    open_memory_connection, run_migrations, SqliteChatConversationRepository,
-};
+use crate::testing::SqliteTestDb;
+
+fn setup_repo() -> (SqliteTestDb, SqliteAgentRunRepository) {
+    let db = SqliteTestDb::new("sqlite-agent-run-repo");
+    let repo = SqliteAgentRunRepository::from_shared(db.shared_conn());
+    (db, repo)
+}
+
+fn seed_ideation_conversation(db: &SqliteTestDb, claude_session_id: Option<&str>) -> ChatConversation {
+    let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
+    conversation.claude_session_id = claude_session_id.map(str::to_string);
+    db.insert_conversation(conversation)
+}
 
 #[tokio::test]
 async fn test_get_interrupted_conversations_returns_empty_when_none() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteAgentRunRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let result = repo.get_interrupted_conversations().await.unwrap();
     assert!(result.is_empty());
@@ -17,20 +24,8 @@ async fn test_get_interrupted_conversations_returns_empty_when_none() {
 
 #[tokio::test]
 async fn test_get_interrupted_conversations_returns_orphaned_conversation() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let shared_conn = Arc::new(Mutex::new(conn));
-
-    let agent_run_repo = SqliteAgentRunRepository::from_shared(Arc::clone(&shared_conn));
-    let conversation_repo = SqliteChatConversationRepository::from_shared(Arc::clone(&shared_conn));
-
-    // Create a conversation with claude_session_id
-    let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
-    conversation.claude_session_id = Some("test-session-id".to_string());
-    conversation_repo
-        .create(conversation.clone())
-        .await
-        .unwrap();
+    let (db, agent_run_repo) = setup_repo();
+    let conversation = seed_ideation_conversation(&db, Some("test-session-id"));
 
     // Create an agent run that gets orphaned
     let mut run = AgentRun::new(conversation.id);
@@ -57,20 +52,8 @@ async fn test_get_interrupted_conversations_returns_orphaned_conversation() {
 
 #[tokio::test]
 async fn test_get_interrupted_conversations_ignores_without_session_id() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let shared_conn = Arc::new(Mutex::new(conn));
-
-    let agent_run_repo = SqliteAgentRunRepository::from_shared(Arc::clone(&shared_conn));
-    let conversation_repo = SqliteChatConversationRepository::from_shared(Arc::clone(&shared_conn));
-
-    // Create a conversation WITHOUT claude_session_id
-    let conversation = ChatConversation::new_ideation(IdeationSessionId::new());
-    // Note: claude_session_id is None by default
-    conversation_repo
-        .create(conversation.clone())
-        .await
-        .unwrap();
+    let (db, agent_run_repo) = setup_repo();
+    let conversation = seed_ideation_conversation(&db, None);
 
     // Create an orphaned agent run
     let mut run = AgentRun::new(conversation.id);
@@ -89,20 +72,8 @@ async fn test_get_interrupted_conversations_ignores_without_session_id() {
 
 #[tokio::test]
 async fn test_get_interrupted_conversations_ignores_completed_runs() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let shared_conn = Arc::new(Mutex::new(conn));
-
-    let agent_run_repo = SqliteAgentRunRepository::from_shared(Arc::clone(&shared_conn));
-    let conversation_repo = SqliteChatConversationRepository::from_shared(Arc::clone(&shared_conn));
-
-    // Create a conversation with claude_session_id
-    let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
-    conversation.claude_session_id = Some("test-session-id".to_string());
-    conversation_repo
-        .create(conversation.clone())
-        .await
-        .unwrap();
+    let (db, agent_run_repo) = setup_repo();
+    let conversation = seed_ideation_conversation(&db, Some("test-session-id"));
 
     // Create a COMPLETED agent run (not orphaned)
     let mut run = AgentRun::new(conversation.id);
@@ -120,20 +91,8 @@ async fn test_get_interrupted_conversations_ignores_completed_runs() {
 
 #[tokio::test]
 async fn test_get_interrupted_conversations_ignores_different_error_message() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let shared_conn = Arc::new(Mutex::new(conn));
-
-    let agent_run_repo = SqliteAgentRunRepository::from_shared(Arc::clone(&shared_conn));
-    let conversation_repo = SqliteChatConversationRepository::from_shared(Arc::clone(&shared_conn));
-
-    // Create a conversation with claude_session_id
-    let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
-    conversation.claude_session_id = Some("test-session-id".to_string());
-    conversation_repo
-        .create(conversation.clone())
-        .await
-        .unwrap();
+    let (db, agent_run_repo) = setup_repo();
+    let conversation = seed_ideation_conversation(&db, Some("test-session-id"));
 
     // Create a cancelled run with DIFFERENT error message
     let mut run = AgentRun::new(conversation.id);
@@ -152,20 +111,8 @@ async fn test_get_interrupted_conversations_ignores_different_error_message() {
 
 #[tokio::test]
 async fn test_get_interrupted_conversations_only_latest_run() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let shared_conn = Arc::new(Mutex::new(conn));
-
-    let agent_run_repo = SqliteAgentRunRepository::from_shared(Arc::clone(&shared_conn));
-    let conversation_repo = SqliteChatConversationRepository::from_shared(Arc::clone(&shared_conn));
-
-    // Create a conversation with claude_session_id
-    let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
-    conversation.claude_session_id = Some("test-session-id".to_string());
-    conversation_repo
-        .create(conversation.clone())
-        .await
-        .unwrap();
+    let (db, agent_run_repo) = setup_repo();
+    let conversation = seed_ideation_conversation(&db, Some("test-session-id"));
 
     // Create an OLD orphaned run
     let mut old_run = AgentRun::new(conversation.id);
@@ -190,34 +137,12 @@ async fn test_get_interrupted_conversations_only_latest_run() {
     assert!(result.is_empty());
 }
 
-// ─── CRUD helpers ────────────────────────────────────────────────────────────
-
-fn make_shared_repos(
-    conn: rusqlite::Connection,
-) -> (SqliteAgentRunRepository, SqliteChatConversationRepository) {
-    let shared = Arc::new(Mutex::new(conn));
-    (
-        SqliteAgentRunRepository::from_shared(Arc::clone(&shared)),
-        SqliteChatConversationRepository::from_shared(Arc::clone(&shared)),
-    )
-}
-
-async fn create_test_conv(
-    repo: &SqliteChatConversationRepository,
-) -> ChatConversation {
-    let conv = ChatConversation::new_ideation(IdeationSessionId::new());
-    repo.create(conv.clone()).await.unwrap();
-    conv
-}
-
 // ─── create / get_by_id ──────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_create_and_get_by_id() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let (repo, conv_repo) = make_shared_repos(conn);
-    let conv = create_test_conv(&conv_repo).await;
+    let (db, repo) = setup_repo();
+    let conv = db.seed_ideation_conversation();
 
     let run = AgentRun::new(conv.id);
     let run_id = run.id;
@@ -233,9 +158,7 @@ async fn test_create_and_get_by_id() {
 
 #[tokio::test]
 async fn test_get_by_id_not_found() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteAgentRunRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let fake_id = AgentRunId::from_string("nonexistent-id".to_string());
     assert!(repo.get_by_id(&fake_id).await.unwrap().is_none());
@@ -245,10 +168,8 @@ async fn test_get_by_id_not_found() {
 
 #[tokio::test]
 async fn test_get_latest_for_conversation() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let (repo, conv_repo) = make_shared_repos(conn);
-    let conv = create_test_conv(&conv_repo).await;
+    let (db, repo) = setup_repo();
+    let conv = db.seed_ideation_conversation();
 
     let mut old_run = AgentRun::new(conv.id);
     old_run.started_at = Utc::now() - chrono::Duration::hours(1);
@@ -265,9 +186,7 @@ async fn test_get_latest_for_conversation() {
 
 #[tokio::test]
 async fn test_get_latest_for_conversation_empty() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteAgentRunRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let fake_id = ChatConversationId::from_string("no-such-conv".to_string());
     assert!(repo.get_latest_for_conversation(&fake_id).await.unwrap().is_none());
@@ -275,10 +194,8 @@ async fn test_get_latest_for_conversation_empty() {
 
 #[tokio::test]
 async fn test_get_active_for_conversation() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let (repo, conv_repo) = make_shared_repos(conn);
-    let conv = create_test_conv(&conv_repo).await;
+    let (db, repo) = setup_repo();
+    let conv = db.seed_ideation_conversation();
 
     // No active run yet
     assert!(repo.get_active_for_conversation(&conv.id).await.unwrap().is_none());
@@ -294,10 +211,8 @@ async fn test_get_active_for_conversation() {
 
 #[tokio::test]
 async fn test_get_active_for_conversation_excludes_terminal_runs() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let (repo, conv_repo) = make_shared_repos(conn);
-    let conv = create_test_conv(&conv_repo).await;
+    let (db, repo) = setup_repo();
+    let conv = db.seed_ideation_conversation();
 
     let mut run = AgentRun::new(conv.id);
     run.status = AgentRunStatus::Completed;
@@ -311,11 +226,9 @@ async fn test_get_active_for_conversation_excludes_terminal_runs() {
 
 #[tokio::test]
 async fn test_get_by_conversation() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let (repo, conv_repo) = make_shared_repos(conn);
-    let conv1 = create_test_conv(&conv_repo).await;
-    let conv2 = create_test_conv(&conv_repo).await;
+    let (db, repo) = setup_repo();
+    let conv1 = db.seed_ideation_conversation();
+    let conv2 = db.seed_ideation_conversation();
 
     let mut r1 = AgentRun::new(conv1.id);
     r1.started_at = Utc::now() - chrono::Duration::hours(2);
@@ -335,10 +248,8 @@ async fn test_get_by_conversation() {
 
 #[tokio::test]
 async fn test_update_status() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let (repo, conv_repo) = make_shared_repos(conn);
-    let conv = create_test_conv(&conv_repo).await;
+    let (db, repo) = setup_repo();
+    let conv = db.seed_ideation_conversation();
 
     let run = AgentRun::new(conv.id);
     let run_id = run.id;
@@ -352,10 +263,8 @@ async fn test_update_status() {
 
 #[tokio::test]
 async fn test_complete() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let (repo, conv_repo) = make_shared_repos(conn);
-    let conv = create_test_conv(&conv_repo).await;
+    let (db, repo) = setup_repo();
+    let conv = db.seed_ideation_conversation();
 
     let run = AgentRun::new(conv.id);
     let run_id = run.id;
@@ -371,10 +280,8 @@ async fn test_complete() {
 
 #[tokio::test]
 async fn test_fail() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let (repo, conv_repo) = make_shared_repos(conn);
-    let conv = create_test_conv(&conv_repo).await;
+    let (db, repo) = setup_repo();
+    let conv = db.seed_ideation_conversation();
 
     let run = AgentRun::new(conv.id);
     let run_id = run.id;
@@ -390,10 +297,8 @@ async fn test_fail() {
 
 #[tokio::test]
 async fn test_cancel() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let (repo, conv_repo) = make_shared_repos(conn);
-    let conv = create_test_conv(&conv_repo).await;
+    let (db, repo) = setup_repo();
+    let conv = db.seed_ideation_conversation();
 
     let run = AgentRun::new(conv.id);
     let run_id = run.id;
@@ -411,10 +316,8 @@ async fn test_cancel() {
 
 #[tokio::test]
 async fn test_delete() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let (repo, conv_repo) = make_shared_repos(conn);
-    let conv = create_test_conv(&conv_repo).await;
+    let (db, repo) = setup_repo();
+    let conv = db.seed_ideation_conversation();
 
     let run = AgentRun::new(conv.id);
     let run_id = run.id;
@@ -429,11 +332,9 @@ async fn test_delete() {
 
 #[tokio::test]
 async fn test_delete_by_conversation() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let (repo, conv_repo) = make_shared_repos(conn);
-    let conv1 = create_test_conv(&conv_repo).await;
-    let conv2 = create_test_conv(&conv_repo).await;
+    let (db, repo) = setup_repo();
+    let conv1 = db.seed_ideation_conversation();
+    let conv2 = db.seed_ideation_conversation();
 
     repo.create(AgentRun::new(conv1.id)).await.unwrap();
     repo.create(AgentRun::new(conv1.id)).await.unwrap();
@@ -451,10 +352,8 @@ async fn test_delete_by_conversation() {
 
 #[tokio::test]
 async fn test_count_by_status() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let (repo, conv_repo) = make_shared_repos(conn);
-    let conv = create_test_conv(&conv_repo).await;
+    let (db, repo) = setup_repo();
+    let conv = db.seed_ideation_conversation();
 
     let r1 = AgentRun::new(conv.id);
     let r2 = AgentRun::new(conv.id);
@@ -475,10 +374,8 @@ async fn test_count_by_status() {
 
 #[tokio::test]
 async fn test_cancel_all_running() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let (repo, conv_repo) = make_shared_repos(conn);
-    let conv = create_test_conv(&conv_repo).await;
+    let (db, repo) = setup_repo();
+    let conv = db.seed_ideation_conversation();
 
     let r1 = AgentRun::new(conv.id);
     let r2 = AgentRun::new(conv.id);
