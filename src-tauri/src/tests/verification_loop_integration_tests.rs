@@ -1075,3 +1075,103 @@ fn test_child_session_description_format_gen1_max4() {
     assert!(description.contains("generation: 1"), "must embed generation 1");
     assert!(description.contains("max_rounds: 4"), "must embed max_rounds 4");
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test 6: Escalation lifecycle
+//
+// Simulates plan-verifier escalating to parent orchestrator:
+//   1. Verifier sets NeedsRevision + convergence_reason=escalated_to_parent + in_progress=false
+//   2. Proposal gate must block (NeedsRevision blocks acceptance)
+//   3. Reconciliation must NOT reset (in_progress=false → reconciler skips it)
+//   4. Parent creates new child session → re-verification succeeds (zero_blocking)
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_escalation_lifecycle_needs_revision_gate_blocks_reconciliation_skips_reverify_succeeds() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+    let session = make_session(&project_id);
+    let session_id = session.id.clone();
+    repo.create(session).await.unwrap();
+
+    // Step 1: Verifier escalates — sets NeedsRevision + escalated_to_parent, in_progress=false
+    let escalation_meta = metadata_converged("escalated_to_parent", 3);
+    repo.update_verification_state(
+        &session_id,
+        VerificationStatus::NeedsRevision,
+        false, // verifier exits cleanly — in_progress cleared before sending message
+        Some(escalation_meta),
+    )
+    .await
+    .unwrap();
+
+    let after_escalation = repo.get_by_id(&session_id).await.unwrap().unwrap();
+    assert_eq!(
+        after_escalation.verification_status,
+        VerificationStatus::NeedsRevision,
+        "escalated session must have status NeedsRevision"
+    );
+    assert!(
+        !after_escalation.verification_in_progress,
+        "escalated session must have in_progress=false (verifier exited cleanly)"
+    );
+
+    // Step 2: Proposal gate must block — NeedsRevision is not an accepted terminal state
+    let gate_result = check_verification_gate(&after_escalation, &settings_with_gate_enabled());
+    assert!(
+        gate_result.is_err(),
+        "gate must block proposal acceptance when status=NeedsRevision after escalation"
+    );
+
+    // Step 3: Reconciliation must NOT reset escalated session (in_progress=false)
+    let config = VerificationReconciliationConfig {
+        stale_after_secs: 5400,      // 90 min
+        auto_verify_stale_secs: 600, // 10 min
+        interval_secs: 300,
+    };
+    let svc = VerificationReconciliationService::new(
+        repo.clone() as Arc<dyn IdeationSessionRepository>,
+        config,
+    );
+    let reset_count = svc.scan_and_reset().await;
+    assert_eq!(
+        reset_count, 0,
+        "reconciler must not reset escalated session (in_progress=false)"
+    );
+
+    // Verify session state unchanged after reconciliation pass
+    let after_reconcile = repo.get_by_id(&session_id).await.unwrap().unwrap();
+    assert_eq!(
+        after_reconcile.verification_status,
+        VerificationStatus::NeedsRevision,
+        "escalated session status must be unchanged after reconciliation"
+    );
+
+    // Step 4: Parent resolves gaps and re-verifies with new child session → zero_blocking
+    let reverify_meta = metadata_converged("zero_blocking", 2);
+    repo.update_verification_state(
+        &session_id,
+        VerificationStatus::Verified,
+        false,
+        Some(reverify_meta),
+    )
+    .await
+    .unwrap();
+
+    let after_reverify = repo.get_by_id(&session_id).await.unwrap().unwrap();
+    assert_eq!(
+        after_reverify.verification_status,
+        VerificationStatus::Verified,
+        "re-verification after escalation resolution must yield Verified"
+    );
+    assert!(
+        !after_reverify.verification_in_progress,
+        "in_progress must be false after successful re-verification"
+    );
+
+    // Gate must pass after successful re-verification
+    assert!(
+        check_verification_gate(&after_reverify, &settings_with_gate_enabled()).is_ok(),
+        "gate must allow acceptance after successful re-verification"
+    );
+}

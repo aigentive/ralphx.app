@@ -608,7 +608,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const query = params.toString() ? `?${params}` : "";
             result = await callTauriGet(`ideation/sessions/${session_id}/child-status${query}`);
         }
-        else if (name === "send_child_session_message") {
+        else if (name === "send_ideation_session_message") {
             // POST /api/ideation/sessions/:id/message
             const { session_id, message } = args;
             result = await callTauri(`ideation/sessions/${session_id}/message`, { message });

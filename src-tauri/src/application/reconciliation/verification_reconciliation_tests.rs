@@ -981,3 +981,63 @@ async fn test_reset_verification_imported_verified_guard() {
         "ImportedVerified must not be overwritten by error reset"
     );
 }
+
+#[tokio::test]
+async fn test_escalated_to_parent_maps_to_needs_revision() {
+    let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
+    let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
+        repo.clone();
+
+    let metadata_json = r#"{"v":1,"current_round":3,"max_rounds":5,"rounds":[],"current_gaps":[],"convergence_reason":"escalated_to_parent","best_round_index":null,"parse_failures":[]}"#;
+    let (parent_id, child_id) =
+        make_parent_child_pair(&repo, Some(metadata_json.to_string())).await;
+
+    reconcile_verification_on_child_complete::<tauri::Wry>(
+        &parent_id,
+        &child_id,
+        &dyn_repo,
+        None,
+    )
+    .await;
+
+    let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert_eq!(
+        parent_after.verification_status,
+        VerificationStatus::NeedsRevision,
+        "escalated_to_parent convergence should map to NeedsRevision"
+    );
+    assert!(
+        !parent_after.verification_in_progress,
+        "in_progress must be cleared after escalation"
+    );
+}
+
+#[tokio::test]
+async fn test_user_stopped_maps_to_skipped() {
+    let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
+    let dyn_repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository> =
+        repo.clone();
+
+    let metadata_json = r#"{"v":1,"current_round":2,"max_rounds":5,"rounds":[],"current_gaps":[],"convergence_reason":"user_stopped","best_round_index":null,"parse_failures":[]}"#;
+    let (parent_id, child_id) =
+        make_parent_child_pair(&repo, Some(metadata_json.to_string())).await;
+
+    reconcile_verification_on_child_complete::<tauri::Wry>(
+        &parent_id,
+        &child_id,
+        &dyn_repo,
+        None,
+    )
+    .await;
+
+    let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert_eq!(
+        parent_after.verification_status,
+        VerificationStatus::Skipped,
+        "user_stopped convergence should map to Skipped (not NeedsRevision)"
+    );
+    assert!(
+        !parent_after.verification_in_progress,
+        "in_progress must be cleared after user_stopped"
+    );
+}

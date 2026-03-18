@@ -722,18 +722,17 @@ pub async fn reset_verification_on_child_error<R: Runtime>(
 /// | convergence_reason | VerificationStatus |
 /// |---|---|
 /// | zero_blocking / jaccard_converged / low_remaining_only | Verified |
-/// | max_rounds | NeedsRevision |
-/// | agent_error / user_skipped / user_reverted / critic_parse_failure | Skipped |
+/// | max_rounds / escalated_to_parent | NeedsRevision |
+/// | agent_error / user_skipped / user_reverted / critic_parse_failure / user_stopped | Skipped |
 /// | _unknown_ | NeedsRevision (defensive default) |
 fn convergence_reason_to_status(reason: &str) -> VerificationStatus {
     match reason {
         "zero_blocking" | "jaccard_converged" | "low_remaining_only" => {
             VerificationStatus::Verified
         }
-        "max_rounds" => VerificationStatus::NeedsRevision,
-        "agent_error" | "user_skipped" | "user_reverted" | "critic_parse_failure" => {
-            VerificationStatus::Skipped
-        }
+        "max_rounds" | "escalated_to_parent" => VerificationStatus::NeedsRevision,
+        "agent_error" | "user_skipped" | "user_reverted" | "critic_parse_failure"
+        | "user_stopped" => VerificationStatus::Skipped,
         _ => VerificationStatus::NeedsRevision, // defensive default for unrecognized reasons
     }
 }

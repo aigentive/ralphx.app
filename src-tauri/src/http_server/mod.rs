@@ -181,7 +181,7 @@ pub async fn start_http_server(
         )
         .route(
             "/api/ideation/sessions/:id/message",
-            post(send_child_session_message_handler),
+            post(send_ideation_session_message_handler),
         )
         // Task tools (chat-task agent)
         .route("/api/update_task", post(update_task))

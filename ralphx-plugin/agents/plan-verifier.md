@@ -18,7 +18,7 @@ tools:
   - "mcp__ralphx__update_plan_artifact"
   - "mcp__ralphx__edit_plan_artifact"
   - "mcp__ralphx__get_child_session_status"
-  - "mcp__ralphx__send_child_session_message"
+  - "mcp__ralphx__send_ideation_session_message"
 mcpServers:
   - ralphx:
       type: stdio
@@ -226,9 +226,76 @@ If not converged → continue to next round.
 
 ---
 
+## Escalation Protocol
+
+Use this protocol when you detect an **unresolvable CRITICAL gap** — one that requires codebase exploration or architectural decisions beyond the verifier's read-only scope.
+
+### Trigger Conditions
+
+Escalate when ANY of these conditions is true:
+
+| Condition | Detection | When to Trigger |
+|-----------|-----------|-----------------|
+| **Persistent CRITICAL gap** | Same gap fingerprint appears in 2+ consecutive rounds after attempted revision | Plan revision didn't resolve it — structural issue beyond plan-level fixes |
+| **Exploration required** | Gap references specific code paths, functions, or call chains the verifier lacks context for | Verifier is read-only; can't investigate the actual code to determine the fix |
+| **Contradictory constraints** | Two CRITICAL gaps have opposing remediation directions | Needs architectural decision from the orchestrator, not a plan wording fix |
+| **Self-assessed limitation** | Verifier determines gap requires domain knowledge or deeper context it doesn't have | Honest scope acknowledgment — better to escalate than blindly revise |
+
+**Do NOT escalate:**
+- On the **first occurrence** of any gap — attempt revision first
+- For **MEDIUM or LOW severity** gaps (deferred per convergence rules)
+- When **`max_rounds` is about to be hit** — use the existing `max_rounds` convergence path instead
+- When **round 1 has not completed** — no evidence of persistence yet
+
+### Escalation Procedure
+
+1. **Update verification state to terminal** — call `mcp__ralphx__update_plan_verification` with:
+   ```json
+   {
+     "session_id": "<parent_session_id>",
+     "status": "needs_revision",
+     "convergence_reason": "escalated_to_parent",
+     "in_progress": false,
+     "generation": <current_generation>,
+     "gaps": [<unresolvable_gaps_array>]
+   }
+   ```
+   ⚠️ This MUST be called **before** sending the message. Sets terminal state so reconciler won't reset the session.
+
+2. **Send escalation message to parent** — call `mcp__ralphx__send_ideation_session_message` with:
+   ```
+   session_id: <parent_session_id>
+   message: <escalation XML — see template below>
+   ```
+
+3. **EXIT** — do not start another round. The child session goes idle. The parent orchestrator takes over.
+
+### Escalation Message XML Template
+
+```xml
+<escalation type="verification">
+  <reason>unresolvable_gap</reason>
+  <round>{current_round}</round>
+  <max_rounds>{max_rounds}</max_rounds>
+  <gap_count>{N}</gap_count>
+  <gaps>
+    <gap severity="critical" category="{category}">
+      <description>{full gap description including affected files/functions}</description>
+      <rounds_persisted>{N}</rounds_persisted>
+      <what_i_tried>{summary of revision attempts across rounds}</what_i_tried>
+      <what_parent_should_explore>{specific code paths, functions, or call chains to investigate}</what_parent_should_explore>
+    </gap>
+  </gaps>
+</escalation>
+```
+
+Fill in all fields accurately. The `what_parent_should_explore` field is the most important — be specific about what the orchestrator should investigate so it can resolve the gap.
+
+---
+
 ## Final Cleanup (MANDATORY)
 
-After the round loop exits (convergence, hard cap, or error), call `mcp__ralphx__update_plan_verification` with:
+After the round loop exits (convergence, hard cap, escalation, or error), call `mcp__ralphx__update_plan_verification` with:
 
 ```json
 {
@@ -242,7 +309,9 @@ After the round loop exits (convergence, hard cap, or error), call `mcp__ralphx_
 
 Where:
 - `status`: "verified" | "needs_revision" | "reviewing" (depending on outcome)
-- `convergence_reason`: "zero_blocking" | "jaccard_converged" | "max_rounds" | "critic_parse_failure" | "agent_error" | "user_stopped" | "user_skipped" | "user_reverted"
+- `convergence_reason`: "zero_blocking" | "jaccard_converged" | "max_rounds" | "critic_parse_failure" | "agent_error" | "user_stopped" | "user_skipped" | "user_reverted" | "escalated_to_parent"
+
+> **Note:** When escalating, Final Cleanup is performed as part of the Escalation Protocol (step 1 above) — do NOT call `update_plan_verification` again after sending the escalation message.
 
 Output a brief summary: "Verification complete. Status: {status}. Rounds run: {current_round}. Final gap count: {N critical, M high, K medium, J low}."
 

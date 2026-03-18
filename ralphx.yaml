@@ -478,7 +478,7 @@ agents:
         cross_project_guide,
         # child session tools
         get_child_session_status,
-        send_child_session_message,
+        send_ideation_session_message,
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
@@ -846,7 +846,7 @@ agents:
         edit_plan_artifact,
         # child session tools
         get_child_session_status,
-        send_child_session_message,
+        send_ideation_session_message,
         # specialist artifact retrieval (read-only — NOT create_team_artifact)
         get_team_artifacts,
         get_artifact,
@@ -904,7 +904,7 @@ agents:
         cross_project_guide,
         # child session tools
         get_child_session_status,
-        send_child_session_message,
+        send_ideation_session_message,
       ]
 
   - name: ideation-team-member

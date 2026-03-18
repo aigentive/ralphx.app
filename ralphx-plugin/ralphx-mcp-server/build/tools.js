@@ -1329,21 +1329,23 @@ export const ALL_TOOLS = [
         },
     },
     {
-        name: "send_child_session_message",
-        description: "Sends a message to a child session's agent conversation. If agent is generating, message is queued. " +
-            "If agent is idle, a new agent run is spawned. Returns delivery_status: 'sent' (written to active stdin), " +
+        name: "send_ideation_session_message",
+        description: "Sends a message to any ideation session's agent conversation by session ID. " +
+            "Zero directionality enforcement — any session can message any active session (parent→child, child→parent, or peer). " +
+            "If agent is generating, message is queued. If agent is idle, a new agent run is spawned. " +
+            "Returns delivery_status: 'sent' (written to active stdin), " +
             "'queued' (agent busy, will receive on next turn), or 'spawned' (new agent run started). " +
-            "Use to nudge verification agents, inject context, or send stop signals.",
+            "Use to nudge verification agents, inject context, send escalation payloads, or send stop signals.",
         inputSchema: {
             type: "object",
             properties: {
                 session_id: {
                     type: "string",
-                    description: "The child session ID to message",
+                    description: "The target ideation session ID to message",
                 },
                 message: {
                     type: "string",
-                    description: "The message content to send to the child session's agent",
+                    description: "The message content to send to the session's agent",
                 },
             },
             required: ["session_id", "message"],
@@ -1392,7 +1394,7 @@ export const TOOL_ALLOWLIST = {
         "migrate_proposals",
         // child session tools
         "get_child_session_status",
-        "send_child_session_message",
+        "send_ideation_session_message",
     ],
     [ORCHESTRATOR_IDEATION_READONLY]: [
         "list_session_proposals",
@@ -1653,7 +1655,7 @@ export const TOOL_ALLOWLIST = {
         "migrate_proposals",
         // Child session tools
         "get_child_session_status",
-        "send_child_session_message",
+        "send_ideation_session_message",
     ],
     // Ideation team members - research and analysis (read-only)
     [IDEATION_TEAM_MEMBER]: [
@@ -1828,7 +1830,7 @@ export const TOOL_ALLOWLIST = {
         "edit_plan_artifact",
         // Child session tools
         "get_child_session_status",
-        "send_child_session_message",
+        "send_ideation_session_message",
         // Specialist artifact retrieval (read-only — NOT create_team_artifact)
         "get_team_artifacts",
         "get_artifact",

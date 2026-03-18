@@ -2496,14 +2496,14 @@ async fn test_get_child_session_status_malformed_metadata_returns_none() {
 }
 
 // ============================================================================
-// send_child_session_message_handler tests
+// send_ideation_session_message_handler tests
 // ============================================================================
 
 /// Test 10: interactive process under "session" key → delivery_status = "sent"
 ///
 /// Validates the dual-key IPR check: agents spawned via HTTP use "session" key.
 #[tokio::test]
-async fn test_send_child_session_message_interactive_session_key_sent() {
+async fn test_send_ideation_session_message_interactive_session_key_sent() {
     let state = setup_test_state().await;
     let session_id = create_active_session(&state).await;
     let sid_str = session_id.as_str().to_string();
@@ -2517,7 +2517,7 @@ async fn test_send_child_session_message_interactive_session_key_sent() {
         .register(ipr_key, stdin)
         .await;
 
-    let result = send_child_session_message_handler(
+    let result = send_ideation_session_message_handler(
         State(state),
         Path(sid_str),
         Json(SendSessionMessageRequest {
@@ -2536,7 +2536,7 @@ async fn test_send_child_session_message_interactive_session_key_sent() {
 ///
 /// Validates the dual-key IPR check: agents spawned via Tauri IPC use "ideation" key.
 #[tokio::test]
-async fn test_send_child_session_message_interactive_ideation_key_sent() {
+async fn test_send_ideation_session_message_interactive_ideation_key_sent() {
     let state = setup_test_state().await;
     let session_id = create_active_session(&state).await;
     let sid_str = session_id.as_str().to_string();
@@ -2550,7 +2550,7 @@ async fn test_send_child_session_message_interactive_ideation_key_sent() {
         .register(ipr_key, stdin)
         .await;
 
-    let result = send_child_session_message_handler(
+    let result = send_ideation_session_message_handler(
         State(state),
         Path(sid_str),
         Json(SendSessionMessageRequest {
@@ -2569,7 +2569,7 @@ async fn test_send_child_session_message_interactive_ideation_key_sent() {
 ///
 /// Agent is in the running registry but has no stdin → message is queued.
 #[tokio::test]
-async fn test_send_child_session_message_running_session_key_queued() {
+async fn test_send_ideation_session_message_running_session_key_queued() {
     let state = setup_test_state().await;
     let session_id = create_active_session(&state).await;
     let sid_str = session_id.as_str().to_string();
@@ -2582,7 +2582,7 @@ async fn test_send_child_session_message_running_session_key_queued() {
         .register(agent_key, 88888, "test-conv-q".to_string(), "test-run-q".to_string(), None, None)
         .await;
 
-    let result = send_child_session_message_handler(
+    let result = send_ideation_session_message_handler(
         State(state),
         Path(sid_str),
         Json(SendSessionMessageRequest {
@@ -2603,7 +2603,7 @@ async fn test_send_child_session_message_running_session_key_queued() {
 ///
 /// Validates dual-key check on the running_agent_registry: Tauri IPC agents use "ideation" key.
 #[tokio::test]
-async fn test_send_child_session_message_running_ideation_key_queued() {
+async fn test_send_ideation_session_message_running_ideation_key_queued() {
     let state = setup_test_state().await;
     let session_id = create_active_session(&state).await;
     let sid_str = session_id.as_str().to_string();
@@ -2616,7 +2616,7 @@ async fn test_send_child_session_message_running_ideation_key_queued() {
         .register(agent_key, 77777, "test-conv-iq".to_string(), "test-run-iq".to_string(), None, None)
         .await;
 
-    let result = send_child_session_message_handler(
+    let result = send_ideation_session_message_handler(
         State(state),
         Path(sid_str),
         Json(SendSessionMessageRequest {
@@ -2640,7 +2640,7 @@ async fn test_send_child_session_message_running_ideation_key_queued() {
 /// `with_team_mode()` is called before `send_message()` in this path.
 /// In production (with Claude CLI present) this would return delivery_status = "spawned".
 #[tokio::test]
-async fn test_send_child_session_message_agent_idle_spawn_path_entered() {
+async fn test_send_ideation_session_message_agent_idle_spawn_path_entered() {
     let state = setup_test_state().await;
 
     // Team-mode session: verifies that session_is_team_mode() is evaluated for spawn path
@@ -2653,7 +2653,7 @@ async fn test_send_child_session_message_agent_idle_spawn_path_entered() {
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
     // No IPR, no running agent → spawn path
-    let result = send_child_session_message_handler(
+    let result = send_ideation_session_message_handler(
         State(state),
         Path(session_id),
         Json(SendSessionMessageRequest {
@@ -2678,7 +2678,7 @@ async fn test_send_child_session_message_agent_idle_spawn_path_entered() {
 
 /// Test 15: session with Archived status → 422
 #[tokio::test]
-async fn test_send_child_session_message_archived_session_returns_422() {
+async fn test_send_ideation_session_message_archived_session_returns_422() {
     let state = setup_test_state().await;
 
     let session = IdeationSessionBuilder::new()
@@ -2688,7 +2688,7 @@ async fn test_send_child_session_message_archived_session_returns_422() {
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
-    let result = send_child_session_message_handler(
+    let result = send_ideation_session_message_handler(
         State(state),
         Path(session_id),
         Json(SendSessionMessageRequest { message: "Hello".to_string() }),
@@ -2706,7 +2706,7 @@ async fn test_send_child_session_message_archived_session_returns_422() {
 
 /// Test 16: session with Accepted status → 422
 #[tokio::test]
-async fn test_send_child_session_message_accepted_session_returns_422() {
+async fn test_send_ideation_session_message_accepted_session_returns_422() {
     let state = setup_test_state().await;
 
     let session = IdeationSessionBuilder::new()
@@ -2716,7 +2716,7 @@ async fn test_send_child_session_message_accepted_session_returns_422() {
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
-    let result = send_child_session_message_handler(
+    let result = send_ideation_session_message_handler(
         State(state),
         Path(session_id),
         Json(SendSessionMessageRequest { message: "Hello".to_string() }),
@@ -2734,12 +2734,12 @@ async fn test_send_child_session_message_accepted_session_returns_422() {
 
 /// Test 17: empty message → 422
 #[tokio::test]
-async fn test_send_child_session_message_empty_message_returns_422() {
+async fn test_send_ideation_session_message_empty_message_returns_422() {
     let state = setup_test_state().await;
     let session_id = create_active_session(&state).await;
     let sid_str = session_id.as_str().to_string();
 
-    let result = send_child_session_message_handler(
+    let result = send_ideation_session_message_handler(
         State(state),
         Path(sid_str),
         Json(SendSessionMessageRequest { message: String::new() }),
@@ -2753,14 +2753,14 @@ async fn test_send_child_session_message_empty_message_returns_422() {
 
 /// Test 18: message longer than 10_000 chars → 422
 #[tokio::test]
-async fn test_send_child_session_message_too_long_returns_422() {
+async fn test_send_ideation_session_message_too_long_returns_422() {
     let state = setup_test_state().await;
     let session_id = create_active_session(&state).await;
     let sid_str = session_id.as_str().to_string();
 
     let huge_message = "X".repeat(10_001);
 
-    let result = send_child_session_message_handler(
+    let result = send_ideation_session_message_handler(
         State(state),
         Path(sid_str),
         Json(SendSessionMessageRequest { message: huge_message }),
@@ -2778,13 +2778,13 @@ async fn test_send_child_session_message_too_long_returns_422() {
 /// Validates the error arm of the send_message match: `Err(e) → log + return 500`.
 /// Separate from test 14 to document the explicit error-handling contract.
 #[tokio::test]
-async fn test_send_child_session_message_send_error_returns_500() {
+async fn test_send_ideation_session_message_send_error_returns_500() {
     let state = setup_test_state().await;
     let session_id = create_active_session(&state).await;
     let sid_str = session_id.as_str().to_string();
 
     // Agent is idle, no IPR → reaches send_message() → SpawnFailed in test env → Err → 500
-    let result = send_child_session_message_handler(
+    let result = send_ideation_session_message_handler(
         State(state),
         Path(sid_str),
         Json(SendSessionMessageRequest {

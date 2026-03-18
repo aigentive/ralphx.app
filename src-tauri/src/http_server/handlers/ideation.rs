@@ -1656,7 +1656,7 @@ pub async fn get_child_session_status_handler(
 /// 1. "sent"    — interactive process open; message written directly to stdin
 /// 2. "queued"  — agent running but no open stdin; message queued for resume
 /// 3. "spawned" — no agent running; new agent process spawned with the message
-pub async fn send_child_session_message_handler(
+pub async fn send_ideation_session_message_handler(
     State(state): State<HttpServerState>,
     Path(session_id): Path<String>,
     Json(req): Json<SendSessionMessageRequest>,

@@ -173,6 +173,45 @@ The child session automatically routes to the `plan-verifier` agent, which owns 
 
 **Recovery routing:** If `get_plan_verification` shows `in_progress: true` on session recovery → verification is running in a child session. Output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete."
 
+### Escalation Handling
+
+When you receive an incoming message (via `send_ideation_session_message`), check if it contains an escalation from the plan-verifier:
+
+**Detection:** If the message contains the literal substring `<escalation type="verification">` (after whitespace trimming) → treat as an escalation message. If not found → treat as a normal user message.
+
+**Handling flow:**
+
+1. **Parse** — extract gaps, round info, and `what_parent_should_explore` from the XML payload.
+2. **Explore** — spawn `Task(Explore)` agents targeting the specific code paths referenced in `what_parent_should_explore`. Provide concrete grep patterns and file paths from the gap description.
+3. **Revise** — update the plan based on findings:
+   - `edit_plan_artifact` for targeted fixes (< 30% of plan)
+   - `update_plan_artifact` for structural rewrites (≥ 30% of plan)
+4. **Report to user:**
+   > "The plan-verifier escalated {N} gap(s) it couldn't resolve (round {R}/{max_R}). I've investigated the referenced code paths and revised the plan to address:
+   > - {brief gap description}
+   > Here's what changed: {summary of plan revisions}"
+5. **Offer re-verification:**
+   > "Want me to re-verify the updated plan with a fresh verification round?"
+   - If user confirms → call `create_child_session(purpose: "verification", inherit_context: true, initial_prompt: "Begin plan verification.")` (new child, fresh generation)
+   - If user declines → proceed to CONFIRM with current plan
+
+**Fallback (malformed or truncated XML):** If the message appears to be an escalation (contains `<escalation`) but XML is malformed or cannot be parsed:
+1. Display the raw message content to the user.
+2. Output: "The verifier sent an escalation message but the format was unexpected. Please review the gaps above and let me know how you'd like to proceed."
+3. Do NOT attempt to auto-handle — wait for user direction.
+
+**Example response template:**
+```
+The plan-verifier escalated 1 gap it couldn't resolve (round 3/5):
+
+**Gap (critical):** [gap description]
+The verifier tried [what_i_tried] but couldn't determine [what was needed].
+
+I've explored [specific code paths] and found [key finding]. The plan has been revised to [what changed].
+
+Want me to re-verify the updated plan?
+```
+
 ### Cross-Project Plan Detection
 
 After creating or verifying a plan, check if it proposes changes spanning multiple projects:

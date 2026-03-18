@@ -83,6 +83,8 @@ const CONVERGENCE_REASON_LABELS: Record<string, string> = {
   critic_parse_failure: "Critic output could not be parsed",
   user_skipped: "Manually skipped by user",
   user_reverted: "Plan reverted to original version",
+  escalated_to_parent: "Escalated to orchestrator",
+  user_stopped: "Stopped by user",
 };
 
 // ============================================================================

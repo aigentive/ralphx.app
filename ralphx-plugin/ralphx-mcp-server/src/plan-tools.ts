@@ -156,6 +156,7 @@ export const PLAN_TOOLS: Tool[] = [
             "user_stopped",
             "user_skipped",
             "user_reverted",
+            "escalated_to_parent",
           ],
           description:
             "Why verification converged (only when status=verified or skipped)",

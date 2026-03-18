@@ -344,7 +344,9 @@ export type EventRoundSummary = z.infer<typeof EventRoundSummarySchema>;
  */
 export const PlanVerificationStatusChangedSchema = z.object({
   session_id: z.string(),
-  status: z.enum(["unverified", "reviewing", "verified", "needs_revision", "skipped"]),
+  // "imported_verified" is included defensively — backend currently skips event emission for ImportedVerified,
+  // but the schema must accept it if that changes.
+  status: z.enum(["unverified", "reviewing", "verified", "needs_revision", "skipped", "imported_verified"]),
   in_progress: z.boolean(),
   generation: z.number().int().nullable().optional(),
   round: z.number().int().nullable().optional(),

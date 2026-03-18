@@ -591,6 +591,15 @@ describe("PlanVerificationStatusChangedSchema — contract test", () => {
     }
   });
 
+  it("accepts imported_verified status (defensive fix — backend skips emission currently)", () => {
+    const result = PlanVerificationStatusChangedSchema.safeParse({
+      session_id: "test",
+      status: "imported_verified",
+      in_progress: false,
+    });
+    expect(result.success).toBe(true);
+  });
+
   it("accepts null numeric fields from reset/start events", () => {
     const raw = {
       session_id: "sess-001",
