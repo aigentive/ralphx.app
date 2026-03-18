@@ -226,9 +226,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   // Special handling for permission_request tool (always allowed, not scoped by agent type)
   if (name === "permission_request") {
-    return handlePermissionRequest(
-      args as Parameters<typeof handlePermissionRequest>[0]
-    );
+    try {
+      return await handlePermissionRequest(
+        args as Parameters<typeof handlePermissionRequest>[0]
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        content: [{ type: "text", text: JSON.stringify({ behavior: "deny", message }) }],
+      };
+    }
   }
 
   // Special handling for ask_user_question (register + long-poll, like permission_request)
@@ -245,7 +252,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         isError: true,
       };
     }
-    return handleAskUserQuestion(args as unknown as AskUserQuestionArgs);
+    try {
+      return await handleAskUserQuestion(args as unknown as AskUserQuestionArgs);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        content: [{ type: "text", text: `ERROR: Unexpected error: ${message}` }],
+        isError: true,
+      };
+    }
   }
 
   // Special handling for request_team_plan (two-phase: register POST + long-poll GET)
@@ -263,12 +278,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
     }
     const leadSessionId = globalThis.process.env.RALPHX_LEAD_SESSION_ID;
-    return handleRequestTeamPlan(
-      args as unknown as RequestTeamPlanArgs,
-      RALPHX_CONTEXT_TYPE ?? "ideation",
-      RALPHX_CONTEXT_ID ?? "",
-      leadSessionId
-    );
+    try {
+      return await handleRequestTeamPlan(
+        args as unknown as RequestTeamPlanArgs,
+        RALPHX_CONTEXT_TYPE ?? "ideation",
+        RALPHX_CONTEXT_ID ?? "",
+        leadSessionId
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        content: [{ type: "text", text: `ERROR: Unexpected error: ${message}` }],
+        isError: true,
+      };
+    }
   }
 
   // Authorization check (defense in depth)
