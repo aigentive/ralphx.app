@@ -89,7 +89,3 @@ pub async fn get_conversation_active_state(
 
     Ok(Json(response))
 }
-
-#[cfg(test)]
-#[path = "conversations_tests.rs"]
-mod tests;

@@ -1287,11 +1287,13 @@ async fn resolve_teammate_project_id(
 }
 
 /// Color palette for teammate distinction
-const TEAMMATE_COLORS: &[&str] = &["blue", "green", "cyan", "magenta", "yellow"];
+#[doc(hidden)]
+pub const TEAMMATE_COLORS: &[&str] = &["blue", "green", "cyan", "magenta", "yellow"];
 
 /// Find the first active team via TeamService.
 /// Returns (team_name, context_id, context_type).
-async fn find_active_team(state: &HttpServerState) -> Result<(String, String, String), String> {
+#[doc(hidden)]
+pub async fn find_active_team(state: &HttpServerState) -> Result<(String, String, String), String> {
     let teams = state.team_service.list_teams().await;
     for team_name in &teams {
         if let Ok(status) = state.team_service.get_team_status(team_name).await {
@@ -1331,7 +1333,8 @@ fn resolve_lead_session_from_config(team_name: &str) -> Option<String> {
 }
 
 /// Generate a unique teammate name, appending a suffix if needed.
-async fn generate_unique_teammate_name(
+#[doc(hidden)]
+pub async fn generate_unique_teammate_name(
     state: &HttpServerState,
     team_name: &str,
     role: &str,
@@ -1354,7 +1357,8 @@ async fn generate_unique_teammate_name(
 }
 
 /// Assign a color from the palette based on current teammate count.
-async fn assign_teammate_color(state: &HttpServerState, team_name: &str) -> String {
+#[doc(hidden)]
+pub async fn assign_teammate_color(state: &HttpServerState, team_name: &str) -> String {
     let count = state
         .team_service
         .get_teammate_count(team_name)
@@ -1623,8 +1627,8 @@ pub async fn save_team_session_state(
 /// Resolve the MCP agent type for a teammate spawn, preferring the `preset`
 /// field when available and falling back to a process-based default.
 /// Extracted for unit testability without Axum handler infrastructure.
-#[cfg(test)]
-pub(crate) fn resolve_mcp_agent_type(process: &str, preset: Option<&str>) -> String {
+#[doc(hidden)]
+pub fn resolve_mcp_agent_type(process: &str, preset: Option<&str>) -> String {
     if let Some(p) = preset {
         return p.to_string();
     }
@@ -1638,7 +1642,3 @@ pub(crate) fn resolve_mcp_agent_type(process: &str, preset: Option<&str>) -> Str
 // ============================================================================
 // Tests
 // ============================================================================
-
-#[cfg(test)]
-#[path = "teams_tests.rs"]
-mod tests;

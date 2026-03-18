@@ -103,7 +103,8 @@ fn validate_resolved_team_config(
 ///
 /// When returning `Some`, the prompt includes the metadata suffix that `plan-verifier`
 /// expects to parse: `parent_session_id: X, generation: Y, max_rounds: N`.
-pub(super) fn synthesize_verification_prompt(
+#[doc(hidden)]
+pub fn synthesize_verification_prompt(
     purpose: &Option<String>,
     verification_generation: Option<i32>,
     max_rounds: u32,
@@ -805,7 +806,8 @@ pub async fn get_parent_session_context(
 
 /// Returns true if the session should use team mode for agent spawning.
 /// "solo" and None are treated as non-team; any other value ("research", "debate", etc.) is team.
-pub(crate) fn session_is_team_mode(session: &IdeationSession) -> bool {
+#[doc(hidden)]
+pub fn session_is_team_mode(session: &IdeationSession) -> bool {
     session.team_mode.as_deref().is_some_and(|m| m != "solo")
 }
 
@@ -947,7 +949,3 @@ pub(crate) async fn create_verification_child_session(
 
     Ok(orchestration_triggered)
 }
-
-#[cfg(test)]
-#[path = "session_linking_tests.rs"]
-mod tests;

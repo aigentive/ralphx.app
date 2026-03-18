@@ -507,7 +507,3 @@ pub async fn validate_key(
         }
     }
 }
-
-#[cfg(test)]
-#[path = "api_keys_tests.rs"]
-mod api_keys_tests;
