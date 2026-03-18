@@ -15,10 +15,8 @@ use ralphx_lib::domain::entities::{
     ArtifactId, ArtifactType, ResearchBrief, ResearchDepth, ResearchDepthPreset, ResearchOutput,
     ResearchProcess, ResearchProcessStatus,
 };
-use ralphx_lib::infrastructure::sqlite::{
-    open_memory_connection, run_migrations, SqliteProcessRepository,
-};
-use tokio::sync::Mutex;
+use ralphx_lib::infrastructure::sqlite::SqliteProcessRepository;
+use ralphx_lib::testing::SqliteStateFixture;
 
 // ============================================================================
 // Test Setup Helpers
@@ -29,15 +27,11 @@ fn create_memory_state() -> AppState {
     AppState::new_test()
 }
 
-/// Helper to create AppState with SQLite repositories (in-memory database)
-fn create_sqlite_state() -> AppState {
-    let conn = open_memory_connection().expect("Failed to open memory connection");
-    run_migrations(&conn).expect("Failed to run migrations");
-    let shared_conn = Arc::new(Mutex::new(conn));
-
-    let mut state = AppState::new_test();
-    state.process_repo = Arc::new(SqliteProcessRepository::from_shared(shared_conn));
-    state
+/// Helper to create AppState with SQLite repositories (file-backed temp database)
+fn create_sqlite_state() -> SqliteStateFixture {
+    SqliteStateFixture::new("research-integration", |db, state| {
+        state.process_repo = Arc::new(SqliteProcessRepository::from_shared(db.shared_conn()));
+    })
 }
 
 /// Create a research process with quick-scan preset

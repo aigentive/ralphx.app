@@ -17,25 +17,24 @@ use std::sync::Arc;
 use ralphx_lib::application::AppState;
 use ralphx_lib::domain::entities::{GitMode, InternalStatus, Project, Task};
 use ralphx_lib::infrastructure::sqlite::{
-    open_memory_connection, run_migrations, SqliteProjectRepository, SqliteTaskRepository,
+    SqliteProjectRepository, SqliteTaskRepository,
 };
-use tokio::sync::Mutex;
+use ralphx_lib::testing::SqliteStateFixture;
 
 /// Helper to create AppState with memory repositories
 fn create_memory_state() -> AppState {
     AppState::new_test()
 }
 
-/// Helper to create AppState with SQLite repositories (in-memory database)
-fn create_sqlite_state() -> AppState {
-    let conn = open_memory_connection().expect("Failed to open memory connection");
-    run_migrations(&conn).expect("Failed to run migrations");
-    let shared_conn = Arc::new(Mutex::new(conn));
-
-    AppState::with_repos(
-        Arc::new(SqliteTaskRepository::from_shared(Arc::clone(&shared_conn))),
-        Arc::new(SqliteProjectRepository::from_shared(shared_conn)),
-    )
+/// Helper to create AppState with SQLite repositories (file-backed temp database)
+fn create_sqlite_state() -> SqliteStateFixture {
+    SqliteStateFixture::new("repository-swapping", |db, state| {
+        let shared_conn = db.shared_conn();
+        *state = AppState::with_repos(
+            Arc::new(SqliteTaskRepository::from_shared(Arc::clone(&shared_conn))),
+            Arc::new(SqliteProjectRepository::from_shared(shared_conn)),
+        );
+    })
 }
 
 /// Shared business logic test that works with any repository implementation

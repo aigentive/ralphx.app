@@ -16,10 +16,9 @@ use ralphx_lib::domain::entities::{
     ArtifactType,
 };
 use ralphx_lib::infrastructure::sqlite::{
-    open_memory_connection, run_migrations, SqliteArtifactBucketRepository,
-    SqliteArtifactRepository,
+    SqliteArtifactBucketRepository, SqliteArtifactRepository,
 };
-use tokio::sync::Mutex;
+use ralphx_lib::testing::SqliteStateFixture;
 
 // ============================================================================
 // Test Setup Helpers
@@ -30,20 +29,21 @@ fn create_memory_state() -> AppState {
     AppState::new_test()
 }
 
-/// Helper to create AppState with SQLite repositories (in-memory database)
-fn create_sqlite_state() -> AppState {
-    let conn = open_memory_connection().expect("Failed to open memory connection");
-    run_migrations(&conn).expect("Failed to run migrations");
-    // Clear seeded buckets so tests start from clean state (like memory tests)
-    conn.execute("DELETE FROM artifact_buckets", []).unwrap();
-    let shared_conn = Arc::new(Mutex::new(conn));
+/// Helper to create AppState with SQLite repositories (file-backed temp database)
+fn create_sqlite_state() -> SqliteStateFixture {
+    SqliteStateFixture::new("artifact-integration", |db, state| {
+        db.with_connection(|conn| {
+            conn.execute("DELETE FROM artifact_buckets", [])
+                .expect("Failed to clear seeded artifact buckets");
+        });
 
-    let mut state = AppState::new_test();
-    state.artifact_repo = Arc::new(SqliteArtifactRepository::from_shared(Arc::clone(
-        &shared_conn,
-    )));
-    state.artifact_bucket_repo = Arc::new(SqliteArtifactBucketRepository::from_shared(shared_conn));
-    state
+        let shared_conn = db.shared_conn();
+        state.artifact_repo = Arc::new(SqliteArtifactRepository::from_shared(Arc::clone(
+            &shared_conn,
+        )));
+        state.artifact_bucket_repo =
+            Arc::new(SqliteArtifactBucketRepository::from_shared(shared_conn));
+    })
 }
 
 /// Helper to create the research-outputs system bucket

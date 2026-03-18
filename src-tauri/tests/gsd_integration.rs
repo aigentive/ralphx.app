@@ -19,10 +19,10 @@ use ralphx_lib::domain::entities::{
     Task, WorkflowColumn, WorkflowSchema,
 };
 use ralphx_lib::infrastructure::sqlite::{
-    open_memory_connection, run_migrations, SqliteMethodologyRepository, SqliteProjectRepository,
-    SqliteTaskRepository, SqliteWorkflowRepository,
+    SqliteMethodologyRepository, SqliteProjectRepository, SqliteTaskRepository,
+    SqliteWorkflowRepository,
 };
-use tokio::sync::Mutex;
+use ralphx_lib::testing::SqliteStateFixture;
 
 // ============================================================================
 // Test Setup Helpers
@@ -33,20 +33,17 @@ fn create_memory_state() -> AppState {
     AppState::new_test()
 }
 
-/// Create AppState with SQLite repositories (in-memory database)
-fn create_sqlite_state() -> AppState {
-    let conn = open_memory_connection().expect("Failed to open memory connection");
-    run_migrations(&conn).expect("Failed to run migrations");
-    let shared_conn = Arc::new(Mutex::new(conn));
-
-    let mut state = AppState::new_test();
-    state.methodology_repo = Arc::new(SqliteMethodologyRepository::from_shared(
-        shared_conn.clone(),
-    ));
-    state.workflow_repo = Arc::new(SqliteWorkflowRepository::from_shared(shared_conn.clone()));
-    state.task_repo = Arc::new(SqliteTaskRepository::from_shared(shared_conn.clone()));
-    state.project_repo = Arc::new(SqliteProjectRepository::from_shared(shared_conn));
-    state
+/// Create AppState with SQLite repositories (file-backed temp database)
+fn create_sqlite_state() -> SqliteStateFixture {
+    SqliteStateFixture::new("gsd-integration", |db, state| {
+        let shared_conn = db.shared_conn();
+        state.methodology_repo = Arc::new(SqliteMethodologyRepository::from_shared(
+            shared_conn.clone(),
+        ));
+        state.workflow_repo = Arc::new(SqliteWorkflowRepository::from_shared(shared_conn.clone()));
+        state.task_repo = Arc::new(SqliteTaskRepository::from_shared(shared_conn.clone()));
+        state.project_repo = Arc::new(SqliteProjectRepository::from_shared(shared_conn));
+    })
 }
 
 /// Create a project and return its ID (for SQLite tests that need FK constraint)

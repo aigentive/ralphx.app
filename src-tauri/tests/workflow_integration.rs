@@ -14,10 +14,8 @@ use ralphx_lib::application::AppState;
 use ralphx_lib::domain::entities::{
     ColumnBehavior, InternalStatus, WorkflowColumn, WorkflowSchema,
 };
-use ralphx_lib::infrastructure::sqlite::{
-    open_memory_connection, run_migrations, SqliteWorkflowRepository,
-};
-use tokio::sync::Mutex;
+use ralphx_lib::infrastructure::sqlite::SqliteWorkflowRepository;
+use ralphx_lib::testing::SqliteStateFixture;
 
 // ============================================================================
 // Test Setup Helpers
@@ -28,15 +26,11 @@ fn create_memory_state() -> AppState {
     AppState::new_test()
 }
 
-/// Helper to create AppState with SQLite repositories (in-memory database)
-fn create_sqlite_state() -> AppState {
-    let conn = open_memory_connection().expect("Failed to open memory connection");
-    run_migrations(&conn).expect("Failed to run migrations");
-    let shared_conn = Arc::new(Mutex::new(conn));
-
-    let mut state = AppState::new_test();
-    state.workflow_repo = Arc::new(SqliteWorkflowRepository::from_shared(shared_conn));
-    state
+/// Helper to create AppState with SQLite repositories (file-backed temp database)
+fn create_sqlite_state() -> SqliteStateFixture {
+    SqliteStateFixture::new("workflow-integration", |db, state| {
+        state.workflow_repo = Arc::new(SqliteWorkflowRepository::from_shared(db.shared_conn()));
+    })
 }
 
 /// Create a custom workflow with 5 columns for testing
