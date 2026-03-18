@@ -1,5 +1,5 @@
 use super::*;
-use crate::domain::entities::{ProjectId, Task};
+use crate::entities::{ProjectId, Task};
 
 // ===== ReviewPointConfig Tests =====
 

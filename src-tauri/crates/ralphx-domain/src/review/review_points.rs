@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::entities::Task;
+use crate::entities::Task;
 
 /// Configuration for review point behavior
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
