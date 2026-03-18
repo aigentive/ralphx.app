@@ -14,6 +14,7 @@ paths:
 | Rule | Detail |
 |---|---|
 | Run targeted Rust tests | ✅ `cargo test --manifest-path src-tauri/Cargo.toml --test <file_stem>` | ❌ full `cargo test` |
+| `cargo test` name filters are single-filter only | `cargo test <TESTNAME>` / `cargo test --lib <FILTER>` accepts one substring filter; do not append multiple test names and expect Cargo/libtest to combine them |
 | No broad formatter runs | ❌ `cargo fmt` / broad `rustfmt` unless user explicitly asks; they can touch hundreds of files and hide the real diff |
 | Keep diffs reviewable | Use `apply_patch` for code edits, then verify `git diff` / `git diff --staged` only shows intended hunks |
 | Heavy SQLite tests use shared temp DB fixtures | Use `ralphx_lib::testing::SqliteTestDb` / `SqliteStateFixture` instead of rerunning migrations into fresh `:memory:` DBs |
@@ -27,6 +28,22 @@ cargo test --manifest-path src-tauri/Cargo.toml --test state_machine_flows --tes
 cargo test --manifest-path src-tauri/Cargo.toml --test per_project_execution_scoping
 cargo test --manifest-path src-tauri/Cargo.toml --test review_flows
 cargo test --manifest-path src-tauri/Cargo.toml --test execution_control_flows
+```
+
+## Filter Rules
+
+| Need | Use |
+|---|---|
+| One unit-test/module substring | `cargo test --manifest-path src-tauri/Cargo.toml <filter> --lib` |
+| Multiple integration targets in one run | `cargo test --manifest-path src-tauri/Cargo.toml --test review_flows --test execution_control_flows` |
+| Multiple unrelated unit-test filters | Run separate `cargo test ... --lib` commands sequentially |
+| Parallel verification | ❌ do not start multiple Cargo test jobs against the same target dir; they block on `.cargo-lock` and add noise instead of speed |
+
+Example:
+
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml sqlite_chat_conversation_repo_tests --lib
+cargo test --manifest-path src-tauri/Cargo.toml sqlite_memory_entry_repo_tests --lib
 ```
 
 ## Shared SQLite Test Setup
@@ -46,4 +63,3 @@ cargo test --manifest-path src-tauri/Cargo.toml --test execution_control_flows
 | Need to change Rust code | Edit the smallest surface possible |
 | Think "`cargo fmt` will be harmless" | Don’t do it here |
 | Formatting is truly required | Ask first, keep it scoped, and commit it separately from logic changes |
-
