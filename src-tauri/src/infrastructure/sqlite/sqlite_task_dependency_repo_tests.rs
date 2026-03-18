@@ -1,44 +1,32 @@
 use super::*;
-use crate::domain::entities::ProjectId;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::domain::entities::{Project, ProjectId};
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite-task-dependency-repo")
 }
 
-fn create_test_project(conn: &Connection, id: &ProjectId, name: &str, path: &str) {
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory, git_mode, created_at, updated_at)
-         VALUES (?1, ?2, ?3, 'single_branch', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        rusqlite::params![id.as_str(), name, path],
-    )
-    .unwrap();
+fn create_test_project(db: &SqliteTestDb, id: &ProjectId, name: &str, path: &str) {
+    let mut project = Project::new(name.to_string(), path.to_string());
+    project.id = id.clone();
+    db.insert_project(project);
 }
 
-fn create_test_task(conn: &Connection, project_id: &ProjectId, title: &str) -> TaskId {
-    let task_id = TaskId::new();
-    conn.execute(
-        "INSERT INTO tasks (id, project_id, category, title, created_at, updated_at)
-         VALUES (?1, ?2, 'feature', ?3, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        rusqlite::params![task_id.as_str(), project_id.as_str(), title],
-    )
-    .unwrap();
-    task_id
+fn create_test_task(db: &SqliteTestDb, project_id: &ProjectId, title: &str) -> TaskId {
+    db.seed_task(project_id.clone(), title).id
 }
 
 // ==================== ADD DEPENDENCY TESTS ====================
 
 #[tokio::test]
 async fn test_add_dependency_creates_record() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     let result = repo.add_dependency(&task_a, &task_b).await;
 
@@ -52,13 +40,13 @@ async fn test_add_dependency_creates_record() {
 
 #[tokio::test]
 async fn test_add_dependency_duplicate_is_ignored() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     // Add same dependency twice
     repo.add_dependency(&task_a, &task_b).await.unwrap();
@@ -73,14 +61,14 @@ async fn test_add_dependency_duplicate_is_ignored() {
 
 #[tokio::test]
 async fn test_add_multiple_dependencies() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
-    let task_c = create_test_task(&conn, &project_id, "Task C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
+    let task_c = create_test_task(&db, &project_id, "Task C");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     // A depends on B and C
     repo.add_dependency(&task_a, &task_b).await.unwrap();
@@ -96,13 +84,13 @@ async fn test_add_multiple_dependencies() {
 
 #[tokio::test]
 async fn test_remove_dependency_deletes_record() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     repo.add_dependency(&task_a, &task_b).await.unwrap();
     let result = repo.remove_dependency(&task_a, &task_b).await;
@@ -115,13 +103,13 @@ async fn test_remove_dependency_deletes_record() {
 
 #[tokio::test]
 async fn test_remove_nonexistent_dependency_succeeds() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     // Should not error
     let result = repo.remove_dependency(&task_a, &task_b).await;
@@ -130,14 +118,14 @@ async fn test_remove_nonexistent_dependency_succeeds() {
 
 #[tokio::test]
 async fn test_remove_only_specified_dependency() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
-    let task_c = create_test_task(&conn, &project_id, "Task C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
+    let task_c = create_test_task(&db, &project_id, "Task C");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     repo.add_dependency(&task_a, &task_b).await.unwrap();
     repo.add_dependency(&task_a, &task_c).await.unwrap();
@@ -154,12 +142,12 @@ async fn test_remove_only_specified_dependency() {
 
 #[tokio::test]
 async fn test_get_blockers_empty() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task = create_test_task(&conn, &project_id, "Task");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task = create_test_task(&db, &project_id, "Task");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     let blockers = repo.get_blockers(&task).await.unwrap();
     assert!(blockers.is_empty());
@@ -167,13 +155,13 @@ async fn test_get_blockers_empty() {
 
 #[tokio::test]
 async fn test_get_blockers_returns_correct_direction() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     // A depends on B
     repo.add_dependency(&task_a, &task_b).await.unwrap();
@@ -192,12 +180,12 @@ async fn test_get_blockers_returns_correct_direction() {
 
 #[tokio::test]
 async fn test_get_blocked_by_empty() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task = create_test_task(&conn, &project_id, "Task");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task = create_test_task(&db, &project_id, "Task");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     let blocked_by = repo.get_blocked_by(&task).await.unwrap();
     assert!(blocked_by.is_empty());
@@ -205,13 +193,13 @@ async fn test_get_blocked_by_empty() {
 
 #[tokio::test]
 async fn test_get_blocked_by_returns_correct_direction() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     // A depends on B (B blocks A)
     repo.add_dependency(&task_a, &task_b).await.unwrap();
@@ -228,14 +216,14 @@ async fn test_get_blocked_by_returns_correct_direction() {
 
 #[tokio::test]
 async fn test_get_blocked_by_multiple() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
-    let task_c = create_test_task(&conn, &project_id, "Task C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
+    let task_c = create_test_task(&db, &project_id, "Task C");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     // A and B both depend on C
     repo.add_dependency(&task_a, &task_c).await.unwrap();
@@ -251,12 +239,12 @@ async fn test_get_blocked_by_multiple() {
 
 #[tokio::test]
 async fn test_has_circular_dependency_self() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task = create_test_task(&conn, &project_id, "Task");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task = create_test_task(&db, &project_id, "Task");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     let result = repo.has_circular_dependency(&task, &task).await;
     assert!(result.is_ok());
@@ -265,13 +253,13 @@ async fn test_has_circular_dependency_self() {
 
 #[tokio::test]
 async fn test_has_circular_dependency_direct_cycle() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     // B depends on A
     repo.add_dependency(&task_b, &task_a).await.unwrap();
@@ -284,14 +272,14 @@ async fn test_has_circular_dependency_direct_cycle() {
 
 #[tokio::test]
 async fn test_has_circular_dependency_indirect_cycle() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
-    let task_c = create_test_task(&conn, &project_id, "Task C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
+    let task_c = create_test_task(&db, &project_id, "Task C");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     // B -> C, C -> A (existing chain: B depends on C, C depends on A)
     repo.add_dependency(&task_b, &task_c).await.unwrap();
@@ -305,14 +293,14 @@ async fn test_has_circular_dependency_indirect_cycle() {
 
 #[tokio::test]
 async fn test_has_circular_dependency_no_cycle() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
-    let task_c = create_test_task(&conn, &project_id, "Task C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
+    let task_c = create_test_task(&db, &project_id, "Task C");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     // A -> B (existing)
     repo.add_dependency(&task_a, &task_b).await.unwrap();
@@ -325,13 +313,13 @@ async fn test_has_circular_dependency_no_cycle() {
 
 #[tokio::test]
 async fn test_has_circular_dependency_empty_graph() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     // No existing dependencies, would A -> B create a cycle? No
     let result = repo.has_circular_dependency(&task_a, &task_b).await;
@@ -341,16 +329,16 @@ async fn test_has_circular_dependency_empty_graph() {
 
 #[tokio::test]
 async fn test_has_circular_dependency_long_chain() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
-    let task_c = create_test_task(&conn, &project_id, "Task C");
-    let task_d = create_test_task(&conn, &project_id, "Task D");
-    let task_e = create_test_task(&conn, &project_id, "Task E");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
+    let task_c = create_test_task(&db, &project_id, "Task C");
+    let task_d = create_test_task(&db, &project_id, "Task D");
+    let task_e = create_test_task(&db, &project_id, "Task E");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     // Chain: B -> C -> D -> E -> A
     repo.add_dependency(&task_b, &task_c).await.unwrap();
@@ -368,14 +356,14 @@ async fn test_has_circular_dependency_long_chain() {
 
 #[tokio::test]
 async fn test_clear_dependencies_removes_outgoing() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
-    let task_c = create_test_task(&conn, &project_id, "Task C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
+    let task_c = create_test_task(&db, &project_id, "Task C");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     // A -> B, A -> C
     repo.add_dependency(&task_a, &task_b).await.unwrap();
@@ -389,14 +377,14 @@ async fn test_clear_dependencies_removes_outgoing() {
 
 #[tokio::test]
 async fn test_clear_dependencies_removes_incoming() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
-    let task_c = create_test_task(&conn, &project_id, "Task C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
+    let task_c = create_test_task(&db, &project_id, "Task C");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     // B -> A, C -> A
     repo.add_dependency(&task_b, &task_a).await.unwrap();
@@ -417,14 +405,14 @@ async fn test_clear_dependencies_removes_incoming() {
 
 #[tokio::test]
 async fn test_clear_dependencies_removes_both_directions() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
-    let task_c = create_test_task(&conn, &project_id, "Task C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
+    let task_c = create_test_task(&db, &project_id, "Task C");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     // A -> B (A depends on B), C -> A (C depends on A)
     repo.add_dependency(&task_a, &task_b).await.unwrap();
@@ -449,12 +437,12 @@ async fn test_clear_dependencies_removes_both_directions() {
 
 #[tokio::test]
 async fn test_count_blockers_zero() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task = create_test_task(&conn, &project_id, "Task");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task = create_test_task(&db, &project_id, "Task");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     let count = repo.count_blockers(&task).await.unwrap();
     assert_eq!(count, 0);
@@ -462,14 +450,14 @@ async fn test_count_blockers_zero() {
 
 #[tokio::test]
 async fn test_count_blockers_multiple() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
-    let task_c = create_test_task(&conn, &project_id, "Task C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
+    let task_c = create_test_task(&db, &project_id, "Task C");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     // A depends on B and C
     repo.add_dependency(&task_a, &task_b).await.unwrap();
@@ -483,12 +471,12 @@ async fn test_count_blockers_multiple() {
 
 #[tokio::test]
 async fn test_count_blocked_by_zero() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task = create_test_task(&conn, &project_id, "Task");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task = create_test_task(&db, &project_id, "Task");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     let count = repo.count_blocked_by(&task).await.unwrap();
     assert_eq!(count, 0);
@@ -496,14 +484,14 @@ async fn test_count_blocked_by_zero() {
 
 #[tokio::test]
 async fn test_count_blocked_by_multiple() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
-    let task_c = create_test_task(&conn, &project_id, "Task C");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
+    let task_c = create_test_task(&db, &project_id, "Task C");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     // B and C depend on A
     repo.add_dependency(&task_b, &task_a).await.unwrap();
@@ -517,13 +505,13 @@ async fn test_count_blocked_by_multiple() {
 
 #[tokio::test]
 async fn test_has_dependency_true() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     repo.add_dependency(&task_a, &task_b).await.unwrap();
 
@@ -533,13 +521,13 @@ async fn test_has_dependency_true() {
 
 #[tokio::test]
 async fn test_has_dependency_false() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     let has_dep = repo.has_dependency(&task_a, &task_b).await.unwrap();
     assert!(!has_dep);
@@ -547,13 +535,13 @@ async fn test_has_dependency_false() {
 
 #[tokio::test]
 async fn test_has_dependency_direction_matters() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     // A depends on B
     repo.add_dependency(&task_a, &task_b).await.unwrap();
@@ -569,14 +557,13 @@ async fn test_has_dependency_direction_matters() {
 
 #[tokio::test]
 async fn test_from_shared_works_correctly() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
 
-    let shared_conn = Arc::new(Mutex::new(conn));
-    let repo = SqliteTaskDependencyRepository::from_shared(shared_conn);
+    let repo = SqliteTaskDependencyRepository::from_shared(db.shared_conn());
 
     repo.add_dependency(&task_a, &task_b).await.unwrap();
 
@@ -588,72 +575,81 @@ async fn test_from_shared_works_correctly() {
 
 #[tokio::test]
 async fn test_cascade_deletes_when_task_deleted() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
 
     // Add dependency
-    conn.execute(
-        "INSERT INTO task_dependencies (id, task_id, depends_on_task_id)
-         VALUES ('dep-1', ?1, ?2)",
-        rusqlite::params![task_a.as_str(), task_b.as_str()],
-    )
-    .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO task_dependencies (id, task_id, depends_on_task_id)
+             VALUES ('dep-1', ?1, ?2)",
+            rusqlite::params![task_a.as_str(), task_b.as_str()],
+        )
+        .unwrap();
+    });
 
-    // Verify dependency exists
-    let count: i32 = conn
-        .query_row(
+    let count: i32 = db
+        .with_connection(|conn| {
+            conn.query_row(
             "SELECT COUNT(*) FROM task_dependencies WHERE task_id = ?1",
             [task_a.as_str()],
             |row| row.get(0),
         )
+        })
         .unwrap();
     assert_eq!(count, 1);
 
-    // Delete task A
-    conn.execute("DELETE FROM tasks WHERE id = ?1", [task_a.as_str()])
-        .unwrap();
+    db.with_connection(|conn| {
+        conn.execute("DELETE FROM tasks WHERE id = ?1", [task_a.as_str()])
+            .unwrap();
+    });
 
-    // Dependency should be gone due to CASCADE
-    let count_after: i32 = conn
-        .query_row(
+    let count_after: i32 = db
+        .with_connection(|conn| {
+            conn.query_row(
             "SELECT COUNT(*) FROM task_dependencies WHERE task_id = ?1",
             [task_a.as_str()],
             |row| row.get(0),
         )
+        })
         .unwrap();
     assert_eq!(count_after, 0);
 }
 
 #[tokio::test]
 async fn test_cascade_deletes_when_depends_on_task_deleted() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
 
     // A depends on B
-    conn.execute(
-        "INSERT INTO task_dependencies (id, task_id, depends_on_task_id)
-         VALUES ('dep-1', ?1, ?2)",
-        rusqlite::params![task_a.as_str(), task_b.as_str()],
-    )
-    .unwrap();
-
-    // Delete task B
-    conn.execute("DELETE FROM tasks WHERE id = ?1", [task_b.as_str()])
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO task_dependencies (id, task_id, depends_on_task_id)
+             VALUES ('dep-1', ?1, ?2)",
+            rusqlite::params![task_a.as_str(), task_b.as_str()],
+        )
         .unwrap();
+    });
 
-    // Dependency should be gone due to CASCADE
-    let count_after: i32 = conn
-        .query_row(
+    db.with_connection(|conn| {
+        conn.execute("DELETE FROM tasks WHERE id = ?1", [task_b.as_str()])
+            .unwrap();
+    });
+
+    let count_after: i32 = db
+        .with_connection(|conn| {
+            conn.query_row(
             "SELECT COUNT(*) FROM task_dependencies WHERE depends_on_task_id = ?1",
             [task_b.as_str()],
             |row| row.get(0),
         )
+        })
         .unwrap();
     assert_eq!(count_after, 0);
 }
@@ -662,17 +658,19 @@ async fn test_cascade_deletes_when_depends_on_task_deleted() {
 
 #[tokio::test]
 async fn test_self_dependency_check_constraint() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let task = create_test_task(&conn, &project_id, "Task");
+    create_test_project(&db, &project_id, "Test", "/test");
+    let task = create_test_task(&db, &project_id, "Task");
 
     // Direct insert should fail due to CHECK constraint
-    let result = conn.execute(
-        "INSERT INTO task_dependencies (id, task_id, depends_on_task_id)
-         VALUES ('dep-1', ?1, ?1)",
-        [task.as_str()],
-    );
+    let result = db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO task_dependencies (id, task_id, depends_on_task_id)
+             VALUES ('dep-1', ?1, ?1)",
+            [task.as_str()],
+        )
+    });
 
     assert!(result.is_err());
 }
@@ -681,9 +679,9 @@ async fn test_self_dependency_check_constraint() {
 
 #[tokio::test]
 async fn test_diamond_dependency_no_cycle() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
+    create_test_project(&db, &project_id, "Test", "/test");
 
     // Diamond pattern:
     //     A
@@ -691,12 +689,12 @@ async fn test_diamond_dependency_no_cycle() {
     //   B   C
     //    \ /
     //     D
-    let task_a = create_test_task(&conn, &project_id, "Task A");
-    let task_b = create_test_task(&conn, &project_id, "Task B");
-    let task_c = create_test_task(&conn, &project_id, "Task C");
-    let task_d = create_test_task(&conn, &project_id, "Task D");
+    let task_a = create_test_task(&db, &project_id, "Task A");
+    let task_b = create_test_task(&db, &project_id, "Task B");
+    let task_c = create_test_task(&db, &project_id, "Task C");
+    let task_d = create_test_task(&db, &project_id, "Task D");
 
-    let repo = SqliteTaskDependencyRepository::new(conn);
+    let repo = SqliteTaskDependencyRepository::new(db.new_connection());
 
     // A depends on nothing
     // B depends on A, C depends on A
