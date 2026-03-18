@@ -5,23 +5,22 @@ use crate::domain::entities::{
     ChatAttachment, ChatAttachmentId, ChatConversationId, ChatMessageId,
 };
 use crate::domain::repositories::ChatAttachmentRepository;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
-use rusqlite::Connection;
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite_chat_attachment_repo_tests")
 }
 
-fn create_test_conversation(conn: &Connection) -> ChatConversationId {
+fn create_test_conversation(db: &SqliteTestDb) -> ChatConversationId {
     let id = ChatConversationId::new();
-    conn.execute(
-        "INSERT INTO chat_conversations (id, context_type, context_id, created_at, updated_at)
-         VALUES (?1, 'project', 'test-project', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        [id.as_str()],
-    )
-    .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO chat_conversations (id, context_type, context_id, created_at, updated_at)
+             VALUES (?1, 'project', 'test-project', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+            [id.as_str()],
+        )
+        .unwrap();
+    });
     id
 }
 
@@ -29,10 +28,10 @@ fn create_test_conversation(conn: &Connection) -> ChatConversationId {
 
 #[tokio::test]
 async fn test_create_attachment_without_message_id() {
-    let conn = setup_test_db();
-    let conversation_id = create_test_conversation(&conn);
+    let db = setup_test_db();
+    let conversation_id = create_test_conversation(&db);
 
-    let repo = SqliteChatAttachmentRepository::new(conn);
+    let repo = SqliteChatAttachmentRepository::from_shared(db.shared_conn());
     let attachment = ChatAttachment::new(
         conversation_id,
         "test.txt",
@@ -55,11 +54,11 @@ async fn test_create_attachment_without_message_id() {
 
 #[tokio::test]
 async fn test_create_attachment_with_message_id() {
-    let conn = setup_test_db();
-    let conversation_id = create_test_conversation(&conn);
+    let db = setup_test_db();
+    let conversation_id = create_test_conversation(&db);
     let message_id = ChatMessageId::new();
 
-    let repo = SqliteChatAttachmentRepository::new(conn);
+    let repo = SqliteChatAttachmentRepository::from_shared(db.shared_conn());
     let mut attachment = ChatAttachment::new(
         conversation_id,
         "document.pdf",
@@ -78,10 +77,10 @@ async fn test_create_attachment_with_message_id() {
 
 #[tokio::test]
 async fn test_create_attachment_without_mime_type() {
-    let conn = setup_test_db();
-    let conversation_id = create_test_conversation(&conn);
+    let db = setup_test_db();
+    let conversation_id = create_test_conversation(&db);
 
-    let repo = SqliteChatAttachmentRepository::new(conn);
+    let repo = SqliteChatAttachmentRepository::from_shared(db.shared_conn());
     let attachment = ChatAttachment::new(conversation_id, "README", "/path/to/README", 512, None);
 
     let result = repo.create(attachment.clone()).await;
@@ -95,10 +94,10 @@ async fn test_create_attachment_without_mime_type() {
 
 #[tokio::test]
 async fn test_get_by_id_returns_attachment() {
-    let conn = setup_test_db();
-    let conversation_id = create_test_conversation(&conn);
+    let db = setup_test_db();
+    let conversation_id = create_test_conversation(&db);
 
-    let repo = SqliteChatAttachmentRepository::new(conn);
+    let repo = SqliteChatAttachmentRepository::from_shared(db.shared_conn());
     let attachment = ChatAttachment::new(
         conversation_id,
         "image.png",
@@ -120,8 +119,8 @@ async fn test_get_by_id_returns_attachment() {
 
 #[tokio::test]
 async fn test_get_by_id_not_found_returns_none() {
-    let conn = setup_test_db();
-    let repo = SqliteChatAttachmentRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatAttachmentRepository::from_shared(db.shared_conn());
     let non_existent_id = ChatAttachmentId::new();
 
     let result = repo.get_by_id(&non_existent_id).await;
@@ -134,10 +133,10 @@ async fn test_get_by_id_not_found_returns_none() {
 
 #[tokio::test]
 async fn test_find_by_conversation_id_returns_attachments() {
-    let conn = setup_test_db();
-    let conversation_id = create_test_conversation(&conn);
+    let db = setup_test_db();
+    let conversation_id = create_test_conversation(&db);
 
-    let repo = SqliteChatAttachmentRepository::new(conn);
+    let repo = SqliteChatAttachmentRepository::from_shared(db.shared_conn());
     let attachment1 = ChatAttachment::new(
         conversation_id,
         "file1.txt",
@@ -166,10 +165,10 @@ async fn test_find_by_conversation_id_returns_attachments() {
 
 #[tokio::test]
 async fn test_find_by_conversation_id_empty_list() {
-    let conn = setup_test_db();
-    let conversation_id = create_test_conversation(&conn);
+    let db = setup_test_db();
+    let conversation_id = create_test_conversation(&db);
 
-    let repo = SqliteChatAttachmentRepository::new(conn);
+    let repo = SqliteChatAttachmentRepository::from_shared(db.shared_conn());
     let result = repo.find_by_conversation_id(&conversation_id).await;
 
     assert!(result.is_ok());
@@ -181,11 +180,11 @@ async fn test_find_by_conversation_id_empty_list() {
 
 #[tokio::test]
 async fn test_find_by_message_id_returns_attachments() {
-    let conn = setup_test_db();
-    let conversation_id = create_test_conversation(&conn);
+    let db = setup_test_db();
+    let conversation_id = create_test_conversation(&db);
     let message_id = ChatMessageId::new();
 
-    let repo = SqliteChatAttachmentRepository::new(conn);
+    let repo = SqliteChatAttachmentRepository::from_shared(db.shared_conn());
     let mut attachment1 = ChatAttachment::new(
         conversation_id,
         "file1.txt",
@@ -215,10 +214,10 @@ async fn test_find_by_message_id_returns_attachments() {
 
 #[tokio::test]
 async fn test_find_by_message_id_empty_list() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let non_existent_message_id = ChatMessageId::new();
 
-    let repo = SqliteChatAttachmentRepository::new(conn);
+    let repo = SqliteChatAttachmentRepository::from_shared(db.shared_conn());
     let result = repo.find_by_message_id(&non_existent_message_id).await;
 
     assert!(result.is_ok());
@@ -230,10 +229,10 @@ async fn test_find_by_message_id_empty_list() {
 
 #[tokio::test]
 async fn test_update_message_id_links_attachment_to_message() {
-    let conn = setup_test_db();
-    let conversation_id = create_test_conversation(&conn);
+    let db = setup_test_db();
+    let conversation_id = create_test_conversation(&db);
 
-    let repo = SqliteChatAttachmentRepository::new(conn);
+    let repo = SqliteChatAttachmentRepository::from_shared(db.shared_conn());
     let attachment =
         ChatAttachment::new(conversation_id, "file.txt", "/path/to/file.txt", 1024, None);
     repo.create(attachment.clone()).await.unwrap();
@@ -251,10 +250,10 @@ async fn test_update_message_id_links_attachment_to_message() {
 
 #[tokio::test]
 async fn test_update_message_ids_links_multiple_attachments() {
-    let conn = setup_test_db();
-    let conversation_id = create_test_conversation(&conn);
+    let db = setup_test_db();
+    let conversation_id = create_test_conversation(&db);
 
-    let repo = SqliteChatAttachmentRepository::new(conn);
+    let repo = SqliteChatAttachmentRepository::from_shared(db.shared_conn());
     let attachment1 = ChatAttachment::new(
         conversation_id,
         "file1.txt",
@@ -288,10 +287,10 @@ async fn test_update_message_ids_links_multiple_attachments() {
 
 #[tokio::test]
 async fn test_delete_removes_attachment() {
-    let conn = setup_test_db();
-    let conversation_id = create_test_conversation(&conn);
+    let db = setup_test_db();
+    let conversation_id = create_test_conversation(&db);
 
-    let repo = SqliteChatAttachmentRepository::new(conn);
+    let repo = SqliteChatAttachmentRepository::from_shared(db.shared_conn());
     let attachment =
         ChatAttachment::new(conversation_id, "file.txt", "/path/to/file.txt", 1024, None);
     repo.create(attachment.clone()).await.unwrap();
@@ -307,10 +306,10 @@ async fn test_delete_removes_attachment() {
 
 #[tokio::test]
 async fn test_delete_by_conversation_id_removes_all_attachments() {
-    let conn = setup_test_db();
-    let conversation_id = create_test_conversation(&conn);
+    let db = setup_test_db();
+    let conversation_id = create_test_conversation(&db);
 
-    let repo = SqliteChatAttachmentRepository::new(conn);
+    let repo = SqliteChatAttachmentRepository::from_shared(db.shared_conn());
     let attachment1 = ChatAttachment::new(
         conversation_id,
         "file1.txt",
@@ -345,10 +344,10 @@ async fn test_delete_by_conversation_id_removes_all_attachments() {
 
 #[tokio::test]
 async fn test_update_message_ids_with_empty_slice_is_noop() {
-    let conn = setup_test_db();
-    let conversation_id = create_test_conversation(&conn);
+    let db = setup_test_db();
+    let conversation_id = create_test_conversation(&db);
 
-    let repo = SqliteChatAttachmentRepository::new(conn);
+    let repo = SqliteChatAttachmentRepository::from_shared(db.shared_conn());
     let attachment =
         ChatAttachment::new(conversation_id, "file.txt", "/path/to/file.txt", 1024, None);
     repo.create(attachment.clone()).await.unwrap();

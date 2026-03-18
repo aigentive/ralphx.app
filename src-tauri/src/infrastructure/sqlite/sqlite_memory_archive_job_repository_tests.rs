@@ -6,24 +6,23 @@ use crate::domain::entities::{
     ProjectId,
 };
 use crate::domain::repositories::MemoryArchiveJobRepository;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
-use rusqlite::Connection;
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite_memory_archive_job_repository_tests")
 }
 
-fn create_test_project(conn: &Connection) -> ProjectId {
+fn create_test_project(db: &SqliteTestDb) -> ProjectId {
     let id = ProjectId::new();
     let working_dir = format!("/tmp/test/{}", id.as_str());
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory, git_mode, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        rusqlite::params![id.as_str(), "Test Project", working_dir, "local"],
-    )
-    .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory, git_mode, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+            rusqlite::params![id.as_str(), "Test Project", working_dir, "local"],
+        )
+        .unwrap();
+    });
     id
 }
 
@@ -39,9 +38,9 @@ fn make_memory_snapshot_job(project_id: ProjectId) -> MemoryArchiveJob {
 
 #[tokio::test]
 async fn test_create_returns_job() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryArchiveJobRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryArchiveJobRepository::from_shared(db.shared_conn());
 
     let job = make_memory_snapshot_job(project_id.clone());
     let job_id = job.id.clone();
@@ -58,9 +57,9 @@ async fn test_create_returns_job() {
 
 #[tokio::test]
 async fn test_create_rule_snapshot_job() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryArchiveJobRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryArchiveJobRepository::from_shared(db.shared_conn());
 
     let job = MemoryArchiveJob::new(
         project_id,
@@ -79,9 +78,9 @@ async fn test_create_rule_snapshot_job() {
 
 #[tokio::test]
 async fn test_create_full_rebuild_job() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryArchiveJobRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryArchiveJobRepository::from_shared(db.shared_conn());
 
     let job = MemoryArchiveJob::new(
         project_id,
@@ -98,9 +97,9 @@ async fn test_create_full_rebuild_job() {
 
 #[tokio::test]
 async fn test_create_preserves_null_timestamps() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryArchiveJobRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryArchiveJobRepository::from_shared(db.shared_conn());
 
     let job = make_memory_snapshot_job(project_id);
     let job_id = job.id.clone();
@@ -116,9 +115,9 @@ async fn test_create_preserves_null_timestamps() {
 
 #[tokio::test]
 async fn test_get_by_id_returns_job() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryArchiveJobRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryArchiveJobRepository::from_shared(db.shared_conn());
 
     let job = make_memory_snapshot_job(project_id);
     let job_id = job.id.clone();
@@ -134,8 +133,8 @@ async fn test_get_by_id_returns_job() {
 
 #[tokio::test]
 async fn test_get_by_id_returns_none_for_nonexistent() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryArchiveJobRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryArchiveJobRepository::from_shared(db.shared_conn());
 
     let nonexistent_id = MemoryArchiveJobId("nonexistent-id".to_string());
     let result = repo.get_by_id(&nonexistent_id).await;
@@ -146,9 +145,9 @@ async fn test_get_by_id_returns_none_for_nonexistent() {
 
 #[tokio::test]
 async fn test_get_by_id_preserves_all_fields() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryArchiveJobRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryArchiveJobRepository::from_shared(db.shared_conn());
 
     let job = MemoryArchiveJob::new(
         project_id.clone(),
@@ -171,9 +170,9 @@ async fn test_get_by_id_preserves_all_fields() {
 
 #[tokio::test]
 async fn test_get_pending_by_project_returns_only_pending() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryArchiveJobRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryArchiveJobRepository::from_shared(db.shared_conn());
 
     let pending1 = make_memory_snapshot_job(project_id.clone());
     let pending2 = MemoryArchiveJob::new(
@@ -204,9 +203,9 @@ async fn test_get_pending_by_project_returns_only_pending() {
 
 #[tokio::test]
 async fn test_get_pending_by_project_returns_empty_when_none_pending() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryArchiveJobRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryArchiveJobRepository::from_shared(db.shared_conn());
 
     let result = repo.get_pending_by_project(&project_id).await;
 
@@ -216,10 +215,10 @@ async fn test_get_pending_by_project_returns_empty_when_none_pending() {
 
 #[tokio::test]
 async fn test_get_pending_by_project_filters_by_project() {
-    let conn = setup_test_db();
-    let project_id1 = create_test_project(&conn);
-    let project_id2 = create_test_project(&conn);
-    let repo = SqliteMemoryArchiveJobRepository::new(conn);
+    let db = setup_test_db();
+    let project_id1 = create_test_project(&db);
+    let project_id2 = create_test_project(&db);
+    let repo = SqliteMemoryArchiveJobRepository::from_shared(db.shared_conn());
 
     let job1 = make_memory_snapshot_job(project_id1.clone());
     let job2 = make_memory_snapshot_job(project_id2.clone());
@@ -238,9 +237,9 @@ async fn test_get_pending_by_project_filters_by_project() {
 
 #[tokio::test]
 async fn test_get_pending_excludes_done_and_failed() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryArchiveJobRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryArchiveJobRepository::from_shared(db.shared_conn());
 
     let done_job = make_memory_snapshot_job(project_id.clone());
     let failed_job = make_memory_snapshot_job(project_id.clone());
@@ -265,9 +264,9 @@ async fn test_get_pending_excludes_done_and_failed() {
 
 #[tokio::test]
 async fn test_update_status_to_running_sets_started_at() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryArchiveJobRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryArchiveJobRepository::from_shared(db.shared_conn());
 
     let job = make_memory_snapshot_job(project_id);
     let job_id = job.id.clone();
@@ -286,9 +285,9 @@ async fn test_update_status_to_running_sets_started_at() {
 
 #[tokio::test]
 async fn test_update_status_to_done_sets_completed_at_and_preserves_started_at() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryArchiveJobRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryArchiveJobRepository::from_shared(db.shared_conn());
 
     let job = make_memory_snapshot_job(project_id);
     let job_id = job.id.clone();
@@ -311,9 +310,9 @@ async fn test_update_status_to_done_sets_completed_at_and_preserves_started_at()
 
 #[tokio::test]
 async fn test_update_status_to_failed_sets_error_message_and_completed_at() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryArchiveJobRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryArchiveJobRepository::from_shared(db.shared_conn());
 
     let job = make_memory_snapshot_job(project_id);
     let job_id = job.id.clone();
@@ -338,9 +337,9 @@ async fn test_update_status_to_failed_sets_error_message_and_completed_at() {
 
 #[tokio::test]
 async fn test_update_status_pending_no_timestamp_set() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryArchiveJobRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryArchiveJobRepository::from_shared(db.shared_conn());
 
     let job = make_memory_snapshot_job(project_id);
     let job_id = job.id.clone();
@@ -360,8 +359,8 @@ async fn test_update_status_pending_no_timestamp_set() {
 
 #[tokio::test]
 async fn test_update_status_for_nonexistent_id_returns_error() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryArchiveJobRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryArchiveJobRepository::from_shared(db.shared_conn());
 
     let nonexistent = MemoryArchiveJobId("does-not-exist".to_string());
     let result = repo
@@ -375,12 +374,9 @@ async fn test_update_status_for_nonexistent_id_returns_error() {
 
 #[tokio::test]
 async fn test_from_shared_creates_and_retrieves() {
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
-
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let shared_conn = Arc::new(Mutex::new(conn));
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let shared_conn = db.shared_conn();
     let repo = SqliteMemoryArchiveJobRepository::from_shared(shared_conn);
 
     let job = make_memory_snapshot_job(project_id);

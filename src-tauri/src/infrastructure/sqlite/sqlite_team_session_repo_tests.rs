@@ -4,12 +4,10 @@ use super::sqlite_team_session_repo::SqliteTeamSessionRepository;
 use crate::application::team_state_tracker::TeammateCost;
 use crate::domain::entities::team::{TeamSession, TeamSessionId, TeammateSnapshot};
 use crate::domain::repositories::TeamSessionRepository;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> rusqlite::Connection {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite_team_session_repo_tests")
 }
 
 fn make_teammate(name: &str) -> TeammateSnapshot {
@@ -30,8 +28,8 @@ fn make_teammate(name: &str) -> TeammateSnapshot {
 
 #[tokio::test]
 async fn test_create_returns_session() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let session = TeamSession::new("my-team", "ctx-1", "project");
     let id = session.id.clone();
@@ -48,8 +46,8 @@ async fn test_create_returns_session() {
 
 #[tokio::test]
 async fn test_create_duplicate_id_fails() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let session = TeamSession::new("team-a", "ctx-1", "project");
     let session2 = TeamSession {
@@ -65,8 +63,8 @@ async fn test_create_duplicate_id_fails() {
 
 #[tokio::test]
 async fn test_create_with_teammates_persists_json() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let mut session = TeamSession::new("team-x", "ctx-1", "project");
     session.teammates = vec![make_teammate("alice"), make_teammate("bob")];
@@ -82,8 +80,8 @@ async fn test_create_with_teammates_persists_json() {
 
 #[tokio::test]
 async fn test_create_with_empty_teammates_persists_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let session = TeamSession::new("team-empty", "ctx-1", "project");
     let id = session.id.clone();
@@ -98,8 +96,8 @@ async fn test_create_with_empty_teammates_persists_empty() {
 
 #[tokio::test]
 async fn test_get_by_id_returns_session() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let session = TeamSession::new("team-1", "ctx-1", "project");
     let id = session.id.clone();
@@ -115,8 +113,8 @@ async fn test_get_by_id_returns_session() {
 
 #[tokio::test]
 async fn test_get_by_id_returns_none_for_nonexistent() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let id = TeamSessionId::new();
     let result = repo.get_by_id(&id).await;
@@ -127,8 +125,8 @@ async fn test_get_by_id_returns_none_for_nonexistent() {
 
 #[tokio::test]
 async fn test_get_by_id_preserves_all_fields() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let mut session = TeamSession::new("full-team", "ctx-full", "task");
     session.lead_name = Some("lead-agent".to_string());
@@ -152,8 +150,8 @@ async fn test_get_by_id_preserves_all_fields() {
 
 #[tokio::test]
 async fn test_get_by_context_returns_matching_sessions() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let s1 = TeamSession::new("team-a", "ctx-1", "project");
     let s2 = TeamSession::new("team-b", "ctx-1", "project");
@@ -171,8 +169,8 @@ async fn test_get_by_context_returns_matching_sessions() {
 
 #[tokio::test]
 async fn test_get_by_context_returns_empty_for_no_match() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let result = repo.get_by_context("project", "nonexistent").await;
 
@@ -182,8 +180,8 @@ async fn test_get_by_context_returns_empty_for_no_match() {
 
 #[tokio::test]
 async fn test_get_by_context_filters_by_context_type() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let s1 = TeamSession::new("team-a", "ctx-1", "project");
     let s2 = TeamSession::new("team-b", "ctx-1", "task");
@@ -202,8 +200,8 @@ async fn test_get_by_context_filters_by_context_type() {
 
 #[tokio::test]
 async fn test_get_by_context_includes_disbanded_sessions() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let active = TeamSession::new("active-team", "ctx-1", "project");
     let disbanded = TeamSession::new("old-team", "ctx-1", "project");
@@ -222,8 +220,8 @@ async fn test_get_by_context_includes_disbanded_sessions() {
 
 #[tokio::test]
 async fn test_get_active_for_context_returns_non_disbanded_session() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let active = TeamSession::new("active-team", "ctx-1", "project");
     let active_id = active.id.clone();
@@ -244,8 +242,8 @@ async fn test_get_active_for_context_returns_non_disbanded_session() {
 
 #[tokio::test]
 async fn test_get_active_for_context_returns_none_when_all_disbanded() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let session = TeamSession::new("old-team", "ctx-1", "project");
     let id = session.id.clone();
@@ -260,8 +258,8 @@ async fn test_get_active_for_context_returns_none_when_all_disbanded() {
 
 #[tokio::test]
 async fn test_get_active_for_context_returns_none_when_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let result = repo.get_active_for_context("project", "ctx-1").await;
 
@@ -273,8 +271,8 @@ async fn test_get_active_for_context_returns_none_when_empty() {
 
 #[tokio::test]
 async fn test_update_phase_changes_phase() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let session = TeamSession::new("team-1", "ctx-1", "project");
     let id = session.id.clone();
@@ -288,8 +286,8 @@ async fn test_update_phase_changes_phase() {
 
 #[tokio::test]
 async fn test_update_phase_does_not_affect_other_fields() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let mut session = TeamSession::new("team-1", "ctx-1", "project");
     session.lead_name = Some("leader".to_string());
@@ -309,8 +307,8 @@ async fn test_update_phase_does_not_affect_other_fields() {
 
 #[tokio::test]
 async fn test_update_teammates_replaces_all() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let mut session = TeamSession::new("team-1", "ctx-1", "project");
     session.teammates = vec![make_teammate("alice")];
@@ -328,8 +326,8 @@ async fn test_update_teammates_replaces_all() {
 
 #[tokio::test]
 async fn test_update_teammates_with_empty_clears_list() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let mut session = TeamSession::new("team-1", "ctx-1", "project");
     session.teammates = vec![make_teammate("alice")];
@@ -344,8 +342,8 @@ async fn test_update_teammates_with_empty_clears_list() {
 
 #[tokio::test]
 async fn test_update_teammates_preserves_teammate_cost() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let session = TeamSession::new("team-1", "ctx-1", "project");
     let id = session.id.clone();
@@ -372,8 +370,8 @@ async fn test_update_teammates_preserves_teammate_cost() {
 
 #[tokio::test]
 async fn test_set_disbanded_sets_disbanded_at() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let session = TeamSession::new("team-1", "ctx-1", "project");
     let id = session.id.clone();
@@ -390,8 +388,8 @@ async fn test_set_disbanded_sets_disbanded_at() {
 
 #[tokio::test]
 async fn test_set_disbanded_does_not_affect_other_sessions() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let s1 = TeamSession::new("team-1", "ctx-1", "project");
     let s2 = TeamSession::new("team-2", "ctx-2", "project");
@@ -410,8 +408,8 @@ async fn test_set_disbanded_does_not_affect_other_sessions() {
 
 #[tokio::test]
 async fn test_disband_all_active_returns_count_of_affected_rows() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let s1 = TeamSession::new("team-a", "ctx-1", "project");
     let s2 = TeamSession::new("team-b", "ctx-2", "task");
@@ -431,8 +429,8 @@ async fn test_disband_all_active_returns_count_of_affected_rows() {
 
 #[tokio::test]
 async fn test_disband_all_active_makes_get_active_for_context_return_none() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let s1 = TeamSession::new("team-a", "ctx-1", "project");
     let s2 = TeamSession::new("team-b", "ctx-1", "project");
@@ -459,8 +457,8 @@ async fn test_disband_all_active_makes_get_active_for_context_return_none() {
 
 #[tokio::test]
 async fn test_disband_all_active_returns_zero_when_no_active_sessions() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let count = repo.disband_all_active("app_restart").await.unwrap();
     assert_eq!(count, 0);
@@ -468,8 +466,8 @@ async fn test_disband_all_active_returns_zero_when_no_active_sessions() {
 
 #[tokio::test]
 async fn test_disband_all_active_does_not_overwrite_already_disbanded_timestamp() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let session = TeamSession::new("team-a", "ctx-1", "project");
     let id = session.id.clone();
@@ -500,8 +498,8 @@ async fn test_disband_all_active_does_not_overwrite_already_disbanded_timestamp(
 
 #[tokio::test]
 async fn test_disband_all_active_clears_orphaned_sessions() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let s1 = TeamSession::new("team-a", "ctx-1", "project");
     let s2 = TeamSession::new("team-b", "ctx-2", "task");
@@ -540,8 +538,8 @@ async fn test_disband_all_active_clears_orphaned_sessions() {
 
 #[tokio::test]
 async fn test_disband_all_active_noop_when_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamSessionRepository::from_shared(db.shared_conn());
 
     let count = repo.disband_all_active("app_restart").await.unwrap();
     assert_eq!(count, 0);
@@ -551,11 +549,8 @@ async fn test_disband_all_active_noop_when_empty() {
 
 #[tokio::test]
 async fn test_from_shared_creates_and_retrieves() {
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
-
-    let conn = setup_test_db();
-    let shared_conn = Arc::new(Mutex::new(conn));
+    let db = setup_test_db();
+    let shared_conn = db.shared_conn();
     let repo = SqliteTeamSessionRepository::from_shared(shared_conn);
 
     let session = TeamSession::new("shared-team", "ctx-1", "project");
