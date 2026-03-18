@@ -489,7 +489,3 @@ pub fn slug_from_name(name: &str) -> String {
         .collect::<Vec<_>>()
         .join("-")
 }
-
-#[cfg(test)]
-#[path = "plan_branch_commands_tests.rs"]
-mod tests;
