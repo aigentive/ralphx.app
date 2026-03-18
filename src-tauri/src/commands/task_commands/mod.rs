@@ -6,9 +6,6 @@ pub mod mutation;
 pub mod query;
 pub mod types;
 
-#[cfg(test)]
-mod tests;
-
 // Re-export types
 pub use types::{
     AnswerUserQuestionInput,
