@@ -1,30 +1,30 @@
 use super::*;
 use crate::domain::qa::{AcceptanceCriterion, QAStepResult, QATestStep};
-use crate::infrastructure::sqlite::connection::open_memory_connection;
-use crate::infrastructure::sqlite::migrations::run_migrations;
+use crate::testing::SqliteTestDb;
 
-async fn setup_test_db() -> SqliteTaskQARepository {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+fn setup_test_db() -> (SqliteTestDb, SqliteTaskQARepository) {
+    let db = SqliteTestDb::new("sqlite_task_qa_repo_tests");
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
+            [],
+        )
+        .unwrap();
 
-    // Insert a project and task for foreign key constraint
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
-        [],
-    )
-    .unwrap();
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Test Task')",
+            [],
+        )
+        .unwrap();
+    });
 
-    conn.execute(
-        "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-1', 'proj-1', 'feature', 'Test Task')",
-        [],
-    ).unwrap();
-
-    SqliteTaskQARepository::new(conn)
+    let repo = SqliteTaskQARepository::from_shared(db.shared_conn());
+    (db, repo)
 }
 
 #[tokio::test]
 async fn test_create_and_get_by_id() {
-    let repo = setup_test_db().await;
+    let (_db, repo) = setup_test_db();
     let task_id = TaskId::from_string("task-1".to_string());
     let task_qa = TaskQA::new(task_id);
     let qa_id = task_qa.id.clone();
@@ -38,7 +38,7 @@ async fn test_create_and_get_by_id() {
 
 #[tokio::test]
 async fn test_get_by_task_id() {
-    let repo = setup_test_db().await;
+    let (_db, repo) = setup_test_db();
     let task_id = TaskId::from_string("task-1".to_string());
     let task_qa = TaskQA::new(task_id.clone());
 
@@ -51,7 +51,7 @@ async fn test_get_by_task_id() {
 
 #[tokio::test]
 async fn test_update_prep() {
-    let repo = setup_test_db().await;
+    let (_db, repo) = setup_test_db();
     let task_id = TaskId::from_string("task-1".to_string());
     let task_qa = TaskQA::new(task_id);
     let qa_id = task_qa.id.clone();
@@ -83,7 +83,7 @@ async fn test_update_prep() {
 
 #[tokio::test]
 async fn test_update_refinement() {
-    let repo = setup_test_db().await;
+    let (_db, repo) = setup_test_db();
     let task_id = TaskId::from_string("task-1".to_string());
     let task_qa = TaskQA::new(task_id);
     let qa_id = task_qa.id.clone();
@@ -111,7 +111,7 @@ async fn test_update_refinement() {
 
 #[tokio::test]
 async fn test_update_results() {
-    let repo = setup_test_db().await;
+    let (_db, repo) = setup_test_db();
     let task_id = TaskId::from_string("task-1".to_string());
     let task_qa = TaskQA::new(task_id.clone());
     let qa_id = task_qa.id.clone();
@@ -140,7 +140,7 @@ async fn test_update_results() {
 
 #[tokio::test]
 async fn test_get_pending_prep() {
-    let repo = setup_test_db().await;
+    let (_db, repo) = setup_test_db();
 
     // Add another task
     {
@@ -181,7 +181,7 @@ async fn test_get_pending_prep() {
 
 #[tokio::test]
 async fn test_delete() {
-    let repo = setup_test_db().await;
+    let (_db, repo) = setup_test_db();
     let task_id = TaskId::from_string("task-1".to_string());
     let task_qa = TaskQA::new(task_id);
     let qa_id = task_qa.id.clone();
@@ -195,7 +195,7 @@ async fn test_delete() {
 
 #[tokio::test]
 async fn test_delete_by_task_id() {
-    let repo = setup_test_db().await;
+    let (_db, repo) = setup_test_db();
     let task_id = TaskId::from_string("task-1".to_string());
     let task_qa = TaskQA::new(task_id.clone());
 
@@ -208,7 +208,7 @@ async fn test_delete_by_task_id() {
 
 #[tokio::test]
 async fn test_exists_for_task() {
-    let repo = setup_test_db().await;
+    let (_db, repo) = setup_test_db();
     let task_id = TaskId::from_string("task-1".to_string());
 
     assert!(!repo.exists_for_task(&task_id).await.unwrap());
@@ -221,7 +221,7 @@ async fn test_exists_for_task() {
 
 #[tokio::test]
 async fn test_json_storage_roundtrip() {
-    let repo = setup_test_db().await;
+    let (_db, repo) = setup_test_db();
     let task_id = TaskId::from_string("task-1".to_string());
     let task_qa = TaskQA::new(task_id.clone());
     let qa_id = task_qa.id.clone();

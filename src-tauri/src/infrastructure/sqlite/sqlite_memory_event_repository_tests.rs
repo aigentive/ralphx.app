@@ -3,25 +3,24 @@
 use super::sqlite_memory_event_repository::SqliteMemoryEventRepository;
 use crate::domain::entities::{MemoryActorType, MemoryEvent, ProjectId};
 use crate::domain::repositories::MemoryEventRepository;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
-use rusqlite::Connection;
+use crate::testing::SqliteTestDb;
 use serde_json::json;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite_memory_event_repository_tests")
 }
 
-fn create_test_project(conn: &Connection) -> ProjectId {
+fn create_test_project(db: &SqliteTestDb) -> ProjectId {
     let id = ProjectId::new();
     let working_dir = format!("/tmp/test/{}", id.as_str());
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory, git_mode, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        rusqlite::params![id.as_str(), "Test Project", working_dir, "local"],
-    )
-    .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory, git_mode, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+            rusqlite::params![id.as_str(), "Test Project", working_dir, "local"],
+        )
+        .unwrap();
+    });
     id
 }
 
@@ -37,9 +36,9 @@ fn make_event(
 
 #[tokio::test]
 async fn test_create_returns_event() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryEventRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryEventRepository::from_shared(db.shared_conn());
 
     let event = make_event(project_id.clone(), "memory_created", MemoryActorType::System);
     let event_id = event.id.clone();
@@ -56,9 +55,9 @@ async fn test_create_returns_event() {
 
 #[tokio::test]
 async fn test_create_all_actor_types() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryEventRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryEventRepository::from_shared(db.shared_conn());
 
     let e1 = make_event(project_id.clone(), "system_event", MemoryActorType::System);
     let e2 = make_event(
@@ -87,9 +86,9 @@ async fn test_create_all_actor_types() {
 
 #[tokio::test]
 async fn test_create_serializes_complex_json_details() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryEventRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryEventRepository::from_shared(db.shared_conn());
 
     let complex_details = json!({
         "memory_id": "mem-abc",
@@ -115,9 +114,9 @@ async fn test_create_serializes_complex_json_details() {
 
 #[tokio::test]
 async fn test_create_duplicate_id_fails() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryEventRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryEventRepository::from_shared(db.shared_conn());
 
     let event = make_event(project_id.clone(), "memory_created", MemoryActorType::System);
     repo.create(event.clone()).await.unwrap();
@@ -131,9 +130,9 @@ async fn test_create_duplicate_id_fails() {
 
 #[tokio::test]
 async fn test_get_by_project_returns_all_events() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryEventRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryEventRepository::from_shared(db.shared_conn());
 
     let e1 = make_event(project_id.clone(), "event_1", MemoryActorType::System);
     let e2 = make_event(
@@ -155,9 +154,9 @@ async fn test_get_by_project_returns_all_events() {
 
 #[tokio::test]
 async fn test_get_by_project_returns_empty_for_no_events() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryEventRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryEventRepository::from_shared(db.shared_conn());
 
     let result = repo.get_by_project(&project_id).await;
 
@@ -167,10 +166,10 @@ async fn test_get_by_project_returns_empty_for_no_events() {
 
 #[tokio::test]
 async fn test_get_by_project_filters_by_project() {
-    let conn = setup_test_db();
-    let project_id1 = create_test_project(&conn);
-    let project_id2 = create_test_project(&conn);
-    let repo = SqliteMemoryEventRepository::new(conn);
+    let db = setup_test_db();
+    let project_id1 = create_test_project(&db);
+    let project_id2 = create_test_project(&db);
+    let repo = SqliteMemoryEventRepository::from_shared(db.shared_conn());
 
     let e1 = make_event(project_id1.clone(), "event_p1", MemoryActorType::System);
     let e2 = make_event(project_id2.clone(), "event_p2", MemoryActorType::System);
@@ -189,9 +188,9 @@ async fn test_get_by_project_filters_by_project() {
 
 #[tokio::test]
 async fn test_get_by_project_returns_in_desc_order() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryEventRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryEventRepository::from_shared(db.shared_conn());
 
     let e1 = make_event(project_id.clone(), "first", MemoryActorType::System);
     repo.create(e1).await.unwrap();
@@ -217,9 +216,9 @@ async fn test_get_by_project_returns_in_desc_order() {
 
 #[tokio::test]
 async fn test_get_by_type_returns_matching_events() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryEventRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryEventRepository::from_shared(db.shared_conn());
 
     let e1 = make_event(project_id.clone(), "memory_created", MemoryActorType::System);
     let e2 = make_event(
@@ -247,8 +246,8 @@ async fn test_get_by_type_returns_matching_events() {
 
 #[tokio::test]
 async fn test_get_by_type_returns_empty_for_unknown_type() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEventRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEventRepository::from_shared(db.shared_conn());
 
     let result = repo.get_by_type("nonexistent_type").await;
 
@@ -259,10 +258,10 @@ async fn test_get_by_type_returns_empty_for_unknown_type() {
 #[tokio::test]
 async fn test_get_by_type_is_cross_project() {
     // get_by_type has no project scoping — returns events from ALL projects
-    let conn = setup_test_db();
-    let project_id1 = create_test_project(&conn);
-    let project_id2 = create_test_project(&conn);
-    let repo = SqliteMemoryEventRepository::new(conn);
+    let db = setup_test_db();
+    let project_id1 = create_test_project(&db);
+    let project_id2 = create_test_project(&db);
+    let repo = SqliteMemoryEventRepository::from_shared(db.shared_conn());
 
     let e1 = make_event(project_id1.clone(), "shared_type", MemoryActorType::System);
     let e2 = make_event(project_id2.clone(), "shared_type", MemoryActorType::System);
@@ -278,9 +277,9 @@ async fn test_get_by_type_is_cross_project() {
 
 #[tokio::test]
 async fn test_get_by_type_returns_in_desc_order() {
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let repo = SqliteMemoryEventRepository::new(conn);
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let repo = SqliteMemoryEventRepository::from_shared(db.shared_conn());
 
     let e1 = make_event(project_id.clone(), "target_type", MemoryActorType::System);
     repo.create(e1.clone()).await.unwrap();
@@ -301,12 +300,9 @@ async fn test_get_by_type_returns_in_desc_order() {
 
 #[tokio::test]
 async fn test_from_shared_creates_and_retrieves() {
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
-
-    let conn = setup_test_db();
-    let project_id = create_test_project(&conn);
-    let shared_conn = Arc::new(Mutex::new(conn));
+    let db = setup_test_db();
+    let project_id = create_test_project(&db);
+    let shared_conn = db.shared_conn();
     let repo = SqliteMemoryEventRepository::from_shared(shared_conn);
 
     let event = make_event(project_id.clone(), "test_event", MemoryActorType::System);

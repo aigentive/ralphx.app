@@ -1,11 +1,9 @@
 use super::*;
 use crate::domain::entities::GitMode;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite_project_repo_tests")
 }
 
 fn create_test_project(name: &str, path: &str) -> Project {
@@ -16,8 +14,8 @@ fn create_test_project(name: &str, path: &str) -> Project {
 
 #[tokio::test]
 async fn test_create_inserts_project_and_returns_it() {
-    let conn = setup_test_db();
-    let repo = SqliteProjectRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProjectRepository::from_shared(db.shared_conn());
     let project = create_test_project("Test Project", "/test/path");
 
     let result = repo.create(project.clone()).await;
@@ -31,8 +29,8 @@ async fn test_create_inserts_project_and_returns_it() {
 
 #[tokio::test]
 async fn test_get_by_id_retrieves_project_correctly() {
-    let conn = setup_test_db();
-    let repo = SqliteProjectRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProjectRepository::from_shared(db.shared_conn());
     let project = create_test_project("Test Project", "/test/path");
 
     repo.create(project.clone()).await.unwrap();
@@ -49,8 +47,8 @@ async fn test_get_by_id_retrieves_project_correctly() {
 
 #[tokio::test]
 async fn test_get_by_id_returns_none_for_nonexistent() {
-    let conn = setup_test_db();
-    let repo = SqliteProjectRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProjectRepository::from_shared(db.shared_conn());
     let id = ProjectId::new();
 
     let result = repo.get_by_id(&id).await;
@@ -61,8 +59,8 @@ async fn test_get_by_id_returns_none_for_nonexistent() {
 
 #[tokio::test]
 async fn test_get_all_returns_all_projects() {
-    let conn = setup_test_db();
-    let repo = SqliteProjectRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProjectRepository::from_shared(db.shared_conn());
 
     let project1 = create_test_project("Alpha Project", "/alpha");
     let project2 = create_test_project("Beta Project", "/beta");
@@ -85,8 +83,8 @@ async fn test_get_all_returns_all_projects() {
 
 #[tokio::test]
 async fn test_get_all_returns_empty_for_no_projects() {
-    let conn = setup_test_db();
-    let repo = SqliteProjectRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProjectRepository::from_shared(db.shared_conn());
 
     let result = repo.get_all().await;
 
@@ -96,8 +94,8 @@ async fn test_get_all_returns_empty_for_no_projects() {
 
 #[tokio::test]
 async fn test_update_modifies_project_fields() {
-    let conn = setup_test_db();
-    let repo = SqliteProjectRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProjectRepository::from_shared(db.shared_conn());
     let mut project = create_test_project("Original Name", "/original/path");
 
     repo.create(project.clone()).await.unwrap();
@@ -119,8 +117,8 @@ async fn test_update_modifies_project_fields() {
 
 #[tokio::test]
 async fn test_delete_removes_project_from_database() {
-    let conn = setup_test_db();
-    let repo = SqliteProjectRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProjectRepository::from_shared(db.shared_conn());
     let project = create_test_project("To Delete", "/delete/me");
 
     repo.create(project.clone()).await.unwrap();
@@ -134,8 +132,8 @@ async fn test_delete_removes_project_from_database() {
 
 #[tokio::test]
 async fn test_create_and_retrieve_preserves_all_fields() {
-    let conn = setup_test_db();
-    let repo = SqliteProjectRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProjectRepository::from_shared(db.shared_conn());
 
     let mut project = Project::new("Full Project".to_string(), "/full/path".to_string());
     project.git_mode = GitMode::Worktree;
@@ -155,8 +153,8 @@ async fn test_create_and_retrieve_preserves_all_fields() {
 
 #[tokio::test]
 async fn test_get_by_working_directory_returns_project() {
-    let conn = setup_test_db();
-    let repo = SqliteProjectRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProjectRepository::from_shared(db.shared_conn());
     let project = create_test_project("Test Project", "/test/path");
 
     repo.create(project.clone()).await.unwrap();
@@ -171,8 +169,8 @@ async fn test_get_by_working_directory_returns_project() {
 
 #[tokio::test]
 async fn test_get_by_working_directory_returns_none_for_nonexistent() {
-    let conn = setup_test_db();
-    let repo = SqliteProjectRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProjectRepository::from_shared(db.shared_conn());
     let project = create_test_project("Test Project", "/test/path");
 
     repo.create(project).await.unwrap();
@@ -185,8 +183,8 @@ async fn test_get_by_working_directory_returns_none_for_nonexistent() {
 
 #[tokio::test]
 async fn test_get_by_working_directory_finds_correct_project() {
-    let conn = setup_test_db();
-    let repo = SqliteProjectRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProjectRepository::from_shared(db.shared_conn());
 
     let project1 = create_test_project("Project 1", "/path/one");
     let project2 = create_test_project("Project 2", "/path/two");
