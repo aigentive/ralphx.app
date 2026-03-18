@@ -3,30 +3,29 @@
 use super::sqlite_team_message_repo::SqliteTeamMessageRepository;
 use crate::domain::entities::team::{TeamMessageId, TeamMessageRecord, TeamSessionId};
 use crate::domain::repositories::TeamMessageRepository;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
-use rusqlite::Connection;
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite-team-message-repo")
 }
 
-fn create_test_session(conn: &Connection) -> TeamSessionId {
+fn create_test_session(db: &SqliteTestDb) -> TeamSessionId {
     let id = TeamSessionId::new();
-    conn.execute(
-        "INSERT INTO team_sessions (id, team_name, context_id, context_type, phase, teammate_json, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        rusqlite::params![
-            id.as_str(),
-            "test-team",
-            "ctx-1",
-            "project",
-            "forming",
-            "[]",
-        ],
-    )
-    .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO team_sessions (id, team_name, context_id, context_type, phase, teammate_json, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+            rusqlite::params![
+                id.as_str(),
+                "test-team",
+                "ctx-1",
+                "project",
+                "forming",
+                "[]",
+            ],
+        )
+        .unwrap();
+    });
     id
 }
 
@@ -34,9 +33,9 @@ fn create_test_session(conn: &Connection) -> TeamSessionId {
 
 #[tokio::test]
 async fn test_create_returns_message() {
-    let conn = setup_test_db();
-    let session_id = create_test_session(&conn);
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let session_id = create_test_session(&db);
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     let msg = TeamMessageRecord::new(session_id.clone(), "alice", "Hello team");
     let msg_id = msg.id.clone();
@@ -53,9 +52,9 @@ async fn test_create_returns_message() {
 
 #[tokio::test]
 async fn test_create_with_recipient_persists_fields() {
-    let conn = setup_test_db();
-    let session_id = create_test_session(&conn);
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let session_id = create_test_session(&db);
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     let mut msg = TeamMessageRecord::new(session_id.clone(), "lead", "Task done");
     msg.recipient = Some("worker1".to_string());
@@ -72,9 +71,9 @@ async fn test_create_with_recipient_persists_fields() {
 
 #[tokio::test]
 async fn test_create_without_recipient_has_none() {
-    let conn = setup_test_db();
-    let session_id = create_test_session(&conn);
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let session_id = create_test_session(&db);
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     let msg = TeamMessageRecord::new(session_id.clone(), "alice", "Broadcast message");
     let msg_id = msg.id.clone();
@@ -88,9 +87,9 @@ async fn test_create_without_recipient_has_none() {
 
 #[tokio::test]
 async fn test_create_duplicate_id_fails() {
-    let conn = setup_test_db();
-    let session_id = create_test_session(&conn);
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let session_id = create_test_session(&db);
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     let msg = TeamMessageRecord::new(session_id.clone(), "alice", "Hello");
     repo.create(msg.clone()).await.unwrap();
@@ -104,9 +103,9 @@ async fn test_create_duplicate_id_fails() {
 
 #[tokio::test]
 async fn test_get_by_session_returns_all_messages() {
-    let conn = setup_test_db();
-    let session_id = create_test_session(&conn);
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let session_id = create_test_session(&db);
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     let msg1 = TeamMessageRecord::new(session_id.clone(), "alice", "Hello");
     let msg2 = TeamMessageRecord::new(session_id.clone(), "bob", "World");
@@ -124,9 +123,9 @@ async fn test_get_by_session_returns_all_messages() {
 
 #[tokio::test]
 async fn test_get_by_session_returns_empty_when_no_messages() {
-    let conn = setup_test_db();
-    let session_id = create_test_session(&conn);
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let session_id = create_test_session(&db);
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     let result = repo.get_by_session(&session_id).await;
 
@@ -136,10 +135,10 @@ async fn test_get_by_session_returns_empty_when_no_messages() {
 
 #[tokio::test]
 async fn test_get_by_session_filters_by_session() {
-    let conn = setup_test_db();
-    let session_id1 = create_test_session(&conn);
-    let session_id2 = create_test_session(&conn);
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let session_id1 = create_test_session(&db);
+    let session_id2 = create_test_session(&db);
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     let msg1 = TeamMessageRecord::new(session_id1.clone(), "alice", "Session 1 msg");
     let msg2 = TeamMessageRecord::new(session_id2.clone(), "bob", "Session 2 msg");
@@ -155,9 +154,9 @@ async fn test_get_by_session_filters_by_session() {
 
 #[tokio::test]
 async fn test_get_by_session_ordered_asc_by_created_at() {
-    let conn = setup_test_db();
-    let session_id = create_test_session(&conn);
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let session_id = create_test_session(&db);
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     let msg1 = TeamMessageRecord::new(session_id.clone(), "alice", "First");
     repo.create(msg1).await.unwrap();
@@ -182,9 +181,9 @@ async fn test_get_by_session_ordered_asc_by_created_at() {
 
 #[tokio::test]
 async fn test_get_recent_by_session_limits_results() {
-    let conn = setup_test_db();
-    let session_id = create_test_session(&conn);
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let session_id = create_test_session(&db);
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     for i in 1..=5u32 {
         let msg = TeamMessageRecord::new(session_id.clone(), "alice", format!("Message {}", i));
@@ -201,9 +200,9 @@ async fn test_get_recent_by_session_limits_results() {
 #[tokio::test]
 async fn test_get_recent_by_session_returns_latest_in_asc_order() {
     // Implementation: SQL ORDER BY DESC LIMIT N, then .reverse() → chronological order
-    let conn = setup_test_db();
-    let session_id = create_test_session(&conn);
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let session_id = create_test_session(&db);
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     for i in 1..=5u32 {
         let msg = TeamMessageRecord::new(session_id.clone(), "alice", format!("Message {}", i));
@@ -221,9 +220,9 @@ async fn test_get_recent_by_session_returns_latest_in_asc_order() {
 
 #[tokio::test]
 async fn test_get_recent_by_session_returns_all_if_fewer_than_limit() {
-    let conn = setup_test_db();
-    let session_id = create_test_session(&conn);
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let session_id = create_test_session(&db);
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     let msg = TeamMessageRecord::new(session_id.clone(), "alice", "Only one");
     repo.create(msg).await.unwrap();
@@ -235,9 +234,9 @@ async fn test_get_recent_by_session_returns_all_if_fewer_than_limit() {
 
 #[tokio::test]
 async fn test_get_recent_by_session_returns_empty_for_no_messages() {
-    let conn = setup_test_db();
-    let session_id = create_test_session(&conn);
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let session_id = create_test_session(&db);
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     let result = repo.get_recent_by_session(&session_id, 10).await;
 
@@ -249,9 +248,9 @@ async fn test_get_recent_by_session_returns_empty_for_no_messages() {
 
 #[tokio::test]
 async fn test_count_by_session_returns_zero_when_empty() {
-    let conn = setup_test_db();
-    let session_id = create_test_session(&conn);
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let session_id = create_test_session(&db);
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     let count = repo.count_by_session(&session_id).await.unwrap();
 
@@ -260,9 +259,9 @@ async fn test_count_by_session_returns_zero_when_empty() {
 
 #[tokio::test]
 async fn test_count_by_session_counts_correctly() {
-    let conn = setup_test_db();
-    let session_id = create_test_session(&conn);
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let session_id = create_test_session(&db);
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     for i in 1..=4u32 {
         let msg = TeamMessageRecord::new(session_id.clone(), "alice", format!("Msg {}", i));
@@ -276,10 +275,10 @@ async fn test_count_by_session_counts_correctly() {
 
 #[tokio::test]
 async fn test_count_by_session_filters_by_session() {
-    let conn = setup_test_db();
-    let session_id1 = create_test_session(&conn);
-    let session_id2 = create_test_session(&conn);
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let session_id1 = create_test_session(&db);
+    let session_id2 = create_test_session(&db);
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     let msg1 = TeamMessageRecord::new(session_id1.clone(), "a", "S1-msg1");
     let msg2 = TeamMessageRecord::new(session_id1.clone(), "b", "S1-msg2");
@@ -297,9 +296,9 @@ async fn test_count_by_session_filters_by_session() {
 
 #[tokio::test]
 async fn test_delete_by_session_removes_all_messages() {
-    let conn = setup_test_db();
-    let session_id = create_test_session(&conn);
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let session_id = create_test_session(&db);
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     let msg1 = TeamMessageRecord::new(session_id.clone(), "alice", "Msg 1");
     let msg2 = TeamMessageRecord::new(session_id.clone(), "bob", "Msg 2");
@@ -316,10 +315,10 @@ async fn test_delete_by_session_removes_all_messages() {
 
 #[tokio::test]
 async fn test_delete_by_session_does_not_affect_other_sessions() {
-    let conn = setup_test_db();
-    let session_id1 = create_test_session(&conn);
-    let session_id2 = create_test_session(&conn);
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let session_id1 = create_test_session(&db);
+    let session_id2 = create_test_session(&db);
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     let msg1 = TeamMessageRecord::new(session_id1.clone(), "alice", "S1 msg");
     let msg2 = TeamMessageRecord::new(session_id2.clone(), "bob", "S2 msg");
@@ -338,8 +337,8 @@ async fn test_delete_by_session_does_not_affect_other_sessions() {
 
 #[tokio::test]
 async fn test_delete_by_session_for_nonexistent_session_succeeds() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     let nonexistent_id = TeamSessionId::new();
     let result = repo.delete_by_session(&nonexistent_id).await;
@@ -351,9 +350,9 @@ async fn test_delete_by_session_for_nonexistent_session_succeeds() {
 
 #[tokio::test]
 async fn test_delete_removes_single_message() {
-    let conn = setup_test_db();
-    let session_id = create_test_session(&conn);
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let session_id = create_test_session(&db);
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     let msg1 = TeamMessageRecord::new(session_id.clone(), "alice", "Keep");
     let msg2 = TeamMessageRecord::new(session_id.clone(), "bob", "Delete me");
@@ -371,8 +370,8 @@ async fn test_delete_removes_single_message() {
 
 #[tokio::test]
 async fn test_delete_nonexistent_message_succeeds() {
-    let conn = setup_test_db();
-    let repo = SqliteTeamMessageRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTeamMessageRepository::new(db.new_connection());
 
     let nonexistent_id = TeamMessageId::new();
     let result = repo.delete(&nonexistent_id).await;
@@ -384,12 +383,9 @@ async fn test_delete_nonexistent_message_succeeds() {
 
 #[tokio::test]
 async fn test_from_shared_creates_and_retrieves() {
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
-
-    let conn = setup_test_db();
-    let session_id = create_test_session(&conn);
-    let shared_conn = Arc::new(Mutex::new(conn));
+    let db = setup_test_db();
+    let session_id = create_test_session(&db);
+    let shared_conn = db.shared_conn();
     let repo = SqliteTeamMessageRepository::from_shared(shared_conn);
 
     let msg = TeamMessageRecord::new(session_id.clone(), "alice", "Shared conn test");

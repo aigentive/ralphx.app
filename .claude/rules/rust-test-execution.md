@@ -63,6 +63,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --test execution_control_flows
 | Multiple unrelated unit-test filters | Run separate `cargo test ... --lib` commands sequentially |
 | Fast module-path guess | Derive `folder::tree::module::tests::` from the source tree first; for `#[path = "foo_tests.rs"] mod tests;` under `foo.rs`, prefer `...::foo::tests::` |
 | Sidecar `*_tests.rs` under a production module | Prefer the parent module path first: `application/review_issue_service_tests.rs` → `application::review_issue_service::tests::`, not `application::review_issue_service_tests::` |
+| Legacy standalone `*_tests.rs` modules still exist | Some suites keep the file stem path (`sqlite_team_message_repo_tests`); if the parent-module guess is not obvious, use `-- --list | rg ...` immediately instead of guessing twice |
 | Filter misses unexpectedly | `cargo test --manifest-path src-tauri/Cargo.toml --lib -- --list | rg "<repo_or_module>"` → then rerun with the real module-path prefix |
 | Parallel verification | ❌ do not start multiple Cargo test jobs against the same target dir; they block on `.cargo-lock` and add noise instead of speed |
 

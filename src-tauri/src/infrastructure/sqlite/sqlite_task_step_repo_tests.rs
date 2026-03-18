@@ -1,67 +1,27 @@
 use super::*;
-use crate::domain::entities::{ProjectId, Task};
-use crate::infrastructure::sqlite::migrations::run_migrations;
-use rusqlite::Connection;
+use crate::domain::entities::Task;
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> Connection {
-    let conn = Connection::open_in_memory().unwrap();
-    run_migrations(&conn).unwrap();
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite-task-step-repo")
 }
 
-fn create_test_task(conn: &Connection, task_id: &TaskId) {
-    let project_id = ProjectId::new();
-    // First create a project
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory, git_mode, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        rusqlite::params![
-            project_id.as_str(),
-            "Test Project",
-            "/tmp/test",
-            "local",
-            chrono::Utc::now().to_rfc3339(),
-            chrono::Utc::now().to_rfc3339(),
-        ],
-    )
-    .unwrap();
-
-    // Then create the task
-    let task = Task::new(project_id, "Test Task".to_string());
+fn create_test_task(db: &SqliteTestDb, task_id: &TaskId) {
+    let project = db.seed_project("Test Project");
+    let task = Task::new(project.id, "Test Task".to_string());
     let task = Task {
         id: task_id.clone(),
         ..task
     };
-    conn.execute(
-        "INSERT INTO tasks (id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, created_at, updated_at, started_at, completed_at, archived_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
-        rusqlite::params![
-            task.id.as_str(),
-            task.project_id.as_str(),
-            task.category.to_string(),
-            task.title,
-            task.description,
-            task.priority,
-            task.internal_status.as_str(),
-            task.needs_review_point,
-            task.source_proposal_id.as_ref().map(|id| id.as_str()),
-            task.plan_artifact_id.as_ref().map(|id| id.as_str()),
-            task.created_at.to_rfc3339(),
-            task.updated_at.to_rfc3339(),
-            task.started_at.map(|dt| dt.to_rfc3339()),
-            task.completed_at.map(|dt| dt.to_rfc3339()),
-            task.archived_at.map(|dt| dt.to_rfc3339()),
-        ],
-    )
-    .unwrap();
+    db.insert_task(task);
 }
 
 #[tokio::test]
 async fn test_create_and_get_by_id() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let task_id = TaskId::new();
-    create_test_task(&conn, &task_id);
-    let repo = SqliteTaskStepRepository::new(conn);
+    create_test_task(&db, &task_id);
+    let repo = SqliteTaskStepRepository::new(db.new_connection());
 
     let step = TaskStep::new(
         task_id.clone(),
@@ -83,8 +43,8 @@ async fn test_create_and_get_by_id() {
 
 #[tokio::test]
 async fn test_get_by_id_not_found() {
-    let conn = setup_test_db();
-    let repo = SqliteTaskStepRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteTaskStepRepository::new(db.new_connection());
 
     let step_id = TaskStepId::new();
     let result = repo.get_by_id(&step_id).await.unwrap();
@@ -93,10 +53,10 @@ async fn test_get_by_id_not_found() {
 
 #[tokio::test]
 async fn test_get_by_task_ordered() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let task_id = TaskId::new();
-    create_test_task(&conn, &task_id);
-    let repo = SqliteTaskStepRepository::new(conn);
+    create_test_task(&db, &task_id);
+    let repo = SqliteTaskStepRepository::new(db.new_connection());
 
     let step1 = TaskStep::new(task_id.clone(), "Step 1".to_string(), 2, "user".to_string());
     let step2 = TaskStep::new(task_id.clone(), "Step 2".to_string(), 0, "user".to_string());
@@ -115,10 +75,10 @@ async fn test_get_by_task_ordered() {
 
 #[tokio::test]
 async fn test_get_by_task_and_status() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let task_id = TaskId::new();
-    create_test_task(&conn, &task_id);
-    let repo = SqliteTaskStepRepository::new(conn);
+    create_test_task(&db, &task_id);
+    let repo = SqliteTaskStepRepository::new(db.new_connection());
 
     let mut step1 = TaskStep::new(task_id.clone(), "Step 1".to_string(), 0, "user".to_string());
     let mut step2 = TaskStep::new(task_id.clone(), "Step 2".to_string(), 1, "user".to_string());
@@ -148,10 +108,10 @@ async fn test_get_by_task_and_status() {
 
 #[tokio::test]
 async fn test_update() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let task_id = TaskId::new();
-    create_test_task(&conn, &task_id);
-    let repo = SqliteTaskStepRepository::new(conn);
+    create_test_task(&db, &task_id);
+    let repo = SqliteTaskStepRepository::new(db.new_connection());
 
     let mut step = TaskStep::new(
         task_id.clone(),
@@ -176,10 +136,10 @@ async fn test_update() {
 
 #[tokio::test]
 async fn test_delete() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let task_id = TaskId::new();
-    create_test_task(&conn, &task_id);
-    let repo = SqliteTaskStepRepository::new(conn);
+    create_test_task(&db, &task_id);
+    let repo = SqliteTaskStepRepository::new(db.new_connection());
 
     let step = TaskStep::new(
         task_id.clone(),
@@ -198,10 +158,10 @@ async fn test_delete() {
 
 #[tokio::test]
 async fn test_delete_by_task() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let task_id = TaskId::new();
-    create_test_task(&conn, &task_id);
-    let repo = SqliteTaskStepRepository::new(conn);
+    create_test_task(&db, &task_id);
+    let repo = SqliteTaskStepRepository::new(db.new_connection());
 
     let step1 = TaskStep::new(task_id.clone(), "Step 1".to_string(), 0, "user".to_string());
     let step2 = TaskStep::new(task_id.clone(), "Step 2".to_string(), 1, "user".to_string());
@@ -217,10 +177,10 @@ async fn test_delete_by_task() {
 
 #[tokio::test]
 async fn test_count_by_status() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let task_id = TaskId::new();
-    create_test_task(&conn, &task_id);
-    let repo = SqliteTaskStepRepository::new(conn);
+    create_test_task(&db, &task_id);
+    let repo = SqliteTaskStepRepository::new(db.new_connection());
 
     let mut step1 = TaskStep::new(task_id.clone(), "Step 1".to_string(), 0, "user".to_string());
     let mut step2 = TaskStep::new(task_id.clone(), "Step 2".to_string(), 1, "user".to_string());
@@ -244,10 +204,10 @@ async fn test_count_by_status() {
 
 #[tokio::test]
 async fn test_bulk_create() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let task_id = TaskId::new();
-    create_test_task(&conn, &task_id);
-    let repo = SqliteTaskStepRepository::new(conn);
+    create_test_task(&db, &task_id);
+    let repo = SqliteTaskStepRepository::new(db.new_connection());
 
     let steps = vec![
         TaskStep::new(task_id.clone(), "Step 1".to_string(), 0, "user".to_string()),
@@ -264,10 +224,10 @@ async fn test_bulk_create() {
 
 #[tokio::test]
 async fn test_bulk_create_rollback_on_error() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let task_id = TaskId::new();
-    create_test_task(&conn, &task_id);
-    let repo = SqliteTaskStepRepository::new(conn);
+    create_test_task(&db, &task_id);
+    let repo = SqliteTaskStepRepository::new(db.new_connection());
 
     let step = TaskStep::new(
         task_id.clone(),
@@ -302,10 +262,10 @@ async fn test_bulk_create_rollback_on_error() {
 
 #[tokio::test]
 async fn test_reorder() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let task_id = TaskId::new();
-    create_test_task(&conn, &task_id);
-    let repo = SqliteTaskStepRepository::new(conn);
+    create_test_task(&db, &task_id);
+    let repo = SqliteTaskStepRepository::new(db.new_connection());
 
     let step1 = TaskStep::new(task_id.clone(), "Step 1".to_string(), 0, "user".to_string());
     let step2 = TaskStep::new(task_id.clone(), "Step 2".to_string(), 1, "user".to_string());
@@ -334,10 +294,10 @@ async fn test_reorder() {
 
 #[tokio::test]
 async fn test_reorder_rollback_on_error() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let task_id = TaskId::new();
-    create_test_task(&conn, &task_id);
-    let repo = SqliteTaskStepRepository::new(conn);
+    create_test_task(&db, &task_id);
+    let repo = SqliteTaskStepRepository::new(db.new_connection());
 
     let step1 = TaskStep::new(task_id.clone(), "Step 1".to_string(), 0, "user".to_string());
     let step2 = TaskStep::new(task_id.clone(), "Step 2".to_string(), 1, "user".to_string());
@@ -369,10 +329,10 @@ async fn test_reorder_rollback_on_error() {
 
 #[tokio::test]
 async fn test_reset_all_to_pending_resets_non_pending_steps() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let task_id = TaskId::new();
-    create_test_task(&conn, &task_id);
-    let repo = SqliteTaskStepRepository::new(conn);
+    create_test_task(&db, &task_id);
+    let repo = SqliteTaskStepRepository::new(db.new_connection());
 
     let mut step1 = TaskStep::new(task_id.clone(), "Step 1".to_string(), 0, "user".to_string());
     let mut step2 = TaskStep::new(task_id.clone(), "Step 2".to_string(), 1, "user".to_string());
@@ -402,10 +362,10 @@ async fn test_reset_all_to_pending_resets_non_pending_steps() {
 
 #[tokio::test]
 async fn test_reset_all_to_pending_noop_when_all_pending() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let task_id = TaskId::new();
-    create_test_task(&conn, &task_id);
-    let repo = SqliteTaskStepRepository::new(conn);
+    create_test_task(&db, &task_id);
+    let repo = SqliteTaskStepRepository::new(db.new_connection());
 
     let step1 = TaskStep::new(task_id.clone(), "Step 1".to_string(), 0, "user".to_string());
     let step2 = TaskStep::new(task_id.clone(), "Step 2".to_string(), 1, "user".to_string());
@@ -419,10 +379,10 @@ async fn test_reset_all_to_pending_noop_when_all_pending() {
 
 #[tokio::test]
 async fn test_reset_all_to_pending_mixed_statuses() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let task_id = TaskId::new();
-    create_test_task(&conn, &task_id);
-    let repo = SqliteTaskStepRepository::new(conn);
+    create_test_task(&db, &task_id);
+    let repo = SqliteTaskStepRepository::new(db.new_connection());
 
     let pending_step = TaskStep::new(task_id.clone(), "Pending".to_string(), 0, "user".to_string());
     let pending_id = pending_step.id.clone();
@@ -451,10 +411,10 @@ async fn test_reset_all_to_pending_mixed_statuses() {
 
 #[tokio::test]
 async fn test_reset_all_to_pending_preserves_structural_fields() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let task_id = TaskId::new();
-    create_test_task(&conn, &task_id);
-    let repo = SqliteTaskStepRepository::new(conn);
+    create_test_task(&db, &task_id);
+    let repo = SqliteTaskStepRepository::new(db.new_connection());
 
     let mut step = TaskStep::new(task_id.clone(), "Important Step".to_string(), 5, "user".to_string());
     step.status = TaskStepStatus::Completed;
