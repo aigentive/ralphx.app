@@ -1,8 +1,17 @@
-use super::*;
-use crate::application::AppState;
-use crate::domain::entities::{ChatContextType, InternalStatus, Project, Task, TaskCategory};
-use crate::domain::repositories::AppStateRepository;
-use crate::domain::state_machine::mocks::MockTaskScheduler;
+use ralphx_lib::application::startup_jobs::is_startup_recovery_disabled_var;
+use ralphx_lib::application::{AppState, StartupJobRunner, TaskTransitionService};
+use ralphx_lib::commands::execution_commands::{
+    AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES,
+};
+use ralphx_lib::commands::{ActiveProjectState, ExecutionState};
+use ralphx_lib::domain::entities::{
+    ChatContextType, InternalStatus, Project, ProjectId, Task, TaskCategory,
+};
+use ralphx_lib::domain::execution::ExecutionSettings;
+use ralphx_lib::domain::repositories::AppStateRepository;
+use ralphx_lib::domain::state_machine::mocks::MockTaskScheduler;
+use ralphx_lib::domain::state_machine::TaskScheduler;
+use std::sync::Arc;
 
 // Helper to create test state
 async fn setup_test_state() -> (Arc<ExecutionState>, AppState) {
@@ -38,7 +47,7 @@ fn build_runner(
     let app_state_repo = Arc::clone(&app_state.app_state_repo);
     let execution_settings_repo = Arc::clone(&app_state.execution_settings_repo);
 
-    let active_project_state = Arc::new(crate::commands::ActiveProjectState::new());
+    let active_project_state = Arc::new(ActiveProjectState::new());
     let runner = StartupJobRunner::new(
         Arc::clone(&app_state.task_repo),
         Arc::clone(&app_state.task_dependency_repo),
@@ -66,16 +75,16 @@ fn build_runner(
 fn test_startup_recovery_flag_detection() {
     use std::ffi::OsStr;
 
-    assert!(super::is_startup_recovery_disabled_var(Some(OsStr::new(
+    assert!(is_startup_recovery_disabled_var(Some(OsStr::new(
         "1"
     ))));
-    assert!(super::is_startup_recovery_disabled_var(Some(OsStr::new(
+    assert!(is_startup_recovery_disabled_var(Some(OsStr::new(
         "true"
     ))));
-    assert!(super::is_startup_recovery_disabled_var(Some(OsStr::new(
+    assert!(is_startup_recovery_disabled_var(Some(OsStr::new(
         ""
     ))));
-    assert!(!super::is_startup_recovery_disabled_var(None));
+    assert!(!is_startup_recovery_disabled_var(None));
 }
 
 #[tokio::test]
@@ -1534,7 +1543,7 @@ async fn test_startup_loads_persisted_project_quota() {
         .unwrap();
 
     // Set project-specific execution settings with max_concurrent = 3
-    let settings = crate::domain::execution::ExecutionSettings {
+    let settings = ExecutionSettings {
         max_concurrent_tasks: 3,
         auto_commit: false,
         pause_on_failure: false,
@@ -1589,7 +1598,7 @@ async fn test_startup_quota_sync_before_resumption() {
     }
 
     // Set project-specific execution settings with max_concurrent = 2
-    let settings = crate::domain::execution::ExecutionSettings {
+    let settings = ExecutionSettings {
         max_concurrent_tasks: 2,
         auto_commit: false,
         pause_on_failure: false,
@@ -1629,7 +1638,7 @@ async fn test_startup_quota_sync_before_resumption() {
 #[test]
 fn is_waiting_for_global_idle_returns_false_when_no_metadata() {
     let task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ProjectId::new(),
         "Test".to_string(),
     );
     assert!(!StartupJobRunner::<tauri::Wry>::is_waiting_for_global_idle(
@@ -1640,7 +1649,7 @@ fn is_waiting_for_global_idle_returns_false_when_no_metadata() {
 #[test]
 fn is_waiting_for_global_idle_returns_false_when_no_main_merge_deferred_flag() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ProjectId::new(),
         "Test".to_string(),
     );
     task.metadata = Some(r#"{"other": "data"}"#.to_string());
@@ -1652,7 +1661,7 @@ fn is_waiting_for_global_idle_returns_false_when_no_main_merge_deferred_flag() {
 #[test]
 fn is_waiting_for_global_idle_returns_false_when_main_merge_deferred_but_no_agents() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ProjectId::new(),
         "Test".to_string(),
     );
     task.metadata = Some(serde_json::json!({"main_merge_deferred": true}).to_string());
@@ -1665,7 +1674,7 @@ fn is_waiting_for_global_idle_returns_false_when_main_merge_deferred_but_no_agen
 #[test]
 fn is_waiting_for_global_idle_returns_true_when_main_merge_deferred_and_agents_running() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ProjectId::new(),
         "Test".to_string(),
     );
     task.metadata = Some(serde_json::json!({"main_merge_deferred": true}).to_string());
@@ -1851,8 +1860,6 @@ async fn test_startup_does_not_touch_paused_tasks() {
 /// Verify that Paused is not in AGENT_ACTIVE_STATUSES or AUTO_TRANSITION_STATES
 #[test]
 fn test_paused_not_in_agent_active_or_auto_transition() {
-    use crate::commands::execution_commands::{AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES};
-
     assert!(
         !AGENT_ACTIVE_STATUSES.contains(&InternalStatus::Paused),
         "Paused should NOT be in AGENT_ACTIVE_STATUSES"

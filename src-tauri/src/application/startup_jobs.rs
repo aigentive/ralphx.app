@@ -37,7 +37,8 @@ use super::TaskTransitionService;
 /// Environment variable that disables startup recovery mechanisms when present.
 pub const RALPHX_DISABLE_STARTUP_RECOVERY_ENV: &str = "RALPHX_DISABLE_STARTUP_RECOVERY";
 
-fn is_startup_recovery_disabled_var(value: Option<&std::ffi::OsStr>) -> bool {
+#[doc(hidden)]
+pub fn is_startup_recovery_disabled_var(value: Option<&std::ffi::OsStr>) -> bool {
     value.is_some()
 }
 
@@ -910,7 +911,11 @@ impl<R: Runtime> StartupJobRunner<R> {
 
     /// Abort stale rebase/merge operations on project repos.
     /// Called before any task recovery to ensure clean git state.
-    async fn cleanup_stale_git_state(&self, projects: &[crate::domain::entities::Project]) {
+    #[doc(hidden)]
+    pub async fn cleanup_stale_git_state(
+        &self,
+        projects: &[crate::domain::entities::Project],
+    ) {
         for project in projects {
             let repo_path = Path::new(&project.working_directory);
             if !repo_path.exists() {
@@ -1145,7 +1150,8 @@ impl<R: Runtime> StartupJobRunner<R> {
     /// when agents are still running. Returns true only if:
     /// - Task has `main_merge_deferred` metadata flag set
     /// - There are agents currently running (running_count > 0)
-    fn is_waiting_for_global_idle(
+    #[doc(hidden)]
+    pub fn is_waiting_for_global_idle(
         task: &crate::domain::entities::Task,
         running_count: u32,
     ) -> bool {
@@ -1154,6 +1160,3 @@ impl<R: Runtime> StartupJobRunner<R> {
         has_main_merge_deferred_metadata(task) && running_count > 0
     }
 }
-
-#[cfg(test)]
-mod tests;
