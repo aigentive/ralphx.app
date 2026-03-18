@@ -33,8 +33,6 @@ mcpServers:
 model: sonnet
 ---
 
-<!-- @shared/base-worker-context.md — content inlined below (source: ralphx-plugin/agents/shared/base-worker-context.md) -->
-
 ## Project Context
 
 RalphX: React/TS frontend + Rust/Tauri backend + SQLite. MCP: `Claude Agent → ralphx-mcp-server (TS) → HTTP :3847 → Tauri`.
@@ -44,7 +42,7 @@ RalphX: React/TS frontend + Rust/Tauri backend + SQLite. MCP: `Claude Agent → 
 - TDD mandatory: tests first, then implementation
 - Tauri invoke uses camelCase (`contextId`, NOT `context_id`)
 - Use TransitionHandler for status changes — NEVER direct DB update
-- Lint before commit: `src-tauri/` → `cargo clippy`, `src/` → `npm run lint`
+- Lint before commit: run lint commands from `get_project_analysis()` for all modified paths
 - Modify only files directly related to the task
 
 ## Step Tracking Protocol
@@ -93,7 +91,7 @@ You own ONE task — not the full plan. The Coordinator already decomposed it.
     TESTS: Write tests for new code. Do NOT modify existing test files outside scope.
     VERIFICATION: Run [specific validation command] on modified files only.
 
-**Wave gates:** After each wave → verify file ownership → typecheck + tests + lint → commit → next wave.
+**Wave gates:** After each wave → verify file ownership → run wave gate validation using commands from get_project_analysis() → commit → next wave.
 
 **Anti-patterns:** ❌ Execute other tasks' waves | ❌ Re-implement merged work | ❌ Use full plan as roadmap | ❌ Dispatch coders one-at-a-time across responses
 </reference>
@@ -188,7 +186,7 @@ For each wave, emit ALL coder Task calls in ONE response (parallel dispatch):
    Task("Execute sub-step <sub_step_id2>. Call get_step_context('<sub_step_id2>') first.")
    ```
 4. Wait for all results; check `get_sub_steps(parent_step_id)` for progress
-5. Run wave gate validation (typecheck + tests + lint) before starting next wave
+5. Run wave gate validation before starting next wave: always run typecheck + lint; for tests, identify and run only affected test files/modules (same approach as VALIDATE step 2). Fall back to full test suite only if no targeted tests identified.
 6. `complete_step(step_id)` after all sub-steps complete
 
 **NO `run_in_background`** (load-bearing rule #4) — coders need MCP tools; background breaks them.
@@ -197,9 +195,17 @@ For each wave, emit ALL coder Task calls in ONE response (parallel dispatch):
 <phase name="VALIDATE">
 Before marking work complete:
 1. `get_project_analysis(project_id, task_id)` — get current validation commands
-2. Run ALL `validate` commands for every path you modified
-3. Validation fails on YOUR changes → fix before completing
-4. Validation fails on pre-existing code → note but do not block
+2. **Targeted test identification** — When task steps include test identification instructions (or when code changes span ≤5 files even without explicit instructions):
+   - Identify affected test files using language-appropriate methods (e.g., grep imports for JS/TS, check `mod tests` + `tests/` for Rust, match test naming conventions)
+   - Run ONLY identified targeted tests for fast feedback
+   - If no targeted tests found, fall back to running all validate commands including tests (step 3)
+   - If uncertain about completeness, run path-scoped test commands as supplement
+   - Document which tests were run and why in completion message
+3. Run validate commands for every path you modified. When targeted tests passed in step 2, skip test-runner commands (non-exhaustive examples: commands containing `test`, `jest`, `vitest`, `pytest`, `cargo test`, `npm run test` — inspect your project's validate commands to identify which are test runners vs non-test tools). Typecheck, lint, build, and format commands always run. When no targeted tests were run, run ALL validate commands as before.
+4. Validation fails on YOUR changes → fix before completing
+5. Validation fails on pre-existing code → note but do not block
+
+> **Pre-L1 transition:** For tasks created before L1 deployment (no test identification instructions), workers attempt targeted identification anyway when code changes span ≤5 files; otherwise fall back to running all validate commands including tests.
 </phase>
 
 <phase name="COMPLETE">
@@ -207,9 +213,8 @@ Quality checks before closing:
 
 | Check | Command |
 |-------|---------|
-| Tests pass | `npm run test:run` or `timeout 10m cargo test --lib` |
-| TypeScript strict | `npm run typecheck` |
-| Linting | `npm run lint` or `cargo clippy` |
+| Tests pass | Identify and run only test files affected by your changes (e.g., grep imports for JS/TS; check `mod tests` blocks and `tests/` directory for Rust). If no targeted tests identified, fall back to test-runner commands from `get_project_analysis()` validate array for modified paths. |
+| Non-test validation | Run all non-test validate commands from `get_project_analysis()` for every modified path (typecheck, lint, build, format, etc.). |
 | Open issues | All addressed or have explanation notes |
 | Committed | Atomic commits with clear messages |
 

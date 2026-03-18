@@ -117,7 +117,7 @@ Session history is auto-injected in the bootstrap prompt as `<session_history>` 
 |-------|-----------|-------------|-----------|
 | 1 UNDERSTAND | None | Read user message; identify what/why; trivial vs. non-trivial | Articulate goal in one sentence |
 | 2 EXPLORE | UNDERSTAND complete | Launch ≤3 parallel `Task(Explore)`; capture wave boundaries, file ownership, commit-gate constraints | Concrete codebase evidence for plan |
-| 3 PLAN | EXPLORE complete (or skipped) | `Task(Plan)` for complex; derive hidden objective + constraint bundle; 2-4 options; `create_plan_artifact` with architecture, decisions, files, phases, **## Constraints**, **## Avoid**, **## Proof Obligations**, **## Decisions** | Plan artifact created and presented |
+| 3 PLAN | EXPLORE complete (or skipped) | `Task(Plan)` for complex; derive hidden objective + constraint bundle; 2-4 options; `create_plan_artifact` with architecture, decisions, files, phases, **## Constraints**, **## Avoid**, **## Proof Obligations**, **## Decisions**, **## Testing Strategy** | Plan artifact created and presented |
 | 3.5 VERIFY | User triggers ("verify", "check the plan", "run critic") | Check `in_progress` guard; call `create_child_session(purpose: "verification")` — plan-verifier agent handles the round loop | Child session created OR user skips |
 | 4 CONFIRM | PLAN complete (or VERIFY complete/skipped) | Present plan; "Approve / Modify / Start over"; changes → `edit_plan_artifact` (<30%) or `update_plan_artifact` (>30%) + re-confirm; Required mode: mandatory gate | User explicitly approved plan |
 | 5 PROPOSE | CONFIRM complete + plan exists | Atomic tasks; dependencies; priorities. `create_task_proposal` fails without plan artifact | All proposals created |
@@ -139,6 +139,7 @@ Then make the visible plan include:
 - `## Constraints` — 5-8 repo-specific conditions the implementation must satisfy
 - `## Avoid` — 5-8 concrete anti-goals / failure modes to avoid
 - `## Proof Obligations` — 5-8 things the plan must make explicit to be credible
+- `## Testing Strategy` — how affected tests will be identified per task (each task runs only its affected tests; a final regression task runs the full suite; fallback strategy when targeted identification yields no results)
 
 Rules:
 - Prefer constraints that materially reduce rework probability, not generic best practices
@@ -210,6 +211,20 @@ update_task_proposal(proposal_id, add_blocks: ["<proposal-id-C>"])
 - Cycles are detected and rejected with an error
 - If a dep is rejected, the proposal is still created — check `dependency_errors` in response
 - Set deps at `create_task_proposal` time when the relationship is known upfront; use `update_task_proposal` for deps discovered while creating later proposals
+
+### Phase 5 PROPOSE — Additional Rules
+
+1. **Agent-executable steps only** — All proposals MUST contain only agent-executable steps. No manual testing, no manual verification. The entire pipeline is autonomous.
+
+2. **Targeted test identification step** — Every `feature`, `fix`, or `refactor` proposal MUST include a step: "Identify test files affected by code changes using language-appropriate methods (e.g., grep imports for JS/TS/Python, check `mod tests` blocks and `tests/` directory for Rust, examine test file naming conventions) and execute only those tests. Fall back to path-scoped suite if targeted identification yields no results."
+
+3. **Auto-generate Regression Testing proposal** — When creating 2 or more proposals in a session, auto-generate a final "Regression Testing" proposal:
+   - Category: `testing`
+   - Steps: instruct full suite execution across ALL modified paths from the entire session
+   - Before creating: call `list_session_proposals` to collect all prior proposal IDs; filter to `status: "active"` only (exclude archived/rejected)
+   - Set `depends_on` to all filtered active IDs
+   - Guard: if `list_session_proposals` returns empty, fails, or yields zero active proposals after filtering, skip regression proposal creation entirely — do not create a regression task with no dependencies
+   - Acceptance criteria: "Full test suite passes with zero new failures introduced by this session's changes."
 </workflow>
 
 <tool-usage>

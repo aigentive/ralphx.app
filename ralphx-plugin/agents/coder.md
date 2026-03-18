@@ -33,8 +33,6 @@ mcpServers:
 model: sonnet
 ---
 
-<!-- Synced from shared/base-worker-context.md — keep in sync manually -->
-
 ## Project Context
 
 RalphX: React/TS frontend + Rust/Tauri backend + SQLite. MCP: `Claude Agent → ralphx-mcp-server (TS) → HTTP :3847 → Tauri`.
@@ -46,7 +44,7 @@ RalphX: React/TS frontend + Rust/Tauri backend + SQLite. MCP: `Claude Agent → 
 - Tauri invoke uses camelCase (`contextId`, NOT `context_id`)
 - No fragile string comparisons — use enum variants or error codes
 - USE TransitionHandler for status changes — NEVER direct DB update
-- Lint before commit: `src-tauri/` → `cargo clippy`, `src/` → `npm run lint`
+- Lint before commit: run lint commands from `get_project_analysis()` for all modified paths
 
 ## Environment Setup (call before writing code)
 
@@ -71,9 +69,16 @@ If `status: "analyzing"` — wait `retry_after_secs` and retry.
 
 ## Pre-Completion Validation (MANDATORY)
 
-1. Run ALL `validate` commands for every path you modified
-2. Validation fails on YOUR changes → fix before completing
-3. Validation fails on pre-existing code → note but do not block
+1. `get_project_analysis(project_id, task_id)` — get current validation commands
+2. **Targeted test identification** — When task steps include test identification instructions (or when code changes span ≤5 files):
+   - Identify affected test files using language-appropriate methods (e.g., grep imports for JS/TS, check `mod tests` + `tests/` for Rust, match test naming conventions)
+   - Run ONLY identified targeted tests for fast feedback
+   - If no targeted tests found, fall back to running all validate commands including tests (step 3)
+   - If uncertain about completeness, run path-scoped test commands as supplement
+   - Document which tests were run and why in completion message
+3. Run validate commands for every path you modified. When targeted tests passed in step 2, skip test-runner commands (non-exhaustive examples: commands containing `test`, `jest`, `vitest`, `pytest`, `cargo test`, `npm run test` — inspect your project's validate commands to identify which are test runners vs non-test tools). Typecheck, lint, build, and format commands always run. When no targeted tests were run, run ALL validate commands as before.
+4. Validation fails on YOUR changes → fix before completing
+5. Validation fails on pre-existing code → note but do not block
 
 ## Re-Execution (when `RALPHX_TASK_STATE=re_executing`)
 
@@ -84,9 +89,8 @@ If `status: "analyzing"` — wait `retry_after_secs` and retry.
 
 ## Quality Checklist
 
-- [ ] Tests pass (`npm run test:run` or `timeout 10m cargo test --lib`)
-- [ ] TypeScript strict (`npm run typecheck`)
-- [ ] Linting passes
+- [ ] Tests pass (identify and run only affected tests; fall back to test-runner commands from get_project_analysis() for modified paths)
+- [ ] Run non-test validate commands from get_project_analysis() for all modified paths
 - [ ] All open issues addressed
 - [ ] Changes committed
 
@@ -171,9 +175,15 @@ Proceed using:
 <phase name="VALIDATE">
 Before marking work complete:
 1. `get_project_analysis(project_id, task_id)` — get current validation commands
-2. Run ALL `validate` commands for every path you modified
-3. Validation fails on YOUR changes → fix before completing
-4. Validation fails on pre-existing code → note but do not block
+2. **Targeted test identification** — When task steps include test identification instructions (or when code changes span ≤5 files):
+   - Identify affected test files using language-appropriate methods (e.g., grep imports for JS/TS, check `mod tests` + `tests/` for Rust, match test naming conventions)
+   - Run ONLY identified targeted tests for fast feedback
+   - If no targeted tests found, fall back to running all validate commands including tests (step 3)
+   - If uncertain about completeness, run path-scoped test commands as supplement
+   - Document which tests were run and why in completion message
+3. Run validate commands for every path you modified. When targeted tests passed in step 2, skip test-runner commands (non-exhaustive examples: commands containing `test`, `jest`, `vitest`, `pytest`, `cargo test`, `npm run test` — inspect your project's validate commands to identify which are test runners vs non-test tools). Typecheck, lint, build, and format commands always run. When no targeted tests were run, run ALL validate commands as before.
+4. Validation fails on YOUR changes → fix before completing
+5. Validation fails on pre-existing code → note but do not block
 </phase>
 
 <phase name="COMPLETE">
@@ -181,9 +191,8 @@ Quality checks before closing:
 
 | Check | Command |
 |-------|---------|
-| Tests pass | `npm run test:run` or `timeout 10m cargo test --lib` |
-| TypeScript strict | `npm run typecheck` |
-| Linting | `npm run lint` or `cargo clippy` |
+| Tests pass | Identify and run only test files affected by your changes (e.g., grep imports for JS/TS; check `mod tests` blocks and `tests/` directory for Rust). If no targeted tests identified, fall back to test-runner commands from `get_project_analysis()` validate array for modified paths. |
+| Non-test validation | Run all non-test validate commands from `get_project_analysis()` for every modified path (typecheck, lint, build, format, etc.). |
 | Open issues | All addressed or have explanation notes |
 | Committed | Atomic commits with clear messages |
 

@@ -98,6 +98,8 @@ If the user message includes a PRIOR ROUND CONTEXT section, treat those gaps as 
 - **Missing wiring** — Services/repos created but not added to AppState/DI container
 - **Violated anti-goals** — The plan's `Avoid` section says not to do X, but the rest of the plan still does X
 - **Missing proof** — A `Proof Obligation` is listed but the plan never names the concrete file, call path, or verification step that satisfies it
+- **Missing Testing Strategy** — Plan lacks a `## Testing Strategy` section or does not specify how affected tests will be identified per task (raise as HIGH severity gap in the `testing` category)
+- **Full-suite test steps at task gates** — Proposal steps instruct "run all tests" or "run full suite" at VALIDATE, COMPLETE, or review gates instead of "identify and run affected tests" (raise as MEDIUM severity gap in the `testing` category)
 
 ## Outcome Optimization Lens
 

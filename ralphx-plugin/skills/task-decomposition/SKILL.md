@@ -76,6 +76,30 @@ Order tasks to minimize blocking:
 7. Implement retry logic
 8. Add caching layer
 
+### Pattern: Targeted Testing
+
+Every plan decomposition MUST include a testing strategy that scales with the implementation — not blanket full-suite runs at every gate.
+
+**Rules:**
+
+- Each implementation task's steps MUST include a test identification step — the worker identifies which test files are affected by the changes in that task before running tests.
+- The identification method is tech-stack dependent; workers choose the appropriate approach:
+  - JS/TS/Python: grep import statements and module references to find test files that import changed modules
+  - Rust: check `mod tests` blocks within changed files and the `tests/` directory for integration tests matching changed module names; examine test file naming conventions
+  - Other stacks: examine test file naming conventions and directory structure
+- If targeted identification yields no results, fall back to a path-scoped suite (e.g., tests for the directory or crate containing the changed files) rather than the full suite.
+- Add a final "Regression Testing" task that depends on ALL implementation tasks — this task runs the full test suite across all modified paths to catch cross-cutting regressions.
+- Non-code tasks (docs updates, config-only changes) are exempt from the test identification step.
+
+**Example decomposition with targeted testing:**
+
+| Task | Type | Test Step |
+|------|------|-----------|
+| Add comment repository | feature | Identify test files importing `comment_repository` → run those tests |
+| Add comment API endpoint | feature | Identify test files importing comment handler → run those tests |
+| Add comment UI component | feature | Identify test files importing `CommentInput` → run those tests |
+| Regression Testing | testing | Run full test suite across all modified paths; depends on all above tasks |
+
 ## Decomposition Questions
 
 Ask these to guide decomposition:

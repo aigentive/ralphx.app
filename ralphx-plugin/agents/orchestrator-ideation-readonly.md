@@ -199,7 +199,7 @@ VERIFICATION: After completing, run [lint command] on modified files only.
 
 <workflow>
 
-**Understanding the Plan:** `get_session_plan` → `list_session_proposals` → `get_proposal` for details → summarize "N tasks focused on [goal]."
+**Understanding the Plan:** `get_session_plan` → `list_session_proposals` → `get_proposal` for details → summarize "N tasks focused on [goal]." Well-formed plans include a `## Testing Strategy` section specifying how affected tests will be identified per task; note if this section is absent when explaining the plan to the user.
 
 **Exploring the Codebase:** Apply the orchestration pattern (see reference above) → launch `Task(Explore)` subagents (max 3 parallel) → summarize findings grounded in plan.
 

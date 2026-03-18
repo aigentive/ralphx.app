@@ -239,8 +239,10 @@ TaskCreate: { "subject": "Research frontend auth patterns", "description": "..."
    ```
 5. **Create master plan artifact**:
    ```
-   create_plan_artifact(session_id, title: "{feature name}", content: "{architecture + key decisions + affected files + phases + Constraints + Avoid + Proof Obligations}")
+   create_plan_artifact(session_id, title: "{feature name}", content: "{architecture + key decisions + affected files + phases + Constraints + Avoid + Proof Obligations + Testing Strategy}")
    ```
+
+   Plans MUST include a `## Testing Strategy` section specifying: how affected tests will be identified per task (e.g., grep imports for JS/TS/Python, check `mod tests` blocks and `tests/` directory for Rust, examine test file naming conventions), that each task runs only affected tests, that a final regression task runs the full suite, and the fallback strategy when targeted identification yields no results.
 6. Link team artifacts to master plan via `related_artifact_id`
 
 **Debate synthesis:** Compare all TeamAnalysis artifacts; justify winning approach with evidence; document rejected approaches.
@@ -294,6 +296,20 @@ Present plan to user → wait for approval. Include: team research summary, arch
 ### Phase 6: PROPOSE
 
 Create task proposals linked to plan. Set dependencies **inline** — no background agent needed.
+
+**Proposal authoring rules:**
+
+1. All proposals MUST contain only agent-executable steps — no manual testing, no manual verification. The entire pipeline is autonomous.
+
+2. Every `feature`/`fix`/`refactor` proposal MUST include a step: "Identify test files affected by code changes using language-appropriate methods (e.g., grep imports for JS/TS/Python, check `mod tests` blocks and `tests/` directory for Rust, examine test file naming conventions) and execute only those tests. Fall back to path-scoped suite if targeted identification yields no results."
+
+3. When creating 2+ proposals in a session, auto-generate a final "Regression Testing" proposal:
+   - Category: `testing`
+   - Steps: instruct full suite execution across ALL modified paths from the entire session
+   - Before creating: call `list_session_proposals` to collect all prior proposal IDs, filter to `status: "active"` only (exclude archived/rejected)
+   - Set `depends_on` to all filtered active IDs
+   - Guard: if `list_session_proposals` returns empty, fails, or yields zero active proposals after filtering, skip regression proposal creation
+   - Acceptance criteria: "Full test suite passes with zero new failures introduced by this session's changes."
 
 **When creating a proposal** — use `depends_on` to set immediate dependencies at creation time:
 ```
@@ -366,7 +382,6 @@ Present next step: "Ready to apply to Kanban?"
 
 </do-not>
 
-<!-- Inlined from ralphx-plugin/agents/system-cards/agent-teams-orchestration.md -->
 <reference name="agent-teams-orchestration">
 
 # Agent Teams Orchestration — System Card
@@ -549,11 +564,11 @@ Phase 4: EXECUTE (wave-by-wave — foreground only, MCP required)
     → TeamCreate + TaskCreate x2
     → Task x2 in ONE message (no run_in_background)
     → Each coder: start_step → implement → complete_step → SendMessage to lead
-    → Wave gate: npm run typecheck + cargo test --lib (all must pass before Wave 2)
+    → Wave gate: run validate commands from get_project_analysis() for modified paths (all must pass before Wave 2)
   Wave 2+: repeat with dependent scopes, passing Wave 1 outputs as context in prompt
 
 Phase 5: VALIDATE + COMPLETE
-  → Run ALL validation: typecheck + lint + tests
+  → Run validation commands from get_project_analysis() for each modified path (typecheck, lint, build, format, and targeted tests)
   → execution_complete(task_id)
   → SendMessage shutdown_request to each coder → wait → TeamDelete
 ```

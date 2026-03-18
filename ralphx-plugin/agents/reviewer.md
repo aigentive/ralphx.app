@@ -32,8 +32,6 @@ skills:
   - code-review-checklist
 ---
 
-<!-- Synced from shared/base-worker-context.md — keep in sync manually -->
-
 ## Project Context
 
 RalphX: React/TS frontend + Rust/Tauri backend + SQLite. MCP: `Claude Agent → ralphx-mcp-server (TS) → HTTP :3847 → Tauri`.
@@ -45,7 +43,7 @@ RalphX: React/TS frontend + Rust/Tauri backend + SQLite. MCP: `Claude Agent → 
 - Tauri invoke uses camelCase (`contextId`, NOT `context_id`)
 - No fragile string comparisons — use enum variants or error codes
 - USE TransitionHandler for status changes — NEVER direct DB update
-- Lint before commit: `src-tauri/` → `cargo clippy`, `src/` → `npm run lint`
+- Lint before commit: run lint commands from `get_project_analysis()` for all modified paths
 
 ## Environment Setup (call before writing code)
 
@@ -70,9 +68,15 @@ If `status: "analyzing"` — wait `retry_after_secs` and retry.
 
 ## Pre-Completion Validation (MANDATORY)
 
-1. Run ALL `validate` commands for every path you modified
-2. Validation fails on YOUR changes → fix before completing
-3. Validation fails on pre-existing code → note but do not block
+1. `get_project_analysis(project_id, task_id)` — get current validation commands
+2. **Targeted test identification** — When code changes span ≤5 files (or task steps include test instructions):
+   - Identify affected test files using language-appropriate methods (e.g., grep imports for JS/TS, check `mod tests` + `tests/` for Rust)
+   - Run ONLY identified targeted tests
+   - If no targeted tests found, fall back to running all validate commands including tests (step 3)
+   - Document which tests were run and why
+3. Run validate commands for every path modified. When targeted tests passed in step 2, skip test-runner commands. Typecheck, lint, build, and format commands always run.
+4. Validation fails on worker's changes → flag in review
+5. Validation fails on pre-existing code → note but do not block review
 
 ## Re-Execution (when `RALPHX_TASK_STATE=re_executing`)
 
@@ -83,9 +87,8 @@ If `status: "analyzing"` — wait `retry_after_secs` and retry.
 
 ## Quality Checklist
 
-- [ ] Tests pass (`npm run test:run` or `timeout 10m cargo test --lib`)
-- [ ] TypeScript strict (`npm run typecheck`)
-- [ ] Linting passes
+- [ ] Tests pass (identify and run only affected tests; fall back to test-runner commands from `get_project_analysis()` for modified paths)
+- [ ] Run non-test validate commands from `get_project_analysis()` for all modified paths
 - [ ] All open issues addressed
 - [ ] Changes committed
 
@@ -126,22 +129,20 @@ Start with `get_review_notes(task_id)`:
 </state>
 
 <section name="validation-rules">
-| Modified path | Command |
-|--------------|---------|
-| `src/` | `npm run typecheck` + `npm run lint` |
-| `src-tauri/` | `timeout 10m cargo test --lib` |
-| `ralphx-plugin/` | Manual review only |
-| `ralphx-mcp-server/` | `npm run build` in that dir |
-
-- Pass → continue
-- Fail on worker's code → `needs_changes` with file + line issues
-- Fail on pre-existing code (not in diff) → note but do not block approval
+1. Call `get_project_analysis(project_id, task_id)` to get path-scoped validate commands
+2. For each path modified by the worker, run the corresponding validate commands:
+   - Test commands: First identify and run only test files affected by the changes. If targeted tests pass, skip full test suite. If no targeted tests identified, fall back to test-runner commands from validate array.
+   - Non-test commands (typecheck, lint, build, format): Always run for modified paths.
+3. Report validation results in review findings.
 </section>
 
 <section name="review-checklist">
 **Code Quality** — clear naming, appropriate abstractions, no dead code/TODOs, error handling present
 
 **Testing** — new code has tests, edge cases covered, tests are meaningful
+- Did the worker identify and run tests specifically affected by the changes?
+- Are there obvious test files that should have been included but weren't?
+- If the worker ran only path-scoped tests (fallback), was targeted identification attempted?
 
 **Security** — no hardcoded secrets, input validation present, no SQL/command injection, proper auth checks
 
