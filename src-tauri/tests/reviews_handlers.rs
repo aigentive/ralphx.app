@@ -16,22 +16,23 @@
 //   3. Stale reviewer call on Ready task → 400 BAD_REQUEST (guard fires for non-review states).
 //   4. Valid reviewer call on Reviewing task → guard does NOT fire (proceeds past guard line 32).
 
-use super::*;
-use crate::application::AppState;
-use crate::commands::ExecutionState;
-use crate::domain::entities::{InternalStatus, ProjectId, Task};
-use crate::http_server::project_scope::ProjectScope;
-use axum::http::StatusCode;
+use axum::{extract::State, http::StatusCode, Json};
+use ralphx_lib::application::{
+    interactive_process_registry::InteractiveProcessKey, AppState, TeamService, TeamStateTracker,
+};
+use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::entities::{InternalStatus, ProjectId, Task};
+use ralphx_lib::http_server::handlers::*;
+use ralphx_lib::http_server::project_scope::ProjectScope;
+use ralphx_lib::http_server::types::HttpServerState;
 use std::sync::Arc;
 
 /// Build a minimal HttpServerState backed by in-memory repos (no SQLite, no Tauri app handle).
 async fn setup_review_test_state() -> HttpServerState {
     let app_state = Arc::new(AppState::new_test());
     let execution_state = Arc::new(ExecutionState::new());
-    let tracker = crate::application::TeamStateTracker::new();
-    let team_service = Arc::new(crate::application::TeamService::new_without_events(
-        Arc::new(tracker.clone()),
-    ));
+    let tracker = TeamStateTracker::new();
+    let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
 
     HttpServerState {
         app_state,
@@ -258,10 +259,7 @@ async fn test_complete_review_ipr_removed_on_success() {
         .expect("spawn cat for review IPR test");
     let stdin = child.stdin.take().expect("cat stdin");
 
-    let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
-        "review",
-        task_id.as_str(),
-    );
+    let key = InteractiveProcessKey::new("review", task_id.as_str());
     state
         .app_state
         .interactive_process_registry
@@ -329,10 +327,7 @@ async fn test_complete_review_ipr_removed_on_needs_changes() {
         .expect("spawn cat for review IPR needs_changes test");
     let stdin = child.stdin.take().expect("cat stdin");
 
-    let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
-        "review",
-        task_id.as_str(),
-    );
+    let key = InteractiveProcessKey::new("review", task_id.as_str());
     state
         .app_state
         .interactive_process_registry
@@ -398,10 +393,7 @@ async fn test_complete_review_ipr_removed_on_escalate() {
         .expect("spawn cat for review IPR escalate test");
     let stdin = child.stdin.take().expect("cat stdin");
 
-    let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
-        "review",
-        task_id.as_str(),
-    );
+    let key = InteractiveProcessKey::new("review", task_id.as_str());
     state
         .app_state
         .interactive_process_registry
