@@ -77,6 +77,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --test chat_service_context
 cargo test --manifest-path src-tauri/Cargo.toml --test chat_service_errors
 cargo test --manifest-path src-tauri/Cargo.toml --test chat_service_merge
 cargo test --manifest-path src-tauri/Cargo.toml --test transition_handler_freshness
+cargo test --manifest-path src-tauri/Cargo.toml --test transition_handler_concurrent_freshness
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 ```
@@ -189,6 +190,7 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Does the moved suite need internals? | Expose the smallest seam: re-export, `#[doc(hidden)] pub`, or `*_for_test()` |
 | Does it only need one small test helper from a private module? | Localize that helper in the integration target instead of exporting a broad test-only helper tree |
 | Are you repeating a setup graph twice? | Extract a suite helper now; promote to `src-tauri/src/testing/` once a second file needs it |
+| Do multiple integration targets need the same non-production helper? | Promote it into `src-tauri/tests/support/` rather than duplicating it or exporting it from production code |
 | Are you validating several targeted suites? | Run them sequentially; do not launch parallel Cargo jobs against the same target dir |
 
 ## Move Decision Framework

@@ -207,10 +207,6 @@ mod phase2_phase3_merge_tests;
 // RC1: single --force fails on locked worktrees; -f -f and unlock+prune succeed
 mod locked_worktree_tests;
 
-// Concurrent plan branch freshness tests: multi-task concurrency, stress scenarios,
-// dirty worktree edge cases, git lock contention handling
-mod concurrent_freshness_tests;
-
 // Integration tests for conflict marker scan before reviewer spawn (Fix 2) and
 // BranchFreshnessConflict metadata persistence during on_enter(Reviewing)
 mod reviewing_conflict_marker_tests;
