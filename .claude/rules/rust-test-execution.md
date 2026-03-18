@@ -32,7 +32,7 @@ paths:
 | Sync SQLite repo tests | `SqliteTestDb` + `db.new_connection()` |
 | Setup/seeding | Shared suite helpers/builders on top of `SqliteTestDb`; one migration pass per temp DB only |
 | Concurrency | File-backed temp DBs for shared access; `:memory:` only for intentionally isolated narrow tests |
-| Broad-run runner config | Repo config lives in `.config/nextest.toml`; keep group changes there, not in ad hoc shell flags |
+| Broad-run runner config | Rust workspace config lives in `src-tauri/.config/nextest.toml`; keep group changes there, not in ad hoc shell flags |
 | Formatter policy | No broad `cargo fmt`; if formatting is required, keep it scoped and separate |
 
 ## Scale Direction
@@ -81,7 +81,7 @@ cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 | `git-heavy` | Caps the heaviest git/worktree integration binaries at 2 threads |
 | `sqlite-integration` | Caps file-backed SQLite integration binaries at 4 threads |
 | `perf-serial` | Forces `plan_selector_performance` to 1 thread |
-| Config source | Edit `.config/nextest.toml` rather than pasting long `-E` filters into docs or CI |
+| Config source | Edit `src-tauri/.config/nextest.toml` rather than pasting long `-E` filters into docs or CI |
 
 ## Filter Rules
 
@@ -151,7 +151,7 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Seeing remaining `open_memory_connection()` calls after migration work | Check whether the suite is connection/formatting-only before converting it; optimize real migration-replay hotspots first |
 | Adding a new repo suite | Start from a suite-local `setup_*()` helper; only introduce a shared helper when repetition appears in multiple files |
 | Verifying a migration | Test the migration itself explicitly; do not force every repo test to replay the full migration chain |
-| Considering `cargo-nextest` tuning | Adjust `.config/nextest.toml` groups/profiles instead of ad hoc command-line concurrency flags |
+| Considering `cargo-nextest` tuning | Adjust `src-tauri/.config/nextest.toml` groups/profiles instead of ad hoc command-line concurrency flags |
 
 ## Ongoing Tuning
 
