@@ -26,7 +26,8 @@ impl SqliteIdeationSettingsRepository {
 }
 
 /// Synchronous helper for reading settings inside a transaction closure.
-pub(crate) fn get_settings_sync(conn: &Connection) -> AppResult<IdeationSettings> {
+#[doc(hidden)]
+pub fn get_settings_sync(conn: &Connection) -> AppResult<IdeationSettings> {
     let result = conn.query_row(
         "SELECT plan_mode, require_plan_approval, suggest_plans_for_complex, auto_link_proposals,
                 require_verification_for_accept, require_verification_for_proposals

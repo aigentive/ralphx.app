@@ -71,6 +71,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --test internal_handlers
 cargo test --manifest-path src-tauri/Cargo.toml --test session_linking_handlers
 cargo test --manifest-path src-tauri/Cargo.toml --test steps_handlers
 cargo test --manifest-path src-tauri/Cargo.toml --test teams_handlers
+cargo test --manifest-path src-tauri/Cargo.toml --test http_helpers
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 ```
