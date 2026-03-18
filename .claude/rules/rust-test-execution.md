@@ -102,6 +102,7 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Keep migrations out of per-test setup | Create one temp DB, migrate once, then seed rows; do not call `run_migrations()` inside every helper |
 | Prefer explicit fixture ownership | Bind fixture as `_db` in the test body so cleanup timing stays obvious |
 | Split slow suites from narrow logic tests | Keep pure/unit logic off SQLite when possible; reserve DB fixtures for repository and integration coverage |
+| Sandbox-safe temp paths | If a test only needs “under HOME”, prefer `tempdir_in(std::env::current_dir()?)` over writing into `$HOME` root directly |
 | Discover exact libtest paths first | If a filter misses, use `-- --list` before guessing more Cargo invocations |
 | Run selective jobs sequentially | Many small targeted runs beat broad runs and avoid `.cargo-lock` contention |
 | When a builder repeats across files, centralize it | Move shared fixture/builders into `src-tauri/src/testing/` once multiple suites need the same seeded graph |
