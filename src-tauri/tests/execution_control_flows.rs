@@ -6,16 +6,14 @@
 // - Blocking and unblocking tasks
 
 use ralphx_lib::domain::entities::{Project, ProjectId, Task, TaskId};
-use ralphx_lib::domain::repositories::{ProjectRepository, TaskRepository};
 use ralphx_lib::domain::state_machine::{State, TaskEvent};
-use ralphx_lib::infrastructure::sqlite::{
-    open_memory_connection, run_migrations, TaskStateMachineRepository,
-};
+use ralphx_lib::infrastructure::sqlite::TaskStateMachineRepository;
+use ralphx_lib::testing::SqliteTestDb;
 
 /// Helper to set up a test environment with a task in executing state
-fn setup_execution_test() -> (TaskStateMachineRepository, ProjectId, TaskId) {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+fn setup_execution_test() -> (SqliteTestDb, TaskStateMachineRepository, ProjectId, TaskId) {
+    let db = SqliteTestDb::new("execution-control-flows");
+    let conn = db.new_connection();
 
     // Insert a project
     conn.execute(
@@ -36,13 +34,13 @@ fn setup_execution_test() -> (TaskStateMachineRepository, ProjectId, TaskId) {
     let project_id = ProjectId::from_string("proj-1".to_string());
     let task_id = TaskId::from_string("task-1".to_string());
 
-    (repo, project_id, task_id)
+    (db, repo, project_id, task_id)
 }
 
 /// Helper to create multiple tasks
-fn setup_multiple_tasks() -> (TaskStateMachineRepository, ProjectId, Vec<TaskId>) {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+fn setup_multiple_tasks() -> (SqliteTestDb, TaskStateMachineRepository, ProjectId, Vec<TaskId>) {
+    let db = SqliteTestDb::new("execution-control-flows-multi");
+    let conn = db.new_connection();
 
     // Insert a project
     conn.execute(
@@ -72,7 +70,7 @@ fn setup_multiple_tasks() -> (TaskStateMachineRepository, ProjectId, Vec<TaskId>
         TaskId::from_string("task-4".to_string()),
     ];
 
-    (repo, project_id, task_ids)
+    (db, repo, project_id, task_ids)
 }
 
 // ============================================================================
@@ -90,7 +88,7 @@ fn setup_multiple_tasks() -> (TaskStateMachineRepository, ProjectId, Vec<TaskId>
 /// 6. Task transitions to Ready
 #[test]
 fn test_ask_user_question_full_flow() {
-    let (repo, _project_id, task_id) = setup_execution_test();
+    let (_db, repo, _project_id, task_id) = setup_execution_test();
 
     // 1. Verify task is in Executing state
     assert_eq!(repo.load_state(&task_id).unwrap(), State::Executing);
@@ -123,7 +121,7 @@ fn test_ask_user_question_full_flow() {
 /// Test: NeedsHumanInput preserves the reason
 #[test]
 fn test_needs_human_input_preserves_reason() {
-    let (repo, _project_id, task_id) = setup_execution_test();
+    let (_db, repo, _project_id, task_id) = setup_execution_test();
 
     // Process the event
     let event = TaskEvent::NeedsHumanInput {
@@ -142,7 +140,7 @@ fn test_needs_human_input_preserves_reason() {
 /// Test: Blocked task cannot be scheduled
 #[test]
 fn test_blocked_task_cannot_be_scheduled() {
-    let (repo, _project_id, task_id) = setup_execution_test();
+    let (_db, repo, _project_id, task_id) = setup_execution_test();
 
     // Block the task
     repo.process_event(
@@ -168,7 +166,7 @@ fn test_blocked_task_cannot_be_scheduled() {
 /// Test: Blocked task can be cancelled
 #[test]
 fn test_blocked_task_can_be_cancelled() {
-    let (repo, _project_id, task_id) = setup_execution_test();
+    let (_db, repo, _project_id, task_id) = setup_execution_test();
 
     // Block the task
     repo.process_event(
@@ -189,7 +187,7 @@ fn test_blocked_task_can_be_cancelled() {
 /// Test: Multiple AskUserQuestion in sequence
 #[test]
 fn test_multiple_ask_user_questions() {
-    let (repo, _project_id, task_id) = setup_execution_test();
+    let (_db, repo, _project_id, task_id) = setup_execution_test();
 
     // First question
     repo.process_event(
@@ -232,7 +230,7 @@ fn test_multiple_ask_user_questions() {
 /// Test: Pause execution doesn't affect currently executing tasks
 #[test]
 fn test_pause_does_not_affect_executing_tasks() {
-    let (repo, _project_id, task_ids) = setup_multiple_tasks();
+    let (_db, repo, _project_id, task_ids) = setup_multiple_tasks();
 
     // task-3 is executing
     let task3_id = &task_ids[2];
@@ -251,7 +249,7 @@ fn test_pause_does_not_affect_executing_tasks() {
 /// Test: Ready tasks can still be scheduled (pause is handled at orchestrator level)
 #[test]
 fn test_ready_tasks_still_schedulable() {
-    let (repo, _project_id, task_ids) = setup_multiple_tasks();
+    let (_db, repo, _project_id, task_ids) = setup_multiple_tasks();
 
     // task-1 and task-2 are ready
     let task1_id = &task_ids[0];
@@ -267,7 +265,7 @@ fn test_ready_tasks_still_schedulable() {
 /// Test: Backlog tasks can be scheduled when not paused
 #[test]
 fn test_backlog_to_ready_scheduling() {
-    let (repo, _project_id, task_ids) = setup_multiple_tasks();
+    let (_db, repo, _project_id, task_ids) = setup_multiple_tasks();
 
     // task-4 is in backlog
     let task4_id = &task_ids[3];
@@ -285,7 +283,7 @@ fn test_backlog_to_ready_scheduling() {
 /// Test: BlockerDetected transitions Ready to Blocked
 #[test]
 fn test_blocker_detected_blocks_ready_task() {
-    let (repo, _project_id, task_ids) = setup_multiple_tasks();
+    let (_db, repo, _project_id, task_ids) = setup_multiple_tasks();
 
     // task-1 is ready
     let task1_id = &task_ids[0];
@@ -307,7 +305,7 @@ fn test_blocker_detected_blocks_ready_task() {
 /// Test: BlockersResolved transitions Blocked to Ready
 #[test]
 fn test_blockers_resolved_unblocks_task() {
-    let (repo, _project_id, task_ids) = setup_multiple_tasks();
+    let (_db, repo, _project_id, task_ids) = setup_multiple_tasks();
 
     // Block task-1
     let task1_id = &task_ids[0];
@@ -330,7 +328,7 @@ fn test_blockers_resolved_unblocks_task() {
 /// Test: Multiple blockers resolved at once
 #[test]
 fn test_multiple_blockers_resolved() {
-    let (repo, _project_id, task_ids) = setup_multiple_tasks();
+    let (_db, repo, _project_id, task_ids) = setup_multiple_tasks();
 
     // Block task-1 with first blocker
     let task1_id = &task_ids[0];
@@ -358,7 +356,7 @@ fn test_multiple_blockers_resolved() {
 /// Test: Complete lifecycle with AskUserQuestion
 #[test]
 fn test_complete_lifecycle_with_question() {
-    let (repo, _project_id, task_id) = setup_execution_test();
+    let (_db, repo, _project_id, task_id) = setup_execution_test();
 
     // Executing -> Blocked (question asked)
     repo.process_event(
@@ -406,7 +404,7 @@ fn test_complete_lifecycle_with_question() {
 /// Test: Task can fail while blocked (edge case)
 #[test]
 fn test_blocked_task_cannot_fail_directly() {
-    let (repo, _project_id, task_id) = setup_execution_test();
+    let (_db, repo, _project_id, task_id) = setup_execution_test();
 
     // Block the task
     repo.process_event(
@@ -431,7 +429,7 @@ fn test_blocked_task_cannot_fail_directly() {
 /// Test: Resume from Blocked doesn't skip to completion
 #[test]
 fn test_resume_from_blocked_goes_to_ready() {
-    let (repo, _project_id, task_id) = setup_execution_test();
+    let (_db, repo, _project_id, task_id) = setup_execution_test();
 
     // Block the task
     repo.process_event(
@@ -469,26 +467,16 @@ fn test_resume_from_blocked_goes_to_ready() {
 /// This integration test verifies the end-to-end workflow by:
 /// 1. Creating a project with both `detected_analysis` (containing worktree_setup commands)
 ///    and `custom_analysis` (with empty worktree_setup array, simulating user removal)
-/// 2. Triggering the actual state machine transition to Executing state
-/// 3. Independently verifying that removed commands are NOT executed by inspecting
-///    the `execution_setup_log` metadata
+/// 2. Running pre-execution setup with a real worktree path
+/// 3. Verifying that removed commands are NOT executed while install still runs
 #[tokio::test]
 async fn test_settings_ui_command_removal_full_workflow() {
     use ralphx_lib::domain::entities::InternalStatus;
-    use ralphx_lib::domain::state_machine::{State, TaskStateMachine, TransitionHandler};
-    use ralphx_lib::domain::state_machine::context::{TaskContext, TaskServices};
-    use ralphx_lib::domain::state_machine::mocks::{MockAgentSpawner, MockEventEmitter, MockNotifier, MockDependencyManager, MockReviewStarter};
-    use ralphx_lib::application::MockChatService;
-    use ralphx_lib::infrastructure::memory::{MemoryTaskRepository, MemoryProjectRepository};
-    use std::sync::Arc;
+    use tokio_util::sync::CancellationToken;
 
     // Create worktree and project directories
     let worktree_dir = tempfile::tempdir().unwrap();
     let project_dir = tempfile::tempdir().unwrap();
-
-    // Set up repositories
-    let task_repo = Arc::new(MemoryTaskRepository::new());
-    let project_repo = Arc::new(MemoryProjectRepository::new());
 
     let project_id = ProjectId::from_string("proj-1".to_string());
 
@@ -511,53 +499,31 @@ async fn test_settings_ui_command_removal_full_workflow() {
         r#"[{"path": ".", "label": "Rust", "install": "true", "worktree_setup": []}]"#.to_string(),
     );
 
-    project_repo.create(project).await.unwrap();
-
-    // Create a task in Executing state (on_enter will run pre-execution setup)
+    // Create a task in Executing state
     let mut task = Task::new(project_id, "Test task".to_string());
     task.internal_status = InternalStatus::Executing;
     task.worktree_path = Some(worktree_dir.path().to_str().unwrap().to_string());
-    task.task_branch = Some("test-branch".to_string()); // Set task_branch to skip worktree creation
-    let task_id = task.id.clone();
-    task_repo.create(task).await.unwrap();
+    task.task_branch = Some("test-branch".to_string());
 
-    // Set up services
-    let chat_service = Arc::new(MockChatService::new());
-    let services = TaskServices::new(
-        Arc::new(MockAgentSpawner::new()) as Arc<dyn ralphx_lib::domain::state_machine::services::AgentSpawner>,
-        Arc::new(MockEventEmitter::new()) as Arc<dyn ralphx_lib::domain::state_machine::services::EventEmitter>,
-        Arc::new(MockNotifier::new()) as Arc<dyn ralphx_lib::domain::state_machine::services::Notifier>,
-        Arc::new(MockDependencyManager::new()) as Arc<dyn ralphx_lib::domain::state_machine::services::DependencyManager>,
-        Arc::new(MockReviewStarter::new()) as Arc<dyn ralphx_lib::domain::state_machine::services::ReviewStarter>,
-        Arc::clone(&chat_service) as Arc<dyn ralphx_lib::application::ChatService>,
+    let result = ralphx_lib::testing::run_pre_execution_setup(
+        &project,
+        &task,
+        worktree_dir.path(),
+        task.id.as_str(),
+        None,
+        "execution",
+        &CancellationToken::new(),
     )
-    .with_task_repo(Arc::clone(&task_repo) as Arc<dyn ralphx_lib::domain::repositories::TaskRepository>)
-    .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ralphx_lib::domain::repositories::ProjectRepository>);
+    .await
+    .expect("pre-execution setup should run");
 
-    // Create state machine and handler
-    let context = TaskContext::new(task_id.as_str(), "proj-1", services);
-    let mut machine = TaskStateMachine::new(context);
-    let handler = TransitionHandler::new(&mut machine);
-
-    // Trigger the state machine on_enter for Executing state
-    // This runs the pre-execution setup (worktree_setup + install)
-    let _ = handler.on_enter(&State::Executing).await;
-
-    // Independently verify the execution_setup_log metadata
-    let updated_task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
-    let metadata_json = updated_task.metadata.as_deref().unwrap_or("{}");
-    let metadata: serde_json::Value = serde_json::from_str(metadata_json).unwrap();
-
-    let execution_log = metadata
-        .get("execution_setup_log")
-        .and_then(|v| v.as_array())
-        .expect("execution_setup_log should be present in metadata");
+    let execution_log = result.log;
 
     // Verify that NO worktree_setup commands from detected_analysis were executed
     // The custom_analysis has empty worktree_setup, so we should only have the install phase
-    for entry in execution_log {
-        let phase = entry.get("phase").and_then(|v| v.as_str()).unwrap();
-        let command = entry.get("command").and_then(|v| v.as_str()).unwrap();
+    for entry in &execution_log {
+        let phase = entry.phase.as_str();
+        let command = entry.command.as_str();
 
         // Verify no setup phase commands were executed
         assert_ne!(
@@ -577,7 +543,7 @@ async fn test_settings_ui_command_removal_full_workflow() {
     // Verify that we only have install phase entries (no setup phase)
     let setup_count = execution_log
         .iter()
-        .filter(|e| e.get("phase").and_then(|v| v.as_str()) == Some("setup"))
+        .filter(|e| e.phase == "setup")
         .count();
     assert_eq!(
         setup_count, 0,
@@ -589,7 +555,7 @@ async fn test_settings_ui_command_removal_full_workflow() {
     // Verify we have install phase entries
     let install_count = execution_log
         .iter()
-        .filter(|e| e.get("phase").and_then(|v| v.as_str()) == Some("install"))
+        .filter(|e| e.phase == "install")
         .count();
     assert!(
         install_count > 0,
