@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
-use crate::domain::entities::types::ProjectId;
+use crate::entities::types::ProjectId;
 use crate::error::{AppError, AppResult};
 
 /// Unique identifier for memory archive jobs

@@ -8,11 +8,14 @@ pub mod chat_attachment;
 pub mod chat_conversation;
 pub mod execution_plan;
 pub mod ideation;
+pub mod memory_archive;
 pub mod memory_event;
+pub mod memory_entry;
 pub mod memory_rule_binding;
 pub mod merge_progress_event;
 pub mod methodology;
 pub mod plan_branch;
+pub mod plan_selection_stats;
 pub mod project;
 pub mod research;
 pub mod review;
@@ -60,7 +63,12 @@ pub use ideation::{
     UserHintFactor, VerificationError, VerificationGap, VerificationMetadata, VerificationRound,
     VerificationStatus,
 };
+pub use memory_archive::{
+    ArchiveJobPayload, ArchiveJobStatus, ArchiveJobType, FullRebuildPayload, MemoryArchiveJob,
+    MemoryArchiveJobId, MemorySnapshotPayload, RuleSnapshotPayload,
+};
 pub use memory_event::{MemoryActorType, MemoryEvent, MemoryEventId, ParseMemoryActorTypeError};
+pub use memory_entry::{MemoryBucket, MemoryEntry, MemoryEntryId, MemoryStatus};
 pub use memory_rule_binding::MemoryRuleBinding;
 pub use merge_progress_event::{MergePhase, MergePhaseInfo, MergePhaseStatus, MergeProgressEvent};
 pub use methodology::{
@@ -68,6 +76,7 @@ pub use methodology::{
     MethodologyPlanTemplate, MethodologyStatus, MethodologyTemplate, ParseMethodologyStatusError,
 };
 pub use plan_branch::{ParsePlanBranchStatusError, PlanBranch, PlanBranchId, PlanBranchStatus};
+pub use plan_selection_stats::{PlanSelectionStats, SelectionSource};
 pub use project::{GitMode, MergeStrategy, MergeValidationMode, Project};
 pub use research::{
     CustomDepth, ParseResearchDepthPresetError, ParseResearchProcessStatusError, ResearchBrief,

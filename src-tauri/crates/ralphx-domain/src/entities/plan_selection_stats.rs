@@ -4,7 +4,7 @@
 use chrono::{DateTime, Utc};
 use rusqlite::Row;
 
-use crate::domain::entities::{IdeationSessionId, ProjectId};
+use crate::entities::{IdeationSessionId, ProjectId};
 use crate::error::AppError;
 
 /// Tracks user interactions with plan selection (for ranking and analytics)

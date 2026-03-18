@@ -4,6 +4,6 @@
 // written against an earlier version of the memory archive types.
 // The canonical types live in memory_archive.rs.
 
-pub use super::memory_archive::{
+pub use ralphx_domain::entities::memory_archive::{
     ArchiveJobStatus as MemoryArchiveJobStatus, ArchiveJobType as MemoryArchiveJobType,
 };
