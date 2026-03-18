@@ -89,6 +89,7 @@ New pattern → add one-liner here. Pattern name + rule only.
 | PreMergeCleanup | Kill agents + kill_worktree_processes BEFORE git worktree ops (TOCTOU race prevention) |
 | MergeDeadline | `attempt_programmatic_merge` wraps cleanup + strategy in bounded deadline (`attempt_merge_deadline_secs`) |
 | No Inline Timeout Consts | All durations → `runtime_config` + `ralphx.yaml`, never Rust `const` |
+| SQLite Test Fixtures | Heavy Rust integration tests use `SqliteTestDb` / `SqliteStateFixture` + targeted `cargo test --test ...`; see `.claude/rules/rust-test-execution.md` |
 | Tokio spawn | `tokio::spawn` → async fn ONLY. Sync code → `std::thread::spawn` \| `tauri::async_runtime::spawn`. See `.claude/rules/tokio-runtime-safety.md` |
 | Rust std API stability | Avoid unstable std APIs in production code (e.g., `is_multiple_of`) — use stable equivalents (e.g., `%`). See `.claude/rules/rust-stable-apis.md` |
 
@@ -107,6 +108,7 @@ cargo build                                                              # build
 timeout 10m cargo test --lib --manifest-path src-tauri/Cargo.toml 2>&1 | tail -100  # tests (5-8min)
 cargo clippy --all-targets --all-features -- -D warnings                 # lint
 ```
+Selective Rust test commands + SQLite test fixture rules → `.claude/rules/rust-test-execution.md`
 
 ## Real Integration Tests
 Pattern: `tempfile::TempDir` + git CLI → `Memory*Repository` → `TaskServices::new_mock()` | `MockChatService` → `TransitionHandler` → assert state + git.

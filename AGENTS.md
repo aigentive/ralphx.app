@@ -9,6 +9,7 @@ Primary project docs:
 - `CLAUDE.md`
 - `src-tauri/CLAUDE.md`
 - `.claude/rules/*.md`
+- `.claude/rules/rust-test-execution.md` for selective Rust test commands, shared SQLite test fixtures, and the no-broad-`fmt` rule
 
 ## Codex Rules
 
@@ -26,5 +27,6 @@ Primary project docs:
 When working in `src-tauri/`, also follow:
 - `src-tauri/CLAUDE.md`
 - `.claude/rules/rust-stable-apis.md`
+- `.claude/rules/rust-test-execution.md`
 - `.claude/rules/task-git-branching.md`
 - `.claude/rules/code-quality-standards.md`
