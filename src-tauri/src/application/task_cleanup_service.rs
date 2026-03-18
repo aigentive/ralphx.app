@@ -478,7 +478,3 @@ impl TaskCleanupService {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "task_cleanup_service_tests.rs"]
-mod tests;

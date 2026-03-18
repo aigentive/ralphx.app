@@ -1,7 +1,16 @@
-use super::*;
-use crate::application::AppState;
-use crate::domain::entities::{IdeationSession, IdeationSessionStatus, Project, ProjectId, Task};
-use crate::domain::services::{MemoryRunningAgentRegistry, RunningAgentInfo};
+use std::sync::Arc;
+
+use ralphx_lib::application::{
+    AppState, InteractiveProcessKey, InteractiveProcessRegistry, StopMode, TaskCleanupService,
+    TaskGroup,
+};
+use ralphx_lib::domain::entities::{
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, InternalStatus, Project, ProjectId,
+    Task, TaskCategory,
+};
+use ralphx_lib::domain::services::{
+    MemoryRunningAgentRegistry, RunningAgentInfo, RunningAgentKey, RunningAgentRegistry,
+};
 
 #[tokio::test]
 async fn test_cleanup_single_task_deletes_from_db() {
@@ -491,7 +500,7 @@ async fn test_cleanup_removes_ipr_entry_for_executing_task() {
         !ipr.has_process(&ipr_key).await,
         "IPR entry must be removed after cleanup"
     );
-    assert_eq!(ipr.count().await, 0, "IPR must be empty");
+    assert_eq!(ipr.dump_state().await.len(), 0, "IPR must be empty");
     // Running agent registry must also be cleaned
     assert!(
         !state.running_agent_registry.is_running(&agent_key).await,
@@ -534,7 +543,7 @@ async fn test_cleanup_batch_removes_all_ipr_entries() {
     let (stdin2, _child2) = create_test_stdin().await;
     let ipr_key2 = InteractiveProcessKey::new("review", task2.id.as_str());
     ipr.register(ipr_key2.clone(), stdin2).await;
-    assert_eq!(ipr.count().await, 2, "Precondition: both entries registered");
+    assert_eq!(ipr.dump_state().await.len(), 2, "Precondition: both entries registered");
 
     // Register both in running agent registry
     state
@@ -573,7 +582,7 @@ async fn test_cleanup_batch_removes_all_ipr_entries() {
         .await;
 
     assert_eq!(report.tasks_archived, 2);
-    assert_eq!(ipr.count().await, 0, "All IPR entries must be removed");
+    assert_eq!(ipr.dump_state().await.len(), 0, "All IPR entries must be removed");
 }
 
 /// Without IPR set on service, cleanup still works (backward compat).
@@ -764,7 +773,7 @@ async fn test_stop_ideation_agent_ideation_key_cleanup() {
 
     assert!(stopped, "Helper must return true when process found");
     assert!(!ipr.has_process(&ipr_key).await, "IPR entry must be removed");
-    assert_eq!(ipr.count().await, 0, "IPR must be empty");
+    assert_eq!(ipr.dump_state().await.len(), 0, "IPR must be empty");
     assert!(
         !state.running_agent_registry.is_running(&agent_key).await,
         "Agent must be unregistered from registry"
@@ -809,7 +818,7 @@ async fn test_stop_ideation_agent_session_key_cleanup() {
 
     assert!(stopped, "Helper must return true when process found");
     assert!(!ipr.has_process(&ipr_key).await, "IPR entry must be removed");
-    assert_eq!(ipr.count().await, 0, "IPR must be empty");
+    assert_eq!(ipr.dump_state().await.len(), 0, "IPR must be empty");
     assert!(
         !state.running_agent_registry.is_running(&agent_key).await,
         "Agent must be unregistered from registry"
@@ -834,7 +843,7 @@ async fn test_stop_ideation_agent_no_process_returns_false() {
     let stopped = service.stop_ideation_session_agent(session_id).await;
 
     assert!(!stopped, "Helper must return false when no process is registered");
-    assert_eq!(ipr.count().await, 0, "IPR must remain empty");
+    assert_eq!(ipr.dump_state().await.len(), 0, "IPR must remain empty");
 }
 
 /// Test 4: IPR not set (misconfiguration) — returns false, warning logged.
@@ -897,7 +906,7 @@ async fn test_stop_ideation_agent_idempotent_second_call_returns_false() {
     // Second call: process already removed → no-op
     let second = service.stop_ideation_session_agent(session_id).await;
     assert!(!second, "Second call must return false (idempotent)");
-    assert_eq!(ipr.count().await, 0, "IPR must still be empty");
+    assert_eq!(ipr.dump_state().await.len(), 0, "IPR must still be empty");
 }
 
 /// Test 6: stop() returns Err — IPR was cleaned up, returns true (warn logged, not fatal).
@@ -1083,7 +1092,7 @@ async fn test_stop_ideation_agent_probes_ideation_key_only() {
         !ipr.has_process(&ideation_key).await,
         "'ideation' IPR entry must be removed"
     );
-    assert_eq!(ipr.count().await, 0, "No IPR entries must remain");
+    assert_eq!(ipr.dump_state().await.len(), 0, "No IPR entries must remain");
     assert!(
         !state
             .running_agent_registry
@@ -1141,7 +1150,7 @@ async fn test_stop_ideation_agent_probes_session_key_only() {
         !ipr.has_process(&session_key).await,
         "'session' IPR entry must be removed"
     );
-    assert_eq!(ipr.count().await, 0, "No IPR entries must remain");
+    assert_eq!(ipr.dump_state().await.len(), 0, "No IPR entries must remain");
     assert!(
         !state
             .running_agent_registry
@@ -1380,7 +1389,7 @@ async fn test_call_site_reopen_path_cleanup_before_reopen() {
     .with_interactive_process_registry(Arc::clone(&ipr));
 
     assert_eq!(
-        ipr.count().await,
+        ipr.dump_state().await.len(),
         0,
         "IPR must be empty after stop_cleanup (second instance does not re-add entries)"
     );
