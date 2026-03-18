@@ -106,6 +106,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --test methodology_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test workflow_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test research_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test agent_profile_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test unified_chat_commands
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 ```

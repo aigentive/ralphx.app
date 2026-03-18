@@ -194,7 +194,8 @@ fn create_chat_service(
 }
 
 /// Parse context type string to enum
-fn parse_context_type(context_type: &str) -> Result<ChatContextType, String> {
+#[doc(hidden)]
+pub fn parse_context_type(context_type: &str) -> Result<ChatContextType, String> {
     context_type
         .parse()
         .map_err(|e: String| format!("Invalid context type '{}': {}", context_type, e))
@@ -610,7 +611,3 @@ pub async fn create_agent_conversation(
         .map(AgentConversationResponse::from)
         .map_err(|e| e.to_string())
 }
-
-#[cfg(test)]
-#[path = "unified_chat_commands_tests.rs"]
-mod tests;

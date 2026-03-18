@@ -1,4 +1,9 @@
-use super::*;
+use ralphx_lib::commands::unified_chat_commands::{
+    parse_context_type, QueuedMessageResponse, SendAgentMessageResponse,
+};
+use ralphx_lib::application::SendResult;
+use ralphx_lib::domain::entities::ChatContextType;
+use ralphx_lib::domain::services::QueuedMessage;
 
 #[test]
 fn test_parse_context_type() {
@@ -88,7 +93,9 @@ fn test_response_serialization() {
 
 #[cfg(test)]
 mod ipc_contract {
-    use super::super::{CreateAgentConversationInput, QueueAgentMessageInput, SendAgentMessageInput};
+    use ralphx_lib::commands::unified_chat_commands::{
+        CreateAgentConversationInput, QueueAgentMessageInput, SendAgentMessageInput,
+    };
 
     // ── SendAgentMessageInput ───────────────────────────────────────────────
 
