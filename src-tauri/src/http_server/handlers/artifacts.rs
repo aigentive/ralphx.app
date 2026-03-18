@@ -114,7 +114,8 @@ fn map_app_err(e: AppError) -> HttpError {
 ///
 /// TRUST MODEL: caller_session_id is cooperative/protocol-based only. :3847 is
 /// localhost-only (single-user desktop) — prevents accidental concurrent writes, not adversarial.
-async fn check_verification_freeze(
+#[doc(hidden)]
+pub async fn check_verification_freeze(
     owning_sessions: &[IdeationSession],
     caller_session_id: Option<&str>,
     running_registry: &dyn RunningAgentRegistry,
@@ -829,10 +830,6 @@ pub async fn get_session_plan(
 
 /// Get version history for a plan artifact
 /// Returns list of version summaries from newest to oldest
-#[cfg(test)]
-#[path = "artifacts_tests.rs"]
-mod tests;
-
 pub async fn get_artifact_history(
     State(state): State<HttpServerState>,
     Path(artifact_id): Path<String>,

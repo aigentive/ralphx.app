@@ -8,20 +8,22 @@
 // - 422 responses include the full error message body (not just a status code)
 // - Sessions with no plan at all return None from get_session_plan
 
-use super::*;
-use crate::application::AppState;
-use crate::commands::ExecutionState;
-use crate::domain::entities::{
-    ArtifactId, IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
-    SessionPurpose, VerificationStatus,
-};
-use crate::domain::services::running_agent_registry::RunningAgentKey;
-use crate::domain::services::MemoryRunningAgentRegistry;
-use crate::error::AppError;
-use crate::infrastructure::memory::MemoryIdeationSessionRepository;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
+use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
+use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::entities::{
+    Artifact, ArtifactContent, ArtifactId, ArtifactMetadata, ArtifactType, IdeationSession,
+    IdeationSessionId, IdeationSessionStatus, ProjectId, SessionPurpose, VerificationStatus,
+};
+use ralphx_lib::domain::repositories::IdeationSessionRepository;
+use ralphx_lib::domain::services::running_agent_registry::RunningAgentKey;
+use ralphx_lib::domain::services::{MemoryRunningAgentRegistry, RunningAgentRegistry};
+use ralphx_lib::error::AppError;
+use ralphx_lib::http_server::handlers::*;
+use ralphx_lib::http_server::types::HttpServerState;
+use ralphx_lib::infrastructure::memory::MemoryIdeationSessionRepository;
 use std::sync::Arc;
 
 // ============================================================
@@ -31,10 +33,8 @@ use std::sync::Arc;
 async fn setup_test_state() -> HttpServerState {
     let app_state = Arc::new(AppState::new_sqlite_test());
     let execution_state = Arc::new(ExecutionState::new());
-    let tracker = crate::application::TeamStateTracker::new();
-    let team_service = Arc::new(crate::application::TeamService::new_without_events(
-        Arc::new(tracker.clone()),
-    ));
+    let tracker = TeamStateTracker::new();
+    let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
     HttpServerState {
         app_state,
         execution_state,
@@ -803,7 +803,7 @@ async fn test_update_plan_artifact_skips_reset_when_verification_in_progress() {
 /// link_proposals_to_plan with 25 proposals — all should be linked in one transaction.
 #[tokio::test]
 async fn test_link_proposals_to_plan_batch_25() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         Complexity, Priority, ProposalCategory, ProposalStatus, TaskProposal, TaskProposalId,
     };
 
@@ -980,7 +980,7 @@ async fn test_update_plan_artifact_stale_id_resolved_to_latest() {
 /// A second call on the same session returns None (already in_progress=1 — skip).
 #[tokio::test]
 async fn test_trigger_auto_verify_sync_atomicity_and_skip() {
-    use crate::infrastructure::sqlite::SqliteIdeationSessionRepository as SessionRepo;
+    use ralphx_lib::infrastructure::sqlite::SqliteIdeationSessionRepository as SessionRepo;
 
     let state = setup_test_state().await;
     let session = make_active_session();
@@ -1043,7 +1043,7 @@ async fn test_trigger_auto_verify_sync_atomicity_and_skip() {
 /// This is the spawn-failure recovery path.
 #[tokio::test]
 async fn test_reset_auto_verify_sync_clears_in_progress() {
-    use crate::infrastructure::sqlite::SqliteIdeationSessionRepository as SessionRepo;
+    use ralphx_lib::infrastructure::sqlite::SqliteIdeationSessionRepository as SessionRepo;
 
     let state = setup_test_state().await;
     let session = make_active_session();
@@ -1258,7 +1258,7 @@ async fn test_update_plan_artifact_does_not_trigger_auto_verify() {
 /// to the new artifact ID after update_plan_artifact runs.
 #[tokio::test]
 async fn test_update_plan_artifact_batch_updates_linked_proposals() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         Complexity, Priority, ProposalCategory, ProposalStatus, TaskProposal, TaskProposalId,
     };
 
@@ -2086,7 +2086,7 @@ async fn test_edit_plan_artifact_response_has_correct_event_fields() {
 /// Test 13: Proposals batch-updated — linked proposals point to new artifact version after edit.
 #[tokio::test]
 async fn test_edit_plan_artifact_batch_updates_linked_proposals() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         Complexity, Priority, ProposalCategory, ProposalStatus, TaskProposal, TaskProposalId,
     };
 
@@ -2409,10 +2409,8 @@ async fn test_6c_no_verification_children_returns_ok() {
 async fn setup_freeze_state(registry: Arc<MemoryRunningAgentRegistry>) -> HttpServerState {
     let app_state = Arc::new(AppState::new_sqlite_test_with_registry(registry));
     let execution_state = Arc::new(ExecutionState::new());
-    let tracker = crate::application::TeamStateTracker::new();
-    let team_service = Arc::new(crate::application::TeamService::new_without_events(
-        Arc::new(tracker.clone()),
-    ));
+    let tracker = TeamStateTracker::new();
+    let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
     HttpServerState {
         app_state,
         execution_state,

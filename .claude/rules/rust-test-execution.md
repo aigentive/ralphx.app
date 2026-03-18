@@ -29,7 +29,7 @@ paths:
 | Target discovery | `cargo test --manifest-path src-tauri/Cargo.toml --lib -- --list | rg "<module>"` |
 | Async SQLite repo tests | `SqliteTestDb` + repo `from_shared(db.shared_conn())` |
 | AppState integration tests | `SqliteStateFixture::new(...)` |
-| HTTP handler integration tests | Import handlers/types through `ralphx_lib::http_server::{handlers, types}` from `src-tauri/tests/*.rs`; use `AppState::new_sqlite_test()` only when the handler calls SQLite sync helpers via `db.run(...)` |
+| HTTP handler integration tests | Import handlers/types through `ralphx_lib::http_server::{handlers, types}` from `src-tauri/tests/*.rs`; use `AppState::new_sqlite_test()` or `AppState::new_sqlite_test_with_registry(...)` only when the handler calls SQLite sync helpers via `db.run(...)` |
 | Sync SQLite repo tests | `SqliteTestDb` + `db.new_connection()` |
 | Setup/seeding | Shared suite helpers/builders on top of `SqliteTestDb`; one migration pass per temp DB only |
 | Concurrency | File-backed temp DBs for shared access; `:memory:` only for intentionally isolated narrow tests |
@@ -60,6 +60,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --test per_project_execution_sco
 cargo test --manifest-path src-tauri/Cargo.toml --test review_flows
 cargo test --manifest-path src-tauri/Cargo.toml --test execution_control_flows
 cargo test --manifest-path src-tauri/Cargo.toml --test external_handlers
+cargo test --manifest-path src-tauri/Cargo.toml --test artifacts_handlers
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 ```
@@ -154,7 +155,7 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Converting an old SQLite test | Replace `open_memory_connection() + run_migrations()` with `SqliteTestDb` first, then extract shared seed helpers |
 | Seeing remaining `open_memory_connection()` calls after migration work | Check whether the suite is connection/formatting-only before converting it; optimize real migration-replay hotspots first |
 | Splitting oversized lib suites | Move them to `src-tauri/tests/<suite>.rs`, compile them as a separate integration binary, and keep the exported surface minimal and explicitly internal-facing |
-| Splitting HTTP handler suites | Make the handler/types module reachable from integration tests, import through `ralphx_lib::http_server::{handlers, types}`, and keep SQLite-only handler helpers on `AppState::new_sqlite_test()` instead of duplicating ad hoc setup |
+| Splitting HTTP handler suites | Make the handler/types module reachable from integration tests, import through `ralphx_lib::http_server::{handlers, types}`, and keep SQLite-only handler helpers on `AppState::new_sqlite_test()` / `new_sqlite_test_with_registry()` instead of duplicating ad hoc setup |
 | Adding a new repo suite | Start from a suite-local `setup_*()` helper; only introduce a shared helper when repetition appears in multiple files |
 | Verifying a migration | Test the migration itself explicitly; do not force every repo test to replay the full migration chain |
 | Considering `cargo-nextest` tuning | Adjust `src-tauri/.config/nextest.toml` groups/profiles instead of ad hoc command-line concurrency flags |
