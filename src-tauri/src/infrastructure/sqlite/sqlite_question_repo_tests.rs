@@ -1,10 +1,10 @@
 use super::*;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 
-fn setup() -> SqliteQuestionRepository {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    SqliteQuestionRepository::new(conn)
+fn setup() -> (SqliteTestDb, SqliteQuestionRepository) {
+    let db = SqliteTestDb::new("sqlite_question_repo_tests");
+    let repo = SqliteQuestionRepository::from_shared(db.shared_conn());
+    (db, repo)
 }
 
 fn sample_info() -> PendingQuestionInfo {
@@ -31,7 +31,7 @@ fn sample_info() -> PendingQuestionInfo {
 
 #[tokio::test]
 async fn test_create_and_get_pending() {
-    let repo = setup();
+    let (_db, repo) = setup();
     let info = sample_info();
 
     repo.create_pending(&info).await.unwrap();
@@ -50,7 +50,7 @@ async fn test_create_and_get_pending() {
 
 #[tokio::test]
 async fn test_get_by_request_id() {
-    let repo = setup();
+    let (_db, repo) = setup();
     repo.create_pending(&sample_info()).await.unwrap();
 
     let found = repo.get_by_request_id("req-1").await.unwrap();
@@ -65,7 +65,7 @@ async fn test_get_by_request_id() {
 
 #[tokio::test]
 async fn test_resolve() {
-    let repo = setup();
+    let (_db, repo) = setup();
     repo.create_pending(&sample_info()).await.unwrap();
 
     let answer = QuestionAnswer {
@@ -86,7 +86,7 @@ async fn test_resolve() {
 
 #[tokio::test]
 async fn test_resolve_nonexistent() {
-    let repo = setup();
+    let (_db, repo) = setup();
     let answer = QuestionAnswer {
         selected_options: vec![],
         text: None,
@@ -97,7 +97,7 @@ async fn test_resolve_nonexistent() {
 
 #[tokio::test]
 async fn test_expire_all_pending() {
-    let repo = setup();
+    let (_db, repo) = setup();
 
     for i in 0..3 {
         let info = PendingQuestionInfo {
@@ -127,7 +127,7 @@ async fn test_expire_all_pending() {
 
 #[tokio::test]
 async fn test_remove() {
-    let repo = setup();
+    let (_db, repo) = setup();
     repo.create_pending(&sample_info()).await.unwrap();
 
     let removed = repo.remove("req-1").await.unwrap();
@@ -143,9 +143,8 @@ async fn test_remove() {
 #[tokio::test]
 async fn test_expire_all_pending_via_question_state() {
     use crate::application::question_state::QuestionState;
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = Arc::new(SqliteQuestionRepository::new(conn));
+    let db = SqliteTestDb::new("sqlite_question_repo_tests-question_state");
+    let repo = Arc::new(SqliteQuestionRepository::from_shared(db.shared_conn()));
 
     // Seed pending questions (simulating leftover from a previous app run)
     for i in 0..3 {
@@ -180,7 +179,7 @@ async fn test_expire_all_pending_via_question_state() {
 
 #[tokio::test]
 async fn test_multi_select_round_trip() {
-    let repo = setup();
+    let (_db, repo) = setup();
     let info = PendingQuestionInfo {
         request_id: "req-multi".to_string(),
         session_id: "session-1".to_string(),

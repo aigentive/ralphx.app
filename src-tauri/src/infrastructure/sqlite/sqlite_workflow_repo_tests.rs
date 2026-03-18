@@ -1,11 +1,9 @@
 use super::*;
 use crate::domain::entities::{InternalStatus, WorkflowColumn};
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().expect("Failed to open memory connection");
-    run_migrations(&conn).expect("Failed to run migrations");
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite_workflow_repo_tests")
 }
 
 fn create_test_workflow() -> WorkflowSchema {
@@ -21,8 +19,8 @@ fn create_test_workflow() -> WorkflowSchema {
 
 #[tokio::test]
 async fn test_create_workflow() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteWorkflowRepository::from_shared(db.shared_conn());
     let workflow = create_test_workflow();
 
     let result = repo.create(workflow.clone()).await;
@@ -35,8 +33,8 @@ async fn test_create_workflow() {
 
 #[tokio::test]
 async fn test_get_by_id_found() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteWorkflowRepository::from_shared(db.shared_conn());
     let workflow = create_test_workflow();
 
     repo.create(workflow.clone()).await.unwrap();
@@ -51,8 +49,8 @@ async fn test_get_by_id_found() {
 
 #[tokio::test]
 async fn test_get_by_id_not_found() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteWorkflowRepository::from_shared(db.shared_conn());
     let id = WorkflowId::new();
 
     let result = repo.get_by_id(&id).await;
@@ -62,8 +60,8 @@ async fn test_get_by_id_not_found() {
 
 #[tokio::test]
 async fn test_get_all_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteWorkflowRepository::from_shared(db.shared_conn());
 
     let result = repo.get_all().await;
     assert!(result.is_ok());
@@ -72,8 +70,8 @@ async fn test_get_all_empty() {
 
 #[tokio::test]
 async fn test_get_all_with_workflows() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteWorkflowRepository::from_shared(db.shared_conn());
 
     let workflow1 = create_test_workflow();
     let mut workflow2 = create_test_workflow();
@@ -90,8 +88,8 @@ async fn test_get_all_with_workflows() {
 
 #[tokio::test]
 async fn test_get_all_returns_sorted_by_name() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteWorkflowRepository::from_shared(db.shared_conn());
 
     let mut workflow1 = create_test_workflow();
     workflow1.name = "Zebra Workflow".to_string();
@@ -110,8 +108,8 @@ async fn test_get_all_returns_sorted_by_name() {
 
 #[tokio::test]
 async fn test_get_default_none() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteWorkflowRepository::from_shared(db.shared_conn());
 
     // Create a non-default workflow
     let workflow = create_test_workflow();
@@ -124,8 +122,8 @@ async fn test_get_default_none() {
 
 #[tokio::test]
 async fn test_get_default_returns_default() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteWorkflowRepository::from_shared(db.shared_conn());
 
     let workflow = WorkflowSchema::default_ralphx();
     repo.create(workflow).await.unwrap();
@@ -140,8 +138,8 @@ async fn test_get_default_returns_default() {
 
 #[tokio::test]
 async fn test_update_workflow() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteWorkflowRepository::from_shared(db.shared_conn());
 
     let mut workflow = create_test_workflow();
     repo.create(workflow.clone()).await.unwrap();
@@ -159,8 +157,8 @@ async fn test_update_workflow() {
 
 #[tokio::test]
 async fn test_set_default_unsets_previous() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteWorkflowRepository::from_shared(db.shared_conn());
 
     // Create first workflow as default
     let workflow1 = WorkflowSchema::default_ralphx();
@@ -188,8 +186,8 @@ async fn test_set_default_unsets_previous() {
 
 #[tokio::test]
 async fn test_workflow_columns_preserved() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteWorkflowRepository::from_shared(db.shared_conn());
 
     let workflow = WorkflowSchema::default_ralphx();
     repo.create(workflow.clone()).await.unwrap();
@@ -209,8 +207,8 @@ async fn test_workflow_columns_preserved() {
 
 #[tokio::test]
 async fn test_workflow_with_behavior_preserved() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteWorkflowRepository::from_shared(db.shared_conn());
 
     use crate::domain::entities::ColumnBehavior;
 
@@ -231,8 +229,8 @@ async fn test_workflow_with_behavior_preserved() {
 
 #[tokio::test]
 async fn test_from_shared_connection() {
-    let conn = setup_test_db();
-    let shared = Arc::new(Mutex::new(conn));
+    let db = setup_test_db();
+    let shared = db.shared_conn();
 
     let repo1 = SqliteWorkflowRepository::from_shared(shared.clone());
     let repo2 = SqliteWorkflowRepository::from_shared(shared.clone());
@@ -250,8 +248,8 @@ async fn test_from_shared_connection() {
 
 #[tokio::test]
 async fn test_seed_builtin_workflows_creates_both() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteWorkflowRepository::from_shared(db.shared_conn());
 
     let count = repo.seed_builtin_workflows().await.unwrap();
     assert_eq!(count, 2);
@@ -262,8 +260,8 @@ async fn test_seed_builtin_workflows_creates_both() {
 
 #[tokio::test]
 async fn test_seed_builtin_workflows_creates_default() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteWorkflowRepository::from_shared(db.shared_conn());
 
     repo.seed_builtin_workflows().await.unwrap();
 
@@ -274,8 +272,8 @@ async fn test_seed_builtin_workflows_creates_default() {
 
 #[tokio::test]
 async fn test_seed_builtin_workflows_creates_jira() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteWorkflowRepository::from_shared(db.shared_conn());
 
     repo.seed_builtin_workflows().await.unwrap();
 
@@ -287,8 +285,8 @@ async fn test_seed_builtin_workflows_creates_jira() {
 
 #[tokio::test]
 async fn test_seed_builtin_workflows_is_idempotent() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteWorkflowRepository::from_shared(db.shared_conn());
 
     // Seed twice
     let count1 = repo.seed_builtin_workflows().await.unwrap();
@@ -305,8 +303,8 @@ async fn test_seed_builtin_workflows_is_idempotent() {
 
 #[tokio::test]
 async fn test_seed_builtin_workflows_preserves_existing() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteWorkflowRepository::from_shared(db.shared_conn());
 
     // Create a custom workflow
     let custom = create_test_workflow();
@@ -322,8 +320,8 @@ async fn test_seed_builtin_workflows_preserves_existing() {
 
 #[tokio::test]
 async fn test_seed_builtin_workflows_skips_existing_builtin() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteWorkflowRepository::from_shared(db.shared_conn());
 
     // Manually create the default workflow
     let default = WorkflowSchema::default_ralphx();
