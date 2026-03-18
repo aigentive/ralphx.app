@@ -32,6 +32,17 @@ paths:
 | Concurrency | File-backed temp DBs for shared access; `:memory:` only for intentionally isolated narrow tests |
 | Formatter policy | No broad `cargo fmt`; if formatting is required, keep it scoped and separate |
 
+## Scale Direction
+
+| Topic | Direction |
+|---|---|
+| Shared state | Keep tests isolated and parallel-safe; avoid shared DB state except for explicitly serialized cases |
+| Fixture style | Rust has no built-in fixture system here; use helper modules, suite-local `setup_*()` functions, and small builders |
+| Compile vs run | Optimize both separately: narrow targets to reduce compile scope, then keep per-test runtime setup cheap |
+| Large-suite runner | `cargo-nextest` is the intended follow-up runner for large-scale execution, retries, sharding, and resource groups |
+| Test layers | Keep fast repo/unit suites separate from slower integration/state-machine/git suites |
+| Internal support | Invest early in a thin shared test-support layer under `src-tauri/src/testing/` when setup repeats |
+
 ## Selective Commands
 
 ```bash
@@ -99,7 +110,15 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Converting an old SQLite test | Replace `open_memory_connection() + run_migrations()` with `SqliteTestDb` first, then extract shared seed helpers |
 | Adding a new repo suite | Start from a suite-local `setup_*()` helper; only introduce a shared helper when repetition appears in multiple files |
 | Verifying a migration | Test the migration itself explicitly; do not force every repo test to replay the full migration chain |
-| Considering `cargo-nextest` or extra tooling | Treat as an explicit follow-up adoption task; until then, optimize around targeted Cargo runs and shared fixtures |
+| Considering `cargo-nextest` or extra tooling | Document it as the scale target; until adopted in CI/dev commands, optimize around targeted Cargo runs and shared fixtures |
+
+## Future Adoption
+
+| Planned improvement | Why |
+|---|---|
+| Adopt `cargo-nextest` as the default large-suite runner | Better concurrency control, retries, partitioning, and resource grouping for thousands of tests |
+| Add shared seed helpers for common row graphs | Removes repeated SQL and makes suite setup cheaper to maintain |
+| Group resource-sensitive tests explicitly | Prevent DB/file/git-heavy tests from competing with fast unit coverage |
 
 ## Formatter Warning
 
