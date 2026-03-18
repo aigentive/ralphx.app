@@ -1931,7 +1931,8 @@ pub async fn get_running_processes(
 }
 
 
-fn context_matches_running_status_for_gc(
+#[doc(hidden)]
+pub fn context_matches_running_status_for_gc(
     context_type: ChatContextType,
     status: InternalStatus,
 ) -> bool {
@@ -2363,10 +2364,6 @@ async fn validate_resume(task: &Task, state: &AppState) -> ResumeValidationResul
         warnings,
     }
 }
-
-#[cfg(test)]
-#[path = "execution_commands_running_count_tests.rs"]
-mod running_count_tests;
 
 #[cfg(test)]
 mod tests {

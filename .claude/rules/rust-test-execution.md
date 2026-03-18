@@ -98,6 +98,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --test task_step_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test review_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test metrics_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test plan_branch_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test execution_commands_running_count
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 ```
