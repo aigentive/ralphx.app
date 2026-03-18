@@ -120,7 +120,7 @@ Plugin: `claude --plugin-dir ./ralphx-plugin --agent worker -p "Execute"` | Tool
 | 5 | ❌ Fragile string comparisons — use enum variants (`matches!(err, MyError::Variant)`), error codes, or named constants for external strings |
 | 6 | Full timestamps in activity log |
 | 7 | Status changes → TransitionHandler ONLY. ❌ Direct DB update |
-| 8 | **Zero lint/test warnings (NON-NEGOTIABLE):** Fix ALL lint warnings and test failures before completing work — including pre-existing ones. ❌ "It's pre-existing" is not an excuse. Stale warnings delay future work and compound. `src-tauri/` → cargo clippy \| `src/` → npm run lint. Tests: `timeout 10m cargo test --lib --manifest-path src-tauri/Cargo.toml 2>&1 \| tail -100`. ❌ `cargo check` \| ❌ full `cargo test` (hang) |
+| 8 | **Zero lint/test warnings (NON-NEGOTIABLE):** Fix ALL lint warnings and test failures before completing work — including pre-existing ones. ❌ "It's pre-existing" is not an excuse. Stale warnings delay future work and compound. `src-tauri/` → cargo clippy \| broad Rust runs → `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci` \| pinpoint Rust runs/doctests → see `.claude/rules/rust-test-execution.md`. ❌ `cargo check` \| ❌ full `cargo test` (hang) |
 | 9 | ❌ Start/stop dev server — user manages manually |
 | 10 | Implementation playbook: `DEVELOPMENT.md` — read alongside CLAUDE.md files for placement, naming, recipes, and debugging. |
 | 11 | New pattern → add one-liner to relevant CLAUDE.md. Pattern name + rule only. |

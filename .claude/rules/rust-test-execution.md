@@ -14,6 +14,7 @@ paths:
 | Rule | Detail |
 |---|---|
 | Run targeted Rust tests | ✅ `cargo test --manifest-path src-tauri/Cargo.toml --test <file_stem>` | ❌ full `cargo test` |
+| Use `cargo-nextest` for broad Rust runs | ✅ `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci` for broad lib coverage and CI; keep `cargo test` for pinpoint filters and doctests |
 | `cargo test` name filters are single-filter only | `cargo test <TESTNAME>` / `cargo test --lib <FILTER>` accepts one substring filter; do not append multiple test names and expect Cargo/libtest to combine them |
 | No broad formatter runs | ❌ `cargo fmt` / broad `rustfmt` unless user explicitly asks; they can touch hundreds of files and hide the real diff |
 | Keep diffs reviewable | Use `apply_patch` for code edits, then verify `git diff` / `git diff --staged` only shows intended hunks |
@@ -24,13 +25,14 @@ paths:
 
 | Layer | Standard |
 |---|---|
-| Test runner | `cargo test` with targeted `--test <target>` or one `--lib` substring filter |
+| Test runner | `cargo test` for targeted filters and single suites; `cargo nextest run` for broad lib/test runs and CI |
 | Target discovery | `cargo test --manifest-path src-tauri/Cargo.toml --lib -- --list | rg "<module>"` |
 | Async SQLite repo tests | `SqliteTestDb` + repo `from_shared(db.shared_conn())` |
 | AppState integration tests | `SqliteStateFixture::new(...)` |
 | Sync SQLite repo tests | `SqliteTestDb` + `db.new_connection()` |
 | Setup/seeding | Shared suite helpers/builders on top of `SqliteTestDb`; one migration pass per temp DB only |
 | Concurrency | File-backed temp DBs for shared access; `:memory:` only for intentionally isolated narrow tests |
+| Broad-run runner config | Repo config lives in `.config/nextest.toml`; keep group changes there, not in ad hoc shell flags |
 | Formatter policy | No broad `cargo fmt`; if formatting is required, keep it scoped and separate |
 
 ## Scale Direction
@@ -40,7 +42,7 @@ paths:
 | Shared state | Keep tests isolated and parallel-safe; avoid shared DB state except for explicitly serialized cases |
 | Fixture style | Rust has no built-in fixture system here; use helper modules, suite-local `setup_*()` functions, and small builders |
 | Compile vs run | Optimize both separately: narrow targets to reduce compile scope, then keep per-test runtime setup cheap |
-| Large-suite runner | `cargo-nextest` is the intended follow-up runner for large-scale execution, retries, sharding, and resource groups |
+| Large-suite runner | `cargo-nextest` is the adopted broad-runner for large-scale execution; targeted edit-loop runs still stay on `cargo test` |
 | Test layers | Keep fast repo/unit suites separate from slower integration/state-machine/git suites |
 | Internal support | Invest early in a thin shared test-support layer under `src-tauri/src/testing/` when setup repeats |
 
@@ -53,7 +55,29 @@ cargo test --manifest-path src-tauri/Cargo.toml --test state_machine_flows --tes
 cargo test --manifest-path src-tauri/Cargo.toml --test per_project_execution_scoping
 cargo test --manifest-path src-tauri/Cargo.toml --test review_flows
 cargo test --manifest-path src-tauri/Cargo.toml --test execution_control_flows
+cargo nextest run --manifest-path src-tauri/Cargo.toml --lib
+cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 ```
+
+## Nextest Setup
+
+| Need | Command |
+|---|---|
+| Install on macOS | `brew install cargo-nextest` |
+| Install from Cargo | `cargo install cargo-nextest --locked` |
+| Broad local lib run | `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib` |
+| Broad CI-style lib run | `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci` |
+| Pinpoint module/test validation | `cargo test --manifest-path src-tauri/Cargo.toml <filter> --lib` or `cargo test --manifest-path src-tauri/Cargo.toml --test <target>` |
+| Doctests | `cargo test --manifest-path src-tauri/Cargo.toml --doc` |
+
+## Nextest Groups
+
+| Group | Purpose |
+|---|---|
+| `git-heavy` | Caps the heaviest git/worktree integration binaries at 2 threads |
+| `sqlite-integration` | Caps file-backed SQLite integration binaries at 4 threads |
+| `perf-serial` | Forces `plan_selector_performance` to 1 thread |
+| Config source | Edit `.config/nextest.toml` rather than pasting long `-E` filters into docs or CI |
 
 ## Filter Rules
 

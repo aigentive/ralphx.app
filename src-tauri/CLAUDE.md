@@ -89,7 +89,7 @@ New pattern → add one-liner here. Pattern name + rule only.
 | PreMergeCleanup | Kill agents + kill_worktree_processes BEFORE git worktree ops (TOCTOU race prevention) |
 | MergeDeadline | `attempt_programmatic_merge` wraps cleanup + strategy in bounded deadline (`attempt_merge_deadline_secs`) |
 | No Inline Timeout Consts | All durations → `runtime_config` + `ralphx.yaml`, never Rust `const` |
-| SQLite Test Fixtures | Heavy Rust integration tests use `SqliteTestDb` / `SqliteStateFixture` + targeted `cargo test --test ...`; extract shared seed builders before repeating setup; see `.claude/rules/rust-test-execution.md` |
+| Rust test runner split | Use targeted `cargo test` for pinpoint Rust validation; use `cargo nextest run` for broad Rust runs; fixture rules and commands live in `.claude/rules/rust-test-execution.md` |
 | Tokio spawn | `tokio::spawn` → async fn ONLY. Sync code → `std::thread::spawn` \| `tauri::async_runtime::spawn`. See `.claude/rules/tokio-runtime-safety.md` |
 | Rust std API stability | Avoid unstable std APIs in production code (e.g., `is_multiple_of`) — use stable equivalents (e.g., `%`). See `.claude/rules/rust-stable-apis.md` |
 
