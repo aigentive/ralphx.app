@@ -1,11 +1,10 @@
 use super::*;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 
 #[tokio::test]
 async fn test_get_default_app_state() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteAppStateRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_app_state_repo_tests-default");
+    let repo = SqliteAppStateRepository::from_shared(db.shared_conn());
 
     let settings = repo.get().await.unwrap();
     assert!(settings.active_project_id.is_none());
@@ -13,9 +12,8 @@ async fn test_get_default_app_state() {
 
 #[tokio::test]
 async fn test_set_and_get_active_project() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteAppStateRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_app_state_repo_tests-set-active");
+    let repo = SqliteAppStateRepository::from_shared(db.shared_conn());
 
     let project_id = ProjectId::from_string("proj-123".to_string());
     repo.set_active_project(Some(&project_id)).await.unwrap();
@@ -29,9 +27,8 @@ async fn test_set_and_get_active_project() {
 
 #[tokio::test]
 async fn test_clear_active_project() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteAppStateRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_app_state_repo_tests-clear-active");
+    let repo = SqliteAppStateRepository::from_shared(db.shared_conn());
 
     // Set a project
     let project_id = ProjectId::from_string("proj-123".to_string());
@@ -46,9 +43,8 @@ async fn test_clear_active_project() {
 
 #[tokio::test]
 async fn test_shared_connection() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let shared_conn = Arc::new(Mutex::new(conn));
+    let db = SqliteTestDb::new("sqlite_app_state_repo_tests-shared");
+    let shared_conn = db.shared_conn();
 
     let repo = SqliteAppStateRepository::from_shared(Arc::clone(&shared_conn));
 
@@ -59,9 +55,8 @@ async fn test_shared_connection() {
 #[tokio::test]
 async fn test_set_active_project_overwrites_previous_value() {
     // Verifies singleton behavior: only one active_project_id at a time
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteAppStateRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_app_state_repo_tests-overwrite");
+    let repo = SqliteAppStateRepository::from_shared(db.shared_conn());
 
     let project_a = ProjectId::from_string("proj-a".to_string());
     let project_b = ProjectId::from_string("proj-b".to_string());

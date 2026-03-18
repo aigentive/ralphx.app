@@ -1,10 +1,10 @@
 use super::*;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 
-fn setup() -> SqlitePermissionRepository {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    SqlitePermissionRepository::new(conn)
+fn setup() -> (SqliteTestDb, SqlitePermissionRepository) {
+    let db = SqliteTestDb::new("sqlite_permission_repo_tests");
+    let repo = SqlitePermissionRepository::from_shared(db.shared_conn());
+    (db, repo)
 }
 
 fn sample_info() -> PendingPermissionInfo {
@@ -18,7 +18,7 @@ fn sample_info() -> PendingPermissionInfo {
 
 #[tokio::test]
 async fn test_create_and_get_pending() {
-    let repo = setup();
+    let (_db, repo) = setup();
     repo.create_pending(&sample_info()).await.unwrap();
 
     let pending = repo.get_pending().await.unwrap();
@@ -31,7 +31,7 @@ async fn test_create_and_get_pending() {
 
 #[tokio::test]
 async fn test_get_by_request_id() {
-    let repo = setup();
+    let (_db, repo) = setup();
     repo.create_pending(&sample_info()).await.unwrap();
 
     let found = repo.get_by_request_id("perm-1").await.unwrap();
@@ -46,7 +46,7 @@ async fn test_get_by_request_id() {
 
 #[tokio::test]
 async fn test_resolve() {
-    let repo = setup();
+    let (_db, repo) = setup();
     repo.create_pending(&sample_info()).await.unwrap();
 
     let decision = PermissionDecision {
@@ -67,7 +67,7 @@ async fn test_resolve() {
 
 #[tokio::test]
 async fn test_resolve_nonexistent() {
-    let repo = setup();
+    let (_db, repo) = setup();
     let decision = PermissionDecision {
         decision: "deny".to_string(),
         message: None,
@@ -78,7 +78,7 @@ async fn test_resolve_nonexistent() {
 
 #[tokio::test]
 async fn test_expire_all_pending() {
-    let repo = setup();
+    let (_db, repo) = setup();
 
     for i in 0..3 {
         let info = PendingPermissionInfo {
@@ -106,7 +106,7 @@ async fn test_expire_all_pending() {
 
 #[tokio::test]
 async fn test_remove() {
-    let repo = setup();
+    let (_db, repo) = setup();
     repo.create_pending(&sample_info()).await.unwrap();
 
     let removed = repo.remove("perm-1").await.unwrap();
@@ -122,9 +122,8 @@ async fn test_remove() {
 #[tokio::test]
 async fn test_expire_all_pending_via_permission_state() {
     use crate::application::permission_state::PermissionState;
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = Arc::new(SqlitePermissionRepository::new(conn));
+    let db = SqliteTestDb::new("sqlite_permission_repo_tests-permission_state");
+    let repo = Arc::new(SqlitePermissionRepository::from_shared(db.shared_conn()));
 
     // Seed pending permissions (simulating leftover from a previous app run)
     for i in 0..3 {
@@ -157,7 +156,7 @@ async fn test_expire_all_pending_via_permission_state() {
 
 #[tokio::test]
 async fn test_empty_tool_input_round_trip() {
-    let repo = setup();
+    let (_db, repo) = setup();
     let info = PendingPermissionInfo {
         request_id: "perm-empty".to_string(),
         tool_name: "Read".to_string(),

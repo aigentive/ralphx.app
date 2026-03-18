@@ -1,11 +1,10 @@
 use super::*;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 
 #[tokio::test]
 async fn test_get_default_settings() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteReviewSettingsRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_review_settings_repo_tests-default");
+    let repo = SqliteReviewSettingsRepository::from_shared(db.shared_conn());
 
     let settings = repo.get_settings().await.unwrap();
     assert!(settings.ai_review_enabled);
@@ -18,9 +17,8 @@ async fn test_get_default_settings() {
 
 #[tokio::test]
 async fn test_update_settings() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteReviewSettingsRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_review_settings_repo_tests-update");
+    let repo = SqliteReviewSettingsRepository::from_shared(db.shared_conn());
 
     let new_settings = ReviewSettings {
         ai_review_enabled: false,
@@ -51,9 +49,8 @@ async fn test_update_settings() {
 
 #[tokio::test]
 async fn test_update_max_revision_cycles() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteReviewSettingsRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_review_settings_repo_tests-max-cycles");
+    let repo = SqliteReviewSettingsRepository::from_shared(db.shared_conn());
 
     let new_settings = ReviewSettings {
         max_revision_cycles: 2,
