@@ -63,6 +63,8 @@ cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 
 | Need | Command |
 |---|---|
+| Repo Rust toolchain | `rust-toolchain.toml` pins Rust `1.91.0`; keep CI and local development aligned to that file |
+| Activate pinned toolchain locally | `rustup toolchain install 1.91.0 && rustup override set 1.91.0` from repo root |
 | Install on macOS | `brew install cargo-nextest` |
 | Install from Cargo | `cargo install cargo-nextest --locked` |
 | Broad local lib run | `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib` |
