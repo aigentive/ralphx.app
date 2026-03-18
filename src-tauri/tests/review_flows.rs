@@ -31,20 +31,21 @@ fn make_needs_changes_input(notes: &str, fix_description: &str) -> CompleteRevie
     CompleteReviewInput::needs_changes_with_issues(notes, fix_description, vec![issue])
 }
 use ralphx_lib::infrastructure::sqlite::{
-    open_memory_connection, run_migrations, SqliteReviewRepository, SqliteTaskRepository,
-    TaskStateMachineRepository,
+    SqliteReviewRepository, SqliteTaskRepository, TaskStateMachineRepository,
 };
+use ralphx_lib::testing::SqliteTestDb;
 
 /// Helper to set up a test environment with repositories and task in pending_review state
 fn setup_review_test() -> (
+    SqliteTestDb,
     Arc<SqliteReviewRepository>,
     Arc<SqliteTaskRepository>,
     TaskStateMachineRepository,
     ProjectId,
     TaskId,
 ) {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+    let db = SqliteTestDb::new("review-flows");
+    let conn = db.new_connection();
 
     // Insert a project
     conn.execute(
@@ -67,28 +68,14 @@ fn setup_review_test() -> (
     let task_repo = Arc::new(SqliteTaskRepository::from_shared(shared_conn.clone()));
     let review_repo = Arc::new(SqliteReviewRepository::from_shared(shared_conn.clone()));
 
-    // Create a new connection for the state machine repository (it takes ownership)
-    let sm_conn = open_memory_connection().unwrap();
-    run_migrations(&sm_conn).unwrap();
-    sm_conn
-        .execute(
-            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Test', '/path')",
-            [],
-        )
-        .unwrap();
-    sm_conn
-        .execute(
-            "INSERT INTO tasks (id, project_id, category, title, internal_status)
-             VALUES ('task-1', 'proj-1', 'feature', 'Test Task', 'pending_review')",
-            [],
-        )
-        .unwrap();
+    // Create a second connection to the same file-backed DB for the sync state-machine repo.
+    let sm_conn = db.new_connection();
     let sm_repo = TaskStateMachineRepository::new(sm_conn);
 
     let project_id = ProjectId::from_string("proj-1".to_string());
     let task_id = TaskId::from_string("task-1".to_string());
 
-    (review_repo, task_repo, sm_repo, project_id, task_id)
+    (db, review_repo, task_repo, sm_repo, project_id, task_id)
 }
 
 // ============================================================================
@@ -106,7 +93,7 @@ fn setup_review_test() -> (
 /// 6. Verify review record created with correct status
 #[tokio::test]
 async fn test_ai_review_approve_flow() {
-    let (review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
 
     // Verify task is in PendingReview state
     let state = sm_repo.load_state(&task_id).unwrap();
@@ -162,7 +149,7 @@ async fn test_ai_review_approve_flow() {
 /// Test: AI review approve flow with state machine transition
 #[tokio::test]
 async fn test_ai_review_approve_state_machine_transition() {
-    let (review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
 
     // Start in PendingReview
     assert_eq!(sm_repo.load_state(&task_id).unwrap(), State::PendingReview);
@@ -205,7 +192,7 @@ async fn test_ai_review_approve_state_machine_transition() {
 /// Test: AI review disabled in settings
 #[tokio::test]
 async fn test_ai_review_disabled() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     // Create service with AI review disabled
     let settings = ReviewSettings::ai_disabled();
@@ -219,7 +206,7 @@ async fn test_ai_review_disabled() {
 /// Test: Cannot start duplicate review for same task
 #[tokio::test]
 async fn test_ai_review_no_duplicate() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let service = ReviewService::new(review_repo, task_repo);
 
@@ -237,7 +224,7 @@ async fn test_ai_review_no_duplicate() {
 /// Test: Review stores notes correctly
 #[tokio::test]
 async fn test_ai_review_stores_notes() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
@@ -272,7 +259,7 @@ async fn test_ai_review_stores_notes() {
 /// Test: Review records completed_at timestamp
 #[tokio::test]
 async fn test_ai_review_records_completion_time() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
@@ -296,7 +283,7 @@ async fn test_ai_review_records_completion_time() {
 /// Test: Multiple reviews for same task (after first is completed)
 #[tokio::test]
 async fn test_ai_review_multiple_sequential() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
@@ -327,7 +314,7 @@ async fn test_ai_review_multiple_sequential() {
 /// Test: Review with custom settings
 #[tokio::test]
 async fn test_ai_review_with_custom_settings() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     // Settings that require human review after AI approval
     let settings = ReviewSettings::with_human_review();
@@ -368,7 +355,7 @@ fn test_complete_review_input_approved() {
 /// Test: Review can be retrieved by task_id
 #[tokio::test]
 async fn test_get_reviews_by_task_id() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
@@ -393,7 +380,7 @@ async fn test_get_reviews_by_task_id() {
 /// Test: get_pending returns only pending reviews
 #[tokio::test]
 async fn test_get_pending_reviews() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
@@ -412,7 +399,7 @@ async fn test_get_pending_reviews() {
 /// Test: Pending count is accurate
 #[tokio::test]
 async fn test_count_pending_reviews() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
@@ -445,7 +432,7 @@ async fn test_count_pending_reviews() {
 /// Test: has_pending_review correctly detects pending reviews
 #[tokio::test]
 async fn test_has_pending_review() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
@@ -471,7 +458,7 @@ async fn test_has_pending_review() {
 /// Test: Review by status query
 #[tokio::test]
 async fn test_get_reviews_by_status() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
@@ -516,7 +503,7 @@ async fn test_get_reviews_by_status() {
 /// 7. Verify review_action record created
 #[tokio::test]
 async fn test_ai_review_needs_changes_flow() {
-    let (review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
 
     // Verify task is in PendingReview state
     let state = sm_repo.load_state(&task_id).unwrap();
@@ -595,7 +582,7 @@ async fn test_ai_review_needs_changes_flow() {
 /// Test: Needs changes flow with state machine transition
 #[tokio::test]
 async fn test_ai_review_needs_changes_state_machine_transition() {
-    let (review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
 
     // Start in PendingReview
     assert_eq!(sm_repo.load_state(&task_id).unwrap(), State::PendingReview);
@@ -632,7 +619,7 @@ async fn test_ai_review_needs_changes_state_machine_transition() {
 /// Test: Needs changes with auto_fix disabled moves to backlog
 #[tokio::test]
 async fn test_ai_review_needs_changes_auto_fix_disabled() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     // Create service with auto_fix disabled
     let settings = ReviewSettings {
@@ -666,7 +653,7 @@ async fn test_ai_review_needs_changes_auto_fix_disabled() {
 /// Test: Fix task has higher priority than original task
 #[tokio::test]
 async fn test_fix_task_has_higher_priority() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     // First, set the original task's priority
     use ralphx_lib::domain::repositories::TaskRepository;
@@ -701,7 +688,7 @@ async fn test_fix_task_has_higher_priority() {
 /// Test: Fix task requires approval when configured
 #[tokio::test]
 async fn test_fix_task_requires_approval() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     // Create service with fix approval required
     let settings = ReviewSettings::with_fix_approval();
@@ -735,7 +722,7 @@ async fn test_fix_task_requires_approval() {
 /// Test: Fix task is Ready when approval not required
 #[tokio::test]
 async fn test_fix_task_ready_without_approval() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     // Default settings don't require fix approval
     let service = ReviewService::new(review_repo, task_repo.clone());
@@ -799,7 +786,7 @@ fn test_complete_review_input_needs_changes_requires_fix_description() {
 /// Test: Count fix actions for a task
 #[tokio::test]
 async fn test_count_fix_actions() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
@@ -826,7 +813,7 @@ async fn test_count_fix_actions() {
 /// Test: Multiple fix tasks increment fix action count
 #[tokio::test]
 async fn test_multiple_fix_attempts_tracked() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let service = ReviewService::new(review_repo.clone(), task_repo.clone());
 
@@ -876,7 +863,7 @@ async fn test_multiple_fix_attempts_tracked() {
 /// 7. Verify notification emitted (via review note)
 #[tokio::test]
 async fn test_ai_review_escalate_flow() {
-    let (review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
 
     // Verify task is in PendingReview state
     let state = sm_repo.load_state(&task_id).unwrap();
@@ -925,13 +912,13 @@ async fn test_ai_review_escalate_flow() {
     assert!(notes[0]
         .notes
         .as_ref()
-        .map_or(false, |n| n.contains("Security-sensitive")));
+        .map_or(false, |n| n.contains("needs human verification")));
 }
 
 /// Test: Escalate flow with state machine - task stays blocked
 #[tokio::test]
 async fn test_ai_review_escalate_state_machine_blocked() {
-    let (review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
 
     // Start in PendingReview
     assert_eq!(sm_repo.load_state(&task_id).unwrap(), State::PendingReview);
@@ -993,7 +980,7 @@ fn test_complete_review_input_escalate_requires_reason() {
 /// Test: Escalate for security-sensitive changes
 #[tokio::test]
 async fn test_ai_review_escalate_security_sensitive() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
@@ -1015,13 +1002,13 @@ async fn test_ai_review_escalate_security_sensitive() {
     assert!(notes[0]
         .notes
         .as_ref()
-        .map_or(false, |n| n.contains("authentication/authorization")));
+        .map_or(false, |n| n.contains("Modifies user permission checks")));
 }
 
 /// Test: Escalate for design decisions
 #[tokio::test]
 async fn test_ai_review_escalate_design_decision() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
@@ -1043,13 +1030,13 @@ async fn test_ai_review_escalate_design_decision() {
     assert!(notes[0]
         .notes
         .as_ref()
-        .map_or(false, |n| n.contains("Multiple valid approaches")));
+        .map_or(false, |n| n.contains("Redux or Context API")));
 }
 
 /// Test: Escalate for breaking changes
 #[tokio::test]
 async fn test_ai_review_escalate_breaking_changes() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
@@ -1077,7 +1064,7 @@ async fn test_ai_review_escalate_breaking_changes() {
 /// Test: Escalate for low confidence
 #[tokio::test]
 async fn test_ai_review_escalate_low_confidence() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
@@ -1099,13 +1086,13 @@ async fn test_ai_review_escalate_low_confidence() {
     assert!(notes[0]
         .notes
         .as_ref()
-        .map_or(false, |n| n.contains("Unable to fully evaluate")));
+        .map_or(false, |n| n.contains("manual review")));
 }
 
 /// Test: Escalate doesn't create review actions like CreatedFixTask
 #[tokio::test]
 async fn test_ai_review_escalate_no_actions() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let service = ReviewService::new(review_repo.clone(), task_repo);
 
@@ -1143,7 +1130,7 @@ async fn test_ai_review_escalate_no_actions() {
 /// 6. Verify original task moved to backlog
 #[tokio::test]
 async fn test_fix_task_rejection_creates_new_fix() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     // Use settings with fix approval required so fix tasks start as Blocked
     let settings = ReviewSettings::with_fix_approval();
@@ -1196,7 +1183,7 @@ async fn test_fix_task_rejection_creates_new_fix() {
 /// Test: Fix task rejection with max attempts exceeded moves to backlog
 #[tokio::test]
 async fn test_fix_task_max_attempts_moves_to_backlog() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     // Use settings with max_fix_attempts = 1
     let settings = ReviewSettings::with_max_attempts(1);
@@ -1242,7 +1229,7 @@ async fn test_fix_task_max_attempts_moves_to_backlog() {
 /// Test: Approve fix task transitions from Blocked to Ready
 #[tokio::test]
 async fn test_approve_fix_task_transitions_to_ready() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     // Use settings with fix approval required
     let settings = ReviewSettings::with_fix_approval();
@@ -1281,7 +1268,7 @@ async fn test_approve_fix_task_transitions_to_ready() {
 /// Test: Approve fix task fails if task is not Blocked
 #[tokio::test]
 async fn test_approve_fix_task_fails_if_not_blocked() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     // Use default settings (fix tasks are Ready, not Blocked)
     let service = ReviewService::new(review_repo.clone(), task_repo.clone());
@@ -1315,7 +1302,7 @@ async fn test_approve_fix_task_fails_if_not_blocked() {
 /// Test: Reject fix task increments attempt counter
 #[tokio::test]
 async fn test_reject_fix_task_increments_attempt_counter() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     // Use settings with high max_fix_attempts to allow multiple retries
     let settings = ReviewSettings::with_max_attempts(5);
@@ -1367,7 +1354,7 @@ async fn test_reject_fix_task_increments_attempt_counter() {
 /// Test: Fix task rejection records note about max attempts
 #[tokio::test]
 async fn test_fix_task_max_attempts_records_note() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     // Use settings with max_fix_attempts = 1
     let settings = ReviewSettings::with_max_attempts(1);
@@ -1407,7 +1394,7 @@ async fn test_fix_task_max_attempts_records_note() {
 /// Test: New fix task description includes previous feedback
 #[tokio::test]
 async fn test_new_fix_task_includes_feedback() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let settings = ReviewSettings::with_max_attempts(5);
     let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
@@ -1459,7 +1446,7 @@ async fn test_new_fix_task_includes_feedback() {
 /// Test: Move task to backlog manually
 #[tokio::test]
 async fn test_move_to_backlog() {
-    let (review_repo, task_repo, _sm_repo, _project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, _project_id, task_id) = setup_review_test();
 
     let service = ReviewService::new(review_repo.clone(), task_repo.clone());
 
@@ -1503,7 +1490,7 @@ async fn test_move_to_backlog() {
 /// 6. Verify human_review_at timestamp is set
 #[tokio::test]
 async fn test_human_review_approval_flow() {
-    let (review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, sm_repo, project_id, task_id) = setup_review_test();
 
     // Use settings that require human review after AI approval
     let settings = ReviewSettings::with_human_review();
@@ -1562,7 +1549,7 @@ async fn test_human_review_approval_flow() {
 /// Test: Human review with request_changes
 #[tokio::test]
 async fn test_human_review_request_changes() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let settings = ReviewSettings::with_human_review();
     let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
@@ -1598,7 +1585,7 @@ async fn test_human_review_request_changes() {
 /// Test: Human review rejection
 #[tokio::test]
 async fn test_human_review_rejection() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let settings = ReviewSettings::with_human_review();
     let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
@@ -1639,7 +1626,7 @@ async fn test_human_review_rejection() {
 /// Test: Human review after AI escalation
 #[tokio::test]
 async fn test_human_review_after_escalation() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let service = ReviewService::new(review_repo.clone(), task_repo.clone());
 
@@ -1688,7 +1675,7 @@ async fn test_human_review_after_escalation() {
 /// Test: Cannot start human review when AI review is pending
 #[tokio::test]
 async fn test_cannot_start_human_review_with_pending_ai_review() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let settings = ReviewSettings::with_human_review();
     let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
@@ -1710,7 +1697,7 @@ async fn test_cannot_start_human_review_with_pending_ai_review() {
 /// Test: Human review is recorded in review history
 #[tokio::test]
 async fn test_human_review_recorded_in_history() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let settings = ReviewSettings::with_human_review();
     let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
@@ -1758,7 +1745,7 @@ async fn test_human_review_recorded_in_history() {
 /// Test: Request changes without fix description
 #[tokio::test]
 async fn test_human_review_request_changes_without_fix() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let settings = ReviewSettings::with_human_review();
     let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
@@ -1794,7 +1781,7 @@ async fn test_human_review_request_changes_without_fix() {
 /// Test: Multiple human review iterations
 #[tokio::test]
 async fn test_multiple_human_review_iterations() {
-    let (review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
+    let (_db, review_repo, task_repo, _sm_repo, project_id, task_id) = setup_review_test();
 
     let settings = ReviewSettings::with_human_review();
     let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
