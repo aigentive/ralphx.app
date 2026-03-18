@@ -1,116 +1,67 @@
 use super::*;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::domain::entities::{IdeationSession, Project};
+use crate::testing::SqliteTestDb;
 
-async fn setup_test_data(conn: &Connection, project_id: &str, session_id: &str) {
-    // Insert test project
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory, created_at, updated_at)
-         VALUES (?1, 'Test Project', '/test', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        [project_id],
-    )
-    .unwrap();
+fn setup_repo() -> (SqliteTestDb, SqliteActivePlanRepository) {
+    let db = SqliteTestDb::new("sqlite-active-plan-repo");
+    let repo = SqliteActivePlanRepository::from_shared(db.shared_conn());
+    (db, repo)
+}
 
-    // Insert test ideation session (accepted)
-    conn.execute(
-        "INSERT INTO ideation_sessions (id, project_id, status, created_at, updated_at, converted_at)
-         VALUES (?1, ?2, 'accepted', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        [session_id, project_id],
-    )
-    .unwrap();
+fn seed_accepted_session(db: &SqliteTestDb, project_id: ProjectId) -> IdeationSession {
+    let mut session = IdeationSession::new(project_id);
+    session.mark_accepted();
+    db.insert_ideation_session(session)
+}
+
+fn seed_project_with_accepted_session(db: &SqliteTestDb) -> (Project, IdeationSession) {
+    let project = db.seed_project("Test Project");
+    let session = seed_accepted_session(db, project.id.clone());
+    (project, session)
 }
 
 #[tokio::test]
 async fn test_get_returns_none_when_no_active_plan() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+    let (db, repo) = setup_repo();
+    let (project, _session) = seed_project_with_accepted_session(&db);
 
-    let project_id = ProjectId::from_string("proj-123".to_string());
-    setup_test_data(&conn, project_id.as_str(), "session-456").await;
-
-    let repo = SqliteActivePlanRepository::new(conn);
-    let result = repo.get(&project_id).await.unwrap();
+    let result = repo.get(&project.id).await.unwrap();
 
     assert!(result.is_none());
 }
 
 #[tokio::test]
 async fn test_set_and_get_active_plan() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+    let (db, repo) = setup_repo();
+    let (project, session) = seed_project_with_accepted_session(&db);
 
-    let project_id = ProjectId::from_string("proj-123".to_string());
-    let session_id = IdeationSessionId::from_string("session-456");
-    setup_test_data(&conn, project_id.as_str(), session_id.as_str()).await;
+    repo.set(&project.id, &session.id).await.unwrap();
 
-    let repo = SqliteActivePlanRepository::new(conn);
-
-    // Set active plan
-    repo.set(&project_id, &session_id).await.unwrap();
-
-    // Get active plan
-    let result = repo.get(&project_id).await.unwrap();
-    assert_eq!(result, Some(session_id));
+    let result = repo.get(&project.id).await.unwrap();
+    assert_eq!(result, Some(session.id));
 }
 
 #[tokio::test]
 async fn test_set_updates_existing_active_plan() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+    let (db, repo) = setup_repo();
+    let project = db.seed_project("Test Project");
+    let session1 = seed_accepted_session(&db, project.id.clone());
+    let session2 = seed_accepted_session(&db, project.id.clone());
 
-    let project_id = ProjectId::from_string("proj-123".to_string());
-    let session_id1 = IdeationSessionId::from_string("session-456");
-    let session_id2 = IdeationSessionId::from_string("session-789");
+    repo.set(&project.id, &session1.id).await.unwrap();
+    repo.set(&project.id, &session2.id).await.unwrap();
 
-    setup_test_data(&conn, project_id.as_str(), session_id1.as_str()).await;
-    // Add second session
-    conn.execute(
-        "INSERT INTO ideation_sessions (id, project_id, status, created_at, updated_at, converted_at)
-         VALUES (?1, ?2, 'accepted', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        [session_id2.as_str(), project_id.as_str()],
-    )
-    .unwrap();
-
-    let repo = SqliteActivePlanRepository::new(conn);
-
-    // Set first active plan
-    repo.set(&project_id, &session_id1).await.unwrap();
-
-    // Update to second active plan
-    repo.set(&project_id, &session_id2).await.unwrap();
-
-    // Verify it's updated
-    let result = repo.get(&project_id).await.unwrap();
-    assert_eq!(result, Some(session_id2));
+    let result = repo.get(&project.id).await.unwrap();
+    assert_eq!(result, Some(session2.id));
 }
 
 #[tokio::test]
 async fn test_set_rejects_non_accepted_session() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+    let (db, repo) = setup_repo();
+    let project = db.seed_project("Test Project");
+    let session = db.seed_ideation_session(project.id.clone());
 
-    let project_id = ProjectId::from_string("proj-123".to_string());
-    let session_id = IdeationSessionId::from_string("session-456");
-
-    // Insert project
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory, created_at, updated_at)
-         VALUES (?1, 'Test Project', '/test', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        [project_id.as_str()],
-    )
-    .unwrap();
-
-    // Insert session with 'active' status (not accepted)
-    conn.execute(
-        "INSERT INTO ideation_sessions (id, project_id, status, created_at, updated_at)
-         VALUES (?1, ?2, 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        [session_id.as_str(), project_id.as_str()],
-    )
-    .unwrap();
-
-    let repo = SqliteActivePlanRepository::new(conn);
-
-    // Try to set non-accepted session
-    let result = repo.set(&project_id, &session_id).await;
+    let result = repo.set(&project.id, &session.id).await;
 
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("must be accepted"));
@@ -118,169 +69,99 @@ async fn test_set_rejects_non_accepted_session() {
 
 #[tokio::test]
 async fn test_set_rejects_session_from_different_project() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+    let (db, repo) = setup_repo();
+    let project1 = db.seed_project("Test Project 1");
+    let project2 = db.seed_project("Test Project 2");
+    let session = seed_accepted_session(&db, project1.id.clone());
 
-    let project_id1 = ProjectId::from_string("proj-123".to_string());
-    let project_id2 = ProjectId::from_string("proj-456".to_string());
-    let session_id = IdeationSessionId::from_string("session-789");
-
-    // Setup project 1
-    setup_test_data(&conn, project_id1.as_str(), session_id.as_str()).await;
-
-    // Setup project 2 (no sessions)
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory, created_at, updated_at)
-         VALUES (?1, 'Test Project 2', '/test2', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        [project_id2.as_str()],
-    )
-    .unwrap();
-
-    let repo = SqliteActivePlanRepository::new(conn);
-
-    // Try to set session from project1 as active for project2
-    let result = repo.set(&project_id2, &session_id).await;
+    let result = repo.set(&project2.id, &session.id).await;
 
     assert!(result.is_err());
 }
 
 #[tokio::test]
 async fn test_clear_removes_active_plan() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+    let (db, repo) = setup_repo();
+    let (project, session) = seed_project_with_accepted_session(&db);
 
-    let project_id = ProjectId::from_string("proj-123".to_string());
-    let session_id = IdeationSessionId::from_string("session-456");
-    setup_test_data(&conn, project_id.as_str(), session_id.as_str()).await;
+    repo.set(&project.id, &session.id).await.unwrap();
+    repo.clear(&project.id).await.unwrap();
 
-    let repo = SqliteActivePlanRepository::new(conn);
-
-    // Set active plan
-    repo.set(&project_id, &session_id).await.unwrap();
-
-    // Clear it
-    repo.clear(&project_id).await.unwrap();
-
-    // Verify it's gone
-    let result = repo.get(&project_id).await.unwrap();
+    let result = repo.get(&project.id).await.unwrap();
     assert!(result.is_none());
 }
 
 #[tokio::test]
 async fn test_exists_returns_false_when_no_active_plan() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+    let (db, repo) = setup_repo();
+    let (project, _session) = seed_project_with_accepted_session(&db);
 
-    let project_id = ProjectId::from_string("proj-123".to_string());
-    setup_test_data(&conn, project_id.as_str(), "session-456").await;
-
-    let repo = SqliteActivePlanRepository::new(conn);
-    let exists = repo.exists(&project_id).await.unwrap();
+    let exists = repo.exists(&project.id).await.unwrap();
 
     assert!(!exists);
 }
 
 #[tokio::test]
 async fn test_exists_returns_true_when_active_plan_set() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+    let (db, repo) = setup_repo();
+    let (project, session) = seed_project_with_accepted_session(&db);
 
-    let project_id = ProjectId::from_string("proj-123".to_string());
-    let session_id = IdeationSessionId::from_string("session-456");
-    setup_test_data(&conn, project_id.as_str(), session_id.as_str()).await;
+    repo.set(&project.id, &session.id).await.unwrap();
 
-    let repo = SqliteActivePlanRepository::new(conn);
-
-    // Set active plan
-    repo.set(&project_id, &session_id).await.unwrap();
-
-    // Check exists
-    let exists = repo.exists(&project_id).await.unwrap();
+    let exists = repo.exists(&project.id).await.unwrap();
     assert!(exists);
 }
 
 #[tokio::test]
 async fn test_cascade_delete_when_session_deleted() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+    let (db, repo) = setup_repo();
+    let (project, session) = seed_project_with_accepted_session(&db);
 
-    let project_id = ProjectId::from_string("proj-123".to_string());
-    let session_id = IdeationSessionId::from_string("session-456");
-    setup_test_data(&conn, project_id.as_str(), session_id.as_str()).await;
-
-    let shared_conn = Arc::new(Mutex::new(conn));
-    let repo = SqliteActivePlanRepository::from_shared(Arc::clone(&shared_conn));
-
-    // Set active plan
-    repo.set(&project_id, &session_id).await.unwrap();
-
-    // Delete the session
-    {
-        let conn = shared_conn.lock().await;
+    repo.set(&project.id, &session.id).await.unwrap();
+    db.with_connection(|conn| {
         conn.execute(
             "DELETE FROM ideation_sessions WHERE id = ?1",
-            [session_id.as_str()],
+            [session.id.as_str()],
         )
         .unwrap();
-    }
+    });
 
-    // Active plan should be gone due to CASCADE
-    let result = repo.get(&project_id).await.unwrap();
+    let result = repo.get(&project.id).await.unwrap();
     assert!(result.is_none());
 }
 
 #[tokio::test]
 async fn test_cascade_delete_when_project_deleted() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+    let (db, repo) = setup_repo();
+    let (project, session) = seed_project_with_accepted_session(&db);
 
-    let project_id = ProjectId::from_string("proj-123".to_string());
-    let session_id = IdeationSessionId::from_string("session-456");
-    setup_test_data(&conn, project_id.as_str(), session_id.as_str()).await;
-
-    let shared_conn = Arc::new(Mutex::new(conn));
-    let repo = SqliteActivePlanRepository::from_shared(Arc::clone(&shared_conn));
-
-    // Set active plan
-    repo.set(&project_id, &session_id).await.unwrap();
-
-    // Delete the project
-    {
-        let conn = shared_conn.lock().await;
-        conn.execute("DELETE FROM projects WHERE id = ?1", [project_id.as_str()])
+    repo.set(&project.id, &session.id).await.unwrap();
+    db.with_connection(|conn| {
+        conn.execute("DELETE FROM projects WHERE id = ?1", [project.id.as_str()])
             .unwrap();
-    }
+    });
 
-    // Active plan should be gone due to CASCADE
-    let result = repo.get(&project_id).await.unwrap();
+    let result = repo.get(&project.id).await.unwrap();
     assert!(result.is_none());
 }
 
 #[tokio::test]
 async fn test_record_selection_creates_new_stats() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+    let (db, repo) = setup_repo();
+    let (project, session) = seed_project_with_accepted_session(&db);
 
-    let project_id = ProjectId::from_string("proj-123".to_string());
-    let session_id = IdeationSessionId::from_string("session-456");
-    setup_test_data(&conn, project_id.as_str(), session_id.as_str()).await;
-
-    let shared_conn = Arc::new(Mutex::new(conn));
-    let repo = SqliteActivePlanRepository::from_shared(Arc::clone(&shared_conn));
-
-    // Record selection
-    repo.record_selection(&project_id, &session_id, "kanban_inline")
+    repo.record_selection(&project.id, &session.id, "kanban_inline")
         .await
         .unwrap();
 
-    // Verify stats were created
-    let conn = shared_conn.lock().await;
-    let (count, source): (u32, String) = conn
-        .query_row(
-            "SELECT selected_count, last_selected_source FROM plan_selection_stats WHERE project_id = ?1 AND ideation_session_id = ?2",
-            [project_id.as_str(), session_id.as_str()],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
+    let (count, source): (u32, String) = db
+        .with_connection(|conn| {
+            conn.query_row(
+                "SELECT selected_count, last_selected_source FROM plan_selection_stats WHERE project_id = ?1 AND ideation_session_id = ?2",
+                [project.id.as_str(), session.id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+        })
         .unwrap();
 
     assert_eq!(count, 1);
@@ -289,85 +170,67 @@ async fn test_record_selection_creates_new_stats() {
 
 #[tokio::test]
 async fn test_record_selection_increments_count() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+    let (db, repo) = setup_repo();
+    let (project, session) = seed_project_with_accepted_session(&db);
 
-    let project_id = ProjectId::from_string("proj-123".to_string());
-    let session_id = IdeationSessionId::from_string("session-456");
-    setup_test_data(&conn, project_id.as_str(), session_id.as_str()).await;
-
-    let shared_conn = Arc::new(Mutex::new(conn));
-    let repo = SqliteActivePlanRepository::from_shared(Arc::clone(&shared_conn));
-
-    // Record multiple selections
-    repo.record_selection(&project_id, &session_id, "kanban_inline")
+    repo.record_selection(&project.id, &session.id, "kanban_inline")
         .await
         .unwrap();
-    repo.record_selection(&project_id, &session_id, "graph_inline")
+    repo.record_selection(&project.id, &session.id, "graph_inline")
         .await
         .unwrap();
-    repo.record_selection(&project_id, &session_id, "quick_switcher")
+    repo.record_selection(&project.id, &session.id, "quick_switcher")
         .await
         .unwrap();
 
-    // Verify count incremented and last source updated
-    let conn = shared_conn.lock().await;
-    let (count, source): (u32, String) = conn
-        .query_row(
-            "SELECT selected_count, last_selected_source FROM plan_selection_stats WHERE project_id = ?1 AND ideation_session_id = ?2",
-            [project_id.as_str(), session_id.as_str()],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
+    let (count, source): (u32, String) = db
+        .with_connection(|conn| {
+            conn.query_row(
+                "SELECT selected_count, last_selected_source FROM plan_selection_stats WHERE project_id = ?1 AND ideation_session_id = ?2",
+                [project.id.as_str(), session.id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+        })
         .unwrap();
 
     assert_eq!(count, 3);
-    assert_eq!(source, "quick_switcher"); // Last source
+    assert_eq!(source, "quick_switcher");
 }
 
 #[tokio::test]
 async fn test_record_selection_updates_timestamp() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+    let (db, repo) = setup_repo();
+    let (project, session) = seed_project_with_accepted_session(&db);
 
-    let project_id = ProjectId::from_string("proj-123".to_string());
-    let session_id = IdeationSessionId::from_string("session-456");
-    setup_test_data(&conn, project_id.as_str(), session_id.as_str()).await;
-
-    let shared_conn = Arc::new(Mutex::new(conn));
-    let repo = SqliteActivePlanRepository::from_shared(Arc::clone(&shared_conn));
-
-    // Record first selection
-    repo.record_selection(&project_id, &session_id, "kanban_inline")
+    repo.record_selection(&project.id, &session.id, "kanban_inline")
         .await
         .unwrap();
 
-    let first_timestamp: String = {
-        let conn = shared_conn.lock().await;
-        conn.query_row(
-            "SELECT last_selected_at FROM plan_selection_stats WHERE project_id = ?1 AND ideation_session_id = ?2",
-            [project_id.as_str(), session_id.as_str()],
-            |row| row.get(0),
-        )
-        .unwrap()
-    };
+    let first_timestamp: String = db
+        .with_connection(|conn| {
+            conn.query_row(
+                "SELECT last_selected_at FROM plan_selection_stats WHERE project_id = ?1 AND ideation_session_id = ?2",
+                [project.id.as_str(), session.id.as_str()],
+                |row| row.get(0),
+            )
+        })
+        .unwrap();
 
-    // Wait more than 1 second to ensure different timestamp (SQLite datetime has second precision)
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-    repo.record_selection(&project_id, &session_id, "graph_inline")
+    repo.record_selection(&project.id, &session.id, "graph_inline")
         .await
         .unwrap();
 
-    let second_timestamp: String = {
-        let conn = shared_conn.lock().await;
-        conn.query_row(
-            "SELECT last_selected_at FROM plan_selection_stats WHERE project_id = ?1 AND ideation_session_id = ?2",
-            [project_id.as_str(), session_id.as_str()],
-            |row| row.get(0),
-        )
-        .unwrap()
-    };
+    let second_timestamp: String = db
+        .with_connection(|conn| {
+            conn.query_row(
+                "SELECT last_selected_at FROM plan_selection_stats WHERE project_id = ?1 AND ideation_session_id = ?2",
+                [project.id.as_str(), session.id.as_str()],
+                |row| row.get(0),
+            )
+        })
+        .unwrap();
 
-    // Timestamps should be different (at least 2 seconds apart)
     assert_ne!(first_timestamp, second_timestamp);
     assert!(second_timestamp > first_timestamp);
 }
