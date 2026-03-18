@@ -1,4 +1,18 @@
-use super::*;
+use axum::{extract::{Path, State}, http::StatusCode, Json};
+use ralphx_lib::application::{
+    AppState, InteractiveProcessKey, TeamService, TeamStateTracker,
+};
+use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::entities::{InternalStatus, Project, ProjectId, Task, TaskId};
+use ralphx_lib::http_server::handlers::*;
+use ralphx_lib::http_server::types::HttpServerState;
+use std::sync::Arc;
+
+fn parse_task_metadata(task: &Task) -> Option<serde_json::Value> {
+    task.metadata
+        .as_ref()
+        .and_then(|metadata| serde_json::from_str(metadata).ok())
+}
 
 mod json_error_format {
     use super::*;
@@ -106,18 +120,12 @@ mod sha_validation {
 
 mod ipr_removal {
     use super::*;
-    use crate::application::AppState;
-    use crate::commands::ExecutionState;
-    use crate::domain::entities::{InternalStatus, Project, ProjectId, Task};
-    use std::sync::Arc;
 
     async fn setup_git_test_state() -> HttpServerState {
         let app_state = Arc::new(AppState::new_test());
         let execution_state = Arc::new(ExecutionState::new());
-        let tracker = crate::application::TeamStateTracker::new();
-        let team_service = Arc::new(crate::application::TeamService::new_without_events(
-            Arc::new(tracker.clone()),
-        ));
+        let tracker = TeamStateTracker::new();
+        let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
         HttpServerState {
             app_state,
             execution_state,
@@ -154,10 +162,7 @@ mod ipr_removal {
             .expect("spawn cat for conflict IPR test");
         let stdin = child.stdin.take().expect("cat stdin");
 
-        let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
-            "merge",
-            task_id.as_str(),
-        );
+        let key = InteractiveProcessKey::new("merge", task_id.as_str());
         state
             .app_state
             .interactive_process_registry
@@ -336,10 +341,8 @@ mod ipr_removal {
         worktree_path: Option<&std::path::Path>,
     ) -> (
         TaskId,
-        crate::application::interactive_process_registry::InteractiveProcessKey,
+        InteractiveProcessKey,
     ) {
-        use crate::application::interactive_process_registry::InteractiveProcessKey;
-
         let project_id = ProjectId::new();
         let mut project = Project::new(
             "test-project".to_string(),
@@ -546,10 +549,7 @@ mod ipr_removal {
         let task_id = task.id.clone();
 
         // No IPR entry registered — removal must be a no-op
-        let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
-            "merge",
-            task_id.as_str(),
-        );
+        let key = InteractiveProcessKey::new("merge", task_id.as_str());
         assert!(
             !state
                 .app_state
@@ -595,10 +595,7 @@ mod ipr_removal {
         let task_id = task.id.clone();
 
         // No IPR entry registered — removal must be a no-op
-        let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
-            "merge",
-            task_id.as_str(),
-        );
+        let key = InteractiveProcessKey::new("merge", task_id.as_str());
         assert!(
             !state
                 .app_state
@@ -650,10 +647,7 @@ mod ipr_removal {
             .expect("spawn cat for incomplete IPR test");
         let stdin = child.stdin.take().expect("cat stdin");
 
-        let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
-            "merge",
-            task_id.as_str(),
-        );
+        let key = InteractiveProcessKey::new("merge", task_id.as_str());
         state
             .app_state
             .interactive_process_registry
@@ -701,19 +695,12 @@ mod ipr_removal {
 
 mod source_update_conflict {
     use super::*;
-    use crate::application::AppState;
-    use crate::commands::ExecutionState;
-    use crate::domain::entities::{InternalStatus, Project, ProjectId, Task};
-    use crate::domain::state_machine::transition_handler::parse_metadata;
-    use std::sync::Arc;
 
     async fn setup_git_test_state() -> HttpServerState {
         let app_state = Arc::new(AppState::new_test());
         let execution_state = Arc::new(ExecutionState::new());
-        let tracker = crate::application::TeamStateTracker::new();
-        let team_service = Arc::new(crate::application::TeamService::new_without_events(
-            Arc::new(tracker.clone()),
-        ));
+        let tracker = TeamStateTracker::new();
+        let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
         HttpServerState {
             app_state,
             execution_state,
@@ -844,10 +831,7 @@ mod source_update_conflict {
             .spawn()
             .expect("spawn cat for source update IPR test");
         let stdin = child.stdin.take().expect("cat stdin");
-        let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
-            "merge",
-            task_id.as_str(),
-        );
+        let key = InteractiveProcessKey::new("merge", task_id.as_str());
         state
             .app_state
             .interactive_process_registry
@@ -891,7 +875,7 @@ mod source_update_conflict {
             "Task should be in PendingMerge or Merged (auto-completed). Got: {:?}",
             task.internal_status
         );
-        let meta = parse_metadata(&task).unwrap();
+        let meta = parse_task_metadata(&task).unwrap();
         assert_eq!(
             meta.get("source_conflict_resolved").and_then(|v| v.as_bool()),
             Some(true),
@@ -899,7 +883,7 @@ mod source_update_conflict {
         );
 
         // source_update_conflict should be cleared from metadata
-        let meta = parse_metadata(&task).unwrap();
+        let meta = parse_task_metadata(&task).unwrap();
         assert!(
             meta.get("source_update_conflict").is_none(),
             "source_update_conflict must be cleared from metadata"
@@ -991,7 +975,7 @@ mod source_update_conflict {
             .await
             .unwrap()
             .unwrap();
-        let meta = parse_metadata(&task).unwrap();
+        let meta = parse_task_metadata(&task).unwrap();
         assert_eq!(
             meta.get("source_conflict_resolved").and_then(|v| v.as_bool()),
             Some(true),
@@ -1041,19 +1025,12 @@ mod source_update_conflict {
 // freshness_return_route() at step 5a.
 mod freshness_routing_integration {
     use super::*;
-    use crate::application::AppState;
-    use crate::commands::ExecutionState;
-    use crate::domain::entities::{InternalStatus, Project, ProjectId, Task};
-    use crate::domain::state_machine::transition_handler::parse_metadata;
-    use std::sync::Arc;
 
     async fn setup_state() -> HttpServerState {
         let app_state = Arc::new(AppState::new_test());
         let execution_state = Arc::new(ExecutionState::new());
-        let tracker = crate::application::TeamStateTracker::new();
-        let team_service = Arc::new(crate::application::TeamService::new_without_events(
-            Arc::new(tracker.clone()),
-        ));
+        let tracker = TeamStateTracker::new();
+        let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
         HttpServerState {
             app_state,
             execution_state,
@@ -1189,10 +1166,7 @@ mod freshness_routing_integration {
             .spawn()
             .expect("spawn cat for freshness IPR test");
         let stdin = child.stdin.take().expect("cat stdin");
-        let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
-            "merge",
-            task_id.as_str(),
-        );
+        let key = InteractiveProcessKey::new("merge", task_id.as_str());
         state
             .app_state
             .interactive_process_registry
@@ -1250,7 +1224,7 @@ mod freshness_routing_integration {
         );
 
         // Freshness routing flags must be cleared
-        let meta = parse_metadata(&task).unwrap_or_else(|| serde_json::json!({}));
+        let meta = parse_task_metadata(&task).unwrap_or_else(|| serde_json::json!({}));
         assert!(
             meta.get("plan_update_conflict").is_none()
                 || meta

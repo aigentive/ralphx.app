@@ -64,6 +64,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --test artifacts_handlers
 cargo test --manifest-path src-tauri/Cargo.toml --test ideation_handlers
 cargo test --manifest-path src-tauri/Cargo.toml --test reviews_handlers
 cargo test --manifest-path src-tauri/Cargo.toml --test projects_handlers
+cargo test --manifest-path src-tauri/Cargo.toml --test git_handlers
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 ```
