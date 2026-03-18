@@ -1,6 +1,6 @@
-use crate::application::app_state::AppState;
-use crate::domain::services::api_key_service::{ApiKeyService, KeySource};
-use crate::domain::entities::ApiKeyId;
+use ralphx_lib::application::app_state::AppState;
+use ralphx_lib::domain::entities::ApiKeyId;
+use ralphx_lib::domain::services::api_key_service::{ApiKeyService, KeySource};
 
 fn setup_test_state() -> AppState {
     AppState::new_test()
@@ -179,7 +179,7 @@ async fn test_audit_log_created_on_operations() {
 
 #[cfg(test)]
 mod ipc_contract {
-    use super::super::{
+    use ralphx_lib::commands::api_key_commands::{
         ApiKeyCreatedResponse, ApiKeyInfoResponse, CreateApiKeyInput, GetAuditLogInput,
         RevokeApiKeyInput, RotateApiKeyInput, UpdateApiKeyPermissionsInput,
         UpdateApiKeyProjectsInput,

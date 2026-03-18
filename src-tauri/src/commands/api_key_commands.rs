@@ -215,7 +215,3 @@ pub async fn get_api_key_audit_log(
         .await
         .map_err(|e| e.to_string())
 }
-
-#[cfg(test)]
-#[path = "api_key_commands_tests.rs"]
-mod tests;
