@@ -1,4 +1,7 @@
-use super::*;
+use ralphx_lib::application::AppState;
+use ralphx_lib::commands::agent_profile_commands::AgentProfileResponse;
+use ralphx_lib::domain::agents::{AgentProfile, ProfileRole};
+use ralphx_lib::domain::repositories::AgentProfileId;
 
 fn setup_test_state() -> AppState {
     AppState::new_test()
