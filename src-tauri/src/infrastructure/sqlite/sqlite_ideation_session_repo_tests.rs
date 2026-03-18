@@ -1,20 +1,23 @@
 use super::*;
 use crate::domain::entities::VerificationStatus;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
+use rusqlite::Connection;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite-ideation-session-repo")
 }
 
-fn create_test_project(conn: &Connection, id: &ProjectId, name: &str, path: &str) {
+fn insert_test_project(conn: &Connection, id: &ProjectId, name: &str, path: &str) {
     conn.execute(
         "INSERT INTO projects (id, name, working_directory, git_mode, created_at, updated_at)
          VALUES (?1, ?2, ?3, 'single_branch', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
         rusqlite::params![id.as_str(), name, path],
     )
     .unwrap();
+}
+
+fn create_test_project(db: &SqliteTestDb, id: &ProjectId, name: &str, path: &str) {
+    db.with_connection(|conn| insert_test_project(conn, id, name, path));
 }
 
 fn create_test_session(project_id: &ProjectId, title: Option<&str>) -> IdeationSession {
@@ -31,11 +34,11 @@ fn create_test_session(project_id: &ProjectId, title: Option<&str>) -> IdeationS
 
 #[tokio::test]
 async fn test_create_inserts_session_and_returns_it() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, Some("My Ideation"));
 
     let result = repo.create(session.clone()).await;
@@ -49,11 +52,11 @@ async fn test_create_inserts_session_and_returns_it() {
 
 #[tokio::test]
 async fn test_create_session_without_title() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, None);
 
     let result = repo.create(session.clone()).await;
@@ -65,11 +68,11 @@ async fn test_create_session_without_title() {
 
 #[tokio::test]
 async fn test_create_duplicate_id_fails() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, Some("Original"));
 
     repo.create(session.clone()).await.unwrap();
@@ -82,11 +85,11 @@ async fn test_create_duplicate_id_fails() {
 
 #[tokio::test]
 async fn test_get_by_id_retrieves_session_correctly() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, Some("Test Session"));
 
     repo.create(session.clone()).await.unwrap();
@@ -103,8 +106,8 @@ async fn test_get_by_id_retrieves_session_correctly() {
 
 #[tokio::test]
 async fn test_get_by_id_returns_none_for_nonexistent() {
-    let conn = setup_test_db();
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let id = IdeationSessionId::new();
 
     let result = repo.get_by_id(&id).await;
@@ -115,11 +118,11 @@ async fn test_get_by_id_returns_none_for_nonexistent() {
 
 #[tokio::test]
 async fn test_get_by_id_preserves_all_fields() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     // Create a session with all fields set
     let mut session = create_test_session(&project_id, Some("Full Session"));
@@ -139,11 +142,11 @@ async fn test_get_by_id_preserves_all_fields() {
 
 #[tokio::test]
 async fn test_get_by_project_returns_all_sessions() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let session1 = create_test_session(&project_id, Some("Session 1"));
     let session2 = create_test_session(&project_id, Some("Session 2"));
@@ -162,11 +165,11 @@ async fn test_get_by_project_returns_all_sessions() {
 
 #[tokio::test]
 async fn test_get_by_project_ordered_by_updated_at_desc() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     // Create sessions with different timestamps
     let session1 = IdeationSession::builder()
@@ -204,11 +207,11 @@ async fn test_get_by_project_ordered_by_updated_at_desc() {
 
 #[tokio::test]
 async fn test_get_by_project_returns_empty_for_no_sessions() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let result = repo.get_by_project(&project_id).await;
 
@@ -218,13 +221,13 @@ async fn test_get_by_project_returns_empty_for_no_sessions() {
 
 #[tokio::test]
 async fn test_get_by_project_filters_by_project() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id1 = ProjectId::new();
     let project_id2 = ProjectId::new();
-    create_test_project(&conn, &project_id1, "Project 1", "/path1");
-    create_test_project(&conn, &project_id2, "Project 2", "/path2");
+    create_test_project(&db, &project_id1, "Project 1", "/path1");
+    create_test_project(&db, &project_id2, "Project 2", "/path2");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let session1 = create_test_session(&project_id1, Some("Session for P1"));
     let session2 = create_test_session(&project_id2, Some("Session for P2"));
@@ -242,11 +245,11 @@ async fn test_get_by_project_filters_by_project() {
 
 #[tokio::test]
 async fn test_update_status_to_archived() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, Some("To Archive"));
 
     repo.create(session.clone()).await.unwrap();
@@ -263,11 +266,11 @@ async fn test_update_status_to_archived() {
 
 #[tokio::test]
 async fn test_update_status_to_converted() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, Some("To Convert"));
 
     repo.create(session.clone()).await.unwrap();
@@ -284,11 +287,11 @@ async fn test_update_status_to_converted() {
 
 #[tokio::test]
 async fn test_update_status_back_to_active() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let mut session = create_test_session(&project_id, Some("Reactivate"));
     session.archive();
 
@@ -305,11 +308,11 @@ async fn test_update_status_back_to_active() {
 
 #[tokio::test]
 async fn test_update_status_updates_updated_at() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, Some("Check Timestamp"));
     let original_updated = session.updated_at;
 
@@ -330,11 +333,11 @@ async fn test_update_status_updates_updated_at() {
 
 #[tokio::test]
 async fn test_update_title_sets_new_title() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, Some("Original Title"));
 
     repo.create(session.clone()).await.unwrap();
@@ -351,11 +354,11 @@ async fn test_update_title_sets_new_title() {
 
 #[tokio::test]
 async fn test_update_title_clears_title() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, Some("Has Title"));
 
     repo.create(session.clone()).await.unwrap();
@@ -369,11 +372,11 @@ async fn test_update_title_clears_title() {
 
 #[tokio::test]
 async fn test_update_title_user_source() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, Some("Original"));
 
     repo.create(session.clone()).await.unwrap();
@@ -389,11 +392,11 @@ async fn test_update_title_user_source() {
 
 #[tokio::test]
 async fn test_update_title_updates_updated_at() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, Some("Check Timestamp"));
     let original_updated = session.updated_at;
 
@@ -413,11 +416,11 @@ async fn test_update_title_updates_updated_at() {
 
 #[tokio::test]
 async fn test_delete_removes_session_from_database() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, Some("To Delete"));
 
     repo.create(session.clone()).await.unwrap();
@@ -431,8 +434,8 @@ async fn test_delete_removes_session_from_database() {
 
 #[tokio::test]
 async fn test_delete_nonexistent_succeeds() {
-    let conn = setup_test_db();
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let id = IdeationSessionId::new();
 
     // Deleting a non-existent session should not error
@@ -444,11 +447,11 @@ async fn test_delete_nonexistent_succeeds() {
 
 #[tokio::test]
 async fn test_get_active_by_project_returns_only_active() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let active = create_test_session(&project_id, Some("Active"));
     let mut archived = create_test_session(&project_id, Some("Archived"));
@@ -471,11 +474,11 @@ async fn test_get_active_by_project_returns_only_active() {
 
 #[tokio::test]
 async fn test_get_active_by_project_returns_empty_when_none_active() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let mut archived = create_test_session(&project_id, Some("Archived"));
     archived.archive();
@@ -490,11 +493,11 @@ async fn test_get_active_by_project_returns_empty_when_none_active() {
 
 #[tokio::test]
 async fn test_get_active_by_project_ordered_by_updated_at_desc() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let session1 = IdeationSession::builder()
         .project_id(project_id.clone())
@@ -521,11 +524,11 @@ async fn test_get_active_by_project_ordered_by_updated_at_desc() {
 
 #[tokio::test]
 async fn test_count_by_status_returns_zero_for_no_sessions() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let result = repo
         .count_by_status(&project_id, IdeationSessionStatus::Active)
@@ -537,11 +540,11 @@ async fn test_count_by_status_returns_zero_for_no_sessions() {
 
 #[tokio::test]
 async fn test_count_by_status_counts_correctly() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let active1 = create_test_session(&project_id, Some("Active 1"));
     let active2 = create_test_session(&project_id, Some("Active 2"));
@@ -575,13 +578,13 @@ async fn test_count_by_status_counts_correctly() {
 
 #[tokio::test]
 async fn test_count_by_status_filters_by_project() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id1 = ProjectId::new();
     let project_id2 = ProjectId::new();
-    create_test_project(&conn, &project_id1, "Project 1", "/path1");
-    create_test_project(&conn, &project_id2, "Project 2", "/path2");
+    create_test_project(&db, &project_id1, "Project 1", "/path1");
+    create_test_project(&db, &project_id2, "Project 2", "/path2");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let session1 = create_test_session(&project_id1, Some("P1 Session"));
     let session2 = create_test_session(&project_id2, Some("P2 Session 1"));
@@ -608,12 +611,11 @@ async fn test_count_by_status_filters_by_project() {
 
 #[tokio::test]
 async fn test_from_shared_works_correctly() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let shared_conn = Arc::new(Mutex::new(conn));
-    let repo = SqliteIdeationSessionRepository::from_shared(shared_conn);
+    let repo = SqliteIdeationSessionRepository::from_shared(db.shared_conn());
 
     let session = create_test_session(&project_id, Some("Shared Connection"));
 
@@ -628,11 +630,11 @@ async fn test_from_shared_works_correctly() {
 
 #[tokio::test]
 async fn test_get_children_returns_all_direct_children() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let parent = create_test_session(&project_id, Some("Parent"));
     let mut child1 = create_test_session(&project_id, Some("Child 1"));
@@ -650,11 +652,11 @@ async fn test_get_children_returns_all_direct_children() {
 
 #[tokio::test]
 async fn test_get_children_returns_empty_for_sessions_without_children() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let session = create_test_session(&project_id, Some("No Children"));
     repo.create(session.clone()).await.unwrap();
@@ -667,11 +669,11 @@ async fn test_get_children_returns_empty_for_sessions_without_children() {
 
 #[tokio::test]
 async fn test_get_ancestor_chain_three_levels_deep() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let level1 = create_test_session(&project_id, Some("Level 1"));
     let mut level2 = create_test_session(&project_id, Some("Level 2"));
@@ -692,11 +694,11 @@ async fn test_get_ancestor_chain_three_levels_deep() {
 
 #[tokio::test]
 async fn test_get_ancestor_chain_single_parent() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let parent = create_test_session(&project_id, Some("Parent"));
     let mut child = create_test_session(&project_id, Some("Child"));
@@ -712,11 +714,11 @@ async fn test_get_ancestor_chain_single_parent() {
 
 #[tokio::test]
 async fn test_get_ancestor_chain_no_parent() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let session = create_test_session(&project_id, Some("Root Session"));
     repo.create(session.clone()).await.unwrap();
@@ -729,11 +731,11 @@ async fn test_get_ancestor_chain_no_parent() {
 
 #[tokio::test]
 async fn test_set_parent_establishes_parent_child_relationship() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let parent = create_test_session(&project_id, Some("Parent"));
     let child = create_test_session(&project_id, Some("Child"));
@@ -749,11 +751,11 @@ async fn test_set_parent_establishes_parent_child_relationship() {
 
 #[tokio::test]
 async fn test_set_parent_with_null_clears_parent() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let parent = create_test_session(&project_id, Some("Parent"));
     let mut child = create_test_session(&project_id, Some("Child"));
@@ -771,11 +773,11 @@ async fn test_set_parent_with_null_clears_parent() {
 
 #[tokio::test]
 async fn test_set_parent_updates_updated_at() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let parent = create_test_session(&project_id, Some("Parent"));
     let child = create_test_session(&project_id, Some("Child"));
@@ -798,11 +800,11 @@ use crate::domain::entities::ArtifactId;
 
 #[tokio::test]
 async fn test_update_plan_artifact_id_sets_value() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, Some("Plan Session"));
     repo.create(session.clone()).await.unwrap();
 
@@ -819,11 +821,11 @@ async fn test_update_plan_artifact_id_sets_value() {
 
 #[tokio::test]
 async fn test_update_plan_artifact_id_clears_value() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, Some("Plan Session"));
     repo.create(session.clone()).await.unwrap();
 
@@ -843,11 +845,11 @@ async fn test_update_plan_artifact_id_clears_value() {
 
 #[tokio::test]
 async fn test_get_by_plan_artifact_id_returns_matching_sessions() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session1 = create_test_session(&project_id, Some("Session 1"));
     let session2 = create_test_session(&project_id, Some("Session 2"));
     let session3 = create_test_session(&project_id, Some("Session 3 Different Artifact"));
@@ -872,11 +874,11 @@ async fn test_get_by_plan_artifact_id_returns_matching_sessions() {
 
 #[tokio::test]
 async fn test_get_by_plan_artifact_id_returns_empty_when_no_match() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, Some("Session"));
     repo.create(session).await.unwrap();
 
@@ -891,11 +893,11 @@ async fn test_get_by_plan_artifact_id_returns_empty_when_no_match() {
 
 #[tokio::test]
 async fn test_update_verification_state_roundtrip() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, Some("Verify Session"));
     repo.create(session.clone()).await.unwrap();
 
@@ -935,11 +937,11 @@ async fn test_update_verification_state_roundtrip() {
 
 #[tokio::test]
 async fn test_update_verification_state_all_status_variants() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, Some("All Statuses"));
     repo.create(session.clone()).await.unwrap();
 
@@ -964,11 +966,11 @@ async fn test_update_verification_state_all_status_variants() {
 
 #[tokio::test]
 async fn test_reset_verification_clears_all_3_columns_when_not_in_progress() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, Some("Reset Session"));
     repo.create(session.clone()).await.unwrap();
 
@@ -994,11 +996,11 @@ async fn test_reset_verification_clears_all_3_columns_when_not_in_progress() {
 
 #[tokio::test]
 async fn test_reset_verification_is_noop_when_in_progress() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let session = create_test_session(&project_id, Some("In Progress Session"));
     repo.create(session.clone()).await.unwrap();
 
@@ -1027,8 +1029,8 @@ async fn test_reset_verification_is_noop_when_in_progress() {
 
 #[tokio::test]
 async fn test_reset_verification_returns_false_for_nonexistent_session() {
-    let conn = setup_test_db();
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let fake_id = IdeationSessionId::new();
 
     let reset = repo.reset_verification(&fake_id).await.unwrap();
@@ -1037,8 +1039,8 @@ async fn test_reset_verification_returns_false_for_nonexistent_session() {
 
 #[tokio::test]
 async fn test_get_verification_status_returns_none_for_nonexistent_session() {
-    let conn = setup_test_db();
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let id = IdeationSessionId::new();
 
     let result = repo.get_verification_status(&id).await.unwrap();
@@ -1069,41 +1071,56 @@ fn create_test_session_with_source(
     session
 }
 
+fn create_test_session_with_source_in_db(
+    db: &SqliteTestDb,
+    project_id: &ProjectId,
+    source_session_id: Option<&str>,
+    source_project_id: Option<&str>,
+) -> IdeationSession {
+    db.with_connection(|conn| {
+        create_test_session_with_source(conn, project_id, source_session_id, source_project_id)
+    })
+}
+
 #[test]
 fn test_validate_no_circular_import_happy_path() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let source_project_id = ProjectId::new();
     let target_project_id = ProjectId::new();
-    create_test_project(&conn, &source_project_id, "Source", "/source");
-    create_test_project(&conn, &target_project_id, "Target", "/target");
+    create_test_project(&db, &source_project_id, "Source", "/source");
+    create_test_project(&db, &target_project_id, "Target", "/target");
 
-    let source = create_test_session_with_source(&conn, &source_project_id, None, None);
+    let source = create_test_session_with_source_in_db(&db, &source_project_id, None, None);
 
-    let result = SqliteIdeationSessionRepository::validate_no_circular_import_sync(
-        &conn,
-        source.id.as_str(),
-        target_project_id.as_str(),
-        10,
-    );
+    let result = db.with_connection(|conn| {
+        SqliteIdeationSessionRepository::validate_no_circular_import_sync(
+            conn,
+            source.id.as_str(),
+            target_project_id.as_str(),
+            10,
+        )
+    });
 
     assert!(result.is_ok(), "Simple cross-project import should be allowed");
 }
 
 #[test]
 fn test_validate_no_circular_import_self_reference() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Project", "/project");
+    create_test_project(&db, &project_id, "Project", "/project");
 
-    let session = create_test_session_with_source(&conn, &project_id, None, None);
+    let session = create_test_session_with_source_in_db(&db, &project_id, None, None);
 
     // Trying to import from the same project (self-reference)
-    let result = SqliteIdeationSessionRepository::validate_no_circular_import_sync(
-        &conn,
-        session.id.as_str(),
-        project_id.as_str(), // target == source project
-        10,
-    );
+    let result = db.with_connection(|conn| {
+        SqliteIdeationSessionRepository::validate_no_circular_import_sync(
+            conn,
+            session.id.as_str(),
+            project_id.as_str(), // target == source project
+            10,
+        )
+    });
 
     assert!(result.is_err());
     let err_msg = result.unwrap_err().to_string();
@@ -1115,15 +1132,15 @@ fn test_validate_no_circular_import_self_reference() {
 
 #[test]
 fn test_validate_no_circular_import_a_to_b_to_a() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_a = ProjectId::new();
     let project_b = ProjectId::new();
-    create_test_project(&conn, &project_a, "Project A", "/project-a");
-    create_test_project(&conn, &project_b, "Project B", "/project-b");
+    create_test_project(&db, &project_a, "Project A", "/project-a");
+    create_test_project(&db, &project_b, "Project B", "/project-b");
 
     // Session in B that was imported from A
     let _session_b =
-        create_test_session_with_source(&conn, &project_b, None, Some(project_a.as_str()));
+        create_test_session_with_source_in_db(&db, &project_b, None, Some(project_a.as_str()));
 
     // Now trying to import from session_b into project_a would create A→B→A
     // session_b is in project_b, which is NOT project_a, so no SELF_REFERENCE.
@@ -1138,11 +1155,11 @@ fn test_validate_no_circular_import_a_to_b_to_a() {
     // pointing to a session in project_a. Let's set up a proper 2-hop cycle.
 
     // Create a session in project_a (the "original") with no parent
-    let session_a_original = create_test_session_with_source(&conn, &project_a, None, None);
+    let session_a_original = create_test_session_with_source_in_db(&db, &project_a, None, None);
 
     // session_b2 was imported from session_a_original
-    let session_b2 = create_test_session_with_source(
-        &conn,
+    let session_b2 = create_test_session_with_source_in_db(
+        &db,
         &project_b,
         Some(session_a_original.id.as_str()),
         Some(project_a.as_str()),
@@ -1150,12 +1167,14 @@ fn test_validate_no_circular_import_a_to_b_to_a() {
 
     // Now project_a tries to import from session_b2 (which itself came from project_a)
     // Walk: session_b2.source_session_id = session_a_original, which is in project_a = target
-    let result = SqliteIdeationSessionRepository::validate_no_circular_import_sync(
-        &conn,
-        session_b2.id.as_str(),
-        project_a.as_str(),
-        10,
-    );
+    let result = db.with_connection(|conn| {
+        SqliteIdeationSessionRepository::validate_no_circular_import_sync(
+            conn,
+            session_b2.id.as_str(),
+            project_a.as_str(),
+            10,
+        )
+    });
 
     assert!(result.is_err());
     let err_msg = result.unwrap_err().to_string();
@@ -1167,26 +1186,26 @@ fn test_validate_no_circular_import_a_to_b_to_a() {
 
 #[test]
 fn test_validate_no_circular_import_three_hop_cycle() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_a = ProjectId::new();
     let project_b = ProjectId::new();
     let project_c = ProjectId::new();
-    create_test_project(&conn, &project_a, "A", "/a");
-    create_test_project(&conn, &project_b, "B", "/b");
-    create_test_project(&conn, &project_c, "C", "/c");
+    create_test_project(&db, &project_a, "A", "/a");
+    create_test_project(&db, &project_b, "B", "/b");
+    create_test_project(&db, &project_c, "C", "/c");
 
     // session_a in A
-    let session_a = create_test_session_with_source(&conn, &project_a, None, None);
+    let session_a = create_test_session_with_source_in_db(&db, &project_a, None, None);
     // session_b in B, imported from session_a
-    let session_b = create_test_session_with_source(
-        &conn,
+    let session_b = create_test_session_with_source_in_db(
+        &db,
         &project_b,
         Some(session_a.id.as_str()),
         Some(project_a.as_str()),
     );
     // session_c in C, imported from session_b
-    let session_c = create_test_session_with_source(
-        &conn,
+    let session_c = create_test_session_with_source_in_db(
+        &db,
         &project_c,
         Some(session_b.id.as_str()),
         Some(project_b.as_str()),
@@ -1195,12 +1214,14 @@ fn test_validate_no_circular_import_three_hop_cycle() {
     // Now A tries to import from session_c: A→C→B→A (3-hop)
     // Walk: session_c.source_session_id = session_b (project_b ≠ project_a → ok)
     //       session_b.source_session_id = session_a (project_a == target → CIRCULAR_IMPORT)
-    let result = SqliteIdeationSessionRepository::validate_no_circular_import_sync(
-        &conn,
-        session_c.id.as_str(),
-        project_a.as_str(),
-        10,
-    );
+    let result = db.with_connection(|conn| {
+        SqliteIdeationSessionRepository::validate_no_circular_import_sync(
+            conn,
+            session_c.id.as_str(),
+            project_a.as_str(),
+            10,
+        )
+    });
 
     assert!(result.is_err());
     let err_msg = result.unwrap_err().to_string();
@@ -1212,21 +1233,21 @@ fn test_validate_no_circular_import_three_hop_cycle() {
 
 #[test]
 fn test_validate_no_circular_import_depth_limit_9_ok() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
 
     // Build a chain of 9 projects: P1 ← P2 ← P3 ← … ← P9 ← P10
     // Then P10 tries to import from the end of the chain (depth = 9 hops): should PASS
     let projects: Vec<ProjectId> = (0..10).map(|_| ProjectId::new()).collect();
     for (i, pid) in projects.iter().enumerate() {
-        create_test_project(&conn, pid, &format!("P{i}"), &format!("/p{i}"));
+        create_test_project(&db, pid, &format!("P{i}"), &format!("/p{i}"));
     }
 
     // Create sessions: each session points to the previous project's session
-    let session_0 = create_test_session_with_source(&conn, &projects[0], None, None);
+    let session_0 = create_test_session_with_source_in_db(&db, &projects[0], None, None);
     let mut prev_session = session_0;
     for i in 1..9 {
-        let s = create_test_session_with_source(
-            &conn,
+        let s = create_test_session_with_source_in_db(
+            &db,
             &projects[i],
             Some(prev_session.id.as_str()),
             Some(projects[i - 1].as_str()),
@@ -1236,31 +1257,33 @@ fn test_validate_no_circular_import_depth_limit_9_ok() {
 
     // session at depth 9 (prev_session), target = projects[9]
     // Walk depth 9 (should succeed since max is 10)
-    let result = SqliteIdeationSessionRepository::validate_no_circular_import_sync(
-        &conn,
-        prev_session.id.as_str(),
-        projects[9].as_str(),
-        10,
-    );
+    let result = db.with_connection(|conn| {
+        SqliteIdeationSessionRepository::validate_no_circular_import_sync(
+            conn,
+            prev_session.id.as_str(),
+            projects[9].as_str(),
+            10,
+        )
+    });
 
     assert!(result.is_ok(), "9-hop chain should be within depth limit of 10");
 }
 
 #[test]
 fn test_validate_no_circular_import_depth_limit_exceeded() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
 
     // Build a chain of 11 projects so the walk exceeds depth 10
     let projects: Vec<ProjectId> = (0..12).map(|_| ProjectId::new()).collect();
     for (i, pid) in projects.iter().enumerate() {
-        create_test_project(&conn, pid, &format!("P{i}"), &format!("/p{i}"));
+        create_test_project(&db, pid, &format!("P{i}"), &format!("/p{i}"));
     }
 
-    let session_0 = create_test_session_with_source(&conn, &projects[0], None, None);
+    let session_0 = create_test_session_with_source_in_db(&db, &projects[0], None, None);
     let mut prev_session = session_0;
     for i in 1..11 {
-        let s = create_test_session_with_source(
-            &conn,
+        let s = create_test_session_with_source_in_db(
+            &db,
             &projects[i],
             Some(prev_session.id.as_str()),
             Some(projects[i - 1].as_str()),
@@ -1269,12 +1292,14 @@ fn test_validate_no_circular_import_depth_limit_exceeded() {
     }
 
     // Session at depth 11, target = projects[11] (no cycle, just too deep)
-    let result = SqliteIdeationSessionRepository::validate_no_circular_import_sync(
-        &conn,
-        prev_session.id.as_str(),
-        projects[11].as_str(),
-        10,
-    );
+    let result = db.with_connection(|conn| {
+        SqliteIdeationSessionRepository::validate_no_circular_import_sync(
+            conn,
+            prev_session.id.as_str(),
+            projects[11].as_str(),
+            10,
+        )
+    });
 
     assert!(result.is_err());
     let err_msg = result.unwrap_err().to_string();
@@ -1286,27 +1311,29 @@ fn test_validate_no_circular_import_depth_limit_exceeded() {
 
 #[test]
 fn test_validate_no_circular_import_dangling_source_is_ok() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let source_project = ProjectId::new();
     let target_project = ProjectId::new();
-    create_test_project(&conn, &source_project, "Source", "/source");
-    create_test_project(&conn, &target_project, "Target", "/target");
+    create_test_project(&db, &source_project, "Source", "/source");
+    create_test_project(&db, &target_project, "Target", "/target");
 
     // Source session points to a non-existent (deleted) session — dangling reference
     let nonexistent_id = IdeationSessionId::new();
-    let source = create_test_session_with_source(
-        &conn,
+    let source = create_test_session_with_source_in_db(
+        &db,
         &source_project,
         Some(nonexistent_id.as_str()),
         None,
     );
 
-    let result = SqliteIdeationSessionRepository::validate_no_circular_import_sync(
-        &conn,
-        source.id.as_str(),
-        target_project.as_str(),
-        10,
-    );
+    let result = db.with_connection(|conn| {
+        SqliteIdeationSessionRepository::validate_no_circular_import_sync(
+            conn,
+            source.id.as_str(),
+            target_project.as_str(),
+            10,
+        )
+    });
 
     assert!(
         result.is_ok(),
@@ -1316,9 +1343,9 @@ fn test_validate_no_circular_import_dangling_source_is_ok() {
 
 #[test]
 fn test_insert_sync_and_get_by_id_sync() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
+    create_test_project(&db, &project_id, "Test", "/test");
 
     let session = IdeationSession::builder()
         .project_id(project_id.clone())
@@ -1328,15 +1355,19 @@ fn test_insert_sync_and_get_by_id_sync() {
         .source_session_id("source-sess-456")
         .build();
 
-    let inserted = SqliteIdeationSessionRepository::insert_sync(&conn, &session).unwrap();
+    let inserted = db.with_connection(|conn| {
+        SqliteIdeationSessionRepository::insert_sync(conn, &session).unwrap()
+    });
     assert_eq!(inserted.id, session.id);
     assert_eq!(inserted.verification_status, VerificationStatus::ImportedVerified);
     assert_eq!(inserted.source_project_id, Some("source-proj-123".to_string()));
     assert_eq!(inserted.source_session_id, Some("source-sess-456".to_string()));
 
-    let fetched = SqliteIdeationSessionRepository::get_by_id_sync(&conn, session.id.as_str())
-        .unwrap()
-        .unwrap();
+    let fetched = db.with_connection(|conn| {
+        SqliteIdeationSessionRepository::get_by_id_sync(conn, session.id.as_str())
+            .unwrap()
+            .unwrap()
+    });
     assert_eq!(fetched.verification_status, VerificationStatus::ImportedVerified);
     assert_eq!(fetched.source_session_id, Some("source-sess-456".to_string()));
 }
@@ -1346,11 +1377,15 @@ fn test_insert_sync_and_get_by_id_sync() {
 use std::sync::Arc;
 use tokio::sync::Mutex as TokioMutex;
 
-fn setup_shared_test_db() -> (Arc<TokioMutex<Connection>>, SqliteIdeationSessionRepository) {
-    let conn = setup_test_db();
-    let shared = Arc::new(TokioMutex::new(conn));
+fn setup_shared_test_db() -> (
+    SqliteTestDb,
+    Arc<TokioMutex<Connection>>,
+    SqliteIdeationSessionRepository,
+) {
+    let db = setup_test_db();
+    let shared = db.shared_conn();
     let repo = SqliteIdeationSessionRepository::from_shared(Arc::clone(&shared));
-    (shared, repo)
+    (db, shared, repo)
 }
 
 async fn create_task_in_db(
@@ -1388,11 +1423,11 @@ async fn update_session_status(
 
 #[tokio::test]
 async fn test_get_group_counts_empty_project() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let counts = repo.get_group_counts(&project_id).await.unwrap();
 
     assert_eq!(counts.drafts, 0);
@@ -1404,11 +1439,11 @@ async fn test_get_group_counts_empty_project() {
 
 #[tokio::test]
 async fn test_get_group_counts_active_sessions_drafts() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
     let s1 = create_test_session(&project_id, Some("Draft 1"));
     let s2 = create_test_session(&project_id, Some("Draft 2"));
     repo.create(s1).await.unwrap();
@@ -1426,10 +1461,10 @@ async fn test_get_group_counts_active_sessions_drafts() {
 #[tokio::test]
 async fn test_get_group_counts_accepted_with_active_tasks_in_progress() {
     let project_id = ProjectId::new();
-    let (shared, repo) = setup_shared_test_db();
+    let (_db, shared, repo) = setup_shared_test_db();
     {
         let conn = shared.lock().await;
-        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+        insert_test_project(&conn, &project_id, "Test Project", "/test/path");
     }
 
     let session = create_test_session(&project_id, Some("Accepted Session"));
@@ -1454,10 +1489,10 @@ async fn test_get_group_counts_accepted_with_active_tasks_in_progress() {
 #[tokio::test]
 async fn test_get_group_counts_accepted_with_all_terminal_tasks_done() {
     let project_id = ProjectId::new();
-    let (shared, repo) = setup_shared_test_db();
+    let (_db, shared, repo) = setup_shared_test_db();
     {
         let conn = shared.lock().await;
-        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+        insert_test_project(&conn, &project_id, "Test Project", "/test/path");
     }
 
     let session = create_test_session(&project_id, Some("Done Session"));
@@ -1481,10 +1516,10 @@ async fn test_get_group_counts_accepted_with_all_terminal_tasks_done() {
 #[tokio::test]
 async fn test_get_group_counts_accepted_no_tasks_accepted() {
     let project_id = ProjectId::new();
-    let (shared, repo) = setup_shared_test_db();
+    let (_db, shared, repo) = setup_shared_test_db();
     {
         let conn = shared.lock().await;
-        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+        insert_test_project(&conn, &project_id, "Test Project", "/test/path");
     }
 
     let session = create_test_session(&project_id, Some("Accepted No Tasks"));
@@ -1506,10 +1541,10 @@ async fn test_get_group_counts_accepted_no_tasks_accepted() {
 #[tokio::test]
 async fn test_get_group_counts_accepted_with_mix_active_and_idle() {
     let project_id = ProjectId::new();
-    let (shared, repo) = setup_shared_test_db();
+    let (_db, shared, repo) = setup_shared_test_db();
     {
         let conn = shared.lock().await;
-        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+        insert_test_project(&conn, &project_id, "Test Project", "/test/path");
     }
 
     let session = create_test_session(&project_id, Some("Mix Active Idle"));
@@ -1532,10 +1567,10 @@ async fn test_get_group_counts_accepted_with_mix_active_and_idle() {
 #[tokio::test]
 async fn test_get_group_counts_multiple_groups_simultaneously() {
     let project_id = ProjectId::new();
-    let (shared, repo) = setup_shared_test_db();
+    let (_db, shared, repo) = setup_shared_test_db();
     {
         let conn = shared.lock().await;
-        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+        insert_test_project(&conn, &project_id, "Test Project", "/test/path");
     }
 
     // Draft (active)
@@ -1580,10 +1615,10 @@ async fn test_get_group_counts_multiple_groups_simultaneously() {
 #[tokio::test]
 async fn test_get_group_counts_archived() {
     let project_id = ProjectId::new();
-    let (shared, repo) = setup_shared_test_db();
+    let (_db, shared, repo) = setup_shared_test_db();
     {
         let conn = shared.lock().await;
-        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+        insert_test_project(&conn, &project_id, "Test Project", "/test/path");
     }
 
     let session = create_test_session(&project_id, Some("Archived Session"));
@@ -1602,11 +1637,11 @@ async fn test_get_group_counts_archived() {
 
 #[tokio::test]
 async fn test_list_by_group_pagination_first_page() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     // Create 25 draft sessions
     for i in 0..25 {
@@ -1625,11 +1660,11 @@ async fn test_list_by_group_pagination_first_page() {
 
 #[tokio::test]
 async fn test_list_by_group_empty_group() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let (sessions, total) = repo
         .list_by_group(&project_id, "drafts", 0, 20)
@@ -1642,11 +1677,11 @@ async fn test_list_by_group_empty_group() {
 
 #[tokio::test]
 async fn test_list_by_group_invalid_group_returns_error() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let result = repo
         .list_by_group(&project_id, "nonexistent_group", 0, 20)
@@ -1663,10 +1698,10 @@ async fn test_list_by_group_invalid_group_returns_error() {
 #[tokio::test]
 async fn test_list_by_group_sort_order_updated_at_desc() {
     let project_id = ProjectId::new();
-    let (shared, repo) = setup_shared_test_db();
+    let (_db, shared, repo) = setup_shared_test_db();
     {
         let conn = shared.lock().await;
-        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+        insert_test_project(&conn, &project_id, "Test Project", "/test/path");
     }
 
     let s1 = create_test_session(&project_id, Some("First Created"));
@@ -1704,10 +1739,10 @@ async fn test_list_by_group_sort_order_updated_at_desc() {
 #[tokio::test]
 async fn test_list_by_group_progress_data_for_accepted_subgroups() {
     let project_id = ProjectId::new();
-    let (shared, repo) = setup_shared_test_db();
+    let (_db, shared, repo) = setup_shared_test_db();
     {
         let conn = shared.lock().await;
-        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+        insert_test_project(&conn, &project_id, "Test Project", "/test/path");
     }
 
     let session = create_test_session(&project_id, Some("In Progress Session"));
@@ -1739,10 +1774,10 @@ async fn test_list_by_group_progress_data_for_accepted_subgroups() {
 #[tokio::test]
 async fn test_list_by_group_parent_title_resolved() {
     let project_id = ProjectId::new();
-    let (shared, repo) = setup_shared_test_db();
+    let (_db, shared, repo) = setup_shared_test_db();
     {
         let conn = shared.lock().await;
-        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+        insert_test_project(&conn, &project_id, "Test Project", "/test/path");
     }
 
     let parent = create_test_session(&project_id, Some("Parent Session Title"));
@@ -1800,10 +1835,10 @@ async fn test_list_by_group_parent_title_resolved() {
 /// - All stale metadata fields are cleared in the stored JSON
 #[tokio::test]
 async fn test_reset_and_begin_reverify_sqlite_atomicity() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     // Create session — SQLite create() does not persist verification_generation from the builder,
     // so the session starts at generation=0 (the DB default). We test 0 → 1 increment.
@@ -1914,11 +1949,11 @@ async fn test_reset_and_begin_reverify_sqlite_atomicity() {
 async fn test_list_by_group_excludes_verification_sessions_and_counts_children() {
     use crate::domain::entities::ideation::SessionPurpose;
 
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/purpose");
+    create_test_project(&db, &project_id, "Test Project", "/test/purpose");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     // Create a regular (general) ideation session
     let parent_session = IdeationSession::builder()
@@ -1973,11 +2008,11 @@ async fn test_list_by_group_excludes_verification_sessions_and_counts_children()
 async fn test_get_group_counts_excludes_verification_sessions() {
     use crate::domain::entities::ideation::SessionPurpose;
 
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/counts");
+    create_test_project(&db, &project_id, "Test Project", "/test/counts");
 
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     // Create 2 regular sessions
     for i in 0..2u32 {
@@ -2006,10 +2041,10 @@ async fn test_get_group_counts_excludes_verification_sessions() {
 
 #[tokio::test]
 async fn test_archive_clears_verification_in_progress_when_set() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let session = IdeationSession::builder()
         .project_id(project_id.clone())
@@ -2046,10 +2081,10 @@ async fn test_archive_clears_verification_in_progress_when_set() {
 
 #[tokio::test]
 async fn test_archive_does_not_regress_when_verification_in_progress_already_false() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let repo = SqliteIdeationSessionRepository::new(conn);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let session = IdeationSession::builder()
         .project_id(project_id.clone())
@@ -2079,11 +2114,11 @@ async fn test_archive_does_not_regress_when_verification_in_progress_already_fal
 /// get_stale_in_progress_sessions results, even if the flag was somehow set after archiving.
 #[tokio::test]
 async fn test_get_stale_in_progress_sessions_excludes_archived() {
-    let (shared, repo) = setup_shared_test_db();
+    let (_db, shared, repo) = setup_shared_test_db();
     let project_id = ProjectId::new();
     {
         let conn = shared.lock().await;
-        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+        insert_test_project(&conn, &project_id, "Test Project", "/test/path");
     }
 
     // Create an archived session and force verification_in_progress=1 via raw SQL
@@ -2114,11 +2149,11 @@ async fn test_get_stale_in_progress_sessions_excludes_archived() {
 /// Active session with stale verification_in_progress=1 MUST appear in results.
 #[tokio::test]
 async fn test_get_stale_in_progress_sessions_includes_active() {
-    let (shared, repo) = setup_shared_test_db();
+    let (_db, shared, repo) = setup_shared_test_db();
     let project_id = ProjectId::new();
     {
         let conn = shared.lock().await;
-        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+        insert_test_project(&conn, &project_id, "Test Project", "/test/path");
     }
 
     let session = IdeationSession::builder()
