@@ -158,24 +158,29 @@ impl StreamOutcome {
 /// Incremented on `TaskStarted`, decremented on `TaskCompleted`.
 /// The timeout handler checks `has_active_tasks()` to bypass the timeout.
 #[derive(Debug, Default)]
-pub(crate) struct ActiveTaskTracker {
+#[doc(hidden)]
+pub struct ActiveTaskTracker {
     count: usize,
 }
 
 impl ActiveTaskTracker {
-    pub(crate) fn task_started(&mut self) {
+    #[doc(hidden)]
+    pub fn task_started(&mut self) {
         self.count += 1;
     }
 
-    pub(crate) fn task_completed(&mut self) {
+    #[doc(hidden)]
+    pub fn task_completed(&mut self) {
         self.count = self.count.saturating_sub(1);
     }
 
-    pub(crate) fn has_active_tasks(&self) -> bool {
+    #[doc(hidden)]
+    pub fn has_active_tasks(&self) -> bool {
         self.count > 0
     }
 
-    pub(crate) fn count(&self) -> usize {
+    #[doc(hidden)]
+    pub fn count(&self) -> usize {
         self.count
     }
 }
@@ -1796,7 +1801,8 @@ pub async fn process_stream_background<R: Runtime>(
 ///
 /// This pure function is extracted for unit testability. Side effects (tracing,
 /// heartbeat emission) remain in the calling code.
-pub(crate) fn should_kill_on_timeout(
+#[doc(hidden)]
+pub fn should_kill_on_timeout(
     wall_clock_elapsed: std::time::Duration,
     max_wall_clock: std::time::Duration,
     has_pending_question: bool,
@@ -1828,7 +1834,3 @@ pub(crate) fn should_kill_on_timeout(
     // 6. Default: kill
     true
 }
-
-#[cfg(test)]
-#[path = "chat_service_streaming_tests.rs"]
-mod tests;
