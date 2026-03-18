@@ -31,17 +31,13 @@ async fn setup_test_state() -> HttpServerState {
 /// Build a test state where the api_key_repo is backed by a real SQLite in-memory database.
 /// Needed for tests that rely on real error semantics (e.g., NotFound from
 /// update_api_key_permissions when a key doesn't exist).
-async fn setup_sqlite_api_key_state() -> HttpServerState {
-    use rusqlite::Connection;
-    use crate::infrastructure::sqlite::{
-        migrations::run_migrations,
-        sqlite_api_key_repo::SqliteApiKeyRepository,
-    };
+fn setup_sqlite_api_key_state() -> (crate::testing::SqliteTestDb, HttpServerState) {
+    use crate::infrastructure::sqlite::sqlite_api_key_repo::SqliteApiKeyRepository;
 
-    let conn = Connection::open_in_memory().expect("in-memory DB");
-    run_migrations(&conn).expect("migrations failed");
+    let db = crate::testing::SqliteTestDb::new("http-handler-api-keys");
+    let shared_conn = db.shared_conn();
     let sqlite_repo: Arc<dyn crate::domain::repositories::ApiKeyRepository> =
-        Arc::new(SqliteApiKeyRepository::new(conn));
+        Arc::new(SqliteApiKeyRepository::from_shared(shared_conn));
 
     // Build a base test state, then override the api_key_repo with the real SQLite one.
     let mut app_state = AppState::new_test();
@@ -52,12 +48,13 @@ async fn setup_sqlite_api_key_state() -> HttpServerState {
     let team_service = Arc::new(crate::application::TeamService::new_without_events(
         Arc::new(tracker.clone()),
     ));
-    HttpServerState {
+    let state = HttpServerState {
         app_state: Arc::new(app_state),
         execution_state,
         team_tracker: tracker,
         team_service,
-    }
+    };
+    (db, state)
 }
 
 /// Build a minimal router with require_admin_key applied to a GET /test route.
@@ -283,7 +280,7 @@ async fn test_get_audit_log_handler() {
 
 #[tokio::test]
 async fn test_update_key_permissions_handler_success() {
-    let state = setup_sqlite_api_key_state().await;
+    let (_db, state) = setup_sqlite_api_key_state();
     let (_, key_id) = create_test_key(&state, PERMISSION_READ).await;
 
     let result = update_key_permissions(
@@ -299,7 +296,7 @@ async fn test_update_key_permissions_handler_success() {
 
 #[tokio::test]
 async fn test_update_key_permissions_handler_not_found() {
-    let state = setup_sqlite_api_key_state().await;
+    let (_db, state) = setup_sqlite_api_key_state();
 
     let result = update_key_permissions(
         State(state.clone()),

@@ -14,14 +14,12 @@ use crate::http_server::handlers::api_keys::{create_api_key, update_key_permissi
 use crate::http_server::types::{CreateApiKeyRequest, RegisterProjectExternalRequest, UpdatePermissionsRequest};
 use crate::http_server::handlers::external_auth::ValidatedExternalKey;
 use crate::infrastructure::sqlite::{
-    migrations::run_migrations,
     sqlite_api_key_repo::SqliteApiKeyRepository,
     sqlite_project_repo::SqliteProjectRepository,
     DbConnection,
 };
 use axum::extract::{Json, Path, State};
 use axum::http::StatusCode;
-use rusqlite::Connection;
 use std::sync::Arc;
 
 // ============================================================================
@@ -32,13 +30,14 @@ use std::sync::Arc;
 /// and db all share the same in-memory connection with applied migrations.
 /// This is required for register_project_external integration tests to see
 /// consistent state across repo lookups and direct db.run_transaction() inserts.
-async fn setup_sqlite_register_state() -> HttpServerState {
-    let conn = Connection::open_in_memory().expect("in-memory DB");
-    run_migrations(&conn).expect("migrations failed");
+fn setup_sqlite_register_state() -> (crate::testing::SqliteTestDb, HttpServerState) {
+    let db = crate::testing::SqliteTestDb::new("http-handler-projects");
     // Disable FK enforcement: tests insert partial data (no FK targets) for speed
-    conn.execute("PRAGMA foreign_keys = OFF", [])
-        .expect("disable FK");
-    let shared_conn = Arc::new(tokio::sync::Mutex::new(conn));
+    db.with_connection(|conn| {
+        conn.execute("PRAGMA foreign_keys = OFF", [])
+            .expect("disable FK");
+    });
+    let shared_conn = db.shared_conn();
 
     let mut app_state = AppState::new_test();
     app_state.api_key_repo =
@@ -52,12 +51,13 @@ async fn setup_sqlite_register_state() -> HttpServerState {
     let team_service = Arc::new(crate::application::TeamService::new_without_events(
         Arc::new(tracker.clone()),
     ));
-    HttpServerState {
+    let state = HttpServerState {
         app_state: Arc::new(app_state),
         execution_state,
         team_tracker: tracker,
         team_service,
-    }
+    };
+    (db, state)
 }
 
 /// Insert an API key with the given permissions and return its id.
@@ -94,12 +94,12 @@ fn make_validated_key(key_id: &ApiKeyId) -> ValidatedExternalKey {
 /// allowlist check passes. Temp dir is cleaned up when the returned
 /// TempDir is dropped.
 fn temp_dir_under_home() -> tempfile::TempDir {
-    let home = std::env::var("HOME")
-        .expect("HOME env var must be set for register_project_external tests");
+    let workspace = std::env::current_dir()
+        .expect("current_dir must be available for register_project_external tests");
     tempfile::Builder::new()
         .prefix("ralphx-integ-test-")
-        .tempdir_in(&home)
-        .expect("Failed to create temp dir under HOME")
+        .tempdir_in(workspace)
+        .expect("Failed to create temp dir under the workspace")
 }
 
 // ============================================================================
@@ -110,7 +110,7 @@ fn temp_dir_under_home() -> tempfile::TempDir {
 /// We test the permission bitmask logic directly (the extractor runs the same check).
 #[tokio::test]
 async fn test_create_project_permission_bit_required() {
-    let state = setup_sqlite_register_state().await;
+    let (_db, state) = setup_sqlite_register_state();
     let key_id = insert_key(&state, PERMISSION_READ).await;
 
     let key = state
@@ -147,7 +147,7 @@ async fn test_create_project_permission_bit_required() {
 
 #[tokio::test]
 async fn test_register_project_etc_rejected() {
-    let state = setup_sqlite_register_state().await;
+    let (_db, state) = setup_sqlite_register_state();
     let key_id = insert_key(&state, PERMISSION_CREATE_PROJECT).await;
     let validated_key = make_validated_key(&key_id);
 
@@ -168,7 +168,7 @@ async fn test_register_project_etc_rejected() {
 
 #[tokio::test]
 async fn test_register_project_tmp_rejected() {
-    let state = setup_sqlite_register_state().await;
+    let (_db, state) = setup_sqlite_register_state();
     let key_id = insert_key(&state, PERMISSION_CREATE_PROJECT).await;
     let validated_key = make_validated_key(&key_id);
 
@@ -189,7 +189,7 @@ async fn test_register_project_tmp_rejected() {
 
 #[tokio::test]
 async fn test_register_project_usr_rejected() {
-    let state = setup_sqlite_register_state().await;
+    let (_db, state) = setup_sqlite_register_state();
     let key_id = insert_key(&state, PERMISSION_CREATE_PROJECT).await;
     let validated_key = make_validated_key(&key_id);
 
@@ -211,7 +211,7 @@ async fn test_register_project_usr_rejected() {
 /// The test registers a real temp directory and verifies the response succeeds.
 #[tokio::test]
 async fn test_register_project_home_subdir_accepted() {
-    let state = setup_sqlite_register_state().await;
+    let (_db, state) = setup_sqlite_register_state();
     let key_id = insert_key(&state, PERMISSION_CREATE_PROJECT).await;
     let validated_key = make_validated_key(&key_id);
     let tmp = temp_dir_under_home();
@@ -237,7 +237,7 @@ async fn test_register_project_home_subdir_accepted() {
 
 #[tokio::test]
 async fn test_register_project_duplicate_path_returns_409() {
-    let state = setup_sqlite_register_state().await;
+    let (_db, state) = setup_sqlite_register_state();
     let key_id = insert_key(&state, PERMISSION_CREATE_PROJECT).await;
     let tmp = temp_dir_under_home();
     let path = tmp.path().to_str().unwrap().to_string();
@@ -281,7 +281,7 @@ async fn test_register_project_duplicate_path_returns_409() {
 
 #[tokio::test]
 async fn test_register_project_creating_key_gets_scope() {
-    let state = setup_sqlite_register_state().await;
+    let (_db, state) = setup_sqlite_register_state();
     let creating_key_id = insert_key(&state, PERMISSION_CREATE_PROJECT).await;
     let other_key_id = insert_key(&state, PERMISSION_CREATE_PROJECT).await;
     let tmp = temp_dir_under_home();
@@ -345,7 +345,7 @@ async fn test_register_project_creating_key_gets_scope() {
 
 #[tokio::test]
 async fn test_run_transaction_rolls_back_both_inserts_on_error() {
-    let state = setup_sqlite_register_state().await;
+    let (_db, state) = setup_sqlite_register_state();
     let key_id = insert_key(&state, PERMISSION_CREATE_PROJECT).await;
     let key_id_str = key_id.as_str().to_string();
 
@@ -438,7 +438,7 @@ async fn test_run_transaction_rolls_back_both_inserts_on_error() {
 
 #[tokio::test]
 async fn test_update_key_permissions_above_max_rejected() {
-    let state = setup_sqlite_register_state().await;
+    let (_db, state) = setup_sqlite_register_state();
     let key_id = insert_key(&state, PERMISSION_READ).await;
 
     let result = update_key_permissions(
@@ -464,7 +464,7 @@ async fn test_update_key_permissions_above_max_rejected() {
 
 #[tokio::test]
 async fn test_create_api_key_above_max_permissions_rejected() {
-    let state = setup_sqlite_register_state().await;
+    let (_db, state) = setup_sqlite_register_state();
 
     let result = create_api_key(
         State(state),
@@ -486,7 +486,7 @@ async fn test_create_api_key_above_max_permissions_rejected() {
 
 #[tokio::test]
 async fn test_create_api_key_negative_permissions_rejected() {
-    let state = setup_sqlite_register_state().await;
+    let (_db, state) = setup_sqlite_register_state();
 
     let result = create_api_key(
         State(state),
