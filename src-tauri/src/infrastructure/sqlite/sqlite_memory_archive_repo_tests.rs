@@ -1,23 +1,43 @@
 use super::*;
 use crate::domain::entities::ArchiveJobPayload;
-use crate::infrastructure::sqlite::connection::open_memory_connection;
-use crate::infrastructure::sqlite::migrations::run_migrations;
+use crate::domain::entities::{Project, ProjectId};
+use crate::testing::SqliteTestDb;
 
-async fn setup_test_repo() -> SqliteMemoryArchiveRepository {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    // Insert a test project (required for foreign key)
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory) VALUES ('test-project', 'Test Project', '/test/path')",
-        [],
-    )
-    .unwrap();
-    SqliteMemoryArchiveRepository::new(conn)
+struct MemoryArchiveRepoFixture {
+    db: SqliteTestDb,
+    repo: SqliteMemoryArchiveRepository,
+}
+
+impl std::ops::Deref for MemoryArchiveRepoFixture {
+    type Target = SqliteMemoryArchiveRepository;
+
+    fn deref(&self) -> &Self::Target {
+        &self.repo
+    }
+}
+
+impl MemoryArchiveRepoFixture {
+    fn db(&self) -> &SqliteTestDb {
+        &self.db
+    }
+}
+
+fn insert_test_project(db: &SqliteTestDb, project_id: &str, working_directory: &str) {
+    let mut project = Project::new("Test Project".to_string(), working_directory.to_string());
+    project.id = ProjectId::from_string(project_id.to_string());
+    db.insert_project(project);
+}
+
+fn setup_test_repo() -> MemoryArchiveRepoFixture {
+    let db = SqliteTestDb::new("sqlite-memory-archive-repo");
+    insert_test_project(&db, "test-project", "/test/path");
+    let repo = SqliteMemoryArchiveRepository::from_shared(db.shared_conn());
+    MemoryArchiveRepoFixture { db, repo }
 }
 
 #[tokio::test]
 async fn test_create_and_get_job() {
-    let repo = setup_test_repo().await;
+    let repo = setup_test_repo();
     let project_id = ProjectId::from_string("test-project".to_string());
     let payload = ArchiveJobPayload::memory_snapshot("mem_123");
     let job = MemoryArchiveJob::new(project_id.clone(), ArchiveJobType::MemorySnapshot, payload);
@@ -32,7 +52,7 @@ async fn test_create_and_get_job() {
 
 #[tokio::test]
 async fn test_claim_next() {
-    let repo = setup_test_repo().await;
+    let repo = setup_test_repo();
     let project_id = ProjectId::from_string("test-project".to_string());
 
     // Create two jobs
@@ -71,7 +91,7 @@ async fn test_claim_next() {
 
 #[tokio::test]
 async fn test_update_job_status() {
-    let repo = setup_test_repo().await;
+    let repo = setup_test_repo();
     let project_id = ProjectId::from_string("test-project".to_string());
     let mut job = MemoryArchiveJob::new(
         project_id,
@@ -98,7 +118,7 @@ async fn test_update_job_status() {
 
 #[tokio::test]
 async fn test_get_by_status() {
-    let repo = setup_test_repo().await;
+    let repo = setup_test_repo();
     let project_id = ProjectId::from_string("test-project".to_string());
 
     let mut job1 = MemoryArchiveJob::new(
@@ -128,7 +148,7 @@ async fn test_get_by_status() {
 
 #[tokio::test]
 async fn test_count_claimable() {
-    let repo = setup_test_repo().await;
+    let repo = setup_test_repo();
     let project_id = ProjectId::from_string("test-project".to_string());
 
     assert_eq!(repo.count_claimable().await.unwrap(), 0);
@@ -164,19 +184,6 @@ async fn test_count_claimable() {
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-async fn setup_shared_repo() -> (SqliteMemoryArchiveRepository, Arc<Mutex<rusqlite::Connection>>) {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory) VALUES ('test-project', 'Test Project', '/test/path')",
-        [],
-    )
-    .unwrap();
-    let shared = Arc::new(Mutex::new(conn));
-    let repo = SqliteMemoryArchiveRepository::from_shared(Arc::clone(&shared));
-    (repo, shared)
-}
-
 fn pid() -> ProjectId {
     ProjectId::from_string("test-project".to_string())
 }
@@ -189,7 +196,7 @@ fn pid2() -> ProjectId {
 
 #[tokio::test]
 async fn test_get_by_id_not_found() {
-    let repo = setup_test_repo().await;
+    let repo = setup_test_repo();
     let fake_id = MemoryArchiveJobId::from("nonexistent-id".to_string());
     assert!(repo.get_by_id(&fake_id).await.unwrap().is_none());
 }
@@ -198,7 +205,7 @@ async fn test_get_by_id_not_found() {
 
 #[tokio::test]
 async fn test_delete() {
-    let repo = setup_test_repo().await;
+    let repo = setup_test_repo();
     let job = MemoryArchiveJob::new(pid(), ArchiveJobType::MemorySnapshot, ArchiveJobPayload::memory_snapshot("mem_1"));
     let job_id = job.id.clone();
 
@@ -213,11 +220,8 @@ async fn test_delete() {
 
 #[tokio::test]
 async fn test_get_by_project() {
-    let (repo, shared) = setup_shared_repo().await;
-    shared.lock().await.execute(
-        "INSERT INTO projects (id, name, working_directory) VALUES ('test-project-2', 'Test Project 2', '/test/path2')",
-        [],
-    ).unwrap();
+    let repo = setup_test_repo();
+    insert_test_project(repo.db(), "test-project-2", "/test/path2");
 
     repo.create(MemoryArchiveJob::new(pid(), ArchiveJobType::MemorySnapshot, ArchiveJobPayload::memory_snapshot("m1"))).await.unwrap();
     repo.create(MemoryArchiveJob::new(pid(), ArchiveJobType::RuleSnapshot, ArchiveJobPayload::rule_snapshot("r1"))).await.unwrap();
@@ -229,7 +233,7 @@ async fn test_get_by_project() {
 
 #[tokio::test]
 async fn test_get_by_project_empty() {
-    let repo = setup_test_repo().await;
+    let repo = setup_test_repo();
     let other = ProjectId::from_string("no-such-project".to_string());
     assert!(repo.get_by_project(&other).await.unwrap().is_empty());
 }
@@ -238,7 +242,7 @@ async fn test_get_by_project_empty() {
 
 #[tokio::test]
 async fn test_get_by_project_and_status() {
-    let repo = setup_test_repo().await;
+    let repo = setup_test_repo();
     let mut job1 = MemoryArchiveJob::new(pid(), ArchiveJobType::MemorySnapshot, ArchiveJobPayload::memory_snapshot("m1"));
     let job2 = MemoryArchiveJob::new(pid(), ArchiveJobType::RuleSnapshot, ArchiveJobPayload::rule_snapshot("r1"));
 
@@ -263,7 +267,7 @@ async fn test_get_by_project_and_status() {
 
 #[tokio::test]
 async fn test_get_by_project_and_type() {
-    let repo = setup_test_repo().await;
+    let repo = setup_test_repo();
     repo.create(MemoryArchiveJob::new(pid(), ArchiveJobType::MemorySnapshot, ArchiveJobPayload::memory_snapshot("m1"))).await.unwrap();
     repo.create(MemoryArchiveJob::new(pid(), ArchiveJobType::MemorySnapshot, ArchiveJobPayload::memory_snapshot("m2"))).await.unwrap();
     repo.create(MemoryArchiveJob::new(pid(), ArchiveJobType::RuleSnapshot, ArchiveJobPayload::rule_snapshot("r1"))).await.unwrap();
@@ -279,11 +283,8 @@ async fn test_get_by_project_and_type() {
 
 #[tokio::test]
 async fn test_claim_next_for_project_returns_oldest_pending() {
-    let (repo, shared) = setup_shared_repo().await;
-    shared.lock().await.execute(
-        "INSERT INTO projects (id, name, working_directory) VALUES ('test-project-2', 'Test Project 2', '/test/path2')",
-        [],
-    ).unwrap();
+    let repo = setup_test_repo();
+    insert_test_project(repo.db(), "test-project-2", "/test/path2");
 
     let job1 = MemoryArchiveJob::new(pid(), ArchiveJobType::MemorySnapshot, ArchiveJobPayload::memory_snapshot("m1"));
     let job2 = MemoryArchiveJob::new(pid2(), ArchiveJobType::RuleSnapshot, ArchiveJobPayload::rule_snapshot("r1"));
@@ -307,14 +308,14 @@ async fn test_claim_next_for_project_returns_oldest_pending() {
 
 #[tokio::test]
 async fn test_claim_next_for_project_returns_none_when_empty() {
-    let repo = setup_test_repo().await;
+    let repo = setup_test_repo();
     let result = repo.claim_next_for_project(&pid()).await.unwrap();
     assert!(result.is_none());
 }
 
 #[tokio::test]
 async fn test_claim_next_for_project_picks_failed_jobs() {
-    let repo = setup_test_repo().await;
+    let repo = setup_test_repo();
     let mut job = MemoryArchiveJob::new(pid(), ArchiveJobType::MemorySnapshot, ArchiveJobPayload::memory_snapshot("m1"));
     repo.create(job.clone()).await.unwrap();
 
@@ -333,7 +334,7 @@ async fn test_claim_next_for_project_picks_failed_jobs() {
 
 #[tokio::test]
 async fn test_count_by_status() {
-    let repo = setup_test_repo().await;
+    let repo = setup_test_repo();
 
     assert_eq!(repo.count_by_status(ArchiveJobStatus::Pending).await.unwrap(), 0);
 
@@ -356,11 +357,8 @@ async fn test_count_by_status() {
 
 #[tokio::test]
 async fn test_count_claimable_for_project() {
-    let (repo, shared) = setup_shared_repo().await;
-    shared.lock().await.execute(
-        "INSERT INTO projects (id, name, working_directory) VALUES ('test-project-2', 'Test Project 2', '/test/path2')",
-        [],
-    ).unwrap();
+    let repo = setup_test_repo();
+    insert_test_project(repo.db(), "test-project-2", "/test/path2");
 
     repo.create(MemoryArchiveJob::new(pid(), ArchiveJobType::MemorySnapshot, ArchiveJobPayload::memory_snapshot("m1"))).await.unwrap();
     repo.create(MemoryArchiveJob::new(pid(), ArchiveJobType::RuleSnapshot, ArchiveJobPayload::rule_snapshot("r1"))).await.unwrap();
@@ -378,7 +376,7 @@ async fn test_count_claimable_for_project() {
 
 #[tokio::test]
 async fn test_delete_completed_older_than_removes_old_done_jobs() {
-    let repo = setup_test_repo().await;
+    let repo = setup_test_repo();
     let mut job = MemoryArchiveJob::new(pid(), ArchiveJobType::MemorySnapshot, ArchiveJobPayload::memory_snapshot("m1"));
     repo.create(job.clone()).await.unwrap();
 
@@ -395,7 +393,7 @@ async fn test_delete_completed_older_than_removes_old_done_jobs() {
 
 #[tokio::test]
 async fn test_delete_completed_older_than_keeps_recent_jobs() {
-    let repo = setup_test_repo().await;
+    let repo = setup_test_repo();
     let mut job = MemoryArchiveJob::new(pid(), ArchiveJobType::MemorySnapshot, ArchiveJobPayload::memory_snapshot("m1"));
     repo.create(job.clone()).await.unwrap();
 
@@ -411,7 +409,7 @@ async fn test_delete_completed_older_than_keeps_recent_jobs() {
 
 #[tokio::test]
 async fn test_delete_completed_older_than_ignores_non_done_jobs() {
-    let repo = setup_test_repo().await;
+    let repo = setup_test_repo();
     // Pending job with old created_at — should NOT be deleted (only 'done' status)
     let job = MemoryArchiveJob::new(pid(), ArchiveJobType::MemorySnapshot, ArchiveJobPayload::memory_snapshot("m1"));
     let job_id = job.id.clone();
@@ -426,11 +424,8 @@ async fn test_delete_completed_older_than_ignores_non_done_jobs() {
 
 #[tokio::test]
 async fn test_delete_by_project() {
-    let (repo, shared) = setup_shared_repo().await;
-    shared.lock().await.execute(
-        "INSERT INTO projects (id, name, working_directory) VALUES ('test-project-2', 'Test Project 2', '/test/path2')",
-        [],
-    ).unwrap();
+    let repo = setup_test_repo();
+    insert_test_project(repo.db(), "test-project-2", "/test/path2");
 
     repo.create(MemoryArchiveJob::new(pid(), ArchiveJobType::MemorySnapshot, ArchiveJobPayload::memory_snapshot("m1"))).await.unwrap();
     repo.create(MemoryArchiveJob::new(pid(), ArchiveJobType::RuleSnapshot, ArchiveJobPayload::rule_snapshot("r1"))).await.unwrap();

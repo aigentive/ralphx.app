@@ -1,49 +1,48 @@
 // Tests for SqliteApiKeyRepository
 // Tests run against in-memory SQLite with full migrations
 
-use std::sync::Arc;
+use std::ops::Deref;
 
-use rusqlite::Connection;
-use tokio::sync::Mutex;
-
-use crate::domain::entities::{ApiKey, ApiKeyId, PERMISSION_ADMIN, PERMISSION_READ, PERMISSION_WRITE};
+use crate::domain::entities::{
+    ApiKey, ApiKeyId, Project, ProjectId, PERMISSION_ADMIN, PERMISSION_READ, PERMISSION_WRITE,
+};
 use crate::domain::repositories::{ApiKeyRepository, CreateKeyParams};
 use crate::domain::services::key_crypto::{generate_raw_key, hash_key, key_prefix};
-use crate::infrastructure::sqlite::{
-    migrations::run_migrations,
-    sqlite_api_key_repo::SqliteApiKeyRepository,
-};
+use crate::infrastructure::sqlite::sqlite_api_key_repo::SqliteApiKeyRepository;
+use crate::testing::SqliteTestDb;
 
-fn setup_repo() -> SqliteApiKeyRepository {
-    let conn = Connection::open_in_memory().expect("in-memory DB");
-    run_migrations(&conn).expect("migrations failed");
-    SqliteApiKeyRepository::new(conn)
+struct ApiKeyRepoFixture {
+    db: SqliteTestDb,
+    repo: SqliteApiKeyRepository,
 }
 
-fn setup_repo_with_conn() -> (SqliteApiKeyRepository, Arc<Mutex<Connection>>) {
-    let conn = Connection::open_in_memory().expect("in-memory DB");
-    run_migrations(&conn).expect("migrations failed");
-    let shared = Arc::new(Mutex::new(conn));
-    let repo = SqliteApiKeyRepository::from_shared(Arc::clone(&shared));
-    (repo, shared)
+impl ApiKeyRepoFixture {
+    fn db(&self) -> &SqliteTestDb {
+        &self.db
+    }
 }
 
-async fn insert_test_project(conn: &Arc<Mutex<Connection>>, project_id: &str) {
-    let working_dir = format!("/tmp/test/{}", project_id);
-    conn.lock()
-        .await
-        .execute(
-            "INSERT OR IGNORE INTO projects (id, name, working_directory, created_at, updated_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![
-                project_id,
-                "test-project",
-                working_dir,
-                "2026-01-01T00:00:00Z",
-                "2026-01-01T00:00:00Z"
-            ],
-        )
-        .expect("insert test project failed");
+impl Deref for ApiKeyRepoFixture {
+    type Target = SqliteApiKeyRepository;
+
+    fn deref(&self) -> &Self::Target {
+        &self.repo
+    }
+}
+
+fn setup_repo() -> ApiKeyRepoFixture {
+    let db = SqliteTestDb::new("sqlite-api-key-repo");
+    let repo = SqliteApiKeyRepository::from_shared(db.shared_conn());
+    ApiKeyRepoFixture { db, repo }
+}
+
+fn insert_test_project(db: &SqliteTestDb, project_id: &str) {
+    let mut project = Project::new(
+        "test-project".to_string(),
+        format!("/tmp/test/{}", project_id),
+    );
+    project.id = ProjectId::from_string(project_id.to_string());
+    db.insert_project(project);
 }
 
 fn make_key(name: &str) -> ApiKey {
@@ -231,13 +230,13 @@ async fn test_revoke_sets_revoked_at() {
 
 #[tokio::test]
 async fn test_set_and_get_projects() {
-    let (repo, conn) = setup_repo_with_conn();
+    let repo = setup_repo();
     let key = make_key("Project Key");
     let id = key.id.clone();
     repo.create(key).await.expect("create");
 
-    insert_test_project(&conn, "proj-1").await;
-    insert_test_project(&conn, "proj-2").await;
+    insert_test_project(repo.db(), "proj-1");
+    insert_test_project(repo.db(), "proj-2");
 
     let project_ids = vec!["proj-1".to_string(), "proj-2".to_string()];
     repo.set_projects(&id, &project_ids).await.expect("set_projects");
@@ -251,14 +250,14 @@ async fn test_set_and_get_projects() {
 
 #[tokio::test]
 async fn test_set_projects_replaces_existing() {
-    let (repo, conn) = setup_repo_with_conn();
+    let repo = setup_repo();
     let key = make_key("Replace Projects");
     let id = key.id.clone();
     repo.create(key).await.expect("create");
 
-    insert_test_project(&conn, "old-proj").await;
-    insert_test_project(&conn, "new-proj-1").await;
-    insert_test_project(&conn, "new-proj-2").await;
+    insert_test_project(repo.db(), "old-proj");
+    insert_test_project(repo.db(), "new-proj-1");
+    insert_test_project(repo.db(), "new-proj-2");
 
     repo.set_projects(&id, &["old-proj".to_string()]).await.expect("first set");
     repo.set_projects(&id, &["new-proj-1".to_string(), "new-proj-2".to_string()])
@@ -610,9 +609,9 @@ async fn test_create_key_atomic_success_no_projects() {
 
 #[tokio::test]
 async fn test_create_key_atomic_success_with_projects() {
-    let (repo, conn) = setup_repo_with_conn();
-    insert_test_project(&conn, "proj-a").await;
-    insert_test_project(&conn, "proj-b").await;
+    let repo = setup_repo();
+    insert_test_project(repo.db(), "proj-a");
+    insert_test_project(repo.db(), "proj-b");
 
     let key = make_key("Atomic Create With Projects");
     let key_id = key.id.clone();
@@ -639,8 +638,8 @@ async fn test_create_key_atomic_success_with_projects() {
 async fn test_create_key_atomic_rollback_on_duplicate_project() {
     // If the project association step fails mid-transaction (PRIMARY KEY violation
     // from duplicate project_ids), the key insert must be rolled back — no orphaned keys.
-    let (repo, conn) = setup_repo_with_conn();
-    insert_test_project(&conn, "proj-dup").await;
+    let repo = setup_repo();
+    insert_test_project(repo.db(), "proj-dup");
 
     let key = make_key("Orphan Candidate");
     let key_id = key.id.clone();
