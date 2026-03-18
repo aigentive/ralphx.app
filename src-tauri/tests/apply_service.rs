@@ -1,15 +1,8 @@
-use super::{ApplyProposalsOptions, ApplyService, TargetColumn};
-use crate::domain::entities::{
-    ArtifactId, IdeationSession, IdeationSessionId, IdeationSessionStatus, InternalStatus,
-    Priority, PriorityAssessment, ProjectId, ProposalCategory, Task, TaskCategory, TaskId,
-    TaskProposal, TaskProposalId, TaskStep,
-};
-use crate::domain::repositories::{
-    IdeationSessionRepository, ProposalDependencyRepository, StateHistoryMetadata,
-    TaskDependencyRepository, TaskProposalRepository, TaskRepository, TaskStepRepository,
-};
-use crate::error::AppResult;
 use async_trait::async_trait;
+use ralphx_lib::application::{ApplyProposalsOptions, ApplyService, TargetColumn};
+use ralphx_lib::domain::entities::{self, *};
+use ralphx_lib::domain::repositories::{self, *};
+use ralphx_lib::error::{AppError, AppResult};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -93,7 +86,7 @@ impl IdeationSessionRepository for MockSessionRepository {
     ) -> AppResult<()> {
         if let Some(session) = self.sessions.lock().unwrap().get_mut(&id.to_string()) {
             session.plan_artifact_id =
-                plan_artifact_id.map(crate::domain::entities::ArtifactId::from_string);
+                plan_artifact_id.map(entities::ArtifactId::from_string);
         }
         Ok(())
     }
@@ -193,7 +186,7 @@ impl IdeationSessionRepository for MockSessionRepository {
     async fn update_verification_state(
         &self,
         _id: &IdeationSessionId,
-        _status: crate::domain::entities::VerificationStatus,
+        _status: entities::VerificationStatus,
         _in_progress: bool,
         _metadata_json: Option<String>,
     ) -> AppResult<()> {
@@ -207,14 +200,14 @@ impl IdeationSessionRepository for MockSessionRepository {
     async fn reset_and_begin_reverify(
         &self,
         _session_id: &str,
-    ) -> AppResult<(i32, crate::domain::entities::VerificationMetadata)> {
+    ) -> AppResult<(i32, entities::VerificationMetadata)> {
         unimplemented!()
     }
 
     async fn get_verification_status(
         &self,
         _id: &IdeationSessionId,
-    ) -> AppResult<Option<(crate::domain::entities::VerificationStatus, bool, Option<String>)>> {
+    ) -> AppResult<Option<(entities::VerificationStatus, bool, Option<String>)>> {
         Ok(None)
     }
 
@@ -271,8 +264,7 @@ impl IdeationSessionRepository for MockSessionRepository {
     async fn get_group_counts(
         &self,
         _project_id: &ProjectId,
-    ) -> AppResult<crate::domain::repositories::ideation_session_repository::SessionGroupCounts>
-    {
+    ) -> AppResult<repositories::ideation_session_repository::SessionGroupCounts> {
         unimplemented!()
     }
 
@@ -282,7 +274,10 @@ impl IdeationSessionRepository for MockSessionRepository {
         _group: &str,
         _offset: u32,
         _limit: u32,
-    ) -> AppResult<(Vec<crate::domain::repositories::ideation_session_repository::IdeationSessionWithProgress>, u32)> {
+    ) -> AppResult<(
+        Vec<repositories::ideation_session_repository::IdeationSessionWithProgress>,
+        u32,
+    )> {
         unimplemented!()
     }
 }
@@ -709,14 +704,14 @@ impl TaskRepository for MockTaskRepository {
     async fn get_status_history(
         &self,
         _id: &TaskId,
-    ) -> AppResult<Vec<crate::domain::repositories::StatusTransition>> {
+    ) -> AppResult<Vec<repositories::StatusTransition>> {
         Ok(vec![])
     }
 
     async fn get_status_entered_at(
         &self,
         _task_id: &TaskId,
-        _status: crate::domain::entities::InternalStatus,
+        _status: entities::InternalStatus,
     ) -> AppResult<Option<chrono::DateTime<chrono::Utc>>> {
         Ok(None)
     }
@@ -727,7 +722,7 @@ impl TaskRepository for MockTaskRepository {
 
     async fn get_by_ideation_session(
         &self,
-        _session_id: &crate::domain::entities::IdeationSessionId,
+        _session_id: &entities::IdeationSessionId,
     ) -> AppResult<Vec<Task>> {
         Ok(vec![])
     }
@@ -755,7 +750,7 @@ impl TaskRepository for MockTaskRepository {
             task.archived_at = Some(chrono::Utc::now());
             Ok(task.clone())
         } else {
-            Err(crate::error::AppError::NotFound(format!(
+            Err(AppError::NotFound(format!(
                 "Task {} not found",
                 task_id.as_str()
             )))
@@ -768,7 +763,7 @@ impl TaskRepository for MockTaskRepository {
             task.archived_at = None;
             Ok(task.clone())
         } else {
-            Err(crate::error::AppError::NotFound(format!(
+            Err(AppError::NotFound(format!(
                 "Task {} not found",
                 task_id.as_str()
             )))
@@ -883,7 +878,7 @@ impl TaskRepository for MockTaskRepository {
     async fn get_status_history_batch(
         &self,
         _task_ids: &[TaskId],
-    ) -> AppResult<HashMap<TaskId, Vec<crate::domain::repositories::StatusTransition>>> {
+    ) -> AppResult<HashMap<TaskId, Vec<repositories::StatusTransition>>> {
         Ok(HashMap::new())
     }
 }
@@ -924,7 +919,7 @@ impl TaskStepRepository for MockTaskStepRepository {
 
     async fn get_by_id(
         &self,
-        id: &crate::domain::entities::TaskStepId,
+        id: &entities::TaskStepId,
     ) -> AppResult<Option<TaskStep>> {
         Ok(self.steps.lock().unwrap().get(&id.to_string()).cloned())
     }
@@ -945,7 +940,7 @@ impl TaskStepRepository for MockTaskStepRepository {
     async fn get_by_task_and_status(
         &self,
         task_id: &TaskId,
-        status: crate::domain::entities::TaskStepStatus,
+        status: entities::TaskStepStatus,
     ) -> AppResult<Vec<TaskStep>> {
         let mut steps: Vec<_> = self
             .steps
@@ -967,7 +962,7 @@ impl TaskStepRepository for MockTaskStepRepository {
         Ok(())
     }
 
-    async fn delete(&self, id: &crate::domain::entities::TaskStepId) -> AppResult<()> {
+    async fn delete(&self, id: &entities::TaskStepId) -> AppResult<()> {
         self.steps.lock().unwrap().remove(&id.to_string());
         Ok(())
     }
@@ -983,7 +978,7 @@ impl TaskStepRepository for MockTaskStepRepository {
     async fn count_by_status(
         &self,
         task_id: &TaskId,
-    ) -> AppResult<HashMap<crate::domain::entities::TaskStepStatus, u32>> {
+    ) -> AppResult<HashMap<entities::TaskStepStatus, u32>> {
         let steps = self.get_by_task(task_id).await?;
         let mut counts = HashMap::new();
         for step in steps {
@@ -1007,7 +1002,7 @@ impl TaskStepRepository for MockTaskStepRepository {
     async fn reorder(
         &self,
         task_id: &TaskId,
-        step_ids: Vec<crate::domain::entities::TaskStepId>,
+        step_ids: Vec<entities::TaskStepId>,
     ) -> AppResult<()> {
         for (new_order, step_id) in step_ids.iter().enumerate() {
             if let Some(step) = self.steps.lock().unwrap().get_mut(&step_id.to_string()) {
@@ -1020,7 +1015,7 @@ impl TaskStepRepository for MockTaskStepRepository {
     }
 
     async fn reset_all_to_pending(&self, task_id: &TaskId) -> AppResult<u32> {
-        use crate::domain::entities::TaskStepStatus;
+        use entities::TaskStepStatus;
         let mut count = 0u32;
         for step in self.steps.lock().unwrap().values_mut() {
             if &step.task_id == task_id && step.status != TaskStepStatus::Pending {
@@ -1609,7 +1604,7 @@ async fn test_apply_proposals_imports_steps_from_proposal() {
     let task_id = &result.created_tasks[0].id;
 
     // Verify steps were created
-    let steps = service.task_step_repo.get_by_task(task_id).await.unwrap();
+    let steps = service.task_step_repo_for_test().get_by_task(task_id).await.unwrap();
     assert_eq!(steps.len(), 3);
     assert_eq!(steps[0].title, "Step 1");
     assert_eq!(steps[1].title, "Step 2");
@@ -1646,7 +1641,7 @@ async fn test_apply_proposals_handles_empty_steps() {
     let task_id = &result.created_tasks[0].id;
 
     // No steps should be created
-    let steps = service.task_step_repo.get_by_task(task_id).await.unwrap();
+    let steps = service.task_step_repo_for_test().get_by_task(task_id).await.unwrap();
     assert_eq!(steps.len(), 0);
 }
 
@@ -1676,7 +1671,7 @@ async fn test_apply_proposals_handles_no_steps() {
     let task_id = &result.created_tasks[0].id;
 
     // No steps should be created
-    let steps = service.task_step_repo.get_by_task(task_id).await.unwrap();
+    let steps = service.task_step_repo_for_test().get_by_task(task_id).await.unwrap();
     assert_eq!(steps.len(), 0);
 }
 
@@ -1706,6 +1701,6 @@ async fn test_apply_proposals_handles_invalid_json_steps() {
     let task_id = &result.created_tasks[0].id;
 
     // No steps should be created due to JSON parse error
-    let steps = service.task_step_repo.get_by_task(task_id).await.unwrap();
+    let steps = service.task_step_repo_for_test().get_by_task(task_id).await.unwrap();
     assert_eq!(steps.len(), 0);
 }

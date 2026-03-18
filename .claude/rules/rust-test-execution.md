@@ -82,6 +82,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --test transition_handler_freshn
 cargo test --manifest-path src-tauri/Cargo.toml --test startup_jobs_runner
 cargo test --manifest-path src-tauri/Cargo.toml --test chat_service_streaming
 cargo test --manifest-path src-tauri/Cargo.toml --test review_service
+cargo test --manifest-path src-tauri/Cargo.toml --test apply_service
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 ```
