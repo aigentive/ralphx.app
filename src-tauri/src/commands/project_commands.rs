@@ -166,7 +166,8 @@ fn ensure_git_initialized(path: &str) -> Result<(), String> {
 /// Note: directory must already exist before calling this function.
 /// Known limitation: if no global git user.name/email is configured, the
 /// empty commit will fail. Same limitation as the sync version.
-pub(crate) async fn ensure_git_initialized_async(path: &str) -> Result<(), String> {
+#[doc(hidden)]
+pub async fn ensure_git_initialized_async(path: &str) -> Result<(), String> {
     use tokio::process::Command as TokioCommand;
 
     // Check if .git directory exists
@@ -624,7 +625,8 @@ pub async fn reanalyze_project(id: String, state: State<'_, AppState>) -> Result
 }
 
 /// Returns true if the URL is a GitHub remote (https or ssh).
-pub(crate) fn is_github_url(url: &str) -> bool {
+#[doc(hidden)]
+pub fn is_github_url(url: &str) -> bool {
     url.starts_with("https://github.com/") || url.starts_with("git@github.com:")
 }
 
@@ -938,7 +940,3 @@ fn build_mode_switch_transition_service(
 
     svc
 }
-
-#[cfg(test)]
-#[path = "project_commands_tests.rs"]
-mod tests;

@@ -38,6 +38,7 @@ paths:
 | Prefer public diagnostics in integration tests | When a moved suite only needs visibility into state, prefer existing public methods like `dump_state()` over widening `#[cfg(test)]` helpers just to keep the old assertions |
 | Shared regression helpers | If an integration suite validates shared state-machine logic, expose the minimal helper once with `#[doc(hidden)] pub` rather than duplicating the production logic in the test |
 | SQLite sync-helper seams | If a moved SQLite repo suite intentionally tests sync helpers, expose only the specific helper functions it calls with `#[doc(hidden)] pub`; don’t make the whole repo surface public |
+| Async command helper seams | For moved command suites that exercise real git/filesystem helpers, expose the existing async helper with `#[doc(hidden)] pub` instead of introducing test-only wrappers |
 | Broad-run runner config | Rust workspace config lives in `src-tauri/.config/nextest.toml`; keep group changes there, not in ad hoc shell flags |
 | Formatter policy | No broad `cargo fmt`; if formatting is required, keep it scoped and separate |
 
@@ -92,6 +93,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --test ideation_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test task_cleanup_service
 cargo test --manifest-path src-tauri/Cargo.toml --test task_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test sqlite_ideation_session_repo
+cargo test --manifest-path src-tauri/Cargo.toml --test project_commands
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 ```
