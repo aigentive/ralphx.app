@@ -519,7 +519,3 @@ impl<R: ReviewRepository, T: TaskRepository> ReviewService<R, T> {
         self.task_repo.update(&task).await
     }
 }
-
-#[cfg(test)]
-#[path = "review_service_tests.rs"]
-mod tests;

@@ -1,7 +1,11 @@
-use super::*;
-use crate::domain::entities::methodology::MethodologyExtension;
-use crate::domain::entities::status::InternalStatus;
-use crate::domain::entities::workflow::{WorkflowColumn, WorkflowSchema};
+use ralphx_lib::application::AppState;
+use ralphx_lib::commands::methodology_commands::{
+    MethodologyActivationResponse, MethodologyResponse,
+};
+use ralphx_lib::commands::WorkflowSchemaResponse;
+use ralphx_lib::domain::entities::methodology::MethodologyExtension;
+use ralphx_lib::domain::entities::status::InternalStatus;
+use ralphx_lib::domain::entities::workflow::{WorkflowColumn, WorkflowSchema};
 
 fn setup_test_state() -> AppState {
     AppState::new_test()

@@ -58,7 +58,8 @@ impl SqliteIdeationSessionRepository {
 
     /// Insert a session into the database synchronously (for use inside db.run() closures).
     /// Returns the inserted session unchanged (no re-fetch needed — all fields are set by caller).
-    pub(crate) fn insert_sync(
+    #[doc(hidden)]
+    pub fn insert_sync(
         conn: &Connection,
         session: &IdeationSession,
     ) -> AppResult<IdeationSession> {
@@ -97,7 +98,8 @@ impl SqliteIdeationSessionRepository {
     }
 
     /// Fetch a single session by ID; returns None if not found.
-    pub(crate) fn get_by_id_sync(
+    #[doc(hidden)]
+    pub fn get_by_id_sync(
         conn: &Connection,
         id: &str,
     ) -> AppResult<Option<IdeationSession>> {
@@ -280,7 +282,8 @@ impl SqliteIdeationSessionRepository {
     /// - `SELF_REFERENCE` — source is in the same project as the target
     /// - `CIRCULAR_IMPORT` — chain leads back to the target project
     /// - `CHAIN_TOO_DEEP` — chain exceeds `max_depth` (default: 10)
-    pub(crate) fn validate_no_circular_import_sync(
+    #[doc(hidden)]
+    pub fn validate_no_circular_import_sync(
         conn: &Connection,
         source_session_id: &str,
         target_project_id: &str,
@@ -1190,7 +1193,3 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
             .await
     }
 }
-
-#[cfg(test)]
-#[path = "sqlite_ideation_session_repo_tests.rs"]
-mod tests;

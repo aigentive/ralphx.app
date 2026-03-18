@@ -1,6 +1,11 @@
-use super::*;
-use crate::domain::entities::VerificationStatus;
-use crate::testing::SqliteTestDb;
+use ralphx_lib::domain::entities::{
+    ArtifactId, IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
+    VerificationStatus,
+};
+use ralphx_lib::domain::entities::ideation::SessionPurpose;
+use ralphx_lib::domain::repositories::IdeationSessionRepository;
+use ralphx_lib::infrastructure::sqlite::SqliteIdeationSessionRepository;
+use ralphx_lib::testing::SqliteTestDb;
 use rusqlite::Connection;
 
 fn setup_test_db() -> SqliteTestDb {
@@ -796,7 +801,6 @@ async fn test_set_parent_updates_updated_at() {
 
 // ==================== UPDATE_PLAN_ARTIFACT_ID TESTS ====================
 
-use crate::domain::entities::ArtifactId;
 
 #[tokio::test]
 async fn test_update_plan_artifact_id_sets_value() {
@@ -1947,7 +1951,6 @@ async fn test_reset_and_begin_reverify_sqlite_atomicity() {
 /// verification_child_count must be correct, and existing column positions must not be corrupted.
 #[tokio::test]
 async fn test_list_by_group_excludes_verification_sessions_and_counts_children() {
-    use crate::domain::entities::ideation::SessionPurpose;
 
     let db = setup_test_db();
     let project_id = ProjectId::new();
@@ -2006,7 +2009,6 @@ async fn test_list_by_group_excludes_verification_sessions_and_counts_children()
 /// Regression guard: get_group_counts must exclude verification sessions from all counts.
 #[tokio::test]
 async fn test_get_group_counts_excludes_verification_sessions() {
-    use crate::domain::entities::ideation::SessionPurpose;
 
     let db = setup_test_db();
     let project_id = ProjectId::new();

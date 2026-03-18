@@ -727,7 +727,8 @@ pub async fn apply_proposals_to_kanban(
 /// Determine whether a feature branch should be created for this plan apply.
 ///
 /// Simply returns the per-plan override if set, otherwise the project default.
-pub(crate) fn should_create_feature_branch(
+#[doc(hidden)]
+pub fn should_create_feature_branch(
     per_plan_override: Option<bool>,
     project_default: bool,
 ) -> bool {

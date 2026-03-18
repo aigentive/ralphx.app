@@ -1,4 +1,10 @@
-use super::*;
+use ralphx_lib::application::AppState;
+use ralphx_lib::commands::artifact_commands::{
+    get_system_buckets, ArtifactResponse, BucketResponse,
+};
+use ralphx_lib::domain::entities::{
+    Artifact, ArtifactBucket, ArtifactBucketId, ArtifactId, ArtifactRelation, ArtifactType, TaskId,
+};
 
 fn setup_test_state() -> AppState {
     AppState::new_test()
@@ -242,7 +248,7 @@ async fn test_get_system_buckets() {
 
 #[tokio::test]
 async fn test_get_team_artifacts_by_session_filters_correctly() {
-    use crate::domain::entities::TeamArtifactMetadata;
+    use ralphx_lib::domain::entities::TeamArtifactMetadata;
 
     let state = setup_test_state();
     let bucket_id = ArtifactBucketId::from_string("team-findings");

@@ -274,7 +274,3 @@ pub async fn deactivate_methodology(
 
     Ok(MethodologyResponse::from(deactivated))
 }
-
-#[cfg(test)]
-#[path = "methodology_commands_tests.rs"]
-mod tests;

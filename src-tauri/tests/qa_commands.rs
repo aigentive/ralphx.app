@@ -1,7 +1,9 @@
-use super::*;
-use crate::domain::entities::TaskQA;
-use crate::domain::qa::{
-    AcceptanceCriteria, AcceptanceCriterion, QAOverallStatus, QAStepStatus, QATestStep, QATestSteps,
+use ralphx_lib::application::AppState;
+use ralphx_lib::commands::qa_commands::{QAResultsResponse, TaskQAResponse};
+use ralphx_lib::domain::entities::{TaskId, TaskQA};
+use ralphx_lib::domain::qa::{
+    AcceptanceCriteria, AcceptanceCriterion, QAOverallStatus, QAResults, QAStepResult,
+    QAStepStatus, QATestStep, QATestSteps,
 };
 
 async fn setup_test_state() -> AppState {

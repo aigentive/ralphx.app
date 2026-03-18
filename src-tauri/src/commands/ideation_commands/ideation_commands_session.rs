@@ -25,7 +25,8 @@ use super::ideation_commands_types::{
 
 /// Core implementation for creating an ideation session.
 /// Generic over Runtime to enable unit testing with MockRuntime.
-pub(crate) async fn create_ideation_session_impl<R: tauri::Runtime>(
+#[doc(hidden)]
+pub async fn create_ideation_session_impl<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     state: &AppState,
     input: CreateSessionInput,

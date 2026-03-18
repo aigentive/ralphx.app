@@ -9,8 +9,6 @@
 // - Optionally marking the session as "converted"
 
 mod helpers;
-#[cfg(test)]
-mod tests;
 mod types;
 
 pub use types::{ApplyProposalsOptions, ApplyProposalsResult, SelectionValidation, TargetColumn};
@@ -70,6 +68,11 @@ where
             task_dep_repo,
             task_step_repo,
         }
+    }
+
+    #[doc(hidden)]
+    pub fn task_step_repo_for_test(&self) -> &Arc<TS> {
+        &self.task_step_repo
     }
 
     /// Validate that the selected proposals have no circular dependencies

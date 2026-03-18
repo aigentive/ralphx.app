@@ -7,8 +7,6 @@
 // - Adding chat messages
 // - Retrieving session data with proposals and messages
 
-#[cfg(test)]
-mod tests;
 mod types;
 
 pub use types::{
@@ -65,6 +63,11 @@ where
             message_repo,
             dependency_repo,
         }
+    }
+
+    #[doc(hidden)]
+    pub fn session_repo_for_test(&self) -> &Arc<S> {
+        &self.session_repo
     }
 
     /// Create a new ideation session with optional auto-generated title

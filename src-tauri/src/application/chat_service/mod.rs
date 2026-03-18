@@ -119,7 +119,8 @@ pub(crate) fn has_meaningful_output(
 /// Returns true for context types that consume execution slots (running count).
 /// TaskExecution, Review, Merge, and Ideation are tracked against max_concurrent.
 /// Task chat and Project chat are lightweight conversational agents — excluded.
-pub(crate) fn uses_execution_slot(context_type: ChatContextType) -> bool {
+#[doc(hidden)]
+pub fn uses_execution_slot(context_type: ChatContextType) -> bool {
     matches!(
         context_type,
         ChatContextType::TaskExecution

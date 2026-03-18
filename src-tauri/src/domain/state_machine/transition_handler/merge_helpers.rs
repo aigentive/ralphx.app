@@ -401,7 +401,8 @@ pub(super) async fn task_targets_branch(
 /// Parse a task's metadata JSON string into a `serde_json::Value`.
 ///
 /// Returns `None` if the task has no metadata or if parsing fails.
-pub(crate) fn parse_metadata(task: &Task) -> Option<serde_json::Value> {
+#[doc(hidden)]
+pub fn parse_metadata(task: &Task) -> Option<serde_json::Value> {
     task.metadata
         .as_ref()
         .and_then(|m| serde_json::from_str(m).ok())
@@ -610,7 +611,8 @@ pub(crate) fn is_main_merge_deferred_timed_out(task: &Task) -> bool {
 ///
 /// Valid origins: "scheduler", "revision", "recovery", "retry", "qa".
 /// Mutates the task in-place, creating metadata if it doesn't exist.
-pub(crate) fn set_trigger_origin(task: &mut Task, origin: &str) {
+#[doc(hidden)]
+pub fn set_trigger_origin(task: &mut Task, origin: &str) {
     let mut meta = parse_metadata(task).unwrap_or_else(|| serde_json::json!({}));
     if let Some(obj) = meta.as_object_mut() {
         obj.insert("trigger_origin".to_string(), serde_json::json!(origin));

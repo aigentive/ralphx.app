@@ -1,5 +1,9 @@
-use super::*;
-use crate::domain::entities::{Review, ReviewStatus, ReviewerType};
+use ralphx_lib::application::AppState;
+use ralphx_lib::commands::review_commands::{FixTaskAttemptsResponse, ReviewResponse};
+use ralphx_lib::domain::entities::{
+    InternalStatus, Project, ProjectId, Review, ReviewId, ReviewStatus, ReviewerType, Task,
+    TaskCategory, TaskId,
+};
 
 async fn setup_test_state() -> AppState {
     AppState::new_test()
@@ -246,8 +250,6 @@ async fn test_review_response_conversion() {
 // ========================================
 // Fix Task Command Tests
 // ========================================
-
-use crate::domain::entities::Project;
 
 async fn create_task_for_tests(state: &AppState, project_id: ProjectId) -> Task {
     // Create a project first (required for task creation)

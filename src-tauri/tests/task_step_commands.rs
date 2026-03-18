@@ -1,6 +1,7 @@
-use super::*;
-use crate::application::AppState;
-use crate::domain::entities::{Project, ProjectId, TaskStepStatus};
+use ralphx_lib::application::AppState;
+use ralphx_lib::domain::entities::{
+    Project, ProjectId, StepProgressSummary, TaskId, TaskStep, TaskStepStatus,
+};
 
 fn setup_test_state() -> AppState {
     AppState::new_test()
@@ -13,7 +14,7 @@ async fn create_test_project(state: &AppState) -> Project {
 }
 
 async fn create_test_task(state: &AppState, project_id: ProjectId) -> TaskId {
-    let task = crate::domain::entities::Task::new(project_id, "Test Task".to_string());
+    let task = ralphx_lib::domain::entities::Task::new(project_id, "Test Task".to_string());
     state.task_repo.create(task.clone()).await.unwrap();
     task.id
 }
@@ -519,7 +520,7 @@ async fn test_fail_step_invalid_status() {
 
 #[cfg(test)]
 mod ipc_contract {
-    use super::super::{CreateTaskStepInput, UpdateTaskStepInput};
+    use ralphx_lib::commands::task_step_commands::{CreateTaskStepInput, UpdateTaskStepInput};
 
     // ── CreateTaskStepInput ─────────────────────────────────────────────────
 

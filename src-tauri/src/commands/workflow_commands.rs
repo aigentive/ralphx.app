@@ -23,7 +23,8 @@ pub struct WorkflowColumnInput {
 }
 
 impl WorkflowColumnInput {
-    fn to_column(&self) -> Result<WorkflowColumn, String> {
+    #[doc(hidden)]
+    pub fn to_column(&self) -> Result<WorkflowColumn, String> {
         let maps_to: InternalStatus = self
             .maps_to
             .parse()
@@ -408,7 +409,3 @@ pub async fn get_builtin_workflows() -> Result<Vec<WorkflowResponse>, String> {
         WorkflowResponse::from(WorkflowSchema::jira_compatible()),
     ])
 }
-
-#[cfg(test)]
-#[path = "workflow_commands_tests.rs"]
-mod tests;

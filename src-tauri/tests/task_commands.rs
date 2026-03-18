@@ -1,11 +1,12 @@
 // Tests for task_commands module
 
-#[cfg(test)]
-use super::*;
-use crate::application::AppState;
-use crate::domain::entities::{InternalStatus, Project, ProjectId, Task, TaskCategory, TaskId};
-use crate::domain::repositories::ProjectRepository;
-use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
+use ralphx_lib::application::AppState;
+use ralphx_lib::commands::task_commands::{helpers, types};
+use ralphx_lib::domain::entities::{
+    InternalStatus, Project, ProjectId, Task, TaskCategory, TaskId,
+};
+use ralphx_lib::domain::repositories::ProjectRepository;
+use ralphx_lib::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
 use chrono::Utc;
 use std::sync::Arc;
 
@@ -1044,7 +1045,7 @@ async fn test_create_task_with_steps() {
     let created_task = state.task_repo.create(task).await.unwrap();
 
     // Create steps manually (simulating what create_task command does)
-    use crate::domain::entities::TaskStep;
+    use ralphx_lib::domain::entities::TaskStep;
     let steps: Vec<TaskStep> = step_titles
         .into_iter()
         .enumerate()
@@ -1206,7 +1207,7 @@ async fn test_queue_change_detection_logic() {
 
 #[tokio::test]
 async fn test_list_tasks_filters_by_session_id() {
-    use crate::domain::entities::IdeationSessionId;
+    use ralphx_lib::domain::entities::IdeationSessionId;
 
     let state = setup_test_state().await;
     let project_id = ProjectId::from_string("test-project".to_string());
@@ -1257,7 +1258,7 @@ async fn test_list_tasks_filters_by_session_id() {
 
 #[tokio::test]
 async fn test_search_tasks_filters_by_session_id() {
-    use crate::domain::entities::IdeationSessionId;
+    use ralphx_lib::domain::entities::IdeationSessionId;
 
     let state = setup_test_state().await;
     let project_id = ProjectId::from_string("test-project".to_string());
@@ -1295,7 +1296,7 @@ async fn test_search_tasks_filters_by_session_id() {
 
 #[tokio::test]
 async fn test_get_archived_count_filters_by_session_id() {
-    use crate::domain::entities::IdeationSessionId;
+    use ralphx_lib::domain::entities::IdeationSessionId;
 
     let state = setup_test_state().await;
     let project_id = ProjectId::from_string("test-project".to_string());
@@ -1343,7 +1344,9 @@ async fn test_get_archived_count_filters_by_session_id() {
 
 #[cfg(test)]
 mod ipc_contract {
-    use super::super::{AnswerUserQuestionInput, CreateTaskInput, InjectTaskInput, UpdateTaskInput};
+    use ralphx_lib::commands::task_commands::{
+        AnswerUserQuestionInput, CreateTaskInput, InjectTaskInput, UpdateTaskInput,
+    };
 
     // ── CreateTaskInput ─────────────────────────────────────────────────────
 
@@ -1463,12 +1466,14 @@ mod ipc_contract {
 // exact logic using the same helper functions and MemoryTaskRepository.
 #[cfg(test)]
 mod layer1_restart_tests {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionRecoveryMetadata, ExecutionRecoveryState, InternalStatus, ProjectId, Task,
     };
-    use crate::domain::repositories::TaskRepository;
-    use crate::domain::state_machine::transition_handler::{parse_metadata, set_trigger_origin};
-    use crate::infrastructure::memory::MemoryTaskRepository;
+    use ralphx_lib::domain::repositories::TaskRepository;
+    use ralphx_lib::domain::state_machine::transition_handler::{
+        parse_metadata, set_trigger_origin,
+    };
+    use ralphx_lib::infrastructure::memory::MemoryTaskRepository;
     use std::sync::Arc;
 
     async fn create_task_in_repo(

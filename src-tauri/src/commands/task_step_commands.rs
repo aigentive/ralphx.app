@@ -299,7 +299,3 @@ pub async fn fail_step(
 
     Ok(TaskStepResponse::from(step))
 }
-
-#[cfg(test)]
-#[path = "task_step_commands_tests.rs"]
-mod tests;

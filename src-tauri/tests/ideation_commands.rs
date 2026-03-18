@@ -1,11 +1,10 @@
-use super::*;
-use crate::application::AppState;
-use crate::commands::ideation_commands::ideation_commands_apply::should_create_feature_branch;
-use crate::domain::entities::{
+use ralphx_lib::application::AppState;
+use ralphx_lib::commands::ideation_commands::*;
+use ralphx_lib::domain::entities::{
     ChatMessage, IdeationSession, IdeationSessionId, IdeationSessionStatus, Priority, ProjectId,
     ProposalCategory, TaskProposal, TaskProposalId,
 };
-use crate::domain::ideation::IdeationSettings;
+use ralphx_lib::domain::ideation::IdeationSettings;
 
 fn setup_test_state() -> AppState {
     AppState::new_test()
@@ -197,8 +196,8 @@ async fn test_get_session_with_data() {
     let proposal = TaskProposal::new(
         created_session.id.clone(),
         "Test Proposal",
-        crate::domain::entities::ProposalCategory::Feature,
-        crate::domain::entities::Priority::High,
+        ProposalCategory::Feature,
+        Priority::High,
     );
     state
         .task_proposal_repo
@@ -236,8 +235,8 @@ async fn test_proposal_response_serialization() {
     let proposal = TaskProposal::new(
         session_id,
         "Test Proposal",
-        crate::domain::entities::ProposalCategory::Feature,
-        crate::domain::entities::Priority::High,
+        ProposalCategory::Feature,
+        Priority::High,
     );
     let response = TaskProposalResponse::from(proposal);
 
@@ -758,7 +757,7 @@ async fn test_analyze_dependencies_empty_session() {
 
 #[tokio::test]
 async fn test_dependency_graph_response_serialization() {
-    use crate::domain::entities::DependencyGraph;
+    use ralphx_lib::domain::entities::DependencyGraph;
 
     let graph = DependencyGraph::new();
     let response = DependencyGraphResponse::from(graph);
@@ -778,8 +777,8 @@ async fn test_task_blockers() {
     let project_id = ProjectId::new();
 
     // Create tasks
-    let task1 = crate::domain::entities::Task::new(project_id.clone(), "Task 1".to_string());
-    let task2 = crate::domain::entities::Task::new(project_id.clone(), "Task 2".to_string());
+    let task1 = ralphx_lib::domain::entities::Task::new(project_id.clone(), "Task 1".to_string());
+    let task2 = ralphx_lib::domain::entities::Task::new(project_id.clone(), "Task 2".to_string());
 
     let t1 = state
         .task_repo
@@ -871,7 +870,7 @@ async fn test_send_chat_message_about_task() {
     let project_id = ProjectId::new();
 
     // Create a task
-    let task = crate::domain::entities::Task::new(project_id, "Test Task".to_string());
+    let task = ralphx_lib::domain::entities::Task::new(project_id, "Test Task".to_string());
     let created_task = state
         .task_repo
         .create(task)
@@ -954,7 +953,7 @@ async fn test_get_task_messages() {
     let project_id = ProjectId::new();
 
     // Create a task
-    let task = crate::domain::entities::Task::new(project_id, "Test Task".to_string());
+    let task = ralphx_lib::domain::entities::Task::new(project_id, "Test Task".to_string());
     let created_task = state
         .task_repo
         .create(task)
@@ -1208,7 +1207,7 @@ async fn test_get_ideation_settings_returns_default() {
 
     assert_eq!(
         settings.plan_mode,
-        crate::domain::ideation::IdeationPlanMode::Optional
+        ralphx_lib::domain::ideation::IdeationPlanMode::Optional
     );
     assert!(!settings.require_plan_approval);
     assert!(settings.suggest_plans_for_complex);
@@ -1221,7 +1220,7 @@ async fn test_update_ideation_settings() {
 
     // Create custom settings
     let custom_settings = IdeationSettings {
-        plan_mode: crate::domain::ideation::IdeationPlanMode::Required,
+        plan_mode: ralphx_lib::domain::ideation::IdeationPlanMode::Required,
         require_plan_approval: true,
         suggest_plans_for_complex: false,
         auto_link_proposals: false,
@@ -1238,7 +1237,7 @@ async fn test_update_ideation_settings() {
 
     assert_eq!(
         updated.plan_mode,
-        crate::domain::ideation::IdeationPlanMode::Required
+        ralphx_lib::domain::ideation::IdeationPlanMode::Required
     );
     assert!(updated.require_plan_approval);
     assert!(!updated.suggest_plans_for_complex);
@@ -1251,7 +1250,7 @@ async fn test_ideation_settings_persist_across_reads() {
 
     // Update settings
     let custom_settings = IdeationSettings {
-        plan_mode: crate::domain::ideation::IdeationPlanMode::Parallel,
+        plan_mode: ralphx_lib::domain::ideation::IdeationPlanMode::Parallel,
         require_plan_approval: false,
         suggest_plans_for_complex: true,
         auto_link_proposals: false,
@@ -1274,7 +1273,7 @@ async fn test_ideation_settings_persist_across_reads() {
 
     assert_eq!(
         retrieved.plan_mode,
-        crate::domain::ideation::IdeationPlanMode::Parallel
+        ralphx_lib::domain::ideation::IdeationPlanMode::Parallel
     );
     assert!(!retrieved.require_plan_approval);
     assert!(retrieved.suggest_plans_for_complex);
@@ -1299,9 +1298,11 @@ async fn test_delete_session_cascades_to_tasks() {
         .expect("Failed to create session");
 
     // Create tasks linked to this session
-    let mut task1 = crate::domain::entities::Task::new(project_id.clone(), "Task 1".to_string());
+    let mut task1 =
+        ralphx_lib::domain::entities::Task::new(project_id.clone(), "Task 1".to_string());
     task1.ideation_session_id = Some(created_session.id.clone());
-    let mut task2 = crate::domain::entities::Task::new(project_id.clone(), "Task 2".to_string());
+    let mut task2 =
+        ralphx_lib::domain::entities::Task::new(project_id.clone(), "Task 2".to_string());
     task2.ideation_session_id = Some(created_session.id.clone());
 
     let t1 = state
@@ -1450,7 +1451,7 @@ async fn test_single_proposal_now_creates_feature_branch() {
         .expect("Failed to create proposal");
 
     // Create the corresponding task (simulating what apply_proposals_to_kanban does)
-    let mut task = crate::domain::entities::Task::new(project_id.clone(), p1.title.clone());
+    let mut task = ralphx_lib::domain::entities::Task::new(project_id.clone(), p1.title.clone());
     task.ideation_session_id = Some(created_session.id.clone());
     let _created_task = state
         .task_repo
@@ -1492,13 +1493,13 @@ async fn test_delete_session_only_deletes_own_tasks() {
 
     // Create tasks: 2 for session A, 1 for session B
     let mut task_a1 =
-        crate::domain::entities::Task::new(project_id.clone(), "A-Task 1".to_string());
+        ralphx_lib::domain::entities::Task::new(project_id.clone(), "A-Task 1".to_string());
     task_a1.ideation_session_id = Some(created_a.id.clone());
     let mut task_a2 =
-        crate::domain::entities::Task::new(project_id.clone(), "A-Task 2".to_string());
+        ralphx_lib::domain::entities::Task::new(project_id.clone(), "A-Task 2".to_string());
     task_a2.ideation_session_id = Some(created_a.id.clone());
     let mut task_b1 =
-        crate::domain::entities::Task::new(project_id.clone(), "B-Task 1".to_string());
+        ralphx_lib::domain::entities::Task::new(project_id.clone(), "B-Task 1".to_string());
     task_b1.ideation_session_id = Some(created_b.id.clone());
 
     state.task_repo.create(task_a1).await.unwrap();
@@ -1541,7 +1542,7 @@ async fn test_delete_session_only_deletes_own_tasks() {
 
 #[tokio::test]
 async fn test_execution_plan_created_and_stored() {
-    use crate::domain::entities::{ExecutionPlan, ExecutionPlanStatus, IdeationSession};
+    use ralphx_lib::domain::entities::{ExecutionPlan, ExecutionPlanStatus, IdeationSession};
 
     let state = setup_test_state();
     let project_id = ProjectId::new();
@@ -1570,7 +1571,7 @@ async fn test_execution_plan_created_and_stored() {
 
 #[tokio::test]
 async fn test_task_execution_plan_id_persists() {
-    use crate::domain::entities::{ExecutionPlan, ExecutionPlanId, IdeationSession};
+    use ralphx_lib::domain::entities::{ExecutionPlan, ExecutionPlanId, IdeationSession};
 
     let state = setup_test_state();
     let project_id = ProjectId::new();
@@ -1594,7 +1595,7 @@ async fn test_task_execution_plan_id_persists() {
         .expect("Failed to create execution plan");
 
     // Create a task with execution_plan_id set
-    let mut task = crate::domain::entities::Task::new(project_id.clone(), "EP Task".to_string());
+    let mut task = ralphx_lib::domain::entities::Task::new(project_id.clone(), "EP Task".to_string());
     task.ideation_session_id = Some(session_id.clone());
     task.execution_plan_id = Some(exec_plan_id.clone());
 
@@ -1619,7 +1620,9 @@ async fn test_task_execution_plan_id_persists() {
 
 #[tokio::test]
 async fn test_plan_branch_execution_plan_id_persists() {
-    use crate::domain::entities::{ArtifactId, ExecutionPlan, ExecutionPlanId, IdeationSession, PlanBranch};
+    use ralphx_lib::domain::entities::{
+        ArtifactId, ExecutionPlan, ExecutionPlanId, IdeationSession, PlanBranch,
+    };
 
     let state = setup_test_state();
     let project_id = ProjectId::new();
@@ -1673,7 +1676,7 @@ async fn test_plan_branch_execution_plan_id_persists() {
 
 #[tokio::test]
 async fn test_two_execution_plans_same_session_have_unique_ids() {
-    use crate::domain::entities::{ExecutionPlan, IdeationSession};
+    use ralphx_lib::domain::entities::{ExecutionPlan, IdeationSession};
 
     let state = setup_test_state();
     let project_id = ProjectId::new();
@@ -1709,7 +1712,7 @@ async fn test_two_execution_plans_same_session_have_unique_ids() {
 
 #[tokio::test]
 async fn test_get_by_execution_plan_id_returns_none_when_absent() {
-    use crate::domain::entities::ExecutionPlanId;
+    use ralphx_lib::domain::entities::ExecutionPlanId;
 
     let state = setup_test_state();
     let nonexistent_id = ExecutionPlanId::new();
@@ -1733,10 +1736,10 @@ async fn setup_session_with_proposals(
     proposal_count: usize,
 ) -> (
     ProjectId,
-    crate::domain::entities::IdeationSession,
+    ralphx_lib::domain::entities::IdeationSession,
     Vec<String>,
 ) {
-    use crate::domain::entities::{Project, ProposalCategory, Priority};
+    use ralphx_lib::domain::entities::{Project, ProposalCategory, Priority};
 
     let project = Project::new("Test Project".to_string(), "/tmp/test".to_string());
     let project = state
@@ -1773,9 +1776,7 @@ async fn setup_session_with_proposals(
 
 #[tokio::test]
 async fn test_apply_proposals_core_creates_tasks_with_ready_status() {
-    use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
-    use crate::commands::ideation_commands::ApplyProposalsInput;
-    use crate::domain::entities::InternalStatus;
+    use ralphx_lib::domain::entities::InternalStatus;
 
     let state = setup_test_state();
     let (project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
@@ -1801,7 +1802,7 @@ async fn test_apply_proposals_core_creates_tasks_with_ready_status() {
 
     // Verify tasks are actually Ready in the repo
     for task_id_str in &result.created_task_ids {
-        let task_id = crate::domain::entities::TaskId::from_string(task_id_str.clone());
+        let task_id = ralphx_lib::domain::entities::TaskId::from_string(task_id_str.clone());
         let task = state
             .task_repo
             .get_by_id(&task_id)
@@ -1819,9 +1820,6 @@ async fn test_apply_proposals_core_creates_tasks_with_ready_status() {
 
 #[tokio::test]
 async fn test_apply_proposals_core_session_converts_to_accepted() {
-    use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
-    use crate::commands::ideation_commands::ApplyProposalsInput;
-
     let state = setup_test_state();
     let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 1).await;
 
@@ -1851,9 +1849,6 @@ async fn test_apply_proposals_core_session_converts_to_accepted() {
 
 #[tokio::test]
 async fn test_apply_proposals_core_partial_apply_does_not_convert_session() {
-    use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
-    use crate::commands::ideation_commands::ApplyProposalsInput;
-
     let state = setup_test_state();
     let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
 
@@ -1884,9 +1879,7 @@ async fn test_apply_proposals_core_partial_apply_does_not_convert_session() {
 
 #[tokio::test]
 async fn test_apply_proposals_core_idempotency_guard() {
-    use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
-    use crate::commands::ideation_commands::ApplyProposalsInput;
-    use crate::domain::entities::ExecutionPlan;
+    use ralphx_lib::domain::entities::ExecutionPlan;
 
     let state = setup_test_state();
     let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
@@ -1932,15 +1925,13 @@ async fn test_apply_proposals_core_idempotency_guard() {
 async fn test_apply_proposals_core_repairs_stale_orphaned_execution_plan() {
     use chrono::{Duration, Utc};
 
-    use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
-    use crate::commands::ideation_commands::ApplyProposalsInput;
-    use crate::domain::entities::{ExecutionPlan, ExecutionPlanStatus, IdeationSessionStatus};
+    use ralphx_lib::domain::entities::{ExecutionPlan, ExecutionPlanStatus, IdeationSessionStatus};
 
     let state = setup_test_state();
     let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
 
     let stale_after_secs =
-        crate::infrastructure::agents::claude::verification_config()
+        ralphx_lib::infrastructure::agents::claude::verification_config()
             .accept_stale_execution_plan_secs as i64;
     let mut stale_plan = ExecutionPlan::new(session.id.clone());
     stale_plan.created_at = Utc::now() - Duration::seconds(stale_after_secs + 1);
@@ -1989,9 +1980,7 @@ async fn test_apply_proposals_core_repairs_stale_orphaned_execution_plan() {
 
 #[tokio::test]
 async fn test_apply_proposals_core_rejects_inactive_session() {
-    use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
-    use crate::commands::ideation_commands::ApplyProposalsInput;
-    use crate::error::AppError;
+    use ralphx_lib::error::AppError;
 
     let state = setup_test_state();
     let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 1).await;
@@ -2024,9 +2013,7 @@ async fn test_apply_proposals_core_rejects_inactive_session() {
 
 #[tokio::test]
 async fn test_apply_proposals_core_rejects_unknown_proposals() {
-    use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
-    use crate::commands::ideation_commands::ApplyProposalsInput;
-    use crate::error::AppError;
+    use ralphx_lib::error::AppError;
 
     let state = setup_test_state();
     let (_project_id, session, _) = setup_session_with_proposals(&state, 1).await;
@@ -2052,9 +2039,6 @@ async fn test_apply_proposals_core_rejects_unknown_proposals() {
 
 #[tokio::test]
 async fn test_apply_proposals_core_result_contains_context_fields() {
-    use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
-    use crate::commands::ideation_commands::ApplyProposalsInput;
-
     let state = setup_test_state();
     let (project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
 
@@ -2080,9 +2064,7 @@ async fn test_apply_proposals_core_result_contains_context_fields() {
 
 #[tokio::test]
 async fn test_apply_proposals_core_preserves_dependencies() {
-    use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
-    use crate::commands::ideation_commands::ApplyProposalsInput;
-    use crate::domain::entities::{InternalStatus, Priority, ProposalCategory, Project};
+    use ralphx_lib::domain::entities::{InternalStatus, Priority, ProposalCategory, Project};
 
     let state = setup_test_state();
 
@@ -2169,8 +2151,7 @@ async fn test_apply_proposals_core_preserves_dependencies() {
 
 #[tokio::test]
 async fn test_create_ideation_session_emits_session_created_event() {
-    use super::ideation_commands_session::create_ideation_session_impl;
-    use crate::testing::create_mock_app;
+    use ralphx_lib::testing::create_mock_app;
     use std::sync::{Arc, Mutex};
     use tauri::Listener;
 

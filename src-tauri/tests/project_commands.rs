@@ -1,9 +1,15 @@
-use super::*;
-use crate::domain::entities::{ArtifactId, IdeationSessionId, PlanBranch};
-use crate::infrastructure::memory::{
+use std::sync::Arc;
+
+use ralphx_lib::application::AppState;
+use ralphx_lib::commands::project_commands::*;
+use ralphx_lib::domain::entities::{
+    ArtifactId, GitMode, IdeationSessionId, InternalStatus, PlanBranch, PlanBranchStatus, Project,
+    ProjectId, TaskId,
+};
+use ralphx_lib::domain::repositories::{PlanBranchRepository, ProjectRepository};
+use ralphx_lib::infrastructure::memory::{
     MemoryPlanBranchRepository, MemoryProjectRepository, MemoryTaskRepository,
 };
-use std::sync::Arc;
 
 // ── is_github_url tests ──────────────────────────────────────────────────────
 
@@ -369,7 +375,7 @@ async fn test_get_git_default_branch_first_branch_alphabetically() {
 
 #[cfg(test)]
 mod ipc_contract {
-    use super::super::{CreateProjectInput, UpdateProjectInput};
+    use ralphx_lib::commands::project_commands::{CreateProjectInput, UpdateProjectInput};
 
     // ── CreateProjectInput ──────────────────────────────────────────────────
 
@@ -451,8 +457,6 @@ mod ipc_contract {
 #[cfg(test)]
 mod mode_switch_tests {
     use super::*;
-    use crate::domain::entities::{InternalStatus, TaskId};
-    use crate::domain::repositories::{PlanBranchRepository, ProjectRepository};
 
     fn make_branch_with_pr(project_id: &str, merge_task_id: &str, pr_number: i64) -> PlanBranch {
         let mut b = PlanBranch::new(
@@ -543,8 +547,6 @@ mod mode_switch_tests {
     async fn merged_branch_status_is_skipped() {
         // Branches with Merged status should be skipped entirely.
         // Verify the PlanBranchStatus matching — Merged/Abandoned branches skip cleanup.
-        use crate::domain::entities::PlanBranchStatus;
-
         let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
 
         let mut branch = make_branch_with_pr("proj-3", "task-merge-3", 99);

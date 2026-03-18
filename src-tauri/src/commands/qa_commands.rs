@@ -376,7 +376,3 @@ pub async fn skip_qa(
 
     Ok(TaskQAResponse::from(updated))
 }
-
-#[cfg(test)]
-#[path = "qa_commands_tests.rs"]
-mod tests;

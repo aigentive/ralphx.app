@@ -64,11 +64,12 @@ pub(crate) use merge_helpers::{
     compute_merge_worktree_path, get_trigger_origin,
     has_branch_missing_metadata, has_main_merge_deferred_metadata, has_merge_deferred_metadata,
     is_main_merge_deferred_timed_out, is_merge_deferred_timed_out, merge_metadata_into,
-    parse_metadata, set_source_conflict_resolved,
-    set_conflict_metadata, set_trigger_origin,
+    set_source_conflict_resolved, set_conflict_metadata,
 };
 #[doc(hidden)]
 pub use merge_helpers::DEFERRED_MERGE_TIMEOUT_SECONDS;
+#[doc(hidden)]
+pub use merge_helpers::{parse_metadata, set_trigger_origin};
 
 // -- Crate-visible re-exports (merge_validation) --
 pub(crate) use merge_validation::{format_validation_error_metadata, run_validation_commands};

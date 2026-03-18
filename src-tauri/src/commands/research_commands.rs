@@ -346,7 +346,3 @@ pub async fn get_research_presets() -> Result<Vec<ResearchPresetResponse>, Strin
         })
         .collect())
 }
-
-#[cfg(test)]
-#[path = "research_commands_tests.rs"]
-mod tests;

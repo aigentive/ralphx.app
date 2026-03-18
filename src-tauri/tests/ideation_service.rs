@@ -1,16 +1,10 @@
-#[cfg(test)]
-use super::{CreateProposalOptions, IdeationService};
-use crate::domain::entities::{
-    ArtifactId, ChatConversationId, ChatMessage, ChatMessageId, IdeationSession, IdeationSessionId,
-    IdeationSessionStatus, MessageRole, Priority, PriorityAssessment, ProjectId, ProposalCategory,
-    ProposalStatus, TaskId, TaskProposal, TaskProposalId, VerificationStatus,
-};
-use crate::domain::repositories::{
-    ChatMessageRepository, IdeationSessionRepository, ProposalDependencyRepository,
-    TaskProposalRepository,
-};
-use crate::error::AppResult;
 use async_trait::async_trait;
+use ralphx_lib::application::{
+    CreateProposalOptions, IdeationService, UpdateProposalOptions,
+};
+use ralphx_lib::domain::entities::{self, *};
+use ralphx_lib::domain::repositories::{self, *};
+use ralphx_lib::error::{AppError, AppResult};
 use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -103,7 +97,7 @@ impl IdeationSessionRepository for MockSessionRepository {
     ) -> AppResult<()> {
         if let Some(session) = self.sessions.lock().unwrap().get_mut(&id.to_string()) {
             session.plan_artifact_id =
-                plan_artifact_id.map(crate::domain::entities::ArtifactId::from_string);
+                plan_artifact_id.map(entities::ArtifactId::from_string);
             session.updated_at = Utc::now();
         }
         Ok(())
@@ -218,7 +212,7 @@ impl IdeationSessionRepository for MockSessionRepository {
     async fn reset_and_begin_reverify(
         &self,
         _session_id: &str,
-    ) -> AppResult<(i32, crate::domain::entities::VerificationMetadata)> {
+    ) -> AppResult<(i32, entities::VerificationMetadata)> {
         unimplemented!()
     }
 
@@ -306,8 +300,7 @@ impl IdeationSessionRepository for MockSessionRepository {
     async fn get_group_counts(
         &self,
         _project_id: &ProjectId,
-    ) -> AppResult<crate::domain::repositories::ideation_session_repository::SessionGroupCounts>
-    {
+    ) -> AppResult<repositories::ideation_session_repository::SessionGroupCounts> {
         unimplemented!()
     }
 
@@ -317,7 +310,10 @@ impl IdeationSessionRepository for MockSessionRepository {
         _group: &str,
         _offset: u32,
         _limit: u32,
-    ) -> AppResult<(Vec<crate::domain::repositories::ideation_session_repository::IdeationSessionWithProgress>, u32)> {
+    ) -> AppResult<(
+        Vec<repositories::ideation_session_repository::IdeationSessionWithProgress>,
+        u32,
+    )> {
         unimplemented!()
     }
 }
@@ -474,7 +470,7 @@ impl TaskProposalRepository for MockProposalRepository {
         let mut proposals = self.proposals.lock().unwrap();
         let proposal = proposals
             .get_mut(&id.to_string())
-            .ok_or_else(|| crate::error::AppError::NotFound(format!("Proposal {} not found", id)))?;
+            .ok_or_else(|| AppError::NotFound(format!("Proposal {} not found", id)))?;
         proposal.archived_at = Some(Utc::now());
         proposal.updated_at = Utc::now();
         Ok(proposal.clone())
@@ -968,8 +964,8 @@ async fn test_get_sessions_by_project() {
     );
 
     // Create sessions
-    service.session_repo.create(session1.clone()).await.unwrap();
-    service.session_repo.create(session2.clone()).await.unwrap();
+    service.session_repo_for_test().create(session1.clone()).await.unwrap();
+    service.session_repo_for_test().create(session2.clone()).await.unwrap();
 
     let sessions = service.get_sessions_by_project(&project_id).await.unwrap();
     assert_eq!(sessions.len(), 2);
@@ -989,8 +985,8 @@ async fn test_get_active_sessions() {
         Arc::new(MockDependencyRepository::new()),
     );
 
-    service.session_repo.create(session1.clone()).await.unwrap();
-    service.session_repo.create(session2.clone()).await.unwrap();
+    service.session_repo_for_test().create(session1.clone()).await.unwrap();
+    service.session_repo_for_test().create(session2.clone()).await.unwrap();
 
     let active = service.get_active_sessions(&project_id).await.unwrap();
     assert_eq!(active.len(), 1);
@@ -1061,7 +1057,7 @@ async fn test_update_proposal_title() {
     let updated = service
         .update_proposal(
             &proposal.id,
-            super::UpdateProposalOptions {
+            UpdateProposalOptions {
                 title: Some("Updated Title".to_string()),
                 ..Default::default()
             },
@@ -1088,7 +1084,7 @@ async fn test_update_proposal_user_priority() {
     let updated = service
         .update_proposal(
             &proposal.id,
-            super::UpdateProposalOptions {
+            UpdateProposalOptions {
                 user_priority: Some(Priority::Critical),
                 ..Default::default()
             },
@@ -1108,7 +1104,7 @@ async fn test_update_proposal_not_found() {
     let result = service
         .update_proposal(
             &proposal_id,
-            super::UpdateProposalOptions {
+            UpdateProposalOptions {
                 title: Some("New Title".to_string()),
                 ..Default::default()
             },

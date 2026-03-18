@@ -5,13 +5,15 @@
 // `context_matches_running_status_for_gc`. A Failed task with a stale registry
 // entry inflated the "Running: 2/10" count while only 1 task was visible.
 
-use super::*;
-use crate::application::AppState;
-use crate::domain::entities::{InternalStatus, Project, Task, TaskId};
-use crate::domain::repositories::{ProjectRepository, TaskRepository};
-use crate::domain::services::{RunningAgentKey, RunningAgentRegistry};
-use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
 use std::sync::Arc;
+
+use ralphx_lib::application::{chat_service::uses_execution_slot, AppState};
+use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::commands::execution_commands::context_matches_running_status_for_gc;
+use ralphx_lib::domain::entities::{ChatContextType, InternalStatus, Project, Task, TaskId};
+use ralphx_lib::domain::repositories::{ProjectRepository, TaskRepository};
+use ralphx_lib::domain::services::{RunningAgentKey, RunningAgentRegistry};
+use ralphx_lib::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
 
 /// Shared helper: create an AppState with memory repos and a fresh project+task.
 /// Returns (app_state, task) with the task already persisted in the given status.
@@ -68,7 +70,7 @@ async fn count_running(app_state: &AppState) -> u32 {
     let mut running_count = 0u32;
 
     for (key, _) in registry_entries {
-        let context_type = match ChatContextType::from_str(&key.context_type) {
+        let context_type = match key.context_type.parse::<ChatContextType>() {
             Ok(value) => value,
             Err(_) => continue,
         };
@@ -106,7 +108,7 @@ async fn count_visible_processes(app_state: &AppState) -> usize {
     let mut count = 0usize;
 
     for (key, _) in registry_entries {
-        let context_type = match ChatContextType::from_str(&key.context_type) {
+        let context_type = match key.context_type.parse::<ChatContextType>() {
             Ok(value) => value,
             Err(_) => continue,
         };
@@ -408,7 +410,8 @@ async fn count_global_running_with_state(
     let total_with_slot = registry_entries
         .iter()
         .filter(|(key, _)| {
-            ChatContextType::from_str(&key.context_type)
+            key.context_type
+                .parse::<ChatContextType>()
                 .map(uses_execution_slot)
                 .unwrap_or(false)
         })
@@ -426,7 +429,7 @@ async fn count_project_running_with_state(
     let mut running_count = 0u32;
 
     for (key, _) in registry_entries {
-        let context_type = match ChatContextType::from_str(&key.context_type) {
+        let context_type = match key.context_type.parse::<ChatContextType>() {
             Ok(value) => value,
             Err(_) => continue,
         };

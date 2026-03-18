@@ -34,6 +34,11 @@ paths:
 | Setup/seeding | Shared suite helpers/builders on top of `SqliteTestDb`; one migration pass per temp DB only |
 | Concurrency | File-backed temp DBs for shared access; `:memory:` only for intentionally isolated narrow tests |
 | Compile-scope reduction | Move oversized state-machine/worktree/orchestration suites out of `src-tauri/src/**` lib tests into dedicated `src-tauri/tests/*.rs` integration binaries when they only need explicit public/internal-facing APIs |
+| Command-suite test seams | When moving a `src-tauri/src/commands/**/tests.rs` sidecar into `src-tauri/tests/*.rs`, re-export any required helper entry points from the command module root with `#[doc(hidden)] pub`; don’t couple integration tests to private submodules |
+| Prefer public diagnostics in integration tests | When a moved suite only needs visibility into state, prefer existing public methods like `dump_state()` over widening `#[cfg(test)]` helpers just to keep the old assertions |
+| Shared regression helpers | If an integration suite validates shared state-machine logic, expose the minimal helper once with `#[doc(hidden)] pub` rather than duplicating the production logic in the test |
+| SQLite sync-helper seams | If a moved SQLite repo suite intentionally tests sync helpers, expose only the specific helper functions it calls with `#[doc(hidden)] pub`; don’t make the whole repo surface public |
+| Async command helper seams | For moved command suites that exercise real git/filesystem helpers, expose the existing async helper with `#[doc(hidden)] pub` instead of introducing test-only wrappers |
 | Broad-run runner config | Rust workspace config lives in `src-tauri/.config/nextest.toml`; keep group changes there, not in ad hoc shell flags |
 | Formatter policy | No broad `cargo fmt`; if formatting is required, keep it scoped and separate |
 
@@ -81,6 +86,25 @@ cargo test --manifest-path src-tauri/Cargo.toml --test transition_handler_concur
 cargo test --manifest-path src-tauri/Cargo.toml --test transition_handler_freshness_integration
 cargo test --manifest-path src-tauri/Cargo.toml --test startup_jobs_runner
 cargo test --manifest-path src-tauri/Cargo.toml --test chat_service_streaming
+cargo test --manifest-path src-tauri/Cargo.toml --test review_service
+cargo test --manifest-path src-tauri/Cargo.toml --test apply_service
+cargo test --manifest-path src-tauri/Cargo.toml --test ideation_service
+cargo test --manifest-path src-tauri/Cargo.toml --test ideation_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test task_cleanup_service
+cargo test --manifest-path src-tauri/Cargo.toml --test task_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test sqlite_ideation_session_repo
+cargo test --manifest-path src-tauri/Cargo.toml --test project_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test task_step_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test review_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test metrics_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test plan_branch_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test execution_commands_running_count
+cargo test --manifest-path src-tauri/Cargo.toml --test api_key_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test artifact_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test qa_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test methodology_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test workflow_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test research_commands
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 ```
@@ -165,7 +189,7 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Split slow suites from narrow logic tests | Keep pure/unit logic off SQLite when possible; reserve DB fixtures for repository and integration coverage |
 | Sandbox-safe temp paths | If a test only needs “under HOME”, prefer `tempdir_in(std::env::current_dir()?)` over writing into `$HOME` root directly |
 | Discover exact libtest paths first | If a filter misses, use `-- --list` before guessing more Cargo invocations |
-| Run selective jobs sequentially | Many small targeted runs beat broad runs and avoid `.cargo-lock` contention |
+| Run selective jobs sequentially | Never overlap targeted Cargo runs against the same target dir; they reproduce `Blocking waiting for file lock on build directory` and erase any speed gain |
 | When a builder repeats across files, centralize it | Move shared fixture/builders into `src-tauri/src/testing/` once multiple suites need the same seeded graph |
 
 ## Agent Guidance
