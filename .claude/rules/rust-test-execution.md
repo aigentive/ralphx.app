@@ -104,6 +104,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --test artifact_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test qa_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test methodology_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test workflow_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test research_commands
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 ```
