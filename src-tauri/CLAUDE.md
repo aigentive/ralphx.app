@@ -90,6 +90,7 @@ New pattern → add one-liner here. Pattern name + rule only.
 | MergeDeadline | `attempt_programmatic_merge` wraps cleanup + strategy in bounded deadline (`attempt_merge_deadline_secs`) |
 | No Inline Timeout Consts | All durations → `runtime_config` + `ralphx.yaml`, never Rust `const` |
 | Rust test runner split | Use targeted `cargo test` for pinpoint Rust validation and doctests; use `cargo nextest run` for broad Rust lib runs; fixture rules and commands live in `.claude/rules/rust-test-execution.md` |
+| Oversized lib suite split | Move massive orchestration/state-machine/worktree suites out of `src/**` lib tests into `src-tauri/tests/*.rs` integration binaries, and expose only the minimum internal-facing API needed for them |
 | Tokio spawn | `tokio::spawn` → async fn ONLY. Sync code → `std::thread::spawn` \| `tauri::async_runtime::spawn`. See `.claude/rules/tokio-runtime-safety.md` |
 | Rust std API stability | Avoid unstable std APIs in production code (e.g., `is_multiple_of`) — use stable equivalents (e.g., `%`). See `.claude/rules/rust-stable-apis.md` |
 
@@ -102,10 +103,12 @@ Multi-stream workflow: `.claude/rules/stream-*.md` (features/refactor/polish). F
 New migration: `vN_description.rs` + register in `MIGRATIONS` + bump `SCHEMA_VERSION` | Use `IF NOT EXISTS` | `helpers::add_column_if_not_exists()`
 
 ## Commands
-❌ `cargo check` (hangs) | ❌ full `cargo test` (hangs) | ❌ `--nocapture`
+❌ `cargo check` (hangs) | ❌ full broad `cargo test` | ❌ `--nocapture`
 ```bash
 cargo build                                                              # build
-timeout 10m cargo test --lib --manifest-path src-tauri/Cargo.toml 2>&1 | tail -100  # tests (5-8min)
+cargo test --manifest-path src-tauri/Cargo.toml <filter> --lib           # pinpoint lib tests
+cargo test --manifest-path src-tauri/Cargo.toml --test <target>          # targeted integration tests
+cargo nextest run --manifest-path src-tauri/Cargo.toml --lib             # broad Rust lib run
 cargo clippy --all-targets --all-features -- -D warnings                 # lint
 ```
 Selective Rust test commands + SQLite test fixture rules → `.claude/rules/rust-test-execution.md`

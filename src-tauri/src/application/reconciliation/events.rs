@@ -114,7 +114,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
         run
     }
 
-    pub(crate) async fn latest_status_transition_age(
+    #[doc(hidden)]
+    pub async fn latest_status_transition_age(
         &self,
         task: &Task,
         status: InternalStatus,
@@ -198,7 +199,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .map_err(|e| e.to_string())
     }
 
-    pub(crate) fn latest_deferred_blocker_id(&self, task: &Task) -> Option<TaskId> {
+    #[doc(hidden)]
+    pub fn latest_deferred_blocker_id(&self, task: &Task) -> Option<TaskId> {
         MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
             .ok()
             .flatten()

@@ -8,7 +8,7 @@ use serde::Serialize;
 use crate::domain::entities::{AgentRunStatus, InternalStatus};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RecoveryContext {
+pub enum RecoveryContext {
     Execution,
     Review,
     Merge,
@@ -18,7 +18,7 @@ pub(crate) enum RecoveryContext {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum RecoveryActionKind {
+pub enum RecoveryActionKind {
     None,
     ExecuteEntryActions,
     Transition(InternalStatus),
@@ -27,22 +27,22 @@ pub(crate) enum RecoveryActionKind {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct RecoveryDecision {
-    pub(crate) action: RecoveryActionKind,
-    pub(crate) reason: Option<String>,
+pub struct RecoveryDecision {
+    pub action: RecoveryActionKind,
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct RecoveryEvidence {
-    pub(crate) run_status: Option<AgentRunStatus>,
-    pub(crate) registry_running: bool,
-    pub(crate) can_start: bool,
-    pub(crate) is_stale: bool,
-    pub(crate) is_deferred: bool,
+pub struct RecoveryEvidence {
+    pub run_status: Option<AgentRunStatus>,
+    pub registry_running: bool,
+    pub can_start: bool,
+    pub is_stale: bool,
+    pub is_deferred: bool,
 }
 
 impl RecoveryEvidence {
-    pub(crate) fn has_conflict(&self) -> bool {
+    pub fn has_conflict(&self) -> bool {
         match self.run_status {
             Some(AgentRunStatus::Running) => !self.registry_running,
             Some(_) => self.registry_running,
@@ -52,10 +52,10 @@ impl RecoveryEvidence {
 }
 
 #[derive(Default)]
-pub(crate) struct RecoveryPolicy;
+pub struct RecoveryPolicy;
 
 impl RecoveryPolicy {
-    pub(crate) fn decide_reconciliation(
+    pub fn decide_reconciliation(
         &self,
         context: RecoveryContext,
         evidence: RecoveryEvidence,
@@ -281,7 +281,7 @@ impl RecoveryPolicy {
         }
     }
 
-    pub(crate) fn decide_execution_stop(&self, evidence: RecoveryEvidence) -> RecoveryDecision {
+    pub fn decide_execution_stop(&self, evidence: RecoveryEvidence) -> RecoveryDecision {
         if evidence.has_conflict() {
             return RecoveryDecision {
                 action: RecoveryActionKind::Prompt,

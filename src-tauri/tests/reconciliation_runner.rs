@@ -1,15 +1,15 @@
-use super::*;
-use crate::application::interactive_process_registry::{
+use ralphx_lib::application::reconciliation::*;
+use ralphx_lib::application::interactive_process_registry::{
     InteractiveProcessKey, InteractiveProcessRegistry,
 };
-use crate::application::{AppState, TaskTransitionService};
-use crate::commands::execution_commands::ExecutionState;
-use crate::domain::entities::{
+use ralphx_lib::application::{AppState, TaskTransitionService};
+use ralphx_lib::commands::execution_commands::ExecutionState;
+use ralphx_lib::domain::entities::{
     AgentRun, AgentRunId, AgentRunStatus, ChatContextType, ChatConversationId, ExecutionRecoveryMetadata,
     InternalStatus, MergeFailureSource, Project, Task, TaskId,
 };
-use crate::domain::services::{MemoryRunningAgentRegistry, RunningAgentKey, RunningAgentRegistry};
-use crate::infrastructure::agents::claude::reconciliation_config;
+use ralphx_lib::domain::services::{MemoryRunningAgentRegistry, RunningAgentKey, RunningAgentRegistry};
+use ralphx_lib::infrastructure::agents::claude::reconciliation_config;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -314,7 +314,7 @@ fn merge_incomplete_retry_delay_uses_exponential_backoff_and_cap() {
 #[test]
 fn merge_incomplete_retry_count_reads_auto_retry_events() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Retry Count Task".to_string(),
     );
     task.metadata = Some(
@@ -366,7 +366,7 @@ fn latest_deferred_blocker_id_reads_latest_blocker_from_metadata() {
     let blocker_2 = TaskId::new();
 
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Deferred Task".to_string(),
     );
     task.metadata = Some(
@@ -628,7 +628,7 @@ fn merging_max_auto_retries_is_3() {
 #[test]
 fn merging_auto_retry_count_counts_attempt_failed_events() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Retry Count Task".to_string(),
     );
     task.metadata = Some(
@@ -672,7 +672,7 @@ fn merging_auto_retry_count_counts_attempt_failed_events() {
 #[test]
 fn merging_auto_retry_count_returns_zero_for_no_metadata() {
     let task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "No Metadata Task".to_string(),
     );
     assert_eq!(
@@ -1194,7 +1194,7 @@ async fn reconcile_paused_task_without_provider_error_metadata_is_skipped() {
 
 #[tokio::test]
 async fn reconcile_paused_task_with_future_retry_after_stays_paused() {
-    use crate::application::chat_service::{ProviderErrorCategory, ProviderErrorMetadata};
+    use ralphx_lib::application::chat_service::{ProviderErrorCategory, ProviderErrorMetadata};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -1243,7 +1243,7 @@ async fn reconcile_paused_task_with_future_retry_after_stays_paused() {
 
 #[tokio::test]
 async fn reconcile_paused_task_with_expired_retry_after_resumes() {
-    use crate::application::chat_service::{ProviderErrorCategory, ProviderErrorMetadata};
+    use ralphx_lib::application::chat_service::{ProviderErrorCategory, ProviderErrorMetadata};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -1305,7 +1305,7 @@ async fn reconcile_paused_task_with_expired_retry_after_resumes() {
 
 #[tokio::test]
 async fn reconcile_paused_task_at_max_attempts_transitions_to_failed() {
-    use crate::application::chat_service::{ProviderErrorCategory, ProviderErrorMetadata};
+    use ralphx_lib::application::chat_service::{ProviderErrorCategory, ProviderErrorMetadata};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -1371,7 +1371,7 @@ async fn reconcile_paused_task_at_max_attempts_transitions_to_failed() {
 
 #[tokio::test]
 async fn reconcile_paused_task_not_auto_resumable_is_skipped() {
-    use crate::application::chat_service::{ProviderErrorCategory, ProviderErrorMetadata};
+    use ralphx_lib::application::chat_service::{ProviderErrorCategory, ProviderErrorMetadata};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -1413,7 +1413,7 @@ async fn reconcile_paused_task_not_auto_resumable_is_skipped() {
 
 #[tokio::test]
 async fn reconcile_multiple_paused_tasks_in_single_cycle() {
-    use crate::application::chat_service::{ProviderErrorCategory, ProviderErrorMetadata};
+    use ralphx_lib::application::chat_service::{ProviderErrorCategory, ProviderErrorMetadata};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -1541,7 +1541,7 @@ async fn reconcile_multiple_paused_tasks_in_single_cycle() {
 
 #[tokio::test]
 async fn reconcile_paused_user_initiated_is_skipped() {
-    use crate::application::chat_service::PauseReason;
+    use ralphx_lib::application::chat_service::PauseReason;
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -1586,7 +1586,7 @@ async fn reconcile_paused_user_initiated_is_skipped() {
 
 #[tokio::test]
 async fn reconcile_paused_user_initiated_task_scope_is_skipped() {
-    use crate::application::chat_service::PauseReason;
+    use ralphx_lib::application::chat_service::PauseReason;
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -1619,7 +1619,7 @@ async fn reconcile_paused_user_initiated_task_scope_is_skipped() {
 
 #[tokio::test]
 async fn reconcile_paused_provider_error_new_format_resumes() {
-    use crate::application::chat_service::{PauseReason, ProviderErrorCategory};
+    use ralphx_lib::application::chat_service::{PauseReason, ProviderErrorCategory};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -1680,7 +1680,7 @@ async fn reconcile_paused_provider_error_new_format_resumes() {
 
 #[tokio::test]
 async fn reconcile_paused_provider_error_new_format_max_attempts_fails() {
-    use crate::application::chat_service::{
+    use ralphx_lib::application::chat_service::{
         PauseReason, ProviderErrorCategory, ProviderErrorMetadata,
     };
 
@@ -1752,7 +1752,7 @@ async fn reconcile_paused_provider_error_new_format_max_attempts_fails() {
 
 #[tokio::test]
 async fn reconcile_paused_provider_error_new_format_future_retry_stays_paused() {
-    use crate::application::chat_service::{PauseReason, ProviderErrorCategory};
+    use ralphx_lib::application::chat_service::{PauseReason, ProviderErrorCategory};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -1797,7 +1797,7 @@ async fn reconcile_paused_provider_error_new_format_future_retry_stays_paused() 
 
 #[tokio::test]
 async fn reconcile_mixed_batch_processes_only_provider_errors_skips_user_initiated() {
-    use crate::application::chat_service::{PauseReason, ProviderErrorCategory};
+    use ralphx_lib::application::chat_service::{PauseReason, ProviderErrorCategory};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -1949,7 +1949,7 @@ async fn reconcile_mixed_batch_processes_only_provider_errors_skips_user_initiat
 
 #[tokio::test]
 async fn reconcile_paused_provider_error_increments_resume_attempts() {
-    use crate::application::chat_service::{PauseReason, ProviderErrorCategory};
+    use ralphx_lib::application::chat_service::{PauseReason, ProviderErrorCategory};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -2017,7 +2017,7 @@ async fn reconcile_paused_provider_error_increments_resume_attempts() {
 
 #[tokio::test]
 async fn reconcile_paused_provider_error_not_auto_resumable_new_format() {
-    use crate::application::chat_service::{PauseReason, ProviderErrorCategory};
+    use ralphx_lib::application::chat_service::{PauseReason, ProviderErrorCategory};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -2062,7 +2062,7 @@ async fn reconcile_paused_provider_error_not_auto_resumable_new_format() {
 
 #[tokio::test]
 async fn reconcile_paused_at_max_concurrent_stays_paused() {
-    use crate::application::chat_service::{PauseReason, ProviderErrorCategory};
+    use ralphx_lib::application::chat_service::{PauseReason, ProviderErrorCategory};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::with_max_concurrent(1));
@@ -2114,7 +2114,7 @@ async fn reconcile_paused_at_max_concurrent_stays_paused() {
 
 #[tokio::test]
 async fn reconcile_paused_with_both_old_and_new_keys_prefers_new() {
-    use crate::application::chat_service::{
+    use ralphx_lib::application::chat_service::{
         PauseReason, ProviderErrorCategory, ProviderErrorMetadata,
     };
 
@@ -2182,7 +2182,7 @@ async fn reconcile_paused_with_both_old_and_new_keys_prefers_new() {
 
 #[tokio::test]
 async fn reconcile_legacy_provider_error_key_still_works() {
-    use crate::application::chat_service::{ProviderErrorCategory, ProviderErrorMetadata};
+    use ralphx_lib::application::chat_service::{ProviderErrorCategory, ProviderErrorMetadata};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -2557,7 +2557,7 @@ async fn reconcile_merge_incomplete_skips_when_agent_reported() {
 #[test]
 fn last_stored_source_sha_reads_most_recent_event_sha() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "SHA Guard Task".to_string(),
     );
     task.metadata = Some(
@@ -2599,7 +2599,7 @@ fn last_stored_source_sha_reads_most_recent_event_sha() {
 #[test]
 fn last_stored_source_sha_returns_none_when_no_events() {
     let task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "No SHA Task".to_string(),
     );
 
@@ -2737,7 +2737,7 @@ fn validation_revert_max_count_is_2() {
 #[test]
 fn is_agent_reported_failure_returns_true_for_agent_reported() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Agent Reported".to_string(),
     );
     task.metadata = Some(
@@ -2755,7 +2755,7 @@ fn is_agent_reported_failure_returns_true_for_agent_reported() {
 #[test]
 fn is_agent_reported_failure_returns_false_for_transient_git() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Transient Git".to_string(),
     );
     task.metadata = Some(
@@ -2773,7 +2773,7 @@ fn is_agent_reported_failure_returns_false_for_transient_git() {
 #[test]
 fn is_agent_reported_failure_returns_false_for_no_metadata() {
     let task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "No Metadata".to_string(),
     );
     assert!(
@@ -2785,7 +2785,7 @@ fn is_agent_reported_failure_returns_false_for_no_metadata() {
 #[test]
 fn validation_revert_count_reads_counter_from_metadata() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Revert Count Task".to_string(),
     );
     task.metadata = Some(serde_json::json!({"validation_revert_count": 3}).to_string());
@@ -2798,7 +2798,7 @@ fn validation_revert_count_reads_counter_from_metadata() {
 #[test]
 fn validation_revert_count_returns_zero_for_no_metadata() {
     let task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "No Metadata".to_string(),
     );
     assert_eq!(
@@ -2909,7 +2909,7 @@ fn merge_incomplete_retry_max_secs_is_at_least_1800() {
 
 #[tokio::test]
 async fn reconcile_merge_incomplete_skips_retry_when_rate_limit_active() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
         MergeRecoverySource, MergeRecoveryState, Project,
     };
@@ -2932,7 +2932,7 @@ async fn reconcile_merge_incomplete_skips_retry_when_rate_limit_active() {
     let mut recovery = MergeRecoveryMetadata::new();
     recovery.rate_limit_retry_after = Some("2099-12-31T23:59:59+00:00".to_string());
     recovery.last_state = MergeRecoveryState::RateLimited;
-    recovery.append_event(crate::domain::entities::MergeRecoveryEvent::new(
+    recovery.append_event(ralphx_lib::domain::entities::MergeRecoveryEvent::new(
         MergeRecoveryEventKind::AttemptFailed,
         MergeRecoverySource::System,
         MergeRecoveryReasonCode::ProviderRateLimited,
@@ -2978,7 +2978,7 @@ async fn reconcile_merge_incomplete_skips_retry_when_rate_limit_active() {
 
 #[tokio::test]
 async fn reconcile_merge_incomplete_proceeds_after_rate_limit_expired() {
-    use crate::domain::entities::{MergeRecoveryMetadata, MergeRecoveryState, Project};
+    use ralphx_lib::domain::entities::{MergeRecoveryMetadata, MergeRecoveryState, Project};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -3039,7 +3039,7 @@ async fn reconcile_merge_incomplete_proceeds_after_rate_limit_expired() {
 
 #[tokio::test]
 async fn rate_limited_skips_dont_count_toward_max_retries() {
-    use crate::domain::entities::{MergeRecoveryMetadata, MergeRecoveryState, Project};
+    use ralphx_lib::domain::entities::{MergeRecoveryMetadata, MergeRecoveryState, Project};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -3099,10 +3099,10 @@ async fn rate_limited_skips_dont_count_toward_max_retries() {
 
 #[test]
 fn get_rate_limit_retry_after_reads_from_metadata() {
-    use crate::domain::entities::{MergeRecoveryMetadata, MergeRecoveryState};
+    use ralphx_lib::domain::entities::{MergeRecoveryMetadata, MergeRecoveryState};
 
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Rate Limit Read Task".to_string(),
     );
 
@@ -3127,10 +3127,10 @@ fn get_rate_limit_retry_after_reads_from_metadata() {
 
 #[test]
 fn get_rate_limit_retry_after_returns_none_when_not_set() {
-    use crate::domain::entities::MergeRecoveryMetadata;
+    use ralphx_lib::domain::entities::MergeRecoveryMetadata;
 
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "No Rate Limit Task".to_string(),
     );
 
@@ -3149,7 +3149,7 @@ fn get_rate_limit_retry_after_returns_none_when_not_set() {
 #[test]
 fn has_merge_retry_in_progress_returns_true_for_fresh_timestamp() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Fresh Retry".to_string(),
     );
     task.metadata = Some(
@@ -3167,7 +3167,7 @@ fn has_merge_retry_in_progress_returns_true_for_fresh_timestamp() {
 #[test]
 fn has_merge_retry_in_progress_returns_false_for_expired_timestamp() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Expired Retry".to_string(),
     );
     // 120 seconds ago — well past the 60s expiry
@@ -3187,7 +3187,7 @@ fn has_merge_retry_in_progress_returns_false_for_expired_timestamp() {
 #[test]
 fn has_merge_retry_in_progress_returns_false_for_legacy_boolean() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Legacy Guard".to_string(),
     );
     task.metadata = Some(
@@ -3205,7 +3205,7 @@ fn has_merge_retry_in_progress_returns_false_for_legacy_boolean() {
 #[test]
 fn has_merge_retry_in_progress_returns_false_for_no_metadata() {
     let task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "No Metadata".to_string(),
     );
     assert!(
@@ -3217,7 +3217,7 @@ fn has_merge_retry_in_progress_returns_false_for_no_metadata() {
 #[test]
 fn has_merge_retry_in_progress_returns_false_for_missing_key() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Other Metadata".to_string(),
     );
     task.metadata = Some(serde_json::json!({"some_other_key": "value"}).to_string());
@@ -3734,7 +3734,7 @@ async fn rc4_non_validation_failure_retries_normally() {
 #[test]
 fn has_merge_pipeline_active_returns_false_when_no_metadata() {
     let task = Task::new(
-        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        ralphx_lib::domain::entities::ProjectId::from_string("proj-1".to_string()),
         "No Metadata Task".to_string(),
     );
     // merge_pipeline_active column is None by default
@@ -3744,7 +3744,7 @@ fn has_merge_pipeline_active_returns_false_when_no_metadata() {
 #[test]
 fn has_merge_pipeline_active_returns_false_when_flag_not_present() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        ralphx_lib::domain::entities::ProjectId::from_string("proj-1".to_string()),
         "Empty Metadata Task".to_string(),
     );
     // metadata may contain other keys, but merge_pipeline_active column is None
@@ -3755,7 +3755,7 @@ fn has_merge_pipeline_active_returns_false_when_flag_not_present() {
 #[test]
 fn has_merge_pipeline_active_returns_true_for_fresh_timestamp() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        ralphx_lib::domain::entities::ProjectId::from_string("proj-1".to_string()),
         "Fresh Pipeline Task".to_string(),
     );
     task.merge_pipeline_active = Some(chrono::Utc::now().to_rfc3339());
@@ -3765,7 +3765,7 @@ fn has_merge_pipeline_active_returns_true_for_fresh_timestamp() {
 #[test]
 fn has_merge_pipeline_active_returns_false_for_expired_timestamp() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        ralphx_lib::domain::entities::ProjectId::from_string("proj-1".to_string()),
         "Expired Pipeline Task".to_string(),
     );
     // Set timestamp far in the past (beyond any reasonable deadline)
@@ -3986,7 +3986,7 @@ async fn set_merge_pipeline_active_does_not_clobber_metadata() {
 #[test]
 fn set_merge_pipeline_active_preserves_other_metadata_keys() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        ralphx_lib::domain::entities::ProjectId::from_string("proj-1".to_string()),
         "Preserve Keys Task".to_string(),
     );
     // Task already has other metadata
@@ -4017,7 +4017,7 @@ fn set_merge_pipeline_active_preserves_other_metadata_keys() {
 #[test]
 fn clear_merge_pipeline_active_preserves_other_metadata_keys() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        ralphx_lib::domain::entities::ProjectId::from_string("proj-1".to_string()),
         "Preserve Keys Task".to_string(),
     );
     task.merge_pipeline_active = Some(chrono::Utc::now().to_rfc3339());
@@ -4045,7 +4045,7 @@ fn clear_merge_pipeline_active_preserves_other_metadata_keys() {
 #[test]
 fn set_merge_pipeline_active_handles_none_metadata() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        ralphx_lib::domain::entities::ProjectId::from_string("proj-1".to_string()),
         "None Metadata Task".to_string(),
     );
     assert!(task.metadata.is_none());
@@ -4291,7 +4291,7 @@ fn deadline_check_uses_attempt_start_not_instant_now() {
 fn has_merge_pipeline_active_returns_false_when_column_is_none() {
     // With dedicated column, None = not active (replaces the old "non-string value" test)
     let task = Task::new(
-        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        ralphx_lib::domain::entities::ProjectId::from_string("proj-1".to_string()),
         "None Column Task".to_string(),
     );
     assert!(
@@ -4303,7 +4303,7 @@ fn has_merge_pipeline_active_returns_false_when_column_is_none() {
 #[test]
 fn has_merge_pipeline_active_returns_false_for_malformed_timestamp() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        ralphx_lib::domain::entities::ProjectId::from_string("proj-1".to_string()),
         "Malformed Timestamp Task".to_string(),
     );
     task.merge_pipeline_active = Some("not-a-timestamp".to_string());
@@ -5049,9 +5049,9 @@ async fn reconcile_re_executing_stale_ipr_and_no_run_triggers_recovery() {
 
 #[test]
 fn execution_failed_auto_retry_count_returns_zero_with_no_metadata() {
-    use crate::domain::entities::Task;
+    use ralphx_lib::domain::entities::Task;
     let task = Task::new(
-        crate::domain::entities::ProjectId("proj".into()),
+        ralphx_lib::domain::entities::ProjectId("proj".into()),
         "test".into(),
     );
     assert_eq!(
@@ -5062,7 +5062,7 @@ fn execution_failed_auto_retry_count_returns_zero_with_no_metadata() {
 
 #[test]
 fn execution_failed_auto_retry_count_counts_triggered_events() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
         ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Task,
     };
@@ -5087,7 +5087,7 @@ fn execution_failed_auto_retry_count_counts_triggered_events() {
     recovery.append_event(other);
 
     let mut task = Task::new(
-        crate::domain::entities::ProjectId("proj".into()),
+        ralphx_lib::domain::entities::ProjectId("proj".into()),
         "test".into(),
     );
     task.metadata = Some(
@@ -5129,9 +5129,9 @@ fn execution_failed_retry_delay_is_capped_at_max() {
 
 #[test]
 fn has_execution_stop_retrying_false_without_metadata() {
-    use crate::domain::entities::Task;
+    use ralphx_lib::domain::entities::Task;
     let task = Task::new(
-        crate::domain::entities::ProjectId("proj".into()),
+        ralphx_lib::domain::entities::ProjectId("proj".into()),
         "test".into(),
     );
     assert!(
@@ -5142,14 +5142,14 @@ fn has_execution_stop_retrying_false_without_metadata() {
 
 #[test]
 fn has_execution_stop_retrying_true_when_set() {
-    use crate::domain::entities::{ExecutionRecoveryMetadata, ExecutionRecoveryState, Task};
+    use ralphx_lib::domain::entities::{ExecutionRecoveryMetadata, ExecutionRecoveryState, Task};
 
     let mut recovery = ExecutionRecoveryMetadata::new();
     recovery.stop_retrying = true;
     recovery.last_state = ExecutionRecoveryState::Failed;
 
     let mut task = Task::new(
-        crate::domain::entities::ProjectId("proj".into()),
+        ralphx_lib::domain::entities::ProjectId("proj".into()),
         "test".into(),
     );
     task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
@@ -5162,9 +5162,9 @@ fn has_execution_stop_retrying_true_when_set() {
 
 #[test]
 fn execution_next_retry_at_returns_none_without_events() {
-    use crate::domain::entities::Task;
+    use ralphx_lib::domain::entities::Task;
     let task = Task::new(
-        crate::domain::entities::ProjectId("proj".into()),
+        ralphx_lib::domain::entities::ProjectId("proj".into()),
         "test".into(),
     );
     assert!(
@@ -5175,7 +5175,7 @@ fn execution_next_retry_at_returns_none_without_events() {
 
 #[test]
 fn execution_next_retry_at_returns_future_timestamp() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
         ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Task,
     };
@@ -5190,7 +5190,7 @@ fn execution_next_retry_at_returns_future_timestamp() {
     recovery.append_event_with_state(event, ExecutionRecoveryState::Retrying);
 
     let mut task = Task::new(
-        crate::domain::entities::ProjectId("proj".into()),
+        ralphx_lib::domain::entities::ProjectId("proj".into()),
         "test".into(),
     );
     task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
@@ -5205,7 +5205,7 @@ fn execution_next_retry_at_returns_future_timestamp() {
 
 #[tokio::test]
 async fn record_execution_auto_retry_event_persists_event_via_update_metadata() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionFailureSource, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata, Project,
         Task,
     };
@@ -5250,7 +5250,7 @@ async fn record_execution_auto_retry_event_persists_event_via_update_metadata() 
 
 #[tokio::test]
 async fn set_execution_stop_retrying_sets_flag_in_db() {
-    use crate::domain::entities::{ExecutionRecoveryMetadata, ExecutionRecoveryState, Project, Task};
+    use ralphx_lib::domain::entities::{ExecutionRecoveryMetadata, ExecutionRecoveryState, Project, Task};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -5283,7 +5283,7 @@ async fn set_execution_stop_retrying_sets_flag_in_db() {
 
 #[tokio::test]
 async fn clear_execution_flat_metadata_removes_is_timeout_and_failure_error() {
-    use crate::domain::entities::{Project, Task};
+    use ralphx_lib::domain::entities::{Project, Task};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -5329,7 +5329,7 @@ async fn clear_execution_flat_metadata_removes_is_timeout_and_failure_error() {
 
 #[tokio::test]
 async fn reset_execution_recovery_metadata_clears_events_and_resets_state() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
         ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Project, Task,
     };
@@ -5384,7 +5384,7 @@ async fn reset_execution_recovery_metadata_clears_events_and_resets_state() {
 
 #[tokio::test]
 async fn stop_execution_retrying_by_user_persists_user_source_and_user_stopped_reason() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionRecoveryEventKind, ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode,
         ExecutionRecoverySource, ExecutionRecoveryState, Project, Task,
     };
@@ -5436,7 +5436,7 @@ async fn stop_execution_retrying_by_user_persists_user_source_and_user_stopped_r
 
 #[tokio::test]
 async fn record_execution_manual_retry_event_persists_manual_retry_kind_with_user_source() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionRecoveryEventKind, ExecutionRecoveryMetadata, ExecutionRecoverySource,
         ExecutionRecoveryState, Project, Task,
     };
@@ -5482,7 +5482,7 @@ async fn record_execution_manual_retry_event_persists_manual_retry_kind_with_use
 
 #[tokio::test]
 async fn apply_failed_user_recovery_cancel_sets_stop_retrying_and_returns_true() {
-    use crate::domain::entities::{ExecutionRecoveryMetadata, InternalStatus, Project, Task};
+    use ralphx_lib::domain::entities::{ExecutionRecoveryMetadata, InternalStatus, Project, Task};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -5520,7 +5520,7 @@ async fn apply_failed_user_recovery_cancel_sets_stop_retrying_and_returns_true()
 
 #[tokio::test]
 async fn apply_failed_user_recovery_restart_transitions_to_ready_and_records_manual_retry_event() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionRecoveryEventKind, ExecutionRecoveryMetadata, InternalStatus, Project, Task,
     };
 
@@ -5593,14 +5593,14 @@ async fn apply_failed_user_recovery_restart_transitions_to_ready_and_records_man
 // These test the early-exit conditions and the happy path of the reconciler handler
 // that auto-retries Failed tasks with transient execution failures.
 
-fn make_execution_recovery(stop: bool, state: crate::domain::entities::ExecutionRecoveryState) -> ExecutionRecoveryMetadata {
+fn make_execution_recovery(stop: bool, state: ralphx_lib::domain::entities::ExecutionRecoveryState) -> ExecutionRecoveryMetadata {
     let mut recovery = ExecutionRecoveryMetadata::new();
     recovery.last_state = state;
     recovery.stop_retrying = stop;
     recovery
 }
 
-fn make_task_with_recovery(project_id: &crate::domain::entities::ProjectId, recovery: ExecutionRecoveryMetadata) -> Task {
+fn make_task_with_recovery(project_id: &ralphx_lib::domain::entities::ProjectId, recovery: ExecutionRecoveryMetadata) -> Task {
     let mut task = Task::new(project_id.clone(), "Failed Task".into());
     task.internal_status = InternalStatus::Failed;
     task.metadata = Some(recovery.update_task_metadata(None).expect("serialize recovery"));
@@ -5610,7 +5610,7 @@ fn make_task_with_recovery(project_id: &crate::domain::entities::ProjectId, reco
 /// Legacy task with no execution_recovery metadata → reconciler skips it.
 #[tokio::test]
 async fn reconcile_failed_legacy_task_skip_no_metadata() {
-    use crate::domain::entities::Project;
+    use ralphx_lib::domain::entities::Project;
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -5634,7 +5634,7 @@ async fn reconcile_failed_legacy_task_skip_no_metadata() {
 /// stop_retrying = true → reconciler skips.
 #[tokio::test]
 async fn reconcile_failed_stop_retrying_flag_skips() {
-    use crate::domain::entities::Project;
+    use ralphx_lib::domain::entities::Project;
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -5643,7 +5643,7 @@ async fn reconcile_failed_stop_retrying_flag_skips() {
     let project = Project::new("Test Project".into(), "/tmp".into());
     app_state.project_repo.create(project.clone()).await.unwrap();
 
-    let recovery = make_execution_recovery(true, crate::domain::entities::ExecutionRecoveryState::Retrying);
+    let recovery = make_execution_recovery(true, ralphx_lib::domain::entities::ExecutionRecoveryState::Retrying);
     let task = make_task_with_recovery(&project.id, recovery);
     app_state.task_repo.create(task.clone()).await.unwrap();
 
@@ -5655,7 +5655,7 @@ async fn reconcile_failed_stop_retrying_flag_skips() {
 /// last_state = Failed (permanent) → reconciler skips.
 #[tokio::test]
 async fn reconcile_failed_permanent_failure_state_skips() {
-    use crate::domain::entities::Project;
+    use ralphx_lib::domain::entities::Project;
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -5664,7 +5664,7 @@ async fn reconcile_failed_permanent_failure_state_skips() {
     let project = Project::new("Test Project".into(), "/tmp".into());
     app_state.project_repo.create(project.clone()).await.unwrap();
 
-    let recovery = make_execution_recovery(false, crate::domain::entities::ExecutionRecoveryState::Failed);
+    let recovery = make_execution_recovery(false, ralphx_lib::domain::entities::ExecutionRecoveryState::Failed);
     let task = make_task_with_recovery(&project.id, recovery);
     app_state.task_repo.create(task.clone()).await.unwrap();
 
@@ -5676,7 +5676,7 @@ async fn reconcile_failed_permanent_failure_state_skips() {
 /// GAP H1: WallClockTimeout failure source → reconciler skips (would cause infinite C5 loop).
 #[tokio::test]
 async fn reconcile_failed_wall_clock_timeout_skip() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
         ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Project,
     };
@@ -5711,7 +5711,7 @@ async fn reconcile_failed_wall_clock_timeout_skip() {
 /// Max retries exceeded → reconciler records permanent failure and returns false.
 #[tokio::test]
 async fn reconcile_failed_max_retries_exceeded_marks_permanent_failure() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
         ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Project,
     };
@@ -5768,7 +5768,7 @@ async fn reconcile_failed_max_retries_exceeded_marks_permanent_failure() {
 /// GAP M6: backoff not elapsed → reconciler skips.
 #[tokio::test]
 async fn reconcile_failed_backoff_not_elapsed_skip() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
         ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Project,
     };
@@ -5807,7 +5807,7 @@ async fn reconcile_failed_backoff_not_elapsed_skip() {
 /// GAP B6: concurrency guard — at max_concurrent, reconciler skips this cycle.
 #[tokio::test]
 async fn reconcile_failed_concurrency_guard_skip_at_max_concurrent() {
-    use crate::domain::entities::Project;
+    use ralphx_lib::domain::entities::Project;
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -5821,7 +5821,7 @@ async fn reconcile_failed_concurrency_guard_skip_at_max_concurrent() {
     execution_state.increment_running();
     assert!(!execution_state.can_start_task(), "pre-condition: at max capacity");
 
-    let recovery = make_execution_recovery(false, crate::domain::entities::ExecutionRecoveryState::Retrying);
+    let recovery = make_execution_recovery(false, ralphx_lib::domain::entities::ExecutionRecoveryState::Retrying);
     let task = make_task_with_recovery(&project.id, recovery);
     app_state.task_repo.create(task.clone()).await.unwrap();
 
@@ -5833,7 +5833,7 @@ async fn reconcile_failed_concurrency_guard_skip_at_max_concurrent() {
 /// Happy path: eligible Failed task transitions to Ready.
 #[tokio::test]
 async fn reconcile_failed_eligible_task_transitions_to_ready() {
-    use crate::domain::entities::Project;
+    use ralphx_lib::domain::entities::Project;
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -5843,7 +5843,7 @@ async fn reconcile_failed_eligible_task_transitions_to_ready() {
     app_state.project_repo.create(project.clone()).await.unwrap();
 
     // Task in Retrying state — no prior retries, backoff not an issue (first attempt)
-    let recovery = make_execution_recovery(false, crate::domain::entities::ExecutionRecoveryState::Retrying);
+    let recovery = make_execution_recovery(false, ralphx_lib::domain::entities::ExecutionRecoveryState::Retrying);
     let task = make_task_with_recovery(&project.id, recovery);
     // No task_branch / worktree_path → git cleanup is no-op
     app_state.task_repo.create(task.clone()).await.unwrap();
@@ -5863,7 +5863,7 @@ async fn reconcile_failed_eligible_task_transitions_to_ready() {
 /// GAP B7: stale flat metadata (is_timeout, failure_error) cleared before retry.
 #[tokio::test]
 async fn reconcile_failed_flat_metadata_cleared_before_retry() {
-    use crate::domain::entities::Project;
+    use ralphx_lib::domain::entities::Project;
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -5872,7 +5872,7 @@ async fn reconcile_failed_flat_metadata_cleared_before_retry() {
     let project = Project::new("Test Project".into(), "/tmp".into());
     app_state.project_repo.create(project.clone()).await.unwrap();
 
-    let recovery = make_execution_recovery(false, crate::domain::entities::ExecutionRecoveryState::Retrying);
+    let recovery = make_execution_recovery(false, ralphx_lib::domain::entities::ExecutionRecoveryState::Retrying);
     let base_metadata = recovery.update_task_metadata(None).expect("serialize");
     // Inject stale flat keys alongside structured recovery
     let mut json: serde_json::Value = serde_json::from_str(&base_metadata).unwrap();
@@ -5912,8 +5912,8 @@ async fn reconcile_failed_flat_metadata_cleared_before_retry() {
 /// GAP H10: ActivityEvent emitted when auto-retry fires.
 #[tokio::test]
 async fn reconcile_failed_activity_event_emitted_on_auto_retry() {
-    use crate::domain::entities::Project;
-    use crate::domain::repositories::ActivityEventFilter;
+    use ralphx_lib::domain::entities::Project;
+    use ralphx_lib::domain::repositories::ActivityEventFilter;
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -5922,7 +5922,7 @@ async fn reconcile_failed_activity_event_emitted_on_auto_retry() {
     let project = Project::new("Test Project".into(), "/tmp".into());
     app_state.project_repo.create(project.clone()).await.unwrap();
 
-    let recovery = make_execution_recovery(false, crate::domain::entities::ExecutionRecoveryState::Retrying);
+    let recovery = make_execution_recovery(false, ralphx_lib::domain::entities::ExecutionRecoveryState::Retrying);
     let task = make_task_with_recovery(&project.id, recovery);
     app_state.task_repo.create(task.clone()).await.unwrap();
 
@@ -5945,7 +5945,7 @@ async fn reconcile_failed_activity_event_emitted_on_auto_retry() {
 /// update_metadata() path and preserves other metadata keys.
 #[tokio::test]
 async fn targeted_metadata_write_preserves_other_keys() {
-    use crate::domain::entities::{ExecutionFailureSource, Project};
+    use ralphx_lib::domain::entities::{ExecutionFailureSource, Project};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -5955,7 +5955,7 @@ async fn targeted_metadata_write_preserves_other_keys() {
     app_state.project_repo.create(project.clone()).await.unwrap();
 
     // Task has other metadata keys alongside execution_recovery
-    let recovery = make_execution_recovery(false, crate::domain::entities::ExecutionRecoveryState::Retrying);
+    let recovery = make_execution_recovery(false, ralphx_lib::domain::entities::ExecutionRecoveryState::Retrying);
     let base = recovery.update_task_metadata(None).expect("serialize");
     let mut json: serde_json::Value = serde_json::from_str(&base).unwrap();
     if let Some(obj) = json.as_object_mut() {
@@ -5993,7 +5993,7 @@ async fn targeted_metadata_write_preserves_other_keys() {
 /// Restart on Failed task resets execution recovery metadata (fresh retry budget, GAP H9).
 #[tokio::test]
 async fn apply_failed_restart_resets_execution_recovery_metadata_fresh_budget() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
         ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Project,
     };
@@ -6064,7 +6064,7 @@ async fn apply_failed_restart_resets_execution_recovery_metadata_fresh_budget() 
 /// Cancel on Failed sets stop_retrying permanently.
 #[tokio::test]
 async fn apply_failed_cancel_sets_stop_retrying_permanently() {
-    use crate::domain::entities::{ExecutionRecoveryMetadata, ExecutionRecoveryState, Project};
+    use ralphx_lib::domain::entities::{ExecutionRecoveryMetadata, ExecutionRecoveryState, Project};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -6108,7 +6108,7 @@ async fn apply_failed_cancel_sets_stop_retrying_permanently() {
 /// (GAP M2) Legacy format: is_timeout:true → recovered and migrated to new format.
 #[tokio::test]
 async fn recover_timeout_failures_processes_legacy_is_timeout_tasks() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionRecoveryEventKind, ExecutionRecoveryMetadata, ExecutionRecoverySource, Project,
         Task,
     };
@@ -6154,7 +6154,7 @@ async fn recover_timeout_failures_processes_legacy_is_timeout_tasks() {
 /// (GAP M2) New format: execution_recovery.last_state==Retrying → recovered without needing is_timeout.
 #[tokio::test]
 async fn recover_timeout_failures_processes_new_format_retrying_tasks() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
         ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Project,
         Task,
@@ -6196,7 +6196,7 @@ async fn recover_timeout_failures_processes_new_format_retrying_tasks() {
 /// (GAP M2) Task with neither is_timeout nor execution_recovery → not recovered.
 #[tokio::test]
 async fn recover_timeout_failures_skips_tasks_with_no_timeout_metadata() {
-    use crate::domain::entities::{Project, Task};
+    use ralphx_lib::domain::entities::{Project, Task};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -6228,7 +6228,7 @@ async fn recover_timeout_failures_skips_tasks_with_no_timeout_metadata() {
 /// (GAP M5) Returns true when a Startup-sourced AutoRetryTriggered event is recent (< 60s).
 #[test]
 fn has_recent_startup_recovery_true_for_recent_startup_event() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
         ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Task,
     };
@@ -6243,7 +6243,7 @@ fn has_recent_startup_recovery_true_for_recent_startup_event() {
     recovery.append_event_with_state(event, ExecutionRecoveryState::Retrying);
 
     let mut task = Task::new(
-        crate::domain::entities::ProjectId("proj".into()),
+        ralphx_lib::domain::entities::ProjectId("proj".into()),
         "test".into(),
     );
     task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
@@ -6257,7 +6257,7 @@ fn has_recent_startup_recovery_true_for_recent_startup_event() {
 /// (GAP M5) Returns false when Startup-sourced event is older than 60s.
 #[test]
 fn has_recent_startup_recovery_false_for_old_startup_event() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
         ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Task,
     };
@@ -6274,7 +6274,7 @@ fn has_recent_startup_recovery_false_for_old_startup_event() {
     recovery.append_event_with_state(event, ExecutionRecoveryState::Retrying);
 
     let mut task = Task::new(
-        crate::domain::entities::ProjectId("proj".into()),
+        ralphx_lib::domain::entities::ProjectId("proj".into()),
         "test".into(),
     );
     task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
@@ -6288,7 +6288,7 @@ fn has_recent_startup_recovery_false_for_old_startup_event() {
 /// (GAP M5) Returns false when only Auto-sourced events exist (not Startup).
 #[test]
 fn has_recent_startup_recovery_false_for_auto_source() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
         ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Task,
     };
@@ -6303,7 +6303,7 @@ fn has_recent_startup_recovery_false_for_auto_source() {
     recovery.append_event_with_state(event, ExecutionRecoveryState::Retrying);
 
     let mut task = Task::new(
-        crate::domain::entities::ProjectId("proj".into()),
+        ralphx_lib::domain::entities::ProjectId("proj".into()),
         "test".into(),
     );
     task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
@@ -6318,7 +6318,7 @@ fn has_recent_startup_recovery_false_for_auto_source() {
 #[test]
 fn has_recent_startup_recovery_false_without_metadata() {
     let task = Task::new(
-        crate::domain::entities::ProjectId("proj".into()),
+        ralphx_lib::domain::entities::ProjectId("proj".into()),
         "no metadata".into(),
     );
     assert!(
@@ -6333,7 +6333,7 @@ fn has_recent_startup_recovery_false_without_metadata() {
 #[test]
 fn should_circuit_break_threshold_met() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Circuit Breaker Task".to_string(),
     );
     task.metadata = Some(
@@ -6389,7 +6389,7 @@ fn should_circuit_break_threshold_met() {
 #[test]
 fn should_circuit_break_threshold_not_met_mixed_sources() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Mixed Failures Task".to_string(),
     );
     task.metadata = Some(
@@ -6439,7 +6439,7 @@ fn should_circuit_break_threshold_not_met_mixed_sources() {
 #[test]
 fn should_circuit_break_ignores_events_without_failure_source() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "No Source Task".to_string(),
     );
     task.metadata = Some(
@@ -6497,7 +6497,7 @@ fn should_circuit_break_ignores_events_without_failure_source() {
 #[test]
 fn is_circuit_breaker_active_false_without_metadata() {
     let task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "No Metadata".to_string(),
     );
     assert!(
@@ -6510,7 +6510,7 @@ fn is_circuit_breaker_active_false_without_metadata() {
 #[test]
 fn is_circuit_breaker_active_true_when_set() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "CB Active Task".to_string(),
     );
     task.metadata = Some(
@@ -6593,7 +6593,7 @@ async fn circuit_breaker_active_flag_prevents_reconcile_retry() {
 #[test]
 fn should_circuit_break_returns_none_without_metadata() {
     let task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "No Metadata".to_string(),
     );
     assert!(
@@ -6610,7 +6610,7 @@ fn should_circuit_break_returns_none_without_metadata() {
 #[test]
 fn should_circuit_break_ignores_target_branch_busy() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Target Branch Busy Only Task".to_string(),
     );
     task.metadata = Some(
@@ -6662,7 +6662,7 @@ fn should_circuit_break_ignores_target_branch_busy() {
 #[test]
 fn should_circuit_break_mixed_busy_and_transient() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Mixed Busy And Transient Task".to_string(),
     );
     task.metadata = Some(
@@ -6714,7 +6714,7 @@ fn should_circuit_break_mixed_busy_and_transient() {
 #[test]
 fn merge_incomplete_auto_retry_count_excludes_target_branch_busy() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Exclude TBB From Count Task".to_string(),
     );
     task.metadata = Some(
@@ -6784,7 +6784,7 @@ fn merge_incomplete_auto_retry_count_excludes_target_branch_busy() {
 /// 5. should_circuit_break returns None (AutoRetryNoCB events excluded from filter)
 #[tokio::test]
 async fn deferred_task_reconcile_classifies_as_target_branch_busy() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         MergeFailureSource as MFS, MergeRecoveryEventKind, MergeRecoveryMetadata,
         MergeRecoveryReasonCode,
     };
@@ -6886,7 +6886,7 @@ async fn deferred_task_reconcile_classifies_as_target_branch_busy() {
 fn circuit_breaker_fires_on_transient_git_despite_target_branch_busy_events() {
     // Scenario A: 2 TargetBranchBusy + 3 TransientGit → CB fires
     let mut task_a = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "CB Fires Scenario A".to_string(),
     );
     task_a.metadata = Some(
@@ -6955,7 +6955,7 @@ fn circuit_breaker_fires_on_transient_git_despite_target_branch_busy_events() {
 
     // Scenario B: 2 TargetBranchBusy + 2 TransientGit → CB does NOT fire
     let mut task_b = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "CB No Fire Scenario B".to_string(),
     );
     task_b.metadata = Some(
@@ -7014,7 +7014,7 @@ fn circuit_breaker_fires_on_transient_git_despite_target_branch_busy_events() {
 #[test]
 fn is_mode_switch_returns_true_when_set() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Mode Switch Task".to_string(),
     );
     task.metadata = Some(r#"{"mode_switch":true}"#.to_string());
@@ -7027,7 +7027,7 @@ fn is_mode_switch_returns_true_when_set() {
 #[test]
 fn is_mode_switch_returns_false_without_metadata() {
     let task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "No Metadata Task".to_string(),
     );
     assert!(
@@ -7039,7 +7039,7 @@ fn is_mode_switch_returns_false_without_metadata() {
 #[test]
 fn is_mode_switch_returns_false_when_explicitly_false() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Not Mode Switch".to_string(),
     );
     task.metadata = Some(r#"{"mode_switch":false}"#.to_string());
@@ -7052,7 +7052,7 @@ fn is_mode_switch_returns_false_when_explicitly_false() {
 #[test]
 fn is_mode_switch_returns_false_with_other_metadata() {
     let mut task = Task::new(
-        crate::domain::entities::ProjectId::new(),
+        ralphx_lib::domain::entities::ProjectId::new(),
         "Other Metadata Task".to_string(),
     );
     task.metadata = Some(r#"{"merge_failure_source":"agent_reported"}"#.to_string());
@@ -7066,7 +7066,7 @@ fn is_mode_switch_returns_false_with_other_metadata() {
 
 #[test]
 fn execution_failed_auto_retry_count_for_source_counts_git_isolation_only() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
         ExecutionRecoveryReasonCode, ExecutionRecoverySource,
     };
@@ -7097,7 +7097,7 @@ fn execution_failed_auto_retry_count_for_source_counts_git_isolation_only() {
     );
 
     let mut task = Task::new(
-        crate::domain::entities::ProjectId("proj".into()),
+        ralphx_lib::domain::entities::ProjectId("proj".into()),
         "test".into(),
     );
     task.metadata = Some(
@@ -7126,10 +7126,10 @@ fn execution_failed_auto_retry_count_for_source_counts_git_isolation_only() {
 
 #[test]
 fn execution_failed_auto_retry_count_for_source_returns_zero_without_metadata() {
-    use crate::domain::entities::ExecutionFailureSource;
+    use ralphx_lib::domain::entities::ExecutionFailureSource;
 
     let task = Task::new(
-        crate::domain::entities::ProjectId("proj".into()),
+        ralphx_lib::domain::entities::ProjectId("proj".into()),
         "test".into(),
     );
     assert_eq!(
@@ -7143,7 +7143,7 @@ fn execution_failed_auto_retry_count_for_source_returns_zero_without_metadata() 
 
 #[test]
 fn execution_next_retry_at_git_isolation_uses_shorter_delay() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
         ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState,
     };
@@ -7159,7 +7159,7 @@ fn execution_next_retry_at_git_isolation_uses_shorter_delay() {
     recovery.append_event_with_state(event, ExecutionRecoveryState::Retrying);
 
     let mut task = Task::new(
-        crate::domain::entities::ProjectId("proj".into()),
+        ralphx_lib::domain::entities::ProjectId("proj".into()),
         "test".into(),
     );
     task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
@@ -7185,7 +7185,7 @@ fn execution_next_retry_at_git_isolation_uses_shorter_delay() {
 
 #[test]
 fn execution_failed_retry_delay_git_isolation_shorter_than_default() {
-    use crate::domain::entities::ExecutionFailureSource;
+    use ralphx_lib::domain::entities::ExecutionFailureSource;
 
     let git_delay = ReconciliationRunner::<tauri::Wry>::execution_failed_retry_delay(
         0,
@@ -7203,7 +7203,7 @@ fn execution_failed_retry_delay_git_isolation_shorter_than_default() {
 
 #[test]
 fn execution_recovery_reason_code_git_isolation_failed_serde_round_trip() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryReasonCode,
         ExecutionRecoverySource,
     };
@@ -7220,7 +7220,7 @@ fn execution_recovery_reason_code_git_isolation_failed_serde_round_trip() {
         json.contains("\"git_isolation_failed\""),
         "GitIsolationFailed should serialize to 'git_isolation_failed'"
     );
-    let deserialized: crate::domain::entities::ExecutionRecoveryEvent =
+    let deserialized: ralphx_lib::domain::entities::ExecutionRecoveryEvent =
         serde_json::from_str(&json).expect("deserialize");
     assert_eq!(
         deserialized.reason_code,
@@ -7232,7 +7232,7 @@ fn execution_recovery_reason_code_git_isolation_failed_serde_round_trip() {
 
 /// Helper: build an ExecutionRecoveryMetadata seeded with a GitIsolation Failed event.
 fn make_git_isolation_recovery() -> ExecutionRecoveryMetadata {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
         ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState,
     };
@@ -7254,7 +7254,7 @@ fn make_git_isolation_recovery() -> ExecutionRecoveryMetadata {
 /// No real filesystem ops needed — project dir is /tmp (no worktree to clean up).
 #[tokio::test]
 async fn reconcile_failed_git_isolation_task_transitions_to_ready() {
-    use crate::domain::entities::Project;
+    use ralphx_lib::domain::entities::Project;
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -7320,7 +7320,7 @@ async fn reconcile_failed_git_isolation_removes_stale_worktree_dir() {
         .output()
         .unwrap();
 
-    use crate::domain::entities::Project;
+    use ralphx_lib::domain::entities::Project;
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
     let reconciler = build_reconciler(&app_state, &execution_state);
@@ -7362,7 +7362,7 @@ async fn reconcile_failed_git_isolation_removes_stale_worktree_dir() {
 /// Subsequent timeout retry budget must remain independent.
 #[tokio::test]
 async fn reconcile_failed_git_isolation_exhaustion_skips_without_stop_retrying() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
         ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Project,
     };
@@ -7374,7 +7374,7 @@ async fn reconcile_failed_git_isolation_exhaustion_skips_without_stop_retrying()
     let project = Project::new("Test Project".into(), "/tmp".into());
     app_state.project_repo.create(project.clone()).await.unwrap();
 
-    let git_max = crate::infrastructure::agents::claude::reconciliation_config()
+    let git_max = ralphx_lib::infrastructure::agents::claude::reconciliation_config()
         .git_isolation_max_retries as u32;
 
     let mut recovery = ExecutionRecoveryMetadata::new();
@@ -7428,14 +7428,14 @@ async fn reconcile_failed_git_isolation_exhaustion_skips_without_stop_retrying()
 /// Cross-contamination test: task with both timeout and git-isolation events — counters independent.
 #[tokio::test]
 async fn reconcile_failed_cross_contamination_independent_retry_budgets() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
         ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState,
     };
 
     // Build a task with 1 timeout retry + git_isolation_max_retries git isolation retries.
     // Even though global count = 1 + git_max, the git budget check should fire first.
-    let git_max = crate::infrastructure::agents::claude::reconciliation_config()
+    let git_max = ralphx_lib::infrastructure::agents::claude::reconciliation_config()
         .git_isolation_max_retries as u32;
 
     let mut recovery = ExecutionRecoveryMetadata::new();
@@ -7477,7 +7477,7 @@ async fn reconcile_failed_cross_contamination_independent_retry_budgets() {
 
     // git-isolation count = git_max (exhausted), timeout count = 1 (not exhausted)
     // Use a fresh task to test the static helper
-    let project_id = crate::domain::entities::ProjectId::from_string("cross-proj".into());
+    let project_id = ralphx_lib::domain::entities::ProjectId::from_string("cross-proj".into());
     let mut task = Task::new(project_id.clone(), "Cross Task".into());
     task.internal_status = InternalStatus::Failed;
     task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
@@ -7507,7 +7507,7 @@ async fn reconcile_failed_cross_contamination_independent_retry_budgets() {
 /// Startup recovery: recover_timeout_failures() picks up a git-isolation Failed task.
 #[tokio::test]
 async fn recover_timeout_failures_picks_up_git_isolation_task() {
-    use crate::domain::entities::Project;
+    use ralphx_lib::domain::entities::Project;
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -7536,7 +7536,7 @@ async fn recover_timeout_failures_picks_up_git_isolation_task() {
             .expect("parse metadata")
             .expect("execution_recovery should exist");
     let has_startup_git_isolation_event = updated_recovery.events.iter().any(|e| {
-        use crate::domain::entities::{ExecutionFailureSource, ExecutionRecoveryEventKind, ExecutionRecoverySource};
+        use ralphx_lib::domain::entities::{ExecutionFailureSource, ExecutionRecoveryEventKind, ExecutionRecoverySource};
         matches!(e.kind, ExecutionRecoveryEventKind::AutoRetryTriggered)
             && matches!(e.source, ExecutionRecoverySource::Startup)
             && matches!(e.failure_source, Some(ExecutionFailureSource::GitIsolation))
@@ -7550,7 +7550,7 @@ async fn recover_timeout_failures_picks_up_git_isolation_task() {
 /// record_execution_startup_retry_event: records correct source for git isolation.
 #[tokio::test]
 async fn record_execution_startup_retry_event_records_git_isolation_source() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionFailureSource, ExecutionRecoveryEventKind, ExecutionRecoveryReasonCode,
         ExecutionRecoverySource, Project,
     };
@@ -7603,7 +7603,7 @@ async fn record_execution_startup_retry_event_records_git_isolation_source() {
 /// record_execution_startup_retry_event: records correct source for timeout (backward compat).
 #[tokio::test]
 async fn record_execution_startup_retry_event_records_timeout_source_backward_compat() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionFailureSource, ExecutionRecoveryEventKind, ExecutionRecoveryReasonCode,
         ExecutionRecoverySource, Project,
     };
@@ -7666,7 +7666,7 @@ async fn record_execution_startup_retry_event_records_timeout_source_backward_co
 /// recovery metadata so reconcile_failed_execution_task skips it permanently.
 #[tokio::test]
 async fn reconcile_completed_execution_e7_prewrite_stop_retrying() {
-    use crate::domain::entities::Project;
+    use ralphx_lib::domain::entities::Project;
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -7742,7 +7742,7 @@ async fn reconcile_completed_execution_e7_prewrite_stop_retrying() {
 /// the reconciler's Failed-task handling loop.
 #[tokio::test]
 async fn reconcile_failed_execution_e7_terminal_metadata_not_overwritten() {
-    use crate::domain::entities::{
+    use ralphx_lib::domain::entities::{
         ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryReasonCode,
         ExecutionRecoverySource, ExecutionRecoveryState, Project,
     };
@@ -7846,7 +7846,7 @@ async fn reconcile_failed_execution_e7_terminal_metadata_not_overwritten() {
 /// on systems where lsof hangs.
 #[tokio::test]
 async fn test_deferred_merge_cleanup_with_existing_worktree_clears_task_fields() {
-    use crate::domain::state_machine::transition_handler::{
+    use ralphx_lib::domain::state_machine::transition_handler::{
         deferred_merge_cleanup, has_pending_cleanup_metadata,
     };
 
@@ -7867,7 +7867,7 @@ async fn test_deferred_merge_cleanup_with_existing_worktree_clears_task_fields()
     let task_id = task.id.clone();
     app_state.task_repo.create(task.clone()).await.unwrap();
 
-    let task_repo = Arc::clone(&app_state.task_repo) as Arc<dyn crate::domain::repositories::TaskRepository>;
+    let task_repo = Arc::clone(&app_state.task_repo) as Arc<dyn ralphx_lib::domain::repositories::TaskRepository>;
 
     // Run Phase 3 deferred cleanup. kill step completes quickly (no processes in temp dir),
     // so the OS timeout does not fire — verifying the wrapped happy path works correctly.
@@ -7933,7 +7933,7 @@ async fn test_deferred_merge_cleanup_with_existing_worktree_clears_task_fields()
 /// (merge_completion.rs:508-524). If the enum variant serialization changes, this test breaks.
 #[test]
 fn test_deferred_merge_cleanup_timeout_metadata_format_matches_domain_types() {
-    use crate::domain::entities::task_metadata::CleanupPhase;
+    use ralphx_lib::domain::entities::task_metadata::CleanupPhase;
 
     // Verify MergeFailureSource::CleanupTimeout serializes to "cleanup_timeout"
     let source_json =
