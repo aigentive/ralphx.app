@@ -1,12 +1,10 @@
 use super::*;
 use crate::domain::entities::research::{CustomDepth, ResearchDepthPreset};
 use crate::domain::entities::ArtifactType;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().expect("Failed to open memory connection");
-    run_migrations(&conn).expect("Failed to run migrations");
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite-process-repo")
 }
 
 fn create_test_process() -> ResearchProcess {
@@ -29,8 +27,8 @@ fn create_running_process() -> ResearchProcess {
 
 #[tokio::test]
 async fn test_create_process() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
     let process = create_test_process();
 
     let result = repo.create(process.clone()).await;
@@ -43,8 +41,8 @@ async fn test_create_process() {
 
 #[tokio::test]
 async fn test_get_by_id_found() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
     let process = create_test_process();
 
     repo.create(process.clone()).await.unwrap();
@@ -59,8 +57,8 @@ async fn test_get_by_id_found() {
 
 #[tokio::test]
 async fn test_get_by_id_not_found() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
     let id = ResearchProcessId::new();
 
     let result = repo.get_by_id(&id).await;
@@ -70,8 +68,8 @@ async fn test_get_by_id_not_found() {
 
 #[tokio::test]
 async fn test_get_all_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let result = repo.get_all().await;
     assert!(result.is_ok());
@@ -80,8 +78,8 @@ async fn test_get_all_empty() {
 
 #[tokio::test]
 async fn test_get_all_with_processes() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let process1 = create_test_process();
     let process2 = create_running_process();
@@ -96,8 +94,8 @@ async fn test_get_all_with_processes() {
 
 #[tokio::test]
 async fn test_get_by_status_pending() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let pending = create_test_process();
     let running = create_running_process();
@@ -114,8 +112,8 @@ async fn test_get_by_status_pending() {
 
 #[tokio::test]
 async fn test_get_by_status_running() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let pending = create_test_process();
     let running = create_running_process();
@@ -132,8 +130,8 @@ async fn test_get_by_status_running() {
 
 #[tokio::test]
 async fn test_get_active() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let pending = create_test_process();
     let running = create_running_process();
@@ -156,8 +154,8 @@ async fn test_get_active() {
 
 #[tokio::test]
 async fn test_update_progress() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let mut process = create_test_process();
     repo.create(process.clone()).await.unwrap();
@@ -178,8 +176,8 @@ async fn test_update_progress() {
 
 #[tokio::test]
 async fn test_update() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let mut process = create_test_process();
     repo.create(process.clone()).await.unwrap();
@@ -196,8 +194,8 @@ async fn test_update() {
 
 #[tokio::test]
 async fn test_complete() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let process = create_running_process();
     repo.create(process.clone()).await.unwrap();
@@ -211,8 +209,8 @@ async fn test_complete() {
 
 #[tokio::test]
 async fn test_fail() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let process = create_running_process();
     repo.create(process.clone()).await.unwrap();
@@ -230,8 +228,8 @@ async fn test_fail() {
 
 #[tokio::test]
 async fn test_delete() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let process = create_test_process();
     repo.create(process.clone()).await.unwrap();
@@ -244,8 +242,8 @@ async fn test_delete() {
 
 #[tokio::test]
 async fn test_exists_true() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let process = create_test_process();
     repo.create(process.clone()).await.unwrap();
@@ -257,8 +255,8 @@ async fn test_exists_true() {
 
 #[tokio::test]
 async fn test_exists_false() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let id = ResearchProcessId::new();
 
@@ -269,8 +267,8 @@ async fn test_exists_false() {
 
 #[tokio::test]
 async fn test_brief_preserved() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let brief = ResearchBrief::new("Main question")
         .with_context("Context info")
@@ -289,8 +287,8 @@ async fn test_brief_preserved() {
 
 #[tokio::test]
 async fn test_preset_depth_preserved() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let brief = ResearchBrief::new("Question");
     let process = ResearchProcess::new("Depth Test", brief, "researcher")
@@ -307,8 +305,8 @@ async fn test_preset_depth_preserved() {
 
 #[tokio::test]
 async fn test_custom_depth_preserved() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let brief = ResearchBrief::new("Question");
     let process = ResearchProcess::new("Custom Depth Test", brief, "researcher")
@@ -326,8 +324,8 @@ async fn test_custom_depth_preserved() {
 
 #[tokio::test]
 async fn test_output_config_preserved() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let brief = ResearchBrief::new("Question");
     let output = ResearchOutput::new("custom-bucket")
@@ -352,8 +350,8 @@ async fn test_output_config_preserved() {
 
 #[tokio::test]
 async fn test_timestamps_preserved() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let process = create_test_process();
     let original_created_at = process.created_at;
@@ -370,8 +368,8 @@ async fn test_timestamps_preserved() {
 
 #[tokio::test]
 async fn test_from_shared_connection() {
-    let conn = setup_test_db();
-    let shared = Arc::new(Mutex::new(conn));
+    let db = setup_test_db();
+    let shared = db.shared_conn();
 
     let repo1 = SqliteProcessRepository::from_shared(shared.clone());
     let repo2 = SqliteProcessRepository::from_shared(shared.clone());
@@ -387,8 +385,8 @@ async fn test_from_shared_connection() {
 
 #[tokio::test]
 async fn test_checkpoint_preserved() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let brief = ResearchBrief::new("Question");
     let mut process = ResearchProcess::new("Checkpoint Test", brief, "researcher");
@@ -406,8 +404,8 @@ async fn test_checkpoint_preserved() {
 
 #[tokio::test]
 async fn test_mark_running_processes_as_failed() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let running = create_running_process();
     let brief = ResearchBrief::new("Completed research");
@@ -434,8 +432,8 @@ async fn test_mark_running_processes_as_failed() {
 
 #[tokio::test]
 async fn test_fail_all_active_includes_pending_processes() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let pending = create_test_process();
     let running = create_running_process();
@@ -460,8 +458,8 @@ async fn test_fail_all_active_includes_pending_processes() {
 
 #[tokio::test]
 async fn test_fail_all_active_noop_when_no_active_processes() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     let count = repo.fail_all_active("app_restart").await.unwrap();
     assert_eq!(count, 0);
@@ -469,8 +467,8 @@ async fn test_fail_all_active_noop_when_no_active_processes() {
 
 #[tokio::test]
 async fn test_get_all_ordered_by_created_at_desc() {
-    let conn = setup_test_db();
-    let repo = SqliteProcessRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteProcessRepository::new(db.new_connection());
 
     // Create processes with slight time differences
     let process1 = create_test_process();

@@ -1,6 +1,6 @@
 use super::*;
 use crate::domain::entities::IdeationSessionId;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 
 fn create_test_branch() -> PlanBranch {
     PlanBranch::new(
@@ -12,15 +12,15 @@ fn create_test_branch() -> PlanBranch {
     )
 }
 
-async fn setup_repo() -> SqlitePlanBranchRepository {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    SqlitePlanBranchRepository::new(conn)
+fn setup_repo() -> (SqliteTestDb, SqlitePlanBranchRepository) {
+    let db = SqliteTestDb::new("sqlite-plan-branch-repo");
+    let repo = SqlitePlanBranchRepository::new(db.new_connection());
+    (db, repo)
 }
 
 #[tokio::test]
 async fn test_create_and_get_by_plan_artifact_id() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let branch = create_test_branch();
     let artifact_id = branch.plan_artifact_id.clone();
 
@@ -43,7 +43,7 @@ async fn test_create_and_get_by_plan_artifact_id() {
 
 #[tokio::test]
 async fn test_get_by_plan_artifact_id_not_found() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let results = repo
         .get_by_plan_artifact_id(&ArtifactId::from_string("nonexistent"))
         .await
@@ -53,7 +53,7 @@ async fn test_get_by_plan_artifact_id_not_found() {
 
 #[tokio::test]
 async fn test_get_by_session_id() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let branch = create_test_branch();
     let session_id = branch.session_id.clone();
 
@@ -67,7 +67,7 @@ async fn test_get_by_session_id() {
 
 #[tokio::test]
 async fn test_get_by_session_id_not_found() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let result = repo
         .get_by_session_id(&IdeationSessionId::from_string("nonexistent"))
         .await
@@ -77,7 +77,7 @@ async fn test_get_by_session_id_not_found() {
 
 #[tokio::test]
 async fn test_get_by_merge_task_id() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let mut branch = create_test_branch();
     let merge_task_id = TaskId::from_string("merge-task-1".to_string());
     branch.merge_task_id = Some(merge_task_id.clone());
@@ -97,7 +97,7 @@ async fn test_get_by_merge_task_id() {
 
 #[tokio::test]
 async fn test_get_by_merge_task_id_not_found() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let result = repo
         .get_by_merge_task_id(&TaskId::from_string("nonexistent".to_string()))
         .await
@@ -107,7 +107,7 @@ async fn test_get_by_merge_task_id_not_found() {
 
 #[tokio::test]
 async fn test_get_by_project_id() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let project_id = ProjectId::from_string("proj-multi".to_string());
 
     let branch1 = PlanBranch::new(
@@ -134,7 +134,7 @@ async fn test_get_by_project_id() {
 
 #[tokio::test]
 async fn test_get_by_project_id_empty() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let branches = repo
         .get_by_project_id(&ProjectId::from_string("empty-proj".to_string()))
         .await
@@ -144,7 +144,7 @@ async fn test_get_by_project_id_empty() {
 
 #[tokio::test]
 async fn test_update_status() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let branch = create_test_branch();
     let branch_id = branch.id.clone();
     let artifact_id = branch.plan_artifact_id.clone();
@@ -164,7 +164,7 @@ async fn test_update_status() {
 
 #[tokio::test]
 async fn test_update_status_not_found() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let result = repo
         .update_status(
             &PlanBranchId::from_string("nonexistent"),
@@ -176,7 +176,7 @@ async fn test_update_status_not_found() {
 
 #[tokio::test]
 async fn test_set_merge_task_id() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let branch = create_test_branch();
     let branch_id = branch.id.clone();
     let artifact_id = branch.plan_artifact_id.clone();
@@ -197,7 +197,7 @@ async fn test_set_merge_task_id() {
 
 #[tokio::test]
 async fn test_set_merge_task_id_not_found() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let result = repo
         .set_merge_task_id(
             &PlanBranchId::from_string("nonexistent"),
@@ -209,7 +209,7 @@ async fn test_set_merge_task_id_not_found() {
 
 #[tokio::test]
 async fn test_set_merged() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let branch = create_test_branch();
     let branch_id = branch.id.clone();
     let artifact_id = branch.plan_artifact_id.clone();
@@ -228,7 +228,7 @@ async fn test_set_merged() {
 
 #[tokio::test]
 async fn test_set_merged_not_found() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let result = repo
         .set_merged(&PlanBranchId::from_string("nonexistent"))
         .await;
@@ -237,7 +237,7 @@ async fn test_set_merged_not_found() {
 
 #[tokio::test]
 async fn test_multiple_branches_same_plan_artifact_id() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let branch1 = create_test_branch();
     let artifact_id = branch1.plan_artifact_id.clone();
     let branch2 = PlanBranch::new(
@@ -259,7 +259,7 @@ async fn test_multiple_branches_same_plan_artifact_id() {
 
 #[tokio::test]
 async fn test_create_with_merge_task_id() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let mut branch = create_test_branch();
     branch.merge_task_id = Some(TaskId::from_string("mt-preset".to_string()));
 
@@ -269,7 +269,7 @@ async fn test_create_with_merge_task_id() {
 
 #[tokio::test]
 async fn test_get_by_merge_task_id_after_set() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let branch = create_test_branch();
     let branch_id = branch.id.clone();
     let merge_task_id = TaskId::from_string("mt-lookup".to_string());
@@ -291,7 +291,7 @@ async fn test_get_by_merge_task_id_after_set() {
 
 #[tokio::test]
 async fn test_clear_merge_task_id_removes_task_link() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let branch = create_test_branch();
     let branch_id = branch.id.clone();
     let merge_task_id = TaskId::from_string("mt-to-clear".to_string());
@@ -321,7 +321,7 @@ async fn test_clear_merge_task_id_removes_task_link() {
 
 #[tokio::test]
 async fn test_clear_merge_task_id_returns_not_found_for_nonexistent() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let nonexistent_id = PlanBranchId::new();
 
     let result = repo.clear_merge_task_id(&nonexistent_id).await;
@@ -333,7 +333,7 @@ async fn test_clear_merge_task_id_returns_not_found_for_nonexistent() {
 
 #[tokio::test]
 async fn test_clear_merge_task_id_when_already_null_returns_not_found() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let branch = create_test_branch();
     let branch_id = branch.id.clone();
 
@@ -348,7 +348,7 @@ async fn test_clear_merge_task_id_when_already_null_returns_not_found() {
 
 #[tokio::test]
 async fn test_delete_removes_branch() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let branch = create_test_branch();
     let branch_id = branch.id.clone();
     let artifact_id = branch.plan_artifact_id.clone();
@@ -366,7 +366,7 @@ async fn test_delete_removes_branch() {
 
 #[tokio::test]
 async fn test_delete_returns_not_found_for_nonexistent() {
-    let repo = setup_repo().await;
+    let (_db, repo) = setup_repo();
     let nonexistent_id = PlanBranchId::new();
 
     let result = repo.delete(&nonexistent_id).await;

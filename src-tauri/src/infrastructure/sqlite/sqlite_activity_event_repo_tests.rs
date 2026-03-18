@@ -1,37 +1,19 @@
 use super::*;
 use crate::domain::entities::{ActivityEventType, InternalStatus};
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-
-    // Create project, task, and session for foreign key references
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory) VALUES ('p1', 'Test', '/path')",
-        [],
-    )
-    .unwrap();
-    conn.execute(
-        "INSERT INTO tasks (id, project_id, category, title) VALUES ('t1', 'p1', 'feature', 'Task')",
-        [],
-    )
-    .unwrap();
-    conn.execute(
-        "INSERT INTO ideation_sessions (id, project_id, title) VALUES ('s1', 'p1', 'Session')",
-        [],
-    )
-    .unwrap();
-
-    conn
+fn setup_test_db() -> (SqliteTestDb, TaskId, IdeationSessionId) {
+    let db = SqliteTestDb::new("sqlite-activity-event-repo");
+    let project = db.seed_project("Test");
+    let task = db.seed_task(project.id.clone(), "Task");
+    let session = db.seed_ideation_session(project.id);
+    (db, task.id, session.id)
 }
 
 #[tokio::test]
 async fn test_save_and_get_by_id() {
-    let conn = setup_test_db();
-    let repo = SqliteActivityEventRepository::new(conn);
-
-    let task_id = TaskId::from_string("t1".to_string());
+    let (db, task_id, _session_id) = setup_test_db();
+    let repo = SqliteActivityEventRepository::new(db.new_connection());
     let event = ActivityEvent::new_task_event(task_id, ActivityEventType::Thinking, "test")
         .with_status(InternalStatus::Executing);
 
@@ -48,10 +30,8 @@ async fn test_save_and_get_by_id() {
 
 #[tokio::test]
 async fn test_list_by_task_id_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteActivityEventRepository::new(conn);
-
-    let task_id = TaskId::from_string("t1".to_string());
+    let (db, task_id, _session_id) = setup_test_db();
+    let repo = SqliteActivityEventRepository::new(db.new_connection());
 
     let page = repo
         .list_by_task_id(&task_id, None, 50, None)
@@ -64,10 +44,8 @@ async fn test_list_by_task_id_empty() {
 
 #[tokio::test]
 async fn test_list_by_task_id_pagination() {
-    let conn = setup_test_db();
-    let repo = SqliteActivityEventRepository::new(conn);
-
-    let task_id = TaskId::from_string("t1".to_string());
+    let (db, task_id, _session_id) = setup_test_db();
+    let repo = SqliteActivityEventRepository::new(db.new_connection());
 
     // Create 5 events with small delays to ensure different timestamps
     for i in 0..5 {
@@ -98,10 +76,8 @@ async fn test_list_by_task_id_pagination() {
 
 #[tokio::test]
 async fn test_list_by_session_id() {
-    let conn = setup_test_db();
-    let repo = SqliteActivityEventRepository::new(conn);
-
-    let session_id = IdeationSessionId::from_string("s1".to_string());
+    let (db, _task_id, session_id) = setup_test_db();
+    let repo = SqliteActivityEventRepository::new(db.new_connection());
 
     let event = ActivityEvent::new_session_event(
         session_id.clone(),
@@ -120,10 +96,8 @@ async fn test_list_by_session_id() {
 
 #[tokio::test]
 async fn test_list_with_filter() {
-    let conn = setup_test_db();
-    let repo = SqliteActivityEventRepository::new(conn);
-
-    let task_id = TaskId::from_string("t1".to_string());
+    let (db, task_id, _session_id) = setup_test_db();
+    let repo = SqliteActivityEventRepository::new(db.new_connection());
 
     // Create different event types
     repo.save(ActivityEvent::new_task_event(
@@ -160,10 +134,8 @@ async fn test_list_with_filter() {
 
 #[tokio::test]
 async fn test_delete_by_task_id() {
-    let conn = setup_test_db();
-    let repo = SqliteActivityEventRepository::new(conn);
-
-    let task_id = TaskId::from_string("t1".to_string());
+    let (db, task_id, _session_id) = setup_test_db();
+    let repo = SqliteActivityEventRepository::new(db.new_connection());
 
     repo.save(ActivityEvent::new_task_event(
         task_id.clone(),
@@ -191,10 +163,8 @@ async fn test_delete_by_task_id() {
 
 #[tokio::test]
 async fn test_delete_by_session_id() {
-    let conn = setup_test_db();
-    let repo = SqliteActivityEventRepository::new(conn);
-
-    let session_id = IdeationSessionId::from_string("s1".to_string());
+    let (db, _task_id, session_id) = setup_test_db();
+    let repo = SqliteActivityEventRepository::new(db.new_connection());
 
     repo.save(ActivityEvent::new_session_event(
         session_id.clone(),
@@ -215,10 +185,8 @@ async fn test_delete_by_session_id() {
 
 #[tokio::test]
 async fn test_count_by_task_id() {
-    let conn = setup_test_db();
-    let repo = SqliteActivityEventRepository::new(conn);
-
-    let task_id = TaskId::from_string("t1".to_string());
+    let (db, task_id, _session_id) = setup_test_db();
+    let repo = SqliteActivityEventRepository::new(db.new_connection());
 
     for _ in 0..3 {
         repo.save(ActivityEvent::new_task_event(
@@ -236,10 +204,8 @@ async fn test_count_by_task_id() {
 
 #[tokio::test]
 async fn test_count_by_session_id() {
-    let conn = setup_test_db();
-    let repo = SqliteActivityEventRepository::new(conn);
-
-    let session_id = IdeationSessionId::from_string("s1".to_string());
+    let (db, _task_id, session_id) = setup_test_db();
+    let repo = SqliteActivityEventRepository::new(db.new_connection());
 
     for _ in 0..2 {
         repo.save(ActivityEvent::new_session_event(
@@ -257,10 +223,8 @@ async fn test_count_by_session_id() {
 
 #[tokio::test]
 async fn test_count_with_filter() {
-    let conn = setup_test_db();
-    let repo = SqliteActivityEventRepository::new(conn);
-
-    let task_id = TaskId::from_string("t1".to_string());
+    let (db, task_id, _session_id) = setup_test_db();
+    let repo = SqliteActivityEventRepository::new(db.new_connection());
 
     repo.save(ActivityEvent::new_task_event(
         task_id.clone(),
@@ -287,11 +251,8 @@ async fn test_count_with_filter() {
 
 #[tokio::test]
 async fn test_list_all_returns_all_events() {
-    let conn = setup_test_db();
-    let repo = SqliteActivityEventRepository::new(conn);
-
-    let task_id = TaskId::from_string("t1".to_string());
-    let session_id = IdeationSessionId::from_string("s1".to_string());
+    let (db, task_id, session_id) = setup_test_db();
+    let repo = SqliteActivityEventRepository::new(db.new_connection());
 
     // Create events for both task and session
     repo.save(ActivityEvent::new_task_event(
@@ -326,11 +287,8 @@ async fn test_list_all_returns_all_events() {
 
 #[tokio::test]
 async fn test_list_all_with_task_id_filter() {
-    let conn = setup_test_db();
-    let repo = SqliteActivityEventRepository::new(conn);
-
-    let task_id = TaskId::from_string("t1".to_string());
-    let session_id = IdeationSessionId::from_string("s1".to_string());
+    let (db, task_id, session_id) = setup_test_db();
+    let repo = SqliteActivityEventRepository::new(db.new_connection());
 
     // Create events for both task and session
     repo.save(ActivityEvent::new_task_event(
@@ -357,11 +315,8 @@ async fn test_list_all_with_task_id_filter() {
 
 #[tokio::test]
 async fn test_list_all_with_session_id_filter() {
-    let conn = setup_test_db();
-    let repo = SqliteActivityEventRepository::new(conn);
-
-    let task_id = TaskId::from_string("t1".to_string());
-    let session_id = IdeationSessionId::from_string("s1".to_string());
+    let (db, task_id, session_id) = setup_test_db();
+    let repo = SqliteActivityEventRepository::new(db.new_connection());
 
     // Create events for both task and session
     repo.save(ActivityEvent::new_task_event(
@@ -388,10 +343,8 @@ async fn test_list_all_with_session_id_filter() {
 
 #[tokio::test]
 async fn test_list_all_pagination() {
-    let conn = setup_test_db();
-    let repo = SqliteActivityEventRepository::new(conn);
-
-    let task_id = TaskId::from_string("t1".to_string());
+    let (db, task_id, _session_id) = setup_test_db();
+    let repo = SqliteActivityEventRepository::new(db.new_connection());
 
     // Create 5 events with delays
     for i in 0..5 {
@@ -456,10 +409,8 @@ fn test_format_cursor() {
 
 #[tokio::test]
 async fn test_save_merge_context_event_with_merging_status() {
-    let conn = setup_test_db();
-    let repo = SqliteActivityEventRepository::new(conn);
-
-    let task_id = TaskId::from_string("t1".to_string());
+    let (db, task_id, _session_id) = setup_test_db();
+    let repo = SqliteActivityEventRepository::new(db.new_connection());
     // Simulate what chat_service_streaming does for Merge context:
     // persists events with internal_status = Merging
     let event =
@@ -478,10 +429,8 @@ async fn test_save_merge_context_event_with_merging_status() {
 
 #[tokio::test]
 async fn test_merge_context_events_queryable_by_status_filter() {
-    let conn = setup_test_db();
-    let repo = SqliteActivityEventRepository::new(conn);
-
-    let task_id = TaskId::from_string("t1".to_string());
+    let (db, task_id, _session_id) = setup_test_db();
+    let repo = SqliteActivityEventRepository::new(db.new_connection());
 
     // Simulate merge agent producing multiple event types under Merging status
     for event_type in [

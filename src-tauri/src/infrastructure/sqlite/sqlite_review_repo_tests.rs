@@ -1,37 +1,21 @@
 use super::*;
-use crate::infrastructure::sqlite::connection::open_memory_connection;
-use crate::infrastructure::sqlite::migrations::run_migrations;
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite-review-repo")
 }
 
-fn create_test_project_and_task(conn: &Connection) -> (ProjectId, TaskId) {
-    let project_id = ProjectId::new();
-    let task_id = TaskId::new();
-
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory) VALUES (?1, 'Test', '/path')",
-        [project_id.as_str()],
-    )
-    .unwrap();
-
-    conn.execute(
-        "INSERT INTO tasks (id, project_id, category, title) VALUES (?1, ?2, 'feature', 'Test Task')",
-        [task_id.as_str(), project_id.as_str()],
-    )
-    .unwrap();
-
-    (project_id, task_id)
+fn create_test_project_and_task(db: &SqliteTestDb) -> (ProjectId, TaskId) {
+    let project = db.seed_project("Test");
+    let task = db.seed_task(project.id.clone(), "Test Task");
+    (project.id, task.id)
 }
 
 #[tokio::test]
 async fn test_create_and_get_review() {
-    let conn = setup_test_db();
-    let (project_id, task_id) = create_test_project_and_task(&conn);
-    let repo = SqliteReviewRepository::new(conn);
+    let db = setup_test_db();
+    let (project_id, task_id) = create_test_project_and_task(&db);
+    let repo = SqliteReviewRepository::new(db.new_connection());
 
     let review = Review::new(project_id, task_id, ReviewerType::Ai);
     let review_id = review.id.clone();
@@ -49,9 +33,9 @@ async fn test_create_and_get_review() {
 
 #[tokio::test]
 async fn test_get_by_task_id() {
-    let conn = setup_test_db();
-    let (project_id, task_id) = create_test_project_and_task(&conn);
-    let repo = SqliteReviewRepository::new(conn);
+    let db = setup_test_db();
+    let (project_id, task_id) = create_test_project_and_task(&db);
+    let repo = SqliteReviewRepository::new(db.new_connection());
 
     // Create two reviews for the same task
     let review1 = Review::new(project_id.clone(), task_id.clone(), ReviewerType::Ai);
@@ -66,9 +50,9 @@ async fn test_get_by_task_id() {
 
 #[tokio::test]
 async fn test_get_pending() {
-    let conn = setup_test_db();
-    let (project_id, task_id) = create_test_project_and_task(&conn);
-    let repo = SqliteReviewRepository::new(conn);
+    let db = setup_test_db();
+    let (project_id, task_id) = create_test_project_and_task(&db);
+    let repo = SqliteReviewRepository::new(db.new_connection());
 
     let mut review = Review::new(project_id.clone(), task_id, ReviewerType::Ai);
     repo.create(&review).await.unwrap();
@@ -88,9 +72,9 @@ async fn test_get_pending() {
 
 #[tokio::test]
 async fn test_update_review() {
-    let conn = setup_test_db();
-    let (project_id, task_id) = create_test_project_and_task(&conn);
-    let repo = SqliteReviewRepository::new(conn);
+    let db = setup_test_db();
+    let (project_id, task_id) = create_test_project_and_task(&db);
+    let repo = SqliteReviewRepository::new(db.new_connection());
 
     let mut review = Review::new(project_id, task_id, ReviewerType::Ai);
     let review_id = review.id.clone();
@@ -107,9 +91,9 @@ async fn test_update_review() {
 
 #[tokio::test]
 async fn test_delete_review() {
-    let conn = setup_test_db();
-    let (project_id, task_id) = create_test_project_and_task(&conn);
-    let repo = SqliteReviewRepository::new(conn);
+    let db = setup_test_db();
+    let (project_id, task_id) = create_test_project_and_task(&db);
+    let repo = SqliteReviewRepository::new(db.new_connection());
 
     let review = Review::new(project_id, task_id, ReviewerType::Ai);
     let review_id = review.id.clone();
@@ -123,13 +107,13 @@ async fn test_delete_review() {
 
 #[tokio::test]
 async fn test_add_and_get_action() {
-    let conn = setup_test_db();
-    let (project_id, task_id) = create_test_project_and_task(&conn);
+    let db = setup_test_db();
+    let (project_id, task_id) = create_test_project_and_task(&db);
 
     // Create a fix task ID (no FK constraint needed for review_actions.target_task_id)
     let fix_task_id = TaskId::new();
 
-    let repo = SqliteReviewRepository::new(conn);
+    let repo = SqliteReviewRepository::new(db.new_connection());
 
     let review = Review::new(project_id, task_id, ReviewerType::Ai);
     let review_id = review.id.clone();
@@ -154,9 +138,9 @@ async fn test_add_and_get_action() {
 
 #[tokio::test]
 async fn test_add_and_get_note() {
-    let conn = setup_test_db();
-    let (_project_id, task_id) = create_test_project_and_task(&conn);
-    let repo = SqliteReviewRepository::new(conn);
+    let db = setup_test_db();
+    let (_project_id, task_id) = create_test_project_and_task(&db);
+    let repo = SqliteReviewRepository::new(db.new_connection());
 
     let note1 = ReviewNote::with_notes(
         task_id.clone(),
@@ -187,9 +171,9 @@ async fn test_add_and_get_note() {
 
 #[tokio::test]
 async fn test_get_by_status() {
-    let conn = setup_test_db();
-    let (project_id, task_id) = create_test_project_and_task(&conn);
-    let repo = SqliteReviewRepository::new(conn);
+    let db = setup_test_db();
+    let (project_id, task_id) = create_test_project_and_task(&db);
+    let repo = SqliteReviewRepository::new(db.new_connection());
 
     let review1 = Review::new(project_id.clone(), task_id.clone(), ReviewerType::Ai);
     let mut review2 = Review::new(project_id.clone(), task_id, ReviewerType::Ai);
@@ -214,9 +198,9 @@ async fn test_get_by_status() {
 
 #[tokio::test]
 async fn test_count_pending() {
-    let conn = setup_test_db();
-    let (project_id, task_id) = create_test_project_and_task(&conn);
-    let repo = SqliteReviewRepository::new(conn);
+    let db = setup_test_db();
+    let (project_id, task_id) = create_test_project_and_task(&db);
+    let repo = SqliteReviewRepository::new(db.new_connection());
 
     let review1 = Review::new(project_id.clone(), task_id.clone(), ReviewerType::Ai);
     let review2 = Review::new(project_id.clone(), task_id.clone(), ReviewerType::Ai);
@@ -234,9 +218,9 @@ async fn test_count_pending() {
 
 #[tokio::test]
 async fn test_has_pending_review() {
-    let conn = setup_test_db();
-    let (project_id, task_id) = create_test_project_and_task(&conn);
-    let repo = SqliteReviewRepository::new(conn);
+    let db = setup_test_db();
+    let (project_id, task_id) = create_test_project_and_task(&db);
+    let repo = SqliteReviewRepository::new(db.new_connection());
 
     // No review yet
     assert!(!repo.has_pending_review(&task_id).await.unwrap());
@@ -250,9 +234,9 @@ async fn test_has_pending_review() {
 
 #[tokio::test]
 async fn test_review_cascade_delete() {
-    let conn = setup_test_db();
-    let (project_id, task_id) = create_test_project_and_task(&conn);
-    let repo = SqliteReviewRepository::new(conn);
+    let db = setup_test_db();
+    let (project_id, task_id) = create_test_project_and_task(&db);
+    let repo = SqliteReviewRepository::new(db.new_connection());
 
     let review = Review::new(project_id, task_id.clone(), ReviewerType::Ai);
     let review_id = review.id.clone();
@@ -271,9 +255,9 @@ async fn test_review_cascade_delete() {
 
 #[tokio::test]
 async fn test_count_fix_actions() {
-    let conn = setup_test_db();
-    let (project_id, task_id) = create_test_project_and_task(&conn);
-    let repo = SqliteReviewRepository::new(conn);
+    let db = setup_test_db();
+    let (project_id, task_id) = create_test_project_and_task(&db);
+    let repo = SqliteReviewRepository::new(db.new_connection());
 
     // No fix actions yet
     assert_eq!(repo.count_fix_actions(&task_id).await.unwrap(), 0);
@@ -313,9 +297,9 @@ async fn test_count_fix_actions() {
 
 #[tokio::test]
 async fn test_get_fix_actions() {
-    let conn = setup_test_db();
-    let (project_id, task_id) = create_test_project_and_task(&conn);
-    let repo = SqliteReviewRepository::new(conn);
+    let db = setup_test_db();
+    let (project_id, task_id) = create_test_project_and_task(&db);
+    let repo = SqliteReviewRepository::new(db.new_connection());
 
     // Create a review and add actions
     let review = Review::new(project_id, task_id.clone(), ReviewerType::Ai);
@@ -342,9 +326,9 @@ async fn test_get_fix_actions() {
 
 #[tokio::test]
 async fn test_count_fix_actions_across_multiple_reviews() {
-    let conn = setup_test_db();
-    let (project_id, task_id) = create_test_project_and_task(&conn);
-    let repo = SqliteReviewRepository::new(conn);
+    let db = setup_test_db();
+    let (project_id, task_id) = create_test_project_and_task(&db);
+    let repo = SqliteReviewRepository::new(db.new_connection());
 
     // Create first review with fix action
     let review1 = Review::new(project_id.clone(), task_id.clone(), ReviewerType::Ai);
