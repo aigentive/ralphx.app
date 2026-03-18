@@ -78,6 +78,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --test chat_service_errors
 cargo test --manifest-path src-tauri/Cargo.toml --test chat_service_merge
 cargo test --manifest-path src-tauri/Cargo.toml --test transition_handler_freshness
 cargo test --manifest-path src-tauri/Cargo.toml --test transition_handler_concurrent_freshness
+cargo test --manifest-path src-tauri/Cargo.toml --test transition_handler_freshness_integration
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 ```

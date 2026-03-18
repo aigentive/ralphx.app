@@ -117,10 +117,6 @@ mod merge_target_resolution;
 // Branch freshness timeout tests: config, env override, YAML deserialization
 mod branch_freshness_timeout;
 
-// Real git integration tests for ensure_branches_fresh(): fresh branch passes,
-// stale branch routes to Merging, disabled config skips
-mod freshness_integration_tests;
-
 // Merge pipeline timeout integration tests: real git + memory repos + mock agents
 // Covers: lsof timeout, pre-merge cleanup, stale index.lock, stale worktree, full E2E
 mod merge_pipeline_timeout_tests;
