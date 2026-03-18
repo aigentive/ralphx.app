@@ -26,6 +26,7 @@ paths:
 | Layer | Standard |
 |---|---|
 | Test runner | `cargo test` for targeted filters and single suites; `cargo nextest run` for broad lib/test runs and CI |
+| Low-dependency workspace crate | `src-tauri/crates/ralphx-domain` holds pure `agents`, `qa`, `execution`, and `ideation` modules; test it directly when you touch those areas |
 | Target discovery | `cargo test --manifest-path src-tauri/Cargo.toml --lib -- --list | rg "<module>"` |
 | Async SQLite repo tests | `SqliteTestDb` + repo `from_shared(db.shared_conn())` |
 | AppState integration tests | `SqliteStateFixture::new(...)` |
@@ -59,6 +60,7 @@ paths:
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml db_connection --lib
+cargo test --manifest-path src-tauri/crates/ralphx-domain/Cargo.toml
 cargo test --manifest-path src-tauri/Cargo.toml --test research_integration --test workflow_integration --test artifact_integration --test repository_swapping --test methodology_integration --test gsd_integration
 cargo test --manifest-path src-tauri/Cargo.toml --test state_machine_flows --test qa_system_flows
 cargo test --manifest-path src-tauri/Cargo.toml --test per_project_execution_scoping
@@ -105,6 +107,11 @@ cargo test --manifest-path src-tauri/Cargo.toml --test qa_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test methodology_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test workflow_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test research_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test agent_profile_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test unified_chat_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test git_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test activity_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test question_commands
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 ```
@@ -244,6 +251,7 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Tune `cargo-nextest` groups/profiles as suites grow | Better concurrency control, retries, partitioning, and resource grouping for thousands of tests |
 | Add shared seed helpers for common row graphs | Removes repeated SQL and makes suite setup cheaper to maintain |
 | Group resource-sensitive tests explicitly | Prevent DB/file/git-heavy tests from competing with fast unit coverage |
+| Extract pure backend modules into workspace crates | Reduces root-crate scope over time; start with low-dependency clusters before touching Tauri/SQLite-facing code |
 
 ## Formatter Warning
 

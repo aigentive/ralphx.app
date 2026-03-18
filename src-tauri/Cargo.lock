@@ -3119,6 +3119,7 @@ dependencies = [
  "http-body-util",
  "lazy_static",
  "nix",
+ "ralphx-domain",
  "rand 0.8.5",
  "regex",
  "rusqlite",
@@ -3145,6 +3146,21 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "uuid",
+ "which",
+]
+
+[[package]]
+name = "ralphx-domain"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures",
+ "lazy_static",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
  "uuid",
  "which",
 ]

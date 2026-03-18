@@ -192,7 +192,3 @@ pub async fn seed_builtin_profiles(state: State<'_, AppState>) -> Result<(), Str
         .await
         .map_err(|e| e.to_string())
 }
-
-#[cfg(test)]
-#[path = "agent_profile_commands_tests.rs"]
-mod tests;

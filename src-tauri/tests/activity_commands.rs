@@ -1,4 +1,4 @@
-use super::*;
+use ralphx_lib::commands::activity_commands::ActivityEventFilterInput;
 
 #[test]
 fn activity_event_filter_input_to_domain_empty() {

@@ -1,4 +1,5 @@
-use super::*;
+use ralphx_lib::commands::git_commands::{CommitInfoResponse, TaskDiffStatsResponse};
+use ralphx_lib::application::{CommitInfo, DiffStats};
 
 #[test]
 fn test_commit_info_response_conversion() {

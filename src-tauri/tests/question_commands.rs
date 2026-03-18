@@ -1,5 +1,5 @@
-use super::*;
-use crate::application::{QuestionState, QuestionOption};
+use ralphx_lib::application::{QuestionAnswer, QuestionOption, QuestionState};
+use ralphx_lib::commands::question_commands::{ResolveQuestionArgs, ResolveQuestionResponse};
 
 #[test]
 fn test_resolve_question_args_deserialize() {

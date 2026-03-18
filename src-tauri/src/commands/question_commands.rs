@@ -71,7 +71,3 @@ pub async fn get_pending_questions(
     let pending = state.question_state.get_pending_info().await;
     Ok(pending)
 }
-
-#[cfg(test)]
-#[path = "question_commands_tests.rs"]
-mod tests;

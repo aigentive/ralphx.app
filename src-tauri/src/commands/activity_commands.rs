@@ -73,7 +73,8 @@ pub struct ActivityEventFilterInput {
 
 impl ActivityEventFilterInput {
     /// Convert frontend filter input to domain filter
-    fn to_domain_filter(&self) -> ActivityEventFilter {
+    #[doc(hidden)]
+    pub fn to_domain_filter(&self) -> ActivityEventFilter {
         let mut filter = ActivityEventFilter::new();
 
         if let Some(ref types) = self.event_types {
@@ -272,7 +273,3 @@ pub async fn count_session_activity_events(
         .await
         .map_err(|e| e.to_string())
 }
-
-#[cfg(test)]
-#[path = "activity_commands_tests.rs"]
-mod tests;

@@ -90,6 +90,7 @@ New pattern → add one-liner here. Pattern name + rule only.
 | MergeDeadline | `attempt_programmatic_merge` wraps cleanup + strategy in bounded deadline (`attempt_merge_deadline_secs`) |
 | No Inline Timeout Consts | All durations → `runtime_config` + `ralphx.yaml`, never Rust `const` |
 | Rust test runner split | Use targeted `cargo test` for pinpoint Rust validation and doctests; use `cargo nextest run` for broad Rust lib runs; fixture rules and commands live in `.claude/rules/rust-test-execution.md` |
+| Workspace domain split | Low-dependency backend modules move into `src-tauri/crates/ralphx-domain`; keep Tauri/SQLite-facing code in the root crate until a clean boundary exists |
 | Oversized lib suite split | Move massive orchestration/state-machine/worktree suites out of `src/**` lib tests into `src-tauri/tests/*.rs` integration binaries, and expose only the minimum internal-facing API needed for them |
 | HTTP handler suite split | Move large handler sidecar suites to `src-tauri/tests/*.rs`; import via `ralphx_lib::http_server::{handlers,types}` and use `AppState::new_sqlite_test()` only for SQLite-backed handler cases |
 | Integration helper visibility | When a moved integration suite needs private handler/helpers, expose the minimum surface as `#[doc(hidden)] pub` instead of keeping `#[cfg(test)]` sidecar-only access |
