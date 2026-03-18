@@ -12,7 +12,20 @@
 //! | `task_state_history.to_state` | `task_state_history.to_status` | task_state_history |
 //! | `reviews.outcome` | `reviews.status` | reviews |
 
-use ralphx_lib::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use ralphx_lib::testing::SqliteTestDb;
+
+struct MetricsSchemaTestDb {
+    _db: SqliteTestDb,
+    conn: rusqlite::Connection,
+}
+
+impl std::ops::Deref for MetricsSchemaTestDb {
+    type Target = rusqlite::Connection;
+
+    fn deref(&self) -> &Self::Target {
+        &self.conn
+    }
+}
 
 fn column_exists(conn: &rusqlite::Connection, table: &str, column: &str) -> bool {
     let sql = format!("PRAGMA table_info({})", table);
@@ -46,10 +59,10 @@ fn index_exists(conn: &rusqlite::Connection, index: &str) -> bool {
     count > 0
 }
 
-fn setup_migrated_db() -> rusqlite::Connection {
-    let conn = open_memory_connection().expect("Failed to open memory connection");
-    run_migrations(&conn).expect("Failed to run migrations");
-    conn
+fn setup_migrated_db() -> MetricsSchemaTestDb {
+    let db = SqliteTestDb::new("metrics-schema-validation");
+    let conn = db.new_connection();
+    MetricsSchemaTestDb { _db: db, conn }
 }
 
 // ---------------------------------------------------------------------------
