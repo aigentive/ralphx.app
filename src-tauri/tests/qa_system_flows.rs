@@ -12,16 +12,14 @@ use ralphx_lib::domain::entities::TaskId;
 use ralphx_lib::domain::state_machine::types::QaFailure;
 use ralphx_lib::domain::state_machine::{AgentSpawner, QaFailedData, State, TaskEvent};
 use ralphx_lib::infrastructure::agents::AgenticClientSpawner;
-use ralphx_lib::infrastructure::sqlite::{
-    open_memory_connection, run_migrations, TaskStateMachineRepository,
-};
+use ralphx_lib::infrastructure::sqlite::TaskStateMachineRepository;
 use ralphx_lib::infrastructure::{MockAgenticClient, MockCallType};
-use ralphx_lib::testing::test_prompts;
+use ralphx_lib::testing::{test_prompts, SqliteTestDb};
 
 /// Helper to set up a test environment with a repository and task
-fn setup_test() -> (TaskStateMachineRepository, TaskId) {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+fn setup_test() -> (SqliteTestDb, TaskStateMachineRepository, TaskId) {
+    let db = SqliteTestDb::new("qa-system-flows");
+    let conn = db.new_connection();
 
     // Insert a project and task with QA enabled
     conn.execute(
@@ -40,7 +38,7 @@ fn setup_test() -> (TaskStateMachineRepository, TaskId) {
     let repo = TaskStateMachineRepository::new(conn);
     let task_id = TaskId::from_string("task-1".to_string());
 
-    (repo, task_id)
+    (db, repo, task_id)
 }
 
 /// Helper to set up a mock client with QA prep configured
@@ -101,7 +99,7 @@ async fn test_qa_prep_runs_in_parallel_with_execution() {
 /// Test: State machine waits for QA Prep if worker completes first
 #[test]
 fn test_state_waits_for_qa_prep_after_worker_complete() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Start in Executing state
     repo.persist_state(&task_id, &State::Executing).unwrap();
@@ -152,7 +150,7 @@ async fn test_mock_client_distinguishes_spawn_modes() {
 /// Flow: Executing (QA enabled) -> QaRefining -> QaTesting -> QaPassed -> PendingReview
 #[test]
 fn test_qa_testing_flow_pass() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Start in QaRefining (execution complete with QA enabled, ready for QA refinement)
     repo.persist_state(&task_id, &State::QaRefining).unwrap();
@@ -181,7 +179,7 @@ fn test_qa_testing_flow_pass() {
 /// Test: QaPassed emits success event data
 #[test]
 fn test_qa_passed_records_success() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Set up QaTesting state
     repo.persist_state(&task_id, &State::QaTesting).unwrap();
@@ -206,7 +204,7 @@ fn test_qa_passed_records_success() {
 /// Test: QA test failure creates QaFailed state with failure data
 #[test]
 fn test_qa_testing_flow_failure() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Set up QaTesting state
     repo.persist_state(&task_id, &State::QaTesting).unwrap();
@@ -226,7 +224,7 @@ fn test_qa_testing_flow_failure() {
 /// Test: QaFailed preserves failure details
 #[test]
 fn test_qa_failed_preserves_failure_details() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Create QaFailed state with specific failure details
     let failures = QaFailedData::new(vec![
@@ -251,7 +249,7 @@ fn test_qa_failed_preserves_failure_details() {
 /// Test: Retry from QaFailed goes to RevisionNeeded
 #[test]
 fn test_qa_failed_retry_to_revision_needed() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Set up QaFailed state
     let failures = QaFailedData::single(QaFailure::new("test_x", "Test failed"));
@@ -266,7 +264,7 @@ fn test_qa_failed_retry_to_revision_needed() {
 /// Test: SkipQa from QaFailed bypasses to PendingReview
 #[test]
 fn test_qa_failed_skip_to_pending_review() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Set up QaFailed state (maybe flaky test)
     let failures = QaFailedData::single(QaFailure::new("flaky_test", "Random timeout"));
@@ -285,7 +283,7 @@ fn test_qa_failed_skip_to_pending_review() {
 /// Test: Full lifecycle with QA enabled: Backlog -> ... -> Approved
 #[test]
 fn test_complete_lifecycle_with_qa() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // 1. Schedule: Backlog -> Ready
     let state = repo.process_event(&task_id, &TaskEvent::Schedule).unwrap();
@@ -338,7 +336,7 @@ fn test_complete_lifecycle_with_qa() {
 /// Test: QA failure and re-execution cycle
 #[test]
 fn test_qa_failure_reexecution_cycle() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Start in QaTesting
     repo.persist_state(&task_id, &State::QaTesting).unwrap();

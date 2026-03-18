@@ -13,14 +13,13 @@ use ralphx_lib::domain::state_machine::types::QaFailure;
 use ralphx_lib::domain::state_machine::{
     FailedData, QaFailedData, State, StateData, TaskContext, TaskEvent, TaskStateMachine,
 };
-use ralphx_lib::infrastructure::sqlite::{
-    open_memory_connection, run_migrations, TaskStateMachineRepository,
-};
+use ralphx_lib::infrastructure::sqlite::TaskStateMachineRepository;
+use ralphx_lib::testing::SqliteTestDb;
 
 /// Helper to set up a test environment with a repository and task
-fn setup_test() -> (TaskStateMachineRepository, TaskId) {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+fn setup_test() -> (SqliteTestDb, TaskStateMachineRepository, TaskId) {
+    let db = SqliteTestDb::new("state-machine-flows");
+    let conn = db.new_connection();
 
     // Insert a project and task
     conn.execute(
@@ -39,7 +38,7 @@ fn setup_test() -> (TaskStateMachineRepository, TaskId) {
     let repo = TaskStateMachineRepository::new(conn);
     let task_id = TaskId::from_string("task-1".to_string());
 
-    (repo, task_id)
+    (db, repo, task_id)
 }
 
 /// Helper to record transition history
@@ -68,7 +67,7 @@ fn record_transitions(
 /// This is the simplest complete task lifecycle without QA.
 #[test]
 fn test_happy_path_without_qa() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Track all transitions
     let events = vec![
@@ -125,7 +124,7 @@ fn test_happy_path_without_qa() {
 /// Test full flow tracking transitions
 #[test]
 fn test_happy_path_tracks_transitions() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     let mut transition_log = Vec::new();
 
@@ -159,7 +158,7 @@ fn test_happy_path_tracks_transitions() {
 /// Test that terminal state Approved prevents further transitions
 #[test]
 fn test_approved_is_terminal() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Fast-forward to Approved
     repo.persist_state(&task_id, &State::Approved).unwrap();
@@ -179,7 +178,7 @@ fn test_approved_is_terminal() {
 /// Test: Executing (with QA) → QaRefining → QaTesting → QaPassed → PendingReview
 #[test]
 fn test_qa_flow_success() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Start in Executing state, then execute completion triggers QA flow
     repo.persist_state(&task_id, &State::Executing).unwrap();
@@ -212,7 +211,7 @@ fn test_qa_flow_success() {
 /// Test: QA failure and retry path
 #[test]
 fn test_qa_flow_failure_and_retry() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Start in QaTesting state
     repo.persist_state(&task_id, &State::QaTesting).unwrap();
@@ -236,7 +235,7 @@ fn test_qa_flow_failure_and_retry() {
 /// Test: QaFailed state preserves failure data
 #[test]
 fn test_qa_failed_preserves_data() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Set up QaFailed with failure data
     let qa_data = QaFailedData::single(QaFailure::new("test_login", "Expected 200, got 401"));
@@ -255,7 +254,7 @@ fn test_qa_failed_preserves_data() {
 /// Test: RevisionNeeded → Executing loop
 #[test]
 fn test_revision_needed_to_executing_loop() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Start in RevisionNeeded
     repo.persist_state(&task_id, &State::RevisionNeeded)
@@ -279,7 +278,7 @@ fn test_revision_needed_to_executing_loop() {
 /// Test: HumanApprove from ReviewPassed completes task
 #[test]
 fn test_human_approve_from_review_passed() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Set up ReviewPassed state (AI approved, awaiting human)
     repo.persist_state(&task_id, &State::ReviewPassed).unwrap();
@@ -294,7 +293,7 @@ fn test_human_approve_from_review_passed() {
 /// Test: SkipQa from QaFailed moves to PendingReview
 #[test]
 fn test_skip_qa_from_qa_failed() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Set up QaFailed state with failure data
     let qa_data = QaFailedData::single(QaFailure::new("flaky_test", "Intermittent failure"));
@@ -309,7 +308,7 @@ fn test_skip_qa_from_qa_failed() {
 /// Test: Retry from Failed state
 #[test]
 fn test_retry_from_failed() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Set up Failed state with error data
     let failed_data = FailedData::new("Build timeout").with_details("CI timed out after 60m");
@@ -324,7 +323,7 @@ fn test_retry_from_failed() {
 /// Test: Retry from Cancelled state
 #[test]
 fn test_retry_from_cancelled() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Set up Cancelled state
     repo.persist_state(&task_id, &State::Cancelled).unwrap();
@@ -337,7 +336,7 @@ fn test_retry_from_cancelled() {
 /// Test: Retry from Approved state (re-open completed task)
 #[test]
 fn test_retry_from_approved() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Set up Approved state
     repo.persist_state(&task_id, &State::Approved).unwrap();
@@ -350,7 +349,7 @@ fn test_retry_from_approved() {
 /// Test: Retry clears error state (state data is cleaned up)
 #[test]
 fn test_retry_clears_error_state() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Set up Failed state with error data
     let failed_data = FailedData::new("Some error");
@@ -374,7 +373,7 @@ fn test_retry_clears_error_state() {
 /// Test: Ready → Blocked (blocker detected) → Ready (blockers resolved)
 #[test]
 fn test_blocking_flow() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Schedule to Ready
     repo.process_event(&task_id, &TaskEvent::Schedule).unwrap();
@@ -401,7 +400,7 @@ fn test_blocking_flow() {
 /// Test: NeedsHumanInput during execution creates Blocked state
 #[test]
 fn test_needs_human_input_blocks_execution() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Set up Executing state
     repo.persist_state(&task_id, &State::Executing).unwrap();
@@ -432,24 +431,24 @@ fn test_needs_human_input_blocks_execution() {
 #[test]
 fn test_cancel_from_various_states() {
     // Cancel from Backlog
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
     let state = repo.process_event(&task_id, &TaskEvent::Cancel).unwrap();
     assert_eq!(state, State::Cancelled);
 
     // Cancel from Ready
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
     repo.process_event(&task_id, &TaskEvent::Schedule).unwrap();
     let state = repo.process_event(&task_id, &TaskEvent::Cancel).unwrap();
     assert_eq!(state, State::Cancelled);
 
     // Cancel from Blocked
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
     repo.persist_state(&task_id, &State::Blocked).unwrap();
     let state = repo.process_event(&task_id, &TaskEvent::Cancel).unwrap();
     assert_eq!(state, State::Cancelled);
 
     // Cancel from Executing
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
     repo.persist_state(&task_id, &State::Executing).unwrap();
     let state = repo.process_event(&task_id, &TaskEvent::Cancel).unwrap();
     assert_eq!(state, State::Cancelled);
@@ -462,7 +461,7 @@ fn test_cancel_from_various_states() {
 /// Test: ExecutionFailed creates Failed state with error data
 #[test]
 fn test_execution_failed_stores_error() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Set up Executing state
     repo.persist_state(&task_id, &State::Executing).unwrap();
@@ -491,7 +490,7 @@ fn test_execution_failed_stores_error() {
 /// Test: Review rejection leads to RevisionNeeded
 #[test]
 fn test_review_rejection_to_revision_needed() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Set up Reviewing state (AI is reviewing)
     repo.persist_state(&task_id, &State::Reviewing).unwrap();
@@ -512,7 +511,7 @@ fn test_review_rejection_to_revision_needed() {
 /// Test: Full review cycle (reject, fix, approve)
 #[test]
 fn test_full_review_cycle() {
-    let (repo, task_id) = setup_test();
+    let (_db, repo, task_id) = setup_test();
 
     // Start in Reviewing (AI is reviewing)
     repo.persist_state(&task_id, &State::Reviewing).unwrap();

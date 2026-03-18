@@ -41,6 +41,10 @@ impl SqliteTestDb {
         Arc::clone(&self.shared_conn)
     }
 
+    pub fn new_connection(&self) -> Connection {
+        open_connection(&self.path).expect("Failed to open additional SQLite test DB connection")
+    }
+
     pub fn with_connection<T>(&self, f: impl FnOnce(&Connection) -> T) -> T {
         let guard = self
             .shared_conn
