@@ -1,8 +1,12 @@
-use super::*;
-use crate::domain::entities::{ReviewId, ReviewStatus};
-use crate::domain::repositories::StateHistoryMetadata;
 use async_trait::async_trait;
+use ralphx_lib::application::ReviewService;
+use ralphx_lib::domain::entities::{self, *};
+use ralphx_lib::domain::repositories::{self, *};
+use ralphx_lib::domain::review::config::ReviewSettings;
+use ralphx_lib::domain::tools::{CompleteReviewInput, ReviewIssueInput};
+use ralphx_lib::error::{AppError, AppResult};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::RwLock;
 
 // Mock ReviewRepository
@@ -66,7 +70,7 @@ impl ReviewRepository for MockReviewRepo {
     }
     async fn get_action_by_id(
         &self,
-        _id: &crate::domain::entities::ReviewActionId,
+        _id: &entities::ReviewActionId,
     ) -> AppResult<Option<ReviewAction>> {
         Ok(None)
     }
@@ -86,7 +90,7 @@ impl ReviewRepository for MockReviewRepo {
     }
     async fn get_note_by_id(
         &self,
-        _id: &crate::domain::entities::ReviewNoteId,
+        _id: &entities::ReviewNoteId,
     ) -> AppResult<Option<ReviewNote>> {
         Ok(None)
     }
@@ -117,7 +121,7 @@ impl ReviewRepository for MockReviewRepo {
                 for action in actions.iter() {
                     if action.review_id == review.id
                         && action.action_type
-                            == crate::domain::entities::ReviewActionType::CreatedFixTask
+                            == entities::ReviewActionType::CreatedFixTask
                     {
                         count += 1;
                     }
@@ -135,7 +139,7 @@ impl ReviewRepository for MockReviewRepo {
                 for action in actions.iter() {
                     if action.review_id == review.id
                         && action.action_type
-                            == crate::domain::entities::ReviewActionType::CreatedFixTask
+                            == entities::ReviewActionType::CreatedFixTask
                     {
                         result.push(action.clone());
                     }
@@ -228,7 +232,7 @@ impl TaskRepository for MockTaskRepo {
     async fn get_status_history(
         &self,
         _id: &TaskId,
-    ) -> AppResult<Vec<crate::domain::repositories::StatusTransition>> {
+    ) -> AppResult<Vec<repositories::StatusTransition>> {
         Ok(vec![])
     }
     async fn get_status_entered_at(
@@ -243,7 +247,7 @@ impl TaskRepository for MockTaskRepo {
     }
     async fn get_by_ideation_session(
         &self,
-        _session_id: &crate::domain::entities::IdeationSessionId,
+        _session_id: &entities::IdeationSessionId,
     ) -> AppResult<Vec<Task>> {
         Ok(vec![])
     }
@@ -264,7 +268,7 @@ impl TaskRepository for MockTaskRepo {
                 .insert(task_id.as_str().to_string(), archived.clone());
             Ok(archived)
         } else {
-            Err(crate::error::AppError::NotFound(format!(
+            Err(AppError::NotFound(format!(
                 "Task {} not found",
                 task_id.as_str()
             )))
@@ -280,7 +284,7 @@ impl TaskRepository for MockTaskRepo {
                 .insert(task_id.as_str().to_string(), restored.clone());
             Ok(restored)
         } else {
-            Err(crate::error::AppError::NotFound(format!(
+            Err(AppError::NotFound(format!(
                 "Task {} not found",
                 task_id.as_str()
             )))
@@ -357,8 +361,8 @@ impl TaskRepository for MockTaskRepo {
 
     async fn get_status_history_batch(
         &self,
-        _task_ids: &[crate::domain::entities::TaskId],
-    ) -> AppResult<HashMap<crate::domain::entities::TaskId, Vec<crate::domain::repositories::StatusTransition>>> {
+        _task_ids: &[entities::TaskId],
+    ) -> AppResult<HashMap<entities::TaskId, Vec<repositories::StatusTransition>>> {
         Ok(HashMap::new())
     }
 }
@@ -428,8 +432,6 @@ async fn test_process_review_approved() {
 
 #[tokio::test]
 async fn test_process_review_needs_changes_creates_fix_task() {
-    use crate::domain::entities::IssueSeverity;
-    use crate::domain::tools::ReviewIssueInput;
     let (review_repo, task_repo, project_id, task_id) = setup();
     let service = ReviewService::new(review_repo.clone(), task_repo.clone());
     let mut review = service
@@ -544,8 +546,6 @@ async fn test_approve_fix_task_not_found() {
 
 #[tokio::test]
 async fn test_reject_fix_task_creates_new_fix() {
-    use crate::domain::entities::IssueSeverity;
-    use crate::domain::tools::ReviewIssueInput;
     let (review_repo, task_repo, project_id, task_id) = setup();
     let service = ReviewService::with_settings(
         review_repo.clone(),
@@ -595,8 +595,6 @@ async fn test_reject_fix_task_creates_new_fix() {
 
 #[tokio::test]
 async fn test_reject_fix_task_max_attempts_moves_to_backlog() {
-    use crate::domain::entities::IssueSeverity;
-    use crate::domain::tools::ReviewIssueInput;
     let (review_repo, task_repo, project_id, task_id) = setup();
     // Set max_fix_attempts to 1
     let settings = ReviewSettings::with_max_attempts(1);
@@ -634,8 +632,6 @@ async fn test_reject_fix_task_max_attempts_moves_to_backlog() {
 
 #[tokio::test]
 async fn test_get_fix_attempt_count() {
-    use crate::domain::entities::IssueSeverity;
-    use crate::domain::tools::ReviewIssueInput;
     let (review_repo, task_repo, project_id, task_id) = setup();
     let service = ReviewService::new(review_repo.clone(), task_repo.clone());
 
