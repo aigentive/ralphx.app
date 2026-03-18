@@ -34,6 +34,7 @@ paths:
 | Setup/seeding | Shared suite helpers/builders on top of `SqliteTestDb`; one migration pass per temp DB only |
 | Concurrency | File-backed temp DBs for shared access; `:memory:` only for intentionally isolated narrow tests |
 | Compile-scope reduction | Move oversized state-machine/worktree/orchestration suites out of `src-tauri/src/**` lib tests into dedicated `src-tauri/tests/*.rs` integration binaries when they only need explicit public/internal-facing APIs |
+| Command-suite test seams | When moving a `src-tauri/src/commands/**/tests.rs` sidecar into `src-tauri/tests/*.rs`, re-export any required helper entry points from the command module root with `#[doc(hidden)] pub`; don’t couple integration tests to private submodules |
 | Broad-run runner config | Rust workspace config lives in `src-tauri/.config/nextest.toml`; keep group changes there, not in ad hoc shell flags |
 | Formatter policy | No broad `cargo fmt`; if formatting is required, keep it scoped and separate |
 
@@ -84,6 +85,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --test chat_service_streaming
 cargo test --manifest-path src-tauri/Cargo.toml --test review_service
 cargo test --manifest-path src-tauri/Cargo.toml --test apply_service
 cargo test --manifest-path src-tauri/Cargo.toml --test ideation_service
+cargo test --manifest-path src-tauri/Cargo.toml --test ideation_commands
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 ```
