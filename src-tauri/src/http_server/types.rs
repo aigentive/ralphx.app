@@ -1012,6 +1012,10 @@ pub struct TeamPlanRegisterResponse {
     pub success: bool,
     pub plan_id: String,
     pub message: String,
+    /// Whether the plan was auto-approved (spawning happened in Phase 1, no Phase 2 needed)
+    pub auto_approved: bool,
+    /// Teammates spawned during auto-approve (empty when auto_approved is false)
+    pub teammates_spawned: Vec<SpawnedTeammateInfo>,
 }
 
 /// GET /api/team/plan/pending/:context_id — frontend reconciliation response

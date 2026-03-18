@@ -86,6 +86,22 @@ export async function handleRequestTeamPlan(args, contextType, contextId, leadSe
         const result = (await registerResponse.json());
         plan_id = result.plan_id;
         safeError(`[RalphX MCP] Team plan registered: ${plan_id}`);
+        // Short-circuit: auto-approved plans don't need Phase 2
+        if (result.auto_approved) {
+            safeError(`[RalphX MCP] Team plan ${plan_id} auto-approved — skipping Phase 2`);
+            return {
+                content: [{
+                        type: "text",
+                        text: JSON.stringify({
+                            success: true,
+                            plan_id: result.plan_id,
+                            team_name: args.team_name,
+                            teammates_spawned: result.teammates_spawned ?? [],
+                            message: result.message,
+                        }),
+                    }],
+            };
+        }
     }
     catch (error) {
         safeError(`[RalphX MCP] Failed to register team plan:`, error);
@@ -124,6 +140,24 @@ export async function handleRequestTeamPlan(args, contextType, contextId, leadSe
                                 reason: "timeout",
                                 plan_id,
                                 message: "Team plan approval timed out after 14 minutes. The user may be away. You can continue without approval or retry later.",
+                            }),
+                        },
+                    ],
+                };
+            }
+            if (awaitResponse.status === 404) {
+                // Channel already removed — likely auto-approved but short-circuit didn't fire
+                safeError(`[RalphX MCP] Phase 2 returned 404 for plan ${plan_id} — channel already processed`);
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify({
+                                success: false,
+                                plan_id,
+                                team_name: args.team_name,
+                                teammates_spawned: [],
+                                message: "Plan channel already processed (likely auto-approved). Check agent logs.",
                             }),
                         },
                     ],

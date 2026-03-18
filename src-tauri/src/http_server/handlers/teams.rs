@@ -173,10 +173,13 @@ pub async fn request_team_plan_register(
                         .ok();
                     info!(plan_id = %plan_id, "Emitted team:plan_auto_approved event");
                 }
+                state.team_tracker.remove_plan_channel(&plan_id).await;
                 Ok(Json(TeamPlanRegisterResponse {
                     success: true,
                     plan_id: plan_id.clone(),
                     message: format!("Plan auto-approved: {}", spawn_result.message),
+                    auto_approved: true,
+                    teammates_spawned: spawn_result.spawned_teammates.clone(),
                 }))
             }
             Err(e) => {
@@ -208,6 +211,8 @@ pub async fn request_team_plan_register(
             success: true,
             plan_id,
             message: "Team plan submitted for approval".to_string(),
+            auto_approved: false,
+            teammates_spawned: vec![],
         }))
     }
 }
