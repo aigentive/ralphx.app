@@ -5,59 +5,62 @@ use crate::domain::entities::{
     ChatMessage, ChatMessageId, IdeationSession, IdeationSessionId, ProjectId, TaskId,
 };
 use crate::domain::repositories::ChatMessageRepository;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
-use rusqlite::Connection;
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite-chat-message-repo")
 }
 
-fn create_test_project(conn: &Connection, id: &ProjectId, name: &str, path: &str) {
-    conn.execute(
-            "INSERT INTO projects (id, name, working_directory, git_mode, created_at, updated_at)
-             VALUES (?1, ?2, ?3, 'single_branch', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-            rusqlite::params![id.as_str(), name, path],
-        )
-        .unwrap();
+fn create_test_project(db: &SqliteTestDb, id: &ProjectId, name: &str, path: &str) {
+    db.with_connection(|conn| {
+        conn.execute(
+                "INSERT INTO projects (id, name, working_directory, git_mode, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, 'single_branch', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+                rusqlite::params![id.as_str(), name, path],
+            )
+            .unwrap();
+    });
 }
 
-fn create_test_session(conn: &Connection, project_id: &ProjectId) -> IdeationSessionId {
+fn create_test_session(db: &SqliteTestDb, project_id: &ProjectId) -> IdeationSessionId {
     let session = IdeationSession::builder()
         .project_id(project_id.clone())
         .title("Test Session")
         .build();
 
-    conn.execute(
-            "INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at)
-             VALUES (?1, ?2, ?3, 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-            rusqlite::params![
-                session.id.as_str(),
-                project_id.as_str(),
-                "Test Session"
-            ],
-        )
-        .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+                "INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, 'active', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+                rusqlite::params![
+                    session.id.as_str(),
+                    project_id.as_str(),
+                    "Test Session"
+                ],
+            )
+            .unwrap();
+    });
 
     session.id
 }
 
-fn create_test_task(conn: &Connection, project_id: &ProjectId) -> TaskId {
+fn create_test_task(db: &SqliteTestDb, project_id: &ProjectId) -> TaskId {
     let task_id = TaskId::new();
-    conn.execute(
-            "INSERT INTO tasks (id, project_id, category, title, description, internal_status, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-            rusqlite::params![
-                task_id.as_str(),
-                project_id.as_str(),
-                "feature",
-                "Test Task",
-                "",
-                "backlog",
-            ],
-        )
-        .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+                "INSERT INTO tasks (id, project_id, category, title, description, internal_status, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+                rusqlite::params![
+                    task_id.as_str(),
+                    project_id.as_str(),
+                    "feature",
+                    "Test Task",
+                    "",
+                    "backlog",
+                ],
+            )
+            .unwrap();
+    });
     task_id
 }
 
@@ -65,12 +68,12 @@ fn create_test_task(conn: &Connection, project_id: &ProjectId) -> TaskId {
 
 #[tokio::test]
 async fn test_create_inserts_message_and_returns_it() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
     let message = ChatMessage::user_in_session(session_id.clone(), "Hello, world!");
 
     let result = repo.create(message.clone()).await;
@@ -84,12 +87,12 @@ async fn test_create_inserts_message_and_returns_it() {
 
 #[tokio::test]
 async fn test_create_message_with_metadata() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
     let message = ChatMessage::user_in_session(session_id, "With metadata")
         .with_metadata(r#"{"key": "value"}"#);
 
@@ -102,12 +105,12 @@ async fn test_create_message_with_metadata() {
 
 #[tokio::test]
 async fn test_create_message_with_parent() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     // Create parent message
     let parent = ChatMessage::user_in_session(session_id.clone(), "Parent message");
@@ -125,12 +128,12 @@ async fn test_create_message_with_parent() {
 
 #[tokio::test]
 async fn test_create_duplicate_id_fails() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
     let message = ChatMessage::user_in_session(session_id, "Duplicate");
 
     repo.create(message.clone()).await.unwrap();
@@ -141,11 +144,11 @@ async fn test_create_duplicate_id_fails() {
 
 #[tokio::test]
 async fn test_create_project_message() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
     let message = ChatMessage::user_in_project(project_id.clone(), "Project-level chat");
 
     let result = repo.create(message.clone()).await;
@@ -158,12 +161,12 @@ async fn test_create_project_message() {
 
 #[tokio::test]
 async fn test_create_task_message() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let task_id = create_test_task(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let task_id = create_test_task(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
     let message = ChatMessage::user_about_task(task_id.clone(), "Task-specific chat");
 
     let result = repo.create(message.clone()).await;
@@ -177,12 +180,12 @@ async fn test_create_task_message() {
 
 #[tokio::test]
 async fn test_get_by_id_retrieves_message_correctly() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
     let message = ChatMessage::user_in_session(session_id.clone(), "Find me");
 
     repo.create(message.clone()).await.unwrap();
@@ -199,8 +202,8 @@ async fn test_get_by_id_retrieves_message_correctly() {
 
 #[tokio::test]
 async fn test_get_by_id_returns_none_for_nonexistent() {
-    let conn = setup_test_db();
-    let repo = SqliteChatMessageRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
     let id = ChatMessageId::new();
 
     let result = repo.get_by_id(&id).await;
@@ -211,12 +214,12 @@ async fn test_get_by_id_returns_none_for_nonexistent() {
 
 #[tokio::test]
 async fn test_get_by_id_preserves_all_fields() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
     let message = ChatMessage::orchestrator_in_session(session_id.clone(), "Full message")
         .with_metadata(r#"{"context": "test"}"#);
 
@@ -234,12 +237,12 @@ async fn test_get_by_id_preserves_all_fields() {
 
 #[tokio::test]
 async fn test_get_by_session_returns_all_messages() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let msg1 = ChatMessage::user_in_session(session_id.clone(), "First");
     let msg2 = ChatMessage::orchestrator_in_session(session_id.clone(), "Second");
@@ -258,12 +261,12 @@ async fn test_get_by_session_returns_all_messages() {
 
 #[tokio::test]
 async fn test_get_by_session_ordered_by_created_at_asc() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     // Create messages with slight delays to ensure different timestamps
     let msg1 = ChatMessage::user_in_session(session_id.clone(), "First");
@@ -288,12 +291,12 @@ async fn test_get_by_session_ordered_by_created_at_asc() {
 
 #[tokio::test]
 async fn test_get_by_session_returns_empty_for_no_messages() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let result = repo.get_by_session(&session_id).await;
 
@@ -303,13 +306,13 @@ async fn test_get_by_session_returns_empty_for_no_messages() {
 
 #[tokio::test]
 async fn test_get_by_session_filters_by_session() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id1 = create_test_session(&conn, &project_id);
-    let session_id2 = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id1 = create_test_session(&db, &project_id);
+    let session_id2 = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let msg1 = ChatMessage::user_in_session(session_id1.clone(), "Session 1 message");
     let msg2 = ChatMessage::user_in_session(session_id2.clone(), "Session 2 message");
@@ -327,12 +330,12 @@ async fn test_get_by_session_filters_by_session() {
 
 #[tokio::test]
 async fn test_get_by_project_returns_project_messages_only() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     // Create a project message (no session)
     let project_msg = ChatMessage::user_in_project(project_id.clone(), "Project chat");
@@ -354,11 +357,11 @@ async fn test_get_by_project_returns_project_messages_only() {
 
 #[tokio::test]
 async fn test_get_by_project_returns_empty_for_no_messages() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let result = repo.get_by_project(&project_id).await;
 
@@ -368,13 +371,13 @@ async fn test_get_by_project_returns_empty_for_no_messages() {
 
 #[tokio::test]
 async fn test_get_by_project_filters_by_project() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id1 = ProjectId::new();
     let project_id2 = ProjectId::new();
-    create_test_project(&conn, &project_id1, "Project 1", "/path1");
-    create_test_project(&conn, &project_id2, "Project 2", "/path2");
+    create_test_project(&db, &project_id1, "Project 1", "/path1");
+    create_test_project(&db, &project_id2, "Project 2", "/path2");
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let msg1 = ChatMessage::user_in_project(project_id1.clone(), "P1 message");
     let msg2 = ChatMessage::user_in_project(project_id2.clone(), "P2 message");
@@ -392,12 +395,12 @@ async fn test_get_by_project_filters_by_project() {
 
 #[tokio::test]
 async fn test_get_by_task_returns_task_messages() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let task_id = create_test_task(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let task_id = create_test_task(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let msg1 = ChatMessage::user_about_task(task_id.clone(), "Task question");
     let msg2 = ChatMessage::user_about_task(task_id.clone(), "Follow-up");
@@ -414,12 +417,12 @@ async fn test_get_by_task_returns_task_messages() {
 
 #[tokio::test]
 async fn test_get_by_task_returns_empty_for_no_messages() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let task_id = create_test_task(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let task_id = create_test_task(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let result = repo.get_by_task(&task_id).await;
 
@@ -429,13 +432,13 @@ async fn test_get_by_task_returns_empty_for_no_messages() {
 
 #[tokio::test]
 async fn test_get_by_task_filters_by_task() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let task_id1 = create_test_task(&conn, &project_id);
-    let task_id2 = create_test_task(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let task_id1 = create_test_task(&db, &project_id);
+    let task_id2 = create_test_task(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let msg1 = ChatMessage::user_about_task(task_id1.clone(), "Task 1 msg");
     let msg2 = ChatMessage::user_about_task(task_id2.clone(), "Task 2 msg");
@@ -453,12 +456,12 @@ async fn test_get_by_task_filters_by_task() {
 
 #[tokio::test]
 async fn test_delete_by_session_removes_all_session_messages() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let msg1 = ChatMessage::user_in_session(session_id.clone(), "Message 1");
     let msg2 = ChatMessage::orchestrator_in_session(session_id.clone(), "Message 2");
@@ -475,13 +478,13 @@ async fn test_delete_by_session_removes_all_session_messages() {
 
 #[tokio::test]
 async fn test_delete_by_session_does_not_affect_other_sessions() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id1 = create_test_session(&conn, &project_id);
-    let session_id2 = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id1 = create_test_session(&db, &project_id);
+    let session_id2 = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let msg1 = ChatMessage::user_in_session(session_id1.clone(), "Session 1");
     let msg2 = ChatMessage::user_in_session(session_id2.clone(), "Session 2");
@@ -500,8 +503,8 @@ async fn test_delete_by_session_does_not_affect_other_sessions() {
 
 #[tokio::test]
 async fn test_delete_by_session_nonexistent_succeeds() {
-    let conn = setup_test_db();
-    let repo = SqliteChatMessageRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
     let session_id = IdeationSessionId::new();
 
     let result = repo.delete_by_session(&session_id).await;
@@ -512,11 +515,11 @@ async fn test_delete_by_session_nonexistent_succeeds() {
 
 #[tokio::test]
 async fn test_delete_by_project_removes_all_project_messages() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let msg1 = ChatMessage::user_in_project(project_id.clone(), "Message 1");
     let msg2 = ChatMessage::user_in_project(project_id.clone(), "Message 2");
@@ -535,12 +538,12 @@ async fn test_delete_by_project_removes_all_project_messages() {
 
 #[tokio::test]
 async fn test_delete_by_task_removes_all_task_messages() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let task_id = create_test_task(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let task_id = create_test_task(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let msg1 = ChatMessage::user_about_task(task_id.clone(), "Message 1");
     let msg2 = ChatMessage::user_about_task(task_id.clone(), "Message 2");
@@ -559,12 +562,12 @@ async fn test_delete_by_task_removes_all_task_messages() {
 
 #[tokio::test]
 async fn test_delete_removes_single_message() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let msg1 = ChatMessage::user_in_session(session_id.clone(), "Keep");
     let msg2 = ChatMessage::user_in_session(session_id.clone(), "Delete");
@@ -585,8 +588,8 @@ async fn test_delete_removes_single_message() {
 
 #[tokio::test]
 async fn test_delete_nonexistent_succeeds() {
-    let conn = setup_test_db();
-    let repo = SqliteChatMessageRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
     let id = ChatMessageId::new();
 
     let result = repo.delete(&id).await;
@@ -597,12 +600,12 @@ async fn test_delete_nonexistent_succeeds() {
 
 #[tokio::test]
 async fn test_count_by_session_returns_zero_for_no_messages() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let result = repo.count_by_session(&session_id).await;
 
@@ -612,12 +615,12 @@ async fn test_count_by_session_returns_zero_for_no_messages() {
 
 #[tokio::test]
 async fn test_count_by_session_counts_correctly() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let msg1 = ChatMessage::user_in_session(session_id.clone(), "One");
     let msg2 = ChatMessage::orchestrator_in_session(session_id.clone(), "Two");
@@ -635,13 +638,13 @@ async fn test_count_by_session_counts_correctly() {
 
 #[tokio::test]
 async fn test_count_by_session_filters_by_session() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id1 = create_test_session(&conn, &project_id);
-    let session_id2 = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id1 = create_test_session(&db, &project_id);
+    let session_id2 = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let msg1 = ChatMessage::user_in_session(session_id1.clone(), "S1-1");
     let msg2 = ChatMessage::user_in_session(session_id1.clone(), "S1-2");
@@ -662,12 +665,12 @@ async fn test_count_by_session_filters_by_session() {
 
 #[tokio::test]
 async fn test_get_recent_by_session_returns_limited_messages() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     // Create 5 messages
     for i in 1..=5 {
@@ -685,12 +688,12 @@ async fn test_get_recent_by_session_returns_limited_messages() {
 
 #[tokio::test]
 async fn test_get_recent_by_session_returns_most_recent() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     // Create messages with delays
     for i in 1..=5 {
@@ -709,12 +712,12 @@ async fn test_get_recent_by_session_returns_most_recent() {
 
 #[tokio::test]
 async fn test_get_recent_by_session_returns_all_if_fewer_than_limit() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let msg1 = ChatMessage::user_in_session(session_id.clone(), "Only one");
     repo.create(msg1).await.unwrap();
@@ -726,12 +729,12 @@ async fn test_get_recent_by_session_returns_all_if_fewer_than_limit() {
 
 #[tokio::test]
 async fn test_get_recent_by_session_returns_in_ascending_order() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let msg1 = ChatMessage::user_in_session(session_id.clone(), "First");
     repo.create(msg1).await.unwrap();
@@ -756,16 +759,12 @@ async fn test_get_recent_by_session_returns_in_ascending_order() {
 
 #[tokio::test]
 async fn test_from_shared_works_correctly() {
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
-
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let shared_conn = Arc::new(Mutex::new(conn));
-    let repo = SqliteChatMessageRepository::from_shared(shared_conn);
+    let repo = SqliteChatMessageRepository::from_shared(db.shared_conn());
 
     let message = ChatMessage::user_in_session(session_id, "Shared connection test");
 
@@ -780,12 +779,12 @@ async fn test_from_shared_works_correctly() {
 
 #[tokio::test]
 async fn test_message_roles_are_preserved() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let user_msg = ChatMessage::user_in_session(session_id.clone(), "User");
     let orch_msg = ChatMessage::orchestrator_in_session(session_id.clone(), "Orchestrator");
@@ -808,15 +807,12 @@ async fn test_message_roles_are_preserved() {
 
 #[tokio::test]
 async fn test_cascade_delete_when_session_deleted() {
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
-
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let shared_conn = Arc::new(Mutex::new(conn));
+    let shared_conn = db.shared_conn();
     let repo = SqliteChatMessageRepository::from_shared(shared_conn.clone());
 
     let msg = ChatMessage::user_in_session(session_id.clone(), "Will be cascaded");
@@ -841,25 +837,27 @@ async fn test_cascade_delete_when_session_deleted() {
 
 use crate::domain::entities::ChatConversationId;
 
-fn create_test_conversation(conn: &Connection) -> ChatConversationId {
+fn create_test_conversation(db: &SqliteTestDb) -> ChatConversationId {
     let id = ChatConversationId::new();
-    conn.execute(
-        "INSERT INTO chat_conversations (id, context_type, context_id, created_at, updated_at)
-         VALUES (?1, 'project', 'test-context', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        [id.as_str()],
-    )
-    .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO chat_conversations (id, context_type, context_id, created_at, updated_at)
+             VALUES (?1, 'project', 'test-context', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+            [id.as_str()],
+        )
+        .unwrap();
+    });
     id
 }
 
 #[tokio::test]
 async fn test_get_by_conversation_returns_messages_in_order() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let conv_id = create_test_conversation(&conn);
+    create_test_project(&db, &project_id, "Test", "/test");
+    let conv_id = create_test_conversation(&db);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let mut msg1 = ChatMessage::user_in_project(project_id.clone(), "First message");
     msg1.conversation_id = Some(conv_id.clone());
@@ -879,10 +877,10 @@ async fn test_get_by_conversation_returns_messages_in_order() {
 
 #[tokio::test]
 async fn test_get_by_conversation_returns_empty_for_no_messages() {
-    let conn = setup_test_db();
-    let conv_id = create_test_conversation(&conn);
+    let db = setup_test_db();
+    let conv_id = create_test_conversation(&db);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let messages = repo.get_by_conversation(&conv_id).await.unwrap();
     assert!(messages.is_empty());
@@ -890,13 +888,13 @@ async fn test_get_by_conversation_returns_empty_for_no_messages() {
 
 #[tokio::test]
 async fn test_get_by_conversation_excludes_other_conversations() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let conv_a = create_test_conversation(&conn);
-    let conv_b = create_test_conversation(&conn);
+    create_test_project(&db, &project_id, "Test", "/test");
+    let conv_a = create_test_conversation(&db);
+    let conv_b = create_test_conversation(&db);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let mut msg_a = ChatMessage::user_in_project(project_id.clone(), "For A");
     msg_a.conversation_id = Some(conv_a.clone());
@@ -915,12 +913,12 @@ async fn test_get_by_conversation_excludes_other_conversations() {
 
 #[tokio::test]
 async fn test_count_by_session_excludes_system_messages() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let user_msg = ChatMessage::user_in_session(session_id.clone(), "User");
     let orch_msg = ChatMessage::orchestrator_in_session(session_id.clone(), "Orchestrator");
@@ -937,12 +935,12 @@ async fn test_count_by_session_excludes_system_messages() {
 
 #[tokio::test]
 async fn test_count_by_session_empty_session_returns_zero() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let count = repo.count_by_session(&session_id).await.unwrap();
     assert_eq!(count, 0);
@@ -950,12 +948,12 @@ async fn test_count_by_session_empty_session_returns_zero() {
 
 #[tokio::test]
 async fn test_count_by_session_only_system_messages_returns_zero() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let sys_msg = ChatMessage::system_in_session(session_id.clone(), "System only");
     repo.create(sys_msg).await.unwrap();
@@ -967,12 +965,12 @@ async fn test_count_by_session_only_system_messages_returns_zero() {
 
 #[tokio::test]
 async fn test_get_recent_by_session_excludes_system_messages() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let user_msg = ChatMessage::user_in_session(session_id.clone(), "User message");
     repo.create(user_msg).await.unwrap();
@@ -995,12 +993,12 @@ async fn test_get_recent_by_session_excludes_system_messages() {
 
 #[tokio::test]
 async fn test_get_recent_by_session_empty_session_returns_empty() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let messages = repo.get_recent_by_session(&session_id, 10).await.unwrap();
     assert!(messages.is_empty());
@@ -1008,12 +1006,12 @@ async fn test_get_recent_by_session_empty_session_returns_empty() {
 
 #[tokio::test]
 async fn test_get_recent_by_session_limit_enforced_after_role_filter() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     // Create 4 user/orchestrator messages + 2 system messages
     for i in 1..=4 {
@@ -1033,12 +1031,12 @@ async fn test_get_recent_by_session_limit_enforced_after_role_filter() {
 
 #[tokio::test]
 async fn test_get_recent_by_session_chronological_order() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test Project", "/test/path");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
 
     let msg1 = ChatMessage::user_in_session(session_id.clone(), "First");
     repo.create(msg1).await.unwrap();
@@ -1063,12 +1061,12 @@ async fn test_get_recent_by_session_chronological_order() {
 
 #[tokio::test]
 async fn test_update_content_changes_content_and_roundtrips() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
     let msg = ChatMessage::user_in_session(session_id.clone(), "Original content");
     repo.create(msg.clone()).await.unwrap();
 
@@ -1092,12 +1090,12 @@ async fn test_update_content_changes_content_and_roundtrips() {
 
 #[tokio::test]
 async fn test_update_content_clears_tool_calls_and_content_blocks_when_none() {
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let project_id = ProjectId::new();
-    create_test_project(&conn, &project_id, "Test", "/test");
-    let session_id = create_test_session(&conn, &project_id);
+    create_test_project(&db, &project_id, "Test", "/test");
+    let session_id = create_test_session(&db, &project_id);
 
-    let repo = SqliteChatMessageRepository::new(conn);
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
     let msg = ChatMessage::user_in_session(session_id.clone(), "Original");
     repo.create(msg.clone()).await.unwrap();
 
