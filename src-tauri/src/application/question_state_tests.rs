@@ -1,4 +1,5 @@
 use super::*;
+use crate::testing::SqliteTestDb;
 
 #[tokio::test]
 async fn test_question_state_new() {
@@ -370,9 +371,10 @@ mod with_repo {
 
     #[tokio::test]
     async fn test_expire_persists_to_repo() {
-        let conn = crate::infrastructure::sqlite::open_memory_connection().unwrap();
-        crate::infrastructure::sqlite::run_migrations(&conn).unwrap();
-        let repo = Arc::new(crate::infrastructure::sqlite::SqliteQuestionRepository::new(conn));
+        let _db = SqliteTestDb::new("question-state");
+        let repo = Arc::new(crate::infrastructure::sqlite::SqliteQuestionRepository::new(
+            _db.new_connection(),
+        ));
         let state = QuestionState::with_repo(
             repo.clone() as Arc<dyn crate::domain::repositories::QuestionRepository>,
         );
