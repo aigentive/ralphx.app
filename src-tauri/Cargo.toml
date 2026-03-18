@@ -5,6 +5,10 @@ description = "RalphX - Autonomous AI-driven development GUI"
 authors = ["RalphX Team"]
 edition = "2021"
 
+[workspace]
+members = ["crates/ralphx-domain"]
+resolver = "2"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
@@ -52,15 +56,12 @@ rand = "0.8"
 nix = { version = "0.29", features = ["signal", "process"] }
 tempfile = "3"
 regex = { version = "1", default-features = false, features = ["std", "perf"] }
+ralphx-domain = { path = "crates/ralphx-domain" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util"] }
 tower = { version = "0.4", features = ["util"] }
 http-body-util = "0.1"
-
-[lints.rust]
-# rustc built-in lint (Rust 1.89+) — not a Clippy lint
-mismatched_lifetime_syntaxes = "warn"
 
 [lints.clippy]
 # Elevated to deny — catches real null-dereference bugs

@@ -1,5 +1,5 @@
 use super::*;
-use crate::domain::agents::types::{AgentRole, ClientType};
+use crate::agents::types::{AgentRole, ClientType};
 use futures::StreamExt;
 use std::sync::Arc;
 
