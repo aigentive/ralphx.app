@@ -102,6 +102,7 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Helpers take `&SqliteTestDb` when possible | Keep seeding logic reusable across async repos, sync repos, and mixed suites |
 | Extend `SqliteTestDb` when patterns repeat | If the same row graph appears across suites, add a shared helper in `src-tauri/src/testing/sqlite_test_db.rs` instead of copying another local setup block |
 | Service suites keep fixture ownership explicit | Prefer a small `TestContext { _db, service, ids... }` so the temp DB lifetime is obvious and setup is reused across tests |
+| Keep suite-local seed helpers when the shape is narrow | If only one suite needs a specific FK graph, add a local `setup_repo()` / `seed_*()` helper on top of `SqliteTestDb` instead of reaching through `repo.db.inner()` in each test |
 | Keep migrations out of per-test setup | Create one temp DB, migrate once, then seed rows; do not call `run_migrations()` inside every helper |
 | Prefer explicit fixture ownership | Bind fixture as `_db` in the test body so cleanup timing stays obvious |
 | Split slow suites from narrow logic tests | Keep pure/unit logic off SQLite when possible; reserve DB fixtures for repository and integration coverage |

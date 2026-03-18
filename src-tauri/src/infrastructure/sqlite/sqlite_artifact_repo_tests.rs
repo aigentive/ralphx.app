@@ -1,10 +1,21 @@
 use super::*;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().expect("Failed to open memory connection");
-    run_migrations(&conn).expect("Failed to run migrations");
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite-artifact-repo")
+}
+
+fn setup_repo() -> (SqliteTestDb, SqliteArtifactRepository) {
+    let db = setup_test_db();
+    let repo = SqliteArtifactRepository::new(db.new_connection());
+    (db, repo)
+}
+
+fn seed_task(db: &SqliteTestDb, task_id: &TaskId) {
+    let project = db.seed_project("Test Project");
+    let mut task = crate::domain::entities::Task::new(project.id, "Test Task".to_string());
+    task.id = task_id.clone();
+    db.insert_task(task);
 }
 
 fn create_test_artifact() -> Artifact {
@@ -24,8 +35,7 @@ fn create_file_artifact() -> Artifact {
 
 #[tokio::test]
 async fn test_create_artifact_inline() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
     let artifact = create_test_artifact();
 
     let result = repo.create(artifact.clone()).await;
@@ -38,8 +48,7 @@ async fn test_create_artifact_inline() {
 
 #[tokio::test]
 async fn test_create_artifact_file() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
     let artifact = create_file_artifact();
 
     let result = repo.create(artifact.clone()).await;
@@ -51,8 +60,7 @@ async fn test_create_artifact_file() {
 
 #[tokio::test]
 async fn test_create_artifact_with_bucket() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     // prd-library bucket is seeded by v25 migration
     let artifact = create_test_artifact().with_bucket(ArtifactBucketId::from_string("prd-library"));
@@ -63,27 +71,11 @@ async fn test_create_artifact_with_bucket() {
 
 #[tokio::test]
 async fn test_create_artifact_with_task() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (db, repo) = setup_repo();
 
     let task_id = TaskId::from_string("task-123".to_string());
 
-    // Create a task first to satisfy foreign key constraint
-    {
-        let c = repo.db.inner().lock().await;
-        c.execute(
-            "INSERT INTO projects (id, name, working_directory, created_at, updated_at)
-             VALUES ('proj-1', 'Test Project', '/test', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-            [],
-        )
-        .unwrap();
-        c.execute(
-            "INSERT INTO tasks (id, project_id, title, category, internal_status, created_at, updated_at)
-             VALUES ('task-123', 'proj-1', 'Test Task', 'feature', 'backlog', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-            [],
-        )
-        .unwrap();
-    }
+    seed_task(&db, &task_id);
 
     let artifact = create_test_artifact().with_task(task_id.clone());
 
@@ -95,8 +87,7 @@ async fn test_create_artifact_with_task() {
 
 #[tokio::test]
 async fn test_get_by_id_found() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
     let artifact = create_test_artifact();
 
     repo.create(artifact.clone()).await.unwrap();
@@ -111,8 +102,7 @@ async fn test_get_by_id_found() {
 
 #[tokio::test]
 async fn test_get_by_id_not_found() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
     let id = ArtifactId::new();
 
     let result = repo.get_by_id(&id).await;
@@ -122,8 +112,7 @@ async fn test_get_by_id_not_found() {
 
 #[tokio::test]
 async fn test_get_by_id_preserves_content_inline() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
     let artifact = create_test_artifact();
 
     repo.create(artifact.clone()).await.unwrap();
@@ -138,8 +127,7 @@ async fn test_get_by_id_preserves_content_inline() {
 
 #[tokio::test]
 async fn test_get_by_id_preserves_content_file() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
     let artifact = create_file_artifact();
 
     repo.create(artifact.clone()).await.unwrap();
@@ -156,8 +144,7 @@ async fn test_get_by_id_preserves_content_file() {
 
 #[tokio::test]
 async fn test_get_by_bucket_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
     let bucket_id = ArtifactBucketId::from_string("nonexistent");
 
     let result = repo.get_by_bucket(&bucket_id).await;
@@ -167,8 +154,7 @@ async fn test_get_by_bucket_empty() {
 
 #[tokio::test]
 async fn test_get_by_bucket_returns_matching() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     // prd-library bucket is seeded by v25 migration
     let bucket_id = ArtifactBucketId::from_string("prd-library");
@@ -194,8 +180,7 @@ async fn test_get_by_bucket_returns_matching() {
 
 #[tokio::test]
 async fn test_get_by_type_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let result = repo.get_by_type(ArtifactType::CodeChange).await;
     assert!(result.is_ok());
@@ -204,8 +189,7 @@ async fn test_get_by_type_empty() {
 
 #[tokio::test]
 async fn test_get_by_type_returns_matching() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     // Create PRD artifacts
     let a1 = create_test_artifact();
@@ -230,8 +214,7 @@ async fn test_get_by_type_returns_matching() {
 
 #[tokio::test]
 async fn test_get_by_task_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
     let task_id = TaskId::from_string("task-999".to_string());
 
     let result = repo.get_by_task(&task_id).await;
@@ -241,27 +224,11 @@ async fn test_get_by_task_empty() {
 
 #[tokio::test]
 async fn test_get_by_task_returns_matching() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (db, repo) = setup_repo();
 
     let task_id = TaskId::from_string("task-123".to_string());
 
-    // Create a task first to satisfy foreign key constraint
-    {
-        let c = repo.db.inner().lock().await;
-        c.execute(
-            "INSERT INTO projects (id, name, working_directory, created_at, updated_at)
-             VALUES ('proj-1', 'Test Project', '/test', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-            [],
-        )
-        .unwrap();
-        c.execute(
-            "INSERT INTO tasks (id, project_id, title, category, internal_status, created_at, updated_at)
-             VALUES ('task-123', 'proj-1', 'Test Task', 'feature', 'backlog', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-            [],
-        )
-        .unwrap();
-    }
+    seed_task(&db, &task_id);
 
     let a1 = create_test_artifact().with_task(task_id.clone());
     let mut a2 = create_test_artifact();
@@ -278,8 +245,7 @@ async fn test_get_by_task_returns_matching() {
 
 #[tokio::test]
 async fn test_get_by_process_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
     let process_id = ProcessId::from_string("process-999");
 
     let result = repo.get_by_process(&process_id).await;
@@ -289,8 +255,7 @@ async fn test_get_by_process_empty() {
 
 #[tokio::test]
 async fn test_get_by_process_returns_matching() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let process_id = ProcessId::from_string("research-1");
 
@@ -308,8 +273,7 @@ async fn test_get_by_process_returns_matching() {
 
 #[tokio::test]
 async fn test_update_artifact() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let mut artifact = create_test_artifact();
     repo.create(artifact.clone()).await.unwrap();
@@ -331,8 +295,7 @@ async fn test_update_artifact() {
 
 #[tokio::test]
 async fn test_delete_artifact() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let artifact = create_test_artifact();
     repo.create(artifact.clone()).await.unwrap();
@@ -348,8 +311,7 @@ async fn test_delete_artifact() {
 
 #[tokio::test]
 async fn test_add_relation_derived_from() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let parent = create_test_artifact();
     let mut child = create_test_artifact();
@@ -365,8 +327,7 @@ async fn test_add_relation_derived_from() {
 
 #[tokio::test]
 async fn test_add_relation_related_to() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let a1 = create_test_artifact();
     let mut a2 = create_test_artifact();
@@ -382,8 +343,7 @@ async fn test_add_relation_related_to() {
 
 #[tokio::test]
 async fn test_get_derived_from() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let parent1 = create_test_artifact();
     let mut parent2 = create_test_artifact();
@@ -415,8 +375,7 @@ async fn test_get_derived_from() {
 
 #[tokio::test]
 async fn test_get_related() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let a1 = create_test_artifact();
     let mut a2 = create_test_artifact();
@@ -442,8 +401,7 @@ async fn test_get_related() {
 
 #[tokio::test]
 async fn test_get_relations() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let a1 = create_test_artifact();
     let mut a2 = create_test_artifact();
@@ -462,8 +420,7 @@ async fn test_get_relations() {
 
 #[tokio::test]
 async fn test_get_relations_by_type() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let a1 = create_test_artifact();
     let mut a2 = create_test_artifact();
@@ -498,8 +455,7 @@ async fn test_get_relations_by_type() {
 
 #[tokio::test]
 async fn test_delete_relation() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let a1 = create_test_artifact();
     let mut a2 = create_test_artifact();
@@ -528,8 +484,7 @@ async fn test_delete_relation() {
 
 #[tokio::test]
 async fn test_get_at_version_traverses_chain_v1_via_v2() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     // Create V1
     let v1 = Artifact::new_inline(
@@ -569,8 +524,7 @@ async fn test_get_at_version_traverses_chain_v1_via_v2() {
 
 #[tokio::test]
 async fn test_get_at_version_returns_current_without_traversal() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     // Create V1
     let v1 = Artifact::new_inline(
@@ -607,8 +561,7 @@ async fn test_get_at_version_returns_current_without_traversal() {
 
 #[tokio::test]
 async fn test_get_at_version_three_level_chain() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     // Create V1 → V2 → V3 chain
     let v1 = Artifact::new_inline("Plan", ArtifactType::Specification, "V1", "orchestrator");
@@ -638,8 +591,7 @@ async fn test_get_at_version_three_level_chain() {
 
 #[tokio::test]
 async fn test_get_at_version_nonexistent_version() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let v1 = Artifact::new_inline("Plan", ArtifactType::Specification, "V1", "orchestrator");
     let v1_id = v1.id.clone();
@@ -657,8 +609,8 @@ async fn test_get_at_version_nonexistent_version() {
 
 #[tokio::test]
 async fn test_from_shared_connection() {
-    let conn = setup_test_db();
-    let shared = Arc::new(Mutex::new(conn));
+    let db = setup_test_db();
+    let shared = db.shared_conn();
 
     let repo1 = SqliteArtifactRepository::from_shared(shared.clone());
     let repo2 = SqliteArtifactRepository::from_shared(shared.clone());
@@ -676,8 +628,7 @@ async fn test_from_shared_connection() {
 
 #[tokio::test]
 async fn test_resolve_latest_single_version_returns_itself() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let v1 = Artifact::new_inline("Plan", ArtifactType::Specification, "V1", "orchestrator");
     let v1_id = v1.id.clone();
@@ -689,8 +640,7 @@ async fn test_resolve_latest_single_version_returns_itself() {
 
 #[tokio::test]
 async fn test_resolve_latest_three_version_chain_from_v1() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     // Create V1 → V2 → V3 chain
     let v1 = Artifact::new_inline("Plan", ArtifactType::Specification, "V1", "orchestrator");
@@ -715,8 +665,7 @@ async fn test_resolve_latest_three_version_chain_from_v1() {
 
 #[tokio::test]
 async fn test_resolve_latest_three_version_chain_from_middle() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     // Create V1 → V2 → V3 chain
     let v1 = Artifact::new_inline("Plan", ArtifactType::Specification, "V1", "orchestrator");
@@ -743,8 +692,7 @@ async fn test_resolve_latest_three_version_chain_from_middle() {
 async fn test_resolve_stale_id_for_link_proposals_scenario() {
     // Simulates the link_proposals_to_plan fix: agent passes stale V1 ID,
     // resolve_latest_artifact_id returns V3 ID, proposals get linked to V3.
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     // Create V1 → V2 → V3 chain
     let v1 = Artifact::new_inline(
@@ -800,8 +748,7 @@ async fn test_resolve_stale_id_for_link_proposals_scenario() {
 /// Validates that resolve_latest_artifact_id makes stale IDs work for repeated updates.
 #[tokio::test]
 async fn test_two_updates_with_original_id_both_succeed() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     // Create V1 (original artifact)
     let v1 = Artifact::new_inline(
@@ -874,8 +821,7 @@ async fn test_two_updates_with_original_id_both_succeed() {
 
 #[tokio::test]
 async fn test_create_artifact_with_team_metadata_persists() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let mut artifact = create_test_artifact();
     artifact.metadata.team_metadata = Some(TeamArtifactMetadata {
@@ -900,8 +846,7 @@ async fn test_create_artifact_with_team_metadata_persists() {
 
 #[tokio::test]
 async fn test_artifact_without_team_metadata_loads_none() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let artifact = create_test_artifact();
     repo.create(artifact.clone()).await.unwrap();
@@ -912,8 +857,7 @@ async fn test_artifact_without_team_metadata_loads_none() {
 
 #[tokio::test]
 async fn test_update_artifact_preserves_team_metadata() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactRepository::new(conn);
+    let (_db, repo) = setup_repo();
 
     let mut artifact = create_test_artifact();
     artifact.metadata.team_metadata = Some(TeamArtifactMetadata {
