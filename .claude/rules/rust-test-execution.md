@@ -37,6 +37,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --test execution_control_flows
 | One unit-test/module substring | `cargo test --manifest-path src-tauri/Cargo.toml <filter> --lib` |
 | Multiple integration targets in one run | `cargo test --manifest-path src-tauri/Cargo.toml --test review_flows --test execution_control_flows` |
 | Multiple unrelated unit-test filters | Run separate `cargo test ... --lib` commands sequentially |
+| Filter misses unexpectedly | `cargo test --manifest-path src-tauri/Cargo.toml --lib -- --list | rg "<repo_or_module>"` → then rerun with the real module-path prefix |
 | Parallel verification | ❌ do not start multiple Cargo test jobs against the same target dir; they block on `.cargo-lock` and add noise instead of speed |
 
 Example:
@@ -44,6 +45,13 @@ Example:
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml sqlite_chat_conversation_repo_tests --lib
 cargo test --manifest-path src-tauri/Cargo.toml sqlite_memory_entry_repo_tests --lib
+```
+
+Module-path example:
+
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml --lib -- --list | rg "sqlite_question_repo"
+cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_question_repo::tests::' --lib
 ```
 
 ## Shared SQLite Test Setup
