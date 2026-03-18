@@ -26,7 +26,7 @@ paths:
 | Layer | Standard |
 |---|---|
 | Test runner | `cargo test` for targeted filters and single suites; `cargo nextest run` for broad lib/test runs and CI |
-| Low-dependency workspace crate | `src-tauri/crates/ralphx-domain` holds pure `agents`, `qa`, `execution`, and `ideation` modules; test it directly when you touch those areas |
+| Low-dependency workspace crate | `src-tauri/crates/ralphx-domain` holds pure `agents`, `qa`, `execution`, `ideation`, and most `entities`; test it directly when you touch those areas |
 | Target discovery | `cargo test --manifest-path src-tauri/Cargo.toml --lib -- --list | rg "<module>"` |
 | Async SQLite repo tests | `SqliteTestDb` + repo `from_shared(db.shared_conn())` |
 | AppState integration tests | `SqliteStateFixture::new(...)` |

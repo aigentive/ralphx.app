@@ -1,6 +1,6 @@
 use super::*;
-use crate::domain::entities::status::InternalStatus;
-use crate::domain::entities::workflow::WorkflowColumn;
+use crate::entities::status::InternalStatus;
+use crate::entities::workflow::WorkflowColumn;
 
 fn create_test_workflow() -> WorkflowSchema {
     WorkflowSchema::new(

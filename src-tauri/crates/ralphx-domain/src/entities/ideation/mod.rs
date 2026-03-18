@@ -31,7 +31,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::Row;
 use serde::{Deserialize, Serialize};
 
-use crate::domain::entities::{ArtifactId, IdeationSessionId, ProjectId, TaskId};
+use crate::entities::{ArtifactId, IdeationSessionId, ProjectId, TaskId};
 
 /// An ideation session - a brainstorming conversation that produces task proposals
 #[derive(Debug, Clone, Serialize, Deserialize)]

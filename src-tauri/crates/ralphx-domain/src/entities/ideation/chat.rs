@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 use super::types::parse_datetime_helper;
-use crate::domain::entities::{
+use crate::entities::{
     ChatConversationId, ChatMessageId, IdeationSessionId, ProjectId, TaskId,
 };
 

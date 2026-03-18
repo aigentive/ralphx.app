@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::entities::TaskProposalId;
+use crate::entities::TaskProposalId;
 
 /// A node in the dependency graph representing a single proposal
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

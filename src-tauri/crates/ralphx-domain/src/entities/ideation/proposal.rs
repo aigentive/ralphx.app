@@ -5,7 +5,7 @@ use rusqlite::Row;
 use serde::{Deserialize, Serialize};
 
 use super::types::*;
-use crate::domain::entities::{ArtifactId, IdeationSessionId, TaskId, TaskProposalId};
+use crate::entities::{ArtifactId, IdeationSessionId, TaskId, TaskProposalId};
 
 /// A task proposal generated during an ideation session
 #[derive(Debug, Clone, Serialize, Deserialize)]

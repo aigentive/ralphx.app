@@ -1,4 +1,4 @@
-use crate::domain::entities::ProjectId;
+use crate::entities::ProjectId;
 
 #[derive(Debug, Clone, Default)]
 pub struct AppSettings {

@@ -1,6 +1,6 @@
 use super::types::*;
 use super::*;
-use crate::domain::entities::artifact::{
+use crate::entities::artifact::{
     Artifact, ArtifactContent, ArtifactId, ArtifactMetadata, ArtifactType,
 };
 use std::str::FromStr;
@@ -113,7 +113,7 @@ fn artifact_flow_event_display() {
 // ===== ArtifactFlowFilter Tests =====
 
 fn create_test_artifact(artifact_type: ArtifactType, bucket_id: Option<&str>) -> Artifact {
-    use crate::domain::entities::artifact::ArtifactBucketId;
+    use crate::entities::artifact::ArtifactBucketId;
     Artifact {
         id: ArtifactId::from_string("test-artifact"),
         artifact_type,
@@ -148,7 +148,7 @@ fn artifact_flow_filter_artifact_types_matches() {
 
 #[test]
 fn artifact_flow_filter_source_bucket_matches() {
-    use crate::domain::entities::artifact::ArtifactBucketId;
+    use crate::entities::artifact::ArtifactBucketId;
     let filter = ArtifactFlowFilter::new()
         .with_source_bucket(ArtifactBucketId::from_string("research-outputs"));
     let in_bucket = create_test_artifact(ArtifactType::Findings, Some("research-outputs"));
@@ -161,7 +161,7 @@ fn artifact_flow_filter_source_bucket_matches() {
 
 #[test]
 fn artifact_flow_filter_combined_matches() {
-    use crate::domain::entities::artifact::ArtifactBucketId;
+    use crate::entities::artifact::ArtifactBucketId;
     let filter = ArtifactFlowFilter::new()
         .with_artifact_types(vec![ArtifactType::Recommendations])
         .with_source_bucket(ArtifactBucketId::from_string("research-outputs"));
@@ -178,7 +178,7 @@ fn artifact_flow_filter_combined_matches() {
 
 #[test]
 fn artifact_flow_filter_serializes() {
-    use crate::domain::entities::artifact::ArtifactBucketId;
+    use crate::entities::artifact::ArtifactBucketId;
     let filter = ArtifactFlowFilter::new()
         .with_artifact_types(vec![ArtifactType::Prd])
         .with_source_bucket(ArtifactBucketId::from_string("bucket-1"));
@@ -250,7 +250,7 @@ fn artifact_flow_trigger_serializes() {
 
 #[test]
 fn artifact_flow_step_copy_creates_correctly() {
-    use crate::domain::entities::artifact::ArtifactBucketId;
+    use crate::entities::artifact::ArtifactBucketId;
     let step = ArtifactFlowStep::copy(ArtifactBucketId::from_string("target"));
     assert!(step.is_copy());
     assert!(!step.is_spawn_process());
@@ -267,7 +267,7 @@ fn artifact_flow_step_spawn_process_creates_correctly() {
 
 #[test]
 fn artifact_flow_step_copy_serializes() {
-    use crate::domain::entities::artifact::ArtifactBucketId;
+    use crate::entities::artifact::ArtifactBucketId;
     let step = ArtifactFlowStep::copy(ArtifactBucketId::from_string("bucket-1"));
     let json = serde_json::to_string(&step).unwrap();
     assert!(json.contains("\"type\":\"copy\""));
@@ -325,7 +325,7 @@ fn artifact_flow_new_creates_correctly() {
 
 #[test]
 fn artifact_flow_with_step() {
-    use crate::domain::entities::artifact::ArtifactBucketId;
+    use crate::entities::artifact::ArtifactBucketId;
     let flow = ArtifactFlow::new("Test", ArtifactFlowTrigger::on_artifact_created()).with_step(
         ArtifactFlowStep::copy(ArtifactBucketId::from_string("target")),
     );
@@ -334,7 +334,7 @@ fn artifact_flow_with_step() {
 
 #[test]
 fn artifact_flow_with_steps() {
-    use crate::domain::entities::artifact::ArtifactBucketId;
+    use crate::entities::artifact::ArtifactBucketId;
     let flow = ArtifactFlow::new("Test", ArtifactFlowTrigger::on_artifact_created()).with_steps([
         ArtifactFlowStep::copy(ArtifactBucketId::from_string("target")),
         ArtifactFlowStep::spawn_process("task_decomposition", "orchestrator"),
@@ -373,7 +373,7 @@ fn artifact_flow_should_not_trigger_when_inactive() {
 
 #[test]
 fn artifact_flow_serializes_roundtrip() {
-    use crate::domain::entities::artifact::ArtifactBucketId;
+    use crate::entities::artifact::ArtifactBucketId;
     let flow = ArtifactFlow::new(
         "Test Flow",
         ArtifactFlowTrigger::on_artifact_created()
@@ -468,7 +468,7 @@ fn artifact_flow_engine_unregister_nonexistent_returns_none() {
 
 #[test]
 fn artifact_flow_engine_evaluate_triggers_matches_event() {
-    use crate::domain::entities::artifact::ArtifactBucketId;
+    use crate::entities::artifact::ArtifactBucketId;
     let mut engine = ArtifactFlowEngine::new();
     engine.register_flow(
         ArtifactFlow::new("Artifact Flow", ArtifactFlowTrigger::on_artifact_created()).with_step(
@@ -491,7 +491,7 @@ fn artifact_flow_engine_evaluate_triggers_matches_event() {
 
 #[test]
 fn artifact_flow_engine_evaluate_triggers_with_filter() {
-    use crate::domain::entities::artifact::ArtifactBucketId;
+    use crate::entities::artifact::ArtifactBucketId;
     let mut engine = ArtifactFlowEngine::new();
     engine.register_flow(
         ArtifactFlow::new(
@@ -529,7 +529,7 @@ fn artifact_flow_engine_evaluate_triggers_inactive_flow_ignored() {
 
 #[test]
 fn artifact_flow_engine_evaluate_triggers_multiple_matches() {
-    use crate::domain::entities::artifact::ArtifactBucketId;
+    use crate::entities::artifact::ArtifactBucketId;
     let mut engine = ArtifactFlowEngine::new();
     engine.register_flow(
         ArtifactFlow::new("Flow A", ArtifactFlowTrigger::on_artifact_created())
@@ -560,7 +560,7 @@ fn artifact_flow_engine_on_task_completed() {
 
 #[test]
 fn artifact_flow_engine_on_process_completed() {
-    use crate::domain::entities::artifact::ArtifactBucketId;
+    use crate::entities::artifact::ArtifactBucketId;
     let mut engine = ArtifactFlowEngine::new();
     engine.register_flow(
         ArtifactFlow::new("Process Flow", ArtifactFlowTrigger::on_process_completed()).with_step(
@@ -677,7 +677,7 @@ fn artifact_flow_engine_on_artifact_updated() {
 
 #[test]
 fn artifact_flow_engine_artifact_updated_does_not_trigger_created_flows() {
-    use crate::domain::entities::artifact::ArtifactBucketId;
+    use crate::entities::artifact::ArtifactBucketId;
     let mut engine = ArtifactFlowEngine::new();
     engine.register_flow(
         ArtifactFlow::new("Create Flow", ArtifactFlowTrigger::on_artifact_created()).with_step(

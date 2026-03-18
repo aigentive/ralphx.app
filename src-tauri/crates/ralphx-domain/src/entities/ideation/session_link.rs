@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 use super::types::parse_datetime_helper;
-use crate::domain::entities::types::{IdeationSessionId, SessionLinkId};
+use crate::entities::types::{IdeationSessionId, SessionLinkId};
 
 /// Relationship type between parent and child sessions
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

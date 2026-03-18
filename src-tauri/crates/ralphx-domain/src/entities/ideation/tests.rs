@@ -1,5 +1,5 @@
 use super::*;
-use crate::domain::entities::{
+use crate::entities::{
     ChatMessageId, IdeationSessionId, ProjectId, TaskId, TaskProposalId,
 };
 

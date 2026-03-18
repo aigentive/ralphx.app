@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::types::{Complexity, Priority};
-use crate::domain::entities::TaskProposalId;
+use crate::entities::TaskProposalId;
 
 // ============================================================================
 // PriorityAssessment and detailed factor types

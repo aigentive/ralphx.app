@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::types::{ProposalCategory, ProposalStatus};
-use crate::domain::entities::{IdeationSessionId, TaskProposalId};
+use crate::entities::{IdeationSessionId, TaskProposalId};
 
 /// Summary of a single proposal for context inheritance
 #[derive(Debug, Clone, Serialize, Deserialize)]

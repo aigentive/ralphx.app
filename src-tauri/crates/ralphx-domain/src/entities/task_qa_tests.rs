@@ -1,5 +1,5 @@
 use super::*;
-use crate::domain::qa::{AcceptanceCriterion, QAStepResult, QATestStep};
+use crate::qa::{AcceptanceCriterion, QAStepResult, QATestStep};
 
 #[test]
 fn test_new_task_qa() {

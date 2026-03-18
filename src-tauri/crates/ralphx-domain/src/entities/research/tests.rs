@@ -1,7 +1,7 @@
 // Tests for research entities
 
 use super::*;
-use crate::domain::entities::artifact::ArtifactId;
+use crate::entities::artifact::ArtifactId;
 use std::str::FromStr;
 
 // ===== ResearchDepthPreset Tests =====

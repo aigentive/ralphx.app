@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::{TaskId, TaskQAId};
-use crate::domain::qa::{AcceptanceCriteria, QAResults, QATestSteps};
+use crate::qa::{AcceptanceCriteria, QAResults, QATestSteps};
 
 /// QA artifacts for a task
 ///

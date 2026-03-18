@@ -1,5 +1,5 @@
 use super::types::*;
-use crate::domain::entities::types::TaskId;
+use crate::entities::types::TaskId;
 
 // ===== ArtifactId Tests =====
 

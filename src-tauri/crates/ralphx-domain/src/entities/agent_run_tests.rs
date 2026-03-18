@@ -1,5 +1,5 @@
 use super::*;
-use crate::domain::entities::ChatConversationId;
+use crate::entities::ChatConversationId;
 
 #[test]
 fn test_agent_run_id_creation() {
