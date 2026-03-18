@@ -5,20 +5,33 @@
 // against the real production schema.
 
 use ralphx_lib::commands::metrics_commands::{compute_project_stats, compute_project_trends};
-use ralphx_lib::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use ralphx_lib::testing::SqliteTestDb;
+
+struct MetricsTestDb {
+    _db: SqliteTestDb,
+    conn: rusqlite::Connection,
+}
+
+impl std::ops::Deref for MetricsTestDb {
+    type Target = rusqlite::Connection;
+
+    fn deref(&self) -> &Self::Target {
+        &self.conn
+    }
+}
 
 // ─── Schema helpers ───────────────────────────────────────────────────────────
 
-fn setup_db() -> rusqlite::Connection {
-    let conn = open_memory_connection().expect("open_memory_connection");
-    run_migrations(&conn).expect("run_migrations");
-    conn
+fn setup_db() -> MetricsTestDb {
+    let db = SqliteTestDb::new("metrics-integration");
+    let conn = db.new_connection();
+    MetricsTestDb { _db: db, conn }
 }
 
 fn insert_project(conn: &rusqlite::Connection, id: &str) {
     conn.execute(
         "INSERT INTO projects (id, name, working_directory) VALUES (?1, ?2, ?3)",
-        rusqlite::params![id, format!("Project {id}"), "/tmp/test"],
+        rusqlite::params![id, format!("Project {id}"), format!("/tmp/test-{id}")],
     )
     .expect("insert project");
 }
@@ -69,6 +82,15 @@ fn insert_step(conn: &rusqlite::Connection, id: &str, task_id: &str) {
         rusqlite::params![id, task_id],
     )
     .expect("insert step");
+}
+
+fn insert_merged_history_now(conn: &rusqlite::Connection, id: &str, task_id: &str) {
+    conn.execute(
+        "INSERT INTO task_state_history (id, task_id, to_status, changed_by, created_at)
+         VALUES (?1, ?2, 'merged', 'system', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+        rusqlite::params![id, task_id],
+    )
+    .expect("insert merged history");
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -201,9 +223,9 @@ fn test_eme_returns_estimate_at_threshold() {
     let eme = stats.eme.expect("EME should be present for 5+ merged tasks");
 
     assert_eq!(eme.task_count, 5);
-    // Simple: weight=1.0, base=2h → low=2, high=3 per task → 5× = 10/15
-    assert!((eme.low_hours - 10.0).abs() < 0.5, "low_hours={}", eme.low_hours);
-    assert!((eme.high_hours - 15.0).abs() < 0.5, "high_hours={}", eme.high_hours);
+    // Simple: base=1.0 low, ×1.3 = 1.3 high per task → 5 tasks: 5.0 / 6.5
+    assert!((eme.low_hours - 5.0).abs() < 0.1, "low_hours={}", eme.low_hours);
+    assert!((eme.high_hours - 6.5).abs() < 0.1, "high_hours={}", eme.high_hours);
 }
 
 #[test]
@@ -245,8 +267,8 @@ fn test_weekly_throughput_counts_merged_tasks_in_current_week() {
     let conn = setup_db();
     insert_project(&conn, "proj1");
 
-    // Insert 3 tasks with internal_status='merged' and updated_at=now so they
-    // land in the current ISO week bucket.
+    // Insert 3 merged tasks with a merged transition recorded now so they
+    // land in the current week bucket used by query_weekly_throughput.
     for i in 1..=3 {
         conn.execute(
             "INSERT INTO tasks (id, project_id, title, internal_status, category, updated_at)
@@ -254,6 +276,7 @@ fn test_weekly_throughput_counts_merged_tasks_in_current_week() {
             rusqlite::params![format!("t{i}"), format!("Task {i}")],
         )
         .expect("insert merged task");
+        insert_merged_history_now(&conn, &format!("h{i}"), &format!("t{i}"));
     }
 
     // Also insert a non-merged task to ensure it is NOT counted.
@@ -266,13 +289,9 @@ fn test_weekly_throughput_counts_merged_tasks_in_current_week() {
 
     let trends = compute_project_trends(&conn, "proj1", 0, 0).expect("compute_project_trends");
 
-    // weekly_throughput must have at least one entry — the CTE generates the last
-    // 12–13 weeks (the exact count depends on how many Sundays fall in the window,
-    // which varies by the day of the week the test runs).
     assert!(
-        trends.weekly_throughput.len() >= 12,
-        "Expected at least 12 weekly data points from the recursive CTE, got {}",
-        trends.weekly_throughput.len()
+        !trends.weekly_throughput.is_empty(),
+        "Merged tasks should produce at least one weekly throughput point"
     );
 
     // Sum across all weeks — the 3 tasks should contribute exactly 3.0 total.
@@ -285,7 +304,7 @@ fn test_weekly_throughput_counts_merged_tasks_in_current_week() {
     );
 }
 
-/// Empty project returns at least 12 zero-value weeks (one per CTE-generated week).
+/// Empty project returns no weekly throughput points because leading zero weeks are trimmed.
 #[test]
 fn test_weekly_throughput_empty_project_returns_twelve_zero_weeks() {
     let conn = setup_db();
@@ -293,15 +312,10 @@ fn test_weekly_throughput_empty_project_returns_twelve_zero_weeks() {
 
     let trends = compute_project_trends(&conn, "proj1", 0, 0).expect("compute_project_trends");
 
-    // The CTE generates 12–13 weeks depending on the current day of week.
     assert!(
-        trends.weekly_throughput.len() >= 12,
-        "Expected at least 12 weekly data points, got {}",
-        trends.weekly_throughput.len()
+        trends.weekly_throughput.is_empty(),
+        "Empty project should have no weekly throughput points after zero-week trimming"
     );
-    for pt in &trends.weekly_throughput {
-        assert_eq!(pt.value, 0.0, "Empty project should have 0 throughput each week");
-    }
 }
 
 /// Trends are scoped to the requested project and do not bleed across projects.
@@ -319,6 +333,7 @@ fn test_weekly_throughput_scoped_to_project() {
             rusqlite::params![format!("p1t{i}"), format!("Task {i}")],
         )
         .expect("insert proj1 task");
+        insert_merged_history_now(&conn, &format!("p1h{i}"), &format!("p1t{i}"));
     }
 
     // proj2: 5 merged tasks this week — should not appear in proj1's trends
@@ -329,6 +344,7 @@ fn test_weekly_throughput_scoped_to_project() {
             rusqlite::params![format!("p2t{i}"), format!("Task {i}")],
         )
         .expect("insert proj2 task");
+        insert_merged_history_now(&conn, &format!("p2h{i}"), &format!("p2t{i}"));
     }
 
     let t1 = compute_project_trends(&conn, "proj1", 0, 0).expect("proj1 trends");
