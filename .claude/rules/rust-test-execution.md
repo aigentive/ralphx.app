@@ -95,6 +95,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --test task_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test sqlite_ideation_session_repo
 cargo test --manifest-path src-tauri/Cargo.toml --test project_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test task_step_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test review_commands
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 ```
@@ -179,7 +180,7 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Split slow suites from narrow logic tests | Keep pure/unit logic off SQLite when possible; reserve DB fixtures for repository and integration coverage |
 | Sandbox-safe temp paths | If a test only needs “under HOME”, prefer `tempdir_in(std::env::current_dir()?)` over writing into `$HOME` root directly |
 | Discover exact libtest paths first | If a filter misses, use `-- --list` before guessing more Cargo invocations |
-| Run selective jobs sequentially | Many small targeted runs beat broad runs and avoid `.cargo-lock` contention |
+| Run selective jobs sequentially | Never overlap targeted Cargo runs against the same target dir; they reproduce `Blocking waiting for file lock on build directory` and erase any speed gain |
 | When a builder repeats across files, centralize it | Move shared fixture/builders into `src-tauri/src/testing/` once multiple suites need the same seeded graph |
 
 ## Agent Guidance

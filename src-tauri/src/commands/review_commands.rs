@@ -844,7 +844,3 @@ pub async fn mark_issue_addressed(
 
     Ok(ReviewIssueResponse::from(issue))
 }
-
-#[cfg(test)]
-#[path = "review_commands_tests.rs"]
-mod tests;
