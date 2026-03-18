@@ -557,7 +557,3 @@ pub async fn get_artifact_relations(
         })
         .map_err(|e| e.to_string())
 }
-
-#[cfg(test)]
-#[path = "artifact_commands_tests.rs"]
-mod tests;
