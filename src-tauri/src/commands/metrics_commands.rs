@@ -315,7 +315,3 @@ pub(crate) fn load_metrics_config(
         Err(e) => Err(crate::error::AppError::Database(e.to_string())),
     }
 }
-
-#[cfg(test)]
-#[path = "metrics_commands_tests.rs"]
-mod tests;

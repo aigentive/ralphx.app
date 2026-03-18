@@ -6,9 +6,9 @@
 
 use rusqlite::Connection;
 
-use super::{
+use ralphx_lib::commands::metrics_commands::{
     compute_column_metrics, compute_project_stats, compute_task_metrics,
-    invalidate_project_stats_cache, COLUMN_METRICS_CACHE, STATS_CACHE,
+    invalidate_project_stats_cache, ColumnMetric, ProjectStats, COLUMN_METRICS_CACHE, STATS_CACHE,
 };
 
 // ─── Schema helpers ───────────────────────────────────────────────────────────
@@ -594,7 +594,7 @@ fn test_invalidate_project_stats_cache_removes_entry() {
 
     let project_id = "cache-test-proj";
     // Manually insert a fake entry
-    let fake_stats = super::ProjectStats {
+    let fake_stats = ProjectStats {
         task_count: 99,
         tasks_completed_today: 0,
         tasks_completed_this_week: 0,
@@ -625,7 +625,7 @@ fn test_invalidate_also_clears_column_metrics_cache() {
     use std::time::Instant;
 
     let project_id = "column-cache-test-proj";
-    let fake_metrics = vec![super::ColumnMetric {
+    let fake_metrics = vec![ColumnMetric {
         column_id: "backlog".to_string(),
         column_name: "Backlog".to_string(),
         task_count: 5,

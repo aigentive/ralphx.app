@@ -96,6 +96,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --test sqlite_ideation_session_r
 cargo test --manifest-path src-tauri/Cargo.toml --test project_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test task_step_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test review_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test metrics_commands
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 ```
