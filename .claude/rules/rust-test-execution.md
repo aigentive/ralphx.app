@@ -18,6 +18,7 @@ paths:
 | No broad formatter runs | ❌ `cargo fmt` / broad `rustfmt` unless user explicitly asks; they can touch hundreds of files and hide the real diff |
 | Keep diffs reviewable | Use `apply_patch` for code edits, then verify `git diff` / `git diff --staged` only shows intended hunks |
 | Heavy SQLite tests use shared temp DB fixtures | Use `ralphx_lib::testing::SqliteTestDb` / `SqliteStateFixture` instead of rerunning migrations into fresh `:memory:` DBs |
+| Don’t over-convert narrow utility tests | Pure formatting/connection tests that never run migrations can stay on lightweight `:memory:` setup or direct connection helpers |
 
 ## Standard Stack
 
@@ -119,6 +120,7 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Situation | Action |
 |---|---|
 | Converting an old SQLite test | Replace `open_memory_connection() + run_migrations()` with `SqliteTestDb` first, then extract shared seed helpers |
+| Seeing remaining `open_memory_connection()` calls after migration work | Check whether the suite is connection/formatting-only before converting it; optimize real migration-replay hotspots first |
 | Adding a new repo suite | Start from a suite-local `setup_*()` helper; only introduce a shared helper when repetition appears in multiple files |
 | Verifying a migration | Test the migration itself explicitly; do not force every repo test to replay the full migration chain |
 | Considering `cargo-nextest` or extra tooling | Document it as the scale target; until adopted in CI/dev commands, optimize around targeted Cargo runs and shared fixtures |

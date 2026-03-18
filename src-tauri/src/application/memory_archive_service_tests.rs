@@ -42,6 +42,22 @@ impl ProjectRepository for MockProjectRepository {
     }
 }
 
+fn create_format_test_service() -> MemoryArchiveService {
+    let archive_conn = open_memory_connection().unwrap();
+    let entry_conn = open_memory_connection().unwrap();
+
+    MemoryArchiveService::new(
+        Arc::new(crate::infrastructure::sqlite::SqliteMemoryArchiveRepository::new(
+            archive_conn,
+        )),
+        Arc::new(crate::infrastructure::sqlite::SqliteMemoryEntryRepository::new(
+            entry_conn,
+        )),
+        Arc::new(MockProjectRepository),
+        PathBuf::from("/tmp"),
+    )
+}
+
 #[test]
 fn test_format_memory_snapshot() {
     let project_id = ProjectId::from_string("test-project".to_string());
@@ -55,17 +71,8 @@ fn test_format_memory_snapshot() {
         "hash123".to_string(),
     );
 
-    // Note: Using placeholders for repos since we're only testing formatting
-    // Integration tests will use properly initialized repos
-    let conn1 = open_memory_connection().unwrap();
-    let conn2 = open_memory_connection().unwrap();
-
-    let service = MemoryArchiveService::new(
-        Arc::new(crate::infrastructure::sqlite::SqliteMemoryArchiveRepository::new(conn1)),
-        Arc::new(crate::infrastructure::sqlite::SqliteMemoryEntryRepository::new(conn2)),
-        Arc::new(MockProjectRepository),
-        PathBuf::from("/tmp"),
-    );
+    // These formatting tests do not hit the DB, so lightweight in-memory repos are sufficient.
+    let service = create_format_test_service();
 
     let snapshot = service.format_memory_snapshot(&entry).unwrap();
 
@@ -89,15 +96,7 @@ fn test_format_memory_snapshot_deterministic() {
         "hash456".to_string(),
     );
 
-    let conn1 = open_memory_connection().unwrap();
-    let conn2 = open_memory_connection().unwrap();
-
-    let service = MemoryArchiveService::new(
-        Arc::new(crate::infrastructure::sqlite::SqliteMemoryArchiveRepository::new(conn1)),
-        Arc::new(crate::infrastructure::sqlite::SqliteMemoryEntryRepository::new(conn2)),
-        Arc::new(MockProjectRepository),
-        PathBuf::from("/tmp"),
-    );
+    let service = create_format_test_service();
 
     let snapshot1 = service.format_memory_snapshot(&entry).unwrap();
     let snapshot2 = service.format_memory_snapshot(&entry).unwrap();
@@ -136,15 +135,7 @@ fn test_format_project_snapshot_deterministic() {
         "hash2".to_string(),
     );
 
-    let conn1 = open_memory_connection().unwrap();
-    let conn2 = open_memory_connection().unwrap();
-
-    let service = MemoryArchiveService::new(
-        Arc::new(crate::infrastructure::sqlite::SqliteMemoryArchiveRepository::new(conn1)),
-        Arc::new(crate::infrastructure::sqlite::SqliteMemoryEntryRepository::new(conn2)),
-        Arc::new(MockProjectRepository),
-        PathBuf::from("/tmp"),
-    );
+    let service = create_format_test_service();
 
     // Pass entries in different orders, should produce same output
     let entries1 = vec![entry1.clone(), entry2.clone()];
@@ -204,15 +195,7 @@ fn test_format_rule_snapshot_sorting() {
         "hashA".to_string(),
     );
 
-    let conn1 = open_memory_connection().unwrap();
-    let conn2 = open_memory_connection().unwrap();
-
-    let service = MemoryArchiveService::new(
-        Arc::new(crate::infrastructure::sqlite::SqliteMemoryArchiveRepository::new(conn1)),
-        Arc::new(crate::infrastructure::sqlite::SqliteMemoryEntryRepository::new(conn2)),
-        Arc::new(MockProjectRepository),
-        PathBuf::from("/tmp"),
-    );
+    let service = create_format_test_service();
 
     // Pass entries in unsorted order
     let entries = vec![entry1.clone(), entry2.clone()];
