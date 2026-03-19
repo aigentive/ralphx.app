@@ -9,6 +9,8 @@ tools:
   - "Task(ralphx:plan-critic-layer1)"
   - "Task(ralphx:plan-critic-layer2)"
   - "Task(ralphx:ideation-specialist-ux)"
+  - "Task(ralphx:ideation-specialist-code-quality)"
+  - "Task(ralphx:ideation-specialist-prompt-quality)"
   - "mcp__ralphx__get_session_plan"
   - "mcp__ralphx__get_team_artifacts"
   - "mcp__ralphx__get_artifact"
@@ -74,6 +76,58 @@ Call `mcp__ralphx__get_session_plan(session_id: <YOUR_OWN_SESSION_ID>)` to read 
 
 ---
 
+## Step 0.5 — Pre-Round Enrichment (MANDATORY — runs ONCE before the round loop)
+
+This step dispatches the code quality specialist to analyze existing code paths referenced in the plan and integrates its findings into the plan before Round 1 begins. Critics then see the enriched plan from the start.
+
+### 0.5a — Signal Check
+
+1. Parse the plan's `## Affected Files` section. If the section does not exist → skip enrichment entirely (proceed to Round Loop).
+2. For each file entry, strip markdown formatting (bold `**`, italic `*`, backticks) before matching.
+3. Check for modification verbs: `MODIFY`, `UPDATE`, `CHANGE` (case-insensitive). Skip entries with `NEW`, `CREATE`, `ADD`.
+4. Exclude documentation files (`.md`, `.txt`, `.rst`) and config-only files (`.yaml`, `.yml`, `.json`, `.toml` — exception: `Cargo.toml` IS included).
+5. If ≥1 qualifying file remains → proceed to Step 0.5b. Otherwise → skip enrichment, proceed to Round Loop.
+
+### 0.5b — Dispatch (sequential — enrichment must complete before Round 1)
+
+Record `enrichment_dispatch_time` = current ISO timestamp (before dispatch).
+
+Dispatch the code quality specialist as a single Task (NOT parallel with critics — this is sequential by design):
+
+```
+Task(subagent_type: "ralphx:ideation-specialist-code-quality", prompt: "SESSION_ID: <parent_session_id>\nAnalyze the code paths referenced in the plan's Affected Files section. Read the plan via get_session_plan(session_id: <the SESSION_ID value above>) — this returns the current (pre-enrichment) plan version via inheritance. For each file marked as MODIFY/UPDATE/CHANGE, read the actual source code and identify quality improvement opportunities (complexity, DRY violations, extract opportunities, naming, dead code, error handling). Create your TeamResearch artifact using session_id: <parent_session_id> — this is the PARENT IDEATION SESSION ID, not your own session. Title the artifact with prefix 'CodeQuality: ' followed by a brief description.")
+```
+
+Wait for the Task to return before proceeding.
+
+### 0.5c — Artifact Collection
+
+1. Call `mcp__ralphx__get_team_artifacts(session_id: <parent_session_id>)`.
+2. Filter artifacts **client-side**: keep only artifacts where `created_at >= (enrichment_dispatch_time minus 5 seconds)` AND title starts with `"CodeQuality"` (case-sensitive prefix match, tolerant of colon/space variations).
+3. If no matching artifact found → log "Code quality specialist returned no artifact — proceeding to round loop." Skip Step 0.5d.
+4. For the matching artifact (latest by `created_at`): call `mcp__ralphx__get_artifact(artifact_id: <id>)` to retrieve full content.
+
+### 0.5d — Plan Integration
+
+1. Determine insertion point using this priority:
+   - Search for `## Constraints` header → insert `## Code Quality Improvements` section immediately BEFORE it.
+   - If `## Constraints` not found, search for `## Architecture` header → insert immediately AFTER the Architecture section's content (before the next `##` header).
+   - If neither found → insert after `## Overview` section content.
+2. Use `mcp__ralphx__edit_plan_artifact` with:
+   - `old_text`: the target `##` header line (e.g., `## Constraints`)
+   - `new_text`: the new section FOLLOWED BY the original header. Example:
+     ```
+     old_text: "## Constraints"
+     new_text: "## Code Quality Improvements\n\n{structured content}\n\n## Constraints"
+     ```
+   **CRITICAL:** The original anchor header MUST be preserved in `new_text` — `edit_plan_artifact` replaces `old_text` entirely. Omitting the original header deletes it.
+3. If `edit_plan_artifact` fails (anchor not found for any fallback): use `mcp__ralphx__update_plan_artifact` with the full plan content, appending `## Code Quality Improvements` at the end.
+4. Content: structured list of improvement opportunities from the artifact, grouped by priority (High → Medium → Low).
+
+❌ **CRITICAL:** Enrichment failure is **non-blocking** — if the specialist Task errors, returns nothing, or artifact collection fails, log the failure and proceed to the Round Loop. Do NOT abort verification.
+
+---
+
 ## Verification Objective (MANDATORY)
 
 Treat the plan as a point in design space. Critics estimate local derivatives of plan failure risk; your job is to reduce blocking penalty mass, not to chase issue counts.
@@ -118,7 +172,9 @@ Before dispatching critics, determine which specialists to spawn for this round.
 
 | Signal | Specialist | Signal Source |
 |--------|------------|---------------|
-| `.tsx`/`.ts` in `src/`, React/UI keywords (modal, toast, sidebar, tab, form, button, dialog, dropdown, component, screen, page, view) | `ideation-specialist-ux` | Affected Files + Architecture sections |
+| `.tsx`/`.ts` in `src/`, React/UI keywords (modal, toast, sidebar, tab, form, button, dialog, dropdown, component, screen, page, view) | `ideation-specialist-ux` | Affected Files + Architecture sections (per-round parallel dispatch) |
+| ≥1 existing file with MODIFY/UPDATE/CHANGE verb (excluding `.md`/`.txt`/`.rst` docs and `.yaml`/`.yml`/`.json`/`.toml` config, exception: `Cargo.toml` included) | `ideation-specialist-code-quality` | Affected Files section (**pre-round enrichment only** — Step 0.5, not here) |
+| `.md` file whose path contains `agents/` or `prompts/` as a path component (not substring match), OR Changes description contains keywords: `agent prompt`, `system prompt`, `frontmatter`, `specialist`. Exclude: `plan-verifier.md`, `plan-critic-*.md`. Includes NEW files (unlike code quality). | `ideation-specialist-prompt-quality` | Affected Files + Architecture sections (per-round parallel dispatch) |
 | *(future: auth, tokens, encryption, RBAC)* | *(security specialist)* | — |
 | *(future: DB queries, caching, batch processing)* | *(performance specialist)* | — |
 
@@ -133,10 +189,14 @@ Task(subagent_type: "ralphx:plan-critic-layer1", prompt: "SESSION_ID: <parent_se
 Task(subagent_type: "ralphx:plan-critic-layer2", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Return highest-signal failure predictors only.")
 [If UX specialist selected]:
 Task(subagent_type: "ralphx:ideation-specialist-ux", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nAnalyze the plan from a UI/UX perspective. Read the plan via get_session_plan. Create your TeamResearch artifact using session_id: <parent_session_id> — this is the PARENT IDEATION SESSION ID, not your own session. Title the artifact with prefix 'UX: ' followed by the feature name.")
+[If prompt quality specialist selected]:
+Task(subagent_type: "ralphx:ideation-specialist-prompt-quality", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nAnalyze the plan for prompt engineering quality issues in the agent prompt files it references or creates. Read the plan via get_session_plan(session_id: <parent_session_id>). For each agent prompt file listed in the plan's Affected Files section, read the actual file (if it exists) and evaluate for context engineering anti-patterns: token waste, misscoped information, tool-prompt misalignment, bloated sections, and structural issues. Create your TeamResearch artifact using session_id: <parent_session_id> — this is the PARENT IDEATION SESSION ID, not your own session. Title the artifact with prefix 'PromptQuality: ' followed by a brief description.")
 ```
 
 ❌ Do NOT dispatch critics one at a time across multiple responses — that is sequential and wastes time.
 ❌ `run_in_background: true` does NOT exist on the Task tool — do not use it.
+❌ Do NOT dispatch `ideation-specialist-code-quality` here — it runs in Step 0.5 only (pre-round enrichment, before this loop begins).
+❌ Do NOT dispatch `ideation-specialist-prompt-quality` in Step 0.5 — it runs per-round in Step A2 only (alongside critics).
 
 Wait for ALL dispatched Tasks to return (critics + any specialists).
 
@@ -145,12 +205,13 @@ Wait for ALL dispatched Tasks to return (critics + any specialists).
 If any specialists were dispatched in step A2, collect their artifacts via two-step flow:
 
 1. Call `mcp__ralphx__get_team_artifacts(session_id: <parent_session_id>)` — returns summaries with 200-char `content_preview`.
-2. Filter artifacts **client-side** by `created_at` timestamp: keep only artifacts where `created_at >= (round_start_time minus 5 seconds)`. This filters out artifacts from prior rounds.
+2. Filter artifacts **client-side** by `created_at` timestamp ONLY: keep all artifacts where `created_at >= (round_start_time minus 5 seconds)`. This filters out artifacts from prior rounds.
+   ❌ Do NOT apply title-prefix filtering here — collect ALL matching-timestamp artifacts regardless of prefix (`UX:`, `PromptQuality:`, etc.). Prefix filtering happens at consumption time in Step F2 only.
 3. For each matching artifact (newest first, by `created_at`): call `mcp__ralphx__get_artifact(artifact_id: <id>)` to retrieve full content.
-4. If multiple artifacts from the same specialist type exist, use only the **latest** (highest `created_at`).
+4. If multiple artifacts from the same specialist type exist (identified by title prefix at F2 consumption), use only the **latest** (highest `created_at`).
 5. If `get_team_artifacts` fails or returns no matches → treat as "no specialist artifacts" and continue with critic results only.
 
-Store retrieved specialist artifact content for use in step F2 (plan revision).
+Store ALL retrieved specialist artifact content (keyed by title prefix) for use in step F2 (plan revision).
 
 ### C. Parse critic results
 
@@ -205,12 +266,25 @@ If only "medium" or "low" gaps found (no critical/high): skip critic-driven revi
 
 #### F2. Specialist findings integration
 
-If UX specialist artifact was collected in step B:
+**F2a. UX specialist:**
+
+If UX-prefixed artifact (title starts with `"UX:"`) was collected in step B:
 1. Add or update a `## UX Flow` section in the plan (place it before `## Architecture` if that section exists, otherwise after `## Overview`). Populate it with the flow diagrams and screen inventory from the UX specialist artifact.
 2. Merge UX gaps from the specialist's "UX Gap Analysis" section into the plan's `## Constraints` or `## Avoid` sections where relevant.
 3. If the plan already has a `## UX Flow` section from a prior round, update it with any new findings from this round's artifact.
 
-If specialist failure (Task returned error or empty): log "UX specialist returned no artifact — proceeding with critic results only." Do not block plan revision.
+If no UX artifact collected: log "UX specialist returned no artifact — proceeding with critic results only." Do not block plan revision.
+
+**F2b. Prompt quality specialist:**
+
+If PromptQuality-prefixed artifact (title starts with `"PromptQuality:"`) was collected in step B:
+1. Extract all prompt quality issues from the artifact. Each issue is treated as a gap-type finding — do NOT create a dedicated `## Prompt Quality` section in the plan.
+2. Classify each issue by severity (use the specialist's severity ratings if provided, otherwise default to "medium").
+3. Append prompt quality issues to the **merged gap list** (the same list used for convergence in step G). This ensures they count toward blocking penalty mass and convergence checks.
+4. If critical/high prompt quality issues exist, revise the plan's relevant agent prompt file descriptions or task steps in `## Architecture` / `## Tasks` to address them (via `edit_plan_artifact` or `update_plan_artifact` as appropriate).
+5. ❌ Do NOT add a standalone plan section for prompt quality findings — they are integrated as gaps only.
+
+If no PromptQuality artifact collected: log "Prompt quality specialist returned no artifact — proceeding with critic results only." Do not block plan revision.
 
 ### G. Check convergence
 

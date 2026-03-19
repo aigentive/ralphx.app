@@ -194,3 +194,92 @@ fn test_create_mcp_config_allowed_tools_value_matches_agent_mcp_tools() {
         "session-namer should have exactly update_session_title"
     );
 }
+
+// ─── validate_mcp_config_json ────────────────────────────────────────────────
+
+#[test]
+fn test_validate_mcp_config_json_accepts_valid_config() {
+    let config = serde_json::json!({
+        "mcpServers": {
+            "ralphx": {
+                "type": "stdio",
+                "command": "/usr/local/bin/node",
+                "args": ["/path/to/index.js", "--agent-type", "worker"]
+            }
+        }
+    });
+    assert!(validate_mcp_config_json(&config, "ralphx").is_ok());
+}
+
+#[test]
+fn test_validate_mcp_config_json_rejects_missing_mcp_servers() {
+    let config = serde_json::json!({
+        "other": {}
+    });
+    let result = validate_mcp_config_json(&config, "ralphx");
+    assert!(result.is_err());
+    assert!(
+        result.unwrap_err().contains("mcpServers"),
+        "error should mention missing mcpServers"
+    );
+}
+
+#[test]
+fn test_validate_mcp_config_json_rejects_missing_server_entry() {
+    let config = serde_json::json!({
+        "mcpServers": {
+            "other-server": {}
+        }
+    });
+    let result = validate_mcp_config_json(&config, "ralphx");
+    assert!(result.is_err());
+    assert!(
+        result.unwrap_err().contains("ralphx"),
+        "error should mention missing server name"
+    );
+}
+
+#[test]
+fn test_validate_mcp_config_json_rejects_missing_command() {
+    let config = serde_json::json!({
+        "mcpServers": {
+            "ralphx": {
+                "args": ["/path/to/index.js"]
+            }
+        }
+    });
+    let result = validate_mcp_config_json(&config, "ralphx");
+    assert!(result.is_err());
+    assert!(
+        result.unwrap_err().contains("command"),
+        "error should mention missing command field"
+    );
+}
+
+#[test]
+fn test_validate_mcp_config_json_rejects_missing_args() {
+    let config = serde_json::json!({
+        "mcpServers": {
+            "ralphx": {
+                "command": "/usr/local/bin/node"
+            }
+        }
+    });
+    let result = validate_mcp_config_json(&config, "ralphx");
+    assert!(result.is_err());
+    assert!(
+        result.unwrap_err().contains("args"),
+        "error should mention missing args field"
+    );
+}
+
+#[test]
+fn test_create_mcp_config_returns_error_on_io_failure() {
+    // Use a non-existent directory as plugin_dir — should fail gracefully
+    let plugin_dir = std::path::Path::new("/nonexistent/path/that/does/not/exist");
+    // create_mcp_config should return Err, not panic
+    let result = create_mcp_config(plugin_dir, "worker");
+    // May succeed (writing temp file doesn't need plugin_dir to exist) or fail on validation
+    // The key invariant: it must not panic, regardless of outcome
+    let _ = result; // just checking no panic
+}

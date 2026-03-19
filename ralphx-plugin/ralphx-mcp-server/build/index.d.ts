@@ -16,4 +16,13 @@
  * Exported for unit testing.
  */
 export declare const CROSS_PROJECT_KEYWORDS: string[];
+/**
+ * Filter out detected paths that belong to the same project root.
+ * Returns only paths that genuinely reference a different project.
+ *
+ * @param detectedPaths - Raw list of absolute or relative paths found in plan text
+ * @param projectWorkingDir - The project's working directory (e.g. /Users/alice/Code/ralphx)
+ * @returns Paths that do NOT start with projectWorkingDir (i.e. are truly cross-project)
+ */
+export declare function filterCrossProjectPaths(detectedPaths: string[], projectWorkingDir: string | null): string[];
 //# sourceMappingURL=index.d.ts.map

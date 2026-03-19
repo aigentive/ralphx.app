@@ -193,7 +193,7 @@ pub async fn migrate_proposals_http(
 pub async fn set_cross_project_checked(
     State(state): State<HttpServerState>,
     Path(id): Path<String>,
-) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let rows_affected = state
         .app_state
         .db
@@ -219,6 +219,6 @@ pub async fn set_cross_project_checked(
             Json(serde_json::json!({ "error": "Session not found" })),
         ))
     } else {
-        Ok(StatusCode::OK)
+        Ok(Json(serde_json::json!({ "status": "ok" })))
     }
 }

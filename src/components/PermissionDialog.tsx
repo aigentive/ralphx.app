@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { useEventBus } from "@/providers/EventProvider";
 import { api } from "@/lib/tauri";
 import {
@@ -11,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, Shield, Terminal } from "lucide-react";
+import { useTaskStore } from "@/stores/taskStore";
 import type { PermissionRequest } from "@/types/permission";
 
 /**
@@ -24,9 +26,31 @@ import type { PermissionRequest } from "@/types/permission";
  * - Formats tool input preview based on tool type (Bash, Write, Edit, Read)
  * - Calls `resolve_permission_request` Tauri command on decision
  * - Closing dialog is treated as "deny"
+ * - Shows agent identity (agent type, context type, task name) when available
+ * - Prevents double-submit with resolving state
  */
+
+const AGENT_BADGE_CONFIG: Record<string, { label: string; colorVar: string }> = {
+  "ralphx-worker": { label: "Worker", colorVar: "--status-info" },
+  "ralphx-coder": { label: "Coder", colorVar: "--status-info" },
+  "ralphx-worker-team": { label: "Worker", colorVar: "--status-info" },
+  "ralphx-merger": { label: "Merger", colorVar: "--status-warning" },
+  "orchestrator-ideation": { label: "Ideation", colorVar: "--accent-primary" },
+  "ideation-team-lead": { label: "Ideation", colorVar: "--accent-primary" },
+};
+
+const CONTEXT_LABEL_MAP: Record<string, string> = {
+  task_execution: "Executing",
+  review: "Reviewing",
+  merge: "Merging",
+  ideation: "Ideation",
+  task: "Task Chat",
+  project: "Project Chat",
+};
+
 export function PermissionDialog() {
   const [requests, setRequests] = useState<PermissionRequest[]>([]);
+  const [resolving, setResolving] = useState(false);
   const eventBus = useEventBus();
   const currentRequest = requests[0];
 
@@ -42,18 +66,21 @@ export function PermissionDialog() {
   const handleDecision = async (decision: "allow" | "deny") => {
     if (!currentRequest) return;
 
+    setResolving(true);
     try {
       await api.permission.resolveRequest({
         requestId: currentRequest.request_id,
         decision,
         ...(decision === "deny" && { message: "User denied permission" }),
       });
+      // Remove from queue only on success
+      setRequests((prev) => prev.slice(1));
     } catch (error) {
       console.error("Failed to resolve permission:", error);
+      toast.error("Failed to resolve permission request");
+    } finally {
+      setResolving(false);
     }
-
-    // Remove from queue
-    setRequests((prev) => prev.slice(1));
   };
 
   // Dialog not visible when no requests
@@ -64,8 +91,18 @@ export function PermissionDialog() {
     currentRequest.tool_input
   );
 
+  const hasIdentity =
+    Boolean(currentRequest.agent_type) ||
+    Boolean(currentRequest.context_type) ||
+    Boolean(currentRequest.task_id);
+
   return (
-    <Dialog open onOpenChange={() => handleDecision("deny")}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!resolving && !open) void handleDecision("deny");
+      }}
+    >
       <DialogContent className="sm:max-w-[500px] max-h-[85vh] flex flex-col">
         <DialogHeader className="shrink-0">
           <div className="flex items-center gap-2">
@@ -85,6 +122,54 @@ export function PermissionDialog() {
         </DialogHeader>
 
         <div className="space-y-4 py-4 px-6 overflow-y-auto min-h-0">
+          {/* Agent identity row */}
+          {hasIdentity && (
+            <div
+              className="rounded-md p-3 space-y-1"
+              style={{
+                backgroundColor: "var(--bg-surface)",
+                border: "1px solid var(--border-subtle)",
+              }}
+            >
+              {/* Badges row */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {currentRequest.agent_type && (() => {
+                  const badge =
+                    AGENT_BADGE_CONFIG[currentRequest.agent_type] ??
+                    { label: currentRequest.agent_type, colorVar: "--text-secondary" };
+                  return (
+                    <span
+                      className="text-xs font-medium px-2 py-0.5 rounded"
+                      style={{
+                        backgroundColor: `color-mix(in srgb, var(${badge.colorVar}) 15%, transparent)`,
+                        color: `var(${badge.colorVar})`,
+                      }}
+                    >
+                      {badge.label}
+                    </span>
+                  );
+                })()}
+                {currentRequest.context_type && (
+                  <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                    {CONTEXT_LABEL_MAP[currentRequest.context_type] ?? currentRequest.context_type}
+                  </span>
+                )}
+              </div>
+              {/* Task name row */}
+              {currentRequest.task_id && (() => {
+                const tasks = useTaskStore.getState().tasks;
+                const taskTitle =
+                  tasks[currentRequest.task_id]?.title ??
+                  currentRequest.task_id.slice(0, 8);
+                return (
+                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    Task: {taskTitle}
+                  </p>
+                );
+              })()}
+            </div>
+          )}
+
           {/* Tool name */}
           <div className="flex items-center gap-2 text-sm">
             <Terminal className="h-4 w-4 shrink-0" style={{ color: "var(--text-muted)" }} />
@@ -125,10 +210,14 @@ export function PermissionDialog() {
         </div>
 
         <DialogFooter className="shrink-0">
-          <Button variant="outline" onClick={() => handleDecision("deny")}>
+          <Button
+            variant="outline"
+            onClick={() => void handleDecision("deny")}
+            disabled={resolving}
+          >
             Deny
           </Button>
-          <Button onClick={() => handleDecision("allow")}>
+          <Button onClick={() => void handleDecision("allow")} disabled={resolving}>
             <Shield className="h-4 w-4 mr-2" />
             Allow
           </Button>

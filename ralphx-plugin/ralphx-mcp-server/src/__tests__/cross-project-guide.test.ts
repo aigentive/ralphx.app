@@ -1,9 +1,10 @@
 /**
  * Unit tests for cross_project_guide semantic keyword detection
+ * and filterCrossProjectPaths path filtering.
  */
 
 import { describe, it, expect } from "vitest";
-import { CROSS_PROJECT_KEYWORDS } from "../index.js";
+import { CROSS_PROJECT_KEYWORDS, filterCrossProjectPaths } from "../index.js";
 
 function detectsCrossProject(planText: string): boolean {
   const regex = new RegExp(CROSS_PROJECT_KEYWORDS.join("|"), "i");
@@ -87,5 +88,63 @@ describe("CROSS_PROJECT_KEYWORDS — regression: existing keywords still detecte
     expect(detectsCrossProject("Refactor the authentication service.")).toBe(false);
     expect(detectsCrossProject("Fix the login flow bug.")).toBe(false);
     expect(detectsCrossProject("Add unit tests for the repository layer.")).toBe(false);
+  });
+});
+
+describe("filterCrossProjectPaths", () => {
+  const root = "/Users/lazabogdan/Code/ralphx";
+
+  it("returns empty array when all paths are within the project", () => {
+    const paths = [
+      "/Users/lazabogdan/Code/ralphx/src/index.ts",
+      "/Users/lazabogdan/Code/ralphx/src-tauri/main.rs",
+    ];
+    expect(filterCrossProjectPaths(paths, root)).toEqual([]);
+  });
+
+  it("returns only out-of-project paths when mixed", () => {
+    const paths = [
+      "/Users/lazabogdan/Code/ralphx/src/index.ts",
+      "/Users/lazabogdan/Code/other-project/src/main.ts",
+    ];
+    expect(filterCrossProjectPaths(paths, root)).toEqual([
+      "/Users/lazabogdan/Code/other-project/src/main.ts",
+    ]);
+  });
+
+  it("returns all paths when projectWorkingDir is null", () => {
+    const paths = [
+      "/Users/lazabogdan/Code/ralphx/src/index.ts",
+      "/Users/lazabogdan/Code/other/main.ts",
+    ];
+    expect(filterCrossProjectPaths(paths, null)).toEqual(paths);
+  });
+
+  it("filters out path that exactly equals the project root", () => {
+    expect(filterCrossProjectPaths([root], root)).toEqual([]);
+  });
+
+  it("filters out path equal to root with trailing slash", () => {
+    expect(filterCrossProjectPaths([root + "/"], root)).toEqual([]);
+  });
+
+  it("does not filter similar-prefix directory (e.g. ralphx-other)", () => {
+    const paths = ["/Users/lazabogdan/Code/ralphx-other/src/main.ts"];
+    expect(filterCrossProjectPaths(paths, root)).toEqual(paths);
+  });
+
+  it("does not filter relative ../paths (no project root match)", () => {
+    const paths = ["../some-sibling/file.ts"];
+    expect(filterCrossProjectPaths(paths, root)).toEqual(paths);
+  });
+
+  it("handles project root with trailing slash correctly", () => {
+    const paths = [
+      "/Users/lazabogdan/Code/ralphx/src/index.ts",
+      "/Users/lazabogdan/Code/other/main.ts",
+    ];
+    expect(filterCrossProjectPaths(paths, root + "/")).toEqual([
+      "/Users/lazabogdan/Code/other/main.ts",
+    ]);
   });
 });

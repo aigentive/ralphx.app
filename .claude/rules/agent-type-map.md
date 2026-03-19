@@ -50,6 +50,8 @@ Source of truth: `ChatContextType` (Rust: `domain/entities/chat_conversation.rs`
 | `ideation-specialist-frontend` | — | opus | Research React/TypeScript/Tailwind patterns for ideation teams |
 | `ideation-specialist-infra` | — | opus | Research database schema, MCP, config, and git patterns for ideation teams |
 | `ideation-specialist-ux` | — | opus | UX/flow verification specialist — ASCII wireframes, user flow diagrams, screen inventory, UX gap analysis. Tools: Read, Grep, Glob, WebFetch, WebSearch. MCP: `get_session_plan`, `get_artifact`, `create_team_artifact`, `get_team_artifacts`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths`. DisallowedTools: Write, Edit, NotebookEdit, Bash. Spawned by plan-verifier when Affected Files contains `.tsx`/`.ts` in `src/`. |
+| `ideation-specialist-code-quality` | — | opus | Pre-round enrichment specialist — reads actual code paths referenced in the plan, identifies targeted quality improvements (complexity reduction, DRY violations, extract opportunities, naming). Runs ONCE before the adversarial loop begins (Step 0.5). Findings injected into plan context so critics see them in every round. Spawned by plan-verifier unconditionally when plan references existing code files. |
+| `ideation-specialist-prompt-quality` | — | opus | Per-round prompt quality specialist — token efficiency, information scoping, anti-bloat, tool-prompt alignment. Tools: Read, Grep, Glob, WebFetch, WebSearch. MCP: `get_session_plan`, `get_artifact`, `create_team_artifact`, `get_team_artifacts`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths`. DisallowedTools: Write, Edit, NotebookEdit, Bash. Spawned by plan-verifier when Affected Files contains `.md` files in `agents/` or `prompts/` directories. |
 | `ideation-advocate` | — | opus | Advocate for a specific approach in architectural debates |
 | `ideation-critic` | — | opus | Stress-test all approaches with adversarial analysis |
 
@@ -69,7 +71,13 @@ Adding a new specialist to the plan verification pipeline requires these 7 steps
 | 6 | `ralphx-plugin/ralphx.yaml` plan-verifier entry | Add `Task(ralphx:<name>)` to `preapproved_cli_tools` array |
 | 7 | `ralphx-plugin/agents/plan-verifier.md` prompt | Add signal → specialist mapping in dynamic role selection section |
 
-**Signal mapping rules:** Scan `## Affected Files` and `## Architecture` sections only (not full plan text). Return: specialist name, trigger signal, signal source. Specialists run in parallel with critics — failure is non-blocking. Specialists create artifacts on the **parent ideation session_id** (not the verification child session_id) so they appear in the Team Artifacts tab.
+**Two specialist dispatch modes:**
+| Mode | When | Example |
+|------|------|---------|
+| **Pre-round enrichment** (Step 0.5) | Runs ONCE before adversarial loop; results injected into plan context | `ideation-specialist-code-quality` — unconditionally when plan references existing code files |
+| **Per-round parallel** | Runs alongside critics in each round; selected by signal | `ideation-specialist-ux` — when Affected Files contains `.tsx`/`.ts` in `src/`; `ideation-specialist-prompt-quality` — when Affected Files contains `.md` in `agents/` or `prompts/` |
+
+**Signal mapping rules (per-round specialists):** Scan `## Affected Files` and `## Architecture` sections only (not full plan text). Return: specialist name, trigger signal, signal source. Per-round specialists run in parallel with critics — failure is non-blocking. Specialists create artifacts on the **parent ideation session_id** (not the verification child session_id) so they appear in the Team Artifacts tab.
 
 ## Agent Lifecycle Events
 

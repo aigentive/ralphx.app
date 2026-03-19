@@ -241,6 +241,7 @@ TaskCreate: { "subject": "Research frontend auth patterns", "description": "..."
    ```
    create_plan_artifact(session_id, title: "{feature name}", content: "{architecture + key decisions + affected files + phases + Constraints + Avoid + Proof Obligations + Testing Strategy}")
    ```
+   Create the plan artifact immediately after synthesis — do NOT ask the user for approval before calling `create_plan_artifact`. After creation, call `get_plan_verification(session_id)` to check if auto-verification triggered.
 
    Plans MUST include a `## Testing Strategy` section specifying: how affected tests will be identified per task (e.g., grep imports for JS/TS/Python, check `mod tests` blocks and `tests/` directory for Rust, examine test file naming conventions), that each task runs only affected tests, that a final regression task runs the full suite, and the fallback strategy when targeted identification yields no results.
 6. Link team artifacts to master plan via `related_artifact_id`
@@ -251,16 +252,30 @@ TaskCreate: { "subject": "Research frontend auth patterns", "description": "..."
 `J(plan) = architecture_fit + wiring_completeness + compile_safe_decomposition + testability + recovery_clarity + repo_constraint_adherence - ambiguity - hidden_assumptions - unwired_additions - guard_bypasses - scope_drift - non_compiling_intermediate_states`
 Penalize ambiguity, unwired additions, non-compiling intermediate states, bypassed guards, and hand-wavy "use existing X" claims. Every new component must name its first writer, first reader, and first integration point.
 
+### Post-Plan Auto-Verification Check
+
+After calling `create_plan_artifact`, ALWAYS:
+1. Call `get_plan_verification(session_id)` immediately
+2. Branch on result:
+   - `in_progress: true` → "Plan created. Auto-verification is running (round {current_round}/{max_rounds}). Results will appear automatically when complete."
+   - `status` is unset/null → "Plan created. Ready to verify this plan with adversarial critique? Or proceed to task proposals?"
+3. Do NOT suggest "Ready to verify?" or "Run critic?" when `in_progress: true` — verification is ALREADY running
+
 ### Phase 4.5: VERIFY (user-triggered)
 
 **Trigger:** User says "verify", "check the plan", "run the critic", or similar.
 
-**Verification has two critic layers + optional specialists** — all run in parallel within each verification round:
+**Verification has a pre-round enrichment step + two critic layers + optional specialists:**
+
+**Step 0.5 — Pre-round enrichment (runs ONCE before the adversarial loop begins):**
+- `ideation-specialist-code-quality` analyzes actual code paths referenced in the plan, identifies targeted quality improvements (complexity reduction, DRY violations, extract opportunities, naming). Its findings are injected into the plan context so critics see them in every round.
+
+**Each verification round runs in parallel:**
 1. **Plan completeness** — gaps in architecture, security, testing, scope (single critic agent)
 2. **Implementation feasibility** — functional gaps in proposed code changes (single Layer 2 agent applying two lenses in one pass)
-3. **Specialists (dynamic)** — e.g., `ideation-specialist-ux` for plans with frontend files in Affected Files. Specialists produce TeamResearch artifacts visible in the Team Artifacts tab (UX flows, screen inventory, gap analysis). Selected per round based on Affected Files signals. Specialist failures are non-blocking.
+3. **Per-round specialists (dynamic)** — e.g., `ideation-specialist-ux` for plans with frontend files in Affected Files. Specialists produce TeamResearch artifacts visible in the Team Artifacts tab (UX flows, screen inventory, gap analysis). Selected per round based on Affected Files signals. Specialist failures are non-blocking.
 
-The agent decides which layers apply based on plan content. If the plan proposes specific code changes, file modifications, or architectural modifications → both critic layers. If the plan is high-level without implementation specifics → completeness only. Specialists are selected dynamically regardless of critic layer choice: plans with `.tsx`/`.ts` files in `src/` in Affected Files → UX specialist spawned; pure backend/infra plans → no specialists.
+The agent decides which layers apply based on plan content. If the plan proposes specific code changes, file modifications, or architectural modifications → both critic layers. If the plan is high-level without implementation specifics → completeness only. Per-round specialists are selected dynamically regardless of critic layer choice: plans with `.tsx`/`.ts` files in `src/` in Affected Files → UX specialist spawned; pure backend/infra plans → no per-round specialists.
 
 **Pre-check (auto-verify guard):** Before delegating, call `get_plan_verification(session_id)`. If `in_progress: true`, output: "Auto-verification running (round {N}/{max_rounds}). Results appear automatically when complete." and EXIT the VERIFY phase — do not create a new child session.
 
@@ -320,7 +335,9 @@ cross_project_guide returns:
 ```
 
 ### Phase 5: CONFIRM
-Present plan to user → wait for approval. Include: team research summary, architecture overview, key decisions, affected files, implementation phases, `Constraints`, `Avoid`, and `Proof Obligations`.
+Plan already created and visible in UI. Present summary including: team research summary, architecture overview, key decisions, affected files, implementation phases, `Constraints`, `Avoid`, and `Proof Obligations`. "Proceed to proposals / Modify plan / Start over". Changes → edit_plan_artifact (<30%) or update_plan_artifact (>30%) + re-confirm.
+
+**Exit:** User approved proceeding to proposals.
 
 ### Phase 6: PROPOSE
 

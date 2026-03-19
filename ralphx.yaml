@@ -587,6 +587,7 @@ agents:
   - name: ralphx-worker
     system_prompt_file: ralphx-plugin/agents/worker.md
     model: sonnet
+    permission_mode: acceptEdits
     tools: { extends: base_tools, include: [Write, Edit, Task, LSP] }
     mcp_tools: [
         # step management tools
@@ -636,6 +637,7 @@ agents:
   - name: ralphx-coder
     system_prompt_file: ralphx-plugin/agents/coder.md
     model: sonnet
+    permission_mode: acceptEdits
     tools: { extends: base_tools, include: [Write, Edit, Task, LSP] }
     mcp_tools: [
         # step management tools
@@ -761,6 +763,7 @@ agents:
   - name: ralphx-merger
     system_prompt_file: ralphx-plugin/agents/merger.md
     model: opus
+    permission_mode: acceptEdits
     tools: { extends: base_tools, include: [Edit, Task] }
     mcp_tools: [
         # merge tools
@@ -851,7 +854,7 @@ agents:
         get_team_artifacts,
         get_artifact,
       ]
-    preapproved_cli_tools: [Read, Grep, Glob, Bash, "Task(ralphx:plan-critic-layer1)", "Task(ralphx:plan-critic-layer2)", "Task(ralphx:ideation-specialist-ux)"]
+    preapproved_cli_tools: [Read, Grep, Glob, Bash, "Task(ralphx:plan-critic-layer1)", "Task(ralphx:plan-critic-layer2)", "Task(ralphx:ideation-specialist-ux)", "Task(ralphx:ideation-specialist-code-quality)", "Task(ralphx:ideation-specialist-prompt-quality)"]
 
   # --- Team lead variants (extends base agents) ---
 
@@ -914,6 +917,7 @@ agents:
     extends: ralphx-worker
     system_prompt_file: ralphx-plugin/agents/worker-team.md
     model: sonnet
+    permission_mode: acceptEdits
     tools:
       {
         extends: base_tools,
@@ -998,6 +1002,48 @@ agents:
 
   - name: ideation-specialist-ux
     system_prompt_file: ralphx-plugin/agents/ideation-specialist-ux.md
+    model: opus
+    tools: { extends: base_tools }
+    mcp_tools: [
+        # Team artifact tools
+        create_team_artifact,
+        get_team_artifacts,
+        # Plan read tools
+        get_session_plan,
+        get_artifact,
+        list_session_proposals,
+        get_proposal,
+        get_parent_session_context,
+        # Memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+      ]
+    preapproved_cli_tools: []
+
+  - name: ideation-specialist-code-quality
+    system_prompt_file: ralphx-plugin/agents/ideation-specialist-code-quality.md
+    model: opus
+    tools: { extends: base_tools }
+    mcp_tools: [
+        # Team artifact tools
+        create_team_artifact,
+        get_team_artifacts,
+        # Plan read tools
+        get_session_plan,
+        get_artifact,
+        list_session_proposals,
+        get_proposal,
+        get_parent_session_context,
+        # Memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+      ]
+    preapproved_cli_tools: []
+
+  - name: ideation-specialist-prompt-quality
+    system_prompt_file: ralphx-plugin/agents/ideation-specialist-prompt-quality.md
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [

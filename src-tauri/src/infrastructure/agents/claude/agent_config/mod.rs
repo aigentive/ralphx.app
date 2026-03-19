@@ -57,6 +57,8 @@ pub struct AgentConfig {
     pub settings: Option<serde_json::Value>,
     /// Optional per-agent effort level override (e.g. "max"). Validated at parse time.
     pub effort: Option<String>,
+    /// Optional per-agent permission mode override (e.g. "acceptEdits"). None means inherit global.
+    pub permission_mode: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -99,6 +101,8 @@ struct AgentConfigRaw {
     model: Option<String>,
     settings_profile: Option<String>,
     effort: Option<String>,
+    #[serde(default)]
+    permission_mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -352,6 +356,7 @@ fn merge_agent_configs(parent: &AgentConfigRaw, child: &AgentConfigRaw) -> Agent
             .clone()
             .or_else(|| parent.settings_profile.clone()),
         effort: child.effort.clone().or_else(|| parent.effort.clone()),
+        permission_mode: child.permission_mode.clone().or_else(|| parent.permission_mode.clone()),
     }
 }
 
@@ -429,6 +434,7 @@ fn parse_config_with_lookup(
             model: raw.model.clone(),
             settings: agent_settings,
             effort: raw.effort.clone().filter(|v| validate_effort(v, &raw.name)),
+            permission_mode: raw.permission_mode.clone(),
         });
     }
 
@@ -915,6 +921,12 @@ pub fn get_preapproved_tools(agent_name: &str) -> Option<String> {
         // Dedupe while preserving order (first occurrence wins)
         let mut seen = HashSet::new();
         tools.retain(|t| seen.insert(t.clone()));
+
+        // Always inject permission_request — required infrastructure tool, not agent-scoped.
+        let permission_tool = format!("mcp__{}__permission_request", mcp_server);
+        if !seen.contains(&permission_tool) {
+            tools.push(permission_tool);
+        }
 
         if tools.is_empty() {
             None

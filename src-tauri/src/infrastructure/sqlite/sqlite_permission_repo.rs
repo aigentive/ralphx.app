@@ -35,13 +35,17 @@ impl PermissionRepository for SqlitePermissionRepository {
         let request_id = info.request_id.clone();
         let tool_name = info.tool_name.clone();
         let context = info.context.clone();
+        let agent_type = info.agent_type.clone();
+        let task_id = info.task_id.clone();
+        let context_type = info.context_type.clone();
+        let context_id = info.context_id.clone();
 
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "INSERT INTO pending_permissions (request_id, tool_name, tool_input, context, status)
-                     VALUES (?1, ?2, ?3, ?4, 'pending')",
-                    rusqlite::params![request_id, tool_name, tool_input_json, context],
+                    "INSERT INTO pending_permissions (request_id, tool_name, tool_input, context, status, agent_type, task_id, context_type, context_id)
+                     VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6, ?7, ?8)",
+                    rusqlite::params![request_id, tool_name, tool_input_json, context, agent_type, task_id, context_type, context_id],
                 )?;
                 Ok(())
             })
@@ -73,7 +77,7 @@ impl PermissionRepository for SqlitePermissionRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT request_id, tool_name, tool_input, context
+                    "SELECT request_id, tool_name, tool_input, context, agent_type, task_id, context_type, context_id
                      FROM pending_permissions WHERE status = 'pending'",
                 )?;
 
@@ -83,12 +87,16 @@ impl PermissionRepository for SqlitePermissionRepository {
                         row.get::<_, String>(1)?,
                         row.get::<_, String>(2)?,
                         row.get::<_, Option<String>>(3)?,
+                        row.get::<_, Option<String>>(4)?,
+                        row.get::<_, Option<String>>(5)?,
+                        row.get::<_, Option<String>>(6)?,
+                        row.get::<_, Option<String>>(7)?,
                     ))
                 })?;
 
                 let mut results = Vec::new();
                 for row_result in mapped_rows {
-                    let (request_id, tool_name, tool_input_json, context) = row_result?;
+                    let (request_id, tool_name, tool_input_json, context, agent_type, task_id, context_type, context_id) = row_result?;
                     let tool_input: serde_json::Value = serde_json::from_str(&tool_input_json)
                         .map_err(|e| AppError::Database(e.to_string()))?;
                     results.push(PendingPermissionInfo {
@@ -96,6 +104,10 @@ impl PermissionRepository for SqlitePermissionRepository {
                         tool_name,
                         tool_input,
                         context,
+                        agent_type,
+                        task_id,
+                        context_type,
+                        context_id,
                     });
                 }
 
@@ -112,7 +124,7 @@ impl PermissionRepository for SqlitePermissionRepository {
         self.db
             .run(move |conn| {
                 let result = conn.query_row(
-                    "SELECT request_id, tool_name, tool_input, context
+                    "SELECT request_id, tool_name, tool_input, context, agent_type, task_id, context_type, context_id
                      FROM pending_permissions WHERE request_id = ?1",
                     rusqlite::params![request_id],
                     |row| {
@@ -121,12 +133,16 @@ impl PermissionRepository for SqlitePermissionRepository {
                             row.get::<_, String>(1)?,
                             row.get::<_, String>(2)?,
                             row.get::<_, Option<String>>(3)?,
+                            row.get::<_, Option<String>>(4)?,
+                            row.get::<_, Option<String>>(5)?,
+                            row.get::<_, Option<String>>(6)?,
+                            row.get::<_, Option<String>>(7)?,
                         ))
                     },
                 );
 
                 match result {
-                    Ok((request_id, tool_name, tool_input_json, context)) => {
+                    Ok((request_id, tool_name, tool_input_json, context, agent_type, task_id, context_type, context_id)) => {
                         let tool_input: serde_json::Value =
                             serde_json::from_str(&tool_input_json)
                                 .map_err(|e| AppError::Database(e.to_string()))?;
@@ -135,6 +151,10 @@ impl PermissionRepository for SqlitePermissionRepository {
                             tool_name,
                             tool_input,
                             context,
+                            agent_type,
+                            task_id,
+                            context_type,
+                            context_id,
                         }))
                     }
                     Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),

@@ -7,6 +7,7 @@ use tauri::Emitter;
 use uuid::Uuid;
 
 use super::*;
+use crate::application::permission_state::PendingPermissionInfo;
 use crate::application::PermissionDecision;
 
 pub async fn request_permission(
@@ -15,19 +16,25 @@ pub async fn request_permission(
 ) -> Json<PermissionRequestResponse> {
     let request_id = Uuid::new_v4().to_string();
 
-    // Store pending request with metadata (clone once for storage)
+    let info = PendingPermissionInfo {
+        request_id: request_id.clone(),
+        tool_name: input.tool_name.clone(),
+        tool_input: input.tool_input.clone(),
+        context: input.context.clone(),
+        agent_type: input.agent_type.clone(),
+        task_id: input.task_id.clone(),
+        context_type: input.context_type.clone(),
+        context_id: input.context_id.clone(),
+    };
+
+    // Store pending request with metadata
     state
         .app_state
         .permission_state
-        .register(
-            request_id.clone(),
-            input.tool_name.clone(),
-            input.tool_input.clone(),
-            input.context.clone(),
-        )
+        .register(info)
         .await;
 
-    // Emit Tauri event to frontend using references (no additional clones)
+    // Emit Tauri event to frontend
     if let Some(ref app_handle) = state.app_state.app_handle {
         let _ = app_handle.emit(
             "permission:request",
@@ -36,6 +43,10 @@ pub async fn request_permission(
                 "tool_name": &input.tool_name,
                 "tool_input": &input.tool_input,
                 "context": &input.context,
+                "agent_type": &input.agent_type,
+                "task_id": &input.task_id,
+                "context_type": &input.context_type,
+                "context_id": &input.context_id,
             }),
         );
     }

@@ -23,6 +23,11 @@ pub struct PendingPermissionInfo {
     pub tool_name: String,
     pub tool_input: serde_json::Value,
     pub context: Option<String>,
+    // Agent identity fields (optional for backward compat)
+    pub agent_type: Option<String>,
+    pub task_id: Option<String>,
+    pub context_type: Option<String>,
+    pub context_id: Option<String>,
 }
 
 /// A pending permission request with its signaling channel
@@ -70,18 +75,10 @@ impl PermissionState {
     /// Register a new pending permission request
     pub async fn register(
         &self,
-        request_id: String,
-        tool_name: String,
-        tool_input: serde_json::Value,
-        context: Option<String>,
+        info: PendingPermissionInfo,
     ) -> watch::Receiver<Option<PermissionDecision>> {
         let (tx, rx) = watch::channel(None);
-        let info = PendingPermissionInfo {
-            request_id: request_id.clone(),
-            tool_name,
-            tool_input,
-            context,
-        };
+        let request_id = info.request_id.clone();
 
         // Fire-and-forget persist to repo
         if let Some(repo) = &self.repo {

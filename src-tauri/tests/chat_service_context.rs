@@ -345,6 +345,13 @@ impl IdeationSessionRepository for MockIdeationRepo {
         unimplemented!()
     }
 
+    async fn increment_verification_generation(
+        &self,
+        _session_id: &IdeationSessionId,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
     async fn get_stale_in_progress_sessions(
         &self,
         _stale_before: chrono::DateTime<chrono::Utc>,

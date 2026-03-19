@@ -40,6 +40,32 @@ export const CROSS_PROJECT_KEYWORDS = [
     "external\\s+module",
 ];
 /**
+ * Filter out detected paths that belong to the same project root.
+ * Returns only paths that genuinely reference a different project.
+ *
+ * @param detectedPaths - Raw list of absolute or relative paths found in plan text
+ * @param projectWorkingDir - The project's working directory (e.g. /Users/alice/Code/ralphx)
+ * @returns Paths that do NOT start with projectWorkingDir (i.e. are truly cross-project)
+ */
+export function filterCrossProjectPaths(detectedPaths, projectWorkingDir) {
+    if (!projectWorkingDir) {
+        return detectedPaths;
+    }
+    // Normalize: ensure root ends with exactly one slash for prefix matching
+    const root = projectWorkingDir.endsWith("/")
+        ? projectWorkingDir
+        : projectWorkingDir + "/";
+    return detectedPaths.filter((p) => {
+        // Exact match: path equals project root (without trailing slash)
+        if (p === projectWorkingDir)
+            return false;
+        // Prefix match: path is inside project root
+        if (p.startsWith(root))
+            return false;
+        return true;
+    });
+}
+/**
  * Parse command line arguments for --agent-type
  * Returns the agent type if found, undefined otherwise
  */
@@ -516,11 +542,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             // MCP-server-only: analyze plan for cross-project paths and return guidance
             const { session_id, plan_content } = args;
             let planText = plan_content ?? "";
+            let projectWorkingDir = null;
             // If session_id provided, fetch plan content via get_session_plan
             if (session_id && !planText) {
                 try {
                     const planData = await callTauriGet(`get_session_plan/${session_id}`);
                     planText = planData?.content ?? "";
+                    projectWorkingDir = planData?.project_working_directory ?? null;
                 }
                 catch (err) {
                     planText = "";
@@ -533,16 +561,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 /(?:^|\s|["'`])(\.\.\/?[^\s"'`]+)/gm,
                 /(?:target[_-]?project[_-]?path|project[_-]?path|working[_-]?directory)[:\s]+["']?([^\s"'`,\n]+)/gim,
             ];
-            const detectedPaths = [];
+            const rawDetectedPaths = [];
             for (const pattern of crossProjectPatterns) {
                 const matches = [...planText.matchAll(pattern)];
                 for (const m of matches) {
                     const p = (m[1] || m[0]).trim().replace(/^["'`]|["'`]$/g, "");
-                    if (p && !detectedPaths.includes(p)) {
-                        detectedPaths.push(p);
+                    if (p && !rawDetectedPaths.includes(p)) {
+                        rawDetectedPaths.push(p);
                     }
                 }
             }
+            const detectedPaths = filterCrossProjectPaths(rawDetectedPaths, projectWorkingDir);
             const crossProjectKeywordRegex = new RegExp(CROSS_PROJECT_KEYWORDS.join("|"), "i");
             const hasCrossProjectContent = detectedPaths.length > 0 ||
                 crossProjectKeywordRegex.test(planText);

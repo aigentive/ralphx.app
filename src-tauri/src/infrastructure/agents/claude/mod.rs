@@ -113,6 +113,19 @@ pub fn resolve_effort(agent_type: Option<&str>) -> String {
     }
 }
 
+/// Resolve the `--permission-mode` for a given agent type.
+///
+/// Priority: `AgentConfig.permission_mode` > `ClaudeRuntimeConfig.permission_mode`
+pub fn resolve_permission_mode(agent_type: Option<&str>) -> String {
+    let default = claude_runtime_config().permission_mode.clone();
+    match agent_type {
+        Some(name) => get_agent_config(name)
+            .and_then(|c| c.permission_mode.clone())
+            .unwrap_or(default),
+        None => default,
+    }
+}
+
 pub fn build_base_cli_command(
     cli_path: &Path,
     plugin_dir: &Path,
@@ -164,7 +177,8 @@ pub fn build_base_cli_command(
     // Configure permission handling from ralphx.yaml.
     let runtime = claude_runtime_config();
     cmd.args(["--permission-prompt-tool", &runtime.permission_prompt_tool]);
-    cmd.args(["--permission-mode", &runtime.permission_mode]);
+    let permission_mode = resolve_permission_mode(agent_type);
+    cmd.args(["--permission-mode", &permission_mode]);
     if runtime.dangerously_skip_permissions {
         cmd.arg("--dangerously-skip-permissions");
     }
@@ -183,19 +197,22 @@ pub fn build_base_cli_command(
     // If agent_type is provided, create a dynamic MCP config that passes it
     // to the MCP server via CLI args (since env vars don't propagate to MCP servers).
     // Always enforce strict MCP isolation from user/global servers.
+    // Hard error on invalid config — MCP is critical infra, fail loud.
     if let Some(agent) = agent_type {
-        if let Some(temp_path) = create_mcp_config(plugin_dir, agent) {
-            cmd.args([
-                "--mcp-config",
-                temp_path.to_str().unwrap_or(""),
-                "--strict-mcp-config",
-            ]);
-            tracing::debug!(
-                path = %temp_path.display(),
-                agent_type = agent,
-                "Dynamic MCP config written (strict)"
-            );
-        }
+        let temp_path = create_mcp_config(plugin_dir, agent).map_err(|e| {
+            tracing::error!(error = %e, agent = %agent, "MCP config creation failed");
+            e
+        })?;
+        cmd.args([
+            "--mcp-config",
+            temp_path.to_str().unwrap_or(""),
+            "--strict-mcp-config",
+        ]);
+        tracing::debug!(
+            path = %temp_path.display(),
+            agent_type = agent,
+            "Dynamic MCP config written (strict)"
+        );
     }
 
     Ok(cmd)
@@ -346,12 +363,47 @@ pub fn sanitize_claude_user_state() {
     );
 }
 
+/// Validate a generated MCP config JSON value for required fields.
+///
+/// Checks that the config has `mcpServers`, at least one server entry, and that
+/// each server entry has `command` and `args`. Returns an error message on failure.
+pub(crate) fn validate_mcp_config_json(
+    config: &serde_json::Value,
+    server_name: &str,
+) -> Result<(), String> {
+    let mcp_servers = config
+        .get("mcpServers")
+        .ok_or_else(|| "missing 'mcpServers' key".to_string())?;
+
+    let server = mcp_servers
+        .get(server_name)
+        .ok_or_else(|| format!("missing server entry '{server_name}' in mcpServers"))?;
+
+    if server.get("command").is_none() {
+        return Err(format!(
+            "server '{server_name}' missing required 'command' field"
+        ));
+    }
+    if server.get("args").is_none() {
+        return Err(format!(
+            "server '{server_name}' missing required 'args' field"
+        ));
+    }
+
+    Ok(())
+}
+
 /// Create a dynamic MCP config temp file for an agent.
 ///
 /// Writes a JSON config that starts the configured MCP server with the agent's type
 /// passed via `--agent-type` CLI arg (for tool filtering). Returns the temp file path.
 /// Uses UUID in filename to avoid race conditions between parallel agent spawns.
-pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf> {
+///
+/// # Errors
+///
+/// Returns `Err` when the config JSON fails validation (missing required fields) or
+/// when the temp file cannot be written. Errors propagate to agent spawn failure.
+pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Result<PathBuf, String> {
     // ${CLAUDE_PLUGIN_ROOT} in .mcp.json means the plugin_dir itself (e.g. ralphx-plugin/).
     // spawn_teammate_interactive sets CLAUDE_PLUGIN_ROOT=plugin_dir, so expansion must match.
     let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
@@ -495,7 +547,13 @@ pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf>
         }
     });
 
-    let config_json = serde_json::to_string(&mcp_config).ok()?;
+    // Validate required fields before writing. This is always valid when built with
+    // serde_json::json!, but explicit validation catches future regressions early.
+    validate_mcp_config_json(&mcp_config, mcp_server_name)
+        .map_err(|e| format!("Critical: MCP server config invalid — {e}"))?;
+
+    let config_json = serde_json::to_string(&mcp_config)
+        .map_err(|e| format!("Failed to serialize MCP config: {e}"))?;
     let temp_path = std::env::temp_dir().join(format!(
         "ralphx-mcp-{}-{}.json",
         std::process::id(),
@@ -510,10 +568,11 @@ pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf>
             .truncate(true)
             .mode(0o600)
             .open(&temp_path)
-            .ok()?;
-        f.write_all(config_json.as_bytes()).ok()?;
+            .map_err(|e| format!("Failed to create MCP config temp file: {e}"))?;
+        f.write_all(config_json.as_bytes())
+            .map_err(|e| format!("Failed to write MCP config temp file: {e}"))?;
     }
-    Some(temp_path)
+    Ok(temp_path)
 }
 
 /// A ready-to-spawn CLI command that handles stdin piping automatically.
