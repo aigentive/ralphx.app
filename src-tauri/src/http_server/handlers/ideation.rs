@@ -19,8 +19,10 @@ fn json_error(status: StatusCode, error: impl Into<String>) -> JsonError {
 
 use std::sync::Arc;
 
-use crate::application::chat_service::{ChatService, ClaudeChatService, SendMessageOptions};
+use crate::application::app_state::AppState;
+use crate::application::chat_service::{AgentRunCompletedPayload, ChatService, ClaudeChatService, SendMessageOptions};
 use crate::application::{CreateProposalOptions, InteractiveProcessKey, UpdateProposalOptions, UpdateSource};
+use crate::error::AppError;
 use crate::domain::entities::ideation::IdeationSessionStatus;
 use crate::domain::entities::{ChatContextType, IdeationSessionId, Priority, TaskProposalId};
 use crate::domain::services::emit_verification_status_changed;
@@ -767,6 +769,71 @@ pub async fn get_session_messages(
     }))
 }
 
+/// Stop any running verification child agents for a session.
+///
+/// Called when verification is skipped or reverted to immediately release the write lock
+/// so the parent session can resume plan editing. Best-effort: errors are swallowed so the
+/// caller's skip/revert succeeds even if the agent is already dead.
+pub(crate) async fn stop_verification_children(
+    session_id: &str,
+    app_state: &AppState,
+) -> Result<(), AppError> {
+    use tauri::Emitter;
+    let session_id_typed = IdeationSessionId::from_string(session_id.to_string());
+    let children = app_state
+        .ideation_session_repo
+        .get_verification_children(&session_id_typed)
+        .await?;
+
+    for child in &children {
+        let key = RunningAgentKey::new("ideation", child.id.as_str());
+        if app_state.running_agent_registry.is_running(&key).await {
+            if let Ok(Some(info)) = app_state.running_agent_registry.stop(&key).await {
+                // Remove from interactive process registry (closes stdin pipe)
+                let ipr_key = InteractiveProcessKey::new("ideation", child.id.as_str());
+                app_state.interactive_process_registry.remove(&ipr_key).await;
+
+                // Mark agent run as failed
+                let run_id =
+                    crate::domain::entities::AgentRunId::from_string(&info.agent_run_id);
+                app_state
+                    .agent_run_repo
+                    .fail(&run_id, "Verification cancelled")
+                    .await
+                    .ok();
+
+                // Emit frontend events
+                if let Some(ref app_handle) = app_state.app_handle {
+                    app_handle
+                        .emit(
+                            "agent:stopped",
+                            serde_json::json!({
+                                "conversation_id": info.conversation_id,
+                                "agent_run_id": info.agent_run_id,
+                                "context_type": "ideation",
+                                "context_id": child.id.as_str(),
+                            }),
+                        )
+                        .ok();
+                    app_handle
+                        .emit(
+                            "agent:run_completed",
+                            AgentRunCompletedPayload {
+                                conversation_id: info.conversation_id.clone(),
+                                context_type: "ideation".to_string(),
+                                context_id: child.id.as_str().to_string(),
+                                claude_session_id: None,
+                                run_chain_id: None,
+                            },
+                        )
+                        .ok();
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// POST /api/ideation/sessions/:id/verification
 ///
 /// Update verification state for a session's plan (from MCP orchestrator).
@@ -1148,6 +1215,23 @@ pub async fn update_plan_verification(
         "Verification state updated"
     );
 
+    // For terminal statuses, kill any running verification child agents before emitting events.
+    // This releases the write lock so the parent can immediately resume plan editing.
+    if matches!(new_status, VerificationStatus::Verified | VerificationStatus::Skipped) {
+        stop_verification_children(&session_id, &state.app_state).await.ok();
+    }
+
+    // Defense-in-depth: increment generation on skip so any in-flight zombie agent
+    // calls get rejected with 409 Conflict.
+    if matches!(new_status, VerificationStatus::Skipped) {
+        state
+            .app_state
+            .ideation_session_repo
+            .increment_verification_generation(&session_id_obj)
+            .await
+            .ok();
+    }
+
     // Emit plan_verification:status_changed event (B1: includes current_gaps + last 5 rounds)
     if let Some(app_handle) = &state.app_state.app_handle {
         emit_verification_status_changed(
@@ -1466,6 +1550,10 @@ pub async fn revert_and_skip(
         new_artifact_id = %new_artifact_id_str,
         "Revert-and-skip completed atomically"
     );
+
+    // Kill any running verification child agents before emitting events.
+    // Generation increment is handled inside the atomic SQL transaction above.
+    stop_verification_children(&session_id, &state.app_state).await.ok();
 
     // Emit event with canonical payload (B3: was missing round/gaps/rounds fields)
     if let Some(app_handle) = &state.app_state.app_handle {

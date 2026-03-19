@@ -807,7 +807,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "UPDATE ideation_sessions SET plan_artifact_id = ?2, verification_status = 'skipped', verification_in_progress = 0, verification_metadata = ?3, updated_at = ?4 WHERE id = ?1",
+                    "UPDATE ideation_sessions SET plan_artifact_id = ?2, verification_status = 'skipped', verification_in_progress = 0, verification_metadata = ?3, updated_at = ?4, verification_generation = verification_generation + 1 WHERE id = ?1",
                     rusqlite::params![id, new_plan_artifact_id, metadata_json, now.to_rfc3339()],
                 )?;
                 Ok(())
@@ -879,7 +879,8 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                          verification_status = 'skipped', \
                          verification_in_progress = 0, \
                          verification_metadata = ?3, \
-                         updated_at = ?4 \
+                         updated_at = ?4, \
+                         verification_generation = verification_generation + 1 \
                      WHERE id = ?1",
                     rusqlite::params![
                         session_id,
@@ -887,6 +888,22 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                         session_metadata_json,
                         now.to_rfc3339(),
                     ],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn increment_verification_generation(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<()> {
+        let id = session_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE ideation_sessions SET verification_generation = verification_generation + 1 WHERE id = ?1",
+                    rusqlite::params![id],
                 )?;
                 Ok(())
             })

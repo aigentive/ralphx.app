@@ -169,6 +169,14 @@ pub trait IdeationSessionRepository: Send + Sync {
         convergence_reason: String,
     ) -> AppResult<()>;
 
+    /// Increment the verification generation counter by 1 for a session.
+    /// Used to invalidate any in-flight verification agents that check the generation
+    /// before writing results.
+    async fn increment_verification_generation(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<()>;
+
     /// Atomic reset-and-begin for re-verification.
     ///
     /// Clears stale verification metadata (gaps, rounds, convergence_reason, best_round_index,

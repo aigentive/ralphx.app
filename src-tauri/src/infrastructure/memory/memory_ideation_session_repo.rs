@@ -384,6 +384,13 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         Ok(())
     }
 
+    async fn increment_verification_generation(
+        &self,
+        _session_id: &IdeationSessionId,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
     async fn get_stale_in_progress_sessions(
         &self,
         stale_before: DateTime<Utc>,
