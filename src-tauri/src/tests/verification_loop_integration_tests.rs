@@ -19,7 +19,7 @@ use chrono::{Duration, Utc};
 use crate::application::reconciliation::verification_reconciliation::{
     VerificationReconciliationConfig, VerificationReconciliationService,
 };
-use crate::domain::entities::{IdeationSession, ProjectId, VerificationStatus};
+use crate::domain::entities::{IdeationSession, ProjectId, SessionPurpose, VerificationStatus};
 use crate::domain::ideation::config::IdeationSettings;
 use crate::domain::repositories::IdeationSessionRepository;
 use crate::domain::services::verification_gate::check_verification_gate;
@@ -82,6 +82,17 @@ fn metadata_with_gaps(critical: u32, high: u32, round: u32, max_rounds: u32) -> 
         "parse_failures": []
     })
     .to_string()
+}
+
+fn make_reconciliation_service(
+    repo: Arc<MemoryIdeationSessionRepository>,
+) -> VerificationReconciliationService {
+    let config = VerificationReconciliationConfig {
+        stale_after_secs: 5400,       // 90 min
+        auto_verify_stale_secs: 600,  // 10 min
+        interval_secs: 300,
+    };
+    VerificationReconciliationService::new(repo as Arc<dyn IdeationSessionRepository>, config)
 }
 
 fn metadata_converged(reason: &str, round: u32) -> String {
@@ -322,16 +333,8 @@ async fn test_agent_crash_recovery_reconciliation_resets_and_retry_succeeds() {
     assert!(gate_stuck.is_err(), "gate must block while verification is stuck in-progress");
 
     // Reconciliation detects and resets the stuck session
-    let config = VerificationReconciliationConfig {
-        stale_after_secs: 5400,      // 90 min
-        auto_verify_stale_secs: 600, // 10 min
-        interval_secs: 300,
-    };
-    let svc = VerificationReconciliationService::new(
-        repo.clone() as Arc<dyn IdeationSessionRepository>,
-        config,
-    );
-    let reset_count = svc.scan_and_reset().await;
+    let svc = make_reconciliation_service(repo.clone());
+    let reset_count = svc.scan_and_reset(false).await;
     assert_eq!(reset_count, 1, "reconciliation must reset the stuck session");
 
     // After reset: back to Unverified, in_progress cleared
@@ -651,7 +654,7 @@ async fn test_auto_verify_creates_verification_child_session() {
 
     // Simulate create_verification_child_session: create verification child session
     let mut child = make_session(&project_id);
-    child.session_purpose = crate::domain::entities::ideation::SessionPurpose::Verification;
+    child.session_purpose = SessionPurpose::Verification;
     child.parent_session_id = Some(parent_id.clone());
     let child_id = child.id.clone();
     repo.create(child).await.unwrap();
@@ -660,7 +663,7 @@ async fn test_auto_verify_creates_verification_child_session() {
     let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
     assert_eq!(
         child_after.session_purpose,
-        crate::domain::entities::ideation::SessionPurpose::Verification,
+        SessionPurpose::Verification,
         "verification child must have SessionPurpose::Verification"
     );
     assert_eq!(
@@ -719,7 +722,7 @@ async fn test_verification_child_updates_parent_state() {
 
     // Create verification child (plan-verifier agent session)
     let mut child = make_session(&project_id);
-    child.session_purpose = crate::domain::entities::ideation::SessionPurpose::Verification;
+    child.session_purpose = SessionPurpose::Verification;
     child.parent_session_id = Some(parent_id.clone());
     repo.create(child).await.unwrap();
 
@@ -807,7 +810,7 @@ async fn test_verification_child_archived_on_completion() {
 
     // Child: active verification session (plan-verifier agent running)
     let mut child = make_session(&project_id);
-    child.session_purpose = crate::domain::entities::ideation::SessionPurpose::Verification;
+    child.session_purpose = SessionPurpose::Verification;
     child.parent_session_id = Some(parent_id.clone());
     let child_id = child.id.clone();
     repo.create(child).await.unwrap();
@@ -889,7 +892,7 @@ async fn test_orphaned_verification_child_reconciled() {
 
     // Orphaned verification child (Active — agent crashed, never completed/archived)
     let mut child = make_session(&project_id);
-    child.session_purpose = crate::domain::entities::ideation::SessionPurpose::Verification;
+    child.session_purpose = SessionPurpose::Verification;
     child.parent_session_id = Some(parent_id.clone());
     let child_id = child.id.clone();
     repo.create(child).await.unwrap();
@@ -901,16 +904,8 @@ async fn test_orphaned_verification_child_reconciled() {
         "gate must block while parent is stuck in_progress"
     );
 
-    let config = VerificationReconciliationConfig {
-        stale_after_secs: 5400,      // 90 min (manual verify)
-        auto_verify_stale_secs: 600, // 10 min (auto-verify)
-        interval_secs: 300,
-    };
-    let svc = VerificationReconciliationService::new(
-        repo.clone() as Arc<dyn IdeationSessionRepository>,
-        config,
-    );
-    let reset_count = svc.scan_and_reset().await;
+    let svc = make_reconciliation_service(repo.clone());
+    let reset_count = svc.scan_and_reset(false).await;
     assert_eq!(reset_count, 1, "reconciler must reset the orphaned parent");
 
     // Parent must be reset to Unverified
@@ -1124,16 +1119,8 @@ async fn test_escalation_lifecycle_needs_revision_gate_blocks_reconciliation_ski
     );
 
     // Step 3: Reconciliation must NOT reset escalated session (in_progress=false)
-    let config = VerificationReconciliationConfig {
-        stale_after_secs: 5400,      // 90 min
-        auto_verify_stale_secs: 600, // 10 min
-        interval_secs: 300,
-    };
-    let svc = VerificationReconciliationService::new(
-        repo.clone() as Arc<dyn IdeationSessionRepository>,
-        config,
-    );
-    let reset_count = svc.scan_and_reset().await;
+    let svc = make_reconciliation_service(repo.clone());
+    let reset_count = svc.scan_and_reset(false).await;
     assert_eq!(
         reset_count, 0,
         "reconciler must not reset escalated session (in_progress=false)"

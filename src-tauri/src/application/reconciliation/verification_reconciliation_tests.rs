@@ -41,7 +41,7 @@ async fn test_reconciliation_resets_stuck_session_after_timeout() {
     repo.create(session).await.unwrap();
 
     let svc = make_service(repo.clone(), default_config());
-    let count = svc.scan_and_reset().await;
+    let count = svc.scan_and_reset(false).await;
 
     assert_eq!(count, 1, "exactly one stuck session should be reset");
 
@@ -76,7 +76,7 @@ async fn test_reconciliation_skips_session_under_timeout() {
     repo.create(session).await.unwrap();
 
     let svc = make_service(repo.clone(), default_config());
-    let count = svc.scan_and_reset().await;
+    let count = svc.scan_and_reset(false).await;
 
     assert_eq!(count, 0, "no sessions should be reset when under timeout");
 
@@ -107,7 +107,7 @@ async fn test_reconciliation_ignores_sessions_not_in_progress() {
     repo.create(session).await.unwrap();
 
     let svc = make_service(repo.clone(), default_config());
-    let count = svc.scan_and_reset().await;
+    let count = svc.scan_and_reset(false).await;
 
     assert_eq!(count, 0, "completed sessions must not be reset");
 
@@ -135,7 +135,7 @@ async fn test_reconciliation_resets_multiple_stuck_sessions() {
     repo.create(fresh).await.unwrap();
 
     let svc = make_service(repo.clone(), default_config());
-    let count = svc.scan_and_reset().await;
+    let count = svc.scan_and_reset(false).await;
 
     assert_eq!(count, 3, "only the 3 stale sessions should be reset");
 }
@@ -165,7 +165,7 @@ async fn test_reconciliation_empty_repo_returns_zero() {
     let repo = Arc::new(MemoryIdeationSessionRepository::new());
 
     let svc = make_service(repo.clone(), default_config());
-    let count = svc.scan_and_reset().await;
+    let count = svc.scan_and_reset(false).await;
 
     assert_eq!(count, 0);
 }
@@ -186,7 +186,7 @@ async fn test_reconciler_preserves_metadata() {
     repo.create(session).await.unwrap();
 
     let svc = make_service(repo.clone(), default_config());
-    let count = svc.scan_and_reset().await;
+    let count = svc.scan_and_reset(false).await;
 
     assert_eq!(count, 1, "one stuck session should be reset");
 
@@ -230,7 +230,7 @@ async fn test_reconciler_auto_verify_shorter_threshold() {
     repo.create(manual_session).await.unwrap();
 
     let svc = make_service(repo.clone(), config);
-    let count = svc.scan_and_reset().await;
+    let count = svc.scan_and_reset(false).await;
 
     assert_eq!(count, 1, "only the auto-verify session should be reset");
 
@@ -274,7 +274,7 @@ async fn test_reconciler_skips_imported_verified_sessions() {
     repo.create(stuck_session).await.unwrap();
 
     let svc = make_service(repo.clone(), default_config());
-    let count = svc.scan_and_reset().await;
+    let count = svc.scan_and_reset(false).await;
 
     // Only the Reviewing session should be reset; ImportedVerified is preserved
     assert_eq!(count, 1, "only the stuck Reviewing session should be reset");
@@ -310,7 +310,7 @@ async fn test_reconciler_only_imported_verified_resets_zero() {
     }
 
     let svc = make_service(repo.clone(), default_config());
-    let count = svc.scan_and_reset().await;
+    let count = svc.scan_and_reset(false).await;
 
     assert_eq!(count, 0, "no ImportedVerified sessions should be reset");
 }
@@ -338,7 +338,7 @@ async fn test_orphaned_verification_child_reconciled() {
     repo.create(child).await.unwrap();
 
     let svc = make_service(repo.clone(), default_config());
-    let count = svc.scan_and_reset().await;
+    let count = svc.scan_and_reset(false).await;
 
     assert_eq!(count, 1, "parent session should be reset");
 
@@ -377,7 +377,7 @@ async fn test_reconciler_manual_session_reset_after_long_threshold() {
     repo.create(session).await.unwrap();
 
     let svc = make_service(repo.clone(), config);
-    let count = svc.scan_and_reset().await;
+    let count = svc.scan_and_reset(false).await;
 
     assert_eq!(count, 1, "manual session stuck > 90 min should be reset");
 
@@ -699,17 +699,17 @@ async fn test_reconcile_child_complete_orphan_sibling_archived() {
 }
 
 // ---------------------------------------------------------------------------
-// startup_reset_all_in_progress tests
+// scan_and_reset(cold_boot: true) tests
 // ---------------------------------------------------------------------------
 
-/// All in-progress sessions must be reset regardless of updated_at timestamp.
-/// This is the key difference from startup_scan() which uses TTL thresholds.
+/// Cold boot resets ALL in-progress sessions regardless of updated_at timestamp.
+/// This is the key difference from scan_and_reset(false) which uses TTL thresholds.
 #[tokio::test]
-async fn test_startup_reset_all_in_progress_ignores_ttl() {
+async fn test_scan_and_reset_cold_boot_ignores_ttl() {
     let repo = Arc::new(MemoryIdeationSessionRepository::new());
     let project_id = ProjectId::new();
 
-    // 5-minute-old auto-verify session — would NOT be reset by startup_scan (< 10-min auto threshold)
+    // 5-minute-old auto-verify session — would NOT be reset by scan_and_reset(false)
     let mut recent_auto = IdeationSession::new(project_id.clone());
     recent_auto.verification_status = VerificationStatus::Reviewing;
     recent_auto.verification_in_progress = true;
@@ -718,7 +718,7 @@ async fn test_startup_reset_all_in_progress_ignores_ttl() {
     let recent_auto_id = recent_auto.id.clone();
     repo.create(recent_auto).await.unwrap();
 
-    // 30-minute-old manual-verify session — would NOT be reset by startup_scan (< 90-min manual threshold)
+    // 30-minute-old manual-verify session — would NOT be reset by scan_and_reset(false)
     let mut mid_manual = IdeationSession::new(project_id.clone());
     mid_manual.verification_status = VerificationStatus::Reviewing;
     mid_manual.verification_in_progress = true;
@@ -727,7 +727,7 @@ async fn test_startup_reset_all_in_progress_ignores_ttl() {
     let mid_manual_id = mid_manual.id.clone();
     repo.create(mid_manual).await.unwrap();
 
-    // 2-hour-old session — would also be reset by startup_scan
+    // 2-hour-old session — would also be reset by scan_and_reset(false)
     let mut old_session = IdeationSession::new(project_id.clone());
     old_session.verification_status = VerificationStatus::Reviewing;
     old_session.verification_in_progress = true;
@@ -736,9 +736,11 @@ async fn test_startup_reset_all_in_progress_ignores_ttl() {
     repo.create(old_session).await.unwrap();
 
     let svc = make_service(repo.clone(), default_config());
-    svc.startup_reset_all_in_progress().await;
+    let count = svc.scan_and_reset(true).await;
 
-    // ALL three sessions must be reset — startup_reset_all_in_progress ignores TTL
+    assert_eq!(count, 3, "all three sessions must be reset on cold boot");
+
+    // ALL three sessions must be reset — cold boot ignores TTL
     for (id, label) in [
         (&recent_auto_id, "recent auto-verify (5 min)"),
         (&mid_manual_id, "mid manual-verify (30 min)"),
@@ -768,9 +770,9 @@ async fn test_startup_reset_all_in_progress_ignores_ttl() {
     }
 }
 
-/// startup_reset_all_in_progress must preserve ImportedVerified status.
+/// Cold boot must preserve ImportedVerified status.
 #[tokio::test]
-async fn test_startup_reset_skips_imported_verified() {
+async fn test_scan_and_reset_cold_boot_skips_imported_verified() {
     let repo = Arc::new(MemoryIdeationSessionRepository::new());
     let project_id = ProjectId::new();
 
@@ -791,14 +793,16 @@ async fn test_startup_reset_skips_imported_verified() {
     repo.create(normal).await.unwrap();
 
     let svc = make_service(repo.clone(), default_config());
-    svc.startup_reset_all_in_progress().await;
+    let count = svc.scan_and_reset(true).await;
+
+    assert_eq!(count, 1, "only the normal session should be reset");
 
     // ImportedVerified must be unchanged
     let imported_after = repo.get_by_id(&imported_id).await.unwrap().unwrap();
     assert_eq!(
         imported_after.verification_status,
         VerificationStatus::ImportedVerified,
-        "ImportedVerified must not be changed by startup reset"
+        "ImportedVerified must not be changed by cold boot reset"
     );
     assert!(
         imported_after.verification_in_progress,
@@ -811,9 +815,9 @@ async fn test_startup_reset_skips_imported_verified() {
     assert!(!normal_after.verification_in_progress);
 }
 
-/// Orphaned verification children linked to reset parents must be archived.
+/// Orphaned verification children linked to reset parents must be archived on cold boot.
 #[tokio::test]
-async fn test_startup_reset_archives_orphaned_children() {
+async fn test_scan_and_reset_cold_boot_archives_orphaned_children() {
     let repo = Arc::new(MemoryIdeationSessionRepository::new());
     let project_id = ProjectId::new();
 
@@ -833,29 +837,66 @@ async fn test_startup_reset_archives_orphaned_children() {
     repo.create(child).await.unwrap();
 
     let svc = make_service(repo.clone(), default_config());
-    svc.startup_reset_all_in_progress().await;
+    let count = svc.scan_and_reset(true).await;
 
-    // Parent must be reset
+    assert_eq!(count, 1, "parent session should be reset");
+
+    // Parent must be reset with app_restart metadata
     let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
     assert_eq!(parent_after.verification_status, VerificationStatus::Unverified);
     assert!(!parent_after.verification_in_progress);
+    let meta: serde_json::Value =
+        serde_json::from_str(parent_after.verification_metadata.as_deref().unwrap()).unwrap();
+    assert_eq!(meta["convergence_reason"].as_str().unwrap(), "app_restart");
 
     // Child must be archived
     let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
     assert_eq!(
         child_after.status,
         crate::domain::entities::IdeationSessionStatus::Archived,
-        "orphaned verification child must be archived during startup reset"
+        "orphaned verification child must be archived during cold boot reset"
     );
 }
 
-/// Empty repo: startup_reset_all_in_progress is a no-op.
+/// Empty repo: scan_and_reset(cold_boot: true) is a no-op.
 #[tokio::test]
-async fn test_startup_reset_empty_repo_is_noop() {
+async fn test_scan_and_reset_cold_boot_empty_repo_is_noop() {
     let repo = Arc::new(MemoryIdeationSessionRepository::new());
     let svc = make_service(repo.clone(), default_config());
-    // Should not panic
-    svc.startup_reset_all_in_progress().await;
+    let count = svc.scan_and_reset(true).await;
+    assert_eq!(count, 0);
+}
+
+/// Cold boot injects app_restart metadata even when existing metadata is present.
+#[tokio::test]
+async fn test_scan_and_reset_cold_boot_injects_app_restart_metadata() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Session with existing metadata — cold boot should overwrite with app_restart
+    let mut session = IdeationSession::new(project_id);
+    session.verification_status = VerificationStatus::Reviewing;
+    session.verification_in_progress = true;
+    session.verification_metadata = Some(r#"{"current_round":2,"max_rounds":5,"current_gaps":[],"rounds":[],"best_round_index":null,"parse_failures":[],"convergence_reason":null}"#.to_string());
+    session.updated_at = Utc::now() - Duration::minutes(5);
+    let session_id = session.id.clone();
+    repo.create(session).await.unwrap();
+
+    let svc = make_service(repo.clone(), default_config());
+    let count = svc.scan_and_reset(true).await;
+
+    assert_eq!(count, 1);
+
+    let after = repo.get_by_id(&session_id).await.unwrap().unwrap();
+    assert_eq!(after.verification_status, VerificationStatus::Unverified);
+    assert!(!after.verification_in_progress);
+    let meta: serde_json::Value =
+        serde_json::from_str(after.verification_metadata.as_deref().unwrap()).unwrap();
+    assert_eq!(
+        meta["convergence_reason"].as_str().unwrap(),
+        "app_restart",
+        "cold boot must overwrite existing metadata with app_restart"
+    );
 }
 
 // ---------------------------------------------------------------------------

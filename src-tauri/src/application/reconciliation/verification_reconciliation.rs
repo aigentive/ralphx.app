@@ -74,36 +74,54 @@ impl VerificationReconciliationService {
 
     /// Scan for stuck sessions and reset them. Called on startup and periodically.
     ///
-    /// Uses dual thresholds:
+    /// When `cold_boot: true` (app startup): all in-progress sessions are reset unconditionally
+    /// using `get_all_in_progress_sessions()` — no TTL filter, since all agent processes are dead.
+    /// Injects `app_restart` convergence_reason metadata.
+    ///
+    /// When `cold_boot: false` (periodic): uses dual thresholds:
     /// - Auto-verify sessions (`verification_generation > 0`): reset after `auto_verify_stale_secs`
     /// - Manual verify sessions (`verification_generation == 0`): reset after `stale_after_secs`
     ///
     /// Returns the number of sessions reset.
-    pub async fn scan_and_reset(&self) -> u32 {
-        // Query with the shorter auto-verify threshold to get all candidates.
-        // Manual sessions that haven't passed the longer threshold will be skipped below.
-        let auto_stale_before = Utc::now()
-            - chrono::Duration::seconds(self.config.auto_verify_stale_secs as i64);
+    pub async fn scan_and_reset(&self, cold_boot: bool) -> u32 {
         let manual_stale_before = Utc::now()
             - chrono::Duration::seconds(self.config.stale_after_secs as i64);
 
-        let stale_sessions = match self
-            .ideation_session_repo
-            .get_stale_in_progress_sessions(auto_stale_before)
-            .await
-        {
-            Ok(sessions) => sessions,
-            Err(e) => {
-                tracing::error!(
-                    error = %e,
-                    "Failed to query stale verification sessions"
-                );
-                return 0;
+        let sessions = if cold_boot {
+            // Cold boot: all agent processes are dead. Reset unconditionally — no TTL filter.
+            match self.ideation_session_repo.get_all_in_progress_sessions().await {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        "Failed to query in-progress sessions for cold boot reset"
+                    );
+                    return 0;
+                }
+            }
+        } else {
+            // Periodic: query with the shorter auto-verify threshold to get all candidates.
+            // Manual sessions that haven't passed the longer threshold will be skipped below.
+            let auto_stale_before = Utc::now()
+                - chrono::Duration::seconds(self.config.auto_verify_stale_secs as i64);
+            match self
+                .ideation_session_repo
+                .get_stale_in_progress_sessions(auto_stale_before)
+                .await
+            {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        "Failed to query stale verification sessions"
+                    );
+                    return 0;
+                }
             }
         };
 
         let mut reset_count = 0u32;
-        for session in &stale_sessions {
+        for session in &sessions {
             // Never reset ImportedVerified sessions — their pre-verified status must be preserved.
             if session.verification_status == VerificationStatus::ImportedVerified {
                 tracing::debug!(
@@ -113,9 +131,12 @@ impl VerificationReconciliationService {
                 continue;
             }
 
-            // Dual threshold: manual sessions need the longer stale period before reset.
-            // Auto-verify sessions (generation > 0) are already filtered by auto_stale_before.
-            if session.verification_generation == 0 && session.updated_at > manual_stale_before {
+            // Dual threshold: only applies to periodic scans, not cold boot.
+            // Cold boot resets all in-progress sessions unconditionally.
+            if !cold_boot
+                && session.verification_generation == 0
+                && session.updated_at > manual_stale_before
+            {
                 tracing::debug!(
                     session_id = %session.id.as_str(),
                     generation = session.verification_generation,
@@ -124,14 +145,17 @@ impl VerificationReconciliationService {
                 continue;
             }
 
-            let effective_stale_secs = if session.verification_generation > 0 {
-                self.config.auto_verify_stale_secs
+            // Cold boot: inject app_restart metadata. Periodic: preserve existing metadata.
+            let metadata = if cold_boot {
+                serde_json::to_string(&serde_json::json!({
+                    "convergence_reason": "app_restart",
+                }))
+                .ok()
             } else {
-                self.config.stale_after_secs
+                session.verification_metadata.clone()
             };
 
             // Force-reset via update_verification_state (unconditional).
-            // Preserve existing metadata so the frontend can show what happened.
             // reset_verification() guards on in_progress=false and is only for
             // conditional resets on plan artifact updates — not for crash recovery.
             match self
@@ -140,67 +164,45 @@ impl VerificationReconciliationService {
                     &session.id,
                     VerificationStatus::Unverified,
                     false,
-                    session.verification_metadata.clone(),
+                    metadata,
                 )
                 .await
             {
                 Ok(()) => {
-                    tracing::info!(
-                        session_id = %session.id.as_str(),
-                        generation = session.verification_generation,
-                        stale_after_secs = effective_stale_secs,
-                        "Reconciliation reset stuck verification"
-                    );
+                    if cold_boot {
+                        tracing::info!(
+                            session_id = %session.id.as_str(),
+                            "Startup reset: cleared stale verification in-progress flag"
+                        );
+                    } else {
+                        let effective_stale_secs = if session.verification_generation > 0 {
+                            self.config.auto_verify_stale_secs
+                        } else {
+                            self.config.stale_after_secs
+                        };
+                        tracing::info!(
+                            session_id = %session.id.as_str(),
+                            generation = session.verification_generation,
+                            stale_after_secs = effective_stale_secs,
+                            "Reconciliation reset stuck verification"
+                        );
+                    }
                     // Emit UI event so the frontend reflects the reset immediately
                     if let Some(ref handle) = self.app_handle {
+                        let convergence_reason =
+                            if cold_boot { Some("app_restart") } else { None };
                         emit_verification_status_changed(
                             handle,
                             session.id.as_str(),
                             VerificationStatus::Unverified,
                             false,
                             None,
-                            None,
+                            convergence_reason,
                             Some(session.verification_generation),
                         );
                     }
                     // Archive any orphaned verification children for this parent session
-                    match self
-                        .ideation_session_repo
-                        .get_verification_children(&session.id)
-                        .await
-                    {
-                        Ok(children) => {
-                            for child in &children {
-                                match self
-                                    .ideation_session_repo
-                                    .update_status(&child.id, IdeationSessionStatus::Archived)
-                                    .await
-                                {
-                                    Ok(()) => {
-                                        tracing::info!(
-                                            child_session_id = %child.id.as_str(),
-                                            parent_session_id = %session.id.as_str(),
-                                            "Archived orphaned verification child session"
-                                        );
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!(
-                                            child_session_id = %child.id.as_str(),
-                                            error = %e,
-                                            "Failed to archive orphaned verification child session"
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                session_id = %session.id.as_str(),
-                                error = %e,
-                                "Failed to query verification children during reconciliation"
-                            );
-                        }
-                    }
+                    self.archive_orphaned_children(&session.id).await;
                     reset_count += 1;
                 }
                 Err(e) => {
@@ -223,145 +225,69 @@ impl VerificationReconciliationService {
         reset_count
     }
 
+    /// Archive all orphaned verification child sessions linked to `parent_id`.
+    async fn archive_orphaned_children(&self, parent_id: &IdeationSessionId) {
+        match self
+            .ideation_session_repo
+            .get_verification_children(parent_id)
+            .await
+        {
+            Ok(children) => {
+                for child in &children {
+                    match self
+                        .ideation_session_repo
+                        .update_status(&child.id, IdeationSessionStatus::Archived)
+                        .await
+                    {
+                        Ok(()) => {
+                            tracing::info!(
+                                child_session_id = %child.id.as_str(),
+                                parent_session_id = %parent_id.as_str(),
+                                "Archived orphaned verification child session"
+                            );
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                child_session_id = %child.id.as_str(),
+                                error = %e,
+                                "Failed to archive orphaned verification child session"
+                            );
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    session_id = %parent_id.as_str(),
+                    error = %e,
+                    "Failed to query verification children during reconciliation"
+                );
+            }
+        }
+    }
+
     /// Run periodic reconciliation loop. Never returns (runs until task is cancelled).
     pub async fn run_periodic(self: Arc<Self>) {
         let mut interval =
             tokio::time::interval(tokio::time::Duration::from_secs(self.config.interval_secs));
-        interval.tick().await; // skip immediate first tick (startup_scan handles it)
+        interval.tick().await; // skip immediate first tick (startup_scan handles cold boot)
 
         loop {
             interval.tick().await;
-            self.scan_and_reset().await;
+            self.scan_and_reset(false).await;
         }
     }
 
     /// Startup scan — run once at boot before the periodic loop begins.
+    ///
+    /// Uses `scan_and_reset(cold_boot: true)` which resets ALL in-progress sessions
+    /// unconditionally (no TTL filter), since all agent processes are dead on restart.
     pub async fn startup_scan(&self) {
-        tracing::info!("Running verification startup scan...");
-        let count = self.scan_and_reset().await;
-        tracing::info!(count, "Verification startup scan complete");
-    }
-
-    /// Unconditional startup reset — resets ALL sessions with `verification_in_progress=1`.
-    ///
-    /// On app startup, no verification agents are running (they were killed when the app exited).
-    /// Any `verification_in_progress = 1` is stale by definition. This is safe to reset
-    /// unconditionally without TTL filters — unlike `startup_scan()` which uses the same
-    /// 10/90-minute thresholds as the periodic reconciler.
-    ///
-    /// Called ONCE at boot, BEFORE the periodic reconciler starts.
-    /// Replaces `startup_scan()` in the boot path.
-    pub async fn startup_reset_all_in_progress(&self) {
-        tracing::info!("Running startup reset for all in-progress verification sessions...");
-
-        let sessions = match self
-            .ideation_session_repo
-            .get_all_in_progress_sessions()
-            .await
-        {
-            Ok(sessions) => sessions,
-            Err(e) => {
-                tracing::error!(
-                    error = %e,
-                    "Failed to query in-progress sessions for startup reset"
-                );
-                return;
-            }
-        };
-
-        let mut reset_count = 0u32;
-        for session in &sessions {
-            // Never reset ImportedVerified sessions — their pre-verified status must be preserved.
-            if session.verification_status == VerificationStatus::ImportedVerified {
-                tracing::debug!(
-                    session_id = %session.id.as_str(),
-                    "Skipping imported_verified session during startup reset"
-                );
-                continue;
-            }
-
-            let restart_metadata_json = serde_json::to_string(&serde_json::json!({
-                "convergence_reason": "app_restart",
-            }))
-            .ok();
-
-            match self
-                .ideation_session_repo
-                .update_verification_state(
-                    &session.id,
-                    VerificationStatus::Unverified,
-                    false,
-                    restart_metadata_json,
-                )
-                .await
-            {
-                Ok(()) => {
-                    tracing::info!(
-                        session_id = %session.id.as_str(),
-                        "Startup reset: cleared stale verification in-progress flag"
-                    );
-                    if let Some(ref handle) = self.app_handle {
-                        emit_verification_status_changed(
-                            handle,
-                            session.id.as_str(),
-                            VerificationStatus::Unverified,
-                            false,
-                            None,
-                            Some("app_restart"),
-                            Some(session.verification_generation),
-                        );
-                    }
-                    // Archive any orphaned verification children for this parent
-                    match self
-                        .ideation_session_repo
-                        .get_verification_children(&session.id)
-                        .await
-                    {
-                        Ok(children) => {
-                            for child in &children {
-                                match self
-                                    .ideation_session_repo
-                                    .update_status(&child.id, IdeationSessionStatus::Archived)
-                                    .await
-                                {
-                                    Ok(()) => {
-                                        tracing::info!(
-                                            child_session_id = %child.id.as_str(),
-                                            parent_session_id = %session.id.as_str(),
-                                            "Archived orphaned verification child during startup reset"
-                                        );
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!(
-                                            child_session_id = %child.id.as_str(),
-                                            error = %e,
-                                            "Failed to archive orphaned verification child during startup reset"
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                session_id = %session.id.as_str(),
-                                error = %e,
-                                "Failed to query verification children during startup reset"
-                            );
-                        }
-                    }
-                    reset_count += 1;
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        session_id = %session.id.as_str(),
-                        error = %e,
-                        "Failed to reset in-progress session during startup reset"
-                    );
-                }
-            }
+        tracing::info!("Running verification startup scan (cold boot)...");
+        let count = self.scan_and_reset(true).await;
+        if count > 0 {
+            tracing::info!(count, "Startup: reset orphaned verification in_progress states");
         }
-
-        tracing::info!(count = reset_count, "Verification startup reset complete");
     }
 }
 
