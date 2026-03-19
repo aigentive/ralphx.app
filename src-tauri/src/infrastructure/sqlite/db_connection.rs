@@ -138,7 +138,7 @@ impl DbConnection {
         .map_err(|e| AppError::Database(format!("spawn_blocking join error: {e}")))?
     }
 
-    /// Run a closure inside a SQLite transaction (BEGIN/COMMIT/ROLLBACK).
+    /// Run a closure inside a SQLite transaction (BEGIN IMMEDIATE/COMMIT/ROLLBACK).
     ///
     /// Acquires the same `tokio::sync::Mutex` as `db.run()`. MUST NOT be called
     /// from within a `db.run()` closure — the tokio Mutex is non-reentrant and will
@@ -147,6 +147,11 @@ impl DbConnection {
     /// Events should be emitted AFTER this returns, outside the lock.
     ///
     /// # Errors
+    ///
+    /// Uses `BEGIN IMMEDIATE` so read-then-write transactions reserve the writer lock
+    /// before any reads. This avoids SQLite WAL upgrade failures (`SQLITE_BUSY_SNAPSHOT`,
+    /// surfaced as "database is locked") when another writer commits after a transaction's
+    /// initial reads but before its first write.
     ///
     /// Returns `AppError::Database` on BEGIN/COMMIT failure or if the closure errors
     /// (which triggers automatic ROLLBACK).
@@ -166,8 +171,8 @@ impl DbConnection {
             let lock_acquired = std::time::Instant::now();
 
             guard
-                .execute_batch("BEGIN")
-                .map_err(|e| AppError::Database(format!("BEGIN failed: {e}")))?;
+                .execute_batch("BEGIN IMMEDIATE")
+                .map_err(|e| AppError::Database(format!("BEGIN IMMEDIATE failed: {e}")))?;
             let result = match f(&guard) {
                 Ok(result) => {
                     guard

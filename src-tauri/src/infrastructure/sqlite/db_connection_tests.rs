@@ -250,6 +250,55 @@ async fn test_wal_two_writers_serialised() {
     );
 }
 
+/// Read-then-write transactions on pooled WAL connections must not fail with
+/// `database is locked` when another writer commits in between the read and write.
+#[tokio::test]
+async fn test_pooled_transactions_reserve_writer_lock_before_reads() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("wal_upgrade_safe.db");
+    let conn = open_connection(&db_path).unwrap();
+    conn.execute_batch("CREATE TABLE items (id INTEGER PRIMARY KEY, val TEXT NOT NULL)")
+        .unwrap();
+
+    let shared = Arc::new(Mutex::new(conn));
+    let db1 = DbConnection::from_shared(Arc::clone(&shared));
+    let db2 = DbConnection::from_shared(Arc::clone(&shared));
+
+    let (started_tx, started_rx) = tokio::sync::oneshot::channel::<()>();
+
+    let tx1 = tokio::spawn(async move {
+        db1.run_transaction(move |conn| {
+            let _: i64 = conn.query_row("SELECT count(*) FROM items", [], |row| row.get(0))?;
+            let _ = started_tx.send(());
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            conn.execute("INSERT INTO items VALUES (1, 'tx1')", [])?;
+            Ok(())
+        })
+        .await
+    });
+
+    let tx2 = tokio::spawn(async move {
+        let _ = started_rx.await;
+        db2
+            .run_transaction(|conn| {
+                conn.execute("INSERT INTO items VALUES (2, 'tx2')", [])?;
+                Ok(())
+            })
+            .await
+    });
+
+    tx1.await.unwrap().expect("first transaction should succeed");
+    tx2.await.unwrap().expect("second transaction should succeed");
+
+    let db_verify = DbConnection::new(open_connection(&db_path).unwrap());
+    let count: i64 = db_verify
+        .run(|conn| Ok(conn.query_row("SELECT count(*) FROM items", [], |row| row.get(0))?))
+        .await
+        .unwrap();
+
+    assert_eq!(count, 2, "Both pooled transactions must commit successfully");
+}
+
 #[tokio::test]
 async fn test_from_shared_file_backed_reuses_pooled_backend() {
     let dir = tempdir().unwrap();
