@@ -54,6 +54,15 @@ export async function typedInvokeWithTransform<TRaw, TResult>(
 }
 
 // ============================================================================
+// Shared Schemas
+// ============================================================================
+
+/**
+ * Tauri serializes Rust () as JSON null, not undefined. Use instead of z.void() for commands returning Result<(), _>.
+ */
+export const TauriVoidSchema = z.null();
+
+// ============================================================================
 // Health Check (Universal)
 // ============================================================================
 
