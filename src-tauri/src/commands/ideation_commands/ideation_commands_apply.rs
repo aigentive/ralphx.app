@@ -5,7 +5,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use tauri::{Manager, State};
 
-use crate::application::{git_service::GitService, AppState, TaskCleanupService, TaskSchedulerService};
+use crate::application::{AppState, TaskCleanupService, TaskSchedulerService};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     ArtifactId, ExecutionPlan, IdeationSessionId, IdeationSessionStatus, InternalStatus,
@@ -17,6 +17,7 @@ use crate::error::{AppError, AppResult};
 use super::ideation_commands_types::{
     ApplyProposalsInput, ApplyProposalsResult, ApplyProposalsResultResponse,
 };
+use crate::commands::branch_helpers::ensure_base_branch_exists;
 use crate::commands::plan_branch_commands::slug_from_name;
 
 // ============================================================================
@@ -188,20 +189,11 @@ pub async fn apply_proposals_core(
         ));
     }
 
-    // Create ExecutionPlan for this apply attempt
-    // Each re-accept creates a fresh ExecutionPlan with a unique ID, enabling unique branch naming
-    let execution_plan = ExecutionPlan::new(session_id.clone());
-    let execution_plan = app_state
-        .execution_plan_repo
-        .create(execution_plan)
-        .await
-        .map_err(|e| AppError::Database(format!("Failed to create execution plan: {}", e)))?;
-    let execution_plan_id = execution_plan.id.clone();
-
     // ========================================================================
-    // PHASE 0: Feature Branch Pre-Check (before task creation for atomicity)
+    // PHASE 0: Feature Branch Pre-Check (before ExecutionPlan + task creation)
     // ========================================================================
-    // Moved before task creation so a branch failure doesn't leave orphaned tasks.
+    // Load project and check/create base branch BEFORE creating any DB rows.
+    // A branch failure here leaves no orphaned ExecutionPlan or Task records.
     let plan_artifact_id: Option<ArtifactId> = session.plan_artifact_id.clone();
 
     let project = app_state
@@ -218,6 +210,32 @@ pub async fn apply_proposals_core(
 
     let use_feature_branch =
         should_create_feature_branch(input.use_feature_branch, project.use_feature_branches);
+
+    // Ensure base branch exists before creating any rows — failure returns early cleanly.
+    if use_feature_branch && input.base_branch_override.is_some() {
+        let base_branch = input.base_branch_override.as_deref().unwrap();
+        let repo_path = std::path::PathBuf::from(&project.working_directory);
+        let was_created =
+            ensure_base_branch_exists(&repo_path, base_branch, project.base_branch.as_deref())
+                .await
+                .map_err(|e| AppError::Validation(e))?;
+        if was_created {
+            tracing::info!(
+                "apply_proposals_core: auto-created base branch '{}' from project default",
+                base_branch
+            );
+        }
+    }
+
+    // Create ExecutionPlan for this apply attempt
+    // Each re-accept creates a fresh ExecutionPlan with a unique ID, enabling unique branch naming
+    let execution_plan = ExecutionPlan::new(session_id.clone());
+    let execution_plan = app_state
+        .execution_plan_repo
+        .create(execution_plan)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to create execution plan: {}", e)))?;
+    let execution_plan_id = execution_plan.id.clone();
 
     // Create plan branch record if needed (merge task created later, after tasks exist)
     let mut pending_merge: Option<(PlanBranchId, String)> = None;
@@ -257,22 +275,6 @@ pub async fn apply_proposals_core(
             let base_branch = input.base_branch_override.clone().unwrap_or_else(|| {
                 project.base_branch.as_deref().unwrap_or("main").to_string()
             });
-
-            // Validate override branch exists locally (NON-NEGOTIABLE for external API safety)
-            if input.base_branch_override.is_some() {
-                let repo_path = std::path::PathBuf::from(&project.working_directory);
-                let exists = GitService::branch_exists(&repo_path, &base_branch)
-                    .await
-                    .map_err(|e| {
-                        AppError::Validation(format!("Failed to check branch existence: {}", e))
-                    })?;
-                if !exists {
-                    return Err(AppError::Validation(format!(
-                        "Base branch '{}' not found locally. Ensure the branch exists and try again.",
-                        base_branch
-                    )));
-                }
-            }
 
             // Generate branch name: ralphx/{project-slug}/plan-{short-id}
             // Use execution_plan_id (not plan_artifact_id) so each re-accept gets a unique branch

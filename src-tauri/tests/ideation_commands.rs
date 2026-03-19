@@ -2202,3 +2202,109 @@ async fn test_create_ideation_session_emits_session_created_event() {
         "event payload sessionId should match created session id"
     );
 }
+
+// ============================================================================
+// Proof Obligation #5: branch creation failure leaves no orphaned ExecutionPlan
+// ============================================================================
+
+/// Sets up a real git repo in a tempdir with an initial commit on main.
+fn setup_git_repo_for_apply_test() -> tempfile::TempDir {
+    use std::process::Command;
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path();
+    Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "init"])
+        .current_dir(path)
+        .output()
+        .unwrap();
+    dir
+}
+
+/// Proof Obligation #5: when `create_branch` fails (source branch nonexistent),
+/// `apply_proposals_core` returns an error AND no ExecutionPlan row is created.
+/// Validates that branch validation (Phase 0) occurs before ExecutionPlan creation.
+#[tokio::test]
+async fn test_apply_proposals_core_branch_creation_failure_leaves_no_orphaned_execution_plan() {
+    use ralphx_lib::domain::entities::{IdeationSession, Priority, Project, ProposalCategory, TaskProposal};
+
+    let state = setup_test_state();
+    let dir = setup_git_repo_for_apply_test();
+
+    // Create a project pointing to the real git repo.
+    // Set base_branch to a nonexistent branch so create_branch fails.
+    let mut project = Project::new(
+        "Test Project".to_string(),
+        dir.path().to_str().unwrap().to_string(),
+    );
+    project.base_branch = Some("nonexistent-source".to_string());
+    let project = state
+        .project_repo
+        .create(project)
+        .await
+        .expect("Failed to create project");
+
+    let session = IdeationSession::new(project.id.clone());
+    let session = state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .expect("Failed to create session");
+
+    let proposal = TaskProposal::new(
+        session.id.clone(),
+        "Test Proposal".to_string(),
+        ProposalCategory::Feature,
+        Priority::Medium,
+    );
+    let proposal = state
+        .task_proposal_repo
+        .create(proposal)
+        .await
+        .expect("Failed to create proposal");
+
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids: vec![proposal.id.as_str().to_string()],
+        target_column: "auto".to_string(),
+        use_feature_branch: Some(true),
+        // "new-branch" doesn't exist; base is "nonexistent-source" → create_branch fails
+        base_branch_override: Some("new-branch".to_string()),
+    };
+
+    let err = apply_proposals_core(&state, input)
+        .await
+        .expect_err("apply_proposals_core should fail when branch creation fails");
+
+    assert!(
+        matches!(err, ralphx_lib::error::AppError::Validation(_)),
+        "Expected Validation error, got: {:?}",
+        err
+    );
+
+    // Proof Obligation #5: no ExecutionPlan row should exist — branch check is Phase 0,
+    // before ExecutionPlan creation.
+    let active_plan = state
+        .execution_plan_repo
+        .get_active_for_session(&session.id)
+        .await
+        .expect("repo error");
+    assert!(
+        active_plan.is_none(),
+        "No ExecutionPlan should be created when branch creation fails (Proof Obligation #5)"
+    );
+}

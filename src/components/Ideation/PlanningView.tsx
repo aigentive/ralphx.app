@@ -427,16 +427,17 @@ export function PlanningView({
     const projectId = activeProjectId || session.projectId;
     if (!projectId) return;
 
-    setIsAcceptModalOpen(false);
-
     let executionPlanId: string | null | undefined;
     try {
       const applyResult = await onApply(options);
       if (!applyResult?.sessionConverted) {
+        setIsAcceptModalOpen(false);
         return;
       }
       executionPlanId = applyResult?.executionPlanId;
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to apply proposals";
+      toast.error(message);
       return;
     }
 
@@ -446,6 +447,8 @@ export function PlanningView({
       console.error("Failed to set active plan:", error);
       toast.error("Failed to set active plan");
     }
+
+    setIsAcceptModalOpen(false);
   }, [session, onApply, activeProjectId, setActivePlan]);
 
   const handleAcceptCancel = useCallback(() => {

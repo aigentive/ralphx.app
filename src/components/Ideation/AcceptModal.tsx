@@ -94,15 +94,11 @@ export function AcceptModal({
   }, []);
 
   const normalizedBaseBranch = baseBranchOverride.trim();
-  const branchExists =
-    branchLoadError || branches.length === 0 || branches.includes(normalizedBaseBranch);
   const baseBranchValidationError = !useFeatureBranch
     ? null
     : normalizedBaseBranch.length === 0
       ? "Enter a base branch"
-      : !branchExists
-        ? `Branch '${normalizedBaseBranch}' does not exist locally`
-        : null;
+      : null;
 
   const handleAccept = useCallback(() => {
     const options: ApplyProposalsInput = {
