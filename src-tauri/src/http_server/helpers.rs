@@ -241,6 +241,18 @@ pub async fn create_proposal_impl(
                     AppError::NotFound(format!("Plan artifact {} not found", plan_artifact_id))
                 })?;
 
+            // Stale plan guard — ensure agent has read the current plan version
+            if let Some(last_read) = session.plan_version_last_read {
+                if (artifact.metadata.version as i32) > last_read {
+                    return Err(AppError::Validation(format!(
+                        "Plan has been updated since you last read it (current: v{}, last read: v{}). \
+                         Call get_session_plan to read the latest plan before creating proposals.",
+                        artifact.metadata.version, last_read
+                    )));
+                }
+            }
+            // NULL plan_version_last_read → legacy session, no gate (backward compat)
+
             // Count proposals for sort_order (within same lock — no TOCTOU)
             let count = ProposalRepo::count_by_session_sync(conn, session_id.as_str())?;
 

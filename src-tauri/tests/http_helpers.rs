@@ -1207,6 +1207,192 @@ async fn test_update_add_depends_on_partial_failure() {
     assert_eq!(dep_count, 1, "B→A dep should have been inserted successfully (1 dep)");
 }
 
+// ============================================================================
+// Stale Plan Guard Tests — Version Gate for Proposal Creation
+// ============================================================================
+
+// Proof obligation 1: NULL plan_version_last_read → passthrough (backward compat).
+// Legacy sessions (field = NULL) must create proposals without any error.
+#[tokio::test]
+async fn test_stale_plan_guard_null_passthrough() {
+    let state = AppState::new_sqlite_test();
+    let project_id = ProjectId::new();
+
+    let artifact = Artifact::new_inline("Plan", ArtifactType::Specification, "# Plan v1", "test");
+    let artifact_id = artifact.id.clone();
+    state.artifact_repo.create(artifact).await.unwrap();
+
+    // Builder default: plan_version_last_read = None (no .plan_version_last_read() call)
+    let session = IdeationSession::builder()
+        .project_id(project_id)
+        .title("Legacy Session")
+        .plan_artifact_id(artifact_id)
+        .cross_project_checked(true)
+        .build();
+    let session_id = session.id.clone();
+    state.ideation_session_repo.create(session).await.unwrap();
+
+    let options = CreateProposalOptions {
+        title: "Legacy Proposal".to_string(),
+        description: None,
+        category: ProposalCategory::Feature,
+        suggested_priority: Priority::Medium,
+        steps: None,
+        acceptance_criteria: None,
+        estimated_complexity: None,
+        target_project: None,
+        depends_on: vec![],
+    };
+    let result = create_proposal_impl(&state, session_id, options).await;
+    assert!(
+        result.is_ok(),
+        "NULL plan_version_last_read must not block proposal creation, got: {:?}",
+        result.err()
+    );
+}
+
+// Proof obligation 2: plan_version_last_read == artifact.version → OK (fresh read).
+// Simulates agent calling get_session_plan (sets plan_version_last_read = 1 via SQL).
+#[tokio::test]
+async fn test_stale_plan_guard_fresh_version_ok() {
+    let state = AppState::new_sqlite_test();
+    let project_id = ProjectId::new();
+
+    let artifact = Artifact::new_inline("Plan", ArtifactType::Specification, "# Plan v1", "test");
+    let artifact_id = artifact.id.clone();
+    state.artifact_repo.create(artifact).await.unwrap();
+
+    let session = IdeationSession::builder()
+        .project_id(project_id)
+        .title("Fresh Read Session")
+        .plan_artifact_id(artifact_id)
+        .cross_project_checked(true)
+        .build();
+    let session_id = session.id.clone();
+    state.ideation_session_repo.create(session).await.unwrap();
+
+    // Simulate get_session_plan acknowledgment: set plan_version_last_read = 1 (matches artifact v1)
+    let sid = session_id.as_str().to_string();
+    state
+        .db
+        .run(move |conn| {
+            conn.execute(
+                "UPDATE ideation_sessions SET plan_version_last_read = 1 WHERE id = ?1",
+                rusqlite::params![sid],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+    let options = CreateProposalOptions {
+        title: "Fresh Proposal".to_string(),
+        description: None,
+        category: ProposalCategory::Feature,
+        suggested_priority: Priority::Medium,
+        steps: None,
+        acceptance_criteria: None,
+        estimated_complexity: None,
+        target_project: None,
+        depends_on: vec![],
+    };
+    let result = create_proposal_impl(&state, session_id, options).await;
+    assert!(
+        result.is_ok(),
+        "plan_version_last_read == artifact.version must succeed, got: {:?}",
+        result.err()
+    );
+}
+
+// Proof obligations 3 & 4: plan_version_last_read < artifact.version → 400 error
+// with actionable message naming get_session_plan.
+#[tokio::test]
+async fn test_stale_plan_guard_stale_version_blocked_with_actionable_error() {
+    let state = AppState::new_sqlite_test();
+    let project_id = ProjectId::new();
+
+    let artifact = Artifact::new_inline("Plan", ArtifactType::Specification, "# Plan v1", "test");
+    let artifact_id = artifact.id.clone();
+    state.artifact_repo.create(artifact).await.unwrap();
+
+    let session = IdeationSession::builder()
+        .project_id(project_id)
+        .title("Stale Read Session")
+        .plan_artifact_id(artifact_id.clone())
+        .cross_project_checked(true)
+        .build();
+    let session_id = session.id.clone();
+    state.ideation_session_repo.create(session).await.unwrap();
+
+    // Agent reads plan at v1: set plan_version_last_read = 1
+    let sid = session_id.as_str().to_string();
+    state
+        .db
+        .run(move |conn| {
+            conn.execute(
+                "UPDATE ideation_sessions SET plan_version_last_read = 1 WHERE id = ?1",
+                rusqlite::params![sid],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+    // Simulate child bumping plan to v2 (plan_version_last_read is now stale)
+    let aid = artifact_id.as_str().to_string();
+    state
+        .db
+        .run(move |conn| {
+            conn.execute(
+                "UPDATE artifacts SET version = 2 WHERE id = ?1",
+                rusqlite::params![aid],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+    let options = CreateProposalOptions {
+        title: "Stale Proposal".to_string(),
+        description: None,
+        category: ProposalCategory::Feature,
+        suggested_priority: Priority::Medium,
+        steps: None,
+        acceptance_criteria: None,
+        estimated_complexity: None,
+        target_project: None,
+        depends_on: vec![],
+    };
+    let result = create_proposal_impl(&state, session_id, options).await;
+    assert!(
+        result.is_err(),
+        "Stale plan_version_last_read must block proposal creation"
+    );
+    match result.unwrap_err() {
+        AppError::Validation(msg) => {
+            assert!(
+                msg.contains("get_session_plan"),
+                "Error must name 'get_session_plan' as the fix, got: {}",
+                msg
+            );
+            assert!(
+                msg.contains("v2"),
+                "Error must include current artifact version (v2), got: {}",
+                msg
+            );
+            assert!(
+                msg.contains("v1"),
+                "Error must include last-read version (v1), got: {}",
+                msg
+            );
+        }
+        other => panic!("Expected AppError::Validation, got: {:?}", other),
+    }
+}
+
 // Scenario 25: Concurrent create during status transition — TOCTOU prevention.
 // If status changes to Reviewing while create is queued, the transaction reads the
 // current status atomically — either succeeds (Verified before change) or fails (Reviewing after).

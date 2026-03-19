@@ -280,6 +280,9 @@ pub async fn create_plan_artifact(
                 Some(created.id.as_str()),
             )?;
 
+            // Acknowledge initial version atomically — creator has seen version 1.
+            SessionRepo::update_plan_version_last_read_sync(conn, sid.as_str(), 1)?;
+
             // Atomically trigger auto-verify within the same transaction.
             // Condition: auto_verify enabled AND verification_in_progress == 0.
             // Sets: status=reviewing, in_progress=1, generation++ in a single UPDATE.
@@ -822,6 +825,20 @@ pub async fn get_session_plan(
             StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Acknowledge plan version read — separate db.run after artifact fetch (TOCTOU acceptable).
+    // Only for session's own plan; inherited plan reads don't update the session's own ack field.
+    if !is_inherited {
+        let session_id_str = session_id.as_str().to_string();
+        let version = artifact.metadata.version as i32;
+        let _ = state
+            .app_state
+            .db
+            .run(move |conn| {
+                SessionRepo::update_plan_version_last_read_sync(conn, &session_id_str, version)
+            })
+            .await;
+    }
 
     let project_working_dir = state
         .app_state

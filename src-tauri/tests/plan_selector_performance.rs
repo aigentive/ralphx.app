@@ -63,6 +63,7 @@ async fn create_accepted_session(
         source_session_id: None,
         session_purpose: Default::default(),
         cross_project_checked: false,
+        plan_version_last_read: None,
     };
 
     state

@@ -90,6 +90,10 @@ pub struct IdeationSession {
     /// Default false for new sessions; existing DB rows default to true via migration.
     #[serde(default)]
     pub cross_project_checked: bool,
+    /// The plan artifact version that was last read by the agent for this session.
+    /// Used by the stale plan guard to detect if the agent's in-memory plan is outdated.
+    /// None = agent has not read the plan yet (or pre-v75 row).
+    pub plan_version_last_read: Option<i32>,
 }
 
 /// Builder for creating IdeationSession instances
@@ -118,6 +122,7 @@ pub struct IdeationSessionBuilder {
     source_session_id: Option<String>,
     session_purpose: Option<SessionPurpose>,
     cross_project_checked: Option<bool>,
+    plan_version_last_read: Option<i32>,
 }
 
 impl IdeationSessionBuilder {
@@ -252,6 +257,12 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set the plan version last read by the agent
+    pub fn plan_version_last_read(mut self, version: i32) -> Self {
+        self.plan_version_last_read = Some(version);
+        self
+    }
+
     /// Build the IdeationSession
     /// Panics if project_id is not set
     pub fn build(self) -> IdeationSession {
@@ -280,6 +291,7 @@ impl IdeationSessionBuilder {
             source_session_id: self.source_session_id,
             session_purpose: self.session_purpose.unwrap_or_default(),
             cross_project_checked: self.cross_project_checked.unwrap_or(false),
+            plan_version_last_read: self.plan_version_last_read,
         }
     }
 }
@@ -427,6 +439,10 @@ impl IdeationSession {
                 .unwrap_or(None)
                 .map(|v| v != 0)
                 .unwrap_or(false),
+            plan_version_last_read: row
+                .get::<_, Option<i64>>("plan_version_last_read")
+                .unwrap_or(None)
+                .map(|v| v as i32),
         })
     }
 
