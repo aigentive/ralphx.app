@@ -526,7 +526,7 @@ export function PlanDisplay({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent
                     align="end"
-                    className="w-52"
+                    className="w-72"
                     style={{
                       background: "hsl(220 10% 14%)",
                       backdropFilter: "blur(20px)",
