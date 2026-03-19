@@ -23,7 +23,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { artifactApi } from "@/api/artifact";
-import type { Artifact } from "@/types/artifact";
+import type { Artifact, ArtifactVersionSummary } from "@/types/artifact";
+import { formatDateTime } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import type { TeamFinding } from "./TeamFindingsSection";
 import { DebateSummary } from "./DebateSummary";
@@ -236,11 +237,30 @@ export function PlanDisplay({
   const [historicalContent, setHistoricalContent] = useState<string | null>(null);
   const [isLoadingVersion, setIsLoadingVersion] = useState(false);
   const [isVersionDropdownOpen, setIsVersionDropdownOpen] = useState(false);
+  const [versionHistory, setVersionHistory] = useState<ArtifactVersionSummary[] | null>(null);
 
   // Reset to latest when plan changes (new artifact or version update)
   useEffect(() => {
     setSelectedVersion(plan.metadata.version);
     setHistoricalContent(null);
+    setVersionHistory(null);
+  }, [plan.id, plan.metadata.version]);
+
+  // Fetch version history on plan load (when multi-version)
+  useEffect(() => {
+    if (plan.metadata.version <= 1) return;
+
+    let cancelled = false;
+    artifactApi.getVersionHistory(plan.id)
+      .then((history) => {
+        if (!cancelled) setVersionHistory(history);
+      })
+      .catch(() => {
+        // Graceful fallback: render without timestamps
+        if (!cancelled) setVersionHistory(null);
+      });
+
+    return () => { cancelled = true; };
   }, [plan.id, plan.metadata.version]);
 
   // Fetch historical version when selection changes
@@ -506,7 +526,7 @@ export function PlanDisplay({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent
                     align="end"
-                    className="w-36"
+                    className="w-52"
                     style={{
                       background: "hsl(220 10% 14%)",
                       backdropFilter: "blur(20px)",
@@ -517,6 +537,8 @@ export function PlanDisplay({
                     {Array.from({ length: plan.metadata.version }, (_, i) => plan.metadata.version - i).map((version) => {
                       const isSelected = version === selectedVersion;
                       const isLatest = version === plan.metadata.version;
+                      const versionSummary = versionHistory?.find((v) => v.version === version);
+                      const timestamp = versionSummary ? formatDateTime(versionSummary.created_at) : null;
                       return (
                         <DropdownMenuItem
                           key={version}
@@ -534,7 +556,12 @@ export function PlanDisplay({
                                 style={{ background: "hsl(14 100% 60%)" }}
                               />
                             )}
-                            <span>v{version}</span>
+                            <span>
+                              v{version}
+                              {timestamp && (
+                                <span style={{ color: "hsl(220 10% 55%)" }}> — {timestamp}</span>
+                              )}
+                            </span>
                             {isLatest && (
                               <span className="ml-auto" style={{ color: "hsl(220 10% 50%)" }}>
                                 (latest)

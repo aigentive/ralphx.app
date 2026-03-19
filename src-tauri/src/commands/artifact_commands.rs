@@ -145,6 +145,26 @@ impl From<ArtifactBucket> for BucketResponse {
     }
 }
 
+/// Summary of an artifact version for history display
+#[derive(Debug, Serialize)]
+pub struct ArtifactVersionSummaryResponse {
+    pub id: String,
+    pub version: u32,
+    pub name: String,
+    pub created_at: String,
+}
+
+impl From<crate::domain::repositories::ArtifactVersionSummary> for ArtifactVersionSummaryResponse {
+    fn from(summary: crate::domain::repositories::ArtifactVersionSummary) -> Self {
+        Self {
+            id: summary.id.as_str().to_string(),
+            version: summary.version,
+            name: summary.name,
+            created_at: summary.created_at.to_rfc3339(),
+        }
+    }
+}
+
 /// Response wrapper for artifact relation operations
 #[derive(Debug, Serialize)]
 pub struct ArtifactRelationResponse {
@@ -448,6 +468,26 @@ pub async fn get_team_artifacts_by_session(
         artifacts: filtered,
         count,
     })
+}
+
+/// Get version history for an artifact
+#[tauri::command]
+pub async fn get_artifact_version_history(
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ArtifactVersionSummaryResponse>, String> {
+    let artifact_id = ArtifactId::from_string(id);
+    state
+        .artifact_repo
+        .get_version_history(&artifact_id)
+        .await
+        .map(|history| {
+            history
+                .into_iter()
+                .map(ArtifactVersionSummaryResponse::from)
+                .collect()
+        })
+        .map_err(|e| e.to_string())
 }
 
 // ===== Bucket Commands =====

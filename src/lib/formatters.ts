@@ -155,3 +155,49 @@ export function formatMinutesHuman(minutes: number): string {
   const m = Math.round(minutes % 60);
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
+
+/**
+ * Format a date/time for version history display.
+ * Format: "MMM D, h:mm AM/PM" — includes year if the date is not in the current year.
+ *
+ * @param input - ISO string, timestamp, or Date object
+ * @returns Formatted string (e.g., "Mar 18, 11:30 AM") or "-" if invalid
+ *
+ * @example
+ * ```ts
+ * formatDateTime("2026-03-18T11:30:00Z") // "Mar 18, 11:30 AM"
+ * formatDateTime("2025-12-01T09:00:00Z") // "Dec 1, 2025, 9:00 AM"
+ * ```
+ */
+export function formatDateTime(input: DateInput): string {
+  if (input === null || input === undefined) {
+    return "-";
+  }
+
+  try {
+    const date = input instanceof Date ? input : new Date(input);
+
+    if (isNaN(date.getTime())) {
+      return "-";
+    }
+
+    const currentYear = new Date().getFullYear();
+    const dateYear = date.getFullYear();
+
+    const options: Intl.DateTimeFormatOptions = {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    };
+
+    if (dateYear !== currentYear) {
+      options.year = "numeric";
+    }
+
+    return date.toLocaleString("en-US", options);
+  } catch {
+    return "-";
+  }
+}

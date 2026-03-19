@@ -1036,6 +1036,7 @@ pub fn run() {
             commands::artifact_commands::get_artifacts_by_bucket,
             commands::artifact_commands::get_artifacts_by_task,
             commands::artifact_commands::get_team_artifacts_by_session,
+            commands::artifact_commands::get_artifact_version_history,
             // Bucket commands
             commands::artifact_commands::get_buckets,
             commands::artifact_commands::create_bucket,

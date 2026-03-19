@@ -3,6 +3,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
 import type { Artifact } from "@/types/artifact";
+import { ArtifactVersionSummarySchema } from "@/types/artifact";
+import type { ArtifactVersionSummary } from "@/types/artifact";
 
 // ============================================================================
 // Response Schemas (matching Rust backend serialization with snake_case)
@@ -128,5 +130,18 @@ export const artifactApi = {
       z.array(ArtifactResponseSchema)
     );
     return raw.map(transformArtifact);
+  },
+
+  /**
+   * Get version history for an artifact
+   * @param artifactId The artifact ID
+   * @returns Array of version summaries ordered newest-first
+   */
+  getVersionHistory: async (artifactId: string): Promise<ArtifactVersionSummary[]> => {
+    return typedInvoke(
+      "get_artifact_version_history",
+      { id: artifactId },
+      z.array(ArtifactVersionSummarySchema)
+    );
   },
 } as const;
