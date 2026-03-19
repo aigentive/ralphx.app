@@ -9,6 +9,10 @@ export interface PermissionRequest {
   tool_name: string;
   tool_input: Record<string, unknown>;
   context?: string;
+  agent_type?: string;
+  task_id?: string;
+  context_type?: string;
+  context_id?: string;
 }
 
 /**
@@ -24,6 +28,10 @@ export const PermissionRequestSchema = z.object({
   tool_name: z.string(),
   tool_input: z.record(z.string(), z.unknown()),
   context: z.string().optional(),
+  agent_type: z.string().optional(),
+  task_id: z.string().optional(),
+  context_type: z.string().optional(),
+  context_id: z.string().optional(),
 });
 
 /**

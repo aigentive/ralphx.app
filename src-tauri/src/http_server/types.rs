@@ -413,6 +413,15 @@ pub struct PermissionRequestInput {
     #[serde(default)]
     pub tool_input: serde_json::Value,
     pub context: Option<String>,
+    // Agent identity fields (optional for backward compat)
+    #[serde(default)]
+    pub agent_type: Option<String>,
+    #[serde(default)]
+    pub task_id: Option<String>,
+    #[serde(default)]
+    pub context_type: Option<String>,
+    #[serde(default)]
+    pub context_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

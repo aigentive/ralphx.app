@@ -587,6 +587,7 @@ agents:
   - name: ralphx-worker
     system_prompt_file: ralphx-plugin/agents/worker.md
     model: sonnet
+    permission_mode: acceptEdits
     tools: { extends: base_tools, include: [Write, Edit, Task, LSP] }
     mcp_tools: [
         # step management tools
@@ -636,6 +637,7 @@ agents:
   - name: ralphx-coder
     system_prompt_file: ralphx-plugin/agents/coder.md
     model: sonnet
+    permission_mode: acceptEdits
     tools: { extends: base_tools, include: [Write, Edit, Task, LSP] }
     mcp_tools: [
         # step management tools
@@ -761,6 +763,7 @@ agents:
   - name: ralphx-merger
     system_prompt_file: ralphx-plugin/agents/merger.md
     model: opus
+    permission_mode: acceptEdits
     tools: { extends: base_tools, include: [Edit, Task] }
     mcp_tools: [
         # merge tools
@@ -914,6 +917,7 @@ agents:
     extends: ralphx-worker
     system_prompt_file: ralphx-plugin/agents/worker-team.md
     model: sonnet
+    permission_mode: acceptEdits
     tools:
       {
         extends: base_tools,

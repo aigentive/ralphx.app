@@ -6,6 +6,10 @@ fn sample_permission(request_id: &str) -> PendingPermissionInfo {
         tool_name: "Bash".to_string(),
         tool_input: serde_json::json!({"command": "ls"}),
         context: Some("List files".to_string()),
+        agent_type: None,
+        task_id: None,
+        context_type: None,
+        context_id: None,
     }
 }
 

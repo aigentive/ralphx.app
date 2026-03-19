@@ -99,6 +99,7 @@ mod v70_plan_branch_base_override;
 mod v71_add_target_project_to_proposals;
 mod v72_cross_project_check;
 mod v72_proposal_migrated_from;
+mod v74_permission_identity;
 
 #[cfg(test)]
 mod tests;
@@ -212,7 +213,7 @@ mod v72_cross_project_check_tests;
 mod v72_proposal_migrated_from_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 73;
+pub const SCHEMA_VERSION: i32 = 74;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -591,6 +592,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 73,
         name: "proposal_migrated_from",
         migrate: v72_proposal_migrated_from::migrate,
+    },
+    Migration {
+        version: 74,
+        name: "permission_identity",
+        migrate: v74_permission_identity::migrate,
     },
 ];
 

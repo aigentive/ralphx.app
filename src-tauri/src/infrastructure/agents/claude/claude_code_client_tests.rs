@@ -91,7 +91,7 @@ fn test_build_cli_args_basic() {
     let client = ClaudeCodeClient::new();
     let config = AgentConfig::worker("Test prompt");
 
-    let args = client.build_cli_args(&config, None, false);
+    let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
 
     assert!(args.contains(&"-p".to_string()));
     assert!(args.contains(&"Test prompt".to_string()));
@@ -106,7 +106,7 @@ fn test_build_cli_args_with_agent() {
     let client = ClaudeCodeClient::new();
     let config = AgentConfig::worker("Test").with_agent("worker");
 
-    let args = client.build_cli_args(&config, None, false);
+    let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
 
     assert!(args.contains(&"--agent".to_string()));
     assert!(args.contains(&"worker".to_string()));
@@ -117,7 +117,7 @@ fn test_build_cli_args_with_resume() {
     let client = ClaudeCodeClient::new();
     let config = AgentConfig::worker("Test").with_agent("worker");
 
-    let args = client.build_cli_args(&config, Some("session-123"), false);
+    let args = client.build_cli_args(&config, Some("session-123"), false).expect("build_cli_args should succeed in test");
 
     // When resuming, both --resume AND --agent should be present
     // to ensure tool restrictions (disallowedTools) are enforced
@@ -135,7 +135,7 @@ fn test_build_cli_args_applies_tools_restriction() {
     let config = AgentConfig::worker("Test")
         .with_agent(crate::infrastructure::agents::claude::agent_names::AGENT_SESSION_NAMER);
 
-    let args = client.build_cli_args(&config, None, false);
+    let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
 
     // session-namer has allowed_tools = Some("") meaning no CLI tools
     // get_allowed_tools strips the ralphx: prefix for AGENT_CONFIGS lookup
@@ -155,7 +155,7 @@ fn test_build_cli_args_no_tools_for_unknown_agent() {
     let client = ClaudeCodeClient::new();
     let config = AgentConfig::worker("Test").with_agent("unknown-agent-xyz");
 
-    let args = client.build_cli_args(&config, None, false);
+    let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
 
     // Unknown agent should NOT have --tools restriction
     assert!(
@@ -172,7 +172,7 @@ fn test_build_cli_args_restricted_agent_tools() {
         crate::infrastructure::agents::claude::agent_names::AGENT_ORCHESTRATOR_IDEATION,
     );
 
-    let args = client.build_cli_args(&config, None, false);
+    let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
 
     let tools_idx = args
         .iter()
@@ -190,7 +190,7 @@ fn test_build_cli_args_with_model() {
     let client = ClaudeCodeClient::new();
     let config = AgentConfig::worker("Test").with_model("opus");
 
-    let args = client.build_cli_args(&config, None, false);
+    let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
 
     assert!(args.contains(&"--model".to_string()));
     assert!(args.contains(&"opus".to_string()));
@@ -202,7 +202,7 @@ fn test_build_cli_args_uses_agent_model_when_not_overridden() {
     let config = AgentConfig::worker("Test")
         .with_agent(crate::infrastructure::agents::claude::agent_names::AGENT_MERGER);
 
-    let args = client.build_cli_args(&config, None, false);
+    let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
     let model_idx = args
         .iter()
         .position(|a| a == "--model")
@@ -215,7 +215,7 @@ fn test_build_cli_args_with_plugin_dir() {
     let client = ClaudeCodeClient::new();
     let config = AgentConfig::worker("Test").with_plugin_dir("/custom/plugin");
 
-    let args = client.build_cli_args(&config, None, false);
+    let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
 
     assert!(args.contains(&"--plugin-dir".to_string()));
     assert!(args.contains(&"/custom/plugin".to_string()));
@@ -392,7 +392,7 @@ fn test_teammate_spawn_config_builder_chain() {
 fn test_build_teammate_cli_args_interactive_stdin_flags() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config);
+    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
 
     // Interactive mode: -p - and --input-format stream-json are required so that
     // the process stays in print mode (needed for --output-format stream-json) and
@@ -418,7 +418,7 @@ fn test_build_teammate_cli_args_interactive_stdin_flags() {
 fn test_build_teammate_cli_args_has_output_format() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config);
+    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
 
     assert!(args.contains(&"--output-format".to_string()));
     assert!(args.contains(&"stream-json".to_string()));
@@ -429,7 +429,7 @@ fn test_build_teammate_cli_args_has_output_format() {
 fn test_build_teammate_cli_args_has_team_flags() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config);
+    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
 
     // --agent-id <name>@<team-name>
     let agent_id_idx = args
@@ -481,7 +481,7 @@ fn test_build_teammate_cli_args_has_team_flags() {
 fn test_build_teammate_cli_args_has_model() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config);
+    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
 
     let model_idx = args
         .iter()
@@ -494,7 +494,7 @@ fn test_build_teammate_cli_args_has_model() {
 fn test_build_teammate_cli_args_has_tools() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config);
+    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
 
     let tools_idx = args
         .iter()
@@ -507,7 +507,7 @@ fn test_build_teammate_cli_args_has_tools() {
 fn test_build_teammate_cli_args_no_tools_when_empty() {
     let client = ClaudeCodeClient::new();
     let config = TeammateSpawnConfig::new("r", "t", "p");
-    let args = client.build_teammate_cli_args(&config);
+    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
 
     assert!(
         !args.contains(&"--tools".to_string()),
@@ -519,7 +519,7 @@ fn test_build_teammate_cli_args_no_tools_when_empty() {
 fn test_build_teammate_cli_args_mcp_tools_prefixed() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config);
+    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
 
     let allowed_idx = args
         .iter()
@@ -542,7 +542,7 @@ fn test_build_teammate_cli_args_mcp_tools_prefixed() {
 fn test_build_teammate_cli_args_no_allowed_tools_when_empty() {
     let client = ClaudeCodeClient::new();
     let config = TeammateSpawnConfig::new("r", "t", "p");
-    let args = client.build_teammate_cli_args(&config);
+    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
 
     assert!(
         !args.contains(&"--allowedTools".to_string()),
@@ -556,7 +556,7 @@ fn test_build_teammate_cli_args_no_append_system_prompt() {
     // the team inbox system, not a one-shot prompt injection.
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config);
+    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
 
     assert!(
         !args.contains(&"--append-system-prompt".to_string()),
@@ -568,7 +568,7 @@ fn test_build_teammate_cli_args_no_append_system_prompt() {
 fn test_build_teammate_cli_args_has_skip_permissions() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config);
+    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
 
     assert!(
         args.contains(&"--dangerously-skip-permissions".to_string()),
@@ -580,7 +580,7 @@ fn test_build_teammate_cli_args_has_skip_permissions() {
 fn test_build_teammate_cli_args_has_disable_slash_commands() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config);
+    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
 
     assert!(args.contains(&"--disable-slash-commands".to_string()));
 }
@@ -589,7 +589,7 @@ fn test_build_teammate_cli_args_has_disable_slash_commands() {
 fn test_build_teammate_cli_args_has_plugin_dir() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
-    let args = client.build_teammate_cli_args(&config);
+    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
 
     assert!(args.contains(&"--plugin-dir".to_string()));
     assert!(args.contains(&"/test/ralphx-plugin".to_string()));
@@ -599,7 +599,7 @@ fn test_build_teammate_cli_args_has_plugin_dir() {
 fn test_build_teammate_cli_args_custom_agent_type() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config().with_agent_type("Bash");
-    let args = client.build_teammate_cli_args(&config);
+    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
 
     let agent_type_idx = args
         .iter()
@@ -734,7 +734,7 @@ fn test_build_teammate_cli_args_full_integration() {
     .with_color("green")
     .with_working_dir("/Users/test/project");
 
-    let args = client.build_teammate_cli_args(&config);
+    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
 
     // Interactive mode: -p - and --input-format stream-json must be present
     let p_pos = args.iter().position(|a| a == "-p");
@@ -799,7 +799,7 @@ fn test_build_teammate_cli_args_passes_settings_when_profile_exists() {
     if !has_settings {
         // No settings profile configured in this environment — skip the positive assertion
         // and verify --settings is correctly absent
-        let args = client.build_teammate_cli_args(&config);
+        let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
         assert!(
             !args.contains(&"--settings".to_string()),
             "--settings must not appear when no profile is configured"
@@ -807,7 +807,7 @@ fn test_build_teammate_cli_args_passes_settings_when_profile_exists() {
         return;
     }
 
-    let args = client.build_teammate_cli_args(&config);
+    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
 
     // --settings flag must be present
     let settings_idx = args
@@ -968,7 +968,7 @@ fn test_build_cli_args_interactive_omits_p_flag() {
     let client = ClaudeCodeClient::new();
     let config = AgentConfig::worker("My interactive prompt");
 
-    let args = client.build_cli_args(&config, None, true);
+    let args = client.build_cli_args(&config, None, true).expect("build_cli_args should succeed in test");
 
     // Interactive mode: -p must NOT be present
     assert!(
@@ -990,7 +990,7 @@ fn test_build_cli_args_non_interactive_has_p_flag() {
     let client = ClaudeCodeClient::new();
     let config = AgentConfig::worker("Non-interactive prompt");
 
-    let args = client.build_cli_args(&config, None, false);
+    let args = client.build_cli_args(&config, None, false).expect("build_cli_args should succeed in test");
 
     // Non-interactive mode: -p must be present (backward compat)
     assert!(
@@ -1063,7 +1063,7 @@ fn test_build_teammate_cli_args_includes_effort_when_some() {
     let config = TeammateSpawnConfig::new("dev", "team-1", "Do stuff")
         .with_plugin_dir("/test/plugin")
         .with_effort("high");
-    let args = client.build_teammate_cli_args(&config);
+    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
 
     let effort_idx = args
         .iter()
@@ -1082,7 +1082,7 @@ fn test_build_teammate_cli_args_falls_back_to_global_default_effort() {
     let config = TeammateSpawnConfig::new("dev", "team-1", "Do stuff")
         .with_plugin_dir("/test/plugin");
     // effort is None (default) — should fall back to global default_effort
-    let args = client.build_teammate_cli_args(&config);
+    let args = client.build_teammate_cli_args(&config).expect("build_teammate_cli_args should succeed in test");
 
     let effort_idx = args
         .iter()

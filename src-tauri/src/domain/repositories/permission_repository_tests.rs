@@ -84,6 +84,10 @@ async fn test_create_and_get_pending() {
         tool_name: "Bash".to_string(),
         tool_input: serde_json::json!({"command": "ls"}),
         context: Some("List files".to_string()),
+        agent_type: None,
+        task_id: None,
+        context_type: None,
+        context_id: None,
     };
 
     repo.create_pending(&info).await.unwrap();
@@ -102,6 +106,10 @@ async fn test_get_by_request_id() {
         tool_name: "Write".to_string(),
         tool_input: serde_json::json!({}),
         context: None,
+        agent_type: None,
+        task_id: None,
+        context_type: None,
+        context_id: None,
     };
 
     repo.create_pending(&info).await.unwrap();
@@ -122,6 +130,10 @@ async fn test_resolve() {
         tool_name: "Bash".to_string(),
         tool_input: serde_json::json!({}),
         context: None,
+        agent_type: None,
+        task_id: None,
+        context_type: None,
+        context_id: None,
     };
 
     repo.create_pending(&info).await.unwrap();
@@ -163,6 +175,10 @@ async fn test_expire_all_pending() {
             tool_name: "Bash".to_string(),
             tool_input: serde_json::json!({}),
             context: None,
+            agent_type: None,
+            task_id: None,
+            context_type: None,
+            context_id: None,
         };
         repo.create_pending(&info).await.unwrap();
     }
@@ -190,6 +206,10 @@ async fn test_remove() {
         tool_name: "Edit".to_string(),
         tool_input: serde_json::json!({}),
         context: None,
+        agent_type: None,
+        task_id: None,
+        context_type: None,
+        context_id: None,
     };
 
     repo.create_pending(&info).await.unwrap();

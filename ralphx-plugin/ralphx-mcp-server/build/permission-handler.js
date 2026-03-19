@@ -83,12 +83,21 @@ export async function handlePermissionRequest(args) {
     // 1. Register permission request with Tauri backend
     let request_id;
     try {
-        const body = {
-            tool_name,
-            tool_input,
-        };
+        const agentType = process.env.RALPHX_AGENT_TYPE;
+        const taskId = process.env.RALPHX_TASK_ID;
+        const contextType = process.env.RALPHX_CONTEXT_TYPE;
+        const contextId = process.env.RALPHX_CONTEXT_ID;
+        const body = { tool_name, tool_input };
         if (context !== undefined && context !== "")
             body.context = context;
+        if (agentType && agentType !== "unknown")
+            body.agent_type = agentType;
+        if (taskId)
+            body.task_id = taskId;
+        if (contextType)
+            body.context_type = contextType;
+        if (contextId)
+            body.context_id = contextId;
         const registerResponse = await fetch(`${TAURI_API_URL}/api/permission/request`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },

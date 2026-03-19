@@ -21,9 +21,21 @@ vi.mock("@/lib/tauri", () => ({
   },
 }));
 
+vi.mock("sonner", () => ({
+  toast: { error: vi.fn() },
+}));
+
+vi.mock("@/stores/taskStore", () => ({
+  useTaskStore: {
+    getState: () => ({ tasks: { "task-abc": { title: "My Task" } } }),
+  },
+}));
+
 import { api } from "@/lib/tauri";
+import { toast } from "sonner";
 
 const mockResolveRequest = vi.mocked(api.permission.resolveRequest);
+const mockToastError = vi.mocked(toast.error);
 
 describe("PermissionDialog", () => {
   let eventCallback: ((payload: PermissionRequest) => void) | null = null;
@@ -353,5 +365,155 @@ describe("PermissionDialog", () => {
     await waitFor(() => {
       expect(unlistenFn).toHaveBeenCalled();
     });
+  });
+
+  // Identity UI tests
+
+  it("shows identity row when agent_type provided", async () => {
+    render(<PermissionDialog />);
+
+    const request: PermissionRequest = {
+      request_id: "test-id",
+      tool_name: "Bash",
+      tool_input: { command: "ls" },
+      agent_type: "ralphx-worker",
+    };
+
+    eventCallback?.(request);
+
+    await waitFor(() => {
+      expect(screen.getByText("Worker")).toBeInTheDocument();
+    });
+  });
+
+  it("shows context label when context_type provided", async () => {
+    render(<PermissionDialog />);
+
+    const request: PermissionRequest = {
+      request_id: "test-id",
+      tool_name: "Bash",
+      tool_input: { command: "ls" },
+      context_type: "task_execution",
+    };
+
+    eventCallback?.(request);
+
+    await waitFor(() => {
+      expect(screen.getByText("Executing")).toBeInTheDocument();
+    });
+  });
+
+  it("hides identity row when no identity fields", async () => {
+    render(<PermissionDialog />);
+
+    const request: PermissionRequest = {
+      request_id: "test-id",
+      tool_name: "Bash",
+      tool_input: { command: "ls" },
+    };
+
+    eventCallback?.(request);
+
+    await waitFor(() => {
+      expect(screen.getByText("Permission Required")).toBeInTheDocument();
+    });
+
+    // None of the identity-specific labels should appear
+    expect(screen.queryByText("Worker")).not.toBeInTheDocument();
+    expect(screen.queryByText("Executing")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Task:/)).not.toBeInTheDocument();
+  });
+
+  it("buttons disabled while resolving", async () => {
+    mockResolveRequest.mockImplementation(() => new Promise(() => {}));
+
+    const user = userEvent.setup();
+    render(<PermissionDialog />);
+
+    const request: PermissionRequest = {
+      request_id: "test-id",
+      tool_name: "Bash",
+      tool_input: { command: "ls" },
+    };
+
+    eventCallback?.(request);
+
+    await waitFor(() => {
+      expect(screen.getByText("Allow")).toBeInTheDocument();
+    });
+
+    // Click Allow to start resolving (will never complete due to infinite promise)
+    await user.click(screen.getByText("Allow"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Allow").closest("button")).toBeDisabled();
+      expect(screen.getByText("Deny").closest("button")).toBeDisabled();
+    });
+  });
+
+  it("shows toast on resolveRequest failure and keeps request in queue", async () => {
+    mockResolveRequest.mockRejectedValue(new Error("Network error"));
+
+    const user = userEvent.setup();
+    render(<PermissionDialog />);
+
+    const request: PermissionRequest = {
+      request_id: "test-id",
+      tool_name: "Bash",
+      tool_input: { command: "ls" },
+    };
+
+    eventCallback?.(request);
+
+    await waitFor(() => {
+      expect(screen.getByText("Allow")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("Allow"));
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith("Failed to resolve permission request");
+    });
+
+    // Dialog should still be visible (request stays in queue)
+    expect(screen.getByText("Permission Required")).toBeInTheDocument();
+  });
+
+  it("dialog close guard blocks close when resolving", async () => {
+    // Never-resolving promise to keep resolving=true
+    mockResolveRequest.mockImplementation(() => new Promise(() => {}));
+
+    const user = userEvent.setup();
+    render(<PermissionDialog />);
+
+    const request: PermissionRequest = {
+      request_id: "test-id",
+      tool_name: "Bash",
+      tool_input: { command: "ls" },
+    };
+
+    eventCallback?.(request);
+
+    await waitFor(() => {
+      expect(screen.getByText("Allow")).toBeInTheDocument();
+    });
+
+    // Click Allow — starts resolving but never completes
+    await user.click(screen.getByText("Allow"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Allow").closest("button")).toBeDisabled();
+    });
+
+    // resolveRequest was called once for "allow"
+    expect(mockResolveRequest).toHaveBeenCalledTimes(1);
+
+    // Clicking the close button while resolving should NOT trigger a second resolve call
+    const closeButton = screen.queryByTestId("dialog-close");
+    if (closeButton) {
+      await user.click(closeButton);
+      // Still only called once — the close guard blocked it
+      expect(mockResolveRequest).toHaveBeenCalledTimes(1);
+    }
   });
 });

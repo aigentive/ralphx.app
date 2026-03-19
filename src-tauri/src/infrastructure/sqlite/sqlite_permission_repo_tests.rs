@@ -13,6 +13,23 @@ fn sample_info() -> PendingPermissionInfo {
         tool_name: "Bash".to_string(),
         tool_input: serde_json::json!({"command": "ls -la"}),
         context: Some("List files".to_string()),
+        agent_type: None,
+        task_id: None,
+        context_type: None,
+        context_id: None,
+    }
+}
+
+fn sample_info_with_identity() -> PendingPermissionInfo {
+    PendingPermissionInfo {
+        request_id: "perm-identity".to_string(),
+        tool_name: "Write".to_string(),
+        tool_input: serde_json::json!({"path": "/tmp/test.txt"}),
+        context: Some("Writing a file".to_string()),
+        agent_type: Some("ralphx-worker".to_string()),
+        task_id: Some("task-abc123".to_string()),
+        context_type: Some("task_execution".to_string()),
+        context_id: Some("task-abc123".to_string()),
     }
 }
 
@@ -86,6 +103,10 @@ async fn test_expire_all_pending() {
             tool_name: "Bash".to_string(),
             tool_input: serde_json::json!({}),
             context: None,
+            agent_type: None,
+            task_id: None,
+            context_type: None,
+            context_id: None,
         };
         repo.create_pending(&info).await.unwrap();
     }
@@ -132,6 +153,10 @@ async fn test_expire_all_pending_via_permission_state() {
             tool_name: "Bash".to_string(),
             tool_input: serde_json::json!({}),
             context: None,
+            agent_type: None,
+            task_id: None,
+            context_type: None,
+            context_id: None,
         };
         repo.create_pending(&info).await.unwrap();
     }
@@ -162,10 +187,79 @@ async fn test_empty_tool_input_round_trip() {
         tool_name: "Read".to_string(),
         tool_input: serde_json::json!({}),
         context: None,
+        agent_type: None,
+        task_id: None,
+        context_type: None,
+        context_id: None,
     };
     repo.create_pending(&info).await.unwrap();
 
     let found = repo.get_by_request_id("perm-empty").await.unwrap().unwrap();
     assert_eq!(found.tool_input, serde_json::json!({}));
     assert!(found.context.is_none());
+}
+
+#[tokio::test]
+async fn test_create_and_get_pending_with_identity() {
+    let (_db, repo) = setup();
+    repo.create_pending(&sample_info_with_identity()).await.unwrap();
+
+    let pending = repo.get_pending().await.unwrap();
+    assert_eq!(pending.len(), 1);
+    let p = &pending[0];
+    assert_eq!(p.request_id, "perm-identity");
+    assert_eq!(p.tool_name, "Write");
+    assert_eq!(p.agent_type, Some("ralphx-worker".to_string()));
+    assert_eq!(p.task_id, Some("task-abc123".to_string()));
+    assert_eq!(p.context_type, Some("task_execution".to_string()));
+    assert_eq!(p.context_id, Some("task-abc123".to_string()));
+}
+
+#[tokio::test]
+async fn test_get_by_request_id_with_identity() {
+    let (_db, repo) = setup();
+    repo.create_pending(&sample_info_with_identity()).await.unwrap();
+
+    let found = repo.get_by_request_id("perm-identity").await.unwrap();
+    assert!(found.is_some());
+    let p = found.unwrap();
+    assert_eq!(p.agent_type, Some("ralphx-worker".to_string()));
+    assert_eq!(p.task_id, Some("task-abc123".to_string()));
+    assert_eq!(p.context_type, Some("task_execution".to_string()));
+    assert_eq!(p.context_id, Some("task-abc123".to_string()));
+}
+
+#[tokio::test]
+async fn test_identity_fields_null_by_default() {
+    // Ensure rows without identity fields return None (backward compat)
+    let (_db, repo) = setup();
+    repo.create_pending(&sample_info()).await.unwrap();
+
+    let found = repo.get_by_request_id("perm-1").await.unwrap().unwrap();
+    assert!(found.agent_type.is_none());
+    assert!(found.task_id.is_none());
+    assert!(found.context_type.is_none());
+    assert!(found.context_id.is_none());
+}
+
+#[tokio::test]
+async fn test_partial_identity_fields_round_trip() {
+    let (_db, repo) = setup();
+    let info = PendingPermissionInfo {
+        request_id: "perm-partial".to_string(),
+        tool_name: "Glob".to_string(),
+        tool_input: serde_json::json!({"pattern": "*.rs"}),
+        context: None,
+        agent_type: Some("ralphx-reviewer".to_string()),
+        task_id: None,
+        context_type: None,
+        context_id: Some("task-review-99".to_string()),
+    };
+    repo.create_pending(&info).await.unwrap();
+
+    let found = repo.get_by_request_id("perm-partial").await.unwrap().unwrap();
+    assert_eq!(found.agent_type, Some("ralphx-reviewer".to_string()));
+    assert!(found.task_id.is_none());
+    assert!(found.context_type.is_none());
+    assert_eq!(found.context_id, Some("task-review-99".to_string()));
 }

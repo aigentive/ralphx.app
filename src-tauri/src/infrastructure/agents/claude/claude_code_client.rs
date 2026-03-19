@@ -365,14 +365,15 @@ impl AgenticClient for ClaudeCodeClient {
 
             // Create dynamic MCP config for agent-specific tool filtering
             // Use --strict-mcp-config to ignore user/global MCP servers that can hang
+            // Hard error on invalid config — MCP is critical infra, fail loud.
             if let Some(agent) = &config.agent {
-                if let Some(temp_path) = create_mcp_config(plugin_dir, agent) {
-                    args.extend([
-                        "--mcp-config".to_string(),
-                        temp_path.display().to_string(),
-                        "--strict-mcp-config".to_string(),
-                    ]);
-                }
+                let temp_path = create_mcp_config(plugin_dir, agent)
+                    .map_err(|e| AgentError::SpawnFailed(e))?;
+                args.extend([
+                    "--mcp-config".to_string(),
+                    temp_path.display().to_string(),
+                    "--strict-mcp-config".to_string(),
+                ]);
             }
         }
 
@@ -411,9 +412,12 @@ impl AgenticClient for ClaudeCodeClient {
             "--permission-prompt-tool".to_string(),
             runtime.permission_prompt_tool.clone(),
         ]);
+        let permission_mode = crate::infrastructure::agents::claude::resolve_permission_mode(
+            config.agent.as_deref(),
+        );
         args.extend([
             "--permission-mode".to_string(),
-            runtime.permission_mode.clone(),
+            permission_mode,
         ]);
         if runtime.dangerously_skip_permissions {
             args.push("--dangerously-skip-permissions".to_string());
@@ -570,7 +574,7 @@ impl ClaudeCodeClient {
         config: &AgentConfig,
         resume_session_id: Option<&str>,
         interactive: bool,
-    ) -> Vec<String> {
+    ) -> Result<Vec<String>, String> {
         sanitize_claude_user_state();
         let mut args = Vec::new();
 
@@ -596,14 +600,14 @@ impl ClaudeCodeClient {
 
             // Create dynamic MCP config for agent-specific tool filtering
             // Use --strict-mcp-config to ignore user/global MCP servers that can hang
+            // Hard error on invalid config — MCP is critical infra, fail loud.
             if let Some(agent) = &config.agent {
-                if let Some(temp_path) = create_mcp_config(plugin_dir, agent) {
-                    args.extend([
-                        "--mcp-config".to_string(),
-                        temp_path.display().to_string(),
-                        "--strict-mcp-config".to_string(),
-                    ]);
-                }
+                let temp_path = create_mcp_config(plugin_dir, agent)?;
+                args.extend([
+                    "--mcp-config".to_string(),
+                    temp_path.display().to_string(),
+                    "--strict-mcp-config".to_string(),
+                ]);
             }
         }
 
@@ -652,9 +656,12 @@ impl ClaudeCodeClient {
             "--permission-prompt-tool".to_string(),
             runtime.permission_prompt_tool.clone(),
         ]);
+        let permission_mode = crate::infrastructure::agents::claude::resolve_permission_mode(
+            config.agent.as_deref(),
+        );
         args.extend([
             "--permission-mode".to_string(),
-            runtime.permission_mode.clone(),
+            permission_mode,
         ]);
         if runtime.dangerously_skip_permissions {
             args.push("--dangerously-skip-permissions".to_string());
@@ -675,7 +682,7 @@ impl ClaudeCodeClient {
             }
         }
 
-        args
+        Ok(args)
     }
 
     /// Spawn an agent in streaming mode, returning the Child process for external processing
@@ -714,7 +721,9 @@ impl ClaudeCodeClient {
             )));
         }
 
-        let args = self.build_cli_args(&config, resume_session_id, false);
+        let args = self
+            .build_cli_args(&config, resume_session_id, false)
+            .map_err(|e| AgentError::SpawnFailed(e))?;
 
         // Build command
         let mut cmd = tokio::process::Command::new(&self.cli_path);
@@ -787,7 +796,9 @@ impl ClaudeCodeClient {
         }
 
         // Build args without -p (interactive=true)
-        let args = self.build_cli_args(&config, resume_session_id, true);
+        let args = self
+            .build_cli_args(&config, resume_session_id, true)
+            .map_err(|e| AgentError::SpawnFailed(e))?;
 
         // Build command with stdin piped for message delivery
         let mut cmd = tokio::process::Command::new(&self.cli_path);
@@ -845,7 +856,7 @@ impl ClaudeCodeClient {
     /// - **Team CLI flags** — `--agent-id`, `--agent-name`, `--team-name`, etc.
     /// - **`--append-system-prompt`** — lead-generated role prompt
     /// - **`--dangerously-skip-permissions`** — automated teammates skip prompts
-    pub fn build_teammate_cli_args(&self, config: &TeammateSpawnConfig) -> Vec<String> {
+    pub fn build_teammate_cli_args(&self, config: &TeammateSpawnConfig) -> Result<Vec<String>, String> {
         sanitize_claude_user_state();
         let mut args = Vec::new();
 
@@ -869,13 +880,13 @@ impl ClaudeCodeClient {
 
             // Create dynamic MCP config with MCP agent type for tool filtering
             // Uses mcp_agent_type (e.g., "ideation-team-member") not the Claude Code agent_type
-            if let Some(temp_path) = create_mcp_config(plugin_dir, &config.mcp_agent_type) {
-                args.extend([
-                    "--mcp-config".to_string(),
-                    temp_path.display().to_string(),
-                    "--strict-mcp-config".to_string(),
-                ]);
-            }
+            // Hard error on invalid config — MCP is critical infra, fail loud.
+            let temp_path = create_mcp_config(plugin_dir, &config.mcp_agent_type)?;
+            args.extend([
+                "--mcp-config".to_string(),
+                temp_path.display().to_string(),
+                "--strict-mcp-config".to_string(),
+            ]);
         }
 
         // --- Team-specific CLI flags ---
@@ -950,7 +961,7 @@ impl ClaudeCodeClient {
             }
         }
 
-        args
+        Ok(args)
     }
 
     /// Build environment variables for a teammate spawn.
@@ -1030,7 +1041,9 @@ impl ClaudeCodeClient {
             )));
         }
 
-        let args = self.build_teammate_cli_args(&config);
+        let args = self
+            .build_teammate_cli_args(&config)
+            .map_err(|e| AgentError::SpawnFailed(e))?;
         let team_env = Self::build_teammate_env_vars(&config);
 
         // Build command

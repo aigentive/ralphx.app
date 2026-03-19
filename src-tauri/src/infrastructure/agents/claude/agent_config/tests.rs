@@ -93,6 +93,8 @@ fn test_all_agent_names_are_known() {
         SHORT_IDEATION_SPECIALIST_CODE_QUALITY,
         SHORT_IDEATION_ADVOCATE,
         SHORT_IDEATION_CRITIC,
+        // Prompt quality specialist added in recent commits
+        "ideation-specialist-prompt-quality",
     ]);
 
     for agent in agent_configs() {
@@ -1279,4 +1281,72 @@ agents:
         parsed.claude.default_effort, "medium",
         "missing default_effort in YAML should default to 'medium'"
     );
+}
+
+// ── Permission mode tests ────────────────────────────────────────
+
+#[test]
+fn test_permission_mode_worker_is_accept_edits() {
+    let config = get_agent_config("ralphx-worker").expect("ralphx-worker should exist");
+    assert_eq!(
+        config.permission_mode.as_deref(),
+        Some("acceptEdits"),
+        "ralphx-worker should have acceptEdits permission mode"
+    );
+}
+
+#[test]
+fn test_permission_mode_coder_is_accept_edits() {
+    let config = get_agent_config("ralphx-coder").expect("ralphx-coder should exist");
+    assert_eq!(
+        config.permission_mode.as_deref(),
+        Some("acceptEdits"),
+        "ralphx-coder should have acceptEdits permission mode"
+    );
+}
+
+#[test]
+fn test_permission_mode_merger_is_accept_edits() {
+    let config = get_agent_config("ralphx-merger").expect("ralphx-merger should exist");
+    assert_eq!(
+        config.permission_mode.as_deref(),
+        Some("acceptEdits"),
+        "ralphx-merger should have acceptEdits permission mode"
+    );
+}
+
+#[test]
+fn test_permission_mode_worker_team_inherits_accept_edits() {
+    let config = get_agent_config("ralphx-worker-team").expect("ralphx-worker-team should exist");
+    assert_eq!(
+        config.permission_mode.as_deref(),
+        Some("acceptEdits"),
+        "ralphx-worker-team should have acceptEdits (inherited or explicit)"
+    );
+}
+
+#[test]
+fn test_permission_mode_chat_agent_is_none() {
+    // Non-worker agents should NOT have a permission_mode override (inherits global "default")
+    let config = get_agent_config("chat-task").expect("chat-task should exist");
+    assert_eq!(
+        config.permission_mode,
+        None,
+        "chat-task should not have a per-agent permission_mode override"
+    );
+}
+
+#[test]
+fn test_preapproved_tools_always_contains_permission_request() {
+    // Every known agent should have permission_request in their preapproved tools
+    for agent_name in &["ralphx-worker", "ralphx-coder", "ralphx-merger", "session-namer", "chat-task"] {
+        let tools = get_preapproved_tools(agent_name)
+            .unwrap_or_default();
+        assert!(
+            tools.contains("mcp__ralphx__permission_request"),
+            "Agent {} missing mcp__ralphx__permission_request in preapproved tools: {}",
+            agent_name,
+            tools
+        );
+    }
 }
