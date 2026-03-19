@@ -851,7 +851,7 @@ agents:
         get_team_artifacts,
         get_artifact,
       ]
-    preapproved_cli_tools: [Read, Grep, Glob, Bash, "Task(ralphx:plan-critic-layer1)", "Task(ralphx:plan-critic-layer2)", "Task(ralphx:ideation-specialist-ux)"]
+    preapproved_cli_tools: [Read, Grep, Glob, Bash, "Task(ralphx:plan-critic-layer1)", "Task(ralphx:plan-critic-layer2)", "Task(ralphx:ideation-specialist-ux)", "Task(ralphx:ideation-specialist-code-quality)"]
 
   # --- Team lead variants (extends base agents) ---
 
@@ -998,6 +998,27 @@ agents:
 
   - name: ideation-specialist-ux
     system_prompt_file: ralphx-plugin/agents/ideation-specialist-ux.md
+    model: opus
+    tools: { extends: base_tools }
+    mcp_tools: [
+        # Team artifact tools
+        create_team_artifact,
+        get_team_artifacts,
+        # Plan read tools
+        get_session_plan,
+        get_artifact,
+        list_session_proposals,
+        get_proposal,
+        get_parent_session_context,
+        # Memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+      ]
+    preapproved_cli_tools: []
+
+  - name: ideation-specialist-code-quality
+    system_prompt_file: ralphx-plugin/agents/ideation-specialist-code-quality.md
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [

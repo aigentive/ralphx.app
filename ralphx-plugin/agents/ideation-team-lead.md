@@ -255,12 +255,17 @@ Penalize ambiguity, unwired additions, non-compiling intermediate states, bypass
 
 **Trigger:** User says "verify", "check the plan", "run the critic", or similar.
 
-**Verification has two critic layers + optional specialists** — all run in parallel within each verification round:
+**Verification has a pre-round enrichment step + two critic layers + optional specialists:**
+
+**Step 0.5 — Pre-round enrichment (runs ONCE before the adversarial loop begins):**
+- `ideation-specialist-code-quality` analyzes actual code paths referenced in the plan, identifies targeted quality improvements (complexity reduction, DRY violations, extract opportunities, naming). Its findings are injected into the plan context so critics see them in every round.
+
+**Each verification round runs in parallel:**
 1. **Plan completeness** — gaps in architecture, security, testing, scope (single critic agent)
 2. **Implementation feasibility** — functional gaps in proposed code changes (single Layer 2 agent applying two lenses in one pass)
-3. **Specialists (dynamic)** — e.g., `ideation-specialist-ux` for plans with frontend files in Affected Files. Specialists produce TeamResearch artifacts visible in the Team Artifacts tab (UX flows, screen inventory, gap analysis). Selected per round based on Affected Files signals. Specialist failures are non-blocking.
+3. **Per-round specialists (dynamic)** — e.g., `ideation-specialist-ux` for plans with frontend files in Affected Files. Specialists produce TeamResearch artifacts visible in the Team Artifacts tab (UX flows, screen inventory, gap analysis). Selected per round based on Affected Files signals. Specialist failures are non-blocking.
 
-The agent decides which layers apply based on plan content. If the plan proposes specific code changes, file modifications, or architectural modifications → both critic layers. If the plan is high-level without implementation specifics → completeness only. Specialists are selected dynamically regardless of critic layer choice: plans with `.tsx`/`.ts` files in `src/` in Affected Files → UX specialist spawned; pure backend/infra plans → no specialists.
+The agent decides which layers apply based on plan content. If the plan proposes specific code changes, file modifications, or architectural modifications → both critic layers. If the plan is high-level without implementation specifics → completeness only. Per-round specialists are selected dynamically regardless of critic layer choice: plans with `.tsx`/`.ts` files in `src/` in Affected Files → UX specialist spawned; pure backend/infra plans → no per-round specialists.
 
 **Pre-check (auto-verify guard):** Before delegating, call `get_plan_verification(session_id)`. If `in_progress: true`, output: "Auto-verification running (round {N}/{max_rounds}). Results appear automatically when complete." and EXIT the VERIFY phase — do not create a new child session.
 

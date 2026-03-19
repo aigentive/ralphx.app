@@ -9,6 +9,7 @@ tools:
   - "Task(ralphx:plan-critic-layer1)"
   - "Task(ralphx:plan-critic-layer2)"
   - "Task(ralphx:ideation-specialist-ux)"
+  - "Task(ralphx:ideation-specialist-code-quality)"
   - "mcp__ralphx__get_session_plan"
   - "mcp__ralphx__get_team_artifacts"
   - "mcp__ralphx__get_artifact"
@@ -74,6 +75,58 @@ Call `mcp__ralphx__get_session_plan(session_id: <YOUR_OWN_SESSION_ID>)` to read 
 
 ---
 
+## Step 0.5 — Pre-Round Enrichment (MANDATORY — runs ONCE before the round loop)
+
+This step dispatches the code quality specialist to analyze existing code paths referenced in the plan and integrates its findings into the plan before Round 1 begins. Critics then see the enriched plan from the start.
+
+### 0.5a — Signal Check
+
+1. Parse the plan's `## Affected Files` section. If the section does not exist → skip enrichment entirely (proceed to Round Loop).
+2. For each file entry, strip markdown formatting (bold `**`, italic `*`, backticks) before matching.
+3. Check for modification verbs: `MODIFY`, `UPDATE`, `CHANGE` (case-insensitive). Skip entries with `NEW`, `CREATE`, `ADD`.
+4. Exclude documentation files (`.md`, `.txt`, `.rst`) and config-only files (`.yaml`, `.yml`, `.json`, `.toml` — exception: `Cargo.toml` IS included).
+5. If ≥1 qualifying file remains → proceed to Step 0.5b. Otherwise → skip enrichment, proceed to Round Loop.
+
+### 0.5b — Dispatch (sequential — enrichment must complete before Round 1)
+
+Record `enrichment_dispatch_time` = current ISO timestamp (before dispatch).
+
+Dispatch the code quality specialist as a single Task (NOT parallel with critics — this is sequential by design):
+
+```
+Task(subagent_type: "ralphx:ideation-specialist-code-quality", prompt: "SESSION_ID: <parent_session_id>\nAnalyze the code paths referenced in the plan's Affected Files section. Read the plan via get_session_plan(session_id: <the SESSION_ID value above>) — this returns the current (pre-enrichment) plan version via inheritance. For each file marked as MODIFY/UPDATE/CHANGE, read the actual source code and identify quality improvement opportunities (complexity, DRY violations, extract opportunities, naming, dead code, error handling). Create your TeamResearch artifact using session_id: <parent_session_id> — this is the PARENT IDEATION SESSION ID, not your own session. Title the artifact with prefix 'CodeQuality: ' followed by a brief description.")
+```
+
+Wait for the Task to return before proceeding.
+
+### 0.5c — Artifact Collection
+
+1. Call `mcp__ralphx__get_team_artifacts(session_id: <parent_session_id>)`.
+2. Filter artifacts **client-side**: keep only artifacts where `created_at >= (enrichment_dispatch_time minus 5 seconds)` AND title starts with `"CodeQuality"` (case-sensitive prefix match, tolerant of colon/space variations).
+3. If no matching artifact found → log "Code quality specialist returned no artifact — proceeding to round loop." Skip Step 0.5d.
+4. For the matching artifact (latest by `created_at`): call `mcp__ralphx__get_artifact(artifact_id: <id>)` to retrieve full content.
+
+### 0.5d — Plan Integration
+
+1. Determine insertion point using this priority:
+   - Search for `## Constraints` header → insert `## Code Quality Improvements` section immediately BEFORE it.
+   - If `## Constraints` not found, search for `## Architecture` header → insert immediately AFTER the Architecture section's content (before the next `##` header).
+   - If neither found → insert after `## Overview` section content.
+2. Use `mcp__ralphx__edit_plan_artifact` with:
+   - `old_text`: the target `##` header line (e.g., `## Constraints`)
+   - `new_text`: the new section FOLLOWED BY the original header. Example:
+     ```
+     old_text: "## Constraints"
+     new_text: "## Code Quality Improvements\n\n{structured content}\n\n## Constraints"
+     ```
+   **CRITICAL:** The original anchor header MUST be preserved in `new_text` — `edit_plan_artifact` replaces `old_text` entirely. Omitting the original header deletes it.
+3. If `edit_plan_artifact` fails (anchor not found for any fallback): use `mcp__ralphx__update_plan_artifact` with the full plan content, appending `## Code Quality Improvements` at the end.
+4. Content: structured list of improvement opportunities from the artifact, grouped by priority (High → Medium → Low).
+
+❌ **CRITICAL:** Enrichment failure is **non-blocking** — if the specialist Task errors, returns nothing, or artifact collection fails, log the failure and proceed to the Round Loop. Do NOT abort verification.
+
+---
+
 ## Verification Objective (MANDATORY)
 
 Treat the plan as a point in design space. Critics estimate local derivatives of plan failure risk; your job is to reduce blocking penalty mass, not to chase issue counts.
@@ -118,7 +171,8 @@ Before dispatching critics, determine which specialists to spawn for this round.
 
 | Signal | Specialist | Signal Source |
 |--------|------------|---------------|
-| `.tsx`/`.ts` in `src/`, React/UI keywords (modal, toast, sidebar, tab, form, button, dialog, dropdown, component, screen, page, view) | `ideation-specialist-ux` | Affected Files + Architecture sections |
+| `.tsx`/`.ts` in `src/`, React/UI keywords (modal, toast, sidebar, tab, form, button, dialog, dropdown, component, screen, page, view) | `ideation-specialist-ux` | Affected Files + Architecture sections (per-round parallel dispatch) |
+| ≥1 existing file with MODIFY/UPDATE/CHANGE verb (excluding `.md`/`.txt`/`.rst` docs and `.yaml`/`.yml`/`.json`/`.toml` config, exception: `Cargo.toml` included) | `ideation-specialist-code-quality` | Affected Files section (**pre-round enrichment only** — Step 0.5, not here) |
 | *(future: auth, tokens, encryption, RBAC)* | *(security specialist)* | — |
 | *(future: DB queries, caching, batch processing)* | *(performance specialist)* | — |
 
@@ -137,6 +191,7 @@ Task(subagent_type: "ralphx:ideation-specialist-ux", prompt: "SESSION_ID: <paren
 
 ❌ Do NOT dispatch critics one at a time across multiple responses — that is sequential and wastes time.
 ❌ `run_in_background: true` does NOT exist on the Task tool — do not use it.
+❌ Do NOT dispatch `ideation-specialist-code-quality` here — it runs in Step 0.5 only (pre-round enrichment, before this loop begins).
 
 Wait for ALL dispatched Tasks to return (critics + any specialists).
 

@@ -40,6 +40,7 @@ import {
   IDEATION_SPECIALIST_FRONTEND,
   IDEATION_SPECIALIST_INFRA,
   IDEATION_SPECIALIST_UX,
+  IDEATION_SPECIALIST_CODE_QUALITY,
   IDEATION_CRITIC,
   IDEATION_ADVOCATE,
 } from "./agentNames.js";
@@ -1819,6 +1820,18 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_memories_for_paths",
   ],
   [IDEATION_SPECIALIST_UX]: [
+    "create_team_artifact",
+    "get_team_artifacts",
+    "get_session_plan",
+    "get_artifact",
+    "list_session_proposals",
+    "get_proposal",
+    "get_parent_session_context",
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+  ],
+  [IDEATION_SPECIALIST_CODE_QUALITY]: [
     "create_team_artifact",
     "get_team_artifacts",
     "get_session_plan",
