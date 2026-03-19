@@ -48,6 +48,7 @@ pub const SHORT_IDEATION_SPECIALIST_BACKEND: &str = "ideation-specialist-backend
 pub const SHORT_IDEATION_SPECIALIST_FRONTEND: &str = "ideation-specialist-frontend";
 pub const SHORT_IDEATION_SPECIALIST_INFRA: &str = "ideation-specialist-infra";
 pub const SHORT_IDEATION_SPECIALIST_UX: &str = "ideation-specialist-ux";
+pub const SHORT_IDEATION_SPECIALIST_CODE_QUALITY: &str = "ideation-specialist-code-quality";
 pub const SHORT_IDEATION_ADVOCATE: &str = "ideation-advocate";
 pub const SHORT_IDEATION_CRITIC: &str = "ideation-critic";
 

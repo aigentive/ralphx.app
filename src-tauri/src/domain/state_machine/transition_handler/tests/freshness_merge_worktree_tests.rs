@@ -472,6 +472,7 @@ fn test_clear_routing_flags_preserves_counts() {
         freshness_backoff_until: Some(chrono::Utc::now()),
         freshness_auto_reset_count: 1,
         last_freshness_check_at: Some("2026-03-10T12:00:00Z".to_string()),
+        freshness_count_incremented_by: None,
     };
 
     meta.clear_routing_flags();

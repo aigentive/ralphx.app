@@ -77,7 +77,13 @@ async fn apply_freshness_result(
             }
             Ok(())
         }
-        Err(FreshnessAction::RouteToMerging { freshness_metadata, .. }) => {
+        Err(FreshnessAction::RouteToMerging { mut freshness_metadata, .. }) => {
+            // INVARIANT: freshness_count_incremented_by signals to the corrective handler
+            // (task_transition_service.rs) that freshness_conflict_count was already
+            // incremented by ensure_branches_fresh(). The conflict marker scan path does
+            // NOT set this field, so the corrective handler will increment there instead.
+            freshness_metadata.freshness_count_incremented_by =
+                Some("ensure_branches_fresh".to_string());
             // Store freshness metadata on task for merger agent context
             let mut task_metadata: serde_json::Value = task
                 .metadata
@@ -994,6 +1000,10 @@ impl<'a> super::TransitionHandler<'a> {
                                             .unwrap_or_else(|| serde_json::json!({}));
                                         task_metadata["conflict_markers_detected"] = serde_json::json!(true);
                                         task_metadata["branch_freshness_conflict"] = serde_json::json!(true);
+                                        // Signal to the corrective handler that conflict originated
+                                        // in Reviewing state, so it routes back to PendingReview
+                                        // instead of directly to Merging (which would skip review).
+                                        task_metadata["freshness_origin_state"] = serde_json::json!("reviewing");
                                         if let Err(e) = task_repo
                                             .update_metadata(&task_id_typed, Some(task_metadata.to_string()))
                                             .await
@@ -1100,6 +1110,33 @@ impl<'a> super::TransitionHandler<'a> {
                 }
             }
             State::ReviewPassed => {
+                // Clear stale freshness routing metadata so freshness_routing.rs defense-in-depth
+                // is not confused if this task later reaches Merging via a different path.
+                if let Some(task_repo) = &self.machine.context.services.task_repo {
+                    let task_id_typed = TaskId::from_string(self.machine.context.task_id.clone());
+                    if let Ok(Some(task)) = task_repo.get_by_id(&task_id_typed).await {
+                        let mut meta: serde_json::Value = task
+                            .metadata
+                            .as_deref()
+                            .and_then(|s| serde_json::from_str(s).ok())
+                            .unwrap_or_else(|| serde_json::json!({}));
+                        freshness::FreshnessMetadata::cleanup(
+                            freshness::FreshnessCleanupScope::RoutingOnly,
+                            &mut meta,
+                        );
+                        if let Err(e) = task_repo
+                            .update_metadata(&task_id_typed, Some(meta.to_string()))
+                            .await
+                        {
+                            tracing::warn!(
+                                task_id = %self.machine.context.task_id,
+                                error = %e,
+                                "Failed to clear freshness routing metadata on ReviewPassed"
+                            );
+                        }
+                    }
+                }
+
                 // Emit 'review:ai_approved' event
                 self.machine
                     .context

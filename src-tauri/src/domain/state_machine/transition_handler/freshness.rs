@@ -86,6 +86,13 @@ pub struct FreshnessMetadata {
     /// 0 = never auto-reset; 1 = auto-reset once (second cap → ExecutionBlocked).
     #[serde(default)]
     pub freshness_auto_reset_count: u8,
+
+    /// Signals which code path already incremented freshness_conflict_count.
+    /// Set to Some("ensure_branches_fresh") by apply_freshness_result() when the
+    /// normal freshness check path is used. Absent for the conflict marker scan path.
+    /// Used by the BranchFreshnessConflict handler to avoid double-counting.
+    #[serde(default)]
+    pub freshness_count_incremented_by: Option<String>,
 }
 
 /// Scope of cleanup to perform on freshness metadata.
@@ -116,6 +123,7 @@ impl FreshnessMetadata {
         "target_branch",
         "freshness_backoff_until",
         "freshness_auto_reset_count",
+        "freshness_count_incremented_by",
     ];
 
     /// Dispatch cleanup by scope.
@@ -155,6 +163,7 @@ impl FreshnessMetadata {
         self.conflict_files = Vec::new();
         self.source_branch = None;
         self.target_branch = None;
+        self.freshness_count_incremented_by = None;
     }
 
     /// Reset conflict state (count=0, backoff_until=None, auto_reset_count=0).
@@ -238,6 +247,13 @@ impl FreshnessMetadata {
             "freshness_auto_reset_count".to_owned(),
             Value::Number(self.freshness_auto_reset_count.into()),
         );
+        match &self.freshness_count_incremented_by {
+            Some(s) => obj.insert(
+                "freshness_count_incremented_by".to_owned(),
+                Value::String(s.clone()),
+            ),
+            None => obj.remove("freshness_count_incremented_by"),
+        };
     }
 
     /// Remove all freshness keys from task metadata JSON.
@@ -834,6 +850,7 @@ mod field_sync_tests {
             target_branch: Some("plan/foo".to_string()),
             freshness_backoff_until: Some(Utc::now()),
             freshness_auto_reset_count: 0,
+            freshness_count_incremented_by: Some("ensure_branches_fresh".to_string()),
         };
         let mut json = serde_json::json!({});
         meta.merge_into(&mut json);
@@ -850,7 +867,7 @@ mod field_sync_tests {
         // Field count: update this when adding fields to FreshnessMetadata
         assert_eq!(
             FreshnessMetadata::KEYS.len(),
-            11,
+            12,
             "KEYS length mismatch — update this assertion when adding fields"
         );
     }
@@ -891,6 +908,7 @@ mod field_sync_tests {
             freshness_backoff_until: Some(Utc::now() + chrono::Duration::seconds(60)),
             freshness_auto_reset_count: 1,
             last_freshness_check_at: None,
+            freshness_count_incremented_by: Some("ensure_branches_fresh".to_string()),
         };
         meta.clear_routing_flags();
 
@@ -901,6 +919,7 @@ mod field_sync_tests {
         assert!(meta.conflict_files.is_empty());
         assert!(meta.source_branch.is_none());
         assert!(meta.target_branch.is_none());
+        assert!(meta.freshness_count_incremented_by.is_none());
         // Preserved:
         assert_eq!(meta.freshness_conflict_count, 3);
         assert!(meta.freshness_backoff_until.is_some());

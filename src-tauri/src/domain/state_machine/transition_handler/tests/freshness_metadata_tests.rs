@@ -107,6 +107,7 @@ fn test_merge_into_writes_all_fields() {
         target_branch: Some("plan/branch".to_owned()),
         freshness_backoff_until: None,
         freshness_auto_reset_count: 0,
+        freshness_count_incremented_by: None,
     };
 
     let mut metadata = json!({});
@@ -265,6 +266,7 @@ fn test_serde_round_trip_full_struct() {
         target_branch: Some("plan/p1".to_owned()),
         freshness_backoff_until: None,
         freshness_auto_reset_count: 0,
+        freshness_count_incremented_by: None,
     };
 
     let mut metadata = json!({});

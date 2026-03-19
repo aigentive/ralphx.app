@@ -519,6 +519,18 @@ fn state_to_internal_status(
 }
 
 // ============================================================================
+// Corrective transition helper types
+// ============================================================================
+
+/// Result returned by [`TaskTransitionService::apply_corrective_transition`].
+pub(crate) struct CorrectionResult {
+    /// The task in its post-update state (internal_status = target_status).
+    pub task: Task,
+    /// The status the task was in before the correction (captured from re-fetched task).
+    pub from_status: InternalStatus,
+}
+
+// ============================================================================
 // TaskTransitionService
 // ============================================================================
 
@@ -1000,6 +1012,118 @@ impl<R: Runtime> TaskTransitionService<R> {
             .await
     }
 
+    /// Build the common TaskServices shared by both entry and exit action handlers.
+    ///
+    /// Caller-specific fields (merge_lock / merges_in_flight / validation_tokens /
+    /// self_arc for entry; activity_event_repo for exit) must be added by the
+    /// caller after this returns.
+    fn build_task_services_common(&self) -> crate::domain::state_machine::context::TaskServices {
+        use crate::domain::state_machine::context::TaskServices;
+
+        let mut services = TaskServices::new(
+            Arc::clone(&self.agent_spawner),
+            Arc::clone(&self.event_emitter),
+            Arc::clone(&self.notifier),
+            Arc::clone(&self.dependency_manager),
+            Arc::clone(&self.review_starter),
+            Arc::clone(&self.chat_service),
+        )
+        .with_execution_state(Arc::clone(&self.execution_state))
+        .with_task_repo(Arc::clone(&self.task_repo))
+        .with_project_repo(Arc::clone(&self.project_repo));
+
+        if let Some(ref handle) = self._app_handle {
+            services = services.try_with_app_handle(handle.clone());
+        }
+        if let Some(ref scheduler) = self.task_scheduler {
+            services = services.with_task_scheduler(Arc::clone(scheduler));
+        }
+        if let Some(ref repo) = self.plan_branch_repo {
+            services = services.with_plan_branch_repo(Arc::clone(repo));
+        }
+        if let Some(ref repo) = self.step_repo {
+            services = services.with_step_repo(Arc::clone(repo));
+        }
+        if let Some(ref repo) = self.ideation_session_repo {
+            services = services.with_ideation_session_repo(Arc::clone(repo));
+        }
+        if let Some(ref registry) = self.pr_poller_registry {
+            services = services
+                .with_pr_creation_guard(Arc::clone(&registry.pr_creation_guard))
+                .with_pr_poller_registry(Arc::clone(registry));
+        }
+        if let Some(ref svc) = self.github_service {
+            services = services.with_github_service(Arc::clone(svc));
+        }
+        services
+    }
+
+    /// Apply a corrective status transition after an error in `on_enter`.
+    ///
+    /// Encapsulates the shared boilerplate across all three error-correction handlers:
+    /// re-fetch task → set target status (+ optional `blocked_reason`) →
+    /// optimistic-lock update (`update_with_expected_status`) → persist transition history.
+    ///
+    /// Does **not** emit events — the caller is responsible for event emission and any
+    /// async post-actions (e.g., spawning a merger agent).
+    ///
+    /// # Returns
+    /// - `Some(CorrectionResult)` on success (lock acquired, DB updated, history persisted).
+    /// - `None` when the optimistic lock fails (another caller already transitioned the
+    ///   task) or the task is not found; logs an appropriate message in each case.
+    async fn apply_corrective_transition(
+        &self,
+        task_id: &TaskId,
+        target_status: InternalStatus,
+        blocked_reason: Option<String>,
+        history_actor: &str,
+    ) -> Option<CorrectionResult> {
+        let Ok(Some(mut task)) = self.task_repo.get_by_id(task_id).await else {
+            tracing::warn!(
+                task_id = task_id.as_str(),
+                "apply_corrective_transition: task not found — skipping"
+            );
+            return None;
+        };
+        let from_status = task.internal_status;
+        task.internal_status = target_status;
+        if let Some(br) = blocked_reason {
+            task.blocked_reason = Some(br);
+        }
+        task.touch();
+
+        match self
+            .task_repo
+            .update_with_expected_status(&task, from_status)
+            .await
+        {
+            Ok(false) => {
+                tracing::info!(
+                    task_id = task_id.as_str(),
+                    from = from_status.as_str(),
+                    to = target_status.as_str(),
+                    "apply_corrective_transition: task already transitioned by another caller, skipping"
+                );
+                None
+            }
+            Err(update_err) => {
+                tracing::error!(
+                    error = %update_err,
+                    to = target_status.as_str(),
+                    "apply_corrective_transition: failed to persist corrective status"
+                );
+                None
+            }
+            Ok(true) => {
+                let _ = self
+                    .task_repo
+                    .persist_status_change(task_id, from_status, target_status, history_actor)
+                    .await;
+                Some(CorrectionResult { task, from_status })
+            }
+        }
+    }
+
     /// Execute entry actions for a given status, including auto-transitions.
     ///
     /// This method delegates to TransitionHandler::on_enter() to ensure we use
@@ -1015,7 +1139,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         status: InternalStatus,
     ) {
         use crate::domain::state_machine::{
-            context::{TaskContext, TaskServices},
+            context::TaskContext,
             machine::TaskStateMachine,
             transition_handler::TransitionHandler,
         };
@@ -1047,38 +1171,8 @@ impl<R: Runtime> TaskTransitionService<R> {
             }
         }
 
-        // Build TaskServices from our services
-        let mut services = TaskServices::new(
-            Arc::clone(&self.agent_spawner),
-            Arc::clone(&self.event_emitter),
-            Arc::clone(&self.notifier),
-            Arc::clone(&self.dependency_manager),
-            Arc::clone(&self.review_starter),
-            Arc::clone(&self.chat_service),
-        )
-        .with_execution_state(Arc::clone(&self.execution_state))
-        .with_task_repo(Arc::clone(&self.task_repo))
-        .with_project_repo(Arc::clone(&self.project_repo));
-
-        // Pass app_handle for event emission (uses try_with_app_handle for generic R)
-        if let Some(ref handle) = self._app_handle {
-            services = services.try_with_app_handle(handle.clone());
-        }
-
-        // Pass task scheduler for auto-scheduling Ready tasks
-        if let Some(ref scheduler) = self.task_scheduler {
-            services = services.with_task_scheduler(Arc::clone(scheduler));
-        }
-
-        // Pass plan branch repository for feature branch resolution
-        if let Some(ref plan_branch_repo) = self.plan_branch_repo {
-            services = services.with_plan_branch_repo(Arc::clone(plan_branch_repo));
-        }
-
-        // Pass step repository for updating step statuses on task failure
-        if let Some(ref step_repo) = self.step_repo {
-            services = services.with_step_repo(Arc::clone(step_repo));
-        }
+        // Build common TaskServices, then add entry-specific fields.
+        let mut services = self.build_task_services_common();
 
         // Pass shared merge lock for TOCTOU-safe concurrent merge guard
         services = services.with_merge_lock(Arc::clone(&self.merge_lock));
@@ -1088,23 +1182,6 @@ impl<R: Runtime> TaskTransitionService<R> {
 
         // Pass shared validation_tokens DashMap for cancelling in-flight validations
         services = services.with_validation_tokens(Arc::clone(&self.validation_tokens));
-
-        // Pass ideation session repository for plan merge commit message generation
-        if let Some(ref session_repo) = self.ideation_session_repo {
-            services = services.with_ideation_session_repo(Arc::clone(session_repo));
-        }
-
-        // Pass PR poller registry for GitHub PR polling
-        if let Some(ref registry) = self.pr_poller_registry {
-            services = services
-                .with_pr_creation_guard(Arc::clone(&registry.pr_creation_guard))
-                .with_pr_poller_registry(Arc::clone(registry));
-        }
-
-        // Pass GitHub service for PR operations
-        if let Some(ref github_svc) = self.github_service {
-            services = services.with_github_service(Arc::clone(github_svc));
-        }
 
         // Pass self-arc as transition_service for PR merge poller (AD17).
         // Downcast from Arc<dyn Any> → Arc<TaskTransitionService<Wry>> (only succeeds for Wry runtime).
@@ -1129,86 +1206,58 @@ impl<R: Runtime> TaskTransitionService<R> {
         if let Err(e) = handler.on_enter(&state).await {
             tracing::error!(error = %e, "on_enter failed");
 
-            // If execution was blocked (e.g., git isolation failure), transition task to Failed
+            // If execution was blocked (e.g., git isolation failure), transition task to Failed.
             if let AppError::ExecutionBlocked(ref blocked_reason) = e {
                 tracing::warn!(
                     task_id = task_id.as_str(),
                     error = %e,
                     "ExecutionBlocked during on_enter — transitioning task to Failed"
                 );
-                if let Ok(Some(mut failed_task)) = self.task_repo.get_by_id(task_id).await {
-                    let from_status = failed_task.internal_status;
-                    failed_task.internal_status = InternalStatus::Failed;
-                    failed_task.blocked_reason = Some(e.to_string());
-                    failed_task.touch();
-                    // Use optimistic lock: only overwrite to Failed if task is still in the
-                    // expected state. Prevents clobbering if another caller already transitioned it.
-                    match self
-                        .task_repo
-                        .update_with_expected_status(&failed_task, from_status)
-                        .await
-                    {
-                        Ok(false) => {
+                if let Some(result) = self
+                    .apply_corrective_transition(
+                        task_id,
+                        InternalStatus::Failed,
+                        Some(e.to_string()),
+                        "system",
+                    )
+                    .await
+                {
+                    // Emit event for UI
+                    if let Some(ref handle) = self._app_handle {
+                        let _ = handle.emit(
+                            "task:event",
+                            serde_json::json!({
+                                "type": "status_changed",
+                                "taskId": task_id.as_str(),
+                                "from": result.from_status.as_str(),
+                                "to": "failed",
+                                "changedBy": "system",
+                                "reason": e.to_string(),
+                            }),
+                        );
+                    }
+                    // Create ExecutionRecoveryMetadata for git isolation failures.
+                    // Written ONLY after the optimistic lock succeeded (inside apply_corrective_transition
+                    // Ok(true) branch), so the task IS in Failed state. This prevents orphaned metadata
+                    // on tasks that another caller already transitioned.
+                    if let Some(recovery_json) = create_git_isolation_recovery_metadata_json(
+                        blocked_reason,
+                        result.task.metadata.as_deref(),
+                    ) {
+                        if let Err(meta_err) = self
+                            .task_repo
+                            .update_metadata(task_id, Some(recovery_json))
+                            .await
+                        {
+                            tracing::error!(
+                                error = %meta_err,
+                                "Failed to persist ExecutionRecoveryMetadata after git isolation ExecutionBlocked"
+                            );
+                        } else {
                             tracing::info!(
                                 task_id = task_id.as_str(),
-                                from = from_status.as_str(),
-                                "Task already transitioned by another caller, skipping Failed overwrite"
+                                "ExecutionRecoveryMetadata persisted for git isolation failure — task eligible for auto-recovery"
                             );
-                        }
-                        Err(update_err) => {
-                            tracing::error!(error = %update_err, "Failed to persist Failed status after ExecutionBlocked");
-                        }
-                        Ok(true) => {
-                            // Record state history
-                            let _ = self
-                                .task_repo
-                                .persist_status_change(
-                                    task_id,
-                                    from_status,
-                                    InternalStatus::Failed,
-                                    "system",
-                                )
-                                .await;
-                            // Emit event for UI
-                            if let Some(ref handle) = self._app_handle {
-                                let _ = handle.emit(
-                                    "task:event",
-                                    serde_json::json!({
-                                        "type": "status_changed",
-                                        "taskId": task_id.as_str(),
-                                        "from": from_status.as_str(),
-                                        "to": "failed",
-                                        "changedBy": "system",
-                                        "reason": e.to_string(),
-                                    }),
-                                );
-                            }
-                            // Create ExecutionRecoveryMetadata for git isolation failures.
-                            // Written ONLY here (Ok(true) branch) — optimistic lock succeeded,
-                            // task IS now in Failed state. Ok(false) branch skips to prevent
-                            // orphaned metadata on a task that didn't transition.
-                            if let Some(recovery_json) =
-                                create_git_isolation_recovery_metadata_json(
-                                    blocked_reason,
-                                    failed_task.metadata.as_deref(),
-                                )
-                            {
-                                if let Err(meta_err) = self
-                                    .task_repo
-                                    .update_metadata(task_id, Some(recovery_json))
-                                    .await
-                                {
-                                    tracing::error!(
-                                        error = %meta_err,
-                                        "Failed to persist ExecutionRecoveryMetadata after git isolation ExecutionBlocked"
-                                    );
-                                } else {
-                                    tracing::info!(
-                                        task_id = task_id.as_str(),
-                                        "ExecutionRecoveryMetadata persisted for git isolation failure — task eligible for auto-recovery"
-                                    );
-                                }
-                            }
                         }
                     }
                 }
@@ -1216,18 +1265,27 @@ impl<R: Runtime> TaskTransitionService<R> {
         }
         tracing::debug!("TransitionHandler::on_enter complete");
 
+        // === AUTO-TRANSITION LOOP ===
         // Check for auto-transitions (e.g., PendingReview → Reviewing, RevisionNeeded → ReExecuting)
-        // This is critical for states that should immediately transition to spawn an agent
-        if let Some(auto_state) = handler.check_auto_transition(&state) {
+        // This is critical for states that should immediately transition to spawn an agent.
+        // Currently runs at most once per call (single auto-transition step); the loop structure
+        // enables Wave 2A's `continue` semantics for PendingReview re-entry after corrective routing.
+        let mut current_state = state;
+        loop {
+            let auto_state = match handler.check_auto_transition(&current_state) {
+                Some(s) => s,
+                None => break,
+            };
+            let current_status = state_to_internal_status(&current_state);
             let auto_status = state_to_internal_status(&auto_state);
             tracing::info!(
-                from = status.as_str(),
+                from = current_status.as_str(),
                 to = auto_status.as_str(),
                 "Auto-transition triggered"
             );
 
             // Execute on_exit for the intermediate state
-            handler.on_exit(&state, &auto_state).await;
+            handler.on_exit(&current_state, &auto_state).await;
 
             // Persist the auto-transition to the database
             if let Ok(Some(mut updated_task)) = self.task_repo.get_by_id(task_id).await {
@@ -1262,7 +1320,7 @@ impl<R: Runtime> TaskTransitionService<R> {
                     serde_json::json!({
                         "type": "status_changed",
                         "taskId": task_id.as_str(),
-                        "from": status.as_str(),
+                        "from": current_status.as_str(),
                         "to": auto_status.as_str(),
                         "changedBy": "auto",
                     }),
@@ -1274,76 +1332,154 @@ impl<R: Runtime> TaskTransitionService<R> {
             if let Err(e) = handler.on_enter(&auto_state).await {
                 tracing::error!(error = %e, "on_enter failed for auto-transition state {:?}", auto_state);
 
-                // BranchFreshnessConflict during auto-transition (e.g., PendingReview → Reviewing)
-                // means conflict markers are present. Route task to Merging so the merger agent
-                // can resolve them, instead of leaving it stuck in Reviewing with no agent.
+                // BranchFreshnessConflict during auto-transition: route based on where the
+                // conflict originated. "reviewing" origin → PendingReview (re-queue for review,
+                // preserving review requirement). "executing"/"re_executing"/absent → Merging
+                // (existing behavior for execution-phase conflicts).
                 if matches!(&e, AppError::BranchFreshnessConflict) {
                     use crate::domain::state_machine::machine::State;
+                    use crate::domain::state_machine::transition_handler::freshness::FreshnessMetadata;
+
+                    // Read freshness metadata written by on_enter_states.rs before the error.
+                    let fresh_task = self
+                        .task_repo
+                        .get_by_id(task_id)
+                        .await
+                        .ok()
+                        .flatten();
+                    let task_meta_val: serde_json::Value = fresh_task
+                        .as_ref()
+                        .and_then(|t| t.metadata.as_deref())
+                        .and_then(|m| serde_json::from_str(m).ok())
+                        .unwrap_or_else(|| serde_json::json!({}));
+
+                    let freshness_origin = task_meta_val["freshness_origin_state"]
+                        .as_str()
+                        .map(|s| s.to_owned());
+                    let reviewing_origin = freshness_origin.as_deref() == Some("reviewing");
+
+                    // Conditional increment: ensure_branches_fresh() already increments
+                    // freshness_conflict_count for the normal freshness path. The conflict
+                    // marker scan path (on_enter_states.rs) bypasses ensure_branches_fresh
+                    // and does NOT increment. Increment here only for the marker scan path.
+                    let already_incremented = task_meta_val["freshness_count_incremented_by"]
+                        .as_str()
+                        .is_some();
+                    let conflict_count = if already_incremented {
+                        task_meta_val["freshness_conflict_count"]
+                            .as_u64()
+                            .unwrap_or(0) as u32
+                    } else {
+                        // Conflict marker scan path: increment and persist
+                        let mut freshness = FreshnessMetadata::from_task_metadata(&task_meta_val);
+                        freshness.freshness_conflict_count += 1;
+                        let mut updated_meta = task_meta_val.clone();
+                        freshness.merge_into(&mut updated_meta);
+                        let task_id_clone = task_id.clone();
+                        let _ = self
+                            .task_repo
+                            .update_metadata(&task_id_clone, Some(updated_meta.to_string()))
+                            .await;
+                        freshness.freshness_conflict_count
+                    };
+
+                    // Cap check: >= 5 during review → escalate to Failed to prevent
+                    // infinite PendingReview↔Reviewing loops.
+                    const FRESHNESS_RETRY_LIMIT: u32 = 5;
+                    if reviewing_origin && conflict_count >= FRESHNESS_RETRY_LIMIT {
+                        tracing::warn!(
+                            task_id = task_id.as_str(),
+                            conflict_count = conflict_count,
+                            "Freshness retry limit exceeded during review — escalating to Failed"
+                        );
+                        handler.on_exit(&auto_state, &State::Failed(Default::default())).await;
+                        if let Some(result) = self
+                            .apply_corrective_transition(
+                                task_id,
+                                InternalStatus::Failed,
+                                Some("Exceeded freshness retry limit during review".to_string()),
+                                "system",
+                            )
+                            .await
+                        {
+                            if let Some(ref handle) = self._app_handle {
+                                let _ = handle.emit(
+                                    "task:event",
+                                    serde_json::json!({
+                                        "type": "status_changed",
+                                        "taskId": task_id.as_str(),
+                                        "from": result.from_status.as_str(),
+                                        "to": "failed",
+                                        "changedBy": "system",
+                                        "reason": "Exceeded freshness retry limit during review",
+                                    }),
+                                );
+                            }
+                        }
+                        break;
+                    }
+
+                    let (target_state, corrective_status, to_str) = if reviewing_origin {
+                        (State::PendingReview, InternalStatus::PendingReview, "pending_review")
+                    } else {
+                        (State::Merging, InternalStatus::Merging, "merging")
+                    };
 
                     tracing::warn!(
                         task_id = task_id.as_str(),
                         from = auto_status.as_str(),
-                        "BranchFreshnessConflict during auto-transition on_enter — routing to Merging"
+                        origin = ?freshness_origin,
+                        routing_to = to_str,
+                        "BranchFreshnessConflict during auto-transition on_enter — routing to {:?}",
+                        target_state
                     );
 
-                    // Clean up the auto-transition target state
-                    handler.on_exit(&auto_state, &State::Merging).await;
+                    // Clean up the auto-transition target state using dynamically-determined target
+                    handler.on_exit(&auto_state, &target_state).await;
 
-                    // Re-fetch task and update to Merging with TOCTOU safety
-                    if let Ok(Some(mut merging_task)) = self.task_repo.get_by_id(task_id).await {
-                        merging_task.internal_status = InternalStatus::Merging;
-                        merging_task.touch();
+                    if let Some(result) = self
+                        .apply_corrective_transition(
+                            task_id,
+                            corrective_status,
+                            None,
+                            "system",
+                        )
+                        .await
+                    {
+                        let reason = if reviewing_origin {
+                            "BranchFreshnessConflict during review — re-queuing for review"
+                        } else {
+                            "BranchFreshnessConflict during auto-transition"
+                        };
 
-                        match self
-                            .task_repo
-                            .update_with_expected_status(&merging_task, auto_status)
-                            .await
-                        {
-                            Ok(false) => {
-                                tracing::info!(
-                                    task_id = task_id.as_str(),
-                                    expected = auto_status.as_str(),
-                                    "Task already transitioned by another caller, skipping Merging overwrite"
+                        // Emit corrective event for UI
+                        if let Some(ref handle) = self._app_handle {
+                            let _ = handle.emit(
+                                "task:event",
+                                serde_json::json!({
+                                    "type": "status_changed",
+                                    "taskId": task_id.as_str(),
+                                    "from": result.from_status.as_str(),
+                                    "to": to_str,
+                                    "changedBy": "system",
+                                    "reason": reason,
+                                }),
+                            );
+                        }
+
+                        if reviewing_origin {
+                            // Re-enter auto-transition loop: current_state is still PendingReview
+                            // (unchanged since we didn't reach `current_state = auto_state`).
+                            // Next iteration: check_auto_transition(PendingReview) → Reviewing.
+                            continue;
+                        } else {
+                            // Spawn merger agent (existing behavior for execution-phase conflicts)
+                            let merging_state = State::Merging;
+                            if let Err(merge_err) = handler.on_enter(&merging_state).await {
+                                tracing::error!(
+                                    error = %merge_err,
+                                    "on_enter(Merging) failed after BranchFreshnessConflict correction"
                                 );
-                            }
-                            Err(update_err) => {
-                                tracing::error!(error = %update_err, "Failed to persist Merging status after BranchFreshnessConflict");
-                            }
-                            Ok(true) => {
-                                // Record corrective transition in history
-                                let _ = self
-                                    .task_repo
-                                    .persist_status_change(
-                                        task_id,
-                                        auto_status,
-                                        InternalStatus::Merging,
-                                        "system",
-                                    )
-                                    .await;
-
-                                // Emit corrective event for UI
-                                if let Some(ref handle) = self._app_handle {
-                                    let _ = handle.emit(
-                                        "task:event",
-                                        serde_json::json!({
-                                            "type": "status_changed",
-                                            "taskId": task_id.as_str(),
-                                            "from": auto_status.as_str(),
-                                            "to": "merging",
-                                            "changedBy": "system",
-                                            "reason": "BranchFreshnessConflict during auto-transition",
-                                        }),
-                                    );
-                                }
-
-                                // Spawn merger agent
-                                let merging_state = State::Merging;
-                                if let Err(merge_err) = handler.on_enter(&merging_state).await {
-                                    tracing::error!(
-                                        error = %merge_err,
-                                        "on_enter(Merging) failed after BranchFreshnessConflict correction"
-                                    );
-                                }
                             }
                         }
                     }
@@ -1358,58 +1494,35 @@ impl<R: Runtime> TaskTransitionService<R> {
 
                     handler.on_exit(&auto_state, &State::Escalated).await;
 
-                    // Re-fetch task and update to Escalated with TOCTOU safety
-                    if let Ok(Some(mut escalated_task)) = self.task_repo.get_by_id(task_id).await {
-                        escalated_task.internal_status = InternalStatus::Escalated;
-                        escalated_task.touch();
-
-                        match self
-                            .task_repo
-                            .update_with_expected_status(&escalated_task, auto_status)
-                            .await
-                        {
-                            Ok(false) => {
-                                tracing::info!(
-                                    task_id = task_id.as_str(),
-                                    expected = auto_status.as_str(),
-                                    "Task already transitioned by another caller, skipping Escalated overwrite"
-                                );
-                            }
-                            Err(update_err) => {
-                                tracing::error!(error = %update_err, "Failed to persist Escalated status after ReviewWorktreeMissing");
-                            }
-                            Ok(true) => {
-                                // Record corrective transition in history
-                                let _ = self
-                                    .task_repo
-                                    .persist_status_change(
-                                        task_id,
-                                        auto_status,
-                                        InternalStatus::Escalated,
-                                        "system",
-                                    )
-                                    .await;
-
-                                // Emit corrective event for UI
-                                if let Some(ref handle) = self._app_handle {
-                                    let _ = handle.emit(
-                                        "task:event",
-                                        serde_json::json!({
-                                            "type": "status_changed",
-                                            "taskId": task_id.as_str(),
-                                            "from": auto_status.as_str(),
-                                            "to": "escalated",
-                                            "changedBy": "system",
-                                            "reason": "ReviewWorktreeMissing during auto-transition",
-                                        }),
-                                    );
-                                }
-                            }
+                    if let Some(result) = self
+                        .apply_corrective_transition(
+                            task_id,
+                            InternalStatus::Escalated,
+                            None,
+                            "system",
+                        )
+                        .await
+                    {
+                        // Emit corrective event for UI
+                        if let Some(ref handle) = self._app_handle {
+                            let _ = handle.emit(
+                                "task:event",
+                                serde_json::json!({
+                                    "type": "status_changed",
+                                    "taskId": task_id.as_str(),
+                                    "from": result.from_status.as_str(),
+                                    "to": "escalated",
+                                    "changedBy": "system",
+                                    "reason": "ReviewWorktreeMissing during auto-transition",
+                                }),
+                            );
                         }
                     }
                 }
+                break; // Error handled — exit auto-transition loop
             }
             tracing::debug!(?auto_state, "Auto-transition on_enter complete");
+            current_state = auto_state;
         }
     }
 
@@ -1426,7 +1539,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         to_status: InternalStatus,
     ) {
         use crate::domain::state_machine::{
-            context::{TaskContext, TaskServices},
+            context::TaskContext,
             machine::TaskStateMachine,
             transition_handler::TransitionHandler,
         };
@@ -1434,59 +1547,10 @@ impl<R: Runtime> TaskTransitionService<R> {
         let from_state = internal_status_to_state(from_status);
         let to_state = internal_status_to_state(to_status);
 
-        // Build TaskServices from our services
-        let mut services = TaskServices::new(
-            Arc::clone(&self.agent_spawner),
-            Arc::clone(&self.event_emitter),
-            Arc::clone(&self.notifier),
-            Arc::clone(&self.dependency_manager),
-            Arc::clone(&self.review_starter),
-            Arc::clone(&self.chat_service),
-        )
-        .with_execution_state(Arc::clone(&self.execution_state))
-        .with_task_repo(Arc::clone(&self.task_repo))
-        .with_project_repo(Arc::clone(&self.project_repo));
-
-        // Pass app_handle for event emission (uses try_with_app_handle for generic R)
-        if let Some(ref handle) = self._app_handle {
-            services = services.try_with_app_handle(handle.clone());
-        }
-
-        // Pass task scheduler for auto-scheduling Ready tasks
-        if let Some(ref scheduler) = self.task_scheduler {
-            services = services.with_task_scheduler(Arc::clone(scheduler));
-        }
-
-        // Pass plan branch repository for feature branch resolution
-        if let Some(ref plan_branch_repo) = self.plan_branch_repo {
-            services = services.with_plan_branch_repo(Arc::clone(plan_branch_repo));
-        }
-
-        // Pass step repository for updating step statuses on task failure
-        if let Some(ref step_repo) = self.step_repo {
-            services = services.with_step_repo(Arc::clone(step_repo));
-        }
-
-        // Pass ideation session repository for plan merge commit message generation
-        if let Some(ref session_repo) = self.ideation_session_repo {
-            services = services.with_ideation_session_repo(Arc::clone(session_repo));
-        }
-
-        // Pass activity event repository for merge pipeline audit events
-        services =
-            services.with_activity_event_repo(Arc::clone(&self.activity_event_repo));
-
-        // Pass PR poller registry for GitHub PR polling
-        if let Some(ref registry) = self.pr_poller_registry {
-            services = services
-                .with_pr_creation_guard(Arc::clone(&registry.pr_creation_guard))
-                .with_pr_poller_registry(Arc::clone(registry));
-        }
-
-        // Pass GitHub service for PR operations
-        if let Some(ref github_svc) = self.github_service {
-            services = services.with_github_service(Arc::clone(github_svc));
-        }
+        // Build common TaskServices, then add exit-specific fields.
+        let services = self
+            .build_task_services_common()
+            .with_activity_event_repo(Arc::clone(&self.activity_event_repo));
 
         // Create TaskContext
         let context = TaskContext::new(task_id.as_str(), task.project_id.as_str(), services);

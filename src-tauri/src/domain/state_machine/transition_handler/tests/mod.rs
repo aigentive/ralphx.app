@@ -186,6 +186,10 @@ mod transitions_freshness;
 // FreshnessMetadata unit tests: from_task_metadata, merge_into, clear_from, serde round-trips
 mod freshness_metadata_tests;
 
+// Stale freshness metadata cleanup on on_enter(ReviewPassed):
+//   clears freshness_origin_state + freshness_count_incremented_by via RoutingOnly scope
+mod review_passed_metadata_cleanup_tests;
+
 // Freshness return routing unit tests: routing decision for each origin state,
 // metadata clearing on return, flag detection for early-return trigger
 mod merge_freshness_return_tests;
