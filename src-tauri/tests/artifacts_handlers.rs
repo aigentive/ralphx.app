@@ -15,7 +15,8 @@ use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
     Artifact, ArtifactContent, ArtifactId, ArtifactMetadata, ArtifactType, IdeationSession,
-    IdeationSessionId, IdeationSessionStatus, ProjectId, SessionPurpose, VerificationStatus,
+    IdeationSessionId, IdeationSessionStatus, Project, ProjectId, SessionPurpose,
+    VerificationStatus,
 };
 use ralphx_lib::domain::repositories::IdeationSessionRepository;
 use ralphx_lib::domain::services::running_agent_registry::RunningAgentKey;
@@ -535,6 +536,68 @@ async fn test_get_session_plan_returns_none_when_no_plan() {
     assert!(
         result.0.is_none(),
         "Session with no plan should return None (got Some)"
+    );
+}
+
+// ============================================================
+// Test 10: get_session_plan populates project_working_directory when project exists
+// ============================================================
+
+/// Scenario: session belongs to a project with a working_directory set.
+/// get_session_plan must populate project_working_directory in the response.
+#[tokio::test]
+async fn test_get_session_plan_includes_project_working_directory() {
+    let state = setup_test_state().await;
+
+    // Create a real project with working_directory set
+    let expected_dir = "/test/projects/my-project".to_string();
+    let project = Project::new("My Test Project".to_string(), expected_dir.clone());
+    let project_id = project.id.clone();
+    state
+        .app_state
+        .project_repo
+        .create(project)
+        .await
+        .expect("Failed to create project");
+
+    // Create an ideation session linked to that project
+    let mut session = make_active_session();
+    session.project_id = project_id.clone();
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    // Create a plan so get_session_plan returns Some(...)
+    let _plan = create_plan_artifact(
+        State(state.clone()),
+        Json(CreatePlanArtifactRequest {
+            session_id: session_id.as_str().to_string(),
+            title: "Test Plan".to_string(),
+            content: "Plan content".to_string(),
+        }),
+    )
+    .await
+    .expect("create_plan_artifact should succeed");
+
+    // Act: get_session_plan
+    let result = get_session_plan(
+        State(state.clone()),
+        Path(session_id.as_str().to_string()),
+    )
+    .await
+    .expect("get_session_plan should succeed")
+    .0
+    .expect("Session with plan should return Some");
+
+    // Assert: project_working_directory is populated
+    assert_eq!(
+        result.project_working_directory,
+        Some(expected_dir),
+        "project_working_directory must be populated from the project record"
     );
 }
 

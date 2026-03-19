@@ -226,3 +226,93 @@ describe("callTauriGet — retry on network errors", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// safeJsonParse — empty body and non-JSON resilience
+// ---------------------------------------------------------------------------
+
+describe("callTauri — safeJsonParse resilience", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("2xx valid JSON → returns parsed object", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "abc" }), { status: 200 })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await callTauri("test_endpoint", {});
+    expect(result).toEqual({ id: "abc" });
+  });
+
+  it("2xx empty body → returns null instead of throwing", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response("", { status: 200 })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await callTauri("set_cross_project_checked", {});
+    expect(result).toBeNull();
+  });
+
+  it("2xx non-JSON text → returns null instead of throwing", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response("OK", { status: 200 })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await callTauri("test_endpoint", {});
+    expect(result).toBeNull();
+  });
+
+  it("4xx → throws TauriClientError (not swallowed)", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: "forbidden" }), {
+        status: 403,
+        statusText: "Forbidden",
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(callTauri("test_endpoint", {})).rejects.toThrow(TauriClientError);
+  });
+
+  it("5xx → throws TauriClientError (after retries)", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: "server error" }), {
+        status: 500,
+        statusText: "Internal Server Error",
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(callTauri("test_endpoint", {})).rejects.toThrow(TauriClientError);
+  });
+});
+
+describe("callTauriGet — safeJsonParse resilience", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("2xx empty body → returns null", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response("", { status: 200 })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await callTauriGet("some/endpoint");
+    expect(result).toBeNull();
+  });
+
+  it("2xx non-JSON text → returns null", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response("plain text", { status: 200 })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await callTauriGet("some/endpoint");
+    expect(result).toBeNull();
+  });
+});

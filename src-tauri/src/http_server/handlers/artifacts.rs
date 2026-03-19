@@ -823,8 +823,18 @@ pub async fn get_session_plan(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
+    let project_working_dir = state
+        .app_state
+        .project_repo
+        .get_by_id(&session.project_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|p| p.working_directory.clone());
+
     let mut response = ArtifactResponse::from(artifact);
     response.is_inherited = Some(is_inherited);
+    response.project_working_directory = project_working_dir;
     Ok(Json(Some(response)))
 }
 

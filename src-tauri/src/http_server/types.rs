@@ -513,6 +513,9 @@ pub struct ArtifactResponse {
     /// When true, the plan is read-only — use create_plan_artifact to create a session-specific plan.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_inherited: Option<bool>,
+    /// The working directory of the project this session belongs to (only set on get_session_plan responses).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_working_directory: Option<String>,
 }
 
 impl From<Artifact> for ArtifactResponse {
@@ -533,6 +536,7 @@ impl From<Artifact> for ArtifactResponse {
             previous_artifact_id: None,
             session_id: None,
             is_inherited: None,
+            project_working_directory: None,
         }
     }
 }

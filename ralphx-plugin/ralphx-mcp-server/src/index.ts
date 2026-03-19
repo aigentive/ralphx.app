@@ -59,6 +59,36 @@ export const CROSS_PROJECT_KEYWORDS = [
 ];
 
 /**
+ * Filter out detected paths that belong to the same project root.
+ * Returns only paths that genuinely reference a different project.
+ *
+ * @param detectedPaths - Raw list of absolute or relative paths found in plan text
+ * @param projectWorkingDir - The project's working directory (e.g. /Users/alice/Code/ralphx)
+ * @returns Paths that do NOT start with projectWorkingDir (i.e. are truly cross-project)
+ */
+export function filterCrossProjectPaths(
+  detectedPaths: string[],
+  projectWorkingDir: string | null
+): string[] {
+  if (!projectWorkingDir) {
+    return detectedPaths;
+  }
+
+  // Normalize: ensure root ends with exactly one slash for prefix matching
+  const root = projectWorkingDir.endsWith("/")
+    ? projectWorkingDir
+    : projectWorkingDir + "/";
+
+  return detectedPaths.filter((p) => {
+    // Exact match: path equals project root (without trailing slash)
+    if (p === projectWorkingDir) return false;
+    // Prefix match: path is inside project root
+    if (p.startsWith(root)) return false;
+    return true;
+  });
+}
+
+/**
  * Parse command line arguments for --agent-type
  * Returns the agent type if found, undefined otherwise
  */
@@ -628,12 +658,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
 
       let planText = plan_content ?? "";
+      let projectWorkingDir: string | null = null;
 
       // If session_id provided, fetch plan content via get_session_plan
       if (session_id && !planText) {
         try {
-          const planData = await callTauriGet(`get_session_plan/${session_id}`) as { content?: string };
+          const planData = await callTauriGet(`get_session_plan/${session_id}`) as { content?: string; project_working_directory?: string };
           planText = planData?.content ?? "";
+          projectWorkingDir = planData?.project_working_directory ?? null;
         } catch (err) {
           planText = "";
           safeError(`[RalphX MCP] cross_project_guide: failed to fetch plan for session ${session_id}:`, err);
@@ -647,16 +679,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         /(?:target[_-]?project[_-]?path|project[_-]?path|working[_-]?directory)[:\s]+["']?([^\s"'`,\n]+)/gim,
       ];
 
-      const detectedPaths: string[] = [];
+      const rawDetectedPaths: string[] = [];
       for (const pattern of crossProjectPatterns) {
         const matches = [...planText.matchAll(pattern)];
         for (const m of matches) {
           const p = (m[1] || m[0]).trim().replace(/^["'`]|["'`]$/g, "");
-          if (p && !detectedPaths.includes(p)) {
-            detectedPaths.push(p);
+          if (p && !rawDetectedPaths.includes(p)) {
+            rawDetectedPaths.push(p);
           }
         }
       }
+
+      const detectedPaths = filterCrossProjectPaths(rawDetectedPaths, projectWorkingDir);
 
       const crossProjectKeywordRegex = new RegExp(CROSS_PROJECT_KEYWORDS.join("|"), "i");
 

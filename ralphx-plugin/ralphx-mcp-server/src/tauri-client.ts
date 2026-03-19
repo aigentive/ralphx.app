@@ -25,6 +25,20 @@ export class TauriClientError extends Error {
 }
 
 /**
+ * Safely parse a 2xx HTTP response body as JSON.
+ * Returns null for empty bodies or non-JSON text instead of throwing.
+ */
+async function safeJsonParse(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Returns true if the error is retryable (network errors or 502/503/504).
  * Does NOT retry 4xx client errors or 408 (permission await timeout).
  */
@@ -137,7 +151,7 @@ export async function callTauri(
         throw await parseErrorResponse(response, url);
       }
 
-      return await response.json();
+      return await safeJsonParse(response);
     } catch (error) {
       if (error instanceof TauriClientError) {
         throw error;
@@ -176,7 +190,7 @@ export async function callTauriGet(endpoint: string): Promise<unknown> {
         throw await parseErrorResponse(response, url);
       }
 
-      return await response.json();
+      return await safeJsonParse(response);
     } catch (error) {
       if (error instanceof TauriClientError) {
         throw error;
