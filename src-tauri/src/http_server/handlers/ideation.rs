@@ -834,6 +834,74 @@ pub(crate) async fn stop_verification_children(
     Ok(())
 }
 
+/// Send an `<auto-propose>` message to the orchestrator agent for external sessions
+/// that reached verification convergence via `zero_blocking`.
+///
+/// Fire-and-forget: errors are logged with `warn!` but do not affect the caller.
+async fn auto_propose_for_external(
+    session_id: &str,
+    session: &crate::domain::entities::ideation::IdeationSession,
+    state: &HttpServerState,
+) {
+    use crate::domain::entities::ideation::SessionOrigin;
+    if session.origin != SessionOrigin::External {
+        return;
+    }
+
+    let is_team_mode = session_is_team_mode(session);
+    let app = &state.app_state;
+    let mut chat_service = ClaudeChatService::new(
+        Arc::clone(&app.chat_message_repo),
+        Arc::clone(&app.chat_attachment_repo),
+        Arc::clone(&app.chat_conversation_repo),
+        Arc::clone(&app.agent_run_repo),
+        Arc::clone(&app.project_repo),
+        Arc::clone(&app.task_repo),
+        Arc::clone(&app.task_dependency_repo),
+        Arc::clone(&app.ideation_session_repo),
+        Arc::clone(&app.activity_event_repo),
+        Arc::clone(&app.message_queue),
+        Arc::clone(&app.running_agent_registry),
+        Arc::clone(&app.memory_event_repo),
+    )
+    .with_execution_state(Arc::clone(&state.execution_state))
+    .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo))
+    .with_task_proposal_repo(Arc::clone(&app.task_proposal_repo))
+    .with_interactive_process_registry(Arc::clone(&app.interactive_process_registry));
+
+    if let Some(ref handle) = app.app_handle {
+        chat_service = chat_service.with_app_handle(handle.clone());
+    }
+    chat_service = chat_service.with_team_mode(is_team_mode);
+
+    let message = "<auto-propose>\nThe plan has been verified with zero blocking gaps (convergence: zero_blocking).\nThis is an external MCP session. Auto-propose triggered.\n</auto-propose>";
+
+    match chat_service
+        .send_message(
+            ChatContextType::Ideation,
+            session_id,
+            message,
+            SendMessageOptions::default(),
+        )
+        .await
+    {
+        Ok(result) => {
+            tracing::info!(
+                session_id = %session_id,
+                delivery_status = if result.was_queued { "queued" } else { "spawned" },
+                "auto_propose_for_external: message delivered"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(
+                session_id = %session_id,
+                error = %e,
+                "auto_propose_for_external: failed to send auto-propose message"
+            );
+        }
+    }
+}
+
 /// POST /api/ideation/sessions/:id/verification
 ///
 /// Update verification state for a session's plan (from MCP orchestrator).
@@ -1253,6 +1321,14 @@ pub async fn update_plan_verification(
             None,
             Some(session.verification_generation),
         );
+    }
+
+    // Auto-propose for external sessions that converged via zero_blocking
+    if new_status == VerificationStatus::Verified
+        && metadata.convergence_reason.as_deref() == Some("zero_blocking")
+        && session.origin == crate::domain::entities::ideation::SessionOrigin::External
+    {
+        auto_propose_for_external(&session_id, &session, &state).await;
     }
 
     use crate::http_server::types::{VerificationGapResponse, VerificationRoundSummary};
