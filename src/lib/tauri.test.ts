@@ -292,6 +292,22 @@ describe("api.tasks", () => {
       });
     });
   });
+
+  describe("cleanupTask", () => {
+    it("should call cleanup_task with taskId", async () => {
+      mockInvoke.mockResolvedValue(null);
+
+      await api.tasks.cleanupTask("task-1");
+
+      expect(mockInvoke).toHaveBeenCalledWith("cleanup_task", { taskId: "task-1" });
+    });
+
+    it("should propagate errors", async () => {
+      mockInvoke.mockRejectedValue(new Error("Task not found"));
+
+      await expect(api.tasks.cleanupTask("nonexistent")).rejects.toThrow("Task not found");
+    });
+  });
 });
 
 describe("api.projects", () => {
@@ -955,7 +971,7 @@ describe("api.reviews", () => {
 
   describe("approve", () => {
     it("should call approve_review with input", async () => {
-      mockInvoke.mockResolvedValue(undefined);
+      mockInvoke.mockResolvedValue(null);
       const input = { review_id: "review-1", notes: "LGTM" };
 
       await api.reviews.approve(input);
@@ -964,7 +980,7 @@ describe("api.reviews", () => {
     });
 
     it("should not require notes", async () => {
-      mockInvoke.mockResolvedValue(undefined);
+      mockInvoke.mockResolvedValue(null);
       const input = { review_id: "review-1" };
 
       await api.reviews.approve(input);
@@ -1016,7 +1032,7 @@ describe("api.reviews", () => {
 
   describe("reject", () => {
     it("should call reject_review with input", async () => {
-      mockInvoke.mockResolvedValue(undefined);
+      mockInvoke.mockResolvedValue(null);
       const input = { review_id: "review-1", notes: "Fundamentally wrong approach" };
 
       await api.reviews.reject(input);
@@ -1032,6 +1048,72 @@ describe("api.reviews", () => {
       ).rejects.toThrow("Review not found");
     });
   });
+
+  describe("approveTask", () => {
+    it("should call approve_task_for_review with input", async () => {
+      mockInvoke.mockResolvedValue(null);
+      const input = { task_id: "task-1", notes: "LGTM" };
+
+      await api.reviews.approveTask(input);
+
+      expect(mockInvoke).toHaveBeenCalledWith("approve_task_for_review", { input });
+    });
+
+    it("should not require notes", async () => {
+      mockInvoke.mockResolvedValue(null);
+      const input = { task_id: "task-1" };
+
+      await api.reviews.approveTask(input);
+
+      expect(mockInvoke).toHaveBeenCalledWith("approve_task_for_review", { input });
+    });
+
+    it("should propagate errors", async () => {
+      mockInvoke.mockRejectedValue(new Error("Task not found"));
+
+      await expect(
+        api.reviews.approveTask({ task_id: "nonexistent" })
+      ).rejects.toThrow("Task not found");
+    });
+  });
+
+  describe("requestTaskChanges", () => {
+    it("should call request_task_changes_for_review with input", async () => {
+      mockInvoke.mockResolvedValue(null);
+      const input = { task_id: "task-1", feedback: "Missing tests" };
+
+      await api.reviews.requestTaskChanges(input);
+
+      expect(mockInvoke).toHaveBeenCalledWith("request_task_changes_for_review", { input });
+    });
+
+    it("should propagate errors", async () => {
+      mockInvoke.mockRejectedValue(new Error("Task not found"));
+
+      await expect(
+        api.reviews.requestTaskChanges({ task_id: "nonexistent", feedback: "N/A" })
+      ).rejects.toThrow("Task not found");
+    });
+  });
+
+  describe("reReviewTask", () => {
+    it("should call re_review_task_from_escalated with input", async () => {
+      mockInvoke.mockResolvedValue(null);
+      const input = { task_id: "task-1" };
+
+      await api.reviews.reReviewTask(input);
+
+      expect(mockInvoke).toHaveBeenCalledWith("re_review_task_from_escalated", { input });
+    });
+
+    it("should propagate errors", async () => {
+      mockInvoke.mockRejectedValue(new Error("Task not escalated"));
+
+      await expect(
+        api.reviews.reReviewTask({ task_id: "nonexistent" })
+      ).rejects.toThrow("Task not escalated");
+    });
+  });
 });
 
 describe("api.fixTasks", () => {
@@ -1041,7 +1123,7 @@ describe("api.fixTasks", () => {
 
   describe("approve", () => {
     it("should call approve_fix_task with input", async () => {
-      mockInvoke.mockResolvedValue(undefined);
+      mockInvoke.mockResolvedValue(null);
       const input = { fix_task_id: "fix-task-1" };
 
       await api.fixTasks.approve(input);

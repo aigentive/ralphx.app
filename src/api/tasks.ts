@@ -2,6 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
+import { TauriVoidSchema } from "@/lib/tauri";
 import {
   TaskSchema,
   TaskListSchema,
@@ -363,7 +364,7 @@ export const tasksApi = {
    * @param taskId The task ID to clean delete
    */
   cleanupTask: (taskId: string) =>
-    typedInvoke("cleanup_task", { taskId }, z.void()),
+    typedInvoke("cleanup_task", { taskId }, TauriVoidSchema),
 
   /**
    * Clean delete all tasks in a group

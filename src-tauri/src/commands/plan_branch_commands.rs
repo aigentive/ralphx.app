@@ -7,6 +7,7 @@ use tauri::State;
 
 use crate::application::git_service::GitService;
 use crate::application::AppState;
+use crate::commands::branch_helpers::ensure_base_branch_exists;
 use crate::domain::entities::{
     ArtifactId, IdeationSessionId, InternalStatus, PlanBranch, PlanBranchStatus, ProjectId, Task,
     TaskCategory, TaskId,
@@ -196,17 +197,15 @@ pub async fn enable_feature_branch(
     });
     let repo_path = PathBuf::from(&project.working_directory);
 
-    // Validate override branch exists before git operations
-    if input.base_branch_override.is_some() {
-        let exists = GitService::branch_exists(&repo_path, &base_branch)
-            .await
-            .map_err(|e| format!("Failed to check branch: {}", e))?;
-        if !exists {
-            return Err(format!(
-                "Base branch '{}' not found locally. Run 'git fetch' and try again.",
-                base_branch
-            ));
-        }
+    // Ensure base branch exists, auto-creating from project default if needed
+    let was_created =
+        ensure_base_branch_exists(&repo_path, &base_branch, project.base_branch.as_deref())
+            .await?;
+    if was_created {
+        tracing::info!(
+            "Auto-created base branch '{}' from project default for enable_feature_branch",
+            base_branch
+        );
     }
 
     // Generate branch name: ralphx/{project-slug}/plan-{short-artifact-id}
@@ -477,6 +476,10 @@ pub async fn update_project_feature_branch_setting(
 // ============================================================================
 // Helpers
 // ============================================================================
+
+#[cfg(test)]
+#[path = "plan_branch_commands_tests.rs"]
+mod tests;
 
 /// Generate a URL-safe slug from a project name
 pub fn slug_from_name(name: &str) -> String {

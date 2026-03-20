@@ -8,6 +8,16 @@ import type { IdeationSession, TaskProposal } from "@/types/ideation";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
 
+const mockToastError = vi.fn();
+vi.mock("sonner", () => ({
+  toast: {
+    error: (...args: unknown[]) => mockToastError(...args),
+    success: vi.fn(),
+    info: vi.fn(),
+    warning: vi.fn(),
+  },
+}));
+
 vi.mock("@/providers/EventProvider", () => ({
   useEventBus: () => ({
     subscribe: () => () => {},
@@ -418,6 +428,43 @@ describe("PlanningView", () => {
         "exec-plan-abc"
       );
     });
+  });
+
+  it("keeps modal open and shows toast.error when onApply rejects", async () => {
+    const onApply = vi.fn().mockRejectedValue(new Error("Branch creation failed"));
+    const user = userEvent.setup();
+    render(<PlanningView {...defaultProps} onApply={onApply} />);
+
+    await user.click(screen.getByTestId("tab-proposals"));
+    await user.click(screen.getByRole("button", { name: "Accept Plan" }));
+    await user.click(screen.getByTestId("accept-modal-confirm"));
+
+    await vi.waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith("Branch creation failed");
+    });
+    // Modal should still be open (confirm button still rendered)
+    expect(screen.getByTestId("accept-modal-confirm")).toBeInTheDocument();
+  });
+
+  it("closes modal after onApply resolves with sessionConverted=true", async () => {
+    const onApply = vi.fn().mockResolvedValue({
+      createdTaskIds: ["task-1"],
+      dependenciesCreated: 0,
+      warnings: [],
+      sessionConverted: true,
+      executionPlanId: "exec-plan-1",
+    });
+    const user = userEvent.setup();
+    render(<PlanningView {...defaultProps} onApply={onApply} />);
+
+    await user.click(screen.getByTestId("tab-proposals"));
+    await user.click(screen.getByRole("button", { name: "Accept Plan" }));
+    await user.click(screen.getByTestId("accept-modal-confirm"));
+
+    await vi.waitFor(() => {
+      expect(screen.queryByTestId("accept-modal-confirm")).not.toBeInTheDocument();
+    });
+    expect(mockToastError).not.toHaveBeenCalled();
   });
 
   it("does not set active plan when accept does not convert the session", async () => {

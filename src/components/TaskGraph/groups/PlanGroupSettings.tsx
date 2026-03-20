@@ -16,14 +16,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { api } from "@/lib/tauri";
 import { getGitBranches } from "@/api/projects";
 import type { PlanBranch } from "@/api/plan-branch.types";
@@ -151,15 +143,16 @@ export const PlanGroupSettings = memo(function PlanGroupSettings({
   }, [planArtifactId, workingDirectory, onBranchChange]);
 
   const handleConfirmEnable = useCallback(async () => {
-    setShowBranchSelector(false);
+    const trimmedBranch = pendingBranch.trim();
     setIsLoading(true);
     try {
       await api.planBranches.enable({
         planArtifactId,
         sessionId,
         projectId,
-        ...(pendingBranch ? { baseBranchOverride: pendingBranch } : {}),
+        ...(trimmedBranch ? { baseBranchOverride: trimmedBranch } : {}),
       });
+      setShowBranchSelector(false);
     } catch (err) {
       const message = typeof err === "string"
         ? err
@@ -209,40 +202,34 @@ export const PlanGroupSettings = memo(function PlanGroupSettings({
           <span className="text-[11px] text-[hsl(var(--text-secondary))]">
             Base branch to merge into:
           </span>
-          {branches.length > 0 ? (
-            <Select
-              value={pendingBranch}
-              onValueChange={(value) => {
-                hasUserSelected.current = true;
-                setPendingBranch(value);
-              }}
-            >
-              <SelectTrigger className="h-7 text-[11px] bg-[hsl(var(--bg-surface))] border-[hsl(var(--border-subtle))]">
-                <SelectValue placeholder="Select branch" />
-              </SelectTrigger>
-              <SelectContent>
-                {branches.map((b) => (
-                  <SelectItem key={b} value={b} className="text-[11px] font-mono">
-                    {b}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Input
-              value={pendingBranch}
-              onChange={(e) => {
-                hasUserSelected.current = true;
-                setPendingBranch(e.target.value);
-              }}
-              placeholder="e.g. main"
-              className="h-7 text-[11px]"
-            />
-          )}
+          <input
+            id="plan-group-branch-input"
+            type="text"
+            list="plan-group-branch-datalist"
+            value={pendingBranch}
+            onChange={(e) => {
+              hasUserSelected.current = true;
+              setPendingBranch(e.target.value);
+            }}
+            placeholder="e.g. main"
+            data-testid="plan-group-branch-input"
+            className="w-full px-2 py-1 text-[11px] rounded border outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none"
+            style={{
+              backgroundColor: "var(--bg-surface)",
+              borderColor: "var(--border-subtle)",
+              color: "var(--text-primary)",
+              boxShadow: "none",
+            }}
+          />
+          <datalist id="plan-group-branch-datalist">
+            {branches.map((b) => (
+              <option key={b} value={b} />
+            ))}
+          </datalist>
           <div className="flex gap-2">
             <button
               onClick={handleConfirmEnable}
-              disabled={!pendingBranch}
+              disabled={!pendingBranch.trim()}
               className="text-[11px] px-2 py-1 rounded bg-[hsl(var(--accent-primary))] text-white disabled:opacity-50"
             >
               Enable

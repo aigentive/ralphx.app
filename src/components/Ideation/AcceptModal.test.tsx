@@ -402,7 +402,7 @@ describe("AcceptModal", () => {
       );
     });
 
-    it("blocks accept when typed branch does not exist locally", async () => {
+    it("allows accept when typed branch does not exist locally (backend auto-creates)", async () => {
       vi.mocked(getGitBranches).mockResolvedValueOnce(["main", "develop", "feature/test"]);
 
       const onAccept = vi.fn();
@@ -420,17 +420,19 @@ describe("AcceptModal", () => {
       await userEvent.clear(input);
       await userEvent.type(input, "Branch-override");
 
-      await waitFor(() => {
-        expect(screen.getByTestId("branch-validation-error")).toHaveTextContent(
-          "Branch 'Branch-override' does not exist locally"
-        );
-      });
+      // No validation error for non-existent branch
+      expect(screen.queryByTestId("branch-validation-error")).not.toBeInTheDocument();
 
       const acceptButton = screen.getByRole("button", { name: /accept plan/i });
-      expect(acceptButton).toBeDisabled();
+      expect(acceptButton).not.toBeDisabled();
       await userEvent.click(acceptButton);
 
-      expect(onAccept).not.toHaveBeenCalled();
+      expect(onAccept).toHaveBeenCalledWith(
+        expect.objectContaining({
+          baseBranchOverride: "Branch-override",
+          useFeatureBranch: true,
+        })
+      );
     });
 
     it("disables accept button when feature branch checked and branch input is empty", async () => {

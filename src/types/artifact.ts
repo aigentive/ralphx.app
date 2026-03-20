@@ -426,3 +426,20 @@ export const SYSTEM_BUCKETS: readonly ArtifactBucket[] = [
 export function getSystemBucket(id: string): ArtifactBucket | undefined {
   return SYSTEM_BUCKETS.find((b) => b.id === id);
 }
+
+// ============================================
+// Artifact Version Summary
+// ============================================
+
+/**
+ * Summary of a single artifact version for history display.
+ * Fields are snake_case matching backend ArtifactVersionSummaryResponse (no serde rename_all).
+ */
+export const ArtifactVersionSummarySchema = z.object({
+  id: z.string(),
+  version: z.number(),
+  name: z.string(),
+  created_at: z.string(),
+});
+
+export type ArtifactVersionSummary = z.infer<typeof ArtifactVersionSummarySchema>;

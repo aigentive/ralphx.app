@@ -2,7 +2,7 @@
 // Handles review operations and fix task management
 
 import { z } from "zod";
-import { typedInvoke } from "@/lib/tauri";
+import { typedInvoke, TauriVoidSchema } from "@/lib/tauri";
 import {
   ReviewResponseSchema,
   ReviewListResponseSchema,
@@ -140,7 +140,7 @@ export const reviewsApi = {
    * @returns void on success
    */
   approve: (input: ApproveReviewInput) =>
-    typedInvoke("approve_review", { input }, z.void()),
+    typedInvoke("approve_review", { input }, TauriVoidSchema),
 
   /**
    * Request changes on a pending review
@@ -156,7 +156,7 @@ export const reviewsApi = {
    * @returns void on success
    */
   reject: (input: RejectReviewInput) =>
-    typedInvoke("reject_review", { input }, z.void()),
+    typedInvoke("reject_review", { input }, TauriVoidSchema),
 
   /**
    * Approve a task (task-based, for human reviewers)
@@ -165,7 +165,7 @@ export const reviewsApi = {
    * @returns void on success
    */
   approveTask: (input: ApproveTaskInput) =>
-    typedInvoke("approve_task_for_review", { input }, z.void()),
+    typedInvoke("approve_task_for_review", { input }, TauriVoidSchema),
 
   /**
    * Request changes on a task (task-based, for human reviewers)
@@ -174,7 +174,7 @@ export const reviewsApi = {
    * @returns void on success
    */
   requestTaskChanges: (input: RequestTaskChangesInput) =>
-    typedInvoke("request_task_changes_for_review", { input }, z.void()),
+    typedInvoke("request_task_changes_for_review", { input }, TauriVoidSchema),
 
   /**
    * Re-queue an escalated task for AI re-review
@@ -183,7 +183,7 @@ export const reviewsApi = {
    * @returns void on success
    */
   reReviewTask: (input: ReReviewTaskInput) =>
-    typedInvoke("re_review_task_from_escalated", { input }, z.void()),
+    typedInvoke("re_review_task_from_escalated", { input }, TauriVoidSchema),
 } as const;
 
 // ============================================================================
@@ -200,7 +200,7 @@ export const fixTasksApi = {
    * @returns void on success
    */
   approve: (input: ApproveFixTaskInput) =>
-    typedInvoke("approve_fix_task", { input }, z.void()),
+    typedInvoke("approve_fix_task", { input }, TauriVoidSchema),
 
   /**
    * Reject a fix task with feedback

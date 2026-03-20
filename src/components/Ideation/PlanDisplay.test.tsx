@@ -1,9 +1,23 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { PlanDisplay } from "./PlanDisplay";
 import type { TeamMetadata } from "./PlanDisplay";
 import type { Artifact } from "@/types/artifact";
 import type { VerificationGap } from "@/api/ideation.types";
+
+const mockGetVersionHistory = vi.fn();
+const mockGetAtVersion = vi.fn();
+
+vi.mock("@/api/artifact", () => ({
+  artifactApi: {
+    getAtVersion: (...args: unknown[]) => mockGetAtVersion(...args),
+    getVersionHistory: (...args: unknown[]) => mockGetVersionHistory(...args),
+    get: vi.fn().mockResolvedValue(null),
+    getByTask: vi.fn().mockResolvedValue([]),
+    getByBucket: vi.fn().mockResolvedValue([]),
+  },
+}));
 
 vi.mock("./TeamFindingsSection", () => ({
   TeamFindingsSection: ({ findings, teamMode, teammateCount }: { findings: unknown[]; teamMode: string; teammateCount: number }) => (
@@ -48,6 +62,11 @@ const mockPlan: Artifact = {
 };
 
 describe("PlanDisplay", () => {
+  beforeEach(() => {
+    mockGetAtVersion.mockResolvedValue(null);
+    mockGetVersionHistory.mockResolvedValue([]);
+  });
+
   it("renders plan header and starts collapsed", () => {
     render(<PlanDisplay plan={mockPlan} />);
 
@@ -862,6 +881,90 @@ describe("PlanDisplay", () => {
         />,
       );
       expect(screen.queryByRole("button", { name: /create proposals/i })).not.toBeInTheDocument();
+    });
+  });
+
+  // ============================================================================
+  // Version history timestamps
+  // ============================================================================
+
+  describe("version history timestamps", () => {
+    const multiVersionPlan: Artifact = {
+      ...mockPlan,
+      metadata: {
+        ...mockPlan.metadata,
+        version: 3,
+      },
+    };
+
+    it("does not show version dropdown for single-version plans", () => {
+      render(<PlanDisplay plan={mockPlan} />);
+      // version === 1, no History button rendered
+      expect(screen.queryByTitle("View version history")).not.toBeInTheDocument();
+    });
+
+    it("calls getVersionHistory on mount for multi-version plans", async () => {
+      mockGetVersionHistory.mockResolvedValue([
+        { id: "v3-id", version: 3, name: "Plan", created_at: "2026-03-18T11:30:00Z" },
+        { id: "v2-id", version: 2, name: "Plan", created_at: "2026-03-17T16:15:00Z" },
+        { id: "v1-id", version: 1, name: "Plan", created_at: "2026-03-16T09:00:00Z" },
+      ]);
+
+      render(<PlanDisplay plan={multiVersionPlan} />);
+
+      await waitFor(() => {
+        expect(mockGetVersionHistory).toHaveBeenCalledWith(multiVersionPlan.id);
+      });
+    });
+
+    it("does not call getVersionHistory for single-version plans", async () => {
+      render(<PlanDisplay plan={mockPlan} />);
+
+      // Give React a tick to run effects
+      await act(async () => {});
+      expect(mockGetVersionHistory).not.toHaveBeenCalled();
+    });
+
+    it("renders without error when version history fetch fails (graceful fallback)", async () => {
+      mockGetVersionHistory.mockRejectedValue(new Error("Network error"));
+
+      render(<PlanDisplay plan={multiVersionPlan} />);
+
+      // Should not throw — component renders normally
+      await waitFor(() => {
+        expect(mockGetVersionHistory).toHaveBeenCalled();
+      });
+
+      // History button still visible
+      expect(screen.getByTitle("View version history")).toBeInTheDocument();
+    });
+
+    it("opens dropdown and shows version numbers with userEvent", async () => {
+      const user = userEvent.setup();
+      mockGetVersionHistory.mockResolvedValue([
+        { id: "v2-id", version: 2, name: "Plan", created_at: "2026-03-18T10:00:00Z" },
+        { id: "v1-id", version: 1, name: "Plan", created_at: "2026-03-17T10:00:00Z" },
+      ]);
+
+      const twoVersionPlan: Artifact = {
+        ...mockPlan,
+        metadata: { ...mockPlan.metadata, version: 2 },
+      };
+
+      render(<PlanDisplay plan={twoVersionPlan} />);
+
+      // Wait for version history to load
+      await waitFor(() => {
+        expect(mockGetVersionHistory).toHaveBeenCalled();
+      });
+
+      // Open dropdown
+      await user.click(screen.getByTitle("View version history"));
+
+      // Dropdown items should be visible
+      await waitFor(() => {
+        expect(screen.getByText("(latest)")).toBeInTheDocument();
+      });
     });
   });
 });

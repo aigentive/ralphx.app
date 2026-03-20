@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { formatDate, formatRelativeTime, formatDuration } from "./formatters";
+import { formatDate, formatRelativeTime, formatDuration, formatDateTime } from "./formatters";
 
 describe("formatDate", () => {
   it("should format ISO date string", () => {
@@ -162,5 +162,68 @@ describe("formatDuration", () => {
   it("should format exactly 1 hour", () => {
     const result = formatDuration(3600);
     expect(result).toMatch(/1\s*h/i);
+  });
+});
+
+describe("formatDateTime", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    // Set current time to 2026-03-19 (same year for most tests)
+    vi.setSystemTime(new Date("2026-03-19T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns '-' for null", () => {
+    expect(formatDateTime(null as unknown as string)).toBe("-");
+  });
+
+  it("returns '-' for undefined", () => {
+    expect(formatDateTime(undefined as unknown as string)).toBe("-");
+  });
+
+  it("returns '-' for invalid date string", () => {
+    expect(formatDateTime("not-a-date")).toBe("-");
+  });
+
+  it("formats same-year date without year component", () => {
+    const result = formatDateTime("2026-03-18T11:30:00Z");
+    // Should include month and time but no year
+    expect(result).toMatch(/Mar/i);
+    expect(result).toMatch(/18/);
+    expect(result).not.toMatch(/2026/);
+  });
+
+  it("formats cross-year date with year component", () => {
+    const result = formatDateTime("2025-12-01T09:00:00Z");
+    // Should include year for dates in a different year
+    expect(result).toMatch(/Dec/i);
+    expect(result).toMatch(/2025/);
+  });
+
+  it("formats time with AM/PM", () => {
+    const result = formatDateTime("2026-01-15T11:30:00Z");
+    expect(result).toMatch(/AM|PM/i);
+  });
+
+  it("includes minutes in the output", () => {
+    const result = formatDateTime("2026-02-10T14:45:00Z");
+    expect(result).toMatch(/\d{1,2}:\d{2}/);
+  });
+
+  it("accepts a Date object", () => {
+    const date = new Date("2026-03-01T10:00:00Z");
+    const result = formatDateTime(date);
+    expect(result).not.toBe("-");
+    expect(typeof result).toBe("string");
+  });
+
+  it("accepts a timestamp number", () => {
+    const ts = new Date("2026-03-05T08:00:00Z").getTime();
+    const result = formatDateTime(ts);
+    expect(result).not.toBe("-");
+    expect(typeof result).toBe("string");
   });
 });

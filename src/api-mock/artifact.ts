@@ -227,4 +227,7 @@ export const mockArtifactApi = {
   },
   getByTask: mockArtifactsApi.getArtifactsByTask,
   getByBucket: mockArtifactsApi.getArtifactsByBucket,
+  getVersionHistory: async (_artifactId: string): Promise<{ id: string; version: number; name: string; created_at: string }[]> => {
+    return [];
+  },
 } as const;
