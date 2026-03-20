@@ -293,6 +293,19 @@ while (true) {
 4. When delivery_status = "delivered" → all tasks merged
 \`\`\`
 
+### Task Reference Formatting
+
+**Rule:** Any task UUID mentioned in a response or status update MUST be paired with the human-readable title.
+
+**Format:** \`task-{short-uuid} ({Title})\`
+
+**Tools to resolve titles:** \`v1_get_task_detail\` (single task) or \`v1_batch_task_status\` (up to 50 tasks)
+
+| ❌ Bare UUID (unreadable) | ✅ UUID + Title (human-readable) |
+|--------------------------|----------------------------------|
+| \`Executing: task-b15be469\` | \`Executing: task-b15be469 (Regression testing — full suite)\` |
+| \`task-a3c91f2d failed\` | \`task-a3c91f2d (Add dark mode toggle) failed\` |
+
 ### Anti-Patterns
 
 | ❌ Don't | ✅ Do Instead |
@@ -303,6 +316,7 @@ while (true) {
 | Hardcode project_id | Always call v1_list_projects first |
 | Send messages without waiting | Check agent_status = "waiting_for_input" before v1_send_ideation_message |
 | Accept immediately | Verify plan with v1_trigger_plan_verification first |
+| Surface bare task UUIDs | Always include title: \`task-{id} ({Title})\` — resolve via v1_get_task_detail or v1_batch_task_status |
 
 ### Sequencing Rules
 
