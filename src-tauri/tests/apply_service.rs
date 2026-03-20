@@ -287,6 +287,36 @@ impl IdeationSessionRepository for MockSessionRepository {
     )> {
         unimplemented!()
     }
+
+    fn set_expected_proposal_count_sync(
+        _conn: &rusqlite::Connection,
+        _session_id: &str,
+        _count: u32,
+    ) -> AppResult<()>
+    where
+        Self: Sized,
+    {
+        unimplemented!()
+    }
+
+    async fn set_auto_accept_status(
+        &self,
+        _session_id: &str,
+        _status: &str,
+        _auto_accept_started_at: Option<String>,
+    ) -> AppResult<()> {
+        unimplemented!()
+    }
+
+    fn count_active_by_session_sync(
+        _conn: &rusqlite::Connection,
+        _session_id: &str,
+    ) -> AppResult<i64>
+    where
+        Self: Sized,
+    {
+        unimplemented!()
+    }
 }
 
 struct MockProposalRepository {

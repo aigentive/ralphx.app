@@ -58,8 +58,12 @@ export const ALL_TOOLS = [
                     type: "string",
                     description: "Optional: target project ID or filesystem path for cross-project ideation. Tag this proposal with the project it targets.",
                 },
+                expected_proposal_count: {
+                    type: "integer",
+                    description: "Total number of proposals you intend to create in this session. Required on every create_task_proposal call. First proposal locks the count; backend auto-accepts when all proposals arrive.",
+                },
             },
-            required: ["session_id", "title", "category"],
+            required: ["session_id", "title", "category", "expected_proposal_count"],
         },
     },
     {

@@ -6,9 +6,8 @@
 use std::str::FromStr;
 
 use crate::application::{AppState, CreateProposalOptions, UpdateProposalOptions, UpdateSource};
+use crate::commands::ideation_commands::{apply_proposals_core, ApplyProposalsInput, TaskProposalResponse};
 use crate::domain::services::{check_proposal_verification_gate, ProposalOperation};
-use crate::infrastructure::sqlite::sqlite_ideation_settings_repo::get_settings_sync;
-use crate::commands::ideation_commands::TaskProposalResponse;
 use crate::domain::entities::{
     Artifact, ArtifactContent, ArtifactSummary, ArtifactType, Complexity, IdeationSession,
     IdeationSessionId, IdeationSessionStatus, InternalStatus, Priority, ProposalCategory,
@@ -19,6 +18,8 @@ use crate::infrastructure::sqlite::{
     SqliteArtifactRepository as ArtifactRepo, SqliteIdeationSessionRepository as SessionRepo,
     SqliteTaskProposalRepository as ProposalRepo,
 };
+use crate::infrastructure::sqlite::sqlite_ideation_settings_repo::get_settings_sync;
+use ralphx_domain::repositories::IdeationSessionRepository;
 use tauri::Emitter;
 
 // ============================================================================
@@ -157,6 +158,75 @@ pub fn emit_dependency_added(state: &AppState, proposal_id: &str, depends_on_id:
 }
 
 // ============================================================================
+// AppState Clone Helper
+// ============================================================================
+
+/// Clone all Arc-backed fields of AppState into a new owned AppState.
+///
+/// Used exclusively by `tokio::spawn` closures that need an owned `'static` AppState.
+/// All fields are `Arc<dyn T>` (or equivalent Clone types), so cloning is cheap
+/// (increments reference counts, does not copy underlying data).
+///
+/// This function exists because `AppState` does not derive `Clone` globally; the
+/// explicit field-by-field clone makes the pattern visible and auditable.
+fn clone_app_state(state: &AppState) -> AppState {
+    AppState {
+        task_repo: state.task_repo.clone(),
+        task_step_repo: state.task_step_repo.clone(),
+        project_repo: state.project_repo.clone(),
+        api_key_repo: state.api_key_repo.clone(),
+        agent_profile_repo: state.agent_profile_repo.clone(),
+        task_qa_repo: state.task_qa_repo.clone(),
+        review_repo: state.review_repo.clone(),
+        review_settings_repo: state.review_settings_repo.clone(),
+        review_issue_repo: state.review_issue_repo.clone(),
+        agent_client: state.agent_client.clone(),
+        qa_settings: state.qa_settings.clone(),
+        execution_settings_repo: state.execution_settings_repo.clone(),
+        global_execution_settings_repo: state.global_execution_settings_repo.clone(),
+        ideation_session_repo: state.ideation_session_repo.clone(),
+        ideation_settings_repo: state.ideation_settings_repo.clone(),
+        session_link_repo: state.session_link_repo.clone(),
+        task_proposal_repo: state.task_proposal_repo.clone(),
+        proposal_dependency_repo: state.proposal_dependency_repo.clone(),
+        chat_message_repo: state.chat_message_repo.clone(),
+        chat_conversation_repo: state.chat_conversation_repo.clone(),
+        agent_run_repo: state.agent_run_repo.clone(),
+        activity_event_repo: state.activity_event_repo.clone(),
+        task_dependency_repo: state.task_dependency_repo.clone(),
+        workflow_repo: state.workflow_repo.clone(),
+        artifact_repo: state.artifact_repo.clone(),
+        artifact_bucket_repo: state.artifact_bucket_repo.clone(),
+        artifact_flow_repo: state.artifact_flow_repo.clone(),
+        process_repo: state.process_repo.clone(),
+        methodology_repo: state.methodology_repo.clone(),
+        permission_state: state.permission_state.clone(),
+        question_state: state.question_state.clone(),
+        message_queue: state.message_queue.clone(),
+        running_agent_registry: state.running_agent_registry.clone(),
+        plan_branch_repo: state.plan_branch_repo.clone(),
+        plan_selection_stats_repo: state.plan_selection_stats_repo.clone(),
+        app_state_repo: state.app_state_repo.clone(),
+        active_plan_repo: state.active_plan_repo.clone(),
+        memory_entry_repo: state.memory_entry_repo.clone(),
+        memory_event_repo: state.memory_event_repo.clone(),
+        memory_archive_repo: state.memory_archive_repo.clone(),
+        team_session_repo: state.team_session_repo.clone(),
+        team_message_repo: state.team_message_repo.clone(),
+        execution_plan_repo: state.execution_plan_repo.clone(),
+        chat_attachment_repo: state.chat_attachment_repo.clone(),
+        attachment_storage_path: state.attachment_storage_path.clone(),
+        streaming_state_cache: state.streaming_state_cache.clone(),
+        interactive_process_registry: state.interactive_process_registry.clone(),
+        app_handle: state.app_handle.clone(),
+        db: state.db.clone(),
+        external_events_repo: state.external_events_repo.clone(),
+        github_service: state.github_service.clone(),
+        pr_poller_registry: state.pr_poller_registry.clone(),
+    }
+}
+
+// ============================================================================
 // Proposal Implementation Functions
 // ============================================================================
 
@@ -174,10 +244,12 @@ pub async fn create_proposal_impl(
     state: &AppState,
     session_id: IdeationSessionId,
     options: CreateProposalOptions,
-) -> AppResult<(TaskProposal, Vec<String>)> {
+) -> AppResult<(TaskProposal, Vec<String>, bool)> {
+    let expected_proposal_count = options.expected_proposal_count;
+
     // Single lock: all checks + INSERT in one transaction (TOCTOU prevention).
     // Events emitted after db.run_transaction() returns (acceptable crash-consistency gap).
-    let proposal = state
+    let (proposal, new_count) = state
         .db
         .run_transaction(move |conn| {
             // Check session exists and is active
@@ -189,6 +261,29 @@ pub async fn create_proposal_impl(
                     "Cannot add proposal to {} session",
                     session.status
                 )));
+            }
+
+            // Set-once gating: validate or lock expected_proposal_count
+            if let Some(provided_count) = expected_proposal_count {
+                match session.expected_proposal_count {
+                    None => {
+                        // First proposal: lock the expected count on this session
+                        SessionRepo::set_expected_proposal_count_sync(
+                            conn,
+                            session_id.as_str(),
+                            provided_count,
+                        )?;
+                    }
+                    Some(stored_count) if stored_count != provided_count => {
+                        return Err(AppError::Validation(format!(
+                            "expected_proposal_count mismatch: session expects {}, got {}",
+                            stored_count, provided_count
+                        )));
+                    }
+                    Some(_) => {
+                        // Matches stored value — ok to proceed
+                    }
+                }
             }
 
             // Cross-project gate: block proposal creation if plan has not been cross-project-checked
@@ -276,7 +371,10 @@ pub async fn create_proposal_impl(
             }
             proposal.target_project = options.target_project;
 
-            ProposalRepo::create_sync(conn, proposal)
+            let created = ProposalRepo::create_sync(conn, proposal)?;
+            // Count active (non-archived) proposals after INSERT for expected-count comparison
+            let new_count = SessionRepo::count_active_by_session_sync(conn, created.session_id.as_str())?;
+            Ok((created, new_count))
         })
         .await?;
 
@@ -356,7 +454,86 @@ pub async fn create_proposal_impl(
         }
     }
 
-    Ok((proposal, dep_errors))
+    // Post-dependency auto-accept trigger: fire-and-forget when the expected count is reached
+    let auto_accept_triggered = if let Some(expected) = options.expected_proposal_count {
+        new_count == expected as i64
+    } else {
+        false
+    };
+
+    if auto_accept_triggered {
+        let state_clone = clone_app_state(state);
+        let sid = proposal.session_id.as_str().to_string();
+        tokio::spawn(async move {
+            // Mark session as pending auto-accept with a start timestamp
+            let now = chrono::Utc::now().to_rfc3339();
+            if let Err(e) = state_clone
+                .ideation_session_repo
+                .set_auto_accept_status(&sid, "pending", Some(now))
+                .await
+            {
+                tracing::error!("auto_accept: failed to set pending status: {e}");
+                return;
+            }
+
+            // Fetch all non-archived proposals for this session
+            let session_id_typed = IdeationSessionId::from_string(sid.clone());
+            let all_proposals = match state_clone
+                .task_proposal_repo
+                .get_by_session(&session_id_typed)
+                .await
+            {
+                Ok(p) => p,
+                Err(e) => {
+                    tracing::error!("auto_accept: failed to list proposals: {e}");
+                    let _ = state_clone
+                        .ideation_session_repo
+                        .set_auto_accept_status(&sid, "failed", None)
+                        .await;
+                    return;
+                }
+            };
+
+            // Filter out archived proposals; collect IDs as Strings for ApplyProposalsInput
+            let proposal_ids: Vec<String> = all_proposals
+                .into_iter()
+                .filter(|p| p.archived_at.is_none())
+                .map(|p| p.id.as_str().to_string())
+                .collect();
+
+            let input = ApplyProposalsInput {
+                session_id: sid.clone(),
+                proposal_ids,
+                target_column: "auto".to_string(),
+                use_feature_branch: None,
+                base_branch_override: None,
+            };
+
+            match apply_proposals_core(&state_clone, input).await {
+                Ok(_) => {
+                    if let Err(e) = state_clone
+                        .ideation_session_repo
+                        .set_auto_accept_status(&sid, "success", None)
+                        .await
+                    {
+                        tracing::error!("auto_accept: failed to set success status: {e}");
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("auto_accept: apply_proposals_core failed: {e}");
+                    if let Err(e2) = state_clone
+                        .ideation_session_repo
+                        .set_auto_accept_status(&sid, "failed", None)
+                        .await
+                    {
+                        tracing::error!("auto_accept: failed to set failed status: {e2}");
+                    }
+                }
+            }
+        });
+    }
+
+    Ok((proposal, dep_errors, auto_accept_triggered))
 }
 
 /// Update proposal — fetch, validate, and UPDATE in a single DB transaction.

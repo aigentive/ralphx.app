@@ -101,27 +101,30 @@ pub async fn create_task_proposal(
         estimated_complexity: None,
         depends_on: req.depends_on,
         target_project: req.target_project,
+        expected_proposal_count: req.expected_proposal_count,
     };
 
     // Create proposal — events and dep analysis emitted inside create_proposal_impl()
     let session_id_str = session_id.as_str().to_string();
-    let (proposal, dep_errors) = create_proposal_impl(&state.app_state, session_id, options)
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to create proposal for session {}: {}",
-                session_id_str, e
-            );
-            let status = match &e {
-                crate::error::AppError::Validation(_) => StatusCode::BAD_REQUEST,
-                crate::error::AppError::NotFound(_) => StatusCode::NOT_FOUND,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            json_error(status, e.to_string())
-        })?;
+    let (proposal, dep_errors, auto_accept_triggered) =
+        create_proposal_impl(&state.app_state, session_id, options)
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to create proposal for session {}: {}",
+                    session_id_str, e
+                );
+                let status = match &e {
+                    crate::error::AppError::Validation(_) => StatusCode::BAD_REQUEST,
+                    crate::error::AppError::NotFound(_) => StatusCode::NOT_FOUND,
+                    _ => StatusCode::INTERNAL_SERVER_ERROR,
+                };
+                json_error(status, e.to_string())
+            })?;
 
     let mut response = ProposalResponse::from(proposal);
     response.dependency_errors = dep_errors;
+    response.auto_accept_triggered = auto_accept_triggered;
     Ok(Json(response))
 }
 

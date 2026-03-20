@@ -61,6 +61,8 @@ pub struct CreateProposalOptions {
     pub target_project: Option<String>,
     /// List of proposal IDs to add as dependencies after creation
     pub depends_on: Vec<String>,
+    /// Expected total number of proposals for this session (set-once gating)
+    pub expected_proposal_count: Option<u32>,
 }
 
 /// Options for updating a proposal

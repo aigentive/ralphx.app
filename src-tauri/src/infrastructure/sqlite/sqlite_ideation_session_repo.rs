@@ -24,15 +24,16 @@ use super::DbConnection;
 // IDLE: tasks that haven't started yet
 const _IDLE_STATUSES: &[&str] = &["backlog", "ready", "blocked"];
 
-/// All 25 SELECT columns for IdeationSession — single source of truth (DRY).
+/// All 28 SELECT columns for IdeationSession — single source of truth (DRY).
 /// Must be kept in sync with IdeationSession::from_row column names.
-/// Column order: id(0)..plan_version_last_read(23), origin(24)
+/// Column order: id(0)..origin(24), expected_proposal_count(25), auto_accept_status(26), auto_accept_started_at(27)
 const SESSION_COLUMNS: &str = "id, project_id, title, title_source, status, plan_artifact_id, \
     inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
     updated_at, archived_at, converted_at, team_mode, team_config_json, \
     verification_status, verification_in_progress, verification_metadata, \
     verification_generation, source_project_id, source_session_id, session_purpose, \
-    cross_project_checked, plan_version_last_read, origin";
+    cross_project_checked, plan_version_last_read, origin, \
+    expected_proposal_count, auto_accept_status, auto_accept_started_at";
 // TERMINAL: tasks that have reached a final state
 const _TERMINAL_STATUSES: &[&str] = &["approved", "merged", "failed", "cancelled", "stopped"];
 // ACTIVE: any status NOT in IDLE or TERMINAL (catch-all, matches categorizeStatus() logic)
@@ -1151,5 +1152,57 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                 Ok((sessions, total))
             })
             .await
+    }
+
+    fn set_expected_proposal_count_sync(
+        conn: &rusqlite::Connection,
+        session_id: &str,
+        count: u32,
+    ) -> AppResult<()> {
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "UPDATE ideation_sessions SET expected_proposal_count = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![count as i64, now, session_id],
+        )?;
+        Ok(())
+    }
+
+    async fn set_auto_accept_status(
+        &self,
+        session_id: &str,
+        status: &str,
+        auto_accept_started_at: Option<String>,
+    ) -> AppResult<()> {
+        let session_id = session_id.to_string();
+        let status = status.to_string();
+        self.db
+            .run(move |conn| {
+                let now = Utc::now().to_rfc3339();
+                if let Some(ref started_at) = auto_accept_started_at {
+                    conn.execute(
+                        "UPDATE ideation_sessions SET auto_accept_status = ?1, auto_accept_started_at = ?2, updated_at = ?3 WHERE id = ?4",
+                        rusqlite::params![status, started_at, now, session_id],
+                    )?;
+                } else {
+                    conn.execute(
+                        "UPDATE ideation_sessions SET auto_accept_status = ?1, updated_at = ?2 WHERE id = ?3",
+                        rusqlite::params![status, now, session_id],
+                    )?;
+                }
+                Ok(())
+            })
+            .await
+    }
+
+    fn count_active_by_session_sync(
+        conn: &rusqlite::Connection,
+        session_id: &str,
+    ) -> AppResult<i64> {
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM task_proposals WHERE session_id = ?1 AND archived_at IS NULL",
+            rusqlite::params![session_id],
+            |row| row.get(0),
+        )?;
+        Ok(count)
     }
 }

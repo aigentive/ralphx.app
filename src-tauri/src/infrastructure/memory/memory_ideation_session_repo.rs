@@ -6,6 +6,7 @@ use std::sync::RwLock;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use rusqlite::Connection;
 
 use crate::domain::entities::{
     IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, VerificationMetadata,
@@ -562,6 +563,44 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
             .collect();
 
         Ok((page, total))
+    }
+
+    fn set_expected_proposal_count_sync(
+        _conn: &Connection,
+        _session_id: &str,
+        _count: u32,
+    ) -> AppResult<()>
+    where
+        Self: Sized,
+    {
+        Err(AppError::Infrastructure(
+            "set_expected_proposal_count_sync not supported in memory repo".to_string(),
+        ))
+    }
+
+    async fn set_auto_accept_status(
+        &self,
+        session_id: &str,
+        status: &str,
+        _auto_accept_started_at: Option<String>,
+    ) -> AppResult<()> {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(session) = sessions.values_mut().find(|s| s.id.as_str() == session_id) {
+            session.auto_accept_status = Some(status.to_string());
+        }
+        Ok(())
+    }
+
+    fn count_active_by_session_sync(
+        _conn: &Connection,
+        _session_id: &str,
+    ) -> AppResult<i64>
+    where
+        Self: Sized,
+    {
+        Err(AppError::Infrastructure(
+            "count_active_by_session_sync not supported in memory repo".to_string(),
+        ))
     }
 }
 

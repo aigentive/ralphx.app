@@ -54,14 +54,16 @@ pub async fn create_task_proposal(
         estimated_complexity: input.complexity,
         target_project: input.target_project,
         depends_on: input.depends_on,
+        expected_proposal_count: input.expected_proposal_count,
     };
 
     // Delegates all checks, INSERT, event emission, and dep analysis to shared impl
     create_proposal_impl(state.inner(), session_id, options)
         .await
-        .map(|(proposal, dep_errors)| {
+        .map(|(proposal, dep_errors, auto_accept_triggered)| {
             let mut response = TaskProposalResponse::from(proposal);
             response.dependency_errors = dep_errors;
+            response.auto_accept_triggered = auto_accept_triggered;
             response
         })
         .map_err(|e| e.to_string())

@@ -313,6 +313,9 @@ pub async fn create_child_session(
         cross_project_checked: true,
         plan_version_last_read: None,
         origin: parent.origin,
+        expected_proposal_count: None,
+        auto_accept_status: None,
+        auto_accept_started_at: None,
     };
 
     let child_id = child_session.id.clone();
@@ -864,6 +867,9 @@ pub(crate) async fn create_verification_child_session(
         cross_project_checked: true,
         plan_version_last_read: None,
         origin: parent.origin,
+        expected_proposal_count: None,
+        auto_accept_status: None,
+        auto_accept_started_at: None,
     };
 
     let child_id = child_session.id.clone();

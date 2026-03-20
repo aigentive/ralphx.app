@@ -5,6 +5,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use rusqlite::Connection;
 
 use crate::domain::entities::{
     IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, VerificationMetadata,
@@ -238,6 +239,37 @@ pub trait IdeationSessionRepository: Send + Sync {
         offset: u32,
         limit: u32,
     ) -> AppResult<(Vec<IdeationSessionWithProgress>, u32)>;
+
+    /// Set expected_proposal_count on a session (set-once: fails if already set to a different value).
+    /// MUST be called inside a BEGIN IMMEDIATE transaction via `db.run_transaction()`.
+    /// Sync variant for use inside `db.run()` closures.
+    fn set_expected_proposal_count_sync(
+        conn: &Connection,
+        session_id: &str,
+        count: u32,
+    ) -> AppResult<()>
+    where
+        Self: Sized;
+
+    /// Set auto_accept_status and optionally auto_accept_started_at on a session.
+    /// status: "pending" | "success" | "failed"
+    /// If error_reason is Some, it is stored as a JSON field in auto_accept_status (caller formats).
+    async fn set_auto_accept_status(
+        &self,
+        session_id: &str,
+        status: &str,
+        auto_accept_started_at: Option<String>,
+    ) -> AppResult<()>;
+
+    /// Count non-archived proposals for a session (sync for use inside `db.run()` closures).
+    /// WHERE session_id = ? AND status != 'archived'
+    /// Do NOT use this for sort_order assignment — use the existing count_by_session_sync instead.
+    fn count_active_by_session_sync(
+        conn: &Connection,
+        session_id: &str,
+    ) -> AppResult<i64>
+    where
+        Self: Sized;
 }
 
 #[cfg(test)]

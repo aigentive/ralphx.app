@@ -303,7 +303,9 @@ update_task_proposal(proposal_id, add_blocks: ["<proposal-id-C>"])
 
 2. **Targeted test identification step** — Every `feature`, `fix`, or `refactor` proposal MUST include a step: "Identify test files affected by code changes using language-appropriate methods (e.g., grep imports for JS/TS/Python, check `mod tests` blocks and `tests/` directory for Rust, examine test file naming conventions) and execute only those tests. Fall back to path-scoped suite if targeted identification yields no results."
 
-3. **Auto-generate Regression Testing proposal** — When creating 2 or more proposals in a session, auto-generate a final "Regression Testing" proposal:
+3. **expected_proposal_count (required)** — Pass `expected_proposal_count` on every `create_task_proposal` call (total proposals you intend to create). First proposal locks the count; backend auto-accepts when all proposals arrive.
+
+4. **Auto-generate Regression Testing proposal** — When creating 2 or more proposals in a session, auto-generate a final "Regression Testing" proposal:
    - Category: `testing`
    - Steps: instruct full suite execution across ALL modified paths from the entire session
    - Before creating: call `list_session_proposals` to collect all prior proposal IDs; filter to `status: "active"` only (exclude archived/rejected)
@@ -363,7 +365,7 @@ Plan archetypes: Phase-driven (temporal dependencies): N phases → waves → wa
 | `get_session_plan` / `get_artifact` | Retrieve plan artifact |
 | `create_task_proposal` | Fails without plan artifact; auto-links to plan on creation; optional `depends_on: string[]` for inline dep-setting |
 | `update_task_proposal` | Optional `add_depends_on: string[]` and `add_blocks: string[]` for additive dep-setting (no replace-all) |
-| `archive_task_proposal` / `list_session_proposals` / `get_proposal` | Manage proposals |
+| `delete_task_proposal` / `list_session_proposals` / `get_proposal` | Manage proposals |
 | `analyze_session_dependencies` | Read-only graph analysis — critical path, cycles, blocking relationships |
 | `create_child_session` | `initial_prompt` triggers auto-spawn of orchestrator agent |
 | `get_parent_session_context` | Child sessions only; provides parent plan + proposals |

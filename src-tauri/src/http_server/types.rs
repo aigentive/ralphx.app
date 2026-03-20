@@ -118,6 +118,8 @@ pub struct CreateProposalRequest {
     pub depends_on: Vec<String>,
     /// Optional target project ID for cross-project proposal execution
     pub target_project: Option<String>,
+    /// Expected total number of proposals for this session (set-once gating)
+    pub expected_proposal_count: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -165,6 +167,8 @@ pub struct ProposalResponse {
     pub dependency_errors: Vec<String>,
     /// Optional target project ID for cross-project proposal execution
     pub target_project: Option<String>,
+    /// Whether the auto-accept pipeline was triggered for this session
+    pub auto_accept_triggered: bool,
 }
 
 impl From<TaskProposal> for ProposalResponse {
@@ -181,6 +185,7 @@ impl From<TaskProposal> for ProposalResponse {
             created_at: proposal.created_at.to_rfc3339(),
             dependency_errors: Vec::new(),
             target_project: proposal.target_project.clone(),
+            auto_accept_triggered: false,
         }
     }
 }

@@ -223,6 +223,8 @@ pub struct CreateProposalInput {
     /// Optional list of proposal IDs this proposal depends on
     #[serde(default)]
     pub depends_on: Vec<String>,
+    /// Expected total number of proposals for this session (set-once gating)
+    pub expected_proposal_count: Option<u32>,
 }
 
 /// Input for updating a task proposal
@@ -274,6 +276,8 @@ pub struct TaskProposalResponse {
     /// Partial failure contract: non-fatal dependency errors encountered during create/update
     #[serde(default)]
     pub dependency_errors: Vec<String>,
+    /// Whether the auto-accept pipeline was triggered for this session
+    pub auto_accept_triggered: bool,
 }
 
 impl From<TaskProposal> for TaskProposalResponse {
@@ -312,6 +316,7 @@ impl From<TaskProposal> for TaskProposalResponse {
             updated_at: proposal.updated_at.to_rfc3339(),
             target_project: proposal.target_project.clone(),
             dependency_errors: Vec::new(),
+            auto_accept_triggered: false,
         }
     }
 }

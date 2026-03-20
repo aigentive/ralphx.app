@@ -65,6 +65,9 @@ async fn create_accepted_session(
         cross_project_checked: false,
         plan_version_last_read: None,
         origin: Default::default(),
+        expected_proposal_count: None,
+        auto_accept_status: None,
+        auto_accept_started_at: None,
     };
 
     state

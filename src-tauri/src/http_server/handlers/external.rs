@@ -124,6 +124,12 @@ pub struct IdeationStatusResponse {
     pub verification_in_progress: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delivery_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_proposal_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_accept_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_accept_started_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -759,6 +765,9 @@ pub async fn get_ideation_status_http(
         verification_status: session.verification_status.to_string(),
         verification_in_progress: session.verification_in_progress,
         delivery_status,
+        expected_proposal_count: session.expected_proposal_count,
+        auto_accept_status: session.auto_accept_status.clone(),
+        auto_accept_started_at: session.auto_accept_started_at.clone(),
     }))
 }
 

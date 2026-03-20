@@ -98,6 +98,12 @@ pub struct IdeationSession {
     /// External sessions cannot skip plan verification.
     #[serde(default)]
     pub origin: SessionOrigin,
+    /// Expected number of proposals for auto-accept gating. None = no expectation set (gating disabled).
+    pub expected_proposal_count: Option<u32>,
+    /// Status of the auto-accept pipeline: null/pending/success/failed
+    pub auto_accept_status: Option<String>,
+    /// ISO timestamp when auto-accept was triggered
+    pub auto_accept_started_at: Option<String>,
 }
 
 /// Builder for creating IdeationSession instances
@@ -128,6 +134,9 @@ pub struct IdeationSessionBuilder {
     cross_project_checked: Option<bool>,
     plan_version_last_read: Option<i32>,
     origin: Option<SessionOrigin>,
+    expected_proposal_count: Option<u32>,
+    auto_accept_status: Option<String>,
+    auto_accept_started_at: Option<String>,
 }
 
 impl IdeationSessionBuilder {
@@ -274,6 +283,12 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set the expected proposal count for auto-accept gating
+    pub fn expected_proposal_count(mut self, count: u32) -> Self {
+        self.expected_proposal_count = Some(count);
+        self
+    }
+
     /// Build the IdeationSession
     /// Panics if project_id is not set
     pub fn build(self) -> IdeationSession {
@@ -304,6 +319,9 @@ impl IdeationSessionBuilder {
             cross_project_checked: self.cross_project_checked.unwrap_or(false),
             plan_version_last_read: self.plan_version_last_read,
             origin: self.origin.unwrap_or_default(),
+            expected_proposal_count: self.expected_proposal_count,
+            auto_accept_status: self.auto_accept_status,
+            auto_accept_started_at: self.auto_accept_started_at,
         }
     }
 }
@@ -461,6 +479,16 @@ impl IdeationSession {
                 .as_deref()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or_default(),
+            expected_proposal_count: row
+                .get::<_, Option<i64>>("expected_proposal_count")
+                .unwrap_or(None)
+                .map(|v| v as u32),
+            auto_accept_status: row
+                .get::<_, Option<String>>("auto_accept_status")
+                .unwrap_or(None),
+            auto_accept_started_at: row
+                .get::<_, Option<String>>("auto_accept_started_at")
+                .unwrap_or(None),
         })
     }
 
