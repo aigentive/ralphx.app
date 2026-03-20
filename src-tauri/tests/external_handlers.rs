@@ -2546,6 +2546,7 @@ async fn test_get_ideation_status_agent_running() {
     assert!(result.is_ok());
     let response = result.unwrap().0;
     assert!(response.agent_running, "expected agent_running: true");
+    assert_eq!(response.agent_status, "generating", "expected agent_status: generating when agent is running");
 }
 
 #[tokio::test]
@@ -2565,6 +2566,91 @@ async fn test_get_ideation_status_agent_not_running() {
     assert!(result.is_ok());
     let response = result.unwrap().0;
     assert!(!response.agent_running, "expected agent_running: false");
+    assert_eq!(response.agent_status, "idle", "expected agent_status: idle when agent not running");
+}
+
+#[tokio::test]
+async fn test_get_ideation_status_agent_waiting_for_input() {
+    // Register agent AND InteractiveProcess → agent_status: "waiting_for_input"
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-status-waiting", "Waiting Status Session").await;
+
+    // Register running agent
+    let agent_key = RunningAgentKey::new("ideation", &session_id_str);
+    state
+        .app_state
+        .running_agent_registry
+        .register(
+            agent_key,
+            0,
+            "conv-id-waiting".to_string(),
+            "run-id-waiting".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    // Spawn a `cat` process to act as the interactive process (indicates waiting_for_input)
+    let mut child = tokio::process::Command::new("cat")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("failed to spawn cat for test");
+    let stdin = child.stdin.take().expect("no stdin on cat process");
+
+    let ipr_key = InteractiveProcessKey::new("ideation", &session_id_str);
+    state
+        .app_state
+        .interactive_process_registry
+        .register(ipr_key, stdin)
+        .await;
+
+    let result = get_ideation_status_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+    )
+    .await;
+
+    drop(child);
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert!(response.agent_running, "expected agent_running: true");
+    assert_eq!(
+        response.agent_status,
+        "waiting_for_input",
+        "expected agent_status: waiting_for_input when interactive process registered"
+    );
+}
+
+#[tokio::test]
+async fn test_get_ideation_status_includes_verification_state() {
+    // Session with default verification state → verification_status: "unverified", verification_in_progress: false
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-status-verif", "Verification State Session").await;
+
+    let result = get_ideation_status_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert!(
+        !response.verification_status.is_empty(),
+        "expected non-empty verification_status"
+    );
+    assert!(
+        !response.verification_in_progress,
+        "expected verification_in_progress: false for new session"
+    );
 }
 
 // ============================================================================
