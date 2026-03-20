@@ -18,7 +18,9 @@ tools:
   - TaskOutput
   - KillShell
   - MCPSearch
-  - mcp__ralphx__*
+  - mcp__ralphx__search_memories
+  - mcp__ralphx__get_memory
+  - mcp__ralphx__get_memories_for_paths
 mcpServers:
   - ralphx:
       type: stdio

@@ -79,6 +79,41 @@ Adding a new specialist to the plan verification pipeline requires these 7 steps
 
 **Signal mapping rules (per-round specialists):** Scan `## Affected Files` and `## Architecture` sections only (not full plan text). Return: specialist name, trigger signal, signal source. Per-round specialists run in parallel with critics — failure is non-blocking. Specialists create artifacts on the **parent ideation session_id** (not the verification child session_id) so they appear in the Team Artifacts tab.
 
+## Cross-Project Tool Chain
+
+Full ordered sequence when an ideation session detects cross-project targets:
+
+| Step | Tool | Purpose | Agents with Access |
+|------|------|---------|-------------------|
+| 1 | `cross_project_guide` | Detect if plan spans multiple projects; gate for all subsequent cross-project tools | `orchestrator-ideation`, `ideation-team-lead` |
+| 2 | `list_projects` | Discover available target projects by ID/name | `orchestrator-ideation`, `ideation-team-lead` |
+| 3 | `ask_user_question` | Confirm target project selection with user | `orchestrator-ideation`, `ideation-team-lead` |
+| 4 | `create_cross_project_session` | Create a new ideation session in the target project (requires plan verification = Verified/Skipped/ImportedVerified) | `orchestrator-ideation`, `ideation-team-lead` |
+| 5 | `create_task_proposal` (with `target_project`) | Create proposals in source session; set `target_project` field on each cross-project proposal | `orchestrator-ideation`, `ideation-team-lead` |
+| 6 | `migrate_proposals` | Move cross-project proposals to their target session; call once per target session after proposals are created | `orchestrator-ideation`, `ideation-team-lead` |
+| 7 | `finalize_proposals` (per session) | Finalize each session separately — source session first, then each target session | `orchestrator-ideation`, `ideation-team-lead` |
+
+**Constraints:** `cross_project_guide` must be called before `create_task_proposal` when a cross-project plan exists (`cross_project_checked` gate). `create_cross_project_session` requires plan verification = Verified/Skipped/ImportedVerified.
+
+## Agent Frontmatter MCP Tool Rule (NON-NEGOTIABLE)
+
+Agent frontmatter `tools:` MUST use explicit `mcp__ralphx__<tool>` entries — ❌ `mcp__ralphx__*` wildcards. The `ralphx.yaml` `mcp_tools` array is the source of truth.
+
+**Why:** Wildcard doesn't reliably resolve; agents get "tool doesn't exist" for valid tools. All three layers must include the tool: frontmatter → `ralphx.yaml` `mcp_tools` → MCP server TOOL_ALLOWLIST.
+
+\`\`\`yaml
+# ✅ Explicit entries in agent frontmatter
+tools:
+  - mcp__ralphx__get_task_context
+  - mcp__ralphx__execution_complete
+
+# ❌ Wildcard — unreliable resolution
+tools:
+  - mcp__ralphx__*
+\`\`\`
+
+**Spot-check (2026-03-20):** `ralphx-worker` (23 tools ✅), `ralphx-reviewer` (15 tools ✅), `ralphx-merger` (9 tools ✅) — all frontmatter entries match `ralphx.yaml` exactly.
+
 ## Agent Lifecycle Events
 
 All handled by `useAgentEvents` hook (`src/hooks/useAgentEvents.ts`).

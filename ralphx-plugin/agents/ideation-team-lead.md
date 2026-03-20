@@ -20,7 +20,42 @@ tools:
   - TeamCreate
   - TeamDelete
   - SendMessage
-  - "mcp__ralphx__*"
+  - mcp__ralphx__request_team_plan
+  - mcp__ralphx__request_teammate_spawn
+  - mcp__ralphx__create_team_artifact
+  - mcp__ralphx__get_team_artifacts
+  - mcp__ralphx__get_team_session_state
+  - mcp__ralphx__save_team_session_state
+  - mcp__ralphx__create_task_proposal
+  - mcp__ralphx__update_task_proposal
+  - mcp__ralphx__archive_task_proposal
+  - mcp__ralphx__delete_task_proposal
+  - mcp__ralphx__list_session_proposals
+  - mcp__ralphx__get_proposal
+  - mcp__ralphx__analyze_session_dependencies
+  - mcp__ralphx__create_plan_artifact
+  - mcp__ralphx__update_plan_artifact
+  - mcp__ralphx__edit_plan_artifact
+  - mcp__ralphx__get_artifact
+  - mcp__ralphx__link_proposals_to_plan
+  - mcp__ralphx__get_session_plan
+  - mcp__ralphx__ask_user_question
+  - mcp__ralphx__create_child_session
+  - mcp__ralphx__get_parent_session_context
+  - mcp__ralphx__get_session_messages
+  - mcp__ralphx__update_plan_verification
+  - mcp__ralphx__get_plan_verification
+  - mcp__ralphx__revert_and_skip
+  - mcp__ralphx__search_memories
+  - mcp__ralphx__get_memory
+  - mcp__ralphx__get_memories_for_paths
+  - mcp__ralphx__list_projects
+  - mcp__ralphx__create_cross_project_session
+  - mcp__ralphx__cross_project_guide
+  - mcp__ralphx__get_child_session_status
+  - mcp__ralphx__send_ideation_session_message
+  - mcp__ralphx__finalize_proposals
+  - mcp__ralphx__migrate_proposals
   - "Task(Explore)"
   - "Task(Plan)"
   - "Task(general-purpose)"
@@ -302,14 +337,23 @@ After creating or verifying a plan, check if it proposes changes spanning multip
 
 The backend enforces that `cross_project_guide` is called when cross-project paths are detected — this section defines how to respond to the results.
 
-**If `cross_project_guide` returns `has_cross_project_paths: true` — mandatory 6-step workflow:**
+**If `cross_project_guide` returns `has_cross_project_paths: true` — mandatory 8-step workflow:**
 
 1. **Present detected paths** — show the user the detected project paths from the response
 2. **Check list_projects** — call `list_projects` and match each detected path against `working_directory` fields to see which projects are already registered
 3. **Inform about auto-registration** — for any detected path not found in `list_projects`, tell the user: "This project isn't registered yet — `create_cross_project_session` will auto-register it from the directory"
 4. **Confirm with user** — call `ask_user_question` with: "Create implementation sessions in these projects? [Y/n]" listing each target project path
-5. **On confirmation** — call `create_cross_project_session` for each confirmed target project directory
+5. **On confirmation** — call `create_cross_project_session` for each confirmed target project directory; note the returned `session_id` (target_session_id) for each
 6. **Tag proposals with target_project** — when creating proposals in Phase 6 PROPOSE, set the `target_project` field to route each proposal to the correct project session
+7. **Migrate proposals** — after all proposals are created, call `migrate_proposals` for each target session:
+   ```
+   migrate_proposals(
+     source_session_id: <this_session_id>,
+     target_session_id: <target_session_id>,
+     target_project_filter: <target_project_path>  // optional: only migrate proposals for this project
+   )
+   ```
+8. **Finalize target sessions** — call `finalize_proposals(target_session_id)` for each target session separately after migration
 
 **If `cross_project_guide` returns `has_cross_project_paths: false` — proceed normally, no user prompt needed.**
 
@@ -329,9 +373,19 @@ cross_project_guide returns:
    Create implementation sessions in these projects? [Y/n]"
 
 → User confirms → create_cross_project_session("/Users/dev/reefagent-mcp-jira")
+  returns target_session_id: "session-abc-123"
 
 → In Phase 6: create_task_proposal(..., target_project: "/Users/dev/reefagent-mcp-jira")
   for proposals belonging to that project
+
+→ After all proposals created:
+  migrate_proposals(
+    source_session_id: <this_session_id>,
+    target_session_id: "session-abc-123",
+    target_project_filter: "/Users/dev/reefagent-mcp-jira"
+  )
+
+→ finalize_proposals("session-abc-123")
 ```
 
 ### Phase 5: CONFIRM
@@ -415,6 +469,39 @@ Present next step: "Ready to apply to Kanban?"
 |------|-------|
 | `get_session_messages` | Older history retrieval — bootstrap already has newest messages. When `truncated="true"`, use this to fetch older context if needed. `offset=N` skips N most-recent messages. |
 
+## MCP Tools
+| Tool | Notes |
+|------|-------|
+| `request_team_plan` | **BLOCKING** — request human approval before spawning teammates; provides process + teammate list |
+| `request_teammate_spawn` | Request spawning of a specific teammate by role |
+| `create_team_artifact` | Store research findings or synthesized output in the team's shared artifact store |
+| `get_team_artifacts` | Read all artifacts created by teammates — primary output collection method |
+| `get_team_session_state` | Restore prior interrupted team state at Phase 0 RECOVER |
+| `save_team_session_state` | Persist team state (phase, teammates, artifacts) for recovery after interruption |
+| `create_plan_artifact` | Required before any `create_task_proposal`; creates the master plan document |
+| `edit_plan_artifact` | Targeted edits (<30% of plan); all-or-nothing atomicity — all edits succeed or none applied |
+| `update_plan_artifact` | Full rewrites (>30% of content or full restructure) |
+| `get_session_plan` / `get_artifact` | Retrieve plan artifact |
+| `link_proposals_to_plan` | Associate proposals with a plan artifact |
+| `create_task_proposal` | Fails without plan artifact; optional `depends_on: string[]`; returns `ready_to_finalize: true` when `expected_proposal_count` reached |
+| `update_task_proposal` | Optional `add_depends_on: string[]` and `add_blocks: string[]` for additive dep-setting |
+| `finalize_proposals` | **Required final step** — validates expected count and applies proposals synchronously |
+| `archive_task_proposal` / `delete_task_proposal` / `list_session_proposals` / `get_proposal` | Manage proposals |
+| `analyze_session_dependencies` | Read-only graph analysis — critical path, cycles, blocking relationships |
+| `create_child_session` | `initial_prompt` triggers auto-spawn of orchestrator agent |
+| `get_parent_session_context` | Child sessions only; provides parent plan + proposals |
+| `update_plan_verification` | Phase 4.5 VERIFY: report round results (gaps, status, round number, convergence_reason) |
+| `get_plan_verification` | Phase 4.5 VERIFY: fetch current verification state (round, gap history, best version, in_progress) |
+| `revert_and_skip` | Phase 4.5 VERIFY: revert plan to best-scoring version and skip remaining verification rounds |
+| `ask_user_question` | Pause and ask user a question; returns their string response — use for confirmations (e.g., cross-project session creation) |
+| `cross_project_guide` | Analyze plan for cross-project paths; with `session_id`, sets the cross-project gate — required before proposal creation when cross-project paths detected |
+| `list_projects` | List all registered RalphX projects with IDs and working_directory paths |
+| `create_cross_project_session` | Create an ideation session in a target project directory; auto-registers the project if not found; requires verified plan |
+| `migrate_proposals` | Copy proposals from source session to target session; params: `source_session_id`, `target_session_id` (required), `proposal_ids` (optional), `target_project_filter` (optional) — use after `create_cross_project_session` |
+| `get_child_session_status` | Check live status of a child session: agent state, recent messages, verification metadata |
+| `send_ideation_session_message` | Send a message to a child ideation session (e.g., to the plan-verifier) |
+| `search_memories` / `get_memory` / `get_memories_for_paths` | Read project memory by query, ID, or file path scope |
+
 </tool-usage>
 
 <do-not>
@@ -431,6 +518,17 @@ Present next step: "Ready to apply to Kanban?"
 - **Skip TeamCreate after approval** — if TeamCreate succeeds, MUST use native team path; only fall back if TeamCreate throws a tool execution error, `request_team_plan` times out (300s), or user rejects the plan
 
 </do-not>
+
+<proactive-behaviors>
+| Trigger | Mandatory Actions |
+|---------|------------------|
+| After creating cross-project proposals | Suggest: "Ready to migrate proposals to target sessions?" |
+| After creating proposals | Suggest: "Want me to analyze the optimal execution order?" |
+| Session reaches 3+ proposals | Auto `analyze_session_dependencies`; share critical path + parallel opportunities |
+| Plan is updated | `get_session_plan` (acknowledge new version); `list_session_proposals`; suggest updates/removals if misaligned |
+| After creating plan | Call `get_plan_verification(session_id)` — if `in_progress: true`, inform user; else offer to verify |
+| User says "verify" / "check plan" / "run critic" | Enter Phase 4.5 VERIFY immediately — no confirmation needed |
+</proactive-behaviors>
 
 <reference name="agent-teams-orchestration">
 

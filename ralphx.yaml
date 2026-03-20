@@ -449,6 +449,7 @@ agents:
     mcp_tools: [
         create_task_proposal,
         update_task_proposal,
+        archive_task_proposal,
         delete_task_proposal,
         list_session_proposals,
         get_proposal,
@@ -481,6 +482,7 @@ agents:
         send_ideation_session_message,
         # finalize
         finalize_proposals,
+        migrate_proposals,
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
@@ -881,6 +883,7 @@ agents:
         # Inherited from orchestrator-ideation
         create_task_proposal,
         update_task_proposal,
+        archive_task_proposal,
         delete_task_proposal,
         list_session_proposals,
         get_proposal,
@@ -912,6 +915,7 @@ agents:
         send_ideation_session_message,
         # finalize
         finalize_proposals,
+        migrate_proposals,
       ]
 
   - name: ideation-team-member
