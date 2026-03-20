@@ -15,8 +15,8 @@ use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
     Artifact, ArtifactContent, ArtifactId, ArtifactMetadata, ArtifactType, IdeationSession,
-    IdeationSessionId, IdeationSessionStatus, Project, ProjectId, SessionPurpose,
-    VerificationStatus,
+    IdeationSessionBuilder, IdeationSessionId, IdeationSessionStatus, Project, ProjectId,
+    SessionOrigin, SessionPurpose, VerificationStatus,
 };
 use ralphx_lib::domain::repositories::IdeationSessionRepository;
 use ralphx_lib::domain::services::running_agent_registry::RunningAgentKey;
@@ -2680,5 +2680,75 @@ async fn test_6d_prime_edit_plan_artifact_returns_409_during_freeze() {
         result.is_ok(),
         "Should succeed after verification_in_progress set to false: {:?}",
         result.err()
+    );
+}
+
+// ============================================================
+// Origin-based auto-verify override
+// ============================================================
+
+/// Bug 2 defense-in-depth: External-origin sessions trigger auto-verification when
+/// a plan artifact is created, regardless of the global `auto_verify` config setting.
+///
+/// The `auto_verify_enabled` flag is shadowed inside `run_transaction` after the
+/// session is loaded: `let auto_verify_enabled = auto_verify_enabled || session.origin == External`.
+/// This test verifies that the session's `verification_in_progress` is set to true
+/// after `create_plan_artifact` for an External-origin session.
+#[tokio::test]
+async fn test_external_origin_session_auto_verifies_without_config() {
+    let state = setup_test_state().await;
+
+    // Create an External-origin session
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .origin(SessionOrigin::External)
+        .build();
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    // Create a plan artifact — this should trigger auto-verify for External sessions
+    let result = create_plan_artifact(
+        State(state.clone()),
+        Json(CreatePlanArtifactRequest {
+            session_id: session_id.as_str().to_string(),
+            title: "External Plan".to_string(),
+            content: "Plan content from external agent".to_string(),
+        }),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "create_plan_artifact should succeed for external session: {:?}",
+        result.err()
+    );
+
+    // Verify verification_in_progress was atomically set — the origin-based override fired
+    let updated = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .expect("session must still exist");
+
+    assert!(
+        updated.verification_in_progress,
+        "External-origin session must have verification_in_progress=true after create_plan_artifact, \
+         regardless of global auto_verify config"
+    );
+    assert_eq!(
+        updated.verification_status,
+        VerificationStatus::Reviewing,
+        "External-origin session must enter Reviewing state"
+    );
+    assert_eq!(
+        updated.verification_generation, 1,
+        "External-origin session must have generation=1 after first auto-verify trigger"
     );
 }

@@ -117,8 +117,11 @@ pub struct IdeationStatusResponse {
     pub title: Option<String>,
     pub status: String,
     pub agent_running: bool,
+    pub agent_status: String,
     pub proposal_count: u32,
     pub created_at: String,
+    pub verification_status: String,
+    pub verification_in_progress: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delivery_status: Option<String>,
 }
@@ -640,6 +643,30 @@ pub async fn start_ideation_http(
     }))
 }
 
+/// Determine agent tri-state status for a session:
+/// "idle" | "generating" | "waiting_for_input"
+async fn determine_agent_status(
+    running_agent_registry: &dyn crate::domain::services::running_agent_registry::RunningAgentRegistry,
+    interactive_process_registry: &crate::application::InteractiveProcessRegistry,
+    context_id: &str,
+) -> String {
+    let agent_key =
+        crate::domain::services::running_agent_registry::RunningAgentKey::new("ideation", context_id);
+    if running_agent_registry.is_running(&agent_key).await {
+        let ipr_key = crate::application::InteractiveProcessKey {
+            context_type: "ideation".to_string(),
+            context_id: context_id.to_string(),
+        };
+        if interactive_process_registry.has_process(&ipr_key).await {
+            "waiting_for_input".to_string()
+        } else {
+            "generating".to_string()
+        }
+    } else {
+        "idle".to_string()
+    }
+}
+
 /// GET /api/external/ideation_status/:id
 /// Get ideation session status.
 pub async fn get_ideation_status_http(
@@ -699,6 +726,14 @@ pub async fn get_ideation_status_http(
         .is_running(&agent_key)
         .await;
 
+    // Determine agent tri-state status
+    let agent_status = determine_agent_status(
+        state.app_state.running_agent_registry.as_ref(),
+        &state.app_state.interactive_process_registry,
+        session_id.as_str(),
+    )
+    .await;
+
     // For accepted sessions, derive delivery_status from linked tasks
     let delivery_status = if session.status == crate::domain::entities::ideation::IdeationSessionStatus::Accepted {
         let tasks = state
@@ -718,8 +753,11 @@ pub async fn get_ideation_status_http(
         title: session.title.clone(),
         status: session.status.to_string(),
         agent_running,
+        agent_status,
         proposal_count,
         created_at: session.created_at.to_rfc3339(),
+        verification_status: session.verification_status.to_string(),
+        verification_in_progress: session.verification_in_progress,
         delivery_status,
     }))
 }
@@ -2502,34 +2540,13 @@ pub async fn get_ideation_messages_http(
         })
         .collect();
 
-    // Determine agent_status from RunningAgentRegistry + InteractiveProcessRegistry
-    let agent_key = crate::domain::services::running_agent_registry::RunningAgentKey::new(
-        "ideation",
+    // Determine agent tri-state status
+    let agent_status = determine_agent_status(
+        state.app_state.running_agent_registry.as_ref(),
+        &state.app_state.interactive_process_registry,
         session_id.as_str(),
-    );
-    let agent_status = if state
-        .app_state
-        .running_agent_registry
-        .is_running(&agent_key)
-        .await
-    {
-        let ipr_key = crate::application::InteractiveProcessKey {
-            context_type: "ideation".to_string(),
-            context_id: session_id.as_str().to_string(),
-        };
-        if state
-            .app_state
-            .interactive_process_registry
-            .has_process(&ipr_key)
-            .await
-        {
-            "waiting_for_input".to_string()
-        } else {
-            "generating".to_string()
-        }
-    } else {
-        "idle".to_string()
-    };
+    )
+    .await;
 
     Ok(Json(GetIdeationMessagesResponse {
         messages,

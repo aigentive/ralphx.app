@@ -9,7 +9,7 @@ use tracing::error;
 use super::*;
 use crate::domain::entities::{
     Artifact, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactMetadata, ArtifactType,
-    IdeationSession, IdeationSessionId, VerificationStatus,
+    IdeationSession, IdeationSessionId, SessionOrigin, VerificationStatus,
 };
 use rusqlite::Connection;
 use crate::domain::services::{
@@ -245,6 +245,10 @@ pub async fn create_plan_artifact(
             // Get session and check for existing plan
             let session = SessionRepo::get_by_id_sync(conn, sid.as_str())?
                 .ok_or_else(|| AppError::NotFound(format!("Session {} not found", sid)))?;
+
+            // Defense-in-depth: external-origin sessions always auto-verify, regardless of config.
+            let auto_verify_enabled =
+                auto_verify_enabled || session.origin == SessionOrigin::External;
 
             // Guard: reject mutations on Archived/Accepted sessions
             crate::http_server::helpers::assert_session_mutable(&session)?;

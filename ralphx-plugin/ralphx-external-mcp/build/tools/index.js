@@ -142,7 +142,7 @@ export function registerTools(server, getKeyContext) {
             },
             {
                 name: "v1_get_ideation_status",
-                description: "Get ideation session status, agent state, and proposal count",
+                description: "Get ideation session status, agent state, proposal count, and verification state. Returns agent_status (idle/generating/waiting_for_input), verification_status, and verification_in_progress. Use agent_status instead of the deprecated agent_running boolean.",
                 inputSchema: {
                     type: "object",
                     properties: {
