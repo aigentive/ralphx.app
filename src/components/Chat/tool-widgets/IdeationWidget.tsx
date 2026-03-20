@@ -20,6 +20,7 @@ import {
   List,
   Search,
   GitBranch,
+  MessageSquare,
 } from "lucide-react";
 import { InlineIndicator, Badge, WidgetRow } from "./shared";
 import { colors, getString, getNumber, getArray, parseMcpToolResult } from "./shared.constants";
@@ -32,6 +33,8 @@ import type { ToolCallWidgetProps } from "./shared.constants";
 type IdeationTool =
   | "create_plan_artifact"
   | "update_plan_artifact"
+  | "edit_plan_artifact"
+  | "send_ideation_session_message"
   | "link_proposals_to_plan"
   | "ask_user_question"
   | "list_session_proposals"
@@ -43,6 +46,8 @@ function getToolType(toolName: string): IdeationTool | null {
   const name = toolName.toLowerCase();
   if (name.includes("create_plan_artifact")) return "create_plan_artifact";
   if (name.includes("update_plan_artifact")) return "update_plan_artifact";
+  if (name.includes("edit_plan_artifact")) return "edit_plan_artifact";
+  if (name.includes("send_ideation_session_message")) return "send_ideation_session_message";
   if (name.includes("link_proposals_to_plan")) return "link_proposals_to_plan";
   if (name.includes("ask_user_question")) return "ask_user_question";
   if (name.includes("list_session_proposals")) return "list_session_proposals";
@@ -57,9 +62,11 @@ function getToolType(toolName: string): IdeationTool | null {
 // ============================================================================
 
 function PlanCreated({ toolCall, compact }: ToolCallWidgetProps) {
-  const title = getString(parseMcpToolResult(toolCall.result), "name")
+  const parsed = parseMcpToolResult(toolCall.result);
+  const title = getString(parsed, "name")
     ?? getString(toolCall.arguments, "title")
     ?? "Plan";
+  const version = getNumber(parsed, "version");
 
   return (
     <WidgetRow compact={compact}>
@@ -76,17 +83,110 @@ function PlanCreated({ toolCall, compact }: ToolCallWidgetProps) {
       >
         {title}
       </span>
+      {version != null && <Badge variant="muted" compact>v{version}</Badge>}
       <Badge variant="success" compact>Plan created</Badge>
     </WidgetRow>
   );
 }
 
-function PlanUpdated({ compact }: ToolCallWidgetProps) {
+function PlanUpdated({ toolCall, compact }: ToolCallWidgetProps) {
+  const parsed = parseMcpToolResult(toolCall.result);
+  const name = getString(parsed, "name");
+  const version = getNumber(parsed, "version");
+
+  if (!name) {
+    return <InlineIndicator icon={<FileText size={11} style={{ color: colors.blue }} />} text="Plan updated" />;
+  }
+
   return (
-    <InlineIndicator
-      icon={<FileText size={11} style={{ color: colors.blue }} />}
-      text={compact ? "Plan updated" : "Plan artifact updated"}
-    />
+    <WidgetRow compact={compact}>
+      <FileText size={11} style={{ color: colors.blue, flexShrink: 0 }} />
+      <span
+        style={{
+          flex: 1,
+          fontSize: compact ? 10.5 : 11,
+          color: colors.textSecondary,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {name}
+      </span>
+      {version != null && <Badge variant="muted" compact>v{version}</Badge>}
+      <Badge variant="blue" compact>Updated</Badge>
+    </WidgetRow>
+  );
+}
+
+function PlanEdited({ toolCall, compact }: ToolCallWidgetProps) {
+  const parsed = parseMcpToolResult(toolCall.result);
+  const name = getString(parsed, "name");
+  const version = getNumber(parsed, "version");
+  const edits = getArray(toolCall.arguments, "edits");
+  const count = edits?.length ?? 0;
+
+  if (!name) {
+    return <InlineIndicator icon={<FileText size={11} style={{ color: colors.blue }} />} text="Plan edited" />;
+  }
+
+  return (
+    <WidgetRow compact={compact}>
+      <FileText size={11} style={{ color: colors.blue, flexShrink: 0 }} />
+      <span
+        style={{
+          flex: 1,
+          fontSize: compact ? 10.5 : 11,
+          color: colors.textSecondary,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {name}
+      </span>
+      {version != null && <Badge variant="muted" compact>v{version}</Badge>}
+      {!compact && count > 0 && <Badge variant="muted" compact>{count} edits</Badge>}
+      <Badge variant="blue" compact>Edited</Badge>
+    </WidgetRow>
+  );
+}
+
+function SessionMessage({ toolCall, compact }: ToolCallWidgetProps) {
+  const message = getString(toolCall.arguments, "message");
+  const parsed = parseMcpToolResult(toolCall.result);
+  const deliveryStatus = getString(parsed, "delivery_status");
+
+  if (!deliveryStatus) {
+    return <InlineIndicator icon={<MessageSquare size={11} style={{ color: colors.textMuted }} />} text="Sending message..." />;
+  }
+
+  const maxLen = compact ? 60 : 80;
+  const preview = message ?? "";
+  const truncated = preview.length > maxLen ? preview.slice(0, maxLen) + "..." : preview;
+
+  const statusVariant =
+    deliveryStatus === "sent" ? "success" :
+    deliveryStatus === "queued" ? "blue" :
+    "accent";
+
+  return (
+    <WidgetRow compact={compact}>
+      <MessageSquare size={11} style={{ color: colors.textMuted, flexShrink: 0 }} />
+      <span
+        style={{
+          flex: 1,
+          fontSize: compact ? 10.5 : 11,
+          color: colors.textSecondary,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {truncated}
+      </span>
+      <Badge variant={statusVariant} compact>{deliveryStatus}</Badge>
+    </WidgetRow>
   );
 }
 
@@ -278,6 +378,10 @@ export const IdeationWidget = React.memo(function IdeationWidget(props: ToolCall
       return <PlanCreated {...props} />;
     case "update_plan_artifact":
       return <PlanUpdated {...props} />;
+    case "edit_plan_artifact":
+      return <PlanEdited {...props} />;
+    case "send_ideation_session_message":
+      return <SessionMessage {...props} />;
     case "link_proposals_to_plan":
       return <LinkProposals {...props} />;
     case "ask_user_question":

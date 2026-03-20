@@ -85,6 +85,8 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   "mcp__ralphx__get_proposal": IdeationWidget,
   "mcp__ralphx__get_session_plan": IdeationWidget,
   "mcp__ralphx__analyze_session_dependencies": IdeationWidget,
+  "mcp__ralphx__edit_plan_artifact": IdeationWidget,
+  "mcp__ralphx__send_ideation_session_message": IdeationWidget,
   // SendMessage tool → SendMessageWidget (team message card)
   "sendmessage": SendMessageWidget,
   // Task management tools → TeamTaskWidgets
