@@ -20,6 +20,7 @@ import { ReviewWidget } from "./ReviewWidget";
 import { MergeWidget } from "./MergeWidget";
 import { ProposalWidget } from "./ProposalWidget";
 import { IdeationWidget } from "./IdeationWidget";
+import { VerificationWidget } from "./VerificationWidget";
 import { GrepWidget } from "./GrepWidget";
 import { GlobWidget } from "./GlobWidget";
 import { ReadWidget } from "./ReadWidget";
@@ -87,6 +88,11 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   "mcp__ralphx__analyze_session_dependencies": IdeationWidget,
   "mcp__ralphx__edit_plan_artifact": IdeationWidget,
   "mcp__ralphx__send_ideation_session_message": IdeationWidget,
+  // Verification & child session tools → VerificationWidget
+  "mcp__ralphx__update_plan_verification": VerificationWidget,
+  "mcp__ralphx__get_plan_verification": VerificationWidget,
+  "mcp__ralphx__create_child_session": VerificationWidget,
+  "mcp__ralphx__get_child_session_status": VerificationWidget,
   // SendMessage tool → SendMessageWidget (team message card)
   "sendmessage": SendMessageWidget,
   // Task management tools → TeamTaskWidgets
