@@ -1665,7 +1665,7 @@ async fn test_ideation_message_queued_when_agent_running() {
     let (_, session_id_str) = setup_session(&state, "proj-msg-queued", "Queued Session").await;
 
     // Register a fake running agent for this session in the registry
-    let agent_key = RunningAgentKey::new("session", &session_id_str);
+    let agent_key = RunningAgentKey::new("ideation", &session_id_str);
     state
         .app_state
         .running_agent_registry
@@ -1712,7 +1712,7 @@ async fn test_ideation_message_sent_when_interactive_process_registered() {
         .expect("failed to spawn cat for test");
     let stdin = child.stdin.take().expect("no stdin on cat process");
 
-    let ipr_key = InteractiveProcessKey::new("session", &session_id_str);
+    let ipr_key = InteractiveProcessKey::new("ideation", &session_id_str);
     state
         .app_state
         .interactive_process_registry
@@ -2408,8 +2408,8 @@ async fn test_get_ideation_messages_agent_status_generating() {
     let (_, session_id_str) =
         setup_session(&state, "proj-msg-agent", "Agent Status Session").await;
 
-    // Register a running agent (no interactive process = "generating")
-    let agent_key = RunningAgentKey::new("session", &session_id_str);
+    // Register a running agent with "ideation" context_type (regression test: was "session")
+    let agent_key = RunningAgentKey::new("ideation", &session_id_str);
     state
         .app_state
         .running_agent_registry
@@ -2434,6 +2434,137 @@ async fn test_get_ideation_messages_agent_status_generating() {
     assert!(result.is_ok());
     let response = result.unwrap().0;
     assert_eq!(response.agent_status, "generating");
+}
+
+#[tokio::test]
+async fn test_get_ideation_messages_agent_status_idle() {
+    // No agent registered → agent_status must be "idle"
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-msg-agent-idle", "Idle Status Session").await;
+
+    let result = get_ideation_messages_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+        axum::extract::Query(GetIdeationMessagesQuery { limit: 50, offset: 0 }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.agent_status, "idle");
+}
+
+#[tokio::test]
+async fn test_get_ideation_messages_agent_status_waiting_for_input() {
+    // Register agent in RunningAgentRegistry AND stdin in InteractiveProcessRegistry
+    // with context_type = "ideation" → agent_status: "waiting_for_input"
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-msg-agent-wait", "Waiting For Input Session").await;
+
+    // Register running agent
+    let agent_key = RunningAgentKey::new("ideation", &session_id_str);
+    state
+        .app_state
+        .running_agent_registry
+        .register(
+            agent_key,
+            0,
+            "conv-id-wait".to_string(),
+            "run-id-wait".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    // Register interactive process (stdin open = waiting_for_input)
+    let mut child = tokio::process::Command::new("cat")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("failed to spawn cat for test");
+    let stdin = child.stdin.take().expect("no stdin on cat process");
+
+    let ipr_key = InteractiveProcessKey::new("ideation", &session_id_str);
+    state
+        .app_state
+        .interactive_process_registry
+        .register(ipr_key, stdin)
+        .await;
+
+    let result = get_ideation_messages_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+        axum::extract::Query(GetIdeationMessagesQuery { limit: 50, offset: 0 }),
+    )
+    .await;
+
+    drop(child);
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.agent_status, "waiting_for_input");
+}
+
+// ============================================================================
+// get_ideation_status_http — agent_running field
+// ============================================================================
+
+#[tokio::test]
+async fn test_get_ideation_status_agent_running() {
+    // Register agent with context_type = "ideation" → agent_running: true
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-status-agent", "Agent Running Status Session").await;
+
+    let agent_key = RunningAgentKey::new("ideation", &session_id_str);
+    state
+        .app_state
+        .running_agent_registry
+        .register(
+            agent_key,
+            0,
+            "conv-id-status".to_string(),
+            "run-id-status".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let result = get_ideation_status_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert!(response.agent_running, "expected agent_running: true");
+}
+
+#[tokio::test]
+async fn test_get_ideation_status_agent_not_running() {
+    // No agent registered → agent_running: false
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-status-no-agent", "No Agent Status Session").await;
+
+    let result = get_ideation_status_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert!(!response.agent_running, "expected agent_running: false");
 }
 
 // ============================================================================

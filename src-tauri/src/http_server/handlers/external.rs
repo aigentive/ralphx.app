@@ -689,7 +689,7 @@ pub async fn get_ideation_status_http(
 
     // Check if agent is running for this session
     let agent_key = crate::domain::services::running_agent_registry::RunningAgentKey::new(
-        "session",
+        "ideation",
         session_id.as_str(),
     );
     let agent_running = state
@@ -2104,7 +2104,7 @@ pub async fn ideation_message_http(
 
     // Try 1: write directly to open interactive process (agent in multi-turn mode)
     let ipr_key = crate::application::InteractiveProcessKey {
-        context_type: "session".to_string(),
+        context_type: "ideation".to_string(),
         context_id: session_id_str.clone(),
     };
     if state
@@ -2137,7 +2137,7 @@ pub async fn ideation_message_http(
 
     // Try 2: queue message if agent is running (will be delivered on next resume)
     let agent_key =
-        crate::domain::services::running_agent_registry::RunningAgentKey::new("session", &session_id_str);
+        crate::domain::services::running_agent_registry::RunningAgentKey::new("ideation", &session_id_str);
     if state
         .app_state
         .running_agent_registry
@@ -2503,7 +2503,7 @@ pub async fn get_ideation_messages_http(
 
     // Determine agent_status from RunningAgentRegistry + InteractiveProcessRegistry
     let agent_key = crate::domain::services::running_agent_registry::RunningAgentKey::new(
-        "session",
+        "ideation",
         session_id.as_str(),
     );
     let agent_status = if state
@@ -2513,7 +2513,7 @@ pub async fn get_ideation_messages_http(
         .await
     {
         let ipr_key = crate::application::InteractiveProcessKey {
-            context_type: "session".to_string(),
+            context_type: "ideation".to_string(),
             context_id: session_id.as_str().to_string(),
         };
         if state
