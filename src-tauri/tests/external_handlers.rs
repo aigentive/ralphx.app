@@ -2604,3 +2604,402 @@ async fn test_batch_task_status_empty_request() {
     assert!(response.tasks.is_empty());
     assert!(response.errors.is_empty());
 }
+
+// ============================================================================
+// get_session_tasks_http
+// ============================================================================
+
+/// Session with no linked tasks returns not_scheduled + empty task list.
+#[tokio::test]
+async fn test_get_session_tasks_empty_session_returns_not_scheduled() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-session-tasks-empty";
+    let p = make_project(project_id, "Session Tasks Empty");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let session = IdeationSession::new_with_title(
+        ProjectId::from_string(project_id.to_string()),
+        "Empty Session",
+    );
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    let result = get_session_tasks_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id.as_str().to_string()),
+    )
+    .await;
+
+    assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+    let response = result.unwrap().0;
+    assert_eq!(response.session_id, session_id.as_str());
+    assert!(response.tasks.is_empty(), "Expected no tasks");
+    assert_eq!(response.delivery_status, "not_scheduled");
+    assert_eq!(response.task_count, 0);
+}
+
+/// Session with tasks returns correct task list, delivery_status, and task_count.
+#[tokio::test]
+async fn test_get_session_tasks_with_tasks_returns_task_list() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-session-tasks-list";
+    let p = make_project(project_id, "Session Tasks List");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let session = IdeationSession::new_with_title(
+        ProjectId::from_string(project_id.to_string()),
+        "Session With Tasks",
+    );
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    // Create two tasks linked to the session
+    let mut task1 = Task::new(
+        ProjectId::from_string(project_id.to_string()),
+        "Task One".to_string(),
+    );
+    task1.ideation_session_id = Some(session_id.clone());
+    task1.internal_status = InternalStatus::Backlog;
+
+    let mut task2 = Task::new(
+        ProjectId::from_string(project_id.to_string()),
+        "Task Two".to_string(),
+    );
+    task2.ideation_session_id = Some(session_id.clone());
+    task2.internal_status = InternalStatus::Executing;
+
+    state.app_state.task_repo.create(task1).await.unwrap();
+    state.app_state.task_repo.create(task2).await.unwrap();
+
+    let result = get_session_tasks_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id.as_str().to_string()),
+    )
+    .await;
+
+    assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+    let response = result.unwrap().0;
+    assert_eq!(response.session_id, session_id.as_str());
+    assert_eq!(response.task_count, 2);
+    assert_eq!(response.tasks.len(), 2);
+    assert_eq!(response.delivery_status, "in_progress");
+
+    let titles: Vec<&str> = response.tasks.iter().map(|t| t.title.as_str()).collect();
+    assert!(titles.contains(&"Task One"), "Missing 'Task One'");
+    assert!(titles.contains(&"Task Two"), "Missing 'Task Two'");
+}
+
+/// Unlinked tasks (different project, no session_id) are excluded from results.
+#[tokio::test]
+async fn test_get_session_tasks_excludes_unlinked_tasks() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-session-tasks-excl";
+    let p = make_project(project_id, "Session Tasks Exclude");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let session = IdeationSession::new_with_title(
+        ProjectId::from_string(project_id.to_string()),
+        "Session A",
+    );
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    // Task linked to this session
+    let mut linked_task = Task::new(
+        ProjectId::from_string(project_id.to_string()),
+        "Linked Task".to_string(),
+    );
+    linked_task.ideation_session_id = Some(session_id.clone());
+
+    // Task with no session_id — should be excluded
+    let unlinked_task = Task::new(
+        ProjectId::from_string(project_id.to_string()),
+        "Unlinked Task".to_string(),
+    );
+
+    state
+        .app_state
+        .task_repo
+        .create(linked_task)
+        .await
+        .unwrap();
+    state
+        .app_state
+        .task_repo
+        .create(unlinked_task)
+        .await
+        .unwrap();
+
+    let result = get_session_tasks_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id.as_str().to_string()),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.task_count, 1, "Only linked task should be returned");
+    assert_eq!(response.tasks[0].title, "Linked Task");
+}
+
+/// Session not found returns 404.
+#[tokio::test]
+async fn test_get_session_tasks_nonexistent_session_returns_404() {
+    let state = setup_test_state().await;
+
+    let result = get_session_tasks_http(
+        State(state),
+        unrestricted_scope(),
+        Path("nonexistent-session-id".to_string()),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().status,
+        axum::http::StatusCode::NOT_FOUND
+    );
+}
+
+/// ProjectScope violation returns 403 when API key is scoped to different project.
+#[tokio::test]
+async fn test_get_session_tasks_scope_violation_returns_403() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-scope-session-tasks";
+    let p = make_project(project_id, "Scope Session Tasks");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let session = IdeationSession::new_with_title(
+        ProjectId::from_string(project_id.to_string()),
+        "Scoped Session",
+    );
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    // Scope to a different project — must be rejected
+    let result = get_session_tasks_http(
+        State(state),
+        scoped(&["proj-different"]),
+        Path(session_id.as_str().to_string()),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().status,
+        axum::http::StatusCode::FORBIDDEN
+    );
+}
+
+// ============================================================================
+// delivery_status derivation logic
+// ============================================================================
+
+/// All tasks merged → "delivered".
+#[tokio::test]
+async fn test_get_session_tasks_delivery_status_all_merged_is_delivered() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-ds-delivered";
+    let p = make_project(project_id, "DS Delivered");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let session = IdeationSession::new_with_title(
+        ProjectId::from_string(project_id.to_string()),
+        "All Merged Session",
+    );
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    for title in &["Task A", "Task B"] {
+        let mut task = Task::new(
+            ProjectId::from_string(project_id.to_string()),
+            title.to_string(),
+        );
+        task.ideation_session_id = Some(session_id.clone());
+        task.internal_status = InternalStatus::Merged;
+        state.app_state.task_repo.create(task).await.unwrap();
+    }
+
+    let result = get_session_tasks_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id.as_str().to_string()),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap().0.delivery_status, "delivered");
+}
+
+/// Mixed merged + failed tasks → "partial".
+#[tokio::test]
+async fn test_get_session_tasks_delivery_status_mixed_terminal_is_partial() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-ds-partial";
+    let p = make_project(project_id, "DS Partial");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let session = IdeationSession::new_with_title(
+        ProjectId::from_string(project_id.to_string()),
+        "Mixed Terminal Session",
+    );
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    let mut merged = Task::new(
+        ProjectId::from_string(project_id.to_string()),
+        "Merged Task".to_string(),
+    );
+    merged.ideation_session_id = Some(session_id.clone());
+    merged.internal_status = InternalStatus::Merged;
+
+    let mut failed = Task::new(
+        ProjectId::from_string(project_id.to_string()),
+        "Failed Task".to_string(),
+    );
+    failed.ideation_session_id = Some(session_id.clone());
+    failed.internal_status = InternalStatus::Failed;
+
+    state.app_state.task_repo.create(merged).await.unwrap();
+    state.app_state.task_repo.create(failed).await.unwrap();
+
+    let result = get_session_tasks_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id.as_str().to_string()),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap().0.delivery_status, "partial");
+}
+
+/// Tasks in review states (no active tasks) → "pending_review".
+#[tokio::test]
+async fn test_get_session_tasks_delivery_status_in_review_is_pending_review() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-ds-review";
+    let p = make_project(project_id, "DS Review");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let session = IdeationSession::new_with_title(
+        ProjectId::from_string(project_id.to_string()),
+        "In Review Session",
+    );
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    let mut reviewing = Task::new(
+        ProjectId::from_string(project_id.to_string()),
+        "Reviewing Task".to_string(),
+    );
+    reviewing.ideation_session_id = Some(session_id.clone());
+    reviewing.internal_status = InternalStatus::Reviewing;
+
+    state.app_state.task_repo.create(reviewing).await.unwrap();
+
+    let result = get_session_tasks_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id.as_str().to_string()),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap().0.delivery_status, "pending_review");
+}
+
+/// Any active task (executing, backlog, ready) → "in_progress".
+#[tokio::test]
+async fn test_get_session_tasks_delivery_status_active_tasks_is_in_progress() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-ds-active";
+    let p = make_project(project_id, "DS Active");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let session = IdeationSession::new_with_title(
+        ProjectId::from_string(project_id.to_string()),
+        "Active Session",
+    );
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    let mut executing = Task::new(
+        ProjectId::from_string(project_id.to_string()),
+        "Executing Task".to_string(),
+    );
+    executing.ideation_session_id = Some(session_id.clone());
+    executing.internal_status = InternalStatus::Executing;
+
+    // Also a merged task — but presence of active makes it in_progress
+    let mut merged = Task::new(
+        ProjectId::from_string(project_id.to_string()),
+        "Merged Task".to_string(),
+    );
+    merged.ideation_session_id = Some(session_id.clone());
+    merged.internal_status = InternalStatus::Merged;
+
+    state.app_state.task_repo.create(executing).await.unwrap();
+    state.app_state.task_repo.create(merged).await.unwrap();
+
+    let result = get_session_tasks_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id.as_str().to_string()),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap().0.delivery_status, "in_progress");
+}

@@ -40,6 +40,7 @@ const {
   handleAcceptPlanAndSchedule,
   handleModifyProposal,
   handleAnalyzeDependencies,
+  handleGetSessionTasks,
 } = await import("../../src/tools/ideation.js");
 
 const { startIdeation } = await import(
@@ -349,5 +350,94 @@ describe("handleModifyProposal", () => {
 
     expect(parsed.error).toBe("missing_argument");
     expect(parsed.message).toContain("changes");
+  });
+});
+
+// ─── handleGetSessionTasks ────────────────────────────────────────────────────
+
+describe("handleGetSessionTasks", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns task list and delivery_status for a session", async () => {
+    const backendPayload = {
+      session_id: "sess-001",
+      tasks: [
+        {
+          id: "task-001",
+          title: "Implement auth",
+          status: "executing",
+          proposal_id: "prop-001",
+          category: "regular",
+          priority: 50,
+          created_at: "2024-01-01T00:00:00Z",
+        },
+      ],
+      delivery_status: "in_progress",
+      task_count: 1,
+    };
+    mockGet.mockResolvedValueOnce({ status: 200, body: backendPayload });
+
+    const result = await handleGetSessionTasks(
+      { session_id: "sess-001" },
+      testContext
+    );
+    const parsed = JSON.parse(result);
+
+    expect(parsed.session_id).toBe("sess-001");
+    expect(parsed.delivery_status).toBe("in_progress");
+    expect(parsed.task_count).toBe(1);
+    expect(parsed.tasks).toHaveLength(1);
+    expect(parsed.tasks[0].id).toBe("task-001");
+    expect(mockGet).toHaveBeenCalledWith(
+      "/api/external/sessions/sess-001/tasks",
+      testContext
+    );
+  });
+
+  it("returns empty task list with not_scheduled for session with no tasks", async () => {
+    mockGet.mockResolvedValueOnce({
+      status: 200,
+      body: {
+        session_id: "sess-empty",
+        tasks: [],
+        delivery_status: "not_scheduled",
+        task_count: 0,
+      },
+    });
+
+    const result = await handleGetSessionTasks(
+      { session_id: "sess-empty" },
+      testContext
+    );
+    const parsed = JSON.parse(result);
+
+    expect(parsed.tasks).toHaveLength(0);
+    expect(parsed.delivery_status).toBe("not_scheduled");
+    expect(parsed.task_count).toBe(0);
+  });
+
+  it("returns missing_argument when session_id not provided", async () => {
+    const result = await handleGetSessionTasks({}, testContext);
+    const parsed = JSON.parse(result);
+
+    expect(parsed.error).toBe("missing_argument");
+    expect(parsed.message).toContain("session_id");
+    expect(mockGet).not.toHaveBeenCalled();
+  });
+
+  it("handles backend 404 error", async () => {
+    const { BackendError } = await import("../../src/backend-client.js");
+    mockGet.mockRejectedValueOnce(new BackendError(404, "Session not found"));
+
+    const result = await handleGetSessionTasks(
+      { session_id: "nonexistent" },
+      testContext
+    );
+    const parsed = JSON.parse(result);
+
+    expect(parsed.error).toBe("backend_error");
+    expect(parsed.status).toBe(404);
   });
 });

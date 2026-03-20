@@ -285,6 +285,29 @@ export async function handleGetIdeationMessages(
 }
 
 /**
+ * v1_get_session_tasks — get tasks created from an ideation session.
+ * GET /api/external/sessions/:session_id/tasks
+ */
+export async function handleGetSessionTasks(
+  args: Record<string, unknown>,
+  context: ApiKeyContext
+): Promise<string> {
+  const sessionId = args.session_id as string;
+  if (!sessionId) {
+    return JSON.stringify({ error: "missing_argument", message: "session_id is required" }, null, 2);
+  }
+  try {
+    const response = await getBackendClient().get(
+      `/api/external/sessions/${encodeURIComponent(sessionId)}/tasks`,
+      context
+    );
+    return JSON.stringify(response.body, null, 2);
+  } catch (err) {
+    return handleError(err);
+  }
+}
+
+/**
  * v1_analyze_dependencies — get dependency graph for proposals in a session.
  * GET /api/analyze_dependencies/:session_id
  */

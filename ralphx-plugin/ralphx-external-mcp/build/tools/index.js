@@ -7,7 +7,7 @@
  */
 import { ListToolsRequestSchema, CallToolRequestSchema, } from "@modelcontextprotocol/sdk/types.js";
 import { handleListProjects, handleGetProjectStatus, handleGetPipelineOverview, } from "./discovery.js";
-import { handleStartIdeation, handleGetIdeationStatus, handleSendIdeationMessage, handleGetIdeationMessages, handleListProposals, handleGetProposalDetail, handleGetPlan, handleAcceptPlanAndSchedule, handleModifyProposal, handleAnalyzeDependencies, handleTriggerPlanVerification, handleGetPlanVerification, handleListIdeationSessions, } from "./ideation.js";
+import { handleStartIdeation, handleGetIdeationStatus, handleSendIdeationMessage, handleGetIdeationMessages, handleListProposals, handleGetProposalDetail, handleGetPlan, handleAcceptPlanAndSchedule, handleModifyProposal, handleAnalyzeDependencies, handleTriggerPlanVerification, handleGetPlanVerification, handleListIdeationSessions, handleGetSessionTasks, } from "./ideation.js";
 import { handleGetTaskDetail, handleGetTaskDiff, handleGetReviewSummary, handleApproveReview, handleRequestChanges, handleGetMergePipeline, handleResolveEscalation, handlePauseTask, handleCancelTask, handleRetryTask, handleResumeScheduling, } from "./pipeline.js";
 import { handleGetRecentEvents, handleSubscribeEvents, handleGetAttentionItems, handleGetExecutionCapacity, } from "./events.js";
 import { handleBatchTaskStatus, handleGetTaskSteps } from "./tasks.js";
@@ -32,6 +32,7 @@ export const TOOL_CATEGORIES = {
         "v1_trigger_plan_verification",
         "v1_get_plan_verification",
         "v1_list_ideation_sessions",
+        "v1_get_session_tasks",
     ],
     tasks: ["v1_get_task_steps", "v1_batch_task_status"],
     pipeline: [
@@ -290,6 +291,17 @@ export function registerTools(server, getKeyContext) {
                         limit: { type: "number", description: "Max sessions to return (default: 20, max: 100)" },
                     },
                     required: ["project_id"],
+                },
+            },
+            {
+                name: "v1_get_session_tasks",
+                description: "Get all tasks created from an ideation session with aggregate delivery_status. Returns task list, delivery_status (not_scheduled | in_progress | pending_review | partial | delivered), and task_count.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        session_id: { type: "string", description: "Ideation session ID" },
+                    },
+                    required: ["session_id"],
                 },
             },
             // Task Steps
@@ -578,6 +590,9 @@ export function registerTools(server, getKeyContext) {
                 break;
             case "v1_list_ideation_sessions":
                 text = await handleListIdeationSessions(args, context);
+                break;
+            case "v1_get_session_tasks":
+                text = await handleGetSessionTasks(args, context);
                 break;
             // --- Task Steps ---
             case "v1_get_task_steps":

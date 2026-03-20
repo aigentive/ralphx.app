@@ -298,6 +298,10 @@ pub async fn start_http_server(
             get(list_ideation_sessions_http),
         )
         .route(
+            "/api/external/sessions/:session_id/tasks",
+            get(get_session_tasks_http),
+        )
+        .route(
             "/api/external/pipeline/:project_id",
             get(get_pipeline_overview_http),
         )

@@ -17,6 +17,11 @@
 import { getBackendClient, BackendError } from "../backend-client.js";
 import type { ApiKeyContext } from "../types.js";
 
+interface SessionTasksBody {
+  tasks?: Array<{ id: string; [key: string]: unknown }>;
+  [key: string]: unknown;
+}
+
 export interface AcceptAndScheduleInput {
   sessionId: string;
   baseBranchOverride?: string;
@@ -40,7 +45,8 @@ interface ProposalListBody {
 }
 
 interface ApplyProposalsBody {
-  task_ids?: string[];
+  created_task_ids?: string[];
+  session_converted?: boolean;
   [key: string]: unknown;
 }
 
@@ -106,13 +112,54 @@ export async function acceptAndSchedule(
       throw new BackendError(applyResp.status, `apply_proposals returned HTTP ${applyResp.status}`);
     }
 
-    taskIds = applyResp.body.task_ids ?? [];
+    taskIds = applyResp.body.created_task_ids ?? [];
+
+    // Fallback: session was already accepted (session_converted === false, no new tasks created).
+    // Fetch existing tasks via the session tasks endpoint instead of returning empty.
+    if (taskIds.length === 0 && applyResp.body.session_converted === false) {
+      try {
+        const tasksResp = await getBackendClient().get<SessionTasksBody>(
+          `/api/external/sessions/${encodeURIComponent(input.sessionId)}/tasks`,
+          context
+        );
+        taskIds = (tasksResp.body.tasks ?? []).map((t) => t.id);
+      } catch {
+        // Non-fatal: return empty task list rather than failing the saga
+      }
+    }
+
     progress.completed.push("apply_proposals");
     progress.step = "create_tasks";
   } catch (err) {
+    const errMessage = err instanceof Error ? err.message : String(err);
+    const isAlreadyAccepted =
+      errMessage.includes("Cannot apply proposals from") ||
+      (err instanceof BackendError && err.statusCode === 422);
+
+    if (isAlreadyAccepted) {
+      // Session was already accepted — fall back to fetching existing tasks
+      try {
+        const tasksResp = await getBackendClient().get<SessionTasksBody>(
+          `/api/external/sessions/${encodeURIComponent(input.sessionId)}/tasks`,
+          context
+        );
+        const existingTaskIds = (tasksResp.body.tasks ?? []).map((t) => t.id);
+        return {
+          success: true,
+          taskIds: existingTaskIds,
+          progress: {
+            step: "schedule_tasks",
+            completed: ["load_session", "apply_proposals", "create_tasks", "schedule_tasks"],
+          },
+        };
+      } catch {
+        // Fall through to original error if session tasks fetch also fails
+      }
+    }
+
     progress.failed = {
       step: "apply_proposals",
-      error: err instanceof Error ? err.message : String(err),
+      error: errMessage,
     };
     return { success: false, taskIds: [], progress };
   }

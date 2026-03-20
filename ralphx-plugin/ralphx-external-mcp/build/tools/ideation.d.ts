@@ -56,6 +56,11 @@ export declare function handleListIdeationSessions(args: Record<string, unknown>
  */
 export declare function handleGetIdeationMessages(args: Record<string, unknown>, context: ApiKeyContext): Promise<string>;
 /**
+ * v1_get_session_tasks — get tasks created from an ideation session.
+ * GET /api/external/sessions/:session_id/tasks
+ */
+export declare function handleGetSessionTasks(args: Record<string, unknown>, context: ApiKeyContext): Promise<string>;
+/**
  * v1_analyze_dependencies — get dependency graph for proposals in a session.
  * GET /api/analyze_dependencies/:session_id
  */

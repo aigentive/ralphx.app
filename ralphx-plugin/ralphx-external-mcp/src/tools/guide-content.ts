@@ -58,10 +58,11 @@ RalphX is an autonomous software development platform. You are an engineer-agent
    - \`v1_get_plan_verification\` → check verification status
 
 4. **Accept** — Commit the plan and start execution
-   - \`v1_accept_plan_and_schedule\` → creates tasks + starts pipeline (idempotent)
+   - \`v1_accept_plan_and_schedule\` → creates tasks + starts pipeline (idempotent — returns existing task IDs if already accepted)
    - On failure: \`v1_resume_scheduling\` → resume from last successful step
 
 5. **Supervise** — Monitor and manage the pipeline
+   - \`v1_get_session_tasks\` → track delivery progress (delivery_status + task list)
    - \`v1_get_attention_items\` → tasks needing your action
    - \`v1_get_review_summary\` + \`v1_get_task_diff\` → inspect completed work
    - \`v1_approve_review\` or \`v1_request_changes\` → drive to merge
@@ -89,7 +90,7 @@ RalphX is an autonomous software development platform. You are an engineer-agent
 - \`v1_get_pipeline_overview\` groups tasks by stage: executing, pending_review, reviewing, pending_merge, merging, completed
 `,
 
-  ideation: `## Flow 2: Ideation & Planning (13 tools)
+  ideation: `## Flow 2: Ideation & Planning (14 tools)
 
 | Tool | Purpose | Required Args | Preconditions | Next Step |
 |------|---------|---------------|---------------|-----------|
@@ -98,6 +99,7 @@ RalphX is an autonomous software development platform. You are an engineer-agent
 | v1_send_ideation_message | Message the orchestrator | session_id, message | agent_status = waiting_for_input | v1_get_ideation_status |
 | v1_get_ideation_messages | Read orchestrator replies | session_id | Session exists | v1_send_ideation_message |
 | v1_list_ideation_sessions | List sessions for a project | project_id | — | v1_get_ideation_status |
+| v1_get_session_tasks | List tasks created from a session | session_id | Session accepted | v1_get_task_detail |
 | v1_list_proposals | Proposals in session | session_id | Session has proposals | v1_get_proposal_detail |
 | v1_get_proposal_detail | Full proposal + steps + acceptance criteria | proposal_id | — | v1_modify_proposal |
 | v1_get_plan | Plan artifact content | session_id | Session has plan | v1_trigger_plan_verification |
@@ -106,6 +108,7 @@ RalphX is an autonomous software development platform. You are an engineer-agent
 | v1_trigger_plan_verification | Start adversarial review loop | session_id | Session has plan | v1_get_plan_verification |
 | v1_get_plan_verification | Verification status + gap counts | session_id | Verification triggered | v1_accept_plan_and_schedule |
 | v1_accept_plan_and_schedule | Apply proposals → tasks → schedule (saga) | session_id | Plan + proposals ready | v1_get_task_detail |
+| v1_get_session_tasks | Tasks created from a session + delivery_status | session_id | Session exists | v1_get_task_detail |
 
 ### Polling Pattern
 
@@ -125,6 +128,48 @@ v1_start_ideation → poll v1_get_ideation_status (5-10s interval)
 | \`idle\` | Agent not running | Session may be complete or errored |
 | \`generating\` | Agent producing output | Wait, then poll again |
 | \`waiting_for_input\` | Agent awaiting your message | Safe to send |
+
+### v1_get_session_tasks Output Shape
+
+After \`v1_accept_plan_and_schedule\`, use \`v1_get_session_tasks\` to track delivery progress.
+
+Response:
+\`\`\`json
+{
+  "session_id": "...",
+  "task_count": 3,
+  "delivery_status": "in_progress",
+  "tasks": [
+    {
+      "id": "task-uuid",
+      "title": "Add dark mode toggle",
+      "status": "executing",
+      "proposal_id": "proposal-uuid",
+      "category": "regular",
+      "priority": 50,
+      "created_at": "2026-01-01T00:00:00Z"
+    }
+  ]
+}
+\`\`\`
+
+### Session Lifecycle & delivery_status
+
+Session statuses: \`active\` → \`accepted\` (after \`v1_accept_plan_and_schedule\`)
+
+After acceptance, track delivery via \`delivery_status\` (returned by both \`v1_get_session_tasks\` and \`v1_get_ideation_status\`):
+
+| delivery_status | Meaning |
+|-----------------|---------|
+| \`not_scheduled\` | Session accepted but no tasks created yet |
+| \`in_progress\` | At least one task is still executing, queued, or in merge pipeline |
+| \`pending_review\` | No active tasks; some are awaiting review/approval |
+| \`partial\` | Some tasks merged; rest are terminal (cancelled/failed/stopped) |
+| \`delivered\` | All tasks merged to main |
+
+### v1_accept_plan_and_schedule Idempotency
+
+Calling \`v1_accept_plan_and_schedule\` on an already-accepted session is safe — it returns the existing task IDs instead of failing. Use this to recover task IDs if the original call response was lost.
 `,
 
   tasks: `## Flow 2b: Task Operations (2 tools)
@@ -238,6 +283,16 @@ while (true) {
 3. v1_get_execution_capacity → check if more work can run
 \`\`\`
 
+### Tracking Delivery After Accept
+
+\`\`\`
+1. v1_accept_plan_and_schedule → note returned taskIds (idempotent — safe to re-call)
+2. v1_get_session_tasks({ session_id }) → delivery_status + per-task status
+   → delivery_status: "in_progress" | "pending_review" | "partial" | "delivered"
+3. When delivery_status = "pending_review" → use v1_get_attention_items
+4. When delivery_status = "delivered" → all tasks merged
+\`\`\`
+
 ### Anti-Patterns
 
 | ❌ Don't | ✅ Do Instead |
@@ -299,6 +354,7 @@ export const ALL_TOOL_NAMES: string[] = [
   "v1_send_ideation_message",
   "v1_get_ideation_messages",
   "v1_list_ideation_sessions",
+  "v1_get_session_tasks",
   "v1_list_proposals",
   "v1_get_proposal_detail",
   "v1_get_plan",
@@ -307,6 +363,7 @@ export const ALL_TOOL_NAMES: string[] = [
   "v1_trigger_plan_verification",
   "v1_get_plan_verification",
   "v1_accept_plan_and_schedule",
+  "v1_get_session_tasks",
   // Flow 2b: Task Operations (2)
   "v1_get_task_steps",
   "v1_batch_task_status",
