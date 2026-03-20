@@ -479,6 +479,8 @@ agents:
         # child session tools
         get_child_session_status,
         send_ideation_session_message,
+        # finalize
+        finalize_proposals,
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
@@ -908,6 +910,8 @@ agents:
         # child session tools
         get_child_session_status,
         send_ideation_session_message,
+        # finalize
+        finalize_proposals,
       ]
 
   - name: ideation-team-member

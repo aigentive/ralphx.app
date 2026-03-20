@@ -357,6 +357,10 @@ Create task proposals linked to plan. Set dependencies **inline** — no backgro
    - Guard: if `list_session_proposals` returns empty, fails, or yields zero active proposals after filtering, skip regression proposal creation
    - Acceptance criteria: "Full test suite passes with zero new failures introduced by this session's changes."
 
+4. **expected_proposal_count (required)** — Pass `expected_proposal_count` on every `create_task_proposal` call (total proposals you intend to create). First proposal locks the count; backend returns `ready_to_finalize: true` when count matches.
+
+5. **Finalize (required)** — After ALL `create_task_proposal` and `update_task_proposal` calls are complete (including regression proposal and all dependency updates), call `finalize_proposals(session_id)`. Validates expected count and applies proposals. Errors are returned synchronously — handle failures before completing Phase 6.
+
 **When creating a proposal** — use `depends_on` to set immediate dependencies at creation time:
 ```
 create_task_proposal(session_id, title: "...", ..., depends_on: ["<proposal-id-A>"])

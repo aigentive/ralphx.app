@@ -29,15 +29,16 @@ use crate::domain::services::emit_verification_status_changed;
 use crate::domain::services::running_agent_registry::RunningAgentKey;
 
 use super::super::helpers::{
-    archive_proposal_impl, create_proposal_impl, parse_category, parse_priority,
-    update_proposal_impl,
+    archive_proposal_impl, create_proposal_impl, finalize_proposals_impl, parse_category,
+    parse_priority, update_proposal_impl,
 };
 use super::super::types::{
-    CreateProposalRequest, DeleteProposalRequest, GetSessionMessagesRequest,
-    GetSessionMessagesResponse, HttpServerState, ListProposalsResponse, ProposalDetailResponse,
-    ProposalResponse, ProposalSummary, RevertAndSkipRequest, SendSessionMessageRequest,
-    SendSessionMessageResponse, SessionMessageResponse, SuccessResponse, UpdateProposalRequest,
-    UpdateSessionTitleRequest, UpdateVerificationRequest, VerificationResponse,
+    CreateProposalRequest, DeleteProposalRequest, FinalizeProposalsRequest,
+    FinalizeProposalsResponse, GetSessionMessagesRequest, GetSessionMessagesResponse,
+    HttpServerState, ListProposalsResponse, ProposalDetailResponse, ProposalResponse,
+    ProposalSummary, RevertAndSkipRequest, SendSessionMessageRequest, SendSessionMessageResponse,
+    SessionMessageResponse, SuccessResponse, UpdateProposalRequest, UpdateSessionTitleRequest,
+    UpdateVerificationRequest, VerificationResponse,
 };
 use super::session_linking::session_is_team_mode;
 
@@ -106,7 +107,7 @@ pub async fn create_task_proposal(
 
     // Create proposal — events and dep analysis emitted inside create_proposal_impl()
     let session_id_str = session_id.as_str().to_string();
-    let (proposal, dep_errors, auto_accept_triggered) =
+    let (proposal, dep_errors, ready_to_finalize) =
         create_proposal_impl(&state.app_state, session_id, options)
             .await
             .map_err(|e| {
@@ -124,8 +125,26 @@ pub async fn create_task_proposal(
 
     let mut response = ProposalResponse::from(proposal);
     response.dependency_errors = dep_errors;
-    response.auto_accept_triggered = auto_accept_triggered;
+    response.ready_to_finalize = ready_to_finalize;
     Ok(Json(response))
+}
+
+pub async fn finalize_proposals(
+    State(state): State<HttpServerState>,
+    Json(req): Json<FinalizeProposalsRequest>,
+) -> Result<Json<FinalizeProposalsResponse>, JsonError> {
+    finalize_proposals_impl(&state.app_state, &req.session_id)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            error!("Failed to finalize proposals for session {}: {}", req.session_id, e);
+            let status = match &e {
+                crate::error::AppError::Validation(_) => StatusCode::BAD_REQUEST,
+                crate::error::AppError::NotFound(_) => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            json_error(status, e.to_string())
+        })
 }
 
 pub async fn update_task_proposal(

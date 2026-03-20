@@ -127,6 +127,7 @@ pub async fn start_http_server(
         .route("/api/validate_key", get(validate_key))
         // Ideation tools (orchestrator-ideation agent)
         .route("/api/create_task_proposal", post(create_task_proposal))
+        .route("/api/finalize_proposals", post(finalize_proposals))
         .route("/api/update_task_proposal", post(update_task_proposal))
         .route("/api/archive_task_proposal", post(archive_task_proposal))
         // Proposal query tools (orchestrator-ideation agent)

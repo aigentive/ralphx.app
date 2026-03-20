@@ -142,6 +142,20 @@ pub struct UpdateProposalRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct FinalizeProposalsRequest {
+    pub session_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FinalizeProposalsResponse {
+    pub created_task_ids: Vec<String>,
+    pub dependencies_created: u32,
+    pub session_status: String,
+    pub execution_plan_id: Option<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct DeleteProposalRequest {
     pub proposal_id: String,
 }
@@ -167,8 +181,10 @@ pub struct ProposalResponse {
     pub dependency_errors: Vec<String>,
     /// Optional target project ID for cross-project proposal execution
     pub target_project: Option<String>,
-    /// Whether the auto-accept pipeline was triggered for this session
+    /// Whether the auto-accept pipeline was triggered for this session (always false — kept for backward compat)
     pub auto_accept_triggered: bool,
+    /// Whether the session is ready to finalize (expected proposal count reached)
+    pub ready_to_finalize: bool,
 }
 
 impl From<TaskProposal> for ProposalResponse {
@@ -186,6 +202,7 @@ impl From<TaskProposal> for ProposalResponse {
             dependency_errors: Vec::new(),
             target_project: proposal.target_project.clone(),
             auto_accept_triggered: false,
+            ready_to_finalize: false,
         }
     }
 }

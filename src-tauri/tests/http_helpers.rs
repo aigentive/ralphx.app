@@ -1557,27 +1557,27 @@ async fn test_expected_count_mismatch_rejected() {
     }
 }
 
-// Scenario 25: auto_accept_triggered=true when active count reaches expected count.
-// Verifies the fire-and-forget spawn runs and sets auto_accept_status.
+// Scenario 25: ready_to_finalize=true when active count reaches expected count.
+// Verifies the signal is returned; session remains Active (agent must call finalize_proposals).
 #[tokio::test]
-async fn test_auto_accept_fires_on_count_match() {
+async fn test_ready_to_finalize_on_count_match() {
     let state = AppState::new_sqlite_test();
     let (session, _) = setup_session_with_gate(&state, "verified", false).await;
 
-    // Proposals 1 and 2: no trigger
+    // Proposals 1 and 2: no signal
     for i in 1..=2 {
-        let (_, _, triggered) = create_proposal_impl(
+        let (_, _, ready) = create_proposal_impl(
             &state,
             session.id.clone(),
             make_proposal_options(&format!("Proposal {i}"), Some(3)),
         )
         .await
         .expect("proposal should succeed");
-        assert!(!triggered, "No trigger expected for proposal {i} of 3");
+        assert!(!ready, "ready_to_finalize must be false for proposal {i} of 3");
     }
 
-    // Proposal 3: count == expected → must trigger
-    let (_, _, triggered) = create_proposal_impl(
+    // Proposal 3: count == expected → ready_to_finalize=true
+    let (_, _, ready) = create_proposal_impl(
         &state,
         session.id.clone(),
         make_proposal_options("Proposal 3", Some(3)),
@@ -1585,11 +1585,9 @@ async fn test_auto_accept_fires_on_count_match() {
     .await
     .expect("third proposal should succeed");
 
-    assert!(triggered, "auto_accept_triggered must be true when active count == expected");
+    assert!(ready, "ready_to_finalize must be true when active count == expected");
 
-    // Wait for async spawn to set auto_accept_status
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-
+    // Session must remain Active — agent drives finalize_proposals explicitly
     let updated = state
         .ideation_session_repo
         .get_by_id(&session.id)
@@ -1597,9 +1595,14 @@ async fn test_auto_accept_fires_on_count_match() {
         .unwrap()
         .expect("session must exist");
 
+    assert_eq!(
+        updated.status,
+        IdeationSessionStatus::Active,
+        "Session must remain Active after ready_to_finalize signal"
+    );
     assert!(
-        updated.auto_accept_status.is_some(),
-        "auto_accept_status must be set (pending/success/failed) after trigger, got None"
+        updated.auto_accept_status.is_none(),
+        "auto_accept_status must not be set — fire-and-forget removed"
     );
 }
 
@@ -1639,17 +1642,16 @@ async fn test_partial_proposals_no_auto_accept() {
     );
 }
 
-// Scenario 27: Auto-accept blocked by verification gate → auto_accept_status='failed'.
+// Scenario 27: Verification gate blocks finalize_proposals synchronously.
 // Proposals gate (require_verification_for_proposals) is off so proposals can be created.
-// Accept gate (require_verification_for_accept) is on and session is unverified → apply fails.
+// Accept gate (require_verification_for_accept) is on and session is unverified → finalize fails.
 #[tokio::test]
-async fn test_auto_accept_blocked_by_verification_gate() {
+async fn test_finalize_blocked_by_verification_gate() {
     let state = AppState::new_sqlite_test();
     // Proposal creation gate disabled (gate_enabled=false) + verification_status='unverified'
     let (session, _) = setup_session_with_gate(&state, "unverified", false).await;
 
     // Enable require_verification_for_accept on the in-memory settings repo
-    // (used by apply_proposals_core → check_verification_gate)
     let mut settings = state
         .ideation_settings_repo
         .get_settings()
@@ -1662,7 +1664,7 @@ async fn test_auto_accept_blocked_by_verification_gate() {
         .await
         .expect("update settings should succeed");
 
-    // Create 3 proposals with expected=3 — last one triggers auto-accept
+    // Create 3 proposals with expected=3 — last one returns ready_to_finalize=true
     for i in 1..=3 {
         create_proposal_impl(
             &state,
@@ -1673,9 +1675,17 @@ async fn test_auto_accept_blocked_by_verification_gate() {
         .expect("proposal creation should succeed (proposal gate is off)");
     }
 
-    // Wait for async spawn to run apply_proposals_core and hit the gate
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    // Explicitly call finalize_proposals — must fail with validation error
+    let result = finalize_proposals_impl(&state, session.id.as_str()).await;
 
+    assert!(result.is_err(), "finalize_proposals must fail when verification gate blocks acceptance");
+    let err = result.unwrap_err();
+    assert!(
+        matches!(err, AppError::Validation(_)),
+        "Error must be Validation, got: {err:?}"
+    );
+
+    // Session must remain Active (no state change on failure)
     let updated = state
         .ideation_session_repo
         .get_by_id(&session.id)
@@ -1684,9 +1694,9 @@ async fn test_auto_accept_blocked_by_verification_gate() {
         .expect("session must exist");
 
     assert_eq!(
-        updated.auto_accept_status.as_deref(),
-        Some("failed"),
-        "auto_accept_status must be 'failed' when verification gate blocks acceptance"
+        updated.status,
+        IdeationSessionStatus::Active,
+        "Session must remain Active when finalize fails"
     );
 }
 

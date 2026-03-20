@@ -99,7 +99,7 @@ export const ALL_TOOLS: Tool[] = [
         },
         expected_proposal_count: {
           type: "integer",
-          description: "Total number of proposals you intend to create in this session. Required on every create_task_proposal call. First proposal locks the count; backend auto-accepts when all proposals arrive.",
+          description: "Total number of proposals you intend to create in this session. Required on every create_task_proposal call. First proposal locks the count; returns ready_to_finalize: true when proposal count matches expected_proposal_count — call finalize_proposals then.",
         },
       },
       required: ["session_id", "title", "category", "expected_proposal_count"],
@@ -242,6 +242,21 @@ export const ALL_TOOLS: Tool[] = [
         session_id: {
           type: "string",
           description: "The ideation session ID to analyze",
+        },
+      },
+      required: ["session_id"],
+    },
+  },
+  {
+    name: "finalize_proposals",
+    description:
+      "Signal that all proposals and dependencies are complete. Validates expected count and applies all proposals to create tasks. Call this AFTER all create_task_proposal and update_task_proposal calls are done.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: {
+          type: "string",
+          description: "The ideation session ID",
         },
       },
       required: ["session_id"],
@@ -1477,6 +1492,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "update_task_proposal",
     "archive_task_proposal",
     "delete_task_proposal",
+    "finalize_proposals",
     "list_session_proposals",
     "get_proposal",
     "analyze_session_dependencies",
@@ -1740,6 +1756,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "update_task_proposal",
     "archive_task_proposal",
     "delete_task_proposal",
+    "finalize_proposals",
     "list_session_proposals",
     "get_proposal",
     "analyze_session_dependencies",

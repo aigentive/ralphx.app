@@ -303,7 +303,7 @@ update_task_proposal(proposal_id, add_blocks: ["<proposal-id-C>"])
 
 2. **Targeted test identification step** — Every `feature`, `fix`, or `refactor` proposal MUST include a step: "Identify test files affected by code changes using language-appropriate methods (e.g., grep imports for JS/TS/Python, check `mod tests` blocks and `tests/` directory for Rust, examine test file naming conventions) and execute only those tests. Fall back to path-scoped suite if targeted identification yields no results."
 
-3. **expected_proposal_count (required)** — Pass `expected_proposal_count` on every `create_task_proposal` call (total proposals you intend to create). First proposal locks the count; backend auto-accepts when all proposals arrive.
+3. **expected_proposal_count (required)** — Pass `expected_proposal_count` on every `create_task_proposal` call (total proposals you intend to create). First proposal locks the count; backend returns `ready_to_finalize: true` when count matches. After all dependency updates, call `finalize_proposals(session_id)`.
 
 4. **Auto-generate Regression Testing proposal** — When creating 2 or more proposals in a session, auto-generate a final "Regression Testing" proposal:
    - Category: `testing`
@@ -312,6 +312,8 @@ update_task_proposal(proposal_id, add_blocks: ["<proposal-id-C>"])
    - Set `depends_on` to all filtered active IDs
    - Guard: if `list_session_proposals` returns empty, fails, or yields zero active proposals after filtering, skip regression proposal creation entirely — do not create a regression task with no dependencies
    - Acceptance criteria: "Full test suite passes with zero new failures introduced by this session's changes."
+
+5. **Finalize (required)** — After ALL `create_task_proposal` and `update_task_proposal` calls are complete (including regression proposal and all dependency updates), call `finalize_proposals(session_id)`. Validates expected count and applies proposals. Errors are returned synchronously — handle failures before completing Phase 5.
 </workflow>
 
 <tool-usage>
@@ -363,8 +365,9 @@ Plan archetypes: Phase-driven (temporal dependencies): N phases → waves → wa
 | `edit_plan_artifact` | Targeted edits (preferred when changing <30% of plan). All-or-nothing atomicity — all edits succeed or none applied. Sequential: each edit sees result of prior edits. Use `old_text` anchors of 20+ chars for reliable matching. Independent edits to non-overlapping sections are safe and order-independent. If an edit fails, retry the entire call. |
 | `update_plan_artifact` | Full rewrites only (>30% of content or full restructure). Auto-verifier always uses this — not `edit_plan_artifact` — for full-content revisions. |
 | `get_session_plan` / `get_artifact` | Retrieve plan artifact |
-| `create_task_proposal` | Fails without plan artifact; auto-links to plan on creation; optional `depends_on: string[]` for inline dep-setting |
+| `create_task_proposal` | Fails without plan artifact; auto-links to plan on creation; optional `depends_on: string[]` for inline dep-setting; returns `ready_to_finalize: true` when `expected_proposal_count` is reached |
 | `update_task_proposal` | Optional `add_depends_on: string[]` and `add_blocks: string[]` for additive dep-setting (no replace-all) |
+| `finalize_proposals` | **Required final step** — call after all proposals and dependency updates complete; validates expected count and applies proposals synchronously |
 | `delete_task_proposal` / `list_session_proposals` / `get_proposal` | Manage proposals |
 | `analyze_session_dependencies` | Read-only graph analysis — critical path, cycles, blocking relationships |
 | `create_child_session` | `initial_prompt` triggers auto-spawn of orchestrator agent |
