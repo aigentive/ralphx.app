@@ -809,6 +809,7 @@ pub async fn build_interactive_command(
     chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     session_messages: &[ChatMessage],
     total_available: usize,
+    is_external_mcp: bool,
 ) -> Result<SpawnableCommand, String> {
     let agent_name =
         resolve_agent_with_team_mode(&conversation.context_type, entity_status, team_mode);
@@ -845,6 +846,7 @@ pub async fn build_interactive_command(
         Some(agent_name),
         resume_session,
         working_directory,
+        is_external_mcp,
     )?;
 
     // Same env vars as build_command()

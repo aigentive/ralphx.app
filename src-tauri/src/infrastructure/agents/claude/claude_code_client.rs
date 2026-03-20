@@ -367,7 +367,7 @@ impl AgenticClient for ClaudeCodeClient {
             // Use --strict-mcp-config to ignore user/global MCP servers that can hang
             // Hard error on invalid config — MCP is critical infra, fail loud.
             if let Some(agent) = &config.agent {
-                let temp_path = create_mcp_config(plugin_dir, agent)
+                let temp_path = create_mcp_config(plugin_dir, agent, false)
                     .map_err(|e| AgentError::SpawnFailed(e))?;
                 args.extend([
                     "--mcp-config".to_string(),
@@ -602,7 +602,7 @@ impl ClaudeCodeClient {
             // Use --strict-mcp-config to ignore user/global MCP servers that can hang
             // Hard error on invalid config — MCP is critical infra, fail loud.
             if let Some(agent) = &config.agent {
-                let temp_path = create_mcp_config(plugin_dir, agent)?;
+                let temp_path = create_mcp_config(plugin_dir, agent, false)?;
                 args.extend([
                     "--mcp-config".to_string(),
                     temp_path.display().to_string(),
@@ -881,7 +881,7 @@ impl ClaudeCodeClient {
             // Create dynamic MCP config with MCP agent type for tool filtering
             // Uses mcp_agent_type (e.g., "ideation-team-member") not the Claude Code agent_type
             // Hard error on invalid config — MCP is critical infra, fail loud.
-            let temp_path = create_mcp_config(plugin_dir, &config.mcp_agent_type)?;
+            let temp_path = create_mcp_config(plugin_dir, &config.mcp_agent_type, false)?;
             args.extend([
                 "--mcp-config".to_string(),
                 temp_path.display().to_string(),

@@ -161,6 +161,10 @@ pub struct SendMessageOptions {
     pub metadata: Option<String>,
     /// Optional timestamp override for the user message. If None, uses Utc::now().
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// When true, the agent was spawned from an external MCP request (e.g. ReefBot).
+    /// Filters interactive-only tools (e.g. `ask_user_question`) from the allowed tool list
+    /// to prevent deadlocks where the agent waits for human input that will never arrive.
+    pub is_external_mcp: bool,
 }
 
 /// Unified chat service for all context types
@@ -541,6 +545,7 @@ impl<R: Runtime> ClaudeChatService<R> {
         project_id: Option<&str>,
         session_messages: &[crate::domain::entities::ChatMessage],
         total_available: usize,
+        is_external_mcp: bool,
     ) -> Result<crate::infrastructure::agents::claude::SpawnableCommand, ChatServiceError> {
         chat_service_context::build_interactive_command(
             &self.cli_path,
@@ -554,6 +559,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             Arc::clone(&self.chat_attachment_repo),
             session_messages,
             total_available,
+            is_external_mcp,
         )
         .await
         .map_err(ChatServiceError::SpawnFailed)
@@ -1085,6 +1091,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 project_id.as_deref(),
                 &session_messages,
                 session_total,
+                options.is_external_mcp,
             )
             .await
         {

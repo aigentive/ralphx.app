@@ -546,7 +546,10 @@ pub async fn start_ideation_http(
                 ChatContextType::Ideation,
                 &session_id_str,
                 prompt_str,
-                Default::default(),
+                SendMessageOptions {
+                    is_external_mcp: true,
+                    ..Default::default()
+                },
             )
             .await
         {
@@ -2181,7 +2184,10 @@ pub async fn ideation_message_http(
             ChatContextType::Ideation,
             &session_id_str,
             &req.message,
-            SendMessageOptions::default(),
+            SendMessageOptions {
+                is_external_mcp: true,
+                ..Default::default()
+            },
         )
         .await;
 

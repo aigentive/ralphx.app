@@ -830,7 +830,7 @@ fn test_create_mcp_config_resolves_node_command() {
     let tmp = tempfile::tempdir().unwrap();
     let plugin_dir = tmp.path();
 
-    let config_path = create_mcp_config(plugin_dir, "worker")
+    let config_path = create_mcp_config(plugin_dir, "worker", false)
         .expect("create_mcp_config should succeed");
 
     let json_str = std::fs::read_to_string(&config_path).unwrap();
@@ -888,7 +888,7 @@ fn test_create_mcp_config_replaces_bare_node_from_mcp_json() {
     )
     .unwrap();
 
-    let config_path = create_mcp_config(plugin_dir, "worker")
+    let config_path = create_mcp_config(plugin_dir, "worker", false)
         .expect("create_mcp_config should succeed");
 
     let json_str = std::fs::read_to_string(&config_path).unwrap();
@@ -936,7 +936,7 @@ fn test_create_mcp_config_expands_plugin_root_template() {
     )
     .unwrap();
 
-    let config_path = create_mcp_config(plugin_dir, "worker")
+    let config_path = create_mcp_config(plugin_dir, "worker", false)
         .expect("create_mcp_config should succeed");
 
     let json_str = std::fs::read_to_string(&config_path).unwrap();
@@ -1028,7 +1028,7 @@ fn test_create_mcp_config_injects_agent_type() {
     let tmp = tempfile::tempdir().unwrap();
     let plugin_dir = tmp.path();
 
-    let config_path = create_mcp_config(plugin_dir, "orchestrator-ideation")
+    let config_path = create_mcp_config(plugin_dir, "orchestrator-ideation", false)
         .expect("create_mcp_config should succeed");
 
     let json_str = std::fs::read_to_string(&config_path).unwrap();

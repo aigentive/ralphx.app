@@ -117,7 +117,7 @@ fn test_format_allowed_tools_arg_value_absent_mcp_tools_returns_none() {
 fn test_create_mcp_config_injects_allowed_tools_for_agent_with_mcp_tools() {
     let (_dir, plugin_dir) = make_temp_plugin_dir();
     // orchestrator-ideation has a non-empty mcp_tools list in ralphx.yaml
-    let config_path = create_mcp_config(&plugin_dir, "orchestrator-ideation")
+    let config_path = create_mcp_config(&plugin_dir, "orchestrator-ideation", false)
         .expect("should create config file");
     let args = get_json_args(&config_path);
 
@@ -140,7 +140,7 @@ fn test_create_mcp_config_injects_allowed_tools_for_agent_with_mcp_tools() {
 #[test]
 fn test_create_mcp_config_injects_agent_type_alongside_allowed_tools() {
     let (_dir, plugin_dir) = make_temp_plugin_dir();
-    let config_path = create_mcp_config(&plugin_dir, "orchestrator-ideation")
+    let config_path = create_mcp_config(&plugin_dir, "orchestrator-ideation", false)
         .expect("should create config file");
     let args = get_json_args(&config_path);
 
@@ -159,7 +159,7 @@ fn test_create_mcp_config_injects_agent_type_alongside_allowed_tools() {
 fn test_create_mcp_config_no_allowed_tools_arg_for_unknown_agent() {
     let (_dir, plugin_dir) = make_temp_plugin_dir();
     // Unknown agent has no config → mcp_tools absent → no --allowed-tools injected
-    let config_path = create_mcp_config(&plugin_dir, "completely-unknown-agent-xyz")
+    let config_path = create_mcp_config(&plugin_dir, "completely-unknown-agent-xyz", false)
         .expect("should create config file even for unknown agent");
     let args = get_json_args(&config_path);
 
@@ -179,7 +179,7 @@ fn test_create_mcp_config_no_allowed_tools_arg_for_unknown_agent() {
 fn test_create_mcp_config_allowed_tools_value_matches_agent_mcp_tools() {
     let (_dir, plugin_dir) = make_temp_plugin_dir();
     // session-namer has a small mcp_tools list: [update_session_title]
-    let config_path = create_mcp_config(&plugin_dir, "session-namer")
+    let config_path = create_mcp_config(&plugin_dir, "session-namer", false)
         .expect("should create config file");
     let args = get_json_args(&config_path);
 
@@ -278,8 +278,88 @@ fn test_create_mcp_config_returns_error_on_io_failure() {
     // Use a non-existent directory as plugin_dir — should fail gracefully
     let plugin_dir = std::path::Path::new("/nonexistent/path/that/does/not/exist");
     // create_mcp_config should return Err, not panic
-    let result = create_mcp_config(plugin_dir, "worker");
+    let result = create_mcp_config(plugin_dir, "worker", false);
     // May succeed (writing temp file doesn't need plugin_dir to exist) or fail on validation
     // The key invariant: it must not panic, regardless of outcome
     let _ = result; // just checking no panic
+}
+
+// ─── filter_interactive_tools tests ─────────────────────────────────────────
+
+#[test]
+fn test_filter_interactive_tools_removes_ask_user_question() {
+    let tools = vec![
+        "get_task_context".to_string(),
+        "ask_user_question".to_string(),
+        "complete_step".to_string(),
+    ];
+    let filtered = filter_interactive_tools(&tools);
+    assert!(!filtered.contains(&"ask_user_question".to_string()));
+    assert!(filtered.contains(&"get_task_context".to_string()));
+    assert!(filtered.contains(&"complete_step".to_string()));
+    assert_eq!(filtered.len(), 2);
+}
+
+#[test]
+fn test_filter_interactive_tools_no_op_when_not_present() {
+    let tools = vec!["get_task_context".to_string(), "complete_step".to_string()];
+    let filtered = filter_interactive_tools(&tools);
+    assert_eq!(filtered.len(), 2);
+}
+
+#[test]
+fn test_filter_interactive_tools_empty_input() {
+    let tools: Vec<String> = vec![];
+    let filtered = filter_interactive_tools(&tools);
+    assert!(filtered.is_empty());
+}
+
+// ─── create_mcp_config with is_external_mcp=true tests ───────────────────────
+
+#[test]
+fn test_create_mcp_config_external_mcp_filters_ask_user_question() {
+    let (dir, plugin_dir) = make_temp_plugin_dir();
+    // orchestrator-ideation has ask_user_question in its mcp_tools
+    let config_path =
+        create_mcp_config(&plugin_dir, "orchestrator-ideation", true).expect("should succeed");
+    let content = std::fs::read_to_string(&config_path).expect("should read config");
+    let json: serde_json::Value = serde_json::from_str(&content).expect("valid JSON");
+    let args: Vec<String> = json["mcpServers"]
+        .as_object()
+        .and_then(|servers| servers.values().next())
+        .and_then(|server| server["args"].as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    let allowed_tools_arg = args.iter().find(|a| a.starts_with("--allowed-tools="));
+    if let Some(arg) = allowed_tools_arg {
+        assert!(
+            !arg.contains("ask_user_question"),
+            "ask_user_question must not appear in --allowed-tools when is_external_mcp=true, got: {arg}"
+        );
+    }
+    drop(dir);
+}
+
+#[test]
+fn test_create_mcp_config_non_external_mcp_keeps_ask_user_question() {
+    let (dir, plugin_dir) = make_temp_plugin_dir();
+    // orchestrator-ideation has ask_user_question in its mcp_tools — should be present when not external
+    let config_path =
+        create_mcp_config(&plugin_dir, "orchestrator-ideation", false).expect("should succeed");
+    let content = std::fs::read_to_string(&config_path).expect("should read config");
+    let json: serde_json::Value = serde_json::from_str(&content).expect("valid JSON");
+    let args: Vec<String> = json["mcpServers"]
+        .as_object()
+        .and_then(|servers| servers.values().next())
+        .and_then(|server| server["args"].as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    let allowed_tools_arg = args.iter().find(|a| a.starts_with("--allowed-tools="));
+    if let Some(arg) = allowed_tools_arg {
+        assert!(
+            arg.contains("ask_user_question"),
+            "ask_user_question must appear in --allowed-tools when is_external_mcp=false, got: {arg}"
+        );
+    }
+    drop(dir);
 }

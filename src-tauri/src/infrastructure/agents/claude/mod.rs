@@ -130,6 +130,7 @@ pub fn build_base_cli_command(
     cli_path: &Path,
     plugin_dir: &Path,
     agent_type: Option<&str>,
+    is_external_mcp: bool,
 ) -> Result<Command, String> {
     ensure_claude_spawn_allowed()?;
     sanitize_claude_user_state();
@@ -199,7 +200,7 @@ pub fn build_base_cli_command(
     // Always enforce strict MCP isolation from user/global servers.
     // Hard error on invalid config — MCP is critical infra, fail loud.
     if let Some(agent) = agent_type {
-        let temp_path = create_mcp_config(plugin_dir, agent).map_err(|e| {
+        let temp_path = create_mcp_config(plugin_dir, agent, is_external_mcp).map_err(|e| {
             tracing::error!(error = %e, agent = %agent, "MCP config creation failed");
             e
         })?;
@@ -393,17 +394,38 @@ pub(crate) fn validate_mcp_config_json(
     Ok(())
 }
 
+/// MCP tools that require live human interaction and must be excluded when an agent
+/// is spawned from an external (non-interactive) context such as an external MCP request.
+/// Without this filter the agent would long-poll for human input that never arrives → deadlock.
+pub const INTERACTIVE_TOOLS: &[&str] = &["ask_user_question"];
+
+/// Remove `INTERACTIVE_TOOLS` entries from `tools`, returning a filtered list.
+pub fn filter_interactive_tools(tools: &[String]) -> Vec<String> {
+    tools
+        .iter()
+        .filter(|name| !INTERACTIVE_TOOLS.contains(&name.as_str()))
+        .cloned()
+        .collect()
+}
+
 /// Create a dynamic MCP config temp file for an agent.
 ///
 /// Writes a JSON config that starts the configured MCP server with the agent's type
 /// passed via `--agent-type` CLI arg (for tool filtering). Returns the temp file path.
 /// Uses UUID in filename to avoid race conditions between parallel agent spawns.
 ///
+/// When `is_external_mcp` is `true`, interactive-only tools (see `INTERACTIVE_TOOLS`) are
+/// stripped from the `--allowed-tools` arg to prevent deadlocks in unattended contexts.
+///
 /// # Errors
 ///
 /// Returns `Err` when the config JSON fails validation (missing required fields) or
 /// when the temp file cannot be written. Errors propagate to agent spawn failure.
-pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Result<PathBuf, String> {
+pub fn create_mcp_config(
+    plugin_dir: &Path,
+    agent_type: &str,
+    is_external_mcp: bool,
+) -> Result<PathBuf, String> {
     // ${CLAUDE_PLUGIN_ROOT} in .mcp.json means the plugin_dir itself (e.g. ralphx-plugin/).
     // spawn_teammate_interactive sets CLAUDE_PLUGIN_ROOT=plugin_dir, so expansion must match.
     let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
@@ -508,8 +530,10 @@ pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Result<PathBuf,
         // - Agent not in config (None) → skip arg entirely (MCP server falls back to TOOL_ALLOWLIST)
         // - Agent found, empty mcp_tools → inject __NONE__ sentinel (intentional zero tools)
         // - Agent found, non-empty mcp_tools → validate names, join with commas, inject arg
+        // When is_external_mcp=true, strip interactive-only tools (e.g. ask_user_question) to
+        // prevent deadlocks where the agent waits for human input that will never arrive.
         let validated_tools: Option<Vec<String>> = get_agent_config(agent_type).map(|cfg| {
-            cfg.allowed_mcp_tools
+            let tools: Vec<String> = cfg.allowed_mcp_tools
                 .iter()
                 .filter(|name| {
                     if validate_mcp_tool_name(name) {
@@ -524,7 +548,12 @@ pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Result<PathBuf,
                     }
                 })
                 .cloned()
-                .collect()
+                .collect();
+            if is_external_mcp {
+                filter_interactive_tools(&tools)
+            } else {
+                tools
+            }
         });
         if let Some(arg_value) = format_allowed_tools_arg_value(validated_tools.as_deref()) {
             args_vec.push(format!("--allowed-tools={}", arg_value));
@@ -857,7 +886,7 @@ pub fn build_spawnable_command(
     resume_session: Option<&str>,
     working_directory: &Path,
 ) -> Result<SpawnableCommand, String> {
-    let mut cmd = build_base_cli_command(cli_path, plugin_dir, agent)?;
+    let mut cmd = build_base_cli_command(cli_path, plugin_dir, agent, false)?;
     let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session, false);
     configure_spawn(&mut cmd, working_directory, stdin_prompt.is_some());
     Ok(SpawnableCommand { cmd, stdin_prompt })
@@ -878,8 +907,9 @@ pub fn build_spawnable_interactive_command(
     agent: Option<&str>,
     resume_session: Option<&str>,
     working_directory: &Path,
+    is_external_mcp: bool,
 ) -> Result<SpawnableCommand, String> {
-    let mut cmd = build_base_cli_command(cli_path, plugin_dir, agent)?;
+    let mut cmd = build_base_cli_command(cli_path, plugin_dir, agent, is_external_mcp)?;
     // interactive=true: no -p flag; prompt stored in stdin_prompt for spawn_interactive()
     let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session, true);
     configure_spawn(&mut cmd, working_directory, true);
@@ -1140,6 +1170,7 @@ mod tests {
             None,
             None,
             Path::new("/tmp"),
+            false,
         );
         assert!(result.is_err(), "should be blocked in test environment");
     }
