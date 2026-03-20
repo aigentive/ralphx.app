@@ -900,6 +900,16 @@ pub async fn update_plan_verification(
     // in_progress may be overridden by condition 6 (reviewing+gaps → needs_revision)
     let mut effective_in_progress = req.in_progress;
 
+    // Guard: external sessions cannot skip plan verification
+    if new_status == VerificationStatus::Skipped
+        && session.origin == crate::domain::entities::ideation::SessionOrigin::External
+    {
+        return Err(json_error(
+            StatusCode::FORBIDDEN,
+            "External sessions cannot skip plan verification. Run verification to completion (update_plan_verification with status 'reviewing').",
+        ));
+    }
+
     // Transition validation matrix
     let current = session.verification_status;
     let has_convergence_reason = req.convergence_reason.is_some();
@@ -1476,6 +1486,14 @@ pub async fn revert_and_skip(
             json_error(StatusCode::INTERNAL_SERVER_ERROR, "Failed to get session")
         })?
         .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
+
+    // Guard: external sessions cannot skip plan verification
+    if session.origin == crate::domain::entities::ideation::SessionOrigin::External {
+        return Err(json_error(
+            StatusCode::FORBIDDEN,
+            "External sessions cannot skip plan verification. Run verification to completion (update_plan_verification with status 'reviewing').",
+        ));
+    }
 
     // Session must be active
     if !session.is_active() {

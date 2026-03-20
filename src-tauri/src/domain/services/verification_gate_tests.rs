@@ -1,5 +1,5 @@
 use super::*;
-use crate::domain::entities::ideation::{VerificationError, VerificationStatus};
+use crate::domain::entities::ideation::{SessionOrigin, VerificationError, VerificationStatus};
 use crate::domain::entities::{ArtifactId, IdeationSession, IdeationSessionId, ProjectId};
 use crate::domain::ideation::config::{IdeationPlanMode, IdeationSettings};
 
@@ -182,30 +182,48 @@ fn test_proposal_gate_no_plan_passthrough() {
 
 /// Scenario 3: VerificationStatus × ProposalOperation matrix — all 15 combinations.
 ///
-/// Verified/Skipped → all ops allowed.
-/// Unverified       → Create blocked (ProposalNotVerified), Update/Delete allowed.
-/// Reviewing        → all ops blocked (ProposalReviewInProgress).
-/// NeedsRevision    → all ops blocked (ProposalHasUnresolvedGaps).
+/// Verified          → all ops allowed.
+/// Skipped           → Create blocked (ProposalSkippedNotAllowed), Update/Delete allowed.
+/// Unverified        → Create blocked (ProposalNotVerified), Update/Delete allowed.
+/// Reviewing         → all ops blocked (ProposalReviewInProgress).
+/// NeedsRevision     → all ops blocked (ProposalHasUnresolvedGaps).
 #[test]
 fn test_proposal_gate_status_operation_matrix() {
     let settings = proposal_gate_settings(true);
 
-    // Verified and Skipped → always allow
-    for status in [VerificationStatus::Verified, VerificationStatus::Skipped] {
-        for op in [
-            ProposalOperation::Create,
-            ProposalOperation::Update,
-            ProposalOperation::Delete,
-        ] {
-            let session = make_session_with_own_plan(status);
-            assert!(
-                check_proposal_verification_gate(&session, &settings, None, op).is_ok(),
-                "status={:?} op={:?} should be Ok",
-                status,
-                op
-            );
-        }
+    // Verified → always allow
+    for op in [
+        ProposalOperation::Create,
+        ProposalOperation::Update,
+        ProposalOperation::Delete,
+    ] {
+        let session = make_session_with_own_plan(VerificationStatus::Verified);
+        assert!(
+            check_proposal_verification_gate(&session, &settings, None, op).is_ok(),
+            "status=Verified op={:?} should be Ok",
+            op
+        );
     }
+
+    // Skipped → Create blocked, Update/Delete allowed
+    let session = make_session_with_own_plan(VerificationStatus::Skipped);
+    assert!(
+        matches!(
+            check_proposal_verification_gate(&session, &settings, None, ProposalOperation::Create),
+            Err(VerificationError::ProposalSkippedNotAllowed)
+        ),
+        "status=Skipped op=Create should be ProposalSkippedNotAllowed"
+    );
+    assert!(
+        check_proposal_verification_gate(&session, &settings, None, ProposalOperation::Update)
+            .is_ok(),
+        "status=Skipped op=Update should be Ok"
+    );
+    assert!(
+        check_proposal_verification_gate(&session, &settings, None, ProposalOperation::Delete)
+            .is_ok(),
+        "status=Skipped op=Delete should be Ok"
+    );
 
     // Unverified → Create blocked, Update/Delete allowed
     let session = make_session_with_own_plan(VerificationStatus::Unverified);
@@ -524,5 +542,77 @@ fn test_verification_gate_reviewing_status_without_in_progress() {
     assert!(
         matches!(result, Err(VerificationError::InProgress { .. })),
         "Reviewing status without in_progress flag should still return InProgress"
+    );
+}
+
+// ============================================================================
+// Origin-aware gate tests
+// ============================================================================
+
+/// Helper: build a session with a specific origin and verification status.
+fn make_session_with_own_plan_and_origin(
+    status: VerificationStatus,
+    origin: SessionOrigin,
+) -> IdeationSession {
+    let mut session = IdeationSession::builder()
+        .id(IdeationSessionId::from_string("origin-test-session".to_string()))
+        .project_id(ProjectId::from_string("test-project-id".to_string()))
+        .plan_artifact_id(ArtifactId::from_string("test-artifact-id".to_string()))
+        .origin(origin)
+        .build();
+    session.verification_status = status;
+    session
+}
+
+/// Test: Skipped+Create on any session returns ProposalSkippedNotAllowed.
+/// Focused test verifying the error variant and that the error message is non-empty.
+#[test]
+fn test_proposal_gate_blocks_create_on_skipped() {
+    let settings = proposal_gate_settings(true);
+    let session = make_session_with_own_plan(VerificationStatus::Skipped);
+    let result =
+        check_proposal_verification_gate(&session, &settings, None, ProposalOperation::Create);
+    assert!(
+        matches!(result, Err(VerificationError::ProposalSkippedNotAllowed)),
+        "Skipped+Create must return ProposalSkippedNotAllowed, got: {:?}",
+        result
+    );
+    // Verify the error message is non-empty and actionable
+    let err = result.unwrap_err();
+    let msg = err.to_string();
+    assert!(!msg.is_empty(), "error message must not be empty");
+    assert!(
+        msg.contains("skipped"),
+        "error message should mention 'skipped', got: {}",
+        msg
+    );
+}
+
+/// Test: external session with Skipped status is blocked by the acceptance gate.
+/// Defense-in-depth: external sessions should never reach Skipped (handler blocks it),
+/// but the gate catches it if they do.
+#[test]
+fn test_accept_gate_blocks_skipped_external() {
+    let settings = settings_with_required(true);
+    let session =
+        make_session_with_own_plan_and_origin(VerificationStatus::Skipped, SessionOrigin::External);
+    let result = check_verification_gate(&session, &settings);
+    assert!(
+        matches!(result, Err(VerificationError::ExternalCannotSkip)),
+        "External+Skipped must return ExternalCannotSkip, got: {:?}",
+        result
+    );
+}
+
+/// Test: internal session with Skipped status passes the acceptance gate.
+/// Internal users who skip verification can still accept proposals.
+#[test]
+fn test_accept_gate_allows_skipped_internal() {
+    let settings = settings_with_required(true);
+    let session =
+        make_session_with_own_plan_and_origin(VerificationStatus::Skipped, SessionOrigin::Internal);
+    assert!(
+        check_verification_gate(&session, &settings).is_ok(),
+        "Internal+Skipped must pass the acceptance gate"
     );
 }

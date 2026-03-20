@@ -145,7 +145,8 @@ pub(crate) async fn create_cross_project_session_impl<R: tauri::Runtime>(
         .verification_status(VerificationStatus::ImportedVerified)
         .source_project_id(source_session.project_id.as_str().to_string())
         .source_session_id(input.source_session_id.clone())
-        .cross_project_checked(true);
+        .cross_project_checked(true)
+        .origin(source_session.origin);
 
     if let Some(title) = input.title {
         builder = builder.title(title);

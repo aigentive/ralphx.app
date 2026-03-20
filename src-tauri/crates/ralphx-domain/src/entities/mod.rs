@@ -60,7 +60,7 @@ pub use ideation::{
     ParseIdeationSessionStatusError, ParseMessageRoleError, ParsePriorityError,
     ParseProposalCategoryError, ParseProposalStatusError, ParseVerificationStatusError, Priority,
     PriorityAssessment, PriorityAssessmentFactors, PriorityFactors, ProposalCategory,
-    ProposalStatus, SessionLink, SessionPurpose, SessionRelationship, TaskProposal,
+    ProposalStatus, SessionLink, SessionOrigin, SessionPurpose, SessionRelationship, TaskProposal,
     UserHintFactor, VerificationError, VerificationGap, VerificationMetadata, VerificationRound,
     VerificationStatus,
 };

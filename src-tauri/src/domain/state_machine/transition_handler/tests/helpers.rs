@@ -114,6 +114,7 @@ pub fn make_session_no_title(session_id: &str) -> IdeationSession {
         session_purpose: Default::default(),
         cross_project_checked: true,
         plan_version_last_read: None,
+        origin: Default::default(),
     }
 }
 
@@ -144,6 +145,7 @@ pub fn make_session_with_title_for_test(session_id: &str, title: &str) -> Ideati
         session_purpose: Default::default(),
         cross_project_checked: true,
         plan_version_last_read: None,
+        origin: Default::default(),
     }
 }
 

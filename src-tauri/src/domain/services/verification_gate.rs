@@ -3,6 +3,7 @@
 ///
 /// Called from all 3 acceptance paths: Tauri IPC, internal MCP HTTP, external MCP.
 use crate::domain::entities::ideation::{VerificationError, VerificationStatus};
+use crate::domain::entities::ideation::SessionOrigin;
 use crate::domain::entities::IdeationSession;
 use crate::domain::ideation::config::IdeationSettings;
 
@@ -44,6 +45,13 @@ pub fn check_verification_gate(
         let (round, max_rounds) = parse_round_info(&session.verification_metadata);
         return Err(VerificationError::InProgress { round, max_rounds });
     }
+    // External sessions cannot accept with Skipped status — they must run verification to completion
+    if session.verification_status == VerificationStatus::Skipped
+        && session.origin == SessionOrigin::External
+    {
+        return Err(VerificationError::ExternalCannotSkip);
+    }
+
     match session.verification_status {
         VerificationStatus::Verified | VerificationStatus::Skipped | VerificationStatus::ImportedVerified => Ok(()),
         // Defense-in-depth: Reviewing arm still present in case in_progress flag is inconsistent
@@ -113,8 +121,15 @@ pub fn check_proposal_verification_gate(
     let op_str = operation.to_string();
 
     match (operation, effective_status) {
-        // Verified, Skipped, or ImportedVerified always allow
-        (_, VerificationStatus::Verified | VerificationStatus::Skipped | VerificationStatus::ImportedVerified) => Ok(()),
+        // Verified or ImportedVerified always allow
+        (_, VerificationStatus::Verified | VerificationStatus::ImportedVerified) => Ok(()),
+
+        // Skipped blocks Create — users must re-run verification before creating new proposals
+        (ProposalOperation::Create, VerificationStatus::Skipped) => {
+            Err(VerificationError::ProposalSkippedNotAllowed)
+        }
+        // Skipped allows Update/Delete — existing proposals can still be modified
+        (ProposalOperation::Update | ProposalOperation::Delete, VerificationStatus::Skipped) => Ok(()),
 
         // Create blocks Unverified
         (ProposalOperation::Create, VerificationStatus::Unverified) => {

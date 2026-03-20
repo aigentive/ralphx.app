@@ -101,6 +101,7 @@ mod v72_cross_project_check;
 mod v72_proposal_migrated_from;
 mod v74_permission_identity;
 mod v75_plan_version_last_read;
+mod v76_session_origin;
 
 #[cfg(test)]
 mod tests;
@@ -212,9 +213,11 @@ mod v71_add_target_project_to_proposals_tests;
 mod v72_cross_project_check_tests;
 #[cfg(test)]
 mod v72_proposal_migrated_from_tests;
+#[cfg(test)]
+mod v76_session_origin_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 75;
+pub const SCHEMA_VERSION: i32 = 76;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -603,6 +606,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 75,
         name: "plan_version_last_read",
         migrate: v75_plan_version_last_read::migrate,
+    },
+    Migration {
+        version: 76,
+        name: "session_origin",
+        migrate: v76_session_origin::migrate,
     },
 ];
 

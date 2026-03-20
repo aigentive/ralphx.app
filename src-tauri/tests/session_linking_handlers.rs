@@ -38,6 +38,7 @@ fn make_session(team_mode: Option<&str>) -> IdeationSession {
         session_purpose: Default::default(),
         cross_project_checked: true,
         plan_version_last_read: None,
+        origin: Default::default(),
     }
 }
 
@@ -111,6 +112,7 @@ mod verification_init_tests {
             session_purpose: Default::default(),
             cross_project_checked: true,
             plan_version_last_read: None,
+            origin: Default::default(),
         }
     }
 

@@ -94,6 +94,10 @@ pub struct IdeationSession {
     /// Used by the stale plan guard to detect if the agent's in-memory plan is outdated.
     /// None = agent has not read the plan yet (or pre-v75 row).
     pub plan_version_last_read: Option<i32>,
+    /// Origin of this session: Internal (default) or External (created via External MCP API).
+    /// External sessions cannot skip plan verification.
+    #[serde(default)]
+    pub origin: SessionOrigin,
 }
 
 /// Builder for creating IdeationSession instances
@@ -123,6 +127,7 @@ pub struct IdeationSessionBuilder {
     session_purpose: Option<SessionPurpose>,
     cross_project_checked: Option<bool>,
     plan_version_last_read: Option<i32>,
+    origin: Option<SessionOrigin>,
 }
 
 impl IdeationSessionBuilder {
@@ -263,6 +268,12 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set the session origin (Internal or External)
+    pub fn origin(mut self, origin: SessionOrigin) -> Self {
+        self.origin = Some(origin);
+        self
+    }
+
     /// Build the IdeationSession
     /// Panics if project_id is not set
     pub fn build(self) -> IdeationSession {
@@ -292,6 +303,7 @@ impl IdeationSessionBuilder {
             session_purpose: self.session_purpose.unwrap_or_default(),
             cross_project_checked: self.cross_project_checked.unwrap_or(false),
             plan_version_last_read: self.plan_version_last_read,
+            origin: self.origin.unwrap_or_default(),
         }
     }
 }
@@ -443,6 +455,12 @@ impl IdeationSession {
                 .get::<_, Option<i64>>("plan_version_last_read")
                 .unwrap_or(None)
                 .map(|v| v as i32),
+            origin: row
+                .get::<_, Option<String>>("origin")
+                .unwrap_or(None)
+                .as_deref()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or_default(),
         })
     }
 

@@ -5,6 +5,43 @@ use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
+/// Origin of an ideation session — distinguishes internally created sessions from externally created ones
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionOrigin {
+    /// Session created by an internal RalphX user or agent (default)
+    Internal,
+    /// Session created by an external agent via the External MCP API
+    External,
+}
+
+impl Default for SessionOrigin {
+    fn default() -> Self {
+        Self::Internal
+    }
+}
+
+impl std::fmt::Display for SessionOrigin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SessionOrigin::Internal => write!(f, "internal"),
+            SessionOrigin::External => write!(f, "external"),
+        }
+    }
+}
+
+impl FromStr for SessionOrigin {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "internal" => Ok(SessionOrigin::Internal),
+            "external" => Ok(SessionOrigin::External),
+            _ => Err(format!("unknown session origin: '{s}'")),
+        }
+    }
+}
+
 /// Purpose of an ideation session — distinguishes general ideation from plan-verifier child sessions
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -572,6 +609,17 @@ pub enum VerificationError {
     /// Distinct from `HasUnresolvedGaps` which gates acceptance.
     #[error("Cannot {operation} proposals: plan verification found {gap_count} unresolved gap(s). Update the plan to address gaps (update_plan_artifact), then re-run verification.")]
     ProposalHasUnresolvedGaps { operation: String, gap_count: usize },
+
+    /// Gate for proposal creation when verification was skipped.
+    /// Skipping verification blocks NEW proposal creation for all sessions (internal and external).
+    /// Existing proposals can still be updated/deleted; only Create is blocked.
+    #[error("Cannot create proposals: plan verification was skipped. Re-run verification (update_plan_verification with status 'reviewing') to create new proposals.")]
+    ProposalSkippedNotAllowed,
+
+    /// Gate for skip operations on external-origin sessions.
+    /// External sessions cannot skip plan verification — they must run it to completion.
+    #[error("External sessions cannot skip plan verification. Run verification to completion (update_plan_verification with status 'reviewing').")]
+    ExternalCannotSkip,
 }
 
 // ---------------------------------------------------------------------------

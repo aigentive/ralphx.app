@@ -22,7 +22,7 @@ use crate::application::task_cleanup_service::TaskCleanupService;
 use crate::commands::ideation_commands::{apply_proposals_core, ApplyProposalsInput};
 use crate::domain::entities::{
     ideation::IdeationSession, task::Task, types::ProjectId, ChatContextType, IdeationSessionId,
-    InternalStatus, TaskId,
+    InternalStatus, SessionOrigin, TaskId,
 };
 use crate::domain::services::{
     check_verification_gate, emit_verification_started, emit_verification_status_changed,
@@ -486,10 +486,11 @@ pub async fn start_ideation_http(
     let effective_prompt = req.prompt.clone().or_else(|| req.initial_prompt.clone());
 
     // Create the ideation session — title is optional
-    let session = match req.title.clone() {
+    let mut session = match req.title.clone() {
         None => IdeationSession::new(project_id.clone()),
         Some(t) => IdeationSession::new_with_title(project_id.clone(), t),
     };
+    session.origin = SessionOrigin::External;
     let created = state
         .app_state
         .ideation_session_repo

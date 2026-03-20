@@ -70,6 +70,7 @@ fn make_active_session() -> IdeationSession {
         session_purpose: Default::default(),
         cross_project_checked: true,
         plan_version_last_read: None,
+        origin: Default::default(),
     }
 }
 

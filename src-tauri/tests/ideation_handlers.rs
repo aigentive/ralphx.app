@@ -5,7 +5,7 @@ use axum::{
 };
 use ralphx_lib::application::{AppState, InteractiveProcessKey, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
-use ralphx_lib::domain::entities::ideation::VerificationStatus;
+use ralphx_lib::domain::entities::ideation::{SessionOrigin, VerificationStatus};
 use ralphx_lib::domain::entities::{
     ChatMessage, IdeationSession, IdeationSessionBuilder, IdeationSessionId, ProjectId,
 };
@@ -2799,5 +2799,93 @@ async fn test_send_ideation_session_message_send_error_returns_500() {
         status,
         StatusCode::INTERNAL_SERVER_ERROR,
         "send_message Err → 500 (not 'spawned' false positive)"
+    );
+}
+
+// ============================================================================
+// External origin guard tests
+// ============================================================================
+
+/// External session + status=skipped → update_plan_verification must return 403.
+///
+/// Proof Obligation 1: external agent attempts to skip verification via the internal HTTP handler.
+/// The guard at the top of update_plan_verification checks session.origin == External before
+/// processing any transition logic.
+#[tokio::test]
+async fn test_update_verification_rejects_skip_for_external_origin() {
+    let state = setup_test_state().await;
+
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .origin(SessionOrigin::External)
+        .build();
+    let session_id = session.id.as_str().to_string();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    let result = update_plan_verification(
+        State(state),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "skipped".to_string(),
+            in_progress: false,
+            round: None,
+            gaps: None,
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_err(), "external session must reject skip status");
+    let (status, _body) = result.unwrap_err();
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "external skip must return 403 FORBIDDEN"
+    );
+}
+
+/// External session + revert_and_skip → must return 403.
+///
+/// Proof Obligation 2: external agent attempts to use the revert_and_skip endpoint.
+/// The origin guard fires before any artifact lookup, so no artifact needs to exist.
+#[tokio::test]
+async fn test_revert_and_skip_blocks_external_origin() {
+    let state = setup_test_state().await;
+
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .origin(SessionOrigin::External)
+        .build();
+    let session_id = session.id.as_str().to_string();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    let result = revert_and_skip(
+        State(state),
+        Path(session_id),
+        Json(RevertAndSkipRequest {
+            plan_version_to_restore: "non-existent-artifact-id".to_string(),
+        }),
+    )
+    .await;
+
+    assert!(result.is_err(), "external session must reject revert_and_skip");
+    let (status, _body) = result.unwrap_err();
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "external revert_and_skip must return 403 FORBIDDEN"
     );
 }
