@@ -7,6 +7,7 @@ import {
   PERM_READ,
   PERM_WRITE,
   PERM_ADMIN,
+  PERM_CREATE_PROJECT,
   hasPermission,
   togglePermission,
   ApiKeySchema,
@@ -36,8 +37,20 @@ describe("permission constants", () => {
     expect(PERM_ADMIN).toBe(4);
   });
 
+  it("PERM_CREATE_PROJECT is 8", () => {
+    expect(PERM_CREATE_PROJECT).toBe(8);
+  });
+
   it("combined permissions sum correctly", () => {
     expect(PERM_READ | PERM_WRITE | PERM_ADMIN).toBe(7);
+  });
+
+  it("READ|WRITE|CREATE_PROJECT equals 11", () => {
+    expect(PERM_READ | PERM_WRITE | PERM_CREATE_PROJECT).toBe(11);
+  });
+
+  it("all four bits equal 15", () => {
+    expect(PERM_READ | PERM_WRITE | PERM_ADMIN | PERM_CREATE_PROJECT).toBe(15);
   });
 });
 
@@ -66,6 +79,25 @@ describe("hasPermission", () => {
     expect(hasPermission(0, PERM_WRITE)).toBe(false);
     expect(hasPermission(0, PERM_ADMIN)).toBe(false);
   });
+
+  it("returns true for CREATE_PROJECT when combined with READ|WRITE (permissions=11)", () => {
+    expect(hasPermission(11, PERM_CREATE_PROJECT)).toBe(true);
+  });
+
+  it("returns false for CREATE_PROJECT when READ|WRITE|ADMIN only (permissions=7)", () => {
+    expect(hasPermission(7, PERM_CREATE_PROJECT)).toBe(false);
+  });
+
+  it("returns true for CREATE_PROJECT when permissions=8 (only bit)", () => {
+    expect(hasPermission(8, PERM_CREATE_PROJECT)).toBe(true);
+  });
+
+  it("returns true for all bits when permissions=15", () => {
+    expect(hasPermission(15, PERM_CREATE_PROJECT)).toBe(true);
+    expect(hasPermission(15, PERM_READ)).toBe(true);
+    expect(hasPermission(15, PERM_WRITE)).toBe(true);
+    expect(hasPermission(15, PERM_ADMIN)).toBe(true);
+  });
 });
 
 // ============================================================================
@@ -88,6 +120,14 @@ describe("togglePermission", () => {
     const toggled = togglePermission(original, PERM_WRITE);
     const restored = togglePermission(toggled, PERM_WRITE);
     expect(restored).toBe(original);
+  });
+
+  it("adds CREATE_PROJECT to READ|WRITE (3 → 11)", () => {
+    expect(togglePermission(3, PERM_CREATE_PROJECT)).toBe(11);
+  });
+
+  it("removes CREATE_PROJECT from READ|WRITE|CREATE_PROJECT (11 → 3)", () => {
+    expect(togglePermission(11, PERM_CREATE_PROJECT)).toBe(3);
   });
 });
 

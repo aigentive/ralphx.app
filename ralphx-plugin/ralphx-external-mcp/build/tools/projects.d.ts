@@ -9,10 +9,14 @@ export interface RegisterProjectArgs {
     working_directory: string;
     name?: string;
 }
+export interface ToolResult {
+    text: string;
+    isError: boolean;
+}
 /**
  * Register a folder as a RalphX project.
  * Creates directory if needed, initializes git if needed.
  * Requires CREATE_PROJECT permission.
  */
-export declare function handleRegisterProject(args: Record<string, unknown>, context: ApiKeyContext): Promise<string>;
+export declare function handleRegisterProject(args: Record<string, unknown>, context: ApiKeyContext): Promise<ToolResult>;
 //# sourceMappingURL=projects.d.ts.map

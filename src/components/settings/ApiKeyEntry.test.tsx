@@ -97,7 +97,7 @@ describe("ApiKeyEntry", () => {
 
   describe("collapsed rendering", () => {
     it("renders key name and prefix", () => {
-      render(<ApiKeyEntry apiKey={mockApiKey} onKeyChanged={vi.fn()} />, {
+      render(<ApiKeyEntry apiKey={mockApiKey} />, {
         wrapper: makeWrapper(),
       });
 
@@ -106,7 +106,7 @@ describe("ApiKeyEntry", () => {
     });
 
     it("shows creation date", () => {
-      render(<ApiKeyEntry apiKey={mockApiKey} onKeyChanged={vi.fn()} />, {
+      render(<ApiKeyEntry apiKey={mockApiKey} />, {
         wrapper: makeWrapper(),
       });
 
@@ -114,7 +114,7 @@ describe("ApiKeyEntry", () => {
     });
 
     it("shows last used date when present", () => {
-      render(<ApiKeyEntry apiKey={mockApiKey} onKeyChanged={vi.fn()} />, {
+      render(<ApiKeyEntry apiKey={mockApiKey} />, {
         wrapper: makeWrapper(),
       });
 
@@ -122,7 +122,7 @@ describe("ApiKeyEntry", () => {
     });
 
     it("shows Never for last_used_at when null", () => {
-      render(<ApiKeyEntry apiKey={mockNeverUsedKey} onKeyChanged={vi.fn()} />, {
+      render(<ApiKeyEntry apiKey={mockNeverUsedKey} />, {
         wrapper: makeWrapper(),
       });
 
@@ -130,7 +130,7 @@ describe("ApiKeyEntry", () => {
     });
 
     it("shows expand toggle button", () => {
-      render(<ApiKeyEntry apiKey={mockApiKey} onKeyChanged={vi.fn()} />, {
+      render(<ApiKeyEntry apiKey={mockApiKey} />, {
         wrapper: makeWrapper(),
       });
 
@@ -138,7 +138,7 @@ describe("ApiKeyEntry", () => {
     });
 
     it("revoke button is NOT visible in collapsed state", () => {
-      render(<ApiKeyEntry apiKey={mockApiKey} onKeyChanged={vi.fn()} />, {
+      render(<ApiKeyEntry apiKey={mockApiKey} />, {
         wrapper: makeWrapper(),
       });
 
@@ -146,7 +146,7 @@ describe("ApiKeyEntry", () => {
     });
 
     it("uses key id in entry testid", () => {
-      render(<ApiKeyEntry apiKey={mockApiKey} onKeyChanged={vi.fn()} />, {
+      render(<ApiKeyEntry apiKey={mockApiKey} />, {
         wrapper: makeWrapper(),
       });
 
@@ -154,7 +154,7 @@ describe("ApiKeyEntry", () => {
     });
 
     it("uses key id in expand button testid for second key", () => {
-      render(<ApiKeyEntry apiKey={mockNeverUsedKey} onKeyChanged={vi.fn()} />, {
+      render(<ApiKeyEntry apiKey={mockNeverUsedKey} />, {
         wrapper: makeWrapper(),
       });
 
@@ -164,7 +164,7 @@ describe("ApiKeyEntry", () => {
 
   describe("expand/collapse", () => {
     it("clicking expand shows expanded content", () => {
-      render(<ApiKeyEntry apiKey={mockApiKey} onKeyChanged={vi.fn()} />, {
+      render(<ApiKeyEntry apiKey={mockApiKey} />, {
         wrapper: makeWrapper(),
       });
 
@@ -177,7 +177,7 @@ describe("ApiKeyEntry", () => {
     });
 
     it("clicking expand again collapses", () => {
-      render(<ApiKeyEntry apiKey={mockApiKey} onKeyChanged={vi.fn()} />, {
+      render(<ApiKeyEntry apiKey={mockApiKey} />, {
         wrapper: makeWrapper(),
       });
 
@@ -195,7 +195,7 @@ describe("ApiKeyEntry", () => {
     }
 
     it("shows Revoke button after expand", () => {
-      render(<ApiKeyEntry apiKey={mockApiKey} onKeyChanged={vi.fn()} />, {
+      render(<ApiKeyEntry apiKey={mockApiKey} />, {
         wrapper: makeWrapper(),
       });
       expandEntry();
@@ -205,7 +205,7 @@ describe("ApiKeyEntry", () => {
     });
 
     it("first click shows Confirm? state", () => {
-      render(<ApiKeyEntry apiKey={mockApiKey} onKeyChanged={vi.fn()} />, {
+      render(<ApiKeyEntry apiKey={mockApiKey} />, {
         wrapper: makeWrapper(),
       });
       expandEntry();
@@ -217,7 +217,7 @@ describe("ApiKeyEntry", () => {
     });
 
     it("Cancel button resets to initial Revoke state", () => {
-      render(<ApiKeyEntry apiKey={mockApiKey} onKeyChanged={vi.fn()} />, {
+      render(<ApiKeyEntry apiKey={mockApiKey} />, {
         wrapper: makeWrapper(),
       });
       expandEntry();
@@ -232,8 +232,7 @@ describe("ApiKeyEntry", () => {
       expect(screen.queryByText("Cancel")).not.toBeInTheDocument();
     });
 
-    it("second click calls revoke mutation and triggers onRevoked on success", async () => {
-      const onRevoked = vi.fn();
+    it("second click calls revoke mutation with correct args", async () => {
       const revokeMutate = vi.fn().mockImplementation(
         (_id: string, { onSuccess }: { onSuccess?: () => void }) => {
           onSuccess?.();
@@ -245,7 +244,7 @@ describe("ApiKeyEntry", () => {
         isPending: false,
       } as unknown as ReturnType<typeof useRevokeApiKey>);
 
-      render(<ApiKeyEntry apiKey={mockApiKey} onKeyChanged={onRevoked} />, {
+      render(<ApiKeyEntry apiKey={mockApiKey} />, {
         wrapper: makeWrapper(),
       });
       expandEntry();
@@ -256,9 +255,8 @@ describe("ApiKeyEntry", () => {
       await waitFor(() => {
         expect(revokeMutate).toHaveBeenCalledWith(
           "key-001",
-          expect.objectContaining({ onSuccess: expect.any(Function) })
+          expect.objectContaining({ onError: expect.any(Function) })
         );
-        expect(onRevoked).toHaveBeenCalledOnce();
       });
     });
 
@@ -276,7 +274,7 @@ describe("ApiKeyEntry", () => {
         isPending: false,
       } as unknown as ReturnType<typeof useRevokeApiKey>);
 
-      render(<ApiKeyEntry apiKey={mockApiKey} onKeyChanged={vi.fn()} />, {
+      render(<ApiKeyEntry apiKey={mockApiKey} />, {
         wrapper: makeWrapper(),
       });
       expandEntry();
@@ -298,7 +296,7 @@ describe("ApiKeyEntry", () => {
         isPending: false,
       } as unknown as ReturnType<typeof useUpdateKeyProjects>);
 
-      render(<ApiKeyEntry apiKey={mockApiKey} onKeyChanged={vi.fn()} />, {
+      render(<ApiKeyEntry apiKey={mockApiKey} />, {
         wrapper: makeWrapper(),
       });
       fireEvent.click(screen.getByTestId("expand-key-key-001"));
@@ -308,6 +306,29 @@ describe("ApiKeyEntry", () => {
         { id: "key-001", projectIds: ["proj-1"] },
         expect.any(Object)
       );
+    });
+
+    it("calls success callback that clears dirty state", async () => {
+      const updateProjectsMutate = vi.fn().mockImplementation(
+        (_data: unknown, { onSuccess }: { onSuccess?: () => void }) => {
+          onSuccess?.();
+        }
+      );
+      vi.mocked(useUpdateKeyProjects).mockReturnValue({
+        mutate: updateProjectsMutate,
+        isPending: false,
+      } as unknown as ReturnType<typeof useUpdateKeyProjects>);
+
+      render(<ApiKeyEntry apiKey={mockApiKey} />, { wrapper: makeWrapper() });
+      fireEvent.click(screen.getByTestId("expand-key-key-001"));
+      fireEvent.click(screen.getByTestId("save-projects-key-001"));
+
+      await waitFor(() => {
+        expect(updateProjectsMutate).toHaveBeenCalledWith(
+          { id: "key-001", projectIds: ["proj-1"] },
+          expect.objectContaining({ onSuccess: expect.any(Function) })
+        );
+      });
     });
   });
 
@@ -319,7 +340,7 @@ describe("ApiKeyEntry", () => {
         isPending: false,
       } as unknown as ReturnType<typeof useUpdateKeyPermissions>);
 
-      render(<ApiKeyEntry apiKey={mockApiKey} onKeyChanged={vi.fn()} />, {
+      render(<ApiKeyEntry apiKey={mockApiKey} />, {
         wrapper: makeWrapper(),
       });
       fireEvent.click(screen.getByTestId("expand-key-key-001"));
@@ -330,11 +351,34 @@ describe("ApiKeyEntry", () => {
         expect.any(Object)
       );
     });
+
+    it("calls success callback that clears dirty state", async () => {
+      const updatePermsMutate = vi.fn().mockImplementation(
+        (_data: unknown, { onSuccess }: { onSuccess?: () => void }) => {
+          onSuccess?.();
+        }
+      );
+      vi.mocked(useUpdateKeyPermissions).mockReturnValue({
+        mutate: updatePermsMutate,
+        isPending: false,
+      } as unknown as ReturnType<typeof useUpdateKeyPermissions>);
+
+      render(<ApiKeyEntry apiKey={mockApiKey} />, { wrapper: makeWrapper() });
+      fireEvent.click(screen.getByTestId("expand-key-key-001"));
+      fireEvent.click(screen.getByTestId("save-permissions-key-001"));
+
+      await waitFor(() => {
+        expect(updatePermsMutate).toHaveBeenCalledWith(
+          { id: "key-001", permissions: 3 },
+          expect.objectContaining({ onSuccess: expect.any(Function) })
+        );
+      });
+    });
   });
 
   describe("rotate key", () => {
     it("clicking Rotate Key opens RotateKeyDialog", () => {
-      render(<ApiKeyEntry apiKey={mockApiKey} onKeyChanged={vi.fn()} />, {
+      render(<ApiKeyEntry apiKey={mockApiKey} />, {
         wrapper: makeWrapper(),
       });
       fireEvent.click(screen.getByTestId("expand-key-key-001"));

@@ -5,7 +5,7 @@
  * Expanded: project scoping, permissions editing, audit log, rotate/revoke actions.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Key,
   Trash2,
@@ -15,6 +15,7 @@ import {
   RotateCcw,
   Save,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { AuditLogViewer } from "./AuditLogViewer";
 import { PermissionsBitmask } from "./PermissionsBitmask";
@@ -33,7 +34,6 @@ import type { ApiKey } from "@/types/api-key";
 
 export interface ApiKeyEntryProps {
   apiKey: ApiKey;
-  onKeyChanged: () => void;
 }
 
 // ============================================================================
@@ -70,7 +70,7 @@ function SectionLabel({ children }: SectionLabelProps) {
 // Component
 // ============================================================================
 
-export function ApiKeyEntry({ apiKey, onKeyChanged }: ApiKeyEntryProps) {
+export function ApiKeyEntry({ apiKey }: ApiKeyEntryProps) {
   const [expanded, setExpanded] = useState(false);
 
   // Revoke state (two-click)
@@ -91,6 +91,19 @@ export function ApiKeyEntry({ apiKey, onKeyChanged }: ApiKeyEntryProps) {
   // Rotate dialog
   const [rotateOpen, setRotateOpen] = useState(false);
 
+  // Dirty-state tracking — prevents background refetches from reverting unsaved changes
+  const [permsDirty, setPermsDirty] = useState(false);
+  const [projectsDirty, setProjectsDirty] = useState(false);
+
+  // Sync from props only when no unsaved changes
+  useEffect(() => {
+    if (!permsDirty) setPermissions(apiKey.permissions);
+  }, [apiKey.permissions, permsDirty]);
+
+  useEffect(() => {
+    if (!projectsDirty) setProjectIds(apiKey.projectIds);
+  }, [apiKey.projectIds, projectsDirty]);
+
   // ---- Revoke handlers ----
 
   const handleRevokeClick = useCallback(() => {
@@ -100,15 +113,12 @@ export function ApiKeyEntry({ apiKey, onKeyChanged }: ApiKeyEntryProps) {
     }
     setRevokeError(null);
     revokeMutation.mutate(apiKey.id, {
-      onSuccess: () => {
-        onKeyChanged();
-      },
       onError: (err) => {
         setRevokeError(err instanceof Error ? err.message : "Failed to revoke key");
         setConfirmPending(false);
       },
     });
-  }, [apiKey.id, confirmPending, onKeyChanged, revokeMutation]);
+  }, [apiKey.id, confirmPending, revokeMutation]);
 
   const handleCancelConfirm = useCallback(() => {
     setConfirmPending(false);
@@ -121,6 +131,10 @@ export function ApiKeyEntry({ apiKey, onKeyChanged }: ApiKeyEntryProps) {
     updateProjectsMutation.mutate(
       { id: apiKey.id, projectIds },
       {
+        onSuccess: () => {
+          toast.success("Project access saved");
+          setProjectsDirty(false);
+        },
         onError: (err) => {
           setProjectSaveError(
             err instanceof Error ? err.message : "Failed to update projects"
@@ -137,6 +151,10 @@ export function ApiKeyEntry({ apiKey, onKeyChanged }: ApiKeyEntryProps) {
     updatePermsMutation.mutate(
       { id: apiKey.id, permissions },
       {
+        onSuccess: () => {
+          toast.success("Permissions saved");
+          setPermsDirty(false);
+        },
         onError: (err) => {
           setPermSaveError(
             err instanceof Error ? err.message : "Failed to update permissions"
@@ -145,12 +163,6 @@ export function ApiKeyEntry({ apiKey, onKeyChanged }: ApiKeyEntryProps) {
       }
     );
   }, [apiKey.id, permissions, updatePermsMutation]);
-
-  // ---- Rotate handlers ----
-
-  const handleRotated = useCallback(() => {
-    onKeyChanged();
-  }, [onKeyChanged]);
 
   return (
     <div
@@ -214,7 +226,7 @@ export function ApiKeyEntry({ apiKey, onKeyChanged }: ApiKeyEntryProps) {
             <SectionLabel>Project Access</SectionLabel>
             <ProjectMultiSelect
               selectedIds={projectIds}
-              onChange={setProjectIds}
+              onChange={(ids) => { setProjectsDirty(true); setProjectIds(ids); }}
               disabled={updateProjectsMutation.isPending}
             />
             {projectSaveError && (
@@ -241,7 +253,7 @@ export function ApiKeyEntry({ apiKey, onKeyChanged }: ApiKeyEntryProps) {
             <SectionLabel>Permissions</SectionLabel>
             <PermissionsBitmask
               value={permissions}
-              onChange={setPermissions}
+              onChange={(val) => { setPermsDirty(true); setPermissions(val); }}
               disabled={updatePermsMutation.isPending}
             />
             {permSaveError && (
@@ -339,7 +351,7 @@ export function ApiKeyEntry({ apiKey, onKeyChanged }: ApiKeyEntryProps) {
         keyId={apiKey.id}
         keyName={apiKey.name}
         onClose={() => setRotateOpen(false)}
-        onRotated={handleRotated}
+        onRotated={() => {}}
       />
     </div>
   );

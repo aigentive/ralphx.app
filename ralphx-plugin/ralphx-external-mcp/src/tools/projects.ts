@@ -15,6 +15,11 @@ export interface RegisterProjectArgs {
   name?: string;
 }
 
+export interface ToolResult {
+  text: string;
+  isError: boolean;
+}
+
 /**
  * Register a folder as a RalphX project.
  * Creates directory if needed, initializes git if needed.
@@ -23,21 +28,27 @@ export interface RegisterProjectArgs {
 export async function handleRegisterProject(
   args: Record<string, unknown>,
   context: ApiKeyContext
-): Promise<string> {
+): Promise<ToolResult> {
   if (!hasPermission(context.permissions, Permission.CREATE_PROJECT)) {
-    return JSON.stringify({
-      error: "permission_denied",
-      message: "CREATE_PROJECT permission required",
-    });
+    return {
+      text: JSON.stringify({
+        error: "permission_denied",
+        message: "CREATE_PROJECT permission required",
+      }),
+      isError: true,
+    };
   }
 
   const { working_directory, name } = args as unknown as RegisterProjectArgs;
 
   if (!working_directory) {
-    return JSON.stringify({
-      error: "missing_argument",
-      message: "working_directory is required",
-    });
+    return {
+      text: JSON.stringify({
+        error: "missing_argument",
+        message: "working_directory is required",
+      }),
+      isError: true,
+    };
   }
 
   const backendClient = getBackendClient();
@@ -47,10 +58,21 @@ export async function handleRegisterProject(
     { working_directory, name }
   );
 
+  if (result.status >= 400) {
+    return {
+      text: JSON.stringify({
+        error: "backend_error",
+        status: result.status,
+        body: result.body,
+      }),
+      isError: true,
+    };
+  }
+
   if (result.body && (result.body as { id?: string }).id && context.keyId) {
     // Invalidate scope cache so next request picks up the new project
     invalidateCacheByKeyId(context.keyId);
   }
 
-  return JSON.stringify(result.body);
+  return { text: JSON.stringify(result.body), isError: false };
 }

@@ -52,7 +52,6 @@ export function ApiKeysSection() {
               <ApiKeyEntry
                 key={key.id}
                 apiKey={key}
-                onKeyChanged={() => undefined}
               />
             ))}
           </div>

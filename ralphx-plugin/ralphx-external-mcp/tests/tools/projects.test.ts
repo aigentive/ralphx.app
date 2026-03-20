@@ -84,24 +84,38 @@ const contextWithoutPermission: ApiKeyContext = {
   permissions: Permission.READ, // 1
 };
 
+const contextWithCombinedPermissions: ApiKeyContext = {
+  keyId: "key-test-combined",
+  projectIds: ["proj-alpha"],
+  permissions: Permission.READ | Permission.WRITE | Permission.CREATE_PROJECT, // 11
+};
+
+const contextWithAllPermissions: ApiKeyContext = {
+  keyId: "key-test-all",
+  projectIds: ["proj-alpha"],
+  permissions: Permission.READ | Permission.WRITE | Permission.ADMIN | Permission.CREATE_PROJECT, // 15
+};
+
 describe("handleRegisterProject", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("returns permission_denied when CREATE_PROJECT permission is missing", async () => {
+  it("returns permission_denied with isError when CREATE_PROJECT permission is missing", async () => {
     const result = await handleRegisterProject(
       { working_directory: "/home/user/myproject" },
       contextWithoutPermission
     );
-    const parsed = JSON.parse(result);
+    expect(result.isError).toBe(true);
+    const parsed = JSON.parse(result.text);
     expect(parsed.error).toBe("permission_denied");
     expect(mockPost).not.toHaveBeenCalled();
   });
 
-  it("returns missing_argument when working_directory is absent", async () => {
+  it("returns missing_argument with isError when working_directory is absent", async () => {
     const result = await handleRegisterProject({}, contextWithPermission);
-    const parsed = JSON.parse(result);
+    expect(result.isError).toBe(true);
+    const parsed = JSON.parse(result.text);
     expect(parsed.error).toBe("missing_argument");
     expect(mockPost).not.toHaveBeenCalled();
   });
@@ -140,19 +154,42 @@ describe("handleRegisterProject", () => {
     expect(mockInvalidateCacheByKeyId).toHaveBeenCalledWith("key-test-123");
   });
 
-  it("does not invalidate cache when response has no id", async () => {
-    const backendResponse = { status: 409, body: { error: "conflict" } };
+  it("returns backend_error with isError and status when backend returns 4xx", async () => {
+    const backendResponse = { status: 409, body: { error: "conflict", message: "Project already exists" } };
     mockPost.mockResolvedValueOnce(backendResponse);
 
-    await handleRegisterProject(
+    const result = await handleRegisterProject(
       { working_directory: "/home/user/proj" },
       contextWithPermission
     );
 
+    expect(result.isError).toBe(true);
+    const parsed = JSON.parse(result.text);
+    expect(parsed.error).toBe("backend_error");
+    expect(parsed.status).toBe(409);
+    expect(parsed.body).toEqual(backendResponse.body);
     expect(mockInvalidateCacheByKeyId).not.toHaveBeenCalled();
   });
 
-  it("returns JSON-serialized response body", async () => {
+  it("returns backend_error with isError when backend returns 403 (CREATE_PROJECT permission denied)", async () => {
+    const backendResponse = {
+      status: 403,
+      body: { error: "forbidden", message: "CREATE_PROJECT permission required" },
+    };
+    mockPost.mockResolvedValueOnce(backendResponse);
+
+    const result = await handleRegisterProject(
+      { working_directory: "/home/user/proj" },
+      contextWithPermission
+    );
+
+    expect(result.isError).toBe(true);
+    const parsed = JSON.parse(result.text);
+    expect(parsed.error).toBe("backend_error");
+    expect(parsed.status).toBe(403);
+  });
+
+  it("returns JSON-serialized response body with isError false on success", async () => {
     const body = { id: "proj-x", name: "X", working_directory: "/tmp/x", created_at: "2026-01-01T00:00:00Z" };
     mockPost.mockResolvedValueOnce({ status: 200, body });
 
@@ -161,6 +198,38 @@ describe("handleRegisterProject", () => {
       contextWithPermission
     );
 
-    expect(JSON.parse(result)).toEqual(body);
+    expect(result.isError).toBe(false);
+    expect(JSON.parse(result.text)).toEqual(body);
+  });
+
+  it("accepts combined permissions READ|WRITE|CREATE_PROJECT (11) — does NOT return permission_denied", async () => {
+    const body = { id: "proj-c1", name: "proj", working_directory: "/tmp/c1", created_at: "2026-01-01T00:00:00Z" };
+    mockPost.mockResolvedValueOnce({ status: 200, body });
+
+    const result = await handleRegisterProject(
+      { working_directory: "/tmp/c1" },
+      contextWithCombinedPermissions
+    );
+
+    expect(result.isError).toBe(false);
+    const parsed = JSON.parse(result.text);
+    // Must not be a permission_denied error
+    expect(parsed.error).toBeUndefined();
+    expect(mockPost).toHaveBeenCalled();
+  });
+
+  it("accepts all permissions (15) — does NOT return permission_denied", async () => {
+    const body = { id: "proj-c2", name: "proj", working_directory: "/tmp/c2", created_at: "2026-01-01T00:00:00Z" };
+    mockPost.mockResolvedValueOnce({ status: 200, body });
+
+    const result = await handleRegisterProject(
+      { working_directory: "/tmp/c2" },
+      contextWithAllPermissions
+    );
+
+    expect(result.isError).toBe(false);
+    const parsed = JSON.parse(result.text);
+    expect(parsed.error).toBeUndefined();
+    expect(mockPost).toHaveBeenCalled();
   });
 });

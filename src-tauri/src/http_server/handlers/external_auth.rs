@@ -110,6 +110,12 @@ impl FromRequestParts<HttpServerState> for ValidatedExternalKey {
 
         // 5. Validate CREATE_PROJECT permission
         if !key.has_permission(PERMISSION_CREATE_PROJECT) {
+            tracing::warn!(
+                key_id = %key_id_str,
+                actual_permissions = key.permissions,
+                required = PERMISSION_CREATE_PROJECT,
+                "CREATE_PROJECT permission check failed"
+            );
             return Err(HttpError {
                 status: StatusCode::FORBIDDEN,
                 message: Some("CREATE_PROJECT permission required".to_string()),

@@ -599,9 +599,12 @@ export function registerTools(
 
     switch (name) {
       // --- Setup: Project registration ---
-      case "v1_register_project":
-        text = await handleRegisterProject(args, context);
+      case "v1_register_project": {
+        const registerResult = await handleRegisterProject(args, context);
+        text = registerResult.text;
+        isError = registerResult.isError;
         break;
+      }
 
       // --- Flow 0: Onboarding ---
       case "v1_get_agent_guide":

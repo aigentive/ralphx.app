@@ -14,24 +14,40 @@ import { invalidateCacheByKeyId } from "../auth.js";
  */
 export async function handleRegisterProject(args, context) {
     if (!hasPermission(context.permissions, Permission.CREATE_PROJECT)) {
-        return JSON.stringify({
-            error: "permission_denied",
-            message: "CREATE_PROJECT permission required",
-        });
+        return {
+            text: JSON.stringify({
+                error: "permission_denied",
+                message: "CREATE_PROJECT permission required",
+            }),
+            isError: true,
+        };
     }
     const { working_directory, name } = args;
     if (!working_directory) {
-        return JSON.stringify({
-            error: "missing_argument",
-            message: "working_directory is required",
-        });
+        return {
+            text: JSON.stringify({
+                error: "missing_argument",
+                message: "working_directory is required",
+            }),
+            isError: true,
+        };
     }
     const backendClient = getBackendClient();
     const result = await backendClient.post("/api/external/projects", context, { working_directory, name });
+    if (result.status >= 400) {
+        return {
+            text: JSON.stringify({
+                error: "backend_error",
+                status: result.status,
+                body: result.body,
+            }),
+            isError: true,
+        };
+    }
     if (result.body && result.body.id && context.keyId) {
         // Invalidate scope cache so next request picks up the new project
         invalidateCacheByKeyId(context.keyId);
     }
-    return JSON.stringify(result.body);
+    return { text: JSON.stringify(result.body), isError: false };
 }
 //# sourceMappingURL=projects.js.map

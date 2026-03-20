@@ -4,7 +4,8 @@
 use std::ops::Deref;
 
 use crate::domain::entities::{
-    ApiKey, ApiKeyId, Project, ProjectId, PERMISSION_ADMIN, PERMISSION_READ, PERMISSION_WRITE,
+    ApiKey, ApiKeyId, Project, ProjectId, PERMISSION_ADMIN, PERMISSION_CREATE_PROJECT,
+    PERMISSION_READ, PERMISSION_WRITE,
 };
 use crate::domain::repositories::{ApiKeyRepository, CreateKeyParams};
 use crate::domain::services::key_crypto::{generate_raw_key, hash_key, key_prefix};
@@ -577,6 +578,112 @@ async fn test_old_key_usable_during_grace_period() {
     assert!(
         found_old.is_in_grace_period(),
         "old key must still be in grace period (grace_expires_at is in the future)"
+    );
+}
+
+// ============================================================================
+// CREATE_PROJECT permission tests
+// ============================================================================
+
+#[test]
+fn test_has_permission_create_project_combinations() {
+    // true cases: bit 3 (value 8) is set
+    let true_cases: &[(i32, &str)] = &[
+        (8, "permissions=8 (CREATE_PROJECT only)"),
+        (11, "permissions=11 (READ|WRITE|CREATE_PROJECT)"),
+        (15, "permissions=15 (all bits)"),
+        (9, "permissions=9 (READ|CREATE_PROJECT)"),
+        (12, "permissions=12 (ADMIN|CREATE_PROJECT)"),
+    ];
+    for (perms, label) in true_cases {
+        let key = ApiKey {
+            id: ApiKeyId::new(),
+            name: "test".to_string(),
+            key_hash: "x".to_string(),
+            key_prefix: "x".to_string(),
+            permissions: *perms,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            revoked_at: None,
+            last_used_at: None,
+            grace_expires_at: None,
+            metadata: None,
+        };
+        assert!(
+            key.has_permission(PERMISSION_CREATE_PROJECT),
+            "should have CREATE_PROJECT: {}",
+            label
+        );
+    }
+
+    // false cases: bit 3 is not set
+    let false_cases: &[(i32, &str)] = &[
+        (3, "permissions=3 (READ|WRITE)"),
+        (7, "permissions=7 (READ|WRITE|ADMIN)"),
+        (0, "permissions=0 (none)"),
+        (1, "permissions=1 (READ only)"),
+        (4, "permissions=4 (ADMIN only)"),
+    ];
+    for (perms, label) in false_cases {
+        let key = ApiKey {
+            id: ApiKeyId::new(),
+            name: "test".to_string(),
+            key_hash: "x".to_string(),
+            key_prefix: "x".to_string(),
+            permissions: *perms,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            revoked_at: None,
+            last_used_at: None,
+            grace_expires_at: None,
+            metadata: None,
+        };
+        assert!(
+            !key.has_permission(PERMISSION_CREATE_PROJECT),
+            "should NOT have CREATE_PROJECT: {}",
+            label
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_update_api_key_permissions_create_project_roundtrip() {
+    let repo = setup_repo();
+    let mut key = make_key("Permissions Roundtrip Key");
+    key.permissions = 3; // READ|WRITE, no CREATE_PROJECT
+    let id = key.id.clone();
+
+    repo.create(key).await.expect("create failed");
+
+    // Verify CREATE_PROJECT is NOT set initially
+    let before = repo.get_by_id(&id).await.expect("get").expect("found");
+    assert_eq!(before.permissions, 3);
+    assert!(
+        !before.has_permission(PERMISSION_CREATE_PROJECT),
+        "should NOT have CREATE_PROJECT before update"
+    );
+
+    // Add CREATE_PROJECT: 3 | 8 = 11
+    repo.update_api_key_permissions(id.as_str(), 11)
+        .await
+        .expect("update_api_key_permissions failed");
+
+    // Verify CREATE_PROJECT is set after update
+    let after = repo.get_by_id(&id).await.expect("get").expect("found");
+    assert_eq!(after.permissions, 11, "permissions should be 11 (READ|WRITE|CREATE_PROJECT)");
+    assert!(
+        after.has_permission(PERMISSION_CREATE_PROJECT),
+        "should have CREATE_PROJECT after update"
+    );
+    assert!(
+        after.has_permission(PERMISSION_READ),
+        "should still have READ after update"
+    );
+    assert!(
+        after.has_permission(PERMISSION_WRITE),
+        "should still have WRITE after update"
+    );
+    assert!(
+        !after.has_permission(PERMISSION_ADMIN),
+        "should NOT have ADMIN (was not set)"
     );
 }
 
