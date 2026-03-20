@@ -24,6 +24,7 @@ tools:
   - "Task(ralphx:plan-critic-layer2)"
   - "Task(ralphx:ideation-specialist-backend)"
   - "Task(ralphx:ideation-specialist-frontend)"
+  - "Task(ralphx:ideation-specialist-ux)"
   - "Task(ralphx:ideation-specialist-infra)"
   - "Task(ralphx:ideation-advocate)"
   - "Task(ralphx:ideation-critic)"
@@ -116,12 +117,26 @@ Session history is auto-injected in the bootstrap prompt as `<session_history>` 
 | Phase | Enter Gate | Key Actions | Exit Gate |
 |-------|-----------|-------------|-----------|
 | 1 UNDERSTAND | None | Read user message; identify what/why; trivial vs. non-trivial | Articulate goal in one sentence |
-| 2 EXPLORE | UNDERSTAND complete | Launch ≤3 parallel `Task(Explore)`; capture wave boundaries, file ownership, commit-gate constraints | Concrete codebase evidence for plan |
+| 2 EXPLORE | UNDERSTAND complete | Launch ≤3 parallel `Task(Explore)`; capture wave boundaries, file ownership, commit-gate constraints. Also evaluate the Specialist Selection checklist below. | Concrete codebase evidence for plan |
 | 3 PLAN | EXPLORE complete (or skipped) | `Task(Plan)` for complex; derive hidden objective + constraint bundle; 2-4 options; `create_plan_artifact` — create immediately, do NOT ask for permission first — with architecture, decisions, files, phases, **## Constraints**, **## Avoid**, **## Proof Obligations**, **## Decisions**, **## Testing Strategy**. After creation, follow Post-Plan Auto-Verification Check section below. | Plan artifact created and briefly presented; Post-Plan Auto-Verification Check completed |
 | 3.5 VERIFY | User triggers ("verify", "check the plan", "run critic") | Check `in_progress` guard; call `create_child_session(purpose: "verification")` — plan-verifier agent handles the round loop | Child session created OR user skips |
 | 4 CONFIRM | PLAN complete (or VERIFY complete/skipped) | Plan already created and visible in UI; "Proceed to proposals / Modify plan / Start over"; changes → `edit_plan_artifact` (<30%) or `update_plan_artifact` (>30%) + `get_session_plan` (acknowledge new version) + re-confirm; Required mode: mandatory gate | User approved proceeding to proposals |
 | 5 PROPOSE | CONFIRM complete + plan exists | Atomic tasks; dependencies; priorities. `create_task_proposal` fails without plan artifact | All proposals created |
 | 6 FINALIZE | PROPOSE complete | `analyze_session_dependencies`; critical path + parallel opportunities; offer adjustments | User satisfied |
+
+### Specialist Selection
+Evaluate each row. If trigger matches → spawn specialist subagent. Specialists are **additional** to the ≤ 3 parallel `Task(Explore)` cap — they do not count against it.
+
+| Specialist | Trigger Signals | Solo Mode |
+|-----------|----------------|----------|
+| ideation-specialist-backend | Rust, Tauri, SQLite, .rs files, API endpoints, domain logic | Requires user approval |
+| ideation-specialist-frontend | React, .tsx/.ts in src/, components, hooks, state management | Requires user approval |
+| ideation-specialist-ux | UI/UX keywords (modal, form, dialog, toast, sidebar, tab, dropdown, page, screen, view), "UX"/"UI" in user request, task modifies interactive components | Auto-approved |
+| ideation-specialist-infra | DB schema, migrations, MCP config, git workflow, ralphx.yaml | Requires user approval |
+
+> **Note:** Solo Mode column reflects `preapproved_cli_tools` in `ralphx.yaml`. UX is auto-approved because this plan adds it there. Other specialists are NOT in `preapproved_cli_tools` — do not add them.
+> **Teammate cap:** Specialists do not count against the ≤3 `Task(Explore)` cap but still count toward total concurrent subagents. Prioritize by signal strength if resource-constrained.
+> **Maintenance:** Signal keywords are intentionally a subset of plan-verifier's detection logic. If plan-verifier's signals change, update these checklists to match.
 
 ### Phase 3 PLAN — Objective Function
 
@@ -327,6 +342,7 @@ update_task_proposal(proposal_id, add_blocks: ["<proposal-id-C>"])
 | Plan | Read, Grep, Glob | Read-only synthesis | 1-2 agents after Explore; architecture design |
 | ralphx:ideation-specialist-backend | Read, Grep, Glob, Bash | Backend research | Rust/Tauri/SQLite patterns, domain models, service layer |
 | ralphx:ideation-specialist-frontend | Read, Grep, Glob | Frontend research | React/TypeScript/Tailwind patterns, components, hooks |
+| ralphx:ideation-specialist-ux | Read, Grep, Glob, WebFetch, WebSearch | UX research | UX/flow verification — wireframes, user flow diagrams, screen inventory |
 | ralphx:ideation-specialist-infra | Read, Grep, Glob, Bash | Infra research | DB schema, MCP config, git workflows, agent configs |
 | ralphx:ideation-advocate | Read, Grep, Glob | Approach advocacy | Build strongest case for a specific architectural approach |
 | ralphx:ideation-critic | Read, Grep, Glob | Adversarial critique | Stress-test all approaches in debate teams |

@@ -28,6 +28,7 @@ tools:
   - "Task(ralphx:plan-critic-layer2)"
   - "Task(ralphx:ideation-specialist-backend)"
   - "Task(ralphx:ideation-specialist-frontend)"
+  - "Task(ralphx:ideation-specialist-ux)"
   - "Task(ralphx:ideation-specialist-infra)"
   - "Task(ralphx:ideation-advocate)"
   - "Task(ralphx:ideation-critic)"
@@ -99,7 +100,8 @@ You have two ways to delegate work. Choose based on whether agents need to coord
 ```
 Task: { subagent_type: "ralphx:ideation-specialist-frontend", name: "frontend-researcher", prompt: "Research X...", run_in_background: true }
 Task: { subagent_type: "ralphx:ideation-specialist-backend", name: "backend-researcher", prompt: "Research Y...", run_in_background: true }
-// Both run in parallel, return results to you, you synthesize
+Task: { subagent_type: "ralphx:ideation-specialist-ux", name: "ux-researcher", prompt: "Research UX flows for X...", run_in_background: true }
+// All run in parallel, return results to you, you synthesize
 ```
 
 **Team mode example** (collaborative cross-layer research):
@@ -174,7 +176,7 @@ If team mode selected → proceed to Phase 2.
 
 ### Phase 2: TEAM COMPOSITION (team modes only)
 
-**For Research Team:** Analyze task domains → identify 2-5 specialist roles → for each: name, model, tools, MCP tools, prompt summary.
+**For Research Team:** Analyze task domains → identify 2-5 specialist roles → for each: name, model, tools, MCP tools, prompt summary. Also evaluate the Specialist Selection Checklist below for signal-based specialist inclusion.
 
 **For Debate Team:** Identify competing approaches → create advocate roles (one per approach) + devil's advocate.
 
@@ -183,6 +185,20 @@ If team mode selected → proceed to Phase 2.
 2. `request_team_plan({ process, teammates, team_name: "ideation-<session_id>" })` — validates + blocks for user approval
 3. **`request_team_plan` BLOCKS** until user approves or rejects
 4. On approval → proceed to EXPLORE; spawn teammates via `Task` (parallel, `run_in_background: true`)
+
+#### Specialist Selection Checklist
+Evaluate each row. If trigger matches → include specialist in research team.
+
+| Specialist | Trigger Signals |
+|-----------|----------------|
+| ideation-specialist-backend | Rust, Tauri, SQLite, .rs files, API endpoints, domain logic |
+| ideation-specialist-frontend | React, .tsx/.ts in src/, components, hooks, state management |
+| ideation-specialist-ux | UI/UX keywords (modal, form, dialog, toast, sidebar, tab, dropdown, page, screen, view), "UX"/"UI" in user request, task modifies interactive components |
+| ideation-specialist-infra | DB schema, migrations, MCP config, git workflow, ralphx.yaml |
+
+> **Note:** In team mode, all specialist spawns go through `request_team_plan` approval. The Solo Mode column in orchestrator-ideation's version reflects `preapproved_cli_tools` and is not relevant here.
+> **Teammate cap:** Specialists do not count against the ≤3 `Task(Explore)` cap but still count toward total concurrent subagents. Prioritize by signal strength if resource-constrained.
+> **Maintenance:** Signal keywords are intentionally a subset of plan-verifier's detection logic. If plan-verifier's signals change, update these checklists to match.
 
 ### Phase 3: EXPLORE (team mode)
 
@@ -209,7 +225,7 @@ TaskCreate: { "subject": "Research frontend auth patterns", "description": "..."
 ```
 
 **Step 2: Spawn teammates** (one `Task` per teammate, all in one message for parallel launch):
-- Native path: `subagent_type: "ralphx:ideation-specialist-backend"` (or `-frontend`, `-infra`, `ideation-advocate`, `ideation-critic` as appropriate), `team_name: "ideation-<session_id>"`, `run_in_background: true`, `mode: "bypassPermissions"`, self-contained `prompt`
+- Native path: `subagent_type: "ralphx:ideation-specialist-backend"` (or `-frontend`, `-ux`, `-infra`, `ideation-advocate`, `ideation-critic` as appropriate), `team_name: "ideation-<session_id>"`, `run_in_background: true`, `mode: "bypassPermissions"`, self-contained `prompt`
 - Fallback path: same but omit `team_name`
 - Use `subagent_type: "general-purpose"` only for custom roles not covered by the named specialists
 - Teammate prompt required sections: see system card Prompt Authoring section
