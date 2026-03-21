@@ -7,7 +7,7 @@ use crate::infrastructure::sqlite::connection::open_memory_connection;
 
 #[test]
 fn test_schema_version_constant() {
-    assert_eq!(SCHEMA_VERSION, 80);
+    assert_eq!(SCHEMA_VERSION, 81);
 }
 
 #[test]
@@ -46,6 +46,69 @@ fn test_run_migrations_is_idempotent() {
     // Should still work and have correct version
     let version = get_schema_version(&conn).unwrap();
     assert_eq!(version, SCHEMA_VERSION);
+}
+
+#[test]
+fn test_run_migrations_repairs_skipped_external_session_reliability_columns() {
+    let conn = open_memory_connection().unwrap();
+    create_migrations_table(&conn).unwrap();
+
+    for migration in MIGRATIONS.iter().filter(|migration| migration.version <= 78) {
+        (migration.migrate)(&conn).unwrap();
+        set_schema_version(&conn, migration.version).unwrap();
+    }
+
+    // Simulate databases that recorded the earlier meaning of v79 before the
+    // external-session columns were later introduced at the same version.
+    v79_dependencies_acknowledged::migrate(&conn).unwrap();
+    set_schema_version(&conn, 79).unwrap();
+    set_schema_version(&conn, 80).unwrap();
+
+    assert!(!helpers::column_exists(&conn, "ideation_sessions", "api_key_id"));
+    assert!(!helpers::column_exists(
+        &conn,
+        "ideation_sessions",
+        "idempotency_key"
+    ));
+    assert!(!helpers::column_exists(
+        &conn,
+        "ideation_sessions",
+        "external_activity_phase"
+    ));
+    assert!(!helpers::column_exists(
+        &conn,
+        "ideation_sessions",
+        "external_last_read_message_id"
+    ));
+    assert!(helpers::column_exists(
+        &conn,
+        "ideation_sessions",
+        "dependencies_acknowledged"
+    ));
+
+    run_migrations(&conn).unwrap();
+
+    assert_eq!(get_schema_version(&conn).unwrap(), SCHEMA_VERSION);
+    assert!(helpers::column_exists(&conn, "ideation_sessions", "api_key_id"));
+    assert!(helpers::column_exists(
+        &conn,
+        "ideation_sessions",
+        "idempotency_key"
+    ));
+    assert!(helpers::column_exists(
+        &conn,
+        "ideation_sessions",
+        "external_activity_phase"
+    ));
+    assert!(helpers::column_exists(
+        &conn,
+        "ideation_sessions",
+        "external_last_read_message_id"
+    ));
+    assert!(helpers::index_exists(
+        &conn,
+        "idx_ideation_sessions_idempotency"
+    ));
 }
 
 // ==========================================================================
