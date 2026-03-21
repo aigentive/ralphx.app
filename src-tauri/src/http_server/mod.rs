@@ -127,6 +127,7 @@ pub async fn start_http_server(
         .route("/api/validate_key", get(validate_key))
         // Ideation tools (orchestrator-ideation agent)
         .route("/api/create_task_proposal", post(create_task_proposal))
+        .route("/api/finalize_proposals", post(finalize_proposals))
         .route("/api/update_task_proposal", post(update_task_proposal))
         .route("/api/archive_task_proposal", post(archive_task_proposal))
         // Proposal query tools (orchestrator-ideation agent)
@@ -353,6 +354,17 @@ pub async fn start_http_server(
         .route(
             "/api/external/tasks/batch_status",
             post(batch_task_status_http),
+        )
+        .route(
+            "/api/external/webhooks/register",
+            post(register_webhook_http),
+        )
+        .route("/api/external/webhooks/:id", delete(unregister_webhook_http))
+        .route("/api/external/webhooks", get(list_webhooks_http))
+        .route("/api/external/webhooks/health", get(get_webhook_health_http))
+        .route(
+            "/api/external/task-note",
+            post(create_task_note_http),
         )
         // Team endpoints (agent teams) — two-phase plan flow
         .route("/api/team/plan/request", post(request_team_plan_register))

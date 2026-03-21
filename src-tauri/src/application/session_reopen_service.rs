@@ -53,9 +53,11 @@ impl SessionReopenService {
     /// 2. Mark active ExecutionPlan as superseded (preserves history)
     /// 3. Get all tasks for this session
     /// 4. Delegate task cleanup to TaskCleanupService (stop agents, git cleanup, DB delete)
-    /// 5. Clean plan branch: delete git branch (physical cleanup), keep DB record for history
+    /// 5. Clean plan branch: delete git branch + DB record (unblocks next accept's INSERT)
     /// 6. Clear created_task_id on all proposals
-    /// 7. Set session status to Active
+    /// 7. Reset acceptance-cycle fields (expected_proposal_count, dependencies_acknowledged, etc.)
+    /// 8. Set session status to Active
+    /// 9. Reset verification state
     pub async fn reopen(&self, session_id: &IdeationSessionId) -> AppResult<()> {
         // 1. Validate session is Accepted or Archived
         let session = self
@@ -108,7 +110,8 @@ impl SessionReopenService {
                     let _ = GitService::delete_feature_branch(&repo_path, &plan_branch.branch_name)
                         .await;
                 }
-                // DB record intentionally kept — preserves history for audit trail.
+                // Delete the DB record so the next accept can INSERT without hitting the UNIQUE INDEX.
+                let _ = self.plan_branch_repo.delete(&plan_branch.id).await;
             }
         }
 
@@ -117,12 +120,19 @@ impl SessionReopenService {
             .clear_created_task_ids_by_session(session_id)
             .await?;
 
-        // 7. Set session status to Active (clears archived_at/converted_at)
+        // 7. Reset acceptance-cycle fields (expected_proposal_count, dependencies_acknowledged,
+        //    auto_accept_status, auto_accept_started_at, cross_project_checked) so the next
+        //    accept flow starts from a clean slate.
+        self.ideation_session_repo
+            .reset_acceptance_cycle_fields(session_id.as_str())
+            .await?;
+
+        // 8. Set session status to Active (clears archived_at/converted_at)
         self.ideation_session_repo
             .update_status(session_id, IdeationSessionStatus::Active)
             .await?;
 
-        // 8. Reset verification state (status → unverified, in_progress → false, metadata → NULL).
+        // 9. Reset verification state (status → unverified, in_progress → false, metadata → NULL).
         // A reopened session starts a fresh verification cycle. Use update_verification_state
         // (unconditional) because reset_verification() guards on in_progress=false.
         self.ideation_session_repo

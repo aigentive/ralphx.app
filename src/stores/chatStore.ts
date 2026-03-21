@@ -81,6 +81,10 @@ interface ChatState {
   lastAgentEventTimestamp: Record<string, number>;
   /** Tool call start timestamps: storeKey → { toolCallId → epoch ms } — for elapsed timer display */
   toolCallStartTimes: Record<string, Record<string, number>>;
+  /** Last tool call completion timestamp per storeKey (epoch ms) — for grace period check in watchdog */
+  lastToolCallCompletionTimestamp: Record<string, number>;
+  /** Per-tool-call completion timestamps: storeKey → { toolCallId → epoch ms } — for final duration display in widgets */
+  toolCallCompletionTimestamps: Record<string, Record<string, number>>;
 }
 
 // ============================================================================
@@ -132,6 +136,12 @@ interface ChatActions {
   removeToolCallStartTime: (storeKey: string, toolCallId: string) => void;
   /** Clear all tool call start times for a storeKey (on run_completed) */
   clearToolCallStartTimes: (storeKey: string) => void;
+  /** Record last tool call completion timestamp for grace period tracking */
+  setLastToolCallCompletionTimestamp: (storeKey: string, timestamp: number) => void;
+  /** Record per-tool-call completion timestamp for final duration display in widgets */
+  setToolCallCompletionTimestamp: (storeKey: string, toolCallId: string, timestamp: number) => void;
+  /** Clear all per-tool-call completion timestamps for a storeKey (on run_completed) */
+  clearToolCallCompletionTimestamps: (storeKey: string) => void;
 }
 
 // ============================================================================
@@ -152,6 +162,8 @@ export const useChatStore = create<ChatState & ChatActions>()(
     isTeamActive: {},
     lastAgentEventTimestamp: {},
     toolCallStartTimes: {},
+    lastToolCallCompletionTimestamp: {},
+    toolCallCompletionTimestamps: {},
 
     // Actions
     setContext: (context) =>
@@ -342,6 +354,24 @@ export const useChatStore = create<ChatState & ChatActions>()(
         delete state.toolCallStartTimes[storeKey];
       }),
 
+    setLastToolCallCompletionTimestamp: (storeKey, timestamp) =>
+      set((state) => {
+        state.lastToolCallCompletionTimestamp[storeKey] = timestamp;
+      }),
+
+    setToolCallCompletionTimestamp: (storeKey, toolCallId, timestamp) =>
+      set((state) => {
+        if (!state.toolCallCompletionTimestamps[storeKey]) {
+          state.toolCallCompletionTimestamps[storeKey] = {};
+        }
+        state.toolCallCompletionTimestamps[storeKey][toolCallId] = timestamp;
+      }),
+
+    clearToolCallCompletionTimestamps: (storeKey) =>
+      set((state) => {
+        delete state.toolCallCompletionTimestamps[storeKey];
+      }),
+
     processQueue: async (contextKey) => {
       const state = get();
       const messages = state.queuedMessages[contextKey];
@@ -489,6 +519,27 @@ export const selectToolCallStartTimes =
   (contextKey: string) =>
   (state: ChatState): Record<string, number> =>
     state.toolCallStartTimes[contextKey] ?? EMPTY_TOOL_CALL_START_TIMES;
+
+/**
+ * Select last tool call completion timestamp for a context (for grace period watchdog check).
+ * @param contextKey - The context key to get timestamp for
+ * @returns Selector function returning timestamp (ms) or 0 if never set
+ */
+export const selectLastToolCallCompletionTimestamp =
+  (contextKey: string) =>
+  (state: ChatState): number =>
+    state.lastToolCallCompletionTimestamp[contextKey] ?? 0;
+
+/**
+ * Select per-tool-call completion timestamps for a context (for final duration display in widgets).
+ * Uses a stable empty record to avoid infinite re-render loops from fresh `{}` fallbacks.
+ * @param contextKey - The context key to get completion timestamps for
+ * @returns Selector function returning toolCallId -> completion timestamp map
+ */
+export const selectToolCallCompletionTimestamps =
+  (contextKey: string) =>
+  (state: ChatState): Record<string, number> =>
+    state.toolCallCompletionTimestamps[contextKey] ?? EMPTY_TOOL_CALL_START_TIMES;
 
 // Stable empty arrays to avoid creating new references
 const EMPTY_MESSAGES: ChatMessage[] = [];

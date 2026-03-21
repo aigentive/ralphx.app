@@ -20,6 +20,7 @@ import { ReviewWidget } from "./ReviewWidget";
 import { MergeWidget } from "./MergeWidget";
 import { ProposalWidget } from "./ProposalWidget";
 import { IdeationWidget } from "./IdeationWidget";
+import { VerificationWidget } from "./VerificationWidget";
 import { GrepWidget } from "./GrepWidget";
 import { GlobWidget } from "./GlobWidget";
 import { ReadWidget } from "./ReadWidget";
@@ -47,7 +48,10 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   // Skill tool → SkillWidget (skill invocation card)
   "skill": SkillWidget,
   // Context tool → ContextWidget (always-visible context card)
+  // Bare-name entries kept for backward compat with non-MCP contexts (test fixtures, CLI direct mode)
   "get_task_context": ContextWidget,
+  // MCP-prefixed entries for actual MCP tool calls (getToolCallWidget uses exact-match lookup)
+  "mcp__ralphx__get_task_context": ContextWidget,
   // Step lifecycle tools → StepIndicator (ultra-compact inline indicators)
   "mcp__ralphx__start_step": StepIndicator,
   "mcp__ralphx__complete_step": StepIndicator,
@@ -57,16 +61,24 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   "mcp__ralphx__get_step_progress": StepIndicator,
   // Steps manifest → StepsManifestWidget (collapsible checklist)
   "get_task_steps": StepsManifestWidget,
+  "mcp__ralphx__get_task_steps": StepsManifestWidget,
   // Issues summary → IssuesSummaryWidget (severity-badged issue list)
   "get_task_issues": IssuesSummaryWidget,
+  "mcp__ralphx__get_task_issues": IssuesSummaryWidget,
   // Artifact tools → ArtifactWidget (type badge + title + markdown preview)
   "get_artifact": ArtifactWidget,
   "get_artifact_version": ArtifactWidget,
   "get_related_artifacts": ArtifactWidget,
   "search_project_artifacts": ArtifactWidget,
+  "mcp__ralphx__get_artifact": ArtifactWidget,
+  "mcp__ralphx__get_artifact_version": ArtifactWidget,
+  "mcp__ralphx__get_related_artifacts": ArtifactWidget,
+  "mcp__ralphx__search_project_artifacts": ArtifactWidget,
   // Review tools → ReviewWidget (outcome-colored cards + note list)
   "complete_review": ReviewWidget,
   "get_review_notes": ReviewWidget,
+  "mcp__ralphx__complete_review": ReviewWidget,
+  "mcp__ralphx__get_review_notes": ReviewWidget,
   // Merge tools → MergeWidget (success/conflict/incomplete cards + merge target)
   "mcp__ralphx__complete_merge": MergeWidget,
   "mcp__ralphx__report_conflict": MergeWidget,
@@ -85,6 +97,15 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   "mcp__ralphx__get_proposal": IdeationWidget,
   "mcp__ralphx__get_session_plan": IdeationWidget,
   "mcp__ralphx__analyze_session_dependencies": IdeationWidget,
+  "mcp__ralphx__edit_plan_artifact": IdeationWidget,
+  "mcp__ralphx__send_ideation_session_message": IdeationWidget,
+  "mcp__ralphx__finalize_proposals": IdeationWidget,
+  "mcp__ralphx__cross_project_guide": IdeationWidget,
+  // Verification & child session tools → VerificationWidget
+  "mcp__ralphx__update_plan_verification": VerificationWidget,
+  "mcp__ralphx__get_plan_verification": VerificationWidget,
+  "mcp__ralphx__create_child_session": VerificationWidget,
+  "mcp__ralphx__get_child_session_status": VerificationWidget,
   // SendMessage tool → SendMessageWidget (team message card)
   "sendmessage": SendMessageWidget,
   // Task management tools → TeamTaskWidgets

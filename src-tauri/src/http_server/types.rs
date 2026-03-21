@@ -118,6 +118,8 @@ pub struct CreateProposalRequest {
     pub depends_on: Vec<String>,
     /// Optional target project ID for cross-project proposal execution
     pub target_project: Option<String>,
+    /// Expected total number of proposals for this session (set-once gating)
+    pub expected_proposal_count: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -137,6 +139,26 @@ pub struct UpdateProposalRequest {
     pub add_blocks: Vec<String>,
     /// Optional target project ID for cross-project proposal execution
     pub target_project: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FinalizeProposalsRequest {
+    pub session_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FinalizeProposalsResponse {
+    pub created_task_ids: Vec<String>,
+    /// Number of proposal-to-proposal dependency edges created (excludes merge task edges).
+    pub dependencies_created: u32,
+    /// Number of plan tasks created (excludes the auto-generated merge task).
+    pub tasks_created: u32,
+    /// Human-readable summary of the finalization result.
+    pub message: Option<String>,
+    pub session_status: String,
+    pub execution_plan_id: Option<String>,
+    pub warnings: Vec<String>,
+    pub project_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -165,6 +187,10 @@ pub struct ProposalResponse {
     pub dependency_errors: Vec<String>,
     /// Optional target project ID for cross-project proposal execution
     pub target_project: Option<String>,
+    /// Whether the auto-accept pipeline was triggered for this session (always false — kept for backward compat)
+    pub auto_accept_triggered: bool,
+    /// Whether the session is ready to finalize (expected proposal count reached)
+    pub ready_to_finalize: bool,
 }
 
 impl From<TaskProposal> for ProposalResponse {
@@ -181,6 +207,8 @@ impl From<TaskProposal> for ProposalResponse {
             created_at: proposal.created_at.to_rfc3339(),
             dependency_errors: Vec::new(),
             target_project: proposal.target_project.clone(),
+            auto_accept_triggered: false,
+            ready_to_finalize: false,
         }
     }
 }
@@ -1387,6 +1415,12 @@ impl IntoResponse for HttpError {
     fn into_response(self) -> axum::response::Response {
         match self.message {
             Some(msg) => {
+                // If message is a pre-serialized JSON object, use it directly as the body.
+                // This allows rich error responses (e.g. queue_full with queued_count + hint)
+                // without changing the HttpError struct layout.
+                if let Ok(serde_json::Value::Object(obj)) = serde_json::from_str(&msg) {
+                    return (self.status, Json(serde_json::Value::Object(obj))).into_response();
+                }
                 (self.status, Json(serde_json::json!({"error": msg}))).into_response()
             }
             None => self.status.into_response(),

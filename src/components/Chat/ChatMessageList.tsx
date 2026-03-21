@@ -33,6 +33,7 @@ import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { MessageAttachment } from "./MessageAttachments";
 import { useTeamStore, selectTeammateByName, selectTeamMessages, EMPTY_TEAM_MESSAGES } from "@/stores/teamStore";
+import { ToolCallStoreKeyContext } from "./tool-widgets/ToolCallStoreKeyContext";
 import type { TeamMessage } from "@/stores/teamStore";
 import { TeamMessageBubble } from "./TeamMessageBubble";
 
@@ -881,6 +882,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     }
 
     return (
+      <ToolCallStoreKeyContext.Provider value={contextKey ?? null}>
       <div className="flex-1 overflow-hidden relative" data-testid="integrated-chat-messages">
         {isFilteredTabEmpty && (
           <div className="absolute inset-0 flex items-center justify-center" data-testid="teammate-tab-empty">
@@ -922,6 +924,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           </div>
         )}
       </div>
+      </ToolCallStoreKeyContext.Provider>
     );
   }
 );

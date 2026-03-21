@@ -223,6 +223,8 @@ pub struct CreateProposalInput {
     /// Optional list of proposal IDs this proposal depends on
     #[serde(default)]
     pub depends_on: Vec<String>,
+    /// Expected total number of proposals for this session (set-once gating)
+    pub expected_proposal_count: Option<u32>,
 }
 
 /// Input for updating a task proposal
@@ -274,6 +276,8 @@ pub struct TaskProposalResponse {
     /// Partial failure contract: non-fatal dependency errors encountered during create/update
     #[serde(default)]
     pub dependency_errors: Vec<String>,
+    /// Whether the auto-accept pipeline was triggered for this session
+    pub auto_accept_triggered: bool,
 }
 
 impl From<TaskProposal> for TaskProposalResponse {
@@ -312,6 +316,7 @@ impl From<TaskProposal> for TaskProposalResponse {
             updated_at: proposal.updated_at.to_rfc3339(),
             target_project: proposal.target_project.clone(),
             dependency_errors: Vec::new(),
+            auto_accept_triggered: false,
         }
     }
 }
@@ -410,7 +415,12 @@ pub struct ApplyProposalsInput {
 #[derive(Debug)]
 pub struct ApplyProposalsResult {
     pub created_task_ids: Vec<String>,
+    /// Number of proposal-to-proposal dependency edges created (excludes merge task edges).
     pub dependencies_created: usize,
+    /// Number of plan tasks created (excludes the auto-generated merge task).
+    pub tasks_created: usize,
+    /// Human-readable summary of the finalization result.
+    pub message: Option<String>,
     pub warnings: Vec<String>,
     pub session_converted: bool,
     pub execution_plan_id: Option<String>,
@@ -431,6 +441,8 @@ pub struct ApplyProposalsResult {
 pub struct ApplyProposalsResultResponse {
     pub created_task_ids: Vec<String>,
     pub dependencies_created: usize,
+    pub tasks_created: usize,
+    pub message: Option<String>,
     pub warnings: Vec<String>,
     pub session_converted: bool,
     pub execution_plan_id: Option<String>,
@@ -441,6 +453,8 @@ impl From<ApplyProposalsResult> for ApplyProposalsResultResponse {
         Self {
             created_task_ids: r.created_task_ids,
             dependencies_created: r.dependencies_created,
+            tasks_created: r.tasks_created,
+            message: r.message,
             warnings: r.warnings,
             session_converted: r.session_converted,
             execution_plan_id: r.execution_plan_id,

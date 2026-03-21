@@ -5,6 +5,193 @@
  * All tools perform project scope validation before forwarding to backend.
  */
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Event Type Contracts — discriminated union interfaces for all pipeline events
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Task events
+export interface TaskCreatedEvent {
+  event_type: 'task:created';
+  task_id: string;
+  project_id: string;
+  title: string;
+  timestamp: string;
+}
+
+export interface TaskStatusChangedEvent {
+  event_type: 'task:status_changed';
+  task_id: string;
+  project_id: string;
+  old_status: string;
+  new_status: string;
+  timestamp: string;
+}
+
+export interface TaskStepCompletedEvent {
+  event_type: 'task:step_completed';
+  task_id: string;
+  project_id: string;
+  step_id: string;
+  step_title: string;
+  timestamp: string;
+}
+
+export interface TaskExecutionStartedEvent {
+  event_type: 'task:execution_started';
+  task_id: string;
+  project_id: string;
+  timestamp: string;
+}
+
+export interface TaskExecutionCompletedEvent {
+  event_type: 'task:execution_completed';
+  task_id: string;
+  project_id: string;
+  timestamp: string;
+}
+
+// Review events
+export interface ReviewReadyEvent {
+  event_type: 'review:ready';
+  task_id: string;
+  project_id: string;
+  timestamp: string;
+}
+
+export interface ReviewApprovedEvent {
+  event_type: 'review:approved';
+  task_id: string;
+  project_id: string;
+  timestamp: string;
+}
+
+export interface ReviewChangesRequestedEvent {
+  event_type: 'review:changes_requested';
+  task_id: string;
+  project_id: string;
+  timestamp: string;
+}
+
+export interface ReviewEscalatedEvent {
+  event_type: 'review:escalated';
+  task_id: string;
+  project_id: string;
+  reason?: string;
+  timestamp: string;
+}
+
+// Merge events
+export interface MergeReadyEvent {
+  event_type: 'merge:ready';
+  task_id: string;
+  project_id: string;
+  timestamp: string;
+}
+
+export interface MergeCompletedEvent {
+  event_type: 'merge:completed';
+  task_id: string;
+  project_id: string;
+  timestamp: string;
+}
+
+export interface MergeConflictEvent {
+  event_type: 'merge:conflict';
+  task_id: string;
+  project_id: string;
+  source_branch: string;
+  target_branch: string;
+  conflict_files: string[];
+  strategy: string;
+  timestamp: string;
+}
+
+// Ideation events
+export interface IdeationSessionCreatedEvent {
+  event_type: 'ideation:session_created';
+  session_id: string;
+  project_id: string;
+  timestamp: string;
+}
+
+export interface IdeationPlanCreatedEvent {
+  event_type: 'ideation:plan_created';
+  session_id: string;
+  project_id: string;
+  timestamp: string;
+}
+
+export interface IdeationVerifiedEvent {
+  event_type: 'ideation:verified';
+  session_id: string;
+  project_id: string;
+  timestamp: string;
+}
+
+export interface IdeationProposalsReadyEvent {
+  event_type: 'ideation:proposals_ready';
+  session_id: string;
+  project_id: string;
+  proposal_count: number;
+  timestamp: string;
+}
+
+export interface IdeationAutoProposeSentEvent {
+  event_type: 'ideation:auto_propose_sent';
+  session_id: string;
+  project_id: string;
+  timestamp: string;
+}
+
+export interface IdeationAutoProposeFailedEvent {
+  event_type: 'ideation:auto_propose_failed';
+  session_id: string;
+  project_id: string;
+  error: string;
+  timestamp: string;
+}
+
+// System events
+export interface SystemWebhookUnhealthyEvent {
+  event_type: 'system:webhook_unhealthy';
+  webhook_id: string;
+  project_id: string;
+  failure_count: number;
+  timestamp: string;
+}
+
+export interface SystemRateLimitWarningEvent {
+  event_type: 'system:rate_limit_warning';
+  project_id: string;
+  api_key_id: string;
+  timestamp: string;
+}
+
+// Union type covering all events
+export type RalphXEvent =
+  | TaskCreatedEvent
+  | TaskStatusChangedEvent
+  | TaskStepCompletedEvent
+  | TaskExecutionStartedEvent
+  | TaskExecutionCompletedEvent
+  | ReviewReadyEvent
+  | ReviewApprovedEvent
+  | ReviewChangesRequestedEvent
+  | ReviewEscalatedEvent
+  | MergeReadyEvent
+  | MergeCompletedEvent
+  | MergeConflictEvent
+  | IdeationSessionCreatedEvent
+  | IdeationPlanCreatedEvent
+  | IdeationVerifiedEvent
+  | IdeationProposalsReadyEvent
+  | IdeationAutoProposeSentEvent
+  | IdeationAutoProposeFailedEvent
+  | SystemWebhookUnhealthyEvent
+  | SystemRateLimitWarningEvent;
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { getBackendClient, BackendError } from "../backend-client.js";
 import type { ApiKeyContext } from "../types.js";
 import type { ExternalEvent } from "../events/types.js";
@@ -68,9 +255,11 @@ export async function handleGetRecentEvents(
   context: ApiKeyContext
 ): Promise<string> {
   const projectId = args.project_id as string | undefined;
-  const cursor = typeof args.cursor === "number" ? args.cursor : 0;
+  const cursorRaw = typeof args.cursor === "number" ? args.cursor : typeof args.last_id === "number" ? args.last_id : 0;
+  const cursor = cursorRaw;
   const rawLimit = typeof args.limit === "number" ? args.limit : 50;
   const limit = Math.min(Math.max(1, rawLimit), 200);
+  const eventType = typeof args.event_type === "string" ? args.event_type : undefined;
 
   if (!projectId) {
     return JSON.stringify(
@@ -90,6 +279,9 @@ export async function handleGetRecentEvents(
     };
     if (cursor > 0) {
       params.cursor = String(cursor);
+    }
+    if (eventType !== undefined) {
+      params.event_type = eventType;
     }
 
     const response = await getBackendClient().get<EventPollResponse>(
@@ -269,6 +461,167 @@ export async function handleGetExecutionCapacity(
         2
       );
     }
+    return handleError(err);
+  }
+}
+
+// ============================================================================
+// Webhook Registration Tools
+// ============================================================================
+
+interface RegisterWebhookResponse {
+  id: string;
+  url: string;
+  secret: string;
+  event_types?: string[];
+  project_ids: string[];
+  active: boolean;
+  created_at: string;
+}
+
+interface WebhookSummary {
+  id: string;
+  url: string;
+  event_types?: string[];
+  project_ids: string[];
+  active: boolean;
+  failure_count: number;
+  created_at: string;
+}
+
+interface ListWebhooksResponse {
+  webhooks: WebhookSummary[];
+}
+
+interface UnregisterWebhookResponse {
+  success: boolean;
+  id: string;
+}
+
+/**
+ * v1_register_webhook — register a webhook URL for real-time event delivery.
+ * POST /api/external/webhooks/register
+ *
+ * Returns the webhook registration including the HMAC secret (shown ONCE — store it).
+ * Idempotent: re-registering the same URL returns the existing registration.
+ */
+export async function handleRegisterWebhook(
+  args: Record<string, unknown>,
+  context: ApiKeyContext
+): Promise<string> {
+  const url = args.url as string | undefined;
+  if (!url) {
+    return JSON.stringify(
+      { error: "missing_argument", message: "url is required" },
+      null,
+      2
+    );
+  }
+
+  const eventTypes = Array.isArray(args.event_types)
+    ? (args.event_types as string[])
+    : undefined;
+  const projectIds = Array.isArray(args.project_ids)
+    ? (args.project_ids as string[])
+    : [];
+
+  // Project scope validation for explicit project_ids
+  if (projectIds.length > 0) {
+    for (const pid of projectIds) {
+      const scopeError = checkProjectScope(pid, context);
+      if (scopeError) return scopeError;
+    }
+  }
+
+  try {
+    const response = await getBackendClient().post<RegisterWebhookResponse>(
+      "/api/external/webhooks/register",
+      context,
+      { url, event_types: eventTypes, project_ids: projectIds }
+    );
+    return JSON.stringify(response.body, null, 2);
+  } catch (err) {
+    return handleError(err);
+  }
+}
+
+/**
+ * v1_unregister_webhook — remove a webhook registration.
+ * DELETE /api/external/webhooks/:id
+ */
+export async function handleUnregisterWebhook(
+  args: Record<string, unknown>,
+  context: ApiKeyContext
+): Promise<string> {
+  const webhookId = args.webhook_id as string | undefined;
+  if (!webhookId) {
+    return JSON.stringify(
+      { error: "missing_argument", message: "webhook_id is required" },
+      null,
+      2
+    );
+  }
+
+  try {
+    const response = await getBackendClient().delete<UnregisterWebhookResponse>(
+      `/api/external/webhooks/${encodeURIComponent(webhookId)}`,
+      context
+    );
+    return JSON.stringify(response.body, null, 2);
+  } catch (err) {
+    return handleError(err);
+  }
+}
+
+/**
+ * v1_list_webhooks — list all registered webhooks for this API key.
+ * GET /api/external/webhooks
+ */
+export async function handleListWebhooks(
+  args: Record<string, unknown>,
+  context: ApiKeyContext
+): Promise<string> {
+  try {
+    const response = await getBackendClient().get<ListWebhooksResponse>(
+      "/api/external/webhooks",
+      context
+    );
+    return JSON.stringify(response.body, null, 2);
+  } catch (err) {
+    return handleError(err);
+  }
+}
+
+interface WebhookHealthItem {
+  id: string;
+  url: string;
+  active: boolean;
+  failure_count: number;
+  last_failure_at?: string;
+}
+
+interface WebhookHealthResponse {
+  webhooks: WebhookHealthItem[];
+}
+
+/**
+ * v1_get_webhook_health — check delivery health for all registered webhooks.
+ * GET /api/external/webhooks/health
+ *
+ * Returns per-webhook stats: active status, failure count, and last failure time.
+ * Use this to detect broken webhooks before relying on event delivery.
+ */
+export async function handleGetWebhookHealth(
+  args: Record<string, unknown>,
+  context: ApiKeyContext
+): Promise<string> {
+  try {
+    const response = await getBackendClient().get<WebhookHealthResponse>(
+      "/api/external/webhooks/health",
+      context
+    );
+    return JSON.stringify(response.body, null, 2);
+  } catch (err) {
     return handleError(err);
   }
 }

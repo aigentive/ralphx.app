@@ -39,6 +39,7 @@ pub mod team_events;
 pub mod team_service;
 pub mod team_state_tracker;
 pub mod team_stream_processor;
+pub mod webhook_service;
 
 // Re-export commonly used items
 pub use app_state::AppState;
@@ -90,6 +91,7 @@ pub use task_transition_service::TaskTransitionService;
 pub use throttled_emitter::ThrottledEmitter;
 pub use team_service::TeamService;
 pub use team_state_tracker::TeamStateTracker;
+pub use webhook_service::WebhookService;
 
 #[cfg(test)]
 mod app_state_shared_state_tests;

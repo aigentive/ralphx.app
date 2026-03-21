@@ -287,6 +287,89 @@ impl IdeationSessionRepository for MockSessionRepository {
     )> {
         unimplemented!()
     }
+
+    fn set_expected_proposal_count_sync(
+        _conn: &rusqlite::Connection,
+        _session_id: &str,
+        _count: u32,
+    ) -> AppResult<()>
+    where
+        Self: Sized,
+    {
+        unimplemented!()
+    }
+
+    async fn set_auto_accept_status(
+        &self,
+        _session_id: &str,
+        _status: &str,
+        _auto_accept_started_at: Option<String>,
+    ) -> AppResult<()> {
+        unimplemented!()
+    }
+
+    fn count_active_by_session_sync(
+        _conn: &rusqlite::Connection,
+        _session_id: &str,
+    ) -> AppResult<i64>
+    where
+        Self: Sized,
+    {
+        unimplemented!()
+    }
+
+    async fn get_by_idempotency_key(
+        &self,
+        _api_key_id: &str,
+        _idempotency_key: &str,
+    ) -> AppResult<Option<IdeationSession>> {
+        Ok(None)
+    }
+
+    async fn update_external_activity_phase(
+        &self,
+        _id: &IdeationSessionId,
+        _phase: &str,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn update_external_last_read_message_id(
+        &self,
+        _id: &IdeationSessionId,
+        _message_id: &str,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn list_active_external_by_project(
+        &self,
+        _project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(vec![])
+    }
+
+    async fn list_active_external_sessions_for_archival(
+        &self,
+        _stale_before: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(vec![])
+    }
+
+    async fn list_stalled_external_sessions(
+        &self,
+        _stalled_before: chrono::DateTime<chrono::Utc>,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(vec![])
+    }
+
+    async fn set_dependencies_acknowledged(&self, _session_id: &str) -> AppResult<()> {
+        unimplemented!()
+    }
+
+    async fn reset_acceptance_cycle_fields(&self, _session_id: &str) -> AppResult<()> {
+        Ok(())
+    }
 }
 
 struct MockProposalRepository {

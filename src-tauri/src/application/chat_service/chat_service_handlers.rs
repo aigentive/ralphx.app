@@ -8,6 +8,7 @@
 //   agent run failure recording, message finalization, and fallback task transitions
 
 use std::path::Path;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 
@@ -151,6 +152,16 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                 if task.internal_status == InternalStatus::Executing
                     || task.internal_status == InternalStatus::ReExecuting
                 {
+                    // L1 shutdown guard: skip transitions during clean shutdown.
+                    // Task stays in Executing/ReExecuting so Phase 2 of StartupJobRunner can resume it.
+                    if exec_state.is_shutting_down.load(Ordering::SeqCst) {
+                        tracing::info!(
+                            task_id = task_id.as_str(),
+                            "Shutdown detected — skipping task execution transition; task stays in Executing for auto-recovery"
+                        );
+                        return;
+                    }
+
                     // Create scheduler for auto-scheduling next Ready task
                     let mut scheduler_svc = TaskSchedulerService::new(
                         Arc::clone(exec_state),
@@ -299,6 +310,32 @@ pub(super) async fn handle_stream_success<R: Runtime>(
             let task_id = TaskId::from_string(context_id.to_string());
             if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
                 if task.internal_status == InternalStatus::Reviewing {
+                    // L1 shutdown guard: skip escalation during clean app shutdown.
+                    // The task stays in Reviewing so StartupJobRunner Phase 2 can respawn it.
+                    if exec_state.is_shutting_down.load(Ordering::SeqCst) {
+                        tracing::info!(
+                            task_id = task_id.as_str(),
+                            "Shutdown detected — skipping review escalation; task stays in Reviewing for auto-recovery"
+                        );
+                        let mut metadata_obj = task
+                            .metadata
+                            .as_deref()
+                            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                            .unwrap_or_else(|| serde_json::json!({}));
+                        if let Some(obj) = metadata_obj.as_object_mut() {
+                            obj.insert(
+                                "shutdown_interrupted".to_string(),
+                                serde_json::json!(true),
+                            );
+                        }
+                        let mut updated_task = task.clone();
+                        updated_task.metadata =
+                            Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
+                        updated_task.touch();
+                        let _ = task_repo.update(&updated_task).await;
+                        return;
+                    }
+
                     tracing::info!(
                         task_id = task_id.as_str(),
                         "Review agent completed without calling complete_review; escalating"
@@ -429,6 +466,16 @@ pub(super) async fn handle_stream_success<R: Runtime>(
     // Handle merge auto-completion (only for Merge context)
     if context_type == ChatContextType::Merge {
         if let Some(ref exec_state) = execution_state {
+            // L1 shutdown guard: skip merge auto-complete during clean shutdown.
+            // Task stays in Merging so Phase 2 of StartupJobRunner can resume it.
+            if exec_state.is_shutting_down.load(Ordering::SeqCst) {
+                tracing::info!(
+                    task_id = context_id,
+                    "Shutdown detected — skipping merge auto-complete; task stays in Merging for auto-recovery"
+                );
+                return;
+            }
+
             let merge_ctx = super::chat_service_merge::MergeAutoCompleteContext {
                 task_id_str: context_id,
                 task_id: TaskId::from_string(context_id.to_string()),
@@ -953,6 +1000,16 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     if task.internal_status == InternalStatus::Executing
                         || task.internal_status == InternalStatus::ReExecuting =>
                 {
+                    // L1 shutdown guard: skip transitions during clean shutdown.
+                    // Task stays in Executing/ReExecuting so Phase 2 of StartupJobRunner can resume it.
+                    if exec_state.is_shutting_down.load(Ordering::SeqCst) {
+                        tracing::info!(
+                            task_id = task_id.as_str(),
+                            "Shutdown detected — skipping task execution error transition; task stays in Executing for auto-recovery"
+                        );
+                        return false;
+                    }
+
                     // Store last_agent_error in metadata (mirrors review pattern)
                     {
                         let mut metadata_obj = task
@@ -1250,6 +1307,55 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
 
     // Handle merge auto-completion even on agent error
     if context_type == ChatContextType::Merge {
+        // L1 shutdown guard: skip merge auto-complete during clean shutdown.
+        // Task stays in Merging so Phase 2 of StartupJobRunner can resume it.
+        if let Some(ref exec_state) = execution_state {
+            if exec_state.is_shutting_down.load(Ordering::SeqCst) {
+                tracing::info!(
+                    task_id = context_id,
+                    "Shutdown detected — skipping merge error auto-complete; task stays in Merging for auto-recovery"
+                );
+                return false;
+            }
+        }
+
+        // Phase 1.5: Store last_agent_error_context: "merge" for L2 crash recovery.
+        // Without this, startup crash recovery (Phase 0.8) cannot identify merge tasks
+        // when transitioning Escalated tasks back to PendingMerge. Mirrors the triple-insert
+        // pattern used by review and execution escalation paths.
+        {
+            let task_id = TaskId::from_string(context_id.to_string());
+            if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
+                let mut metadata_obj = task
+                    .metadata
+                    .as_deref()
+                    .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                    .unwrap_or_else(|| serde_json::json!({}));
+                if let Some(obj) = metadata_obj.as_object_mut() {
+                    obj.insert("last_agent_error".to_string(), serde_json::json!(error));
+                    obj.insert(
+                        "last_agent_error_context".to_string(),
+                        serde_json::json!("merge"),
+                    );
+                    obj.insert(
+                        "last_agent_error_at".to_string(),
+                        serde_json::json!(chrono::Utc::now().to_rfc3339()),
+                    );
+                }
+                let mut updated_task = task.clone();
+                updated_task.metadata =
+                    Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
+                updated_task.touch();
+                if let Err(e) = task_repo.update(&updated_task).await {
+                    tracing::warn!(
+                        task_id = context_id,
+                        error = %e,
+                        "Failed to store merge last_agent_error metadata"
+                    );
+                }
+            }
+        }
+
         // Check for provider rate limit errors BEFORE attempting auto-complete.
         // If rate-limited, store retry_after in MergeRecoveryMetadata so the reconciler
         // can skip retries until the limit clears (without burning retry budget).
@@ -1366,6 +1472,32 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
             let task_id = TaskId::from_string(context_id.to_string());
             match task_repo.get_by_id(&task_id).await {
                 Ok(Some(task)) if task.internal_status == InternalStatus::Reviewing => {
+                    // L1 shutdown guard: skip escalation during clean app shutdown.
+                    // The task stays in Reviewing so StartupJobRunner Phase 2 can respawn it.
+                    if exec_state.is_shutting_down.load(Ordering::SeqCst) {
+                        tracing::info!(
+                            task_id = task_id.as_str(),
+                            "Shutdown detected — skipping review error escalation; task stays in Reviewing for auto-recovery"
+                        );
+                        let mut metadata_obj = task
+                            .metadata
+                            .as_deref()
+                            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                            .unwrap_or_else(|| serde_json::json!({}));
+                        if let Some(obj) = metadata_obj.as_object_mut() {
+                            obj.insert(
+                                "shutdown_interrupted".to_string(),
+                                serde_json::json!(true),
+                            );
+                        }
+                        let mut updated_task = task.clone();
+                        updated_task.metadata =
+                            Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
+                        updated_task.touch();
+                        let _ = task_repo.update(&updated_task).await;
+                        return false;
+                    }
+
                     // Store last_agent_error in metadata for UI visibility
                     let mut metadata_obj = task
                         .metadata

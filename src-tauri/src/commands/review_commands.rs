@@ -382,6 +382,10 @@ use super::review_commands_types::{ApproveTaskInput, ReReviewTaskInput, RequestT
 use crate::application::{TaskSchedulerService, TaskTransitionService};
 use crate::commands::execution_commands::ExecutionState;
 use crate::domain::state_machine::services::TaskScheduler;
+use crate::domain::state_machine::transition_handler::{
+    is_merge_worktree_path, restore_task_worktree,
+};
+use std::path::Path;
 use std::sync::Arc;
 
 /// Approve a task after AI review has passed or escalated
@@ -599,7 +603,7 @@ pub async fn re_review_task_from_escalated(
     let task_id = TaskId::from_string(input.task_id);
 
     // 1. Get task and validate state is Escalated
-    let task = state
+    let mut task = state
         .task_repo
         .get_by_id(&task_id)
         .await
@@ -611,6 +615,29 @@ pub async fn re_review_task_from_escalated(
             "Task must be in 'escalated' status to re-review. Current status: {}.",
             task.internal_status.as_str()
         ));
+    }
+
+    // 1b. Restore worktree_path if it's stale (pointing to a merge worktree).
+    //     This unblocks tasks stuck after a merge-pipeline conflict routed them back
+    //     to review without resetting the worktree path.
+    if let Some(ref wt_path) = task.worktree_path.clone() {
+        if is_merge_worktree_path(wt_path) {
+            let project = state
+                .project_repo
+                .get_by_id(&task.project_id)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("Project not found for task {}", task_id.as_str()))?;
+            let repo_path = Path::new(&project.working_directory).to_path_buf();
+            restore_task_worktree(&mut task, &project, &repo_path)
+                .await
+                .map_err(|e| e.to_string())?;
+            state
+                .task_repo
+                .update(&task)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
     }
 
     // 2. Transition to PendingReview (state machine auto-triggers AI reviewer)

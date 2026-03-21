@@ -1002,6 +1002,24 @@ impl<'a> super::TransitionHandler<'a> {
             "Dispatching merge strategy"
         );
 
+        // Emit merge:ready webhook event.
+        if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+            let webhook_payload = serde_json::json!({
+                "task_id": task_id_str,
+                "project_id": project.id.to_string(),
+                "source_branch": source_branch,
+                "target_branch": target_branch,
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            });
+            publisher
+                .publish(
+                    ralphx_domain::entities::EventType::MergeReady,
+                    &project.id.to_string(),
+                    webhook_payload,
+                )
+                .await;
+        }
+
         // Phase 1: Run git strategy under merge deadline (fast, seconds only)
         let git_result = tokio::time::timeout(remaining, async {
             // Early return: if branches are already identical, skip merge entirely (prevents empty

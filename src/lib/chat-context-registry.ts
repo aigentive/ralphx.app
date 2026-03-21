@@ -127,7 +127,7 @@ export const CHAT_CONTEXT_REGISTRY: Record<ContextType, ChatContextConfig> = {
 };
 
 // ============================================================================
-// Store Key Builder
+// Store Key Builder + Parser
 // ============================================================================
 
 /**
@@ -144,6 +144,34 @@ export const CHAT_CONTEXT_REGISTRY: Record<ContextType, ChatContextConfig> = {
 export function buildStoreKey(contextType: ContextType, contextId: string): string {
   const config = CHAT_CONTEXT_REGISTRY[contextType];
   return `${config.storeKeyPrefix}:${contextId}`;
+}
+
+/**
+ * Reverse map from storeKeyPrefix → ContextType.
+ * Derived from CHAT_CONTEXT_REGISTRY to stay in sync automatically.
+ */
+const REVERSE_PREFIX_MAP: Record<string, ContextType> = Object.fromEntries(
+  (Object.entries(CHAT_CONTEXT_REGISTRY) as [ContextType, { storeKeyPrefix: string }][]).map(
+    ([contextType, config]) => [config.storeKeyPrefix, contextType],
+  ),
+);
+
+/**
+ * Parse a store key back into its contextType and contextId components.
+ * Reverse of buildStoreKey.
+ *
+ * @returns { contextType, contextId } or null if the key is not recognized.
+ */
+export function parseStoreKey(
+  key: string,
+): { contextType: ContextType; contextId: string } | null {
+  const colonIndex = key.indexOf(":");
+  if (colonIndex === -1) return null;
+  const prefix = key.slice(0, colonIndex);
+  const contextId = key.slice(colonIndex + 1);
+  const contextType = REVERSE_PREFIX_MAP[prefix];
+  if (!contextType || !contextId) return null;
+  return { contextType, contextId };
 }
 
 // ============================================================================

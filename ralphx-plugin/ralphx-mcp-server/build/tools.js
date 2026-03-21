@@ -58,8 +58,12 @@ export const ALL_TOOLS = [
                     type: "string",
                     description: "Optional: target project ID or filesystem path for cross-project ideation. Tag this proposal with the project it targets.",
                 },
+                expected_proposal_count: {
+                    type: "integer",
+                    description: "Total number of proposals you intend to create in this session. Required on every create_task_proposal call. First proposal locks the count; returns ready_to_finalize: true when proposal count matches expected_proposal_count — call finalize_proposals then.",
+                },
             },
-            required: ["session_id", "title", "category"],
+            required: ["session_id", "title", "category", "expected_proposal_count"],
         },
     },
     {
@@ -185,13 +189,30 @@ export const ALL_TOOLS = [
     {
         name: "analyze_session_dependencies",
         description: "Get full dependency graph analysis including critical path, cycle detection, and blocking relationships. " +
-            "Use to provide intelligent recommendations about proposal execution order.",
+            "Use to provide intelligent recommendations about proposal execution order. " +
+            "Side effect: sets dependencies_acknowledged=true on the session, satisfying the finalize gate for multi-proposal sessions.",
         inputSchema: {
             type: "object",
             properties: {
                 session_id: {
                     type: "string",
                     description: "The ideation session ID to analyze",
+                },
+            },
+            required: ["session_id"],
+        },
+    },
+    {
+        name: "finalize_proposals",
+        description: "Signal that all proposals and dependencies are complete. Validates expected count and applies all proposals to create tasks. Call this AFTER all create_task_proposal and update_task_proposal calls are done. " +
+            "Gate: blocks with 400 if a multi-proposal session has not acknowledged dependencies (call analyze_session_dependencies, or set deps via create_task_proposal(depends_on) / update_task_proposal(add_depends_on/add_blocks)). " +
+            "Response includes tasks_created (number of tasks created) and message (null on success, error detail on gate block).",
+        inputSchema: {
+            type: "object",
+            properties: {
+                session_id: {
+                    type: "string",
+                    description: "The ideation session ID",
                 },
             },
             required: ["session_id"],
@@ -1362,6 +1383,7 @@ export const TOOL_ALLOWLIST = {
         "update_task_proposal",
         "archive_task_proposal",
         "delete_task_proposal",
+        "finalize_proposals",
         "list_session_proposals",
         "get_proposal",
         "analyze_session_dependencies",
@@ -1625,6 +1647,7 @@ export const TOOL_ALLOWLIST = {
         "update_task_proposal",
         "archive_task_proposal",
         "delete_task_proposal",
+        "finalize_proposals",
         "list_session_proposals",
         "get_proposal",
         "analyze_session_dependencies",
@@ -1784,9 +1807,16 @@ export const TOOL_ALLOWLIST = {
         // Child session tools
         "get_child_session_status",
         "send_ideation_session_message",
-        // Specialist artifact retrieval (read-only — NOT create_team_artifact)
+        // Specialist artifact creation and retrieval
         "get_team_artifacts",
         "get_artifact",
+        "create_team_artifact",
+        "list_session_proposals",
+        "get_proposal",
+        // Memory tools (inherited by specialist subagents via parent MCP connection)
+        "search_memories",
+        "get_memory",
+        "get_memories_for_paths",
     ],
     // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
     debug: ALL_TOOLS.map((t) => t.name),

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseMcpToolResult } from "../shared.constants";
+import { parseMcpToolResult, parseMcpToolResultRaw } from "../shared.constants";
 
 describe("parseMcpToolResult", () => {
   it("unwraps MCP content array to parsed object", () => {
@@ -50,5 +50,37 @@ describe("parseMcpToolResult", () => {
   it("returns empty object for array of numbers", () => {
     const input = [1, 2, 3];
     expect(parseMcpToolResult(input)).toEqual({});
+  });
+
+  it("parses plain JSON string to object", () => {
+    expect(parseMcpToolResult('{"title":"Hello"}')).toEqual({ title: "Hello" });
+  });
+
+  it("returns empty object for non-JSON plain string", () => {
+    expect(parseMcpToolResult("not json")).toEqual({});
+  });
+});
+
+describe("parseMcpToolResultRaw", () => {
+  it("parses plain JSON string to object", () => {
+    expect(parseMcpToolResultRaw('{"title":"Hello"}')).toEqual({ title: "Hello" });
+  });
+
+  it("returns null for non-JSON plain string", () => {
+    expect(parseMcpToolResultRaw("not json")).toBeNull();
+  });
+
+  it("passes through plain object unchanged", () => {
+    const obj = { a: 1 };
+    expect(parseMcpToolResultRaw(obj)).toBe(obj);
+  });
+
+  it("unwraps MCP content array", () => {
+    const input = [{ type: "text", text: '{"items":[1,2,3]}' }];
+    expect(parseMcpToolResultRaw(input)).toEqual({ items: [1, 2, 3] });
+  });
+
+  it("returns null for null", () => {
+    expect(parseMcpToolResultRaw(null)).toBeNull();
   });
 });

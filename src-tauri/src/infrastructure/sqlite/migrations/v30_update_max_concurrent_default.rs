@@ -1,4 +1,4 @@
-// Migration v25: Update default max_concurrent_tasks from 2 to 10
+// Migration v30: Update default max_concurrent_tasks from 2 to 10
 //
 // SQLite doesn't support ALTER COLUMN DEFAULT, so we recreate the table.
 // Existing rows keep their current values; only the DEFAULT constraint changes.

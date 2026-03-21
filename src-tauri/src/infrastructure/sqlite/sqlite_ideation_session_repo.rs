@@ -24,15 +24,20 @@ use super::DbConnection;
 // IDLE: tasks that haven't started yet
 const _IDLE_STATUSES: &[&str] = &["backlog", "ready", "blocked"];
 
-/// All 25 SELECT columns for IdeationSession — single source of truth (DRY).
+/// All 33 SELECT columns for IdeationSession — single source of truth (DRY).
 /// Must be kept in sync with IdeationSession::from_row column names.
-/// Column order: id(0)..plan_version_last_read(23), origin(24)
+/// Column order: id(0)..origin(24), expected_proposal_count(25), auto_accept_status(26),
+/// auto_accept_started_at(27), api_key_id(28), idempotency_key(29),
+/// external_activity_phase(30), external_last_read_message_id(31), dependencies_acknowledged(32)
 const SESSION_COLUMNS: &str = "id, project_id, title, title_source, status, plan_artifact_id, \
     inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
     updated_at, archived_at, converted_at, team_mode, team_config_json, \
     verification_status, verification_in_progress, verification_metadata, \
     verification_generation, source_project_id, source_session_id, session_purpose, \
-    cross_project_checked, plan_version_last_read, origin";
+    cross_project_checked, plan_version_last_read, origin, \
+    expected_proposal_count, auto_accept_status, auto_accept_started_at, \
+    api_key_id, idempotency_key, external_activity_phase, external_last_read_message_id, \
+    dependencies_acknowledged";
 // TERMINAL: tasks that have reached a final state
 const _TERMINAL_STATUSES: &[&str] = &["approved", "merged", "failed", "cancelled", "stopped"];
 // ACTIVE: any status NOT in IDLE or TERMINAL (catch-all, matches categorizeStatus() logic)
@@ -79,8 +84,9 @@ impl SqliteIdeationSessionRepository {
               inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
               updated_at, archived_at, converted_at, team_mode, team_config_json, \
               verification_status, source_project_id, source_session_id, session_purpose, \
-              cross_project_checked, origin) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+              cross_project_checked, origin, api_key_id, idempotency_key, \
+              external_activity_phase, external_last_read_message_id, dependencies_acknowledged) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
             rusqlite::params![
                 session.id.as_str(),
                 session.project_id.as_str(),
@@ -103,6 +109,11 @@ impl SqliteIdeationSessionRepository {
                 session.session_purpose.to_string(),
                 session.cross_project_checked as i32,
                 session.origin.to_string(),
+                session.api_key_id.as_deref(),
+                session.idempotency_key.as_deref(),
+                session.external_activity_phase.as_deref(),
+                session.external_last_read_message_id.as_deref(),
+                session.dependencies_acknowledged as i32,
             ],
         )?;
         Ok(session.clone())
@@ -338,36 +349,7 @@ impl SqliteIdeationSessionRepository {
 impl IdeationSessionRepository for SqliteIdeationSessionRepository {
     async fn create(&self, session: IdeationSession) -> AppResult<IdeationSession> {
         self.db
-            .run(move |conn| {
-                conn.execute(
-                    "INSERT INTO ideation_sessions (id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, source_project_id, source_session_id, session_purpose, cross_project_checked, origin)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
-                    rusqlite::params![
-                        session.id.as_str(),
-                        session.project_id.as_str(),
-                        session.title,
-                        session.title_source,
-                        session.status.to_string(),
-                        session.plan_artifact_id.as_ref().map(|id| id.as_str()),
-                        session.inherited_plan_artifact_id.as_ref().map(|id| id.as_str()),
-                        session.seed_task_id.as_ref().map(|id| id.as_str()),
-                        session.parent_session_id.as_ref().map(|id| id.as_str()),
-                        session.created_at.to_rfc3339(),
-                        session.updated_at.to_rfc3339(),
-                        session.archived_at.map(|dt| dt.to_rfc3339()),
-                        session.converted_at.map(|dt| dt.to_rfc3339()),
-                        session.team_mode,
-                        session.team_config_json,
-                        session.verification_status.to_string(),
-                        session.source_project_id,
-                        session.source_session_id,
-                        session.session_purpose.to_string(),
-                        session.cross_project_checked as i32,
-                        session.origin.to_string(),
-                    ],
-                )?;
-                Ok(session)
-            })
+            .run(move |conn| Self::insert_sync(conn, &session))
             .await
     }
 
@@ -1149,6 +1131,239 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                     .collect::<Result<Vec<_>, _>>()?;
 
                 Ok((sessions, total))
+            })
+            .await
+    }
+
+    fn set_expected_proposal_count_sync(
+        conn: &rusqlite::Connection,
+        session_id: &str,
+        count: u32,
+    ) -> AppResult<()> {
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "UPDATE ideation_sessions SET expected_proposal_count = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![count as i64, now, session_id],
+        )?;
+        Ok(())
+    }
+
+    async fn set_auto_accept_status(
+        &self,
+        session_id: &str,
+        status: &str,
+        auto_accept_started_at: Option<String>,
+    ) -> AppResult<()> {
+        let session_id = session_id.to_string();
+        let status = status.to_string();
+        self.db
+            .run(move |conn| {
+                let now = Utc::now().to_rfc3339();
+                if let Some(ref started_at) = auto_accept_started_at {
+                    conn.execute(
+                        "UPDATE ideation_sessions SET auto_accept_status = ?1, auto_accept_started_at = ?2, updated_at = ?3 WHERE id = ?4",
+                        rusqlite::params![status, started_at, now, session_id],
+                    )?;
+                } else {
+                    conn.execute(
+                        "UPDATE ideation_sessions SET auto_accept_status = ?1, updated_at = ?2 WHERE id = ?3",
+                        rusqlite::params![status, now, session_id],
+                    )?;
+                }
+                Ok(())
+            })
+            .await
+    }
+
+    fn count_active_by_session_sync(
+        conn: &rusqlite::Connection,
+        session_id: &str,
+    ) -> AppResult<i64> {
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM task_proposals WHERE session_id = ?1 AND archived_at IS NULL",
+            rusqlite::params![session_id],
+            |row| row.get(0),
+        )?;
+        Ok(count)
+    }
+
+    async fn get_by_idempotency_key(
+        &self,
+        api_key_id: &str,
+        idempotency_key: &str,
+    ) -> AppResult<Option<IdeationSession>> {
+        let api_key_id = api_key_id.to_string();
+        let idempotency_key = idempotency_key.to_string();
+        self.db
+            .query_optional(move |conn| {
+                let sql = format!(
+                    "SELECT {} FROM ideation_sessions \
+                     WHERE api_key_id = ?1 AND idempotency_key = ?2",
+                    SESSION_COLUMNS
+                );
+                conn.query_row(&sql, rusqlite::params![api_key_id, idempotency_key], |row| {
+                    IdeationSession::from_row(row)
+                })
+            })
+            .await
+    }
+
+    async fn update_external_activity_phase(
+        &self,
+        id: &IdeationSessionId,
+        phase: &str,
+    ) -> AppResult<()> {
+        let id = id.as_str().to_string();
+        let phase = phase.to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE ideation_sessions SET external_activity_phase = ?1, updated_at = ?2 \
+                     WHERE id = ?3",
+                    rusqlite::params![phase, Utc::now().to_rfc3339(), id],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn update_external_last_read_message_id(
+        &self,
+        id: &IdeationSessionId,
+        message_id: &str,
+    ) -> AppResult<()> {
+        let id = id.as_str().to_string();
+        let message_id = message_id.to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE ideation_sessions SET external_last_read_message_id = ?1, updated_at = ?2 \
+                     WHERE id = ?3",
+                    rusqlite::params![message_id, Utc::now().to_rfc3339(), id],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn list_active_external_by_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>> {
+        let project_id = project_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let sql = format!(
+                    "SELECT {} FROM ideation_sessions \
+                     WHERE project_id = ?1 AND status = 'active' AND origin = 'external' \
+                     ORDER BY created_at DESC",
+                    SESSION_COLUMNS
+                );
+                let mut stmt = conn.prepare(&sql)?;
+                let sessions = stmt
+                    .query_map([&project_id], IdeationSession::from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(sessions)
+            })
+            .await
+    }
+
+    async fn list_active_external_sessions_for_archival(
+        &self,
+        stale_before: Option<DateTime<Utc>>,
+    ) -> AppResult<Vec<IdeationSession>> {
+        let stale_before_str = stale_before.map(|dt| dt.to_rfc3339());
+        self.db
+            .run(move |conn| {
+                let sessions = if let Some(ref cutoff) = stale_before_str {
+                    let sql = format!(
+                        "SELECT {} FROM ideation_sessions \
+                         WHERE origin = 'external' AND status = 'active' \
+                         AND external_activity_phase IN ('created', 'error') \
+                         AND created_at < ?1 \
+                         ORDER BY created_at ASC",
+                        SESSION_COLUMNS
+                    );
+                    let mut stmt = conn.prepare(&sql)?;
+                    let result = stmt
+                        .query_map([cutoff], IdeationSession::from_row)?
+                        .collect::<Result<Vec<_>, _>>()?;
+                    result
+                } else {
+                    let sql = format!(
+                        "SELECT {} FROM ideation_sessions \
+                         WHERE origin = 'external' AND status = 'active' \
+                         AND external_activity_phase IN ('created', 'error') \
+                         ORDER BY created_at ASC",
+                        SESSION_COLUMNS
+                    );
+                    let mut stmt = conn.prepare(&sql)?;
+                    let result = stmt
+                        .query_map([], IdeationSession::from_row)?
+                        .collect::<Result<Vec<_>, _>>()?;
+                    result
+                };
+                Ok(sessions)
+            })
+            .await
+    }
+
+    async fn list_stalled_external_sessions(
+        &self,
+        stalled_before: DateTime<Utc>,
+    ) -> AppResult<Vec<IdeationSession>> {
+        let stalled_before_str = stalled_before.to_rfc3339();
+        self.db
+            .run(move |conn| {
+                let sql = format!(
+                    "SELECT {} FROM ideation_sessions \
+                     WHERE origin = 'external' AND status = 'active' \
+                     AND external_activity_phase IS NOT NULL \
+                     AND external_activity_phase NOT IN ('error', 'stalled') \
+                     AND updated_at < ?1 \
+                     ORDER BY updated_at ASC",
+                    SESSION_COLUMNS
+                );
+                let mut stmt = conn.prepare(&sql)?;
+                let sessions = stmt
+                    .query_map([&stalled_before_str], IdeationSession::from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(sessions)
+            })
+            .await
+    }
+
+    async fn set_dependencies_acknowledged(&self, session_id: &str) -> AppResult<()> {
+        let session_id = session_id.to_string();
+        self.db
+            .run(move |conn| {
+                let now = Utc::now().to_rfc3339();
+                conn.execute(
+                    "UPDATE ideation_sessions SET dependencies_acknowledged = 1, updated_at = ?1 WHERE id = ?2",
+                    rusqlite::params![now, session_id],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn reset_acceptance_cycle_fields(&self, session_id: &str) -> AppResult<()> {
+        let session_id = session_id.to_string();
+        self.db
+            .run(move |conn| {
+                let now = Utc::now().to_rfc3339();
+                conn.execute(
+                    "UPDATE ideation_sessions \
+                     SET expected_proposal_count = NULL, \
+                         dependencies_acknowledged = 0, \
+                         auto_accept_status = NULL, \
+                         auto_accept_started_at = NULL, \
+                         cross_project_checked = 0, \
+                         updated_at = ?1 \
+                     WHERE id = ?2",
+                    rusqlite::params![now, session_id],
+                )?;
+                Ok(())
             })
             .await
     }

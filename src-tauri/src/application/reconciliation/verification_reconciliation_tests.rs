@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 
-use crate::domain::entities::{IdeationSession, ProjectId, VerificationStatus};
+use crate::domain::entities::{
+    IdeationSession, IdeationSessionStatus, ProjectId, SessionOrigin, VerificationStatus,
+};
 use crate::domain::repositories::IdeationSessionRepository;
 use crate::infrastructure::memory::MemoryIdeationSessionRepository;
 
@@ -20,9 +22,10 @@ fn make_service(
 
 fn default_config() -> VerificationReconciliationConfig {
     VerificationReconciliationConfig {
-        stale_after_secs: 5400,      // 90 min
-        auto_verify_stale_secs: 600, // 10 min
+        stale_after_secs: 5400,             // 90 min
+        auto_verify_stale_secs: 600,        // 10 min
         interval_secs: 300,
+        external_session_stale_secs: 7200,  // 2 hours
     }
 }
 
@@ -206,9 +209,9 @@ async fn test_reconciler_auto_verify_shorter_threshold() {
     let project_id = ProjectId::new();
 
     let config = VerificationReconciliationConfig {
-        stale_after_secs: 5400,      // 90 min for manual
-        auto_verify_stale_secs: 600, // 10 min for auto
-        interval_secs: 300,
+        stale_after_secs: 5400,
+        auto_verify_stale_secs: 600,
+        ..Default::default()
     };
 
     // Auto-verify session (generation > 0) stuck for 15 minutes — should be reset (> 10 min)
@@ -362,9 +365,9 @@ async fn test_reconciler_manual_session_reset_after_long_threshold() {
     let project_id = ProjectId::new();
 
     let config = VerificationReconciliationConfig {
-        stale_after_secs: 5400,      // 90 min
-        auto_verify_stale_secs: 600, // 10 min
-        interval_secs: 300,
+        stale_after_secs: 5400,
+        auto_verify_stale_secs: 600,
+        ..Default::default()
     };
 
     // Manual verify session stuck for 2 hours — should be reset (> 90 min)
@@ -1080,5 +1083,326 @@ async fn test_user_stopped_maps_to_skipped() {
     assert!(
         !parent_after.verification_in_progress,
         "in_progress must be cleared after user_stopped"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// scan_and_archive_stale_external_sessions tests
+// ---------------------------------------------------------------------------
+
+/// Helper: create an external session with a given phase and created_at offset.
+fn make_external_session(
+    project_id: ProjectId,
+    phase: &str,
+    created_at_offset: Duration,
+) -> IdeationSession {
+    let mut session = IdeationSession::new(project_id);
+    session.origin = SessionOrigin::External;
+    session.external_activity_phase = Some(phase.to_string());
+    session.created_at = Utc::now() - created_at_offset;
+    session.updated_at = Utc::now() - created_at_offset;
+    session
+}
+
+/// Cold boot archives ALL external sessions in 'created' or 'error' phase, regardless of TTL.
+#[tokio::test]
+async fn test_startup_scan_archives_all_stale_external_sessions() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // External session in 'created' phase — just created (10 min ago)
+    let recent = make_external_session(project_id.clone(), "created", Duration::minutes(10));
+    let recent_id = recent.id.clone();
+    repo.create(recent).await.unwrap();
+
+    // External session in 'error' phase — 3 hours old
+    let old_error = make_external_session(project_id.clone(), "error", Duration::hours(3));
+    let old_error_id = old_error.id.clone();
+    repo.create(old_error).await.unwrap();
+
+    let config = VerificationReconciliationConfig {
+        external_session_stale_secs: 7200, // 2 hours
+        ..Default::default()
+    };
+    let svc = make_service(repo.clone(), config);
+    svc.scan_and_archive_stale_external_sessions(true).await;
+
+    // Both must be archived — cold boot ignores TTL
+    let recent_after = repo.get_by_id(&recent_id).await.unwrap().unwrap();
+    assert_eq!(
+        recent_after.status,
+        IdeationSessionStatus::Archived,
+        "recent 'created' session must be archived on cold boot (all agents dead)"
+    );
+
+    let old_error_after = repo.get_by_id(&old_error_id).await.unwrap().unwrap();
+    assert_eq!(
+        old_error_after.status,
+        IdeationSessionStatus::Archived,
+        "'error' session must be archived on cold boot"
+    );
+}
+
+/// Periodic scan archives sessions past the TTL, preserves recent ones.
+#[tokio::test]
+async fn test_periodic_scan_archives_past_ttl_preserves_recent() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Old 'created' session — 3 hours old (> 2h TTL)
+    let old = make_external_session(project_id.clone(), "created", Duration::hours(3));
+    let old_id = old.id.clone();
+    repo.create(old).await.unwrap();
+
+    // Recent 'created' session — 30 minutes old (< 2h TTL)
+    let recent = make_external_session(project_id.clone(), "created", Duration::minutes(30));
+    let recent_id = recent.id.clone();
+    repo.create(recent).await.unwrap();
+
+    let config = VerificationReconciliationConfig {
+        external_session_stale_secs: 7200, // 2 hours
+        ..Default::default()
+    };
+    let svc = make_service(repo.clone(), config);
+    svc.scan_and_archive_stale_external_sessions(false).await;
+
+    let old_after = repo.get_by_id(&old_id).await.unwrap().unwrap();
+    assert_eq!(
+        old_after.status,
+        IdeationSessionStatus::Archived,
+        "old 'created' session past TTL must be archived"
+    );
+
+    let recent_after = repo.get_by_id(&recent_id).await.unwrap().unwrap();
+    assert_eq!(
+        recent_after.status,
+        IdeationSessionStatus::Active,
+        "recent 'created' session within TTL must NOT be archived"
+    );
+}
+
+/// External sessions with active phases ('planning', 'verifying', etc.) are not archived.
+#[tokio::test]
+async fn test_periodic_scan_skips_sessions_with_active_phases() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Session in 'planning' phase — old (3 hours) but not in archivable phase
+    let planning = make_external_session(project_id.clone(), "planning", Duration::hours(3));
+    let planning_id = planning.id.clone();
+    repo.create(planning).await.unwrap();
+
+    // Session in 'verifying' phase — old
+    let verifying = make_external_session(project_id.clone(), "verifying", Duration::hours(3));
+    let verifying_id = verifying.id.clone();
+    repo.create(verifying).await.unwrap();
+
+    // Session in 'created' phase — old (should be archived)
+    let created = make_external_session(project_id.clone(), "created", Duration::hours(3));
+    let created_id = created.id.clone();
+    repo.create(created).await.unwrap();
+
+    let config = VerificationReconciliationConfig {
+        external_session_stale_secs: 7200,
+        ..Default::default()
+    };
+    let svc = make_service(repo.clone(), config);
+    svc.scan_and_archive_stale_external_sessions(false).await;
+
+    // Only 'created' phase session should be archived
+    let planning_after = repo.get_by_id(&planning_id).await.unwrap().unwrap();
+    assert_eq!(
+        planning_after.status,
+        IdeationSessionStatus::Active,
+        "'planning' phase sessions must not be archived by stale archival scan"
+    );
+
+    let verifying_after = repo.get_by_id(&verifying_id).await.unwrap().unwrap();
+    assert_eq!(
+        verifying_after.status,
+        IdeationSessionStatus::Active,
+        "'verifying' phase sessions must not be archived by stale archival scan"
+    );
+
+    let created_after = repo.get_by_id(&created_id).await.unwrap().unwrap();
+    assert_eq!(
+        created_after.status,
+        IdeationSessionStatus::Archived,
+        "'created' phase session past TTL must be archived"
+    );
+}
+
+/// Internal sessions are never affected by stale external session archival.
+#[tokio::test]
+async fn test_stale_external_scan_skips_internal_sessions() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Internal session (default origin) — very old, no phase
+    let mut internal = IdeationSession::new(project_id.clone());
+    internal.created_at = Utc::now() - Duration::hours(10);
+    internal.updated_at = Utc::now() - Duration::hours(10);
+    let internal_id = internal.id.clone();
+    repo.create(internal).await.unwrap();
+
+    // External session in 'created' phase — old (should be archived)
+    let external = make_external_session(project_id.clone(), "created", Duration::hours(3));
+    let external_id = external.id.clone();
+    repo.create(external).await.unwrap();
+
+    let config = VerificationReconciliationConfig {
+        external_session_stale_secs: 7200,
+        ..Default::default()
+    };
+    let svc = make_service(repo.clone(), config);
+    svc.scan_and_archive_stale_external_sessions(false).await;
+
+    let internal_after = repo.get_by_id(&internal_id).await.unwrap().unwrap();
+    assert_eq!(
+        internal_after.status,
+        IdeationSessionStatus::Active,
+        "internal sessions must not be archived by stale external session scan"
+    );
+
+    let external_after = repo.get_by_id(&external_id).await.unwrap().unwrap();
+    assert_eq!(
+        external_after.status,
+        IdeationSessionStatus::Archived,
+        "external 'created' session past TTL must be archived"
+    );
+}
+
+/// Stall detection marks sessions with no recent activity as 'stalled'.
+#[tokio::test]
+async fn test_stall_detection_marks_sessions_stalled() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // External session in 'planning' phase — updated 3 hours ago (> 2h threshold)
+    let mut stalled = make_external_session(project_id.clone(), "planning", Duration::hours(1));
+    stalled.updated_at = Utc::now() - Duration::hours(3);
+    let stalled_id = stalled.id.clone();
+    repo.create(stalled).await.unwrap();
+
+    let config = VerificationReconciliationConfig {
+        external_session_stale_secs: 7200, // 2 hours
+        ..Default::default()
+    };
+    let svc = make_service(repo.clone(), config);
+    svc.scan_and_archive_stale_external_sessions(false).await;
+
+    let after = repo.get_by_id(&stalled_id).await.unwrap().unwrap();
+    assert_eq!(
+        after.status,
+        IdeationSessionStatus::Active,
+        "stalled session must remain Active (only phase changes, not status)"
+    );
+    assert_eq!(
+        after.external_activity_phase.as_deref(),
+        Some("stalled"),
+        "stall detection must update phase to 'stalled'"
+    );
+}
+
+/// Stall detection skips sessions with recent activity.
+#[tokio::test]
+async fn test_stall_detection_skips_recent_sessions() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // External session in 'planning' phase — recently updated (30 min ago)
+    let mut active = make_external_session(project_id.clone(), "planning", Duration::hours(1));
+    active.updated_at = Utc::now() - Duration::minutes(30);
+    let active_id = active.id.clone();
+    repo.create(active).await.unwrap();
+
+    let config = VerificationReconciliationConfig {
+        external_session_stale_secs: 7200, // 2 hours
+        ..Default::default()
+    };
+    let svc = make_service(repo.clone(), config);
+    svc.scan_and_archive_stale_external_sessions(false).await;
+
+    let after = repo.get_by_id(&active_id).await.unwrap().unwrap();
+    assert_eq!(
+        after.external_activity_phase.as_deref(),
+        Some("planning"),
+        "recently active session must not be marked stalled"
+    );
+}
+
+/// Stall detection skips sessions already in 'error' or 'stalled' phase.
+#[tokio::test]
+async fn test_stall_detection_skips_error_and_already_stalled() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Session already in 'error' — old, should not be re-marked
+    let mut errored = make_external_session(project_id.clone(), "error", Duration::hours(1));
+    errored.updated_at = Utc::now() - Duration::hours(5);
+    let errored_id = errored.id.clone();
+    repo.create(errored).await.unwrap();
+
+    // Session already in 'stalled' — old, should not be re-marked
+    let mut already_stalled =
+        make_external_session(project_id.clone(), "stalled", Duration::hours(1));
+    already_stalled.updated_at = Utc::now() - Duration::hours(5);
+    let already_stalled_id = already_stalled.id.clone();
+    repo.create(already_stalled).await.unwrap();
+
+    let config = VerificationReconciliationConfig {
+        external_session_stale_secs: 7200,
+        ..Default::default()
+    };
+    let svc = make_service(repo.clone(), config);
+    svc.scan_and_archive_stale_external_sessions(false).await;
+
+    let errored_after = repo.get_by_id(&errored_id).await.unwrap().unwrap();
+    assert_eq!(
+        errored_after.external_activity_phase.as_deref(),
+        Some("error"),
+        "'error' phase must not be overwritten by stall detection"
+    );
+
+    let stalled_after = repo.get_by_id(&already_stalled_id).await.unwrap().unwrap();
+    assert_eq!(
+        stalled_after.external_activity_phase.as_deref(),
+        Some("stalled"),
+        "already 'stalled' phase must not be re-written"
+    );
+}
+
+/// Cold boot does not run stall detection — only archival.
+/// Sessions with active phases but old updated_at remain unchanged on cold boot.
+#[tokio::test]
+async fn test_cold_boot_does_not_run_stall_detection() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // External session in 'planning' — old enough that stall detection would mark it
+    let mut planning = make_external_session(project_id.clone(), "planning", Duration::hours(1));
+    planning.updated_at = Utc::now() - Duration::hours(5);
+    let planning_id = planning.id.clone();
+    repo.create(planning).await.unwrap();
+
+    let config = VerificationReconciliationConfig {
+        external_session_stale_secs: 7200,
+        ..Default::default()
+    };
+    let svc = make_service(repo.clone(), config);
+    svc.scan_and_archive_stale_external_sessions(true).await; // cold boot
+
+    // 'planning' phase not in ('created', 'error') — not archived on cold boot
+    // Stall detection skipped on cold boot — phase unchanged
+    let after = repo.get_by_id(&planning_id).await.unwrap().unwrap();
+    assert_eq!(
+        after.status,
+        IdeationSessionStatus::Active,
+        "'planning' phase session must not be archived by cold boot (wrong phase)"
+    );
+    assert_eq!(
+        after.external_activity_phase.as_deref(),
+        Some("planning"),
+        "cold boot must not run stall detection — phase must remain 'planning'"
     );
 }

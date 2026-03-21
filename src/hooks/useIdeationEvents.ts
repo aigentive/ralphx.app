@@ -9,8 +9,12 @@ import { z } from "zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEventBus } from "@/providers/EventProvider";
 import { useIdeationStore } from "@/stores/ideationStore";
+import { useChatStore } from "@/stores/chatStore";
+import { buildStoreKey } from "@/lib/chat-context-registry";
 import { ideationKeys } from "./useIdeation";
 import { dependencyKeys } from "./useDependencyGraph";
+import { taskKeys } from "./useTasks";
+import { proposalKeys } from "./useProposals";
 import type { Unsubscribe } from "@/lib/event-bus";
 import { logger } from "@/lib/logger";
 
@@ -62,6 +66,14 @@ const ChildSessionCreatedEventSchema = z.object({
  * Schema for session created event payload
  */
 const SessionCreatedEventSchema = z.object({
+  sessionId: z.string(),
+  projectId: z.string(),
+});
+
+/**
+ * Schema for session accepted event payload (emitted by finalize_proposals HTTP handler)
+ */
+const SessionAcceptedEventSchema = z.object({
   sessionId: z.string(),
   projectId: z.string(),
 });
@@ -198,6 +210,28 @@ export function useIdeationEvents() {
       })
     );
 
+    // Listen for session accepted (emitted by finalize_proposals HTTP handler)
+    unsubscribes.push(
+      bus.subscribe<unknown>("ideation:session_accepted", (payload) => {
+        logger.debug("[IdeationEvents] Received ideation:session_accepted:", payload);
+        const parsed = SessionAcceptedEventSchema.safeParse(payload);
+
+        if (!parsed.success) {
+          console.error("Invalid ideation:session_accepted event:", parsed.error.message);
+          return;
+        }
+
+        const { sessionId } = parsed.data;
+
+        // Mirror useApplyProposals.onSuccess() — same queries to refresh
+        queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
+        queryClient.invalidateQueries({ queryKey: ideationKeys.sessionWithData(sessionId) });
+        queryClient.invalidateQueries({ queryKey: taskKeys.all });
+        queryClient.invalidateQueries({ queryKey: proposalKeys.list(sessionId) });
+        queryClient.invalidateQueries({ queryKey: ["plan-branch"] });
+      })
+    );
+
     // Listen for child session created (follow-up delegation)
     unsubscribes.push(
       bus.subscribe<unknown>("ideation:child_session_created", (payload) => {
@@ -213,6 +247,10 @@ export function useIdeationEvents() {
         if (parsed.data.purpose === 'verification') {
           setVerificationNotification(parsed.data.parentSessionId, parsed.data.sessionId);
           setActiveVerificationChildId(parsed.data.parentSessionId, parsed.data.sessionId);
+          // Synthetic "generating" status on parent while verification child is running
+          const parentKey = buildStoreKey('ideation', parsed.data.parentSessionId);
+          useChatStore.getState().setAgentStatus(parentKey, 'generating');
+          useChatStore.getState().updateLastAgentEvent(parentKey);
         }
 
         // Emit a local event for UI components to handle

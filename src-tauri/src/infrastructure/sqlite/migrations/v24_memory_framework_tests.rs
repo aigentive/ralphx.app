@@ -392,15 +392,15 @@ fn test_v24_fresh_db_creation() {
     run_migrations(&conn).unwrap();
 
     // Verify schema version is 24
-    let version: i32 = conn
+    let version: i64 = conn
         .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
             row.get(0)
         })
         .unwrap();
 
     assert_eq!(
-        version, 76,
-        "Schema version should be 76 after fresh install"
+        version, 81,
+        "Schema version should be 81 after fresh install"
     );
 
     // Verify all memory tables exist
@@ -419,7 +419,7 @@ fn test_v24_upgrade_from_v23() {
     run_migrations(&conn).unwrap();
 
     // Verify we're at v23
-    let version: i32 = conn
+    let version: i64 = conn
         .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
             row.get(0)
         })

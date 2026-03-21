@@ -123,9 +123,11 @@ export interface DependencyGraphResponse {
 export interface ApplyProposalsResultResponse {
   createdTaskIds: string[];
   dependenciesCreated: number;
+  tasksCreated?: number;
   warnings: string[];
   sessionConverted: boolean;
   executionPlanId: string | null;
+  message?: string | null;
 }
 
 // Input types for API calls

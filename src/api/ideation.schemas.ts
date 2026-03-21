@@ -191,9 +191,11 @@ export const DependencyGraphResponseSchema = z.object({
 export const ApplyProposalsResultResponseSchema = z.object({
   created_task_ids: z.array(z.string()),
   dependencies_created: z.number(),
+  tasks_created: z.number().optional(),
   warnings: z.array(z.string()),
   session_converted: z.boolean(),
   execution_plan_id: z.string().nullable().optional(),
+  message: z.string().nullable().optional(),
 });
 
 /**

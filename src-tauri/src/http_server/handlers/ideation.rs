@@ -25,19 +25,21 @@ use crate::application::{CreateProposalOptions, InteractiveProcessKey, UpdatePro
 use crate::error::AppError;
 use crate::domain::entities::ideation::IdeationSessionStatus;
 use crate::domain::entities::{ChatContextType, IdeationSessionId, Priority, TaskProposalId};
+use crate::domain::repositories::ExternalEventsRepository;
 use crate::domain::services::emit_verification_status_changed;
 use crate::domain::services::running_agent_registry::RunningAgentKey;
 
 use super::super::helpers::{
-    archive_proposal_impl, create_proposal_impl, parse_category, parse_priority,
-    update_proposal_impl,
+    archive_proposal_impl, create_proposal_impl, finalize_proposals_impl, parse_category,
+    parse_priority, update_proposal_impl,
 };
 use super::super::types::{
-    CreateProposalRequest, DeleteProposalRequest, GetSessionMessagesRequest,
-    GetSessionMessagesResponse, HttpServerState, ListProposalsResponse, ProposalDetailResponse,
-    ProposalResponse, ProposalSummary, RevertAndSkipRequest, SendSessionMessageRequest,
-    SendSessionMessageResponse, SessionMessageResponse, SuccessResponse, UpdateProposalRequest,
-    UpdateSessionTitleRequest, UpdateVerificationRequest, VerificationResponse,
+    CreateProposalRequest, DeleteProposalRequest, FinalizeProposalsRequest,
+    FinalizeProposalsResponse, GetSessionMessagesRequest, GetSessionMessagesResponse,
+    HttpServerState, ListProposalsResponse, ProposalDetailResponse, ProposalResponse,
+    ProposalSummary, RevertAndSkipRequest, SendSessionMessageRequest, SendSessionMessageResponse,
+    SessionMessageResponse, SuccessResponse, UpdateProposalRequest, UpdateSessionTitleRequest,
+    UpdateVerificationRequest, VerificationResponse,
 };
 use super::session_linking::session_is_team_mode;
 
@@ -101,17 +103,43 @@ pub async fn create_task_proposal(
         estimated_complexity: None,
         depends_on: req.depends_on,
         target_project: req.target_project,
+        expected_proposal_count: req.expected_proposal_count,
     };
 
     // Create proposal — events and dep analysis emitted inside create_proposal_impl()
     let session_id_str = session_id.as_str().to_string();
-    let (proposal, dep_errors) = create_proposal_impl(&state.app_state, session_id, options)
+    let (proposal, dep_errors, ready_to_finalize) =
+        create_proposal_impl(&state.app_state, session_id, options)
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to create proposal for session {}: {}",
+                    session_id_str, e
+                );
+                let status = match &e {
+                    crate::error::AppError::Validation(_) => StatusCode::BAD_REQUEST,
+                    crate::error::AppError::NotFound(_) => StatusCode::NOT_FOUND,
+                    _ => StatusCode::INTERNAL_SERVER_ERROR,
+                };
+                json_error(status, e.to_string())
+            })?;
+
+    let mut response = ProposalResponse::from(proposal);
+    response.dependency_errors = dep_errors;
+    response.ready_to_finalize = ready_to_finalize;
+    Ok(Json(response))
+}
+
+pub async fn finalize_proposals(
+    State(state): State<HttpServerState>,
+    Json(req): Json<FinalizeProposalsRequest>,
+) -> Result<Json<FinalizeProposalsResponse>, JsonError> {
+    // TODO(webhook): emit EventType::IdeationProposalsReady via AppState::webhook_publisher
+    // when AppState gains that field. Payload: { session_id, project_id, proposal_count }.
+    let response = finalize_proposals_impl(&state.app_state, &req.session_id)
         .await
         .map_err(|e| {
-            error!(
-                "Failed to create proposal for session {}: {}",
-                session_id_str, e
-            );
+            error!("Failed to finalize proposals for session {}: {}", req.session_id, e);
             let status = match &e {
                 crate::error::AppError::Validation(_) => StatusCode::BAD_REQUEST,
                 crate::error::AppError::NotFound(_) => StatusCode::NOT_FOUND,
@@ -120,8 +148,46 @@ pub async fn create_task_proposal(
             json_error(status, e.to_string())
         })?;
 
-    let mut response = ProposalResponse::from(proposal);
-    response.dependency_errors = dep_errors;
+    if response.session_status == "accepted" {
+        if let Some(app_handle) = &state.app_state.app_handle {
+            // Notify frontend: session moved to Accepted → PlanBrowser refreshes
+            if let Err(e) = app_handle.emit(
+                "ideation:session_accepted",
+                serde_json::json!({
+                    "sessionId": req.session_id,
+                    "projectId": response.project_id,
+                }),
+            ) {
+                tracing::warn!("Failed to emit ideation:session_accepted event: {}", e);
+            }
+
+            // Notify task scheduler: newly created tasks may be Ready
+            let project_id = crate::domain::entities::ProjectId::from_string(response.project_id.clone());
+            let queued_count = match state
+                .app_state
+                .task_repo
+                .get_by_status(&project_id, crate::domain::entities::InternalStatus::Ready)
+                .await
+            {
+                Ok(tasks) => tasks.len(),
+                Err(e) => {
+                    tracing::warn!("Failed to count Ready tasks for queue_changed event: {}", e);
+                    0
+                }
+            };
+            if let Err(e) = app_handle.emit(
+                "execution:queue_changed",
+                serde_json::json!({
+                    "queuedCount": queued_count,
+                    "projectId": response.project_id,
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                }),
+            ) {
+                tracing::warn!("Failed to emit execution:queue_changed event: {}", e);
+            }
+        }
+    }
+
     Ok(Json(response))
 }
 
@@ -526,6 +592,21 @@ pub async fn analyze_session_dependencies(
         max_depth: critical_path.len(),
     };
 
+    // Mark dependencies as acknowledged: agent reviewed the graph, satisfying the finalize gate.
+    // Best-effort — don't fail the response if the flag update fails.
+    if let Err(e) = state
+        .app_state
+        .ideation_session_repo
+        .set_dependencies_acknowledged(session_id.as_str())
+        .await
+    {
+        error!(
+            "Failed to set dependencies_acknowledged for session {}: {}",
+            session_id.as_str(),
+            e
+        );
+    }
+
     Ok(Json(AnalyzeDependenciesResponse {
         nodes: response_nodes,
         edges: response_edges,
@@ -832,6 +913,176 @@ pub(crate) async fn stop_verification_children(
         }
     }
     Ok(())
+}
+
+/// Send an `<auto-propose>` message to the orchestrator agent for external sessions
+/// that reached verification convergence via `zero_blocking`.
+///
+/// Retries up to 3 times with exponential backoff (1s/2s/4s between retries).
+/// On final failure: emits `ideation:auto_propose_failed` to the external_events table.
+async fn auto_propose_for_external(
+    session_id: &str,
+    session: &crate::domain::entities::ideation::IdeationSession,
+    state: &HttpServerState,
+) {
+    use crate::domain::entities::ideation::SessionOrigin;
+    if session.origin != SessionOrigin::External {
+        return;
+    }
+
+    // Transition external activity phase to "proposing" (fire-and-forget)
+    {
+        let repo = std::sync::Arc::clone(&state.app_state.ideation_session_repo);
+        let sid = crate::domain::entities::IdeationSessionId::from_string(session_id.to_string());
+        tokio::spawn(async move {
+            if let Err(e) = repo.update_external_activity_phase(&sid, "proposing").await {
+                tracing::error!("Failed to set activity phase 'proposing' for session {}: {}", sid.as_str(), e);
+            }
+        });
+    }
+
+    let is_team_mode = session_is_team_mode(session);
+    let app = &state.app_state;
+    let mut chat_service = ClaudeChatService::new(
+        Arc::clone(&app.chat_message_repo),
+        Arc::clone(&app.chat_attachment_repo),
+        Arc::clone(&app.chat_conversation_repo),
+        Arc::clone(&app.agent_run_repo),
+        Arc::clone(&app.project_repo),
+        Arc::clone(&app.task_repo),
+        Arc::clone(&app.task_dependency_repo),
+        Arc::clone(&app.ideation_session_repo),
+        Arc::clone(&app.activity_event_repo),
+        Arc::clone(&app.message_queue),
+        Arc::clone(&app.running_agent_registry),
+        Arc::clone(&app.memory_event_repo),
+    )
+    .with_execution_state(Arc::clone(&state.execution_state))
+    .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo))
+    .with_task_proposal_repo(Arc::clone(&app.task_proposal_repo))
+    .with_interactive_process_registry(Arc::clone(&app.interactive_process_registry));
+
+    if let Some(ref handle) = app.app_handle {
+        chat_service = chat_service.with_app_handle(handle.clone());
+    }
+    chat_service = chat_service.with_team_mode(is_team_mode);
+
+    let project_id = session.project_id.as_str().to_string();
+    auto_propose_with_retry(
+        session_id,
+        &project_id,
+        &chat_service,
+        Arc::clone(&app.external_events_repo),
+        &[1_000, 2_000, 4_000],
+    )
+    .await;
+
+    // Set "ready" phase after proposing completes
+    {
+        let repo_ready = std::sync::Arc::clone(&state.app_state.ideation_session_repo);
+        let sid_ready =
+            crate::domain::entities::IdeationSessionId::from_string(session_id.to_string());
+        if let Err(e) = repo_ready
+            .update_external_activity_phase(&sid_ready, "ready")
+            .await
+        {
+            tracing::error!(
+                "Failed to set activity phase 'ready' for session {}: {}",
+                session_id,
+                e
+            );
+        }
+    }
+}
+
+/// Core retry logic for auto-propose delivery.
+///
+/// Attempts delivery up to `retry_delays_ms.len() + 1` times. Between each retry,
+/// sleeps for the corresponding duration from `retry_delays_ms`. On final failure,
+/// writes an `ideation:auto_propose_failed` row to the `external_events` table.
+///
+/// # Test usage
+/// Pass `retry_delays_ms = &[0, 0, 0]` to eliminate sleep delays in tests.
+#[doc(hidden)]
+pub async fn auto_propose_with_retry(
+    session_id: &str,
+    project_id: &str,
+    chat_service: &dyn ChatService,
+    external_events_repo: Arc<dyn ExternalEventsRepository>,
+    retry_delays_ms: &[u64],
+) {
+    let message = "<auto-propose>\nThe plan has been verified with zero blocking gaps (convergence: zero_blocking).\nThis is an external MCP session. Auto-propose triggered.\n</auto-propose>";
+    let max_attempts = retry_delays_ms.len() + 1;
+    let mut last_error: Option<String> = None;
+
+    for attempt in 0..max_attempts {
+        match chat_service
+            .send_message(
+                ChatContextType::Ideation,
+                session_id,
+                message,
+                SendMessageOptions::default(),
+            )
+            .await
+        {
+            Ok(result) => {
+                tracing::info!(
+                    session_id = %session_id,
+                    attempt = attempt + 1,
+                    delivery_status = if result.was_queued { "queued" } else { "spawned" },
+                    "auto_propose_for_external: message delivered"
+                );
+                // TODO(webhook): emit EventType::IdeationAutoProposeSent via AppState::webhook_publisher
+                // when AppState gains that field. Payload: { session_id, project_id }.
+                return;
+            }
+            Err(e) => {
+                let err_str = e.to_string();
+                tracing::warn!(
+                    session_id = %session_id,
+                    attempt = attempt + 1,
+                    max_attempts = max_attempts,
+                    error = %err_str,
+                    "auto_propose_for_external: send attempt failed"
+                );
+                last_error = Some(err_str);
+                if attempt < retry_delays_ms.len() {
+                    tokio::time::sleep(std::time::Duration::from_millis(retry_delays_ms[attempt]))
+                        .await;
+                }
+            }
+        }
+    }
+
+    // All attempts exhausted — emit failure event to external_events table.
+    let error_msg = last_error.unwrap_or_else(|| "unknown error".to_string());
+    tracing::error!(
+        session_id = %session_id,
+        max_attempts = max_attempts,
+        error = %error_msg,
+        "auto_propose_for_external: all retry attempts exhausted, emitting failure event"
+    );
+    let payload = serde_json::json!({
+        "session_id": session_id,
+        "project_id": project_id,
+        "error": error_msg,
+    });
+    if let Err(insert_err) = external_events_repo
+        .insert_event(
+            "ideation:auto_propose_failed",
+            project_id,
+            &payload.to_string(),
+        )
+        .await
+    {
+        tracing::warn!(
+            session_id = %session_id,
+            error = %insert_err,
+            "auto_propose_for_external: failed to persist failure event (non-fatal)"
+        );
+    }
+    // TODO(webhook): emit EventType::IdeationAutoProposeFailed via AppState::webhook_publisher
+    // when AppState gains that field. Payload: { session_id, project_id, error }.
 }
 
 /// POST /api/ideation/sessions/:id/verification
@@ -1253,6 +1504,37 @@ pub async fn update_plan_verification(
             None,
             Some(session.verification_generation),
         );
+    }
+
+    // TODO(webhook): emit EventType::IdeationVerified via AppState::webhook_publisher when
+    // new_status == Verified and AppState gains that field.
+    // Payload: { session_id, project_id, convergence_reason }.
+
+    // Auto-propose for external sessions that converged via zero_blocking
+    if new_status == VerificationStatus::Verified
+        && metadata.convergence_reason.as_deref() == Some("zero_blocking")
+        && session.origin == crate::domain::entities::ideation::SessionOrigin::External
+    {
+        auto_propose_for_external(&session_id, &session, &state).await;
+    }
+
+    // For external sessions that reach Verified WITHOUT auto-propose (non-zero_blocking):
+    // transition to "ready" immediately since there's no proposing phase
+    if new_status == VerificationStatus::Verified
+        && session.origin == crate::domain::entities::ideation::SessionOrigin::External
+        && metadata.convergence_reason.as_deref() != Some("zero_blocking")
+    {
+        let repo = std::sync::Arc::clone(&state.app_state.ideation_session_repo);
+        let sid = crate::domain::entities::IdeationSessionId::from_string(session_id.clone());
+        tokio::spawn(async move {
+            if let Err(e) = repo.update_external_activity_phase(&sid, "ready").await {
+                error!(
+                    "Failed to set activity phase 'ready' for session {}: {}",
+                    sid.as_str(),
+                    e
+                );
+            }
+        });
     }
 
     use crate::http_server::types::{VerificationGapResponse, VerificationRoundSummary};

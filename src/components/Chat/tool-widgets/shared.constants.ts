@@ -97,26 +97,50 @@ export interface ParsedMcpResult {
 }
 
 /**
- * Unwrap MCP content array to parsed JSON object.
- * Handles: [{type:"text", text:"{...}"}] → parsed object
- * Passthrough: already-plain objects returned as-is
- * Fallback: returns empty object on parse errors
+ * Unwrap MCP content array to raw parsed value (object OR array).
+ * Unlike parseMcpToolResult, returns `unknown` to allow Array.isArray narrowing.
+ * Use for list tools where the inner JSON may be an array.
  */
-export function parseMcpToolResult(result: unknown): ParsedMcpResult {
+export function parseMcpToolResultRaw(result: unknown): unknown {
+  // Plain string — JSON parse it
+  if (typeof result === "string") {
+    try {
+      return JSON.parse(result);
+    } catch {
+      return null;
+    }
+  }
   // Already a plain object (non-array)
   if (result != null && typeof result === "object" && !Array.isArray(result)) {
-    return result as ParsedMcpResult;
+    return result;
   }
   // MCP content array: [{type:"text", text:"..."}]
   if (Array.isArray(result) && result.length > 0) {
     const first = result[0];
     if (first?.type === "text" && typeof first.text === "string") {
       try {
-        return JSON.parse(first.text) as ParsedMcpResult;
+        return JSON.parse(first.text);
       } catch {
-        return {};
+        return null;
       }
     }
+    // Plain array (not MCP wrapper) — return as-is
+    return result;
+  }
+  return null;
+}
+
+/**
+ * Unwrap MCP content array to parsed JSON object.
+ * Handles: [{type:"text", text:"{...}"}] → parsed object
+ * Handles: plain string (JSON) → parsed object
+ * Passthrough: already-plain objects returned as-is
+ * Fallback: returns empty object on parse errors
+ */
+export function parseMcpToolResult(result: unknown): ParsedMcpResult {
+  const raw = parseMcpToolResultRaw(result);
+  if (raw != null && typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as ParsedMcpResult;
   }
   return {};
 }

@@ -61,4 +61,9 @@ export declare function handleRetryTask(args: Record<string, unknown>, context: 
  * Delegates to resumeScheduling composite.
  */
 export declare function handleResumeScheduling(args: Record<string, unknown>, context: ApiKeyContext): Promise<string>;
+/**
+ * v1_create_task_note — annotate a task with a progress note.
+ * POST /api/external/task-note
+ */
+export declare function handleCreateTaskNote(args: Record<string, unknown>, context: ApiKeyContext): Promise<string>;
 //# sourceMappingURL=pipeline.d.ts.map

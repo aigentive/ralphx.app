@@ -1,0 +1,118 @@
+import type { ReactNode } from "react";
+import { FileDown } from "lucide-react";
+
+interface TabEmptyStateProps {
+  icon: ReactNode;
+  heading: string;
+  description: string;
+  onBrowse?: () => void;
+}
+
+export function TabEmptyState({ icon, heading, description, onBrowse }: TabEmptyStateProps) {
+  return (
+    <div className="flex flex-col items-center pt-[20%] h-full p-6">
+      <div className="w-full max-w-[280px]">
+        {/* Icon */}
+        <div className="flex justify-center mb-4">
+          {icon}
+        </div>
+
+        {/* Text */}
+        <div className="text-center">
+          <h3
+            className="text-sm font-semibold mb-1.5 tracking-tight"
+            style={{ color: "hsl(220 10% 90%)" }}
+          >
+            {heading}
+          </h3>
+          <p className="text-xs leading-relaxed" style={{ color: "hsl(220 10% 60%)" }}>
+            {description}
+          </p>
+        </div>
+
+        {/* Arrow hint — points RIGHT toward chat panel */}
+        <div className="flex justify-center mt-5">
+          <div
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full"
+            style={{
+              background: "hsla(220 10% 100% / 0.03)",
+              border: "1px solid hsla(220 10% 100% / 0.06)",
+            }}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="none"
+              style={{ color: "hsl(220 10% 50%)" }}
+            >
+              <path
+                d="M2 7h10m0 0l-3-3m3 3l-3 3"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span
+              className="text-[10px] uppercase tracking-wider"
+              style={{ color: "hsl(220 10% 50%)" }}
+            >
+              From chat
+            </span>
+          </div>
+        </div>
+
+        {onBrowse !== undefined && (
+          <>
+            {/* Divider with "or" */}
+            <div className="flex items-center gap-3 mt-6">
+              <div
+                className="flex-1 h-px"
+                style={{ background: "hsla(220 10% 100% / 0.08)" }}
+              />
+              <span
+                className="text-[10px] uppercase tracking-wider"
+                style={{ color: "hsl(220 10% 50%)" }}
+              >
+                or
+              </span>
+              <div
+                className="flex-1 h-px"
+                style={{ background: "hsla(220 10% 100% / 0.08)" }}
+              />
+            </div>
+
+            {/* Browse button */}
+            <button
+              data-testid="drop-hint"
+              type="button"
+              onClick={onBrowse}
+              className="w-full flex flex-col items-center gap-2 mt-4 p-3 rounded-lg transition-colors cursor-pointer focus:outline-none"
+              style={{ color: "hsl(220 10% 50%)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "hsla(220 10% 100% / 0.03)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+              }}
+            >
+              <FileDown className="w-4 h-4" />
+              <p className="text-xs text-center leading-relaxed">
+                Drag a markdown file here
+                <br />
+                or{" "}
+                <span
+                  style={{ color: "hsla(14 100% 60% / 0.8)" }}
+                  className="underline underline-offset-2"
+                >
+                  click to browse
+                </span>
+              </p>
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

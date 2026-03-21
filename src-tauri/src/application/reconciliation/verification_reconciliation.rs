@@ -33,14 +33,19 @@ pub struct VerificationReconciliationConfig {
     pub auto_verify_stale_secs: u64,
     /// How often to scan for stuck sessions (seconds).
     pub interval_secs: u64,
+    /// TTL for stale external session archival and stall detection (seconds).
+    /// External sessions with phase 'created'/'error' older than this are archived.
+    /// External sessions with no activity for this long are marked 'stalled'.
+    pub external_session_stale_secs: u64,
 }
 
 impl Default for VerificationReconciliationConfig {
     fn default() -> Self {
         Self {
-            stale_after_secs: 5400,       // 90 minutes for manual verify (D14)
-            auto_verify_stale_secs: 600,  // 10 minutes for auto-verify
-            interval_secs: 300,           // 5 minutes
+            stale_after_secs: 5400,             // 90 minutes for manual verify (D14)
+            auto_verify_stale_secs: 600,        // 10 minutes for auto-verify
+            interval_secs: 300,                 // 5 minutes
+            external_session_stale_secs: 7200,  // 2 hours (matches ExternalMcpConfig default)
         }
     }
 }
@@ -275,6 +280,7 @@ impl VerificationReconciliationService {
         loop {
             interval.tick().await;
             self.scan_and_reset(false).await;
+            self.scan_and_archive_stale_external_sessions(false).await;
         }
     }
 
@@ -282,11 +288,148 @@ impl VerificationReconciliationService {
     ///
     /// Uses `scan_and_reset(cold_boot: true)` which resets ALL in-progress sessions
     /// unconditionally (no TTL filter), since all agent processes are dead on restart.
+    /// Also archives all stale external sessions (cold boot — all agent processes are dead).
     pub async fn startup_scan(&self) {
         tracing::info!("Running verification startup scan (cold boot)...");
         let count = self.scan_and_reset(true).await;
         if count > 0 {
             tracing::info!(count, "Startup: reset orphaned verification in_progress states");
+        }
+        self.scan_and_archive_stale_external_sessions(true).await;
+    }
+
+    /// Scan for stale external sessions and archive them, then detect stalled sessions.
+    ///
+    /// Stale definition: external + active + phase IN ('created', 'error') + created_at older
+    /// than `external_session_stale_secs`. These sessions have abandoned agents.
+    ///
+    /// When `cold_boot: true` (app startup): no TTL filter — archives ALL matching sessions
+    /// since all agent processes are dead after restart.
+    /// When `cold_boot: false` (periodic): TTL-based archival (created_at < stale_before).
+    ///
+    /// After archival, runs stall detection for periodic scans only (cold boot handles all dead
+    /// sessions via archival). Stall detection marks sessions with no recent activity as 'stalled'.
+    pub async fn scan_and_archive_stale_external_sessions(&self, cold_boot: bool) {
+        let stale_before = if cold_boot {
+            None // No TTL filter on startup — all agents are dead
+        } else {
+            Some(
+                Utc::now()
+                    - chrono::Duration::seconds(self.config.external_session_stale_secs as i64),
+            )
+        };
+
+        // Archive stale external sessions (phase 'created' or 'error', past TTL or all on boot)
+        let sessions = match self
+            .ideation_session_repo
+            .list_active_external_sessions_for_archival(stale_before)
+            .await
+        {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    cold_boot,
+                    "Failed to query stale external sessions for archival"
+                );
+                return;
+            }
+        };
+
+        let archive_count = sessions.len();
+        for session in &sessions {
+            match self
+                .ideation_session_repo
+                .update_status(&session.id, IdeationSessionStatus::Archived)
+                .await
+            {
+                Ok(()) => {
+                    tracing::info!(
+                        session_id = %session.id.as_str(),
+                        phase = ?session.external_activity_phase,
+                        created_at = %session.created_at,
+                        cold_boot,
+                        "Archived stale external session"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        session_id = %session.id.as_str(),
+                        error = %e,
+                        "Failed to archive stale external session"
+                    );
+                }
+            }
+        }
+
+        if archive_count > 0 {
+            tracing::info!(
+                count = archive_count,
+                cold_boot,
+                "External session reconciliation: archived stale sessions"
+            );
+        }
+
+        // Detect stalled sessions (periodic only — cold boot archives all dead sessions above)
+        if !cold_boot {
+            self.detect_and_mark_stalled_external_sessions().await;
+        }
+    }
+
+    /// Detect stalled external sessions and mark their phase as 'stalled'.
+    ///
+    /// A stalled session is one that is external + active + has an active phase
+    /// (not 'error' or 'stalled') but has had no activity for longer than
+    /// `external_session_stale_secs`. Detection is DB-only via `updated_at` timestamp.
+    async fn detect_and_mark_stalled_external_sessions(&self) {
+        let stalled_before = Utc::now()
+            - chrono::Duration::seconds(self.config.external_session_stale_secs as i64);
+
+        let sessions = match self
+            .ideation_session_repo
+            .list_stalled_external_sessions(stalled_before)
+            .await
+        {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    "Failed to query stalled external sessions"
+                );
+                return;
+            }
+        };
+
+        let stall_count = sessions.len();
+        for session in &sessions {
+            match self
+                .ideation_session_repo
+                .update_external_activity_phase(&session.id, "stalled")
+                .await
+            {
+                Ok(()) => {
+                    tracing::info!(
+                        session_id = %session.id.as_str(),
+                        phase = ?session.external_activity_phase,
+                        updated_at = %session.updated_at,
+                        "Marked external session as stalled"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        session_id = %session.id.as_str(),
+                        error = %e,
+                        "Failed to mark external session as stalled"
+                    );
+                }
+            }
+        }
+
+        if stall_count > 0 {
+            tracing::info!(
+                count = stall_count,
+                "External session reconciliation: marked stalled sessions"
+            );
         }
     }
 }
@@ -457,29 +600,7 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
     archive_verification_session(repo, child_id).await;
 
     // Orphan cleanup: archive any OTHER active verification children of this parent
-    match repo.get_verification_children(parent_id).await {
-        Ok(children) => {
-            for child in &children {
-                if child.id != *child_id
-                    && child.status != IdeationSessionStatus::Archived
-                {
-                    tracing::info!(
-                        orphan_child_id = %child.id.as_str(),
-                        parent_id = %parent_id.as_str(),
-                        "Archiving orphaned sibling verification child session"
-                    );
-                    archive_verification_session(repo, &child.id).await;
-                }
-            }
-        }
-        Err(e) => {
-            tracing::warn!(
-                parent_id = %parent_id.as_str(),
-                error = %e,
-                "Failed to query verification children for orphan cleanup"
-            );
-        }
-    }
+    archive_sibling_verification_children(repo, parent_id, Some(child_id)).await;
 }
 
 /// Reset parent verification state when a verification child agent errors or is stopped.
@@ -620,24 +741,42 @@ pub async fn reset_verification_on_child_error<R: Runtime>(
     archive_verification_session(repo, child_id).await;
 
     // Orphan cleanup: archive any other active verification children
-    match repo.get_verification_children(&parent_id).await {
+    archive_sibling_verification_children(repo, &parent_id, Some(child_id)).await;
+}
+
+/// Archive orphaned sibling verification children of a parent session.
+///
+/// Archives all non-archived verification children of `parent_id`, optionally
+/// excluding `exclude_child_id` (the child being reconciled — already archived separately).
+///
+/// Extracted from duplicated orphan-cleanup blocks in `reconcile_verification_on_child_complete`
+/// (formerly L460-482) and `reset_verification_on_child_error` (formerly L622-643).
+async fn archive_sibling_verification_children(
+    repo: &Arc<dyn IdeationSessionRepository>,
+    parent_id: &IdeationSessionId,
+    exclude_child_id: Option<&IdeationSessionId>,
+) {
+    match repo.get_verification_children(parent_id).await {
         Ok(children) => {
             for child in &children {
-                if child.id != *child_id && child.status != IdeationSessionStatus::Archived {
-                    tracing::info!(
-                        orphan_child_id = %child.id.as_str(),
-                        parent_id = %parent_id.as_str(),
-                        "Archiving orphaned sibling verification child session after error"
-                    );
-                    archive_verification_session(repo, &child.id).await;
+                let should_skip = child.status == IdeationSessionStatus::Archived
+                    || exclude_child_id.is_some_and(|id| child.id == *id);
+                if should_skip {
+                    continue;
                 }
+                tracing::info!(
+                    orphan_child_id = %child.id.as_str(),
+                    parent_id = %parent_id.as_str(),
+                    "Archiving orphaned sibling verification child session"
+                );
+                archive_verification_session(repo, &child.id).await;
             }
         }
         Err(e) => {
             tracing::warn!(
                 parent_id = %parent_id.as_str(),
                 error = %e,
-                "Failed to query verification children for orphan cleanup after error"
+                "Failed to query verification children for orphan cleanup"
             );
         }
     }

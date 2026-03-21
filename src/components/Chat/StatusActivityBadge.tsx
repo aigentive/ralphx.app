@@ -16,10 +16,18 @@ import { Activity, Loader2, CirclePause } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useUiStore } from "@/stores/uiStore";
-import { useChatStore } from "@/stores/chatStore";
+import { useChatStore, selectToolCallStartTimes, selectLastToolCallCompletionTimestamp } from "@/stores/chatStore";
+import { useIdeationStore } from "@/stores/ideationStore";
 import { AGENT_WORKER, AGENT_REVIEWER } from "@/constants/agents";
 import type { ViewType } from "@/types/chat";
 import type { AgentStatus } from "@/stores/chatStore";
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/** Grace period after last tool completion before "Tool active" label clears (ms) */
+const TOOL_CALL_GRACE_MS = 5_000;
 
 // ============================================================================
 // Types
@@ -124,6 +132,30 @@ export function StatusActivityBadge({
   const lastEventTimestamp = useChatStore((s) =>
     storeKey ? (s.lastAgentEventTimestamp[storeKey] ?? 0) : 0
   );
+  const toolCallStartTimes = useChatStore(selectToolCallStartTimes(storeKey ?? ""));
+  const lastToolCallCompletionTimestamp = useChatStore(
+    selectLastToolCallCompletionTimestamp(storeKey ?? "")
+  );
+
+  // Derive sessionId for verification child lookup (storeKey format: "session:{sessionId}")
+  const sessionId =
+    storeKey?.startsWith("session:") ? storeKey.slice(8) : null;
+  const activeVerificationChildId = useIdeationStore((s) =>
+    sessionId ? (s.activeVerificationChildId[sessionId] ?? null) : null
+  );
+
+  // Track current time for grace period calculation — avoids calling Date.now() during render
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (lastToolCallCompletionTimestamp <= 0) return;
+    const remaining = TOOL_CALL_GRACE_MS - (Date.now() - lastToolCallCompletionTimestamp);
+    if (remaining <= 0) {
+      setNow(Date.now());
+      return;
+    }
+    const timer = setTimeout(() => { setNow(Date.now()); }, remaining);
+    return () => { clearTimeout(timer); };
+  }, [lastToolCallCompletionTimestamp]);
 
   // Navigate to activity view with context filter
   const handleActivityClick = () => {
@@ -180,14 +212,36 @@ export function StatusActivityBadge({
     );
   }
 
+  // Determine active tool state and grace period
+  const hasActiveToolCalls = Object.keys(toolCallStartTimes).length > 0;
+  const isInGracePeriod =
+    !hasActiveToolCalls &&
+    lastToolCallCompletionTimestamp > 0 &&
+    now - lastToolCallCompletionTimestamp < TOOL_CALL_GRACE_MS;
+  const showToolActive = hasActiveToolCalls || isInGracePeriod;
+
+  // Determine badge label and color for generating state
+  let badgeLabel: string;
+  let badgeColorClass: string;
+  if (showToolActive) {
+    badgeLabel = "Tool active";
+    badgeColorClass = "text-green-400";
+  } else if (activeVerificationChildId) {
+    badgeLabel = "Verifying...";
+    badgeColorClass = "text-blue-400";
+  } else {
+    badgeLabel = getStatusText(agentType);
+    badgeColorClass = "";
+  }
+
   // Active/generating state: badge with status text, spinner, last activity, and activity button
   return (
     <div className="flex items-center gap-1.5 shrink-0">
       <Badge variant="secondary" className="shrink-0">
         <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
-        {getStatusText(agentType)}
+        <span className={badgeColorClass || undefined}>{badgeLabel}</span>
       </Badge>
-      {storeKey && lastEventTimestamp > 0 && (
+      {storeKey && lastEventTimestamp > 0 && !showToolActive && !activeVerificationChildId && (
         <LastActivity lastEventTimestamp={lastEventTimestamp} />
       )}
       <Button

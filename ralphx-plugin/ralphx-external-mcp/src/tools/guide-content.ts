@@ -14,7 +14,8 @@ export type GuideSection =
   | "tasks"
   | "pipeline"
   | "events"
-  | "patterns";
+  | "patterns"
+  | "resilience";
 
 export const GUIDE_SECTIONS: Record<GuideSection, string> = {
   setup: `## Setup: Project Registration (1 tool)
@@ -201,6 +202,7 @@ Calling \`v1_accept_plan_and_schedule\` on an already-accepted session is safe �
 | v1_cancel_task | Cancel task | task_id | Task active | — |
 | v1_retry_task | Retry failed/stopped task | task_id | Task failed/stopped | — |
 | v1_resume_scheduling | Resume failed accept_plan_and_schedule | session_id | Previous accept failed | v1_get_task_detail |
+| v1_create_task_note | Annotate task with progress note | task_id, note | — | — |
 
 ### Task States
 
@@ -216,7 +218,7 @@ pending → executing → pending_review → reviewing → pending_merge → mer
 - \`"cancel"\` — cancel the task
 `,
 
-  events: `## Flow 4: Events & Monitoring (4 tools)
+  events: `## Flow 4: Events & Monitoring (8 tools)
 
 | Tool | Purpose | Required Args | Preconditions | Next Step |
 |------|---------|---------------|---------------|-----------|
@@ -224,6 +226,10 @@ pending → executing → pending_review → reviewing → pending_merge → mer
 | v1_get_recent_events | Cursor-based event fetch from DB | last_id, project_id (optional) | — | — |
 | v1_get_attention_items | Tasks needing action (reviews, conflicts) | project_id (optional) | — | v1_get_task_detail |
 | v1_get_execution_capacity | Can more work run? Running/queued counts | project_id | — | v1_start_ideation |
+| v1_register_webhook | Register URL to receive pipeline events via HTTP POST | url, project_id | — | v1_list_webhooks |
+| v1_unregister_webhook | Remove a registered webhook URL | webhook_id | — | v1_list_webhooks |
+| v1_list_webhooks | List all registered webhooks and their status | project_id (optional) | — | — |
+| v1_get_webhook_health | Check delivery health for a webhook | webhook_id | — | — |
 
 ### Cursor-Based Polling
 
@@ -249,6 +255,89 @@ while (true) {
 | \`review.escalated\` | Review needs human/agent decision |
 | \`merge.completed\` | Task merged to main |
 | \`ideation.session_created\` | New ideation session started |
+`,
+
+  resilience: `## Resilience & Best Practices
+
+### Session Management
+
+**Always check before creating.** Call \`v1_list_ideation_sessions\` before \`v1_start_ideation\` to avoid creating duplicate sessions.
+
+\`\`\`
+v1_list_ideation_sessions({ project_id }) → check for active sessions
+  → if none needed: v1_start_ideation({ project_id, prompt, idempotency_key: "my-unique-key" })
+  → if active session exists: resume via v1_get_ideation_status
+\`\`\`
+
+- Use \`idempotency_key\` for safe retries — calling \`v1_start_ideation\` twice with the same key returns the existing session
+- Check \`existing_active_sessions\` in the \`v1_start_ideation\` response — the API reports what's already running
+- If \`duplicate_detected: true\` in response, use the returned session instead of re-creating
+
+### Read-Before-Write
+
+**Always read before sending.** The API enforces this: \`v1_send_ideation_message\` returns 409 if unread agent responses exist.
+
+\`\`\`
+Poll v1_get_ideation_status
+  → agent_status: "waiting_for_input" AND unread_message_count > 0
+    → MUST call v1_get_ideation_messages first (clears read cursor)
+    → then call v1_send_ideation_message
+  → agent_status: "waiting_for_input" AND unread_message_count == 0
+    → safe to call v1_send_ideation_message directly
+\`\`\`
+
+| 409 Error | Meaning | Action |
+|-----------|---------|--------|
+| \`unread_messages\` | Agent replied; you haven't read it yet | Call \`v1_get_ideation_messages\` then retry |
+
+### Following next_action Hints
+
+**Every response includes \`next_action\`.** Follow it — it tells you exactly what to call next.
+
+| next_action | Call | When |
+|-------------|------|------|
+| \`poll_status\` | \`v1_get_ideation_status\` | Agent is working or just received your message |
+| \`fetch_messages\` | \`v1_get_ideation_messages\` | Agent replied; unread messages exist |
+| \`send_message\` | \`v1_send_ideation_message\` | Agent is ready and waiting for input |
+| \`wait\` | (sleep 5-10s, then poll) | Agent is generating output |
+| \`use_existing_session\` | Resume existing session | Duplicate session detected |
+
+### Capacity Checking
+
+**Check capacity before accepting a plan.** Call \`v1_get_execution_capacity\` before \`v1_accept_plan_and_schedule\` to confirm the system can handle new work.
+
+\`\`\`
+v1_get_execution_capacity({ project_id })
+  → { can_accept_work: true, running: N, queued: M }
+  → if can_accept_work: proceed with v1_accept_plan_and_schedule
+  → if !can_accept_work: wait, then re-check
+\`\`\`
+
+### Reconnect Pattern
+
+**On MCP client reconnect**, restore state in this order:
+
+\`\`\`
+1. v1_list_webhooks({ project_id }) → re-register any missing webhooks (idempotent)
+2. v1_get_recent_events({ last_id: lastKnownId, project_id }) → backfill missed events via cursor
+3. v1_list_ideation_sessions({ project_id }) → find sessions started before disconnect
+4. Resume normal polling loop
+\`\`\`
+
+### Session Lifecycle (external_activity_phase)
+
+The \`external_activity_phase\` field in \`v1_get_ideation_status\` tracks session progress for external agents:
+
+| Phase | Meaning | Expected Action |
+|-------|---------|-----------------|
+| \`created\` | Session started, no messages yet | Send initial prompt |
+| \`planning\` | First message sent; agent working on plan | Poll status |
+| \`proposing\` | Agent auto-generating task proposals | Poll status |
+| \`verifying\` | Plan verification in progress | Poll \`v1_get_plan_verification\` |
+| \`ready\` | Plan verified; ready to accept | Call \`v1_accept_plan_and_schedule\` |
+| \`error\` | Session encountered an error | Check messages; consider retry |
+| \`stalled\` | No activity for extended period | Re-send message or start new session |
+| \`null\` | Internal session (not external) | N/A |
 `,
 
   patterns: `## Common Patterns & Anti-Patterns
@@ -377,7 +466,6 @@ export const ALL_TOOL_NAMES: string[] = [
   "v1_trigger_plan_verification",
   "v1_get_plan_verification",
   "v1_accept_plan_and_schedule",
-  "v1_get_session_tasks",
   // Flow 2b: Task Operations (2)
   "v1_get_task_steps",
   "v1_batch_task_status",
@@ -393,9 +481,14 @@ export const ALL_TOOL_NAMES: string[] = [
   "v1_cancel_task",
   "v1_retry_task",
   "v1_resume_scheduling",
-  // Flow 4: Events & Monitoring (4)
+  "v1_create_task_note",
+  // Flow 4: Events & Monitoring (8)
   "v1_subscribe_events",
   "v1_get_recent_events",
   "v1_get_attention_items",
   "v1_get_execution_capacity",
+  "v1_register_webhook",
+  "v1_unregister_webhook",
+  "v1_list_webhooks",
+  "v1_get_webhook_health",
 ];

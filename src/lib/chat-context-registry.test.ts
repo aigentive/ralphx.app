@@ -12,6 +12,7 @@ import { describe, it, expect } from "vitest";
 import {
   CHAT_CONTEXT_REGISTRY,
   buildStoreKey,
+  parseStoreKey,
   resolveContextType,
   getContextConfig,
   isAgentContext,
@@ -66,6 +67,56 @@ describe("buildStoreKey", () => {
 
   it("formats merge keys as merge:{id}", () => {
     expect(buildStoreKey("merge", "task-456")).toBe("merge:task-456");
+  });
+});
+
+// ============================================================================
+// parseStoreKey
+// ============================================================================
+
+describe("parseStoreKey", () => {
+  it("parses ideation key back to contextType and contextId", () => {
+    expect(parseStoreKey("session:sess-123")).toEqual({ contextType: "ideation", contextId: "sess-123" });
+  });
+
+  it("parses task key", () => {
+    expect(parseStoreKey("task:task-456")).toEqual({ contextType: "task", contextId: "task-456" });
+  });
+
+  it("parses project key", () => {
+    expect(parseStoreKey("project:proj-789")).toEqual({ contextType: "project", contextId: "proj-789" });
+  });
+
+  it("parses task_execution key", () => {
+    expect(parseStoreKey("task_execution:task-456")).toEqual({ contextType: "task_execution", contextId: "task-456" });
+  });
+
+  it("parses review key", () => {
+    expect(parseStoreKey("review:task-456")).toEqual({ contextType: "review", contextId: "task-456" });
+  });
+
+  it("parses merge key", () => {
+    expect(parseStoreKey("merge:task-456")).toEqual({ contextType: "merge", contextId: "task-456" });
+  });
+
+  it("is the reverse of buildStoreKey for all context types", () => {
+    const id = "test-id-123";
+    for (const ct of CONTEXT_TYPE_VALUES) {
+      const key = buildStoreKey(ct, id);
+      expect(parseStoreKey(key)).toEqual({ contextType: ct, contextId: id });
+    }
+  });
+
+  it("returns null for unknown prefix", () => {
+    expect(parseStoreKey("unknown:some-id")).toBeNull();
+  });
+
+  it("returns null for key without colon", () => {
+    expect(parseStoreKey("nocolon")).toBeNull();
+  });
+
+  it("returns null for empty contextId", () => {
+    expect(parseStoreKey("session:")).toBeNull();
   });
 });
 

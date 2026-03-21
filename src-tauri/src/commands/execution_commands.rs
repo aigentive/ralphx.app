@@ -105,6 +105,10 @@ impl ActiveProjectState {
 
 /// Global execution state managed atomically for thread safety
 pub struct ExecutionState {
+    /// Whether the app is shutting down. Set as the FIRST operation in RunEvent::Exit
+    /// (before agent cleanup) so stream handlers can skip escalation during clean shutdown.
+    /// Resets automatically on restart (AtomicBool in memory — not persisted).
+    pub is_shutting_down: AtomicBool,
     /// Whether execution is paused (stops picking up new tasks)
     is_paused: AtomicBool,
     /// Number of currently running tasks
@@ -142,6 +146,7 @@ impl ExecutionState {
     /// Create a new ExecutionState with defaults
     pub fn new() -> Self {
         Self {
+            is_shutting_down: AtomicBool::new(false),
             is_paused: AtomicBool::new(false),
             running_count: AtomicU32::new(0),
             max_concurrent: AtomicU32::new(2),
@@ -156,6 +161,7 @@ impl ExecutionState {
     /// Create ExecutionState with custom max concurrent
     pub fn with_max_concurrent(max: u32) -> Self {
         Self {
+            is_shutting_down: AtomicBool::new(false),
             is_paused: AtomicBool::new(false),
             running_count: AtomicU32::new(0),
             max_concurrent: AtomicU32::new(max),

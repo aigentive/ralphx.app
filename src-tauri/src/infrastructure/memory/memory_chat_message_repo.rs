@@ -8,7 +8,8 @@ use std::sync::RwLock;
 use async_trait::async_trait;
 
 use crate::domain::entities::{
-    ChatConversationId, ChatMessage, ChatMessageId, IdeationSessionId, ProjectId, TaskId,
+    ChatConversationId, ChatMessage, ChatMessageId, IdeationSessionId, MessageRole, ProjectId,
+    TaskId,
 };
 use crate::domain::repositories::ChatMessageRepository;
 use crate::error::AppResult;
@@ -198,6 +199,61 @@ impl ChatMessageRepository for MemoryChatMessageRepository {
             msg.content_blocks = content_blocks.map(|s| s.to_string());
         }
         Ok(())
+    }
+
+    async fn count_unread_assistant_messages(
+        &self,
+        session_id: &str,
+        after_message_id: Option<&str>,
+    ) -> AppResult<u32> {
+        let messages = self.messages.read().unwrap();
+
+        // Find the created_at of the cursor message if provided
+        let cursor_created_at = after_message_id.and_then(|id| messages.get(id).map(|m| m.created_at));
+
+        let count = messages
+            .values()
+            .filter(|m| {
+                m.session_id.as_ref().map(|s| s.as_str()) == Some(session_id)
+                    && (m.role == MessageRole::Orchestrator)
+                    && cursor_created_at
+                        .map(|cursor_ts| m.created_at > cursor_ts)
+                        .unwrap_or(true)
+            })
+            .count();
+
+        Ok(count as u32)
+    }
+
+    async fn get_first_user_message_by_context(
+        &self,
+        context_type: &str,
+        context_id: &str,
+    ) -> AppResult<Option<String>> {
+        let messages = self.messages.read().unwrap();
+
+        let mut matching: Vec<_> = messages
+            .values()
+            .filter(|m| {
+                m.role == MessageRole::User
+                    && match context_type {
+                        "ideation" => {
+                            m.session_id.as_ref().map(|s| s.as_str()) == Some(context_id)
+                        }
+                        "task" | "task_execution" => {
+                            m.task_id.as_ref().map(|s| s.as_str()) == Some(context_id)
+                        }
+                        "project" => {
+                            m.project_id.as_ref().map(|s| s.as_str()) == Some(context_id)
+                                && m.session_id.is_none()
+                        }
+                        _ => m.session_id.as_ref().map(|s| s.as_str()) == Some(context_id),
+                    }
+            })
+            .collect();
+
+        matching.sort_by_key(|m| m.created_at);
+        Ok(matching.first().map(|m| m.content.clone()))
     }
 }
 

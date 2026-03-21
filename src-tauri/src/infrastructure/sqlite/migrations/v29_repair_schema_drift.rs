@@ -1,4 +1,4 @@
-// Migration v28 (schema v29): Repair schema drift for databases with skipped/misaligned versions.
+// Migration v29: Repair schema drift for databases with skipped/misaligned versions.
 //
 // This migration is intentionally idempotent. It recreates the Memory Framework V2
 // tables/indexes if they are missing, even when older migration versions were already
@@ -8,7 +8,7 @@ use rusqlite::Connection;
 
 use crate::error::{AppError, AppResult};
 
-/// Migration v28: Repair missing memory framework tables/indexes.
+/// Migration v29: Repair missing memory framework tables/indexes.
 pub fn migrate(conn: &Connection) -> AppResult<()> {
     conn.execute_batch(
         "-- Project-level memory settings

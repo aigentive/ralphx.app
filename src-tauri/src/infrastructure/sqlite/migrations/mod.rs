@@ -42,12 +42,12 @@ mod v21_questions_permissions;
 mod v22_project_active_plan;
 mod v23_plan_selection_stats;
 mod v24_memory_framework;
-mod v25_running_agent_worktree;
+mod v26_running_agent_worktree;
 mod v25_seed_artifact_buckets;
-mod v25_update_max_concurrent_default;
-mod v26_merge_strategy;
-mod v27_default_rebase_squash;
-mod v28_repair_schema_drift;
+mod v30_update_max_concurrent_default;
+mod v27_merge_strategy;
+mod v28_default_rebase_squash;
+mod v29_repair_schema_drift;
 mod v2_add_dependency_reason;
 mod v31_session_linking;
 mod v32_fix_task_fk_constraints;
@@ -98,10 +98,15 @@ mod v9_project_git_fields;
 mod v70_plan_branch_base_override;
 mod v71_add_target_project_to_proposals;
 mod v72_cross_project_check;
-mod v72_proposal_migrated_from;
+mod v73_proposal_migrated_from;
 mod v74_permission_identity;
 mod v75_plan_version_last_read;
 mod v76_session_origin;
+mod v77_expected_proposal_count;
+mod v78_webhook_registrations;
+mod v79_external_session_reliability;
+mod v80_dependencies_acknowledged;
+mod v81_external_session_reliability_backfill;
 
 #[cfg(test)]
 mod tests;
@@ -138,9 +143,9 @@ mod v23_plan_selection_stats_tests;
 #[cfg(test)]
 mod v24_memory_framework_tests;
 #[cfg(test)]
-mod v25_running_agent_worktree_tests;
+mod v26_running_agent_worktree_tests;
 #[cfg(test)]
-mod v26_merge_strategy_tests;
+mod v27_merge_strategy_tests;
 #[cfg(test)]
 mod v2_add_dependency_reason_tests;
 #[cfg(test)]
@@ -212,19 +217,21 @@ mod v71_add_target_project_to_proposals_tests;
 #[cfg(test)]
 mod v72_cross_project_check_tests;
 #[cfg(test)]
-mod v72_proposal_migrated_from_tests;
+mod v73_proposal_migrated_from_tests;
 #[cfg(test)]
 mod v76_session_origin_tests;
+#[cfg(test)]
+mod v81_external_session_reliability_backfill_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 76;
+pub const SCHEMA_VERSION: i64 = 81;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
 
 /// Migration definition
 struct Migration {
-    version: i32,
+    version: i64,
     name: &'static str,
     migrate: MigrationFn,
 }
@@ -360,27 +367,27 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 26,
         name: "running_agent_worktree",
-        migrate: v25_running_agent_worktree::migrate,
+        migrate: v26_running_agent_worktree::migrate,
     },
     Migration {
         version: 27,
         name: "merge_strategy",
-        migrate: v26_merge_strategy::migrate,
+        migrate: v27_merge_strategy::migrate,
     },
     Migration {
         version: 28,
         name: "default_rebase_squash",
-        migrate: v27_default_rebase_squash::migrate,
+        migrate: v28_default_rebase_squash::migrate,
     },
     Migration {
         version: 29,
         name: "repair_schema_drift",
-        migrate: v28_repair_schema_drift::migrate,
+        migrate: v29_repair_schema_drift::migrate,
     },
     Migration {
         version: 30,
         name: "update_max_concurrent_default",
-        migrate: v25_update_max_concurrent_default::migrate,
+        migrate: v30_update_max_concurrent_default::migrate,
     },
     Migration {
         version: 31,
@@ -595,7 +602,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 73,
         name: "proposal_migrated_from",
-        migrate: v72_proposal_migrated_from::migrate,
+        migrate: v73_proposal_migrated_from::migrate,
     },
     Migration {
         version: 74,
@@ -611,6 +618,31 @@ const MIGRATIONS: &[Migration] = &[
         version: 76,
         name: "session_origin",
         migrate: v76_session_origin::migrate,
+    },
+    Migration {
+        version: 77,
+        name: "expected_proposal_count",
+        migrate: v77_expected_proposal_count::migrate,
+    },
+    Migration {
+        version: 78,
+        name: "webhook_registrations",
+        migrate: v78_webhook_registrations::migrate,
+    },
+    Migration {
+        version: 79,
+        name: "external_session_reliability",
+        migrate: v79_external_session_reliability::migrate,
+    },
+    Migration {
+        version: 80,
+        name: "dependencies_acknowledged",
+        migrate: v80_dependencies_acknowledged::migrate,
+    },
+    Migration {
+        version: 81,
+        name: "external_session_reliability_backfill",
+        migrate: v81_external_session_reliability_backfill::migrate,
     },
 ];
 
@@ -655,8 +687,8 @@ fn create_migrations_table(conn: &Connection) -> AppResult<()> {
 }
 
 /// Get the current schema version
-pub fn get_schema_version(conn: &Connection) -> AppResult<i32> {
-    let result: Result<i32, _> = conn.query_row(
+pub fn get_schema_version(conn: &Connection) -> AppResult<i64> {
+    let result: Result<i64, _> = conn.query_row(
         "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
         [],
         |row| row.get(0),
@@ -666,7 +698,7 @@ pub fn get_schema_version(conn: &Connection) -> AppResult<i32> {
 }
 
 /// Set the schema version after a migration
-fn set_schema_version(conn: &Connection, version: i32) -> AppResult<()> {
+fn set_schema_version(conn: &Connection, version: i64) -> AppResult<()> {
     conn.execute(
         "INSERT INTO schema_migrations (version) VALUES (?1)",
         [version],

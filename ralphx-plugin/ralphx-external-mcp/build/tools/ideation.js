@@ -20,6 +20,7 @@ function handleError(err) {
 export async function handleStartIdeation(args, context) {
     const projectId = args.project_id;
     const prompt = args.prompt;
+    const idempotencyKey = args.idempotency_key;
     if (!projectId) {
         return JSON.stringify({ error: "missing_argument", message: "project_id is required" }, null, 2);
     }
@@ -27,7 +28,7 @@ export async function handleStartIdeation(args, context) {
         return JSON.stringify({ error: "missing_argument", message: "prompt is required" }, null, 2);
     }
     try {
-        const result = await startIdeation({ projectId, prompt }, context);
+        const result = await startIdeation({ projectId, prompt, idempotencyKey }, context);
         return JSON.stringify(result, null, 2);
     }
     catch (err) {
@@ -183,6 +184,8 @@ export async function handleListIdeationSessions(args, context) {
         params.set("status", args.status);
     if (args.limit)
         params.set("limit", String(args.limit));
+    if (args.updated_after)
+        params.set("updated_after", args.updated_after);
     const queryString = params.toString() ? `?${params.toString()}` : "";
     try {
         const response = await getBackendClient().get(`/api/external/sessions/${encodeURIComponent(projectId)}${queryString}`, context);
@@ -225,7 +228,11 @@ export async function handleGetSessionTasks(args, context) {
         return JSON.stringify({ error: "missing_argument", message: "session_id is required" }, null, 2);
     }
     try {
-        const response = await getBackendClient().get(`/api/external/sessions/${encodeURIComponent(sessionId)}/tasks`, context);
+        const qs = new URLSearchParams();
+        if (args.changed_since)
+            qs.set("changed_since", args.changed_since);
+        const query = qs.toString() ? `?${qs.toString()}` : "";
+        const response = await getBackendClient().get(`/api/external/sessions/${encodeURIComponent(sessionId)}/tasks${query}`, context);
         return JSON.stringify(response.body, null, 2);
     }
     catch (err) {

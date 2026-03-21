@@ -9,6 +9,7 @@
 
 import React from "react";
 import { WidgetCard, Badge, InlineIndicator } from "./shared";
+import { parseMcpToolResult, parseMcpToolResultRaw } from "./shared.constants";
 import type { ToolCall } from "../ToolCallIndicator";
 
 // ============================================================================
@@ -38,10 +39,9 @@ interface ArtifactWidgetProps {
 // ============================================================================
 
 function parseArtifact(toolCall: ToolCall): ParsedArtifact | null {
-  const { name, result } = toolCall;
-  if (!result || typeof result !== "object") return null;
-
-  const r = result as Record<string, unknown>;
+  const { name } = toolCall;
+  const r = parseMcpToolResult(toolCall.result);
+  if (!r || Object.keys(r).length === 0) return null;
 
   // get_artifact: { id, title, artifact_type, content, content_preview, version }
   // get_artifact_version: same shape, with explicit version param in args
@@ -63,7 +63,7 @@ function parseArtifact(toolCall: ToolCall): ParsedArtifact | null {
 
   // For get_artifact_version, extract version from args
   let version: number | undefined;
-  if (name === "get_artifact_version") {
+  if (name.toLowerCase().includes("get_artifact_version")) {
     const args = toolCall.arguments as Record<string, unknown> | undefined;
     if (args && typeof args.version === "number") {
       version = args.version;
@@ -170,21 +170,20 @@ function MarkdownPreview({ content, compact }: { content: string; compact?: bool
 // Parsing — Artifact lists (get_related_artifacts, search_project_artifacts)
 // ============================================================================
 
-const LIST_TOOLS = ["get_related_artifacts", "search_project_artifacts"];
-
 function isArtifactListTool(name: string): boolean {
-  return LIST_TOOLS.includes(name);
+  const n = name.toLowerCase();
+  return n.includes("get_related_artifacts") || n.includes("search_project_artifacts");
 }
 
 function parseArtifactList(toolCall: ToolCall): ArtifactListItem[] | null {
   const { result } = toolCall;
   if (!result) return null;
 
-  // Result is an array of artifact summaries
-  const arr = Array.isArray(result) ? result : null;
-  if (!arr) return null;
+  // Use parseMcpToolResultRaw (not parseMcpToolResult) — returns unknown for Array.isArray narrowing
+  const raw = parseMcpToolResultRaw(result);
+  if (!Array.isArray(raw)) return null;
 
-  return arr.map((item: Record<string, unknown>) => {
+  return raw.map((item: Record<string, unknown>) => {
     const base: ArtifactListItem = {
       title: (typeof item.title === "string" ? item.title : null) ?? "Untitled",
       artifactType:
@@ -285,7 +284,7 @@ export const ArtifactWidget = React.memo(function ArtifactWidget({
 
 function ArtifactListView({ toolCall, compact }: { toolCall: ToolCall; compact: boolean }) {
   const artifacts = parseArtifactList(toolCall);
-  const isSearch = toolCall.name === "search_project_artifacts";
+  const isSearch = toolCall.name.toLowerCase().includes("search_project_artifacts");
   const query = isSearch ? (toolCall.arguments as { query?: string })?.query : undefined;
 
   if (!artifacts || artifacts.length === 0) {

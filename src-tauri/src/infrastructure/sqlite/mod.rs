@@ -61,6 +61,7 @@ mod sqlite_team_message_repo_tests;
 pub mod sqlite_team_session_repo;
 #[cfg(test)]
 mod sqlite_team_session_repo_tests;
+pub mod sqlite_webhook_registration_repo;
 pub mod sqlite_workflow_repo;
 pub mod state_machine_repository;
 
@@ -113,5 +114,6 @@ pub use sqlite_task_repo::SqliteTaskRepository;
 pub use sqlite_task_step_repo::SqliteTaskStepRepository;
 pub use sqlite_team_message_repo::SqliteTeamMessageRepository;
 pub use sqlite_team_session_repo::SqliteTeamSessionRepository;
+pub use sqlite_webhook_registration_repo::SqliteWebhookRegistrationRepository;
 pub use sqlite_workflow_repo::SqliteWorkflowRepository;
 pub use state_machine_repository::TaskStateMachineRepository;

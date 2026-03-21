@@ -73,6 +73,28 @@ pub trait ChatMessageRepository: Send + Sync {
         tool_calls: Option<&str>,
         content_blocks: Option<&str>,
     ) -> AppResult<()>;
+
+    /// Count assistant/orchestrator messages in a session newer than the given message ID.
+    ///
+    /// If `after_message_id` is None, counts ALL assistant/orchestrator messages in the session.
+    /// Used for read-before-write enforcement: external agents must read replies before sending.
+    ///
+    /// Roles counted: "assistant" and "orchestrator"
+    async fn count_unread_assistant_messages(
+        &self,
+        session_id: &str,
+        after_message_id: Option<&str>,
+    ) -> AppResult<u32>;
+
+    /// Get the content of the first user message for a given context (context_type + context_id).
+    ///
+    /// Returns the content of the earliest user-role message for this context, or None if no
+    /// user messages exist. Used for Jaccard similarity comparison during session dedup.
+    async fn get_first_user_message_by_context(
+        &self,
+        context_type: &str,
+        context_id: &str,
+    ) -> AppResult<Option<String>>;
 }
 
 #[cfg(test)]

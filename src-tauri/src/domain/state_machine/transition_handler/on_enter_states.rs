@@ -12,7 +12,7 @@ use super::super::machine::State;
 use super::freshness::{self, FreshnessAction};
 use super::merge_helpers::{
     compute_merge_worktree_path, compute_task_worktree_path,
-    resolve_task_base_branch, slugify,
+    is_merge_worktree_path, resolve_task_base_branch, restore_task_worktree, slugify,
 };
 use super::metadata_builder::{build_failed_metadata, MetadataUpdate};
 use crate::application::git_service::git_cmd::ENOENT_MARKER;
@@ -929,6 +929,20 @@ impl<'a> super::TransitionHandler<'a> {
                             .await;
                     }
                 }
+
+                // Emit review:ready webhook event
+                if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+                    let payload = serde_json::json!({
+                        "task_id": self.machine.context.task_id,
+                        "project_id": self.machine.context.project_id,
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                    });
+                    publisher.publish(
+                        ralphx_domain::entities::EventType::ReviewReady,
+                        &self.machine.context.project_id,
+                        payload,
+                    ).await;
+                }
             }
             State::Reviewing => {
                 // Freshness check: ensure branches are up-to-date before spawning reviewer
@@ -976,12 +990,60 @@ impl<'a> super::TransitionHandler<'a> {
 
                 // Defense-in-depth: scan worktree for conflict markers before spawning reviewer.
                 // Catches markers left by failed merges, backoff-skipped freshness checks, or race conditions.
-                if let (Some(ref task_repo), Some(ref _project_repo)) = (
+                if let (Some(ref task_repo), Some(ref project_repo)) = (
                     &self.machine.context.services.task_repo,
                     &self.machine.context.services.project_repo,
                 ) {
                     let task_id_typed = TaskId::from_string(task_id_str.clone());
-                    if let Ok(Some(task)) = task_repo.get_by_id(&task_id_typed).await {
+                    if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id_typed).await {
+                        // L2: If worktree_path is merge-prefixed, restore to task execution worktree
+                        // before checking for conflict markers or allowing reviewer spawn.
+                        // Only activates for merge-prefixed paths (merge-, rebase-, source-update-,
+                        // plan-update-); genuine missing task- paths still escalate as ReviewWorktreeMissing.
+                        if task.worktree_path.as_deref().map(is_merge_worktree_path).unwrap_or(false) {
+                            match project_repo.get_by_id(&task.project_id).await {
+                                Ok(Some(project)) => {
+                                    let repo_path = Path::new(&project.working_directory);
+                                    match restore_task_worktree(&mut task, &project, repo_path).await {
+                                        Ok(restored) => {
+                                            tracing::info!(
+                                                task_id = task_id_str,
+                                                restored_path = %restored.display(),
+                                                "L2: restored merge-prefixed worktree_path before reviewer spawn"
+                                            );
+                                            if let Err(e) = task_repo.update(&task).await {
+                                                tracing::warn!(
+                                                    task_id = task_id_str,
+                                                    error = %e,
+                                                    "L2: failed to persist restored worktree_path"
+                                                );
+                                            }
+                                        }
+                                        Err(e) => {
+                                            tracing::warn!(
+                                                task_id = task_id_str,
+                                                error = %e,
+                                                "L2: failed to restore task worktree in Reviewing entry — will fail as ReviewWorktreeMissing"
+                                            );
+                                        }
+                                    }
+                                }
+                                Ok(None) => {
+                                    tracing::warn!(
+                                        task_id = task_id_str,
+                                        "L2: project not found for worktree restoration"
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        task_id = task_id_str,
+                                        error = %e,
+                                        "L2: failed to fetch project for worktree restoration"
+                                    );
+                                }
+                            }
+                        }
+
                         if let Some(ref wt_path_str) = task.worktree_path {
                             let wt_path = std::path::Path::new(wt_path_str);
                             if wt_path.exists() {
@@ -1156,6 +1218,20 @@ impl<'a> super::TransitionHandler<'a> {
                         "AI review passed. Please review and approve.",
                     )
                     .await;
+
+                // Emit review:approved webhook event
+                if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+                    let payload = serde_json::json!({
+                        "task_id": self.machine.context.task_id,
+                        "project_id": self.machine.context.project_id,
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                    });
+                    publisher.publish(
+                        ralphx_domain::entities::EventType::ReviewApproved,
+                        &self.machine.context.project_id,
+                        payload,
+                    ).await;
+                }
             }
             State::Escalated => {
                 // Emit 'review:escalated' event
@@ -1177,6 +1253,20 @@ impl<'a> super::TransitionHandler<'a> {
                         "AI review escalated. Please review and decide.",
                     )
                     .await;
+
+                // Also emit via webhook publisher
+                if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+                    let payload = serde_json::json!({
+                        "task_id": self.machine.context.task_id,
+                        "project_id": self.machine.context.project_id,
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                    });
+                    publisher.publish(
+                        ralphx_domain::entities::EventType::ReviewEscalated,
+                        &self.machine.context.project_id,
+                        payload,
+                    ).await;
+                }
             }
             State::ReExecuting => {
                 // Plan branch guard: block re-execution on merged/abandoned branches
@@ -1317,6 +1407,20 @@ impl<'a> super::TransitionHandler<'a> {
             }
             State::RevisionNeeded => {
                 // Auto-transition to ReExecuting will be handled by check_auto_transition
+
+                // Emit review:changes_requested webhook event
+                if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+                    let payload = serde_json::json!({
+                        "task_id": self.machine.context.task_id,
+                        "project_id": self.machine.context.project_id,
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                    });
+                    publisher.publish(
+                        ralphx_domain::entities::EventType::ReviewChangesRequested,
+                        &self.machine.context.project_id,
+                        payload,
+                    ).await;
+                }
             }
             State::Approved => {
                 // Emit task completed event

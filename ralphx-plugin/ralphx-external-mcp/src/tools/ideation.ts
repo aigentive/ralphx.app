@@ -35,6 +35,7 @@ export async function handleStartIdeation(
 ): Promise<string> {
   const projectId = args.project_id as string;
   const prompt = args.prompt as string;
+  const idempotencyKey = args.idempotency_key as string | undefined;
   if (!projectId) {
     return JSON.stringify({ error: "missing_argument", message: "project_id is required" }, null, 2);
   }
@@ -42,7 +43,7 @@ export async function handleStartIdeation(
     return JSON.stringify({ error: "missing_argument", message: "prompt is required" }, null, 2);
   }
   try {
-    const result = await startIdeation({ projectId, prompt }, context);
+    const result = await startIdeation({ projectId, prompt, idempotencyKey }, context);
     return JSON.stringify(result, null, 2);
   } catch (err) {
     return handleError(err);
@@ -243,6 +244,7 @@ export async function handleListIdeationSessions(
   const params = new URLSearchParams();
   if (args.status) params.set("status", args.status as string);
   if (args.limit) params.set("limit", String(args.limit));
+  if (args.updated_after) params.set("updated_after", args.updated_after as string);
   const queryString = params.toString() ? `?${params.toString()}` : "";
   try {
     const response = await getBackendClient().get(
@@ -297,8 +299,11 @@ export async function handleGetSessionTasks(
     return JSON.stringify({ error: "missing_argument", message: "session_id is required" }, null, 2);
   }
   try {
+    const qs = new URLSearchParams();
+    if (args.changed_since) qs.set("changed_since", args.changed_since as string);
+    const query = qs.toString() ? `?${qs.toString()}` : "";
     const response = await getBackendClient().get(
-      `/api/external/sessions/${encodeURIComponent(sessionId)}/tasks`,
+      `/api/external/sessions/${encodeURIComponent(sessionId)}/tasks${query}`,
       context
     );
     return JSON.stringify(response.body, null, 2);

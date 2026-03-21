@@ -3,6 +3,7 @@
 // during state transitions. Actual implementations are provided in Phase 4+.
 
 use async_trait::async_trait;
+use ralphx_domain::entities::EventType;
 
 /// Trait for spawning and managing AI agents.
 ///
@@ -200,6 +201,37 @@ pub trait TaskScheduler: Send + Sync {
     /// Finds tasks in PendingMerge with `main_merge_deferred` metadata, clears the flag,
     /// and re-invokes their entry actions to retry the main-branch merge.
     async fn try_retry_main_merges(&self);
+}
+
+/// Trait for publishing events to registered webhook endpoints.
+///
+/// This is the interface that emission call sites use. The concrete implementation
+/// (WebhookPublisher struct) is in infrastructure and will be wired in separately.
+/// Optional — if None, webhook delivery is simply skipped.
+#[async_trait]
+pub trait WebhookPublisher: Send + Sync {
+    /// Publish an event to all registered webhook endpoints for the given project.
+    async fn publish(
+        &self,
+        event_type: EventType,
+        project_id: &str,
+        payload: serde_json::Value,
+    );
+}
+
+/// No-op webhook publisher for tests.
+pub struct MockWebhookPublisher;
+
+#[async_trait]
+impl WebhookPublisher for MockWebhookPublisher {
+    async fn publish(
+        &self,
+        _event_type: EventType,
+        _project_id: &str,
+        _payload: serde_json::Value,
+    ) {
+        // no-op in tests
+    }
 }
 
 #[cfg(test)]

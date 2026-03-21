@@ -13,7 +13,19 @@ tools:
   - TaskOutput
   - KillShell
   - MCPSearch
-  - "mcp__ralphx__*"
+  - mcp__ralphx__get_review_notes
+  - mcp__ralphx__get_task_context
+  - mcp__ralphx__get_task_issues
+  - mcp__ralphx__get_task_steps
+  - mcp__ralphx__get_step_progress
+  - mcp__ralphx__get_issue_progress
+  - mcp__ralphx__get_artifact
+  - mcp__ralphx__get_artifact_version
+  - mcp__ralphx__get_related_artifacts
+  - mcp__ralphx__search_project_artifacts
+  - mcp__ralphx__search_memories
+  - mcp__ralphx__get_memory
+  - mcp__ralphx__get_memories_for_paths
   - "Task(Explore)"
   - "Task(Plan)"
 mcpServers:

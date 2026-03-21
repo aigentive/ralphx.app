@@ -449,6 +449,7 @@ agents:
     mcp_tools: [
         create_task_proposal,
         update_task_proposal,
+        archive_task_proposal,
         delete_task_proposal,
         list_session_proposals,
         get_proposal,
@@ -479,6 +480,9 @@ agents:
         # child session tools
         get_child_session_status,
         send_ideation_session_message,
+        # finalize
+        finalize_proposals,
+        migrate_proposals,
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan), "Task(ralphx:ideation-specialist-ux)"]
 
@@ -850,9 +854,16 @@ agents:
         # child session tools
         get_child_session_status,
         send_ideation_session_message,
-        # specialist artifact retrieval (read-only — NOT create_team_artifact)
+        # specialist artifact creation and retrieval
         get_team_artifacts,
         get_artifact,
+        create_team_artifact,
+        list_session_proposals,
+        get_proposal,
+        # memory tools (inherited by specialist subagents via parent MCP connection)
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
       ]
     preapproved_cli_tools: [Read, Grep, Glob, Bash, "Task(ralphx:plan-critic-layer1)", "Task(ralphx:plan-critic-layer2)", "Task(ralphx:ideation-specialist-ux)", "Task(ralphx:ideation-specialist-code-quality)", "Task(ralphx:ideation-specialist-prompt-quality)"]
 
@@ -879,6 +890,7 @@ agents:
         # Inherited from orchestrator-ideation
         create_task_proposal,
         update_task_proposal,
+        archive_task_proposal,
         delete_task_proposal,
         list_session_proposals,
         get_proposal,
@@ -908,6 +920,9 @@ agents:
         # child session tools
         get_child_session_status,
         send_ideation_session_message,
+        # finalize
+        finalize_proposals,
+        migrate_proposals,
       ]
 
   - name: ideation-team-member

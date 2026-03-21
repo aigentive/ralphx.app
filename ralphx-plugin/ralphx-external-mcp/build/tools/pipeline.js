@@ -216,4 +216,25 @@ export async function handleResumeScheduling(args, context) {
         return handleError(err);
     }
 }
+/**
+ * v1_create_task_note — annotate a task with a progress note.
+ * POST /api/external/task-note
+ */
+export async function handleCreateTaskNote(args, context) {
+    const taskId = args.task_id;
+    const note = args.note;
+    if (!taskId) {
+        return JSON.stringify({ error: "missing_argument", message: "task_id is required" }, null, 2);
+    }
+    if (!note) {
+        return JSON.stringify({ error: "missing_argument", message: "note is required" }, null, 2);
+    }
+    try {
+        const response = await getBackendClient().post("/api/external/task-note", context, { task_id: taskId, note });
+        return JSON.stringify(response.body, null, 2);
+    }
+    catch (err) {
+        return handleError(err);
+    }
+}
 //# sourceMappingURL=pipeline.js.map

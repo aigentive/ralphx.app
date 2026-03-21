@@ -5,7 +5,12 @@ tools:
   - Read
   - Grep
   - Glob
-  - "mcp__ralphx__*"
+  - mcp__ralphx__search_memories
+  - mcp__ralphx__get_memory
+  - mcp__ralphx__get_memories_for_paths
+  - mcp__ralphx__get_conversation_transcript
+  - mcp__ralphx__upsert_memories
+  - mcp__ralphx__mark_memory_obsolete
 mcpServers:
   - ralphx:
       type: stdio

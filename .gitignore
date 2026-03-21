@@ -19,6 +19,8 @@ pnpm-debug.log*
 # Cache
 .cache/
 .claude/cache/
+__pycache__/
+*.pyc
 node_modules
 node_modules/
 

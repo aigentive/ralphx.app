@@ -8,8 +8,8 @@
 import { ListToolsRequestSchema, CallToolRequestSchema, } from "@modelcontextprotocol/sdk/types.js";
 import { handleListProjects, handleGetProjectStatus, handleGetPipelineOverview, } from "./discovery.js";
 import { handleStartIdeation, handleGetIdeationStatus, handleSendIdeationMessage, handleGetIdeationMessages, handleListProposals, handleGetProposalDetail, handleGetPlan, handleAcceptPlanAndSchedule, handleModifyProposal, handleAnalyzeDependencies, handleTriggerPlanVerification, handleGetPlanVerification, handleListIdeationSessions, handleGetSessionTasks, } from "./ideation.js";
-import { handleGetTaskDetail, handleGetTaskDiff, handleGetReviewSummary, handleApproveReview, handleRequestChanges, handleGetMergePipeline, handleResolveEscalation, handlePauseTask, handleCancelTask, handleRetryTask, handleResumeScheduling, } from "./pipeline.js";
-import { handleGetRecentEvents, handleSubscribeEvents, handleGetAttentionItems, handleGetExecutionCapacity, } from "./events.js";
+import { handleGetTaskDetail, handleGetTaskDiff, handleGetReviewSummary, handleApproveReview, handleRequestChanges, handleGetMergePipeline, handleResolveEscalation, handlePauseTask, handleCancelTask, handleRetryTask, handleResumeScheduling, handleCreateTaskNote, } from "./pipeline.js";
+import { handleGetRecentEvents, handleSubscribeEvents, handleGetAttentionItems, handleGetExecutionCapacity, handleRegisterWebhook, handleUnregisterWebhook, handleListWebhooks, handleGetWebhookHealth, } from "./events.js";
 import { handleBatchTaskStatus, handleGetTaskSteps } from "./tasks.js";
 import { handleGetAgentGuide } from "./guide.js";
 import { handleRegisterProject } from "./projects.js";
@@ -47,12 +47,17 @@ export const TOOL_CATEGORIES = {
         "v1_cancel_task",
         "v1_retry_task",
         "v1_resume_scheduling",
+        "v1_create_task_note",
     ],
     events: [
         "v1_subscribe_events",
         "v1_get_recent_events",
         "v1_get_attention_items",
         "v1_get_execution_capacity",
+        "v1_register_webhook",
+        "v1_unregister_webhook",
+        "v1_list_webhooks",
+        "v1_get_webhook_health",
     ],
 };
 /** Register all tool handlers on the MCP server */
@@ -123,6 +128,10 @@ export function registerTools(server, getKeyContext) {
                     type: "object",
                     properties: {
                         project_id: { type: "string", description: "Project ID" },
+                        since: {
+                            type: "string",
+                            description: "ISO 8601 timestamp — only return tasks changed after this time in changed_tasks list. Stage counts always reflect all tasks.",
+                        },
                     },
                     required: ["project_id"],
                 },
@@ -130,12 +139,16 @@ export function registerTools(server, getKeyContext) {
             // Flow 2: Ideation & Planning (Phase 4)
             {
                 name: "v1_start_ideation",
-                description: "Create an ideation session and spawn an orchestrator agent with the given prompt",
+                description: "Create an ideation session and spawn an orchestrator agent with the given prompt. Returns existing_active_sessions for visibility. Use idempotency_key for safe retries — same key returns same session without creating a duplicate.",
                 inputSchema: {
                     type: "object",
                     properties: {
                         project_id: { type: "string", description: "Target project ID" },
                         prompt: { type: "string", description: "Initial prompt for the orchestrator" },
+                        idempotency_key: {
+                            type: "string",
+                            description: "Optional client-provided key for safe retries. Same key+API key always returns the same session.",
+                        },
                     },
                     required: ["project_id", "prompt"],
                 },
@@ -267,7 +280,7 @@ export function registerTools(server, getKeyContext) {
             },
             {
                 name: "v1_get_plan_verification",
-                description: "Get plan verification status for a session (status, in_progress, round, gap_count, convergence_reason)",
+                description: "Get plan verification status for a session. Returns: status, in_progress, round, max_rounds, gap_count, gap_score (weighted: critical×10+high×3+medium×1), gaps (array of {severity, category, description}), convergence_reason.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -289,6 +302,10 @@ export function registerTools(server, getKeyContext) {
                             description: "Filter by status (default: all)",
                         },
                         limit: { type: "number", description: "Max sessions to return (default: 20, max: 100)" },
+                        updated_after: {
+                            type: "string",
+                            description: "ISO 8601 timestamp (RFC 3339). Only return sessions updated after this time.",
+                        },
                     },
                     required: ["project_id"],
                 },
@@ -300,6 +317,7 @@ export function registerTools(server, getKeyContext) {
                     type: "object",
                     properties: {
                         session_id: { type: "string", description: "Ideation session ID" },
+                        changed_since: { type: "string", description: "ISO 8601 / RFC3339 timestamp — only return tasks updated after this time" },
                     },
                     required: ["session_id"],
                 },
@@ -445,6 +463,18 @@ export function registerTools(server, getKeyContext) {
                     required: ["session_id"],
                 },
             },
+            {
+                name: "v1_create_task_note",
+                description: "Annotate a task with a progress note visible to human reviewers",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        task_id: { type: "string", description: "Task ID" },
+                        note: { type: "string", description: "Note text to append to the task" },
+                    },
+                    required: ["task_id", "note"],
+                },
+            },
             // Flow 4: Events & Monitoring (Phase 6)
             {
                 name: "v1_subscribe_events",
@@ -459,16 +489,24 @@ export function registerTools(server, getKeyContext) {
             },
             {
                 name: "v1_get_recent_events",
-                description: "Cursor-based event retrieval from DB (survives restarts). Pass last_id=0 for all recent events.",
+                description: "Cursor-based event retrieval from DB (survives restarts). Pass cursor=0 or omit for all recent events.",
                 inputSchema: {
                     type: "object",
                     properties: {
                         project_id: { type: "string", description: "Project ID to filter events" },
+                        cursor: {
+                            type: "number",
+                            description: "Last event ID received (0 for all recent). Primary pagination field.",
+                        },
                         last_id: {
                             type: "number",
-                            description: "Last event ID received (0 for all recent)",
+                            description: "Deprecated alias for cursor. Use cursor instead.",
                         },
                         limit: { type: "number", description: "Max events to return (default: 50)" },
+                        event_type: {
+                            type: "string",
+                            description: "Optional event type filter (e.g. 'task:status_changed'). Omit to receive all types.",
+                        },
                     },
                     required: [],
                 },
@@ -493,6 +531,64 @@ export function registerTools(server, getKeyContext) {
                         project_id: { type: "string", description: "Project ID" },
                     },
                     required: ["project_id"],
+                },
+            },
+            {
+                name: "v1_register_webhook",
+                description: "Register a webhook URL to receive real-time RalphX pipeline events via HTTP POST. " +
+                    "Returns the HMAC-SHA256 secret — store it securely, it won't be shown again. " +
+                    "Idempotent: registering the same URL resets failure count and reactivates if inactive.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        url: {
+                            type: "string",
+                            description: "Webhook URL to receive event POSTs (must be reachable from RalphX)",
+                        },
+                        event_types: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Optional: filter to specific event types. Omit to receive all events. " +
+                                "Examples: task:status_changed, review:ready, merge:completed, ideation:proposals_ready",
+                        },
+                        project_ids: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "Optional: filter to specific project IDs. Omit to receive events for all authorized projects.",
+                        },
+                    },
+                    required: ["url"],
+                },
+            },
+            {
+                name: "v1_unregister_webhook",
+                description: "Remove a webhook registration. Use v1_list_webhooks to find the webhook_id.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        webhook_id: { type: "string", description: "Webhook registration ID to remove" },
+                    },
+                    required: ["webhook_id"],
+                },
+            },
+            {
+                name: "v1_list_webhooks",
+                description: "List all active webhook registrations for this API key, including their IDs, URLs, event type filters, project filters, and failure counts.",
+                inputSchema: {
+                    type: "object",
+                    properties: {},
+                    required: [],
+                },
+            },
+            {
+                name: "v1_get_webhook_health",
+                description: "Check delivery health for all registered webhooks. Returns per-webhook stats: active status, failure count, and last failure time. " +
+                    "Use this to detect broken webhooks (active: false means auto-deactivated after 10+ consecutive failures). " +
+                    "Re-register the same URL to reset failure count and reactivate.",
+                inputSchema: {
+                    type: "object",
+                    properties: {},
+                    required: [],
                 },
             },
             // Flow 5: Batch task operations
@@ -635,6 +731,9 @@ export function registerTools(server, getKeyContext) {
             case "v1_resume_scheduling":
                 text = await handleResumeScheduling(args, context);
                 break;
+            case "v1_create_task_note":
+                text = await handleCreateTaskNote(args, context);
+                break;
             // --- Flow 4: Events & Monitoring ---
             case "v1_get_recent_events":
                 text = await handleGetRecentEvents(args, context);
@@ -647,6 +746,18 @@ export function registerTools(server, getKeyContext) {
                 break;
             case "v1_get_execution_capacity":
                 text = await handleGetExecutionCapacity(args, context);
+                break;
+            case "v1_register_webhook":
+                text = await handleRegisterWebhook(args, context);
+                break;
+            case "v1_unregister_webhook":
+                text = await handleUnregisterWebhook(args, context);
+                break;
+            case "v1_list_webhooks":
+                text = await handleListWebhooks(args, context);
+                break;
+            case "v1_get_webhook_health":
+                text = await handleGetWebhookHealth(args, context);
                 break;
             // --- Flow 5: Batch task operations ---
             case "v1_batch_task_status":

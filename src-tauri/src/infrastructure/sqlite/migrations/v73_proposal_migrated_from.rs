@@ -1,4 +1,4 @@
-// Migration v72: Add migrated_from traceability columns to task_proposals table
+// Migration v73: Add migrated_from traceability columns to task_proposals table
 //
 // Supports the proposal migration/export feature. When a proposal is copied
 // from one session to another via migrate_proposals, these fields record the
@@ -24,7 +24,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
     )?;
 
     tracing::info!(
-        "v72: added migrated_from_session_id and migrated_from_proposal_id columns to task_proposals"
+        "v73: added migrated_from_session_id and migrated_from_proposal_id columns to task_proposals"
     );
 
     Ok(())

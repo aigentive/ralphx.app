@@ -25,6 +25,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useEventBus } from "@/providers/EventProvider";
 import { useIdeationStore } from "@/stores/ideationStore";
+import { useChatStore } from "@/stores/chatStore";
+import { buildStoreKey } from "@/lib/chat-context-registry";
 import { ideationKeys } from "./useIdeation";
 import type { Unsubscribe } from "@/lib/event-bus";
 import { logger } from "@/lib/logger";
@@ -111,6 +113,10 @@ export function useVerificationEvents() {
           }
           // Clear verification notification banner on any terminal state
           clearVerificationNotification(sessionId);
+          // Clear active verification child ref, then set parent to idle.
+          // Unconditional: parent agent already exited; next natural event self-corrects if still running.
+          useIdeationStore.getState().setActiveVerificationChildId(sessionId, null);
+          useChatStore.getState().setAgentStatus(buildStoreKey('ideation', sessionId), 'idle');
         }
 
         // Async portion wrapped in IIFE — bus.subscribe callbacks must be synchronous

@@ -27,6 +27,10 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
+      - name: Validate SQLite migrations
+        run: |
+          python3 scripts/validate_sqlite_migrations.py
+
       - name: Run IPC contract tests
         run: |
           timeout 600 cargo test --lib --manifest-path src-tauri/Cargo.toml ipc_contract 2>&1

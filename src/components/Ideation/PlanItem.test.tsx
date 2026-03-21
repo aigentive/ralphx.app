@@ -6,6 +6,7 @@ import type { PlanItemProps } from "./PlanItem";
 import type { IdeationSessionWithProgress, SessionProgress } from "@/types/ideation";
 import type { SessionGroup } from "./planBrowserUtils";
 import { useChatStore } from "@/stores/chatStore";
+import { useIdeationStore } from "@/stores/ideationStore";
 
 function createProgress(overrides: Partial<SessionProgress> = {}): SessionProgress {
   return { idle: 0, active: 0, done: 0, total: 0, ...overrides };
@@ -46,7 +47,6 @@ const defaultProps: PlanItemProps = {
   onKeyDown: vi.fn(),
   onMenuOpenChange: vi.fn(),
   onArchive: vi.fn(),
-  onDelete: vi.fn(),
   onReopen: vi.fn(),
   onResetReaccept: vi.fn(),
 };
@@ -58,6 +58,7 @@ function renderItem(overrides: Partial<PlanItemProps> = {}) {
 describe("PlanItem", () => {
   beforeEach(() => {
     useChatStore.setState({ agentStatus: {} });
+    useIdeationStore.setState({ activeVerificationChildId: {} });
   });
 
   it("renders the session title", () => {
@@ -232,6 +233,59 @@ describe("PlanItem", () => {
     });
   });
 
+  describe("verification activity indicator (PO7)", () => {
+    it("shows 'Verifying...' when generating and activeVerificationChildId is set for this session", () => {
+      useChatStore.setState({ agentStatus: { "session:session-1": "generating" } });
+      useIdeationStore.setState({ activeVerificationChildId: { "session-1": "child-session-1" } });
+      renderItem({ group: "drafts" });
+      expect(screen.getByText("Verifying...")).toBeInTheDocument();
+      expect(screen.queryByText("Agent working...")).not.toBeInTheDocument();
+    });
+
+    it("shows blue color for 'Verifying...' text", () => {
+      useChatStore.setState({ agentStatus: { "session:session-1": "generating" } });
+      useIdeationStore.setState({ activeVerificationChildId: { "session-1": "child-session-1" } });
+      renderItem({ group: "drafts" });
+      const label = screen.getByText("Verifying...");
+      expect(label).toHaveStyle({ color: "hsl(217 91% 60%)" });
+    });
+
+    it("shows 'Agent working...' (orange) when generating but no verification child", () => {
+      useChatStore.setState({ agentStatus: { "session:session-1": "generating" } });
+      renderItem({ group: "drafts" });
+      expect(screen.getByText("Agent working...")).toBeInTheDocument();
+      const label = screen.getByText("Agent working...");
+      expect(label).toHaveStyle({ color: "hsl(14 100% 60%)" });
+    });
+
+    it("child session (different session id) shows standard 'Agent working...' — not 'Verifying...'", () => {
+      useChatStore.setState({ agentStatus: { "session:session-1": "generating" } });
+      // activeVerificationChildId is keyed by parent id, not child id
+      useIdeationStore.setState({ activeVerificationChildId: { "parent-session": "session-1" } });
+      renderItem({ group: "drafts" });
+      // session-1 is the child; its own entry is absent → standard indicator
+      expect(screen.getByText("Agent working...")).toBeInTheDocument();
+      expect(screen.queryByText("Verifying...")).not.toBeInTheDocument();
+    });
+
+    it("shows blue spinner when verifying", () => {
+      useChatStore.setState({ agentStatus: { "session:session-1": "generating" } });
+      useIdeationStore.setState({ activeVerificationChildId: { "session-1": "child-session-1" } });
+      renderItem({ group: "drafts" });
+      const spinner = document.querySelector(".animate-spin");
+      expect(spinner).toBeInTheDocument();
+      expect(spinner).toHaveStyle({ color: "hsl(217 91% 60%)" });
+    });
+
+    it("shows orange spinner when generating without verification child", () => {
+      useChatStore.setState({ agentStatus: { "session:session-1": "generating" } });
+      renderItem({ group: "drafts" });
+      const spinner = document.querySelector(".animate-spin");
+      expect(spinner).toBeInTheDocument();
+      expect(spinner).toHaveStyle({ color: "hsl(14 100% 60%)" });
+    });
+  });
+
   describe("muted styling for done/archived groups", () => {
     it("done items have reduced opacity when not selected", () => {
       renderItem({ group: "done" });
@@ -267,45 +321,45 @@ describe("PlanItem", () => {
       await userEvent.click(menuButton);
     }
 
-    it("drafts: shows Rename, Archive, Delete", async () => {
+    it("drafts: shows Rename, Archive (no Delete after soft-delete migration)", async () => {
       await openMenu("drafts");
       expect(screen.getByText("Rename")).toBeInTheDocument();
       expect(screen.getByText("Archive")).toBeInTheDocument();
-      expect(screen.getByText("Delete")).toBeInTheDocument();
+      expect(screen.queryByText("Delete")).not.toBeInTheDocument();
       expect(screen.queryByText("Reopen")).not.toBeInTheDocument();
       expect(screen.queryByText("Reset & Re-accept")).not.toBeInTheDocument();
     });
 
-    it("accepted: shows Rename, Reopen, Reset & Re-accept, Delete", async () => {
+    it("accepted: shows Rename, Reopen, Reset & Re-accept (no Delete after soft-delete migration)", async () => {
       await openMenu("accepted");
       expect(screen.getByText("Rename")).toBeInTheDocument();
       expect(screen.getByText("Reopen")).toBeInTheDocument();
       expect(screen.getByText("Reset & Re-accept")).toBeInTheDocument();
-      expect(screen.getByText("Delete")).toBeInTheDocument();
+      expect(screen.queryByText("Delete")).not.toBeInTheDocument();
       expect(screen.queryByText("Archive")).not.toBeInTheDocument();
     });
 
-    it("in-progress: shows Rename, Reopen, Reset & Re-accept, Delete", async () => {
+    it("in-progress: shows Rename, Reopen, Reset & Re-accept (no Delete after soft-delete migration)", async () => {
       await openMenu("in-progress");
       expect(screen.getByText("Rename")).toBeInTheDocument();
       expect(screen.getByText("Reopen")).toBeInTheDocument();
       expect(screen.getByText("Reset & Re-accept")).toBeInTheDocument();
-      expect(screen.getByText("Delete")).toBeInTheDocument();
+      expect(screen.queryByText("Delete")).not.toBeInTheDocument();
     });
 
-    it("done: shows Rename, Reopen, Reset & Re-accept, Delete", async () => {
+    it("done: shows Rename, Reopen, Reset & Re-accept (no Delete after soft-delete migration)", async () => {
       await openMenu("done");
       expect(screen.getByText("Rename")).toBeInTheDocument();
       expect(screen.getByText("Reopen")).toBeInTheDocument();
       expect(screen.getByText("Reset & Re-accept")).toBeInTheDocument();
-      expect(screen.getByText("Delete")).toBeInTheDocument();
+      expect(screen.queryByText("Delete")).not.toBeInTheDocument();
     });
 
-    it("archived: shows Rename, Reopen, Delete (no Reset & Re-accept)", async () => {
+    it("archived: shows Rename, Reopen (no Delete, no Reset & Re-accept after soft-delete migration)", async () => {
       await openMenu("archived");
       expect(screen.getByText("Rename")).toBeInTheDocument();
       expect(screen.getByText("Reopen")).toBeInTheDocument();
-      expect(screen.getByText("Delete")).toBeInTheDocument();
+      expect(screen.queryByText("Delete")).not.toBeInTheDocument();
       expect(screen.queryByText("Reset & Re-accept")).not.toBeInTheDocument();
     });
   });

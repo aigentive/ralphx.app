@@ -6,9 +6,8 @@
 use std::str::FromStr;
 
 use crate::application::{AppState, CreateProposalOptions, UpdateProposalOptions, UpdateSource};
+use crate::commands::ideation_commands::{apply_proposals_core, ApplyProposalsInput, TaskProposalResponse};
 use crate::domain::services::{check_proposal_verification_gate, ProposalOperation};
-use crate::infrastructure::sqlite::sqlite_ideation_settings_repo::get_settings_sync;
-use crate::commands::ideation_commands::TaskProposalResponse;
 use crate::domain::entities::{
     Artifact, ArtifactContent, ArtifactSummary, ArtifactType, Complexity, IdeationSession,
     IdeationSessionId, IdeationSessionStatus, InternalStatus, Priority, ProposalCategory,
@@ -19,6 +18,8 @@ use crate::infrastructure::sqlite::{
     SqliteArtifactRepository as ArtifactRepo, SqliteIdeationSessionRepository as SessionRepo,
     SqliteTaskProposalRepository as ProposalRepo,
 };
+use crate::infrastructure::sqlite::sqlite_ideation_settings_repo::get_settings_sync;
+use ralphx_domain::repositories::IdeationSessionRepository;
 use tauri::Emitter;
 
 // ============================================================================
@@ -174,10 +175,12 @@ pub async fn create_proposal_impl(
     state: &AppState,
     session_id: IdeationSessionId,
     options: CreateProposalOptions,
-) -> AppResult<(TaskProposal, Vec<String>)> {
+) -> AppResult<(TaskProposal, Vec<String>, bool)> {
+    let expected_proposal_count = options.expected_proposal_count;
+
     // Single lock: all checks + INSERT in one transaction (TOCTOU prevention).
     // Events emitted after db.run_transaction() returns (acceptable crash-consistency gap).
-    let proposal = state
+    let (proposal, new_count) = state
         .db
         .run_transaction(move |conn| {
             // Check session exists and is active
@@ -189,6 +192,29 @@ pub async fn create_proposal_impl(
                     "Cannot add proposal to {} session",
                     session.status
                 )));
+            }
+
+            // Set-once gating: validate or lock expected_proposal_count
+            if let Some(provided_count) = expected_proposal_count {
+                match session.expected_proposal_count {
+                    None => {
+                        // First proposal: lock the expected count on this session
+                        SessionRepo::set_expected_proposal_count_sync(
+                            conn,
+                            session_id.as_str(),
+                            provided_count,
+                        )?;
+                    }
+                    Some(stored_count) if stored_count != provided_count => {
+                        return Err(AppError::Validation(format!(
+                            "expected_proposal_count mismatch: session expects {}, got {}",
+                            stored_count, provided_count
+                        )));
+                    }
+                    Some(_) => {
+                        // Matches stored value — ok to proceed
+                    }
+                }
             }
 
             // Cross-project gate: block proposal creation if plan has not been cross-project-checked
@@ -276,7 +302,10 @@ pub async fn create_proposal_impl(
             }
             proposal.target_project = options.target_project;
 
-            ProposalRepo::create_sync(conn, proposal)
+            let created = ProposalRepo::create_sync(conn, proposal)?;
+            // Count active (non-archived) proposals after INSERT for expected-count comparison
+            let new_count = SessionRepo::count_active_by_session_sync(conn, created.session_id.as_str())?;
+            Ok((created, new_count))
         })
         .await?;
 
@@ -293,6 +322,7 @@ pub async fn create_proposal_impl(
     // Process depends_on deps in separate db.run() calls (AD5: deadlock avoidance)
     // Each dep: validate session membership + cycle check + insert + emit
     let mut dep_errors: Vec<String> = Vec::new();
+    let had_depends_on = !options.depends_on.is_empty();
 
     for dep_id_str in options.depends_on {
         let dep_id = TaskProposalId::from_string(dep_id_str.clone());
@@ -356,7 +386,30 @@ pub async fn create_proposal_impl(
         }
     }
 
-    Ok((proposal, dep_errors))
+    // Set dependencies_acknowledged if agent specified deps at creation
+    if had_depends_on {
+        if let Err(e) = state
+            .ideation_session_repo
+            .set_dependencies_acknowledged(proposal.session_id.as_str())
+            .await
+        {
+            tracing::warn!(
+                "Failed to set dependencies_acknowledged for session {}: {}",
+                proposal.session_id.as_str(),
+                e
+            );
+        }
+    }
+
+    // Signal to the caller whether the session is ready to finalize (expected count reached).
+    // The caller is responsible for invoking finalize_proposals explicitly.
+    let ready_to_finalize = if let Some(expected) = options.expected_proposal_count {
+        new_count == expected as i64
+    } else {
+        false
+    };
+
+    Ok((proposal, dep_errors, ready_to_finalize))
 }
 
 /// Update proposal — fetch, validate, and UPDATE in a single DB transaction.
@@ -507,6 +560,7 @@ pub async fn update_proposal_impl(
 
     // Process add_depends_on and add_blocks deps in separate db.run() calls (AD5: deadlock avoidance)
     let mut dep_errors: Vec<String> = Vec::new();
+    let had_dep_changes = !options.add_depends_on.is_empty() || !options.add_blocks.is_empty();
     let proposal_id_for_deps = updated.id.clone();
     let session_id_for_deps = updated.session_id.clone();
 
@@ -571,6 +625,21 @@ pub async fn update_proposal_impl(
         match state.proposal_dependency_repo.add_dependency(&blocker_id, &pid, None, Some("agent")).await {
             Err(e) => { dep_errors.push(format!("add_blocks {} rejected: insert failed: {}", blocker_id.as_str(), e)); continue; }
             Ok(_) => { emit_dependency_added(state, blocker_id.as_str(), pid.as_str()); }
+        }
+    }
+
+    // Set dependencies_acknowledged if agent set deps via update
+    if had_dep_changes {
+        if let Err(e) = state
+            .ideation_session_repo
+            .set_dependencies_acknowledged(updated.session_id.as_str())
+            .await
+        {
+            tracing::warn!(
+                "Failed to set dependencies_acknowledged for session {}: {}",
+                updated.session_id.as_str(),
+                e
+            );
         }
     }
 
@@ -669,6 +738,90 @@ pub async fn archive_proposal_impl(
 
 
     Ok(session_id)
+}
+
+/// Finalize proposals — synchronously apply all active proposals for a session.
+///
+/// Called explicitly by the agent after all proposals and dependencies have been set.
+/// Validates session is Active and proposal count matches `expected_proposal_count`,
+/// then calls `apply_proposals_core` synchronously and returns the result.
+///
+/// # Errors
+/// - `AppError::NotFound` if session doesn't exist
+/// - `AppError::Validation` if session is not Active or count mismatch
+/// - Errors from `apply_proposals_core`
+pub async fn finalize_proposals_impl(
+    state: &AppState,
+    session_id: &str,
+) -> AppResult<crate::http_server::types::FinalizeProposalsResponse> {
+    // Fetch session and validate it is Active
+    let session_id_typed = IdeationSessionId::from_string(session_id.to_string());
+    let session = state
+        .ideation_session_repo
+        .get_by_id(&session_id_typed)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Session {} not found", session_id)))?;
+
+    if session.status != IdeationSessionStatus::Active {
+        return Err(AppError::Validation(format!(
+            "Cannot finalize proposals for {} session",
+            session.status
+        )));
+    }
+
+    // Fetch active (non-archived) proposals
+    let all_proposals = state
+        .task_proposal_repo
+        .get_by_session(&session_id_typed)
+        .await?;
+    let active_proposals: Vec<_> = all_proposals
+        .into_iter()
+        .filter(|p| p.archived_at.is_none())
+        .collect();
+
+    let count_active = active_proposals.len() as u32;
+
+    // Validate count matches expected_proposal_count if set
+    if let Some(expected) = session.expected_proposal_count {
+        if count_active != expected {
+            return Err(AppError::Validation(format!(
+                "Proposal count mismatch: session expects {}, found {}",
+                expected, count_active
+            )));
+        }
+    }
+
+    let proposal_ids: Vec<String> = active_proposals
+        .into_iter()
+        .map(|p| p.id.as_str().to_string())
+        .collect();
+
+    let input = ApplyProposalsInput {
+        session_id: session_id.to_string(),
+        proposal_ids,
+        target_column: "auto".to_string(),
+        use_feature_branch: None,
+        base_branch_override: None,
+    };
+
+    let result = apply_proposals_core(state, input).await?;
+
+    let session_status = if result.session_converted {
+        "accepted".to_string()
+    } else {
+        "active".to_string()
+    };
+
+    Ok(crate::http_server::types::FinalizeProposalsResponse {
+        created_task_ids: result.created_task_ids,
+        dependencies_created: result.dependencies_created as u32,
+        tasks_created: result.tasks_created as u32,
+        message: result.message,
+        session_status,
+        execution_plan_id: result.execution_plan_id,
+        warnings: result.warnings,
+        project_id: result.project_id,
+    })
 }
 
 // ============================================================================

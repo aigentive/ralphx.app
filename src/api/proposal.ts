@@ -75,9 +75,11 @@ const DependencyGraphResponseSchema = z.object({
 const ApplyProposalsResultResponseSchema = z.object({
   created_task_ids: z.array(z.string()),
   dependencies_created: z.number(),
+  tasks_created: z.number().optional(),
   warnings: z.array(z.string()),
   session_converted: z.boolean(),
   execution_plan_id: z.string().nullable().optional(),
+  message: z.string().nullable().optional(),
 });
 
 // ============================================================================
@@ -196,9 +198,11 @@ function transformApplyResult(raw: RawApplyResult): ApplyProposalsResultResponse
   return {
     createdTaskIds: raw.created_task_ids,
     dependenciesCreated: raw.dependencies_created,
+    ...(raw.tasks_created !== undefined && { tasksCreated: raw.tasks_created }),
     warnings: raw.warnings,
     sessionConverted: raw.session_converted,
     executionPlanId: raw.execution_plan_id ?? null,
+    ...(raw.message !== undefined && { message: raw.message }),
   };
 }
 

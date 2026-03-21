@@ -3,7 +3,7 @@
 //
 // Extracted from side_effects.rs — pure helpers with no side effects beyond metadata mutation.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -1178,4 +1178,81 @@ pub(super) async fn discover_and_attach_task_branch(
     );
 
     Ok(true)
+}
+
+// ===== Worktree restoration =====
+
+/// Check if a path points to a merge/rebase/source-update/plan-update worktree.
+///
+/// Detects the basename prefix used by all temporary merge-pipeline worktrees.
+/// Used to identify stale `worktree_path` values that must be restored before
+/// a reviewer can spawn.
+pub(crate) fn is_merge_worktree_path(path: &str) -> bool {
+    let basename = Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    basename.starts_with("merge-")
+        || basename.starts_with("rebase-")
+        || basename.starts_with("source-update-")
+        || basename.starts_with("plan-update-")
+}
+
+/// Restore a task's `worktree_path` to its execution worktree (`task-{task_id}`).
+///
+/// Called when `worktree_path` is stale — pointing to a merge worktree that was
+/// cleaned up during the merge pipeline. The task execution worktree is the correct
+/// state for review.
+///
+/// Decision tree:
+/// 1. If `task-{task_id}` directory exists on disk → update `task.worktree_path` in memory.
+/// 2. If the task branch exists in git → recreate the worktree via `checkout_existing_branch_worktree`.
+/// 3. Otherwise → return `Err(AppError::ReviewWorktreeMissing)`.
+///
+/// **Caller MUST persist `task` via `task_repo.update()` after calling this function.**
+/// This function mutates `task.worktree_path` in memory only.
+///
+/// # Errors
+///
+/// Returns [`AppError::ReviewWorktreeMissing`] when neither the worktree directory
+/// nor the task branch exists and the worktree cannot be recreated.
+pub(crate) async fn restore_task_worktree(
+    task: &mut Task,
+    project: &Project,
+    repo_path: &Path,
+) -> Result<PathBuf, AppError> {
+    let task_id_str = task.id.as_str();
+    let task_wt_str = compute_task_worktree_path(project, task_id_str);
+    let task_wt_path = PathBuf::from(&task_wt_str);
+
+    if task_wt_path.exists() {
+        tracing::info!(
+            task_id = task_id_str,
+            worktree_path = %task_wt_path.display(),
+            "restore_task_worktree: task worktree exists on disk — updating path only"
+        );
+        task.worktree_path = Some(task_wt_str);
+        return Ok(task_wt_path);
+    }
+
+    if let Some(ref branch) = task.task_branch {
+        if GitService::branch_exists(repo_path, branch).await? {
+            tracing::info!(
+                task_id = task_id_str,
+                branch = %branch,
+                worktree_path = %task_wt_path.display(),
+                "restore_task_worktree: recreating task worktree from existing branch"
+            );
+            GitService::checkout_existing_branch_worktree(repo_path, &task_wt_path, branch)
+                .await?;
+            task.worktree_path = Some(task_wt_str);
+            return Ok(task_wt_path);
+        }
+    }
+
+    tracing::warn!(
+        task_id = task_id_str,
+        "restore_task_worktree: no task worktree or branch found — cannot restore"
+    );
+    Err(AppError::ReviewWorktreeMissing)
 }

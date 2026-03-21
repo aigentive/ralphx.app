@@ -74,6 +74,7 @@ async fn test_create_proposal_without_plan_artifact_returns_validation_error() {
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
+        expected_proposal_count: None,
     };
 
     let result = create_proposal_impl(&state, session_id, options).await;
@@ -126,12 +127,13 @@ async fn test_create_proposal_with_plan_artifact_succeeds_and_auto_links() {
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
+        expected_proposal_count: None,
     };
 
     let result = create_proposal_impl(&state, session_id, options).await;
     assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
 
-    let (proposal, _dep_errors) = result.unwrap();
+    let (proposal, _dep_errors, _) = result.unwrap();
     assert_eq!(
         proposal.plan_artifact_id,
         Some(artifact_id),
@@ -174,9 +176,10 @@ async fn test_create_proposal_sets_plan_version_at_creation() {
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
+        expected_proposal_count: None,
     };
 
-    let (proposal, _dep_errors) = create_proposal_impl(&state, session_id, options)
+    let (proposal, _dep_errors, _) = create_proposal_impl(&state, session_id, options)
         .await
         .unwrap();
 
@@ -249,6 +252,7 @@ async fn create_test_proposal(state: &AppState, session_id: &IdeationSessionId) 
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
+        expected_proposal_count: None,
     };
     create_proposal_impl(state, session_id.clone(), options)
         .await
@@ -273,6 +277,7 @@ async fn test_create_gate_blocks_unverified_when_enabled() {
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
+        expected_proposal_count: None,
     };
 
     let result = create_proposal_impl(&state, session.id.clone(), options).await;
@@ -307,6 +312,7 @@ async fn test_create_gate_ipc_parity_same_error_as_http() {
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
+        expected_proposal_count: None,
     };
     let http_options = CreateProposalOptions {
         title: "HTTP Proposal".to_string(),
@@ -318,6 +324,7 @@ async fn test_create_gate_ipc_parity_same_error_as_http() {
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
+        expected_proposal_count: None,
     };
 
     let ipc_result = create_proposal_impl(&state, session.id.clone(), ipc_options).await;
@@ -442,9 +449,10 @@ async fn test_create_proposal_inserted_exactly_once() {
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
+        expected_proposal_count: None,
     };
 
-    let (proposal, _dep_errors) = create_proposal_impl(&state, session.id.clone(), options)
+    let (proposal, _dep_errors, _) = create_proposal_impl(&state, session.id.clone(), options)
         .await
         .unwrap();
 
@@ -527,8 +535,9 @@ async fn test_create_proposal_with_estimated_complexity_roundtrip() {
         estimated_complexity: Some("complex".to_string()),
         target_project: None,
         depends_on: vec![],
+        expected_proposal_count: None,
     };
-    let (proposal, _dep_errors) = create_proposal_impl(&state, session.id.clone(), options)
+    let (proposal, _dep_errors, _) = create_proposal_impl(&state, session.id.clone(), options)
         .await
         .unwrap();
 
@@ -860,6 +869,7 @@ async fn test_create_gate_off_allows_any_status() {
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
+        expected_proposal_count: None,
     };
 
     let result = create_proposal_impl(&state, session.id.clone(), options).await;
@@ -890,6 +900,7 @@ async fn test_concurrent_creates_produce_unique_sort_orders() {
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
+        expected_proposal_count: None,
     };
 
     // Run 3 creates concurrently via tokio::join! (they share the same mutex-serialized DB conn)
@@ -899,9 +910,9 @@ async fn test_concurrent_creates_produce_unique_sort_orders() {
         create_proposal_impl(&state, session_id.clone(), make_options(3)),
     );
 
-    let (p1, _) = r1.expect("concurrent create 1 must succeed");
-    let (p2, _) = r2.expect("concurrent create 2 must succeed");
-    let (p3, _) = r3.expect("concurrent create 3 must succeed");
+    let (p1, _, _) = r1.expect("concurrent create 1 must succeed");
+    let (p2, _, _) = r2.expect("concurrent create 2 must succeed");
+    let (p3, _, _) = r3.expect("concurrent create 3 must succeed");
 
     // All sort_orders must be unique (no TOCTOU duplicates)
     let orders: HashSet<i32> = [p1.sort_order, p2.sort_order, p3.sort_order]
@@ -943,8 +954,9 @@ async fn test_create_with_valid_depends_on_inserts_dependency() {
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![a_id.as_str().to_string()],
+        expected_proposal_count: None,
     };
-    let (b_proposal, dep_errors) = create_proposal_impl(&state, session.id.clone(), options)
+    let (b_proposal, dep_errors, _) = create_proposal_impl(&state, session.id.clone(), options)
         .await
         .expect("create with valid dep should succeed");
 
@@ -975,8 +987,9 @@ async fn test_create_with_nonexistent_dep_partial_failure() {
         estimated_complexity: None,
         target_project: None,
         depends_on: vec!["nonexistent-proposal-id".to_string()],
+        expected_proposal_count: None,
     };
-    let (proposal, dep_errors) = create_proposal_impl(&state, session.id.clone(), options)
+    let (proposal, dep_errors, _) = create_proposal_impl(&state, session.id.clone(), options)
         .await
         .expect("proposal itself should be created despite bad dep");
 
@@ -1014,8 +1027,9 @@ async fn test_create_with_cross_session_dep_rejected() {
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![other_proposal_id.as_str().to_string()],
+        expected_proposal_count: None,
     };
-    let (_, dep_errors) = create_proposal_impl(&state, session1.id.clone(), options)
+    let (_, dep_errors, _) = create_proposal_impl(&state, session1.id.clone(), options)
         .await
         .expect("proposal itself should be created despite cross-session dep error");
 
@@ -1242,6 +1256,7 @@ async fn test_stale_plan_guard_null_passthrough() {
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
+        expected_proposal_count: None,
     };
     let result = create_proposal_impl(&state, session_id, options).await;
     assert!(
@@ -1296,6 +1311,7 @@ async fn test_stale_plan_guard_fresh_version_ok() {
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
+        expected_proposal_count: None,
     };
     let result = create_proposal_impl(&state, session_id, options).await;
     assert!(
@@ -1365,6 +1381,7 @@ async fn test_stale_plan_guard_stale_version_blocked_with_actionable_error() {
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
+        expected_proposal_count: None,
     };
     let result = create_proposal_impl(&state, session_id, options).await;
     assert!(
@@ -1415,6 +1432,7 @@ async fn test_concurrent_create_during_status_transition_no_partial_state() {
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
+        expected_proposal_count: None,
     };
 
     // Concurrently: attempt create AND change status to Reviewing
@@ -1437,7 +1455,7 @@ async fn test_concurrent_create_during_status_transition_no_partial_state() {
     // Create either succeeded (ran before transition) or failed (ran after transition)
     // — never a partial/corrupt state
     match create_result {
-        Ok((proposal, _dep_errors)) => {
+        Ok((proposal, _dep_errors, _auto_accept_triggered)) => {
             // Proposal was created; verify it's in DB (no partial write)
             let in_db = state
                 .task_proposal_repo
@@ -1458,4 +1476,314 @@ async fn test_concurrent_create_during_status_transition_no_partial_state() {
         }
         Err(other) => panic!("Unexpected error type: {:?}", other),
     }
+}
+
+// ============================================================================
+// expected_proposal_count Gating & Auto-Accept Tests — Scenarios 23-29
+// ============================================================================
+
+/// Shared helper: build CreateProposalOptions with an expected count and a title.
+fn make_proposal_options(title: &str, expected_count: Option<u32>) -> CreateProposalOptions {
+    CreateProposalOptions {
+        title: title.to_string(),
+        description: None,
+        category: ProposalCategory::Feature,
+        suggested_priority: Priority::Medium,
+        steps: None,
+        acceptance_criteria: None,
+        estimated_complexity: None,
+        target_project: None,
+        depends_on: vec![],
+        expected_proposal_count: expected_count,
+    }
+}
+
+// Scenario 23: First proposal locks expected_proposal_count on the session.
+#[tokio::test]
+async fn test_expected_count_set_on_first_proposal() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+
+    create_proposal_impl(&state, session.id.clone(), make_proposal_options("First", Some(3)))
+        .await
+        .expect("first proposal should succeed");
+
+    let updated = state
+        .ideation_session_repo
+        .get_by_id(&session.id)
+        .await
+        .unwrap()
+        .expect("session must exist");
+
+    assert_eq!(
+        updated.expected_proposal_count,
+        Some(3),
+        "expected_proposal_count must be locked to 3 after first proposal"
+    );
+}
+
+// Scenario 24: Subsequent proposal with different expected count → Validation error with mismatch message.
+#[tokio::test]
+async fn test_expected_count_mismatch_rejected() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+
+    // First proposal: locks expected=3
+    create_proposal_impl(&state, session.id.clone(), make_proposal_options("First", Some(3)))
+        .await
+        .expect("first proposal should succeed");
+
+    // Second proposal: claims expected=5 — must be rejected
+    let result = create_proposal_impl(
+        &state,
+        session.id.clone(),
+        make_proposal_options("Second", Some(5)),
+    )
+    .await;
+
+    assert!(result.is_err(), "Mismatched expected_proposal_count must be rejected");
+    match result.unwrap_err() {
+        AppError::Validation(msg) => {
+            assert!(
+                msg.contains("mismatch"),
+                "Error must contain 'mismatch', got: {msg}"
+            );
+            assert!(
+                msg.contains('3'),
+                "Error must mention stored count 3, got: {msg}"
+            );
+        }
+        other => panic!("Expected AppError::Validation, got: {other:?}"),
+    }
+}
+
+// Scenario 25: ready_to_finalize=true when active count reaches expected count.
+// Verifies the signal is returned; session remains Active (agent must call finalize_proposals).
+#[tokio::test]
+async fn test_ready_to_finalize_on_count_match() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+
+    // Proposals 1 and 2: no signal
+    for i in 1..=2 {
+        let (_, _, ready) = create_proposal_impl(
+            &state,
+            session.id.clone(),
+            make_proposal_options(&format!("Proposal {i}"), Some(3)),
+        )
+        .await
+        .expect("proposal should succeed");
+        assert!(!ready, "ready_to_finalize must be false for proposal {i} of 3");
+    }
+
+    // Proposal 3: count == expected → ready_to_finalize=true
+    let (_, _, ready) = create_proposal_impl(
+        &state,
+        session.id.clone(),
+        make_proposal_options("Proposal 3", Some(3)),
+    )
+    .await
+    .expect("third proposal should succeed");
+
+    assert!(ready, "ready_to_finalize must be true when active count == expected");
+
+    // Session must remain Active — agent drives finalize_proposals explicitly
+    let updated = state
+        .ideation_session_repo
+        .get_by_id(&session.id)
+        .await
+        .unwrap()
+        .expect("session must exist");
+
+    assert_eq!(
+        updated.status,
+        IdeationSessionStatus::Active,
+        "Session must remain Active after ready_to_finalize signal"
+    );
+    assert!(
+        updated.auto_accept_status.is_none(),
+        "auto_accept_status must not be set — fire-and-forget removed"
+    );
+}
+
+// Scenario 26: Partial proposals (crash safety) — session stays Active with null auto_accept_status.
+#[tokio::test]
+async fn test_partial_proposals_no_auto_accept() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+
+    // Create only 2 of 3 expected proposals
+    for i in 1..=2 {
+        let (_, _, triggered) = create_proposal_impl(
+            &state,
+            session.id.clone(),
+            make_proposal_options(&format!("Proposal {i}"), Some(3)),
+        )
+        .await
+        .expect("proposal should succeed");
+        assert!(!triggered, "Must not trigger after only {i} of 3 proposals");
+    }
+
+    let updated = state
+        .ideation_session_repo
+        .get_by_id(&session.id)
+        .await
+        .unwrap()
+        .expect("session must exist");
+
+    assert_eq!(
+        updated.status,
+        IdeationSessionStatus::Active,
+        "Session must remain Active with only 2 of 3 proposals"
+    );
+    assert!(
+        updated.auto_accept_status.is_none(),
+        "auto_accept_status must be null when count < expected"
+    );
+}
+
+// Scenario 27: Verification gate blocks finalize_proposals synchronously.
+// Proposals gate (require_verification_for_proposals) is off so proposals can be created.
+// Accept gate (require_verification_for_accept) is on and session is unverified → finalize fails.
+#[tokio::test]
+async fn test_finalize_blocked_by_verification_gate() {
+    let state = AppState::new_sqlite_test();
+    // Proposal creation gate disabled (gate_enabled=false) + verification_status='unverified'
+    let (session, _) = setup_session_with_gate(&state, "unverified", false).await;
+
+    // Enable require_verification_for_accept on the in-memory settings repo
+    let mut settings = state
+        .ideation_settings_repo
+        .get_settings()
+        .await
+        .expect("get settings should succeed");
+    settings.require_verification_for_accept = true;
+    state
+        .ideation_settings_repo
+        .update_settings(&settings)
+        .await
+        .expect("update settings should succeed");
+
+    // Create 3 proposals with expected=3 — last one returns ready_to_finalize=true
+    for i in 1..=3 {
+        create_proposal_impl(
+            &state,
+            session.id.clone(),
+            make_proposal_options(&format!("Proposal {i}"), Some(3)),
+        )
+        .await
+        .expect("proposal creation should succeed (proposal gate is off)");
+    }
+
+    // Explicitly call finalize_proposals — must fail with validation error
+    let result = finalize_proposals_impl(&state, session.id.as_str()).await;
+
+    assert!(result.is_err(), "finalize_proposals must fail when verification gate blocks acceptance");
+    let err = result.unwrap_err();
+    assert!(
+        matches!(err, AppError::Validation(_)),
+        "Error must be Validation, got: {err:?}"
+    );
+
+    // Session must remain Active (no state change on failure)
+    let updated = state
+        .ideation_session_repo
+        .get_by_id(&session.id)
+        .await
+        .unwrap()
+        .expect("session must exist");
+
+    assert_eq!(
+        updated.status,
+        IdeationSessionStatus::Active,
+        "Session must remain Active when finalize fails"
+    );
+}
+
+// Scenario 28: No gating when expected_proposal_count is omitted (backward compatibility).
+#[tokio::test]
+async fn test_no_gating_when_count_omitted() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+
+    let (_, _, triggered) = create_proposal_impl(
+        &state,
+        session.id.clone(),
+        make_proposal_options("Legacy Proposal", None),
+    )
+    .await
+    .expect("proposal without expected count should succeed");
+
+    assert!(!triggered, "No trigger when expected_proposal_count is omitted");
+
+    let updated = state
+        .ideation_session_repo
+        .get_by_id(&session.id)
+        .await
+        .unwrap()
+        .expect("session must exist");
+
+    assert!(
+        updated.expected_proposal_count.is_none(),
+        "expected_proposal_count must remain null when not provided"
+    );
+    assert!(
+        updated.auto_accept_status.is_none(),
+        "auto_accept_status must remain null when no gating"
+    );
+}
+
+// Scenario 29: Archived proposals are excluded from the active count.
+// Archiving a proposal reduces the active count, delaying the auto-accept trigger.
+#[tokio::test]
+async fn test_archived_proposal_not_counted() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+
+    // Create 2 proposals (active=2, expected=3 → no trigger)
+    let mut ids = vec![];
+    for i in 1..=2 {
+        let (p, _, triggered) = create_proposal_impl(
+            &state,
+            session.id.clone(),
+            make_proposal_options(&format!("Proposal {i}"), Some(3)),
+        )
+        .await
+        .expect("proposal should succeed");
+        assert!(!triggered, "Must not trigger after {i} of 3 proposals");
+        ids.push(p.id);
+    }
+
+    // Archive proposal 1 → active count drops to 1
+    archive_proposal_impl(&state, ids[0].clone())
+        .await
+        .expect("archive should succeed");
+
+    // Proposal 3: active count is 2 (1 archived) → NOT equal to expected=3, no trigger
+    let (_, _, triggered) = create_proposal_impl(
+        &state,
+        session.id.clone(),
+        make_proposal_options("Proposal 3", Some(3)),
+    )
+    .await
+    .expect("proposal 3 should succeed");
+
+    assert!(
+        !triggered,
+        "Must NOT trigger: active count is 2 (one archived), not 3"
+    );
+
+    // Proposal 4: active count is now 3 (=expected) → triggers
+    let (_, _, triggered) = create_proposal_impl(
+        &state,
+        session.id.clone(),
+        make_proposal_options("Proposal 4", Some(3)),
+    )
+    .await
+    .expect("proposal 4 should succeed");
+
+    assert!(
+        triggered,
+        "Must trigger: 3 active proposals == expected count of 3"
+    );
 }

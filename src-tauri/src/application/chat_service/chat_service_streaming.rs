@@ -477,30 +477,34 @@ pub async fn process_stream_background<R: Runtime>(
                                     lines_seen,
                                     "Stream timeout but child process alive — resetting"
                                 );
-                                if let Some(ref handle) = app_handle {
-                                    let _ = handle.emit(
-                                        "agent:heartbeat",
-                                        serde_json::json!({
-                                            "conversation_id": conversation_id_str,
-                                            "context_id": context_id,
-                                            "reason": "pid_alive_bypass",
-                                            "pid": pid,
-                                        }),
-                                    );
-                                }
+                                emit_heartbeat(
+                                    &app_handle,
+                                    &conversation_id_str,
+                                    context_id,
+                                    "pid_alive_bypass",
+                                    Some(serde_json::json!({ "pid": pid })),
+                                );
                             }
                             continue;
                         } else {
                             // Active tasks bypass: subagent tasks active (sidechain work in progress).
                             // Lead stdout goes silent while Task tool subagents work — their
                             // output goes to JSONL sidechain files, not the lead's stdout.
+                            let active_count = active_task_tracker.count();
                             tracing::info!(
                                 conversation_id = %conversation_id_str,
                                 context_id,
                                 lines_seen,
-                                active_tasks = active_task_tracker.count(),
+                                active_tasks = active_count,
                                 "Stream no output but {} active subagent task(s), resetting timeout",
-                                active_task_tracker.count()
+                                active_count
+                            );
+                            emit_heartbeat(
+                                &app_handle,
+                                &conversation_id_str,
+                                context_id,
+                                "active_tasks_bypass",
+                                Some(serde_json::json!({ "active_tasks": active_count })),
                             );
                             continue;
                         }
@@ -1551,13 +1555,21 @@ pub async fn process_stream_background<R: Runtime>(
                         "Stream parse stall but pending question exists, resetting stall timer"
                     );
                 } else if active_task_tracker.has_active_tasks() {
+                    let active_count = active_task_tracker.count();
                     tracing::info!(
                         conversation_id = %conversation_id_str,
                         context_id,
                         lines_seen,
-                        active_tasks = active_task_tracker.count(),
+                        active_tasks = active_count,
                         "Stream parse stall but {} active subagent task(s), resetting stall timer",
-                        active_task_tracker.count()
+                        active_count
+                    );
+                    emit_heartbeat(
+                        &app_handle,
+                        &conversation_id_str,
+                        context_id,
+                        "active_tasks_bypass",
+                        Some(serde_json::json!({ "active_tasks": active_count })),
                     );
                 } else {
                     // pid_alive && !child_exited
@@ -1567,18 +1579,13 @@ pub async fn process_stream_background<R: Runtime>(
                             pid,
                             "Parse stall but child process alive — resetting"
                         );
-                        // Emit synthetic heartbeat
-                        if let Some(ref handle) = app_handle {
-                            let _ = handle.emit(
-                                "agent:heartbeat",
-                                serde_json::json!({
-                                    "conversation_id": conversation_id_str,
-                                    "context_id": context_id,
-                                    "reason": "pid_alive_bypass_parse_stall",
-                                    "pid": pid,
-                                }),
-                            );
-                        }
+                        emit_heartbeat(
+                            &app_handle,
+                            &conversation_id_str,
+                            context_id,
+                            "pid_alive_bypass_parse_stall",
+                            Some(serde_json::json!({ "pid": pid })),
+                        );
                     }
                 }
                 // CRITICAL: reset last_parsed_at to prevent hot spin loop
@@ -1833,4 +1840,32 @@ pub fn should_kill_on_timeout(
     }
     // 6. Default: kill
     true
+}
+
+/// Emit an `agent:heartbeat` event to the frontend.
+///
+/// Used by all timeout-bypass sites (PID-alive and active_tasks) to prevent
+/// the frontend watchdog from false-positive stall detection.
+fn emit_heartbeat<R: Runtime>(
+    app_handle: &Option<AppHandle<R>>,
+    conversation_id: &str,
+    context_id: &str,
+    reason: &str,
+    extra: Option<serde_json::Value>,
+) {
+    if let Some(ref handle) = app_handle {
+        let mut payload = serde_json::json!({
+            "conversation_id": conversation_id,
+            "context_id": context_id,
+            "reason": reason,
+        });
+        if let Some(extra_fields) = extra {
+            if let (Some(obj), Some(extra_obj)) = (payload.as_object_mut(), extra_fields.as_object()) {
+                for (k, v) in extra_obj {
+                    obj.insert(k.clone(), v.clone());
+                }
+            }
+        }
+        let _ = handle.emit("agent:heartbeat", payload);
+    }
 }

@@ -6,7 +6,8 @@ tools:
   - Glob
   - Bash
   - Grep
-  - "mcp__ralphx__*"
+  - mcp__ralphx__save_project_analysis
+  - mcp__ralphx__get_project_analysis
 mcpServers:
   - ralphx:
       type: stdio

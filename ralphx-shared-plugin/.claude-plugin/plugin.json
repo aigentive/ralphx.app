@@ -1,0 +1,6 @@
+{
+  "name": "ralphx-shared-plugin",
+  "version": "1.0.0",
+  "description": "Behavioral skills for autonomous agents interacting with RalphX pipelines",
+  "author": { "name": "RalphX" }
+}

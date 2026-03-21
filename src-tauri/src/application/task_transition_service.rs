@@ -32,8 +32,9 @@ use crate::domain::repositories::{
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::{
     AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStartResult, ReviewStarter,
-    TaskScheduler,
+    TaskScheduler, WebhookPublisher,
 };
+use ralphx_domain::entities::EventType;
 use crate::domain::state_machine::transition_handler::metadata_builder::{
     build_stop_metadata, build_trigger_origin_metadata, MetadataUpdate,
 };
@@ -56,6 +57,8 @@ pub struct TauriEventEmitter<R: Runtime = tauri::Wry> {
     external_events_repo: Option<Arc<dyn ExternalEventsRepository>>,
     /// Optional task repo for resolving project_id during dual-emit.
     task_repo_for_emit: Option<Arc<dyn TaskRepository>>,
+    /// Optional webhook publisher for triple-emit (Tauri + DB + webhooks).
+    webhook_publisher: Option<Arc<dyn WebhookPublisher>>,
 }
 
 impl<R: Runtime> TauriEventEmitter<R> {
@@ -64,6 +67,7 @@ impl<R: Runtime> TauriEventEmitter<R> {
             app_handle,
             external_events_repo: None,
             task_repo_for_emit: None,
+            webhook_publisher: None,
         }
     }
 
@@ -75,6 +79,12 @@ impl<R: Runtime> TauriEventEmitter<R> {
     ) -> Self {
         self.external_events_repo = Some(external_events_repo);
         self.task_repo_for_emit = Some(task_repo);
+        self
+    }
+
+    /// Attach webhook publisher for triple-emit (Tauri + DB + webhooks).
+    pub fn with_webhook_publisher(mut self, publisher: Arc<dyn WebhookPublisher>) -> Self {
+        self.webhook_publisher = Some(publisher);
         self
     }
 
@@ -174,6 +184,26 @@ impl<R: Runtime> EventEmitter for TauriEventEmitter<R> {
         }
         // Dual-emit: write to external_events table for external consumers.
         self.write_external_event(task_id, old_status, new_status).await;
+
+        // Triple-emit: push via webhook publisher if configured.
+        if let Some(ref publisher) = self.webhook_publisher {
+            if let Some(ref task_repo) = self.task_repo_for_emit {
+                let tid = crate::domain::entities::TaskId::from_string(task_id.to_string());
+                if let Ok(Some(task)) = task_repo.get_by_id(&tid).await {
+                    let project_id = task.project_id.to_string();
+                    let webhook_payload = serde_json::json!({
+                        "task_id": task_id,
+                        "project_id": project_id,
+                        "old_status": old_status,
+                        "new_status": new_status,
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                    });
+                    publisher
+                        .publish(EventType::TaskStatusChanged, &project_id, webhook_payload)
+                        .await;
+                }
+            }
+        }
     }
 }
 
@@ -613,6 +643,11 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     /// None disables PR-mode merge path.
     github_service: Option<Arc<dyn crate::domain::services::GithubServiceTrait>>,
 
+    /// Webhook publisher for triple-emit (Tauri + DB + webhooks).
+    /// Set via with_webhook_publisher_for_emitter(). Propagated to TaskServices
+    /// via build_task_services_common() and to TauriEventEmitter via with_external_events_repo().
+    webhook_publisher: Option<Arc<dyn WebhookPublisher>>,
+
     /// Self-referential Arc for passing to TaskServices (PR merge poller pattern).
     /// Set via `set_self_arc()` after Arc-wrapping. Uses Mutex + Any for runtime-generic storage.
     /// Used so `on_enter(Merging)` can pass `Arc<TaskTransitionService<Wry>>` to start_polling.
@@ -717,6 +752,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             validation_tokens: Arc::new(dashmap::DashMap::new()),
             pr_poller_registry: None,
             github_service: None,
+            webhook_publisher: None,
             self_arc: std::sync::Mutex::new(None),
         }
     }
@@ -787,11 +823,15 @@ impl<R: Runtime> TaskTransitionService<R> {
         mut self,
         repo: Arc<dyn ExternalEventsRepository>,
     ) -> Self {
-        // Rebuild the event emitter with the external events repo + task repo.
-        self.event_emitter = Arc::new(
-            TauriEventEmitter::new(self._app_handle.clone())
-                .with_external_events(Arc::clone(&repo), Arc::clone(&self.task_repo)),
-        );
+        // Rebuild the event emitter with external events + optional webhook publisher.
+        let emitter = TauriEventEmitter::new(self._app_handle.clone())
+            .with_external_events(Arc::clone(&repo), Arc::clone(&self.task_repo));
+        let emitter = if let Some(ref pub_) = self.webhook_publisher {
+            emitter.with_webhook_publisher(Arc::clone(pub_))
+        } else {
+            emitter
+        };
+        self.event_emitter = Arc::new(emitter);
         self.external_events_repo = Some(repo);
         self
     }
@@ -811,6 +851,15 @@ impl<R: Runtime> TaskTransitionService<R> {
         svc: Arc<dyn crate::domain::services::GithubServiceTrait>,
     ) -> Self {
         self.github_service = Some(svc);
+        self
+    }
+
+    /// Attach webhook publisher for triple-emit (builder pattern).
+    ///
+    /// Must be called BEFORE `with_external_events_repo()` — that method reads
+    /// this field when rebuilding the event emitter.
+    pub fn with_webhook_publisher_for_emitter(mut self, publisher: Arc<dyn WebhookPublisher>) -> Self {
+        self.webhook_publisher = Some(publisher);
         self
     }
 
@@ -1054,6 +1103,9 @@ impl<R: Runtime> TaskTransitionService<R> {
         }
         if let Some(ref svc) = self.github_service {
             services = services.with_github_service(Arc::clone(svc));
+        }
+        if let Some(ref publisher) = self.webhook_publisher {
+            services = services.with_webhook_publisher(Arc::clone(publisher));
         }
         services
     }
@@ -1436,6 +1488,67 @@ impl<R: Runtime> TaskTransitionService<R> {
 
                     // Clean up the auto-transition target state using dynamically-determined target
                     handler.on_exit(&auto_state, &target_state).await;
+
+                    // L1: When routing back to PendingReview (reviewing_origin path), restore
+                    // worktree_path from merge-prefixed path back to the task execution worktree.
+                    // apply_corrective_transition re-fetches the task and preserves worktree_path,
+                    // so we must persist the restored path BEFORE the corrective transition.
+                    if reviewing_origin {
+                        if let Ok(Some(mut task)) = self.task_repo.get_by_id(task_id).await {
+                            let needs_restore = task
+                                .worktree_path
+                                .as_deref()
+                                .map(crate::domain::state_machine::transition_handler::is_merge_worktree_path)
+                                .unwrap_or(false);
+                            if needs_restore {
+                                match self.project_repo.get_by_id(&task.project_id).await {
+                                    Ok(Some(project)) => {
+                                        let repo_path = std::path::Path::new(&project.working_directory);
+                                        match crate::domain::state_machine::transition_handler::restore_task_worktree(
+                                            &mut task, &project, repo_path,
+                                        )
+                                        .await
+                                        {
+                                            Ok(restored) => {
+                                                tracing::info!(
+                                                    task_id = task_id.as_str(),
+                                                    restored_path = %restored.display(),
+                                                    "L1: restored worktree_path on Merging→PendingReview transition"
+                                                );
+                                                if let Err(e) = self.task_repo.update(&task).await {
+                                                    tracing::warn!(
+                                                        task_id = task_id.as_str(),
+                                                        error = %e,
+                                                        "L1: failed to persist restored worktree_path"
+                                                    );
+                                                }
+                                            }
+                                            Err(e) => {
+                                                tracing::warn!(
+                                                    task_id = task_id.as_str(),
+                                                    error = %e,
+                                                    "L1: failed to restore task worktree on Merging→PendingReview"
+                                                );
+                                            }
+                                        }
+                                    }
+                                    Ok(None) => {
+                                        tracing::warn!(
+                                            task_id = task_id.as_str(),
+                                            "L1: project not found for worktree restoration"
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            task_id = task_id.as_str(),
+                                            error = %e,
+                                            "L1: failed to fetch project for worktree restoration"
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     if let Some(result) = self
                         .apply_corrective_transition(

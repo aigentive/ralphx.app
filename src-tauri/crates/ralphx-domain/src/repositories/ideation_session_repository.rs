@@ -5,6 +5,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use rusqlite::Connection;
 
 use crate::domain::entities::{
     IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, VerificationMetadata,
@@ -238,6 +239,111 @@ pub trait IdeationSessionRepository: Send + Sync {
         offset: u32,
         limit: u32,
     ) -> AppResult<(Vec<IdeationSessionWithProgress>, u32)>;
+
+    /// Set expected_proposal_count on a session (set-once: fails if already set to a different value).
+    /// MUST be called inside a BEGIN IMMEDIATE transaction via `db.run_transaction()`.
+    /// Sync variant for use inside `db.run()` closures.
+    fn set_expected_proposal_count_sync(
+        conn: &Connection,
+        session_id: &str,
+        count: u32,
+    ) -> AppResult<()>
+    where
+        Self: Sized;
+
+    /// Set auto_accept_status and optionally auto_accept_started_at on a session.
+    /// status: "pending" | "success" | "failed"
+    /// If error_reason is Some, it is stored as a JSON field in auto_accept_status (caller formats).
+    async fn set_auto_accept_status(
+        &self,
+        session_id: &str,
+        status: &str,
+        auto_accept_started_at: Option<String>,
+    ) -> AppResult<()>;
+
+    /// Count non-archived proposals for a session (sync for use inside `db.run()` closures).
+    /// WHERE session_id = ? AND status != 'archived'
+    /// Do NOT use this for sort_order assignment — use the existing count_by_session_sync instead.
+    fn count_active_by_session_sync(
+        conn: &Connection,
+        session_id: &str,
+    ) -> AppResult<i64>
+    where
+        Self: Sized;
+
+    /// Get a session by idempotency key + api_key_id combination.
+    /// Returns None if no session found with that key for the given API key.
+    async fn get_by_idempotency_key(
+        &self,
+        api_key_id: &str,
+        idempotency_key: &str,
+    ) -> AppResult<Option<IdeationSession>>;
+
+    /// Update the external_activity_phase for a session.
+    async fn update_external_activity_phase(
+        &self,
+        id: &IdeationSessionId,
+        phase: &str,
+    ) -> AppResult<()>;
+
+    /// Update the external_last_read_message_id cursor for a session.
+    /// Called when an external agent fetches messages, to track read position.
+    async fn update_external_last_read_message_id(
+        &self,
+        id: &IdeationSessionId,
+        message_id: &str,
+    ) -> AppResult<()>;
+
+    /// List active external sessions for a project (origin = 'external', status = 'active').
+    /// Used for Jaccard dedup check and existing-session awareness in start_ideation.
+    async fn list_active_external_by_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>>;
+
+    /// List active external sessions eligible for stale archival reconciliation.
+    ///
+    /// Returns sessions where:
+    /// - origin = 'external'
+    /// - status = 'active'
+    /// - external_activity_phase IN ('created', 'error')
+    /// - created_at < stale_before (if Some; if None, no TTL filter — startup scan)
+    ///
+    /// Ordered by created_at ASC.
+    async fn list_active_external_sessions_for_archival(
+        &self,
+        stale_before: Option<DateTime<Utc>>,
+    ) -> AppResult<Vec<IdeationSession>>;
+
+    /// List external sessions that appear stalled (no recent activity).
+    ///
+    /// Returns sessions where:
+    /// - origin = 'external'
+    /// - status = 'active'
+    /// - external_activity_phase IS NOT NULL AND external_activity_phase NOT IN ('error', 'stalled')
+    /// - updated_at < stalled_before
+    ///
+    /// Ordered by updated_at ASC.
+    async fn list_stalled_external_sessions(
+        &self,
+        stalled_before: DateTime<Utc>,
+    ) -> AppResult<Vec<IdeationSession>>;
+
+    /// Mark dependencies as acknowledged for a session.
+    /// Sets `dependencies_acknowledged = true` and updates `updated_at`.
+    async fn set_dependencies_acknowledged(&self, session_id: &str) -> AppResult<()>;
+
+    /// Reset all acceptance-cycle fields so the session can be re-accepted cleanly.
+    ///
+    /// Sets:
+    /// - `expected_proposal_count = NULL`
+    /// - `dependencies_acknowledged = 0`
+    /// - `auto_accept_status = NULL`
+    /// - `auto_accept_started_at = NULL`
+    /// - `cross_project_checked = 0`
+    ///
+    /// Called by `SessionReopenService` before resetting status to Active.
+    async fn reset_acceptance_cycle_fields(&self, session_id: &str) -> AppResult<()>;
 }
 
 #[cfg(test)]

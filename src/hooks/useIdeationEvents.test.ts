@@ -10,6 +10,20 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
 // ============================================================================
+// Hoisted mocks (must run before vi.mock factories)
+// ============================================================================
+
+const chatStoreMocks = vi.hoisted(() => ({
+  setAgentStatus: vi.fn(),
+  updateLastAgentEvent: vi.fn(),
+}));
+
+const ideationStoreMocks = vi.hoisted(() => ({
+  setVerificationNotification: vi.fn(),
+  setActiveVerificationChildId: vi.fn(),
+}));
+
+// ============================================================================
 // Mock infrastructure
 // ============================================================================
 
@@ -50,19 +64,42 @@ vi.mock("@tanstack/react-query", () => ({
 }));
 
 vi.mock("@/stores/ideationStore", () => ({
-  useIdeationStore: (selector: (s: { updateSession: ReturnType<typeof vi.fn> }) => unknown) =>
-    selector({ updateSession: vi.fn() }),
+  useIdeationStore: (selector: (s: object) => unknown) =>
+    selector({
+      updateSession: vi.fn(),
+      setVerificationNotification: ideationStoreMocks.setVerificationNotification,
+      setActiveVerificationChildId: ideationStoreMocks.setActiveVerificationChildId,
+    }),
+}));
+
+vi.mock("@/stores/chatStore", () => ({
+  useChatStore: Object.assign(vi.fn(), {
+    getState: () => chatStoreMocks,
+  }),
 }));
 
 vi.mock("@/hooks/useIdeation", () => ({
   ideationKeys: {
     sessions: () => ["sessions"],
+    sessionWithData: (sessionId: string) => ["sessions", "detail", sessionId, "with-data"],
   },
 }));
 
 vi.mock("@/hooks/useDependencyGraph", () => ({
   dependencyKeys: {
     graphs: () => ["dependency-graphs"],
+  },
+}));
+
+vi.mock("@/hooks/useTasks", () => ({
+  taskKeys: {
+    all: ["tasks"],
+  },
+}));
+
+vi.mock("@/hooks/useProposals", () => ({
+  proposalKeys: {
+    list: (sessionId: string) => ["proposals", "list", sessionId],
   },
 }));
 
@@ -110,5 +147,100 @@ describe("useIdeationEvents — ideation:session_created", () => {
     expect(mockInvalidateQueries).not.toHaveBeenCalledWith({ queryKey: ["sessions"] });
 
     consoleError.mockRestore();
+  });
+});
+
+describe("useIdeationEvents — ideation:session_accepted", () => {
+  beforeEach(() => {
+    subscriptions.clear();
+    mockInvalidateQueries.mockClear();
+  });
+
+  it("(1) valid payload invalidates sessions, sessionWithData, tasks, proposals, and plan-branch", () => {
+    renderHook(() => useIdeationEvents());
+
+    act(() => {
+      fireEvent("ideation:session_accepted", { sessionId: "sess-123", projectId: "proj-456" });
+    });
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ["sessions"] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["sessions", "detail", "sess-123", "with-data"],
+    });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ["tasks"] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["proposals", "list", "sess-123"],
+    });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ["plan-branch"] });
+  });
+
+  it("(2) malformed payload (missing sessionId) rejected by Zod without crash", () => {
+    renderHook(() => useIdeationEvents());
+
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    act(() => {
+      fireEvent("ideation:session_accepted", { projectId: "proj-456" });
+    });
+
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining("Invalid ideation:session_accepted event:"),
+      expect.any(String)
+    );
+    expect(mockInvalidateQueries).not.toHaveBeenCalled();
+
+    consoleError.mockRestore();
+  });
+});
+
+// ============================================================================
+// Tests — parent synthetic status during verification child session
+// ============================================================================
+
+describe("useIdeationEvents — parent synthetic status during verification", () => {
+  beforeEach(() => {
+    subscriptions.clear();
+    mockInvalidateQueries.mockClear();
+    chatStoreMocks.setAgentStatus.mockClear();
+    chatStoreMocks.updateLastAgentEvent.mockClear();
+    ideationStoreMocks.setVerificationNotification.mockClear();
+    ideationStoreMocks.setActiveVerificationChildId.mockClear();
+  });
+
+  it("(3) ideation:child_session_created with purpose=verification sets parent agentStatus to 'generating'", () => {
+    renderHook(() => useIdeationEvents());
+
+    act(() => {
+      fireEvent("ideation:child_session_created", {
+        sessionId: "child-session-123",
+        parentSessionId: "parent-session-456",
+        title: "Verification Session",
+        purpose: "verification",
+      });
+    });
+
+    expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith(
+      "session:parent-session-456",
+      "generating"
+    );
+    expect(chatStoreMocks.updateLastAgentEvent).toHaveBeenCalledWith(
+      "session:parent-session-456"
+    );
+  });
+
+  it("(4) non-verification child session does NOT set parent agentStatus", () => {
+    renderHook(() => useIdeationEvents());
+
+    act(() => {
+      fireEvent("ideation:child_session_created", {
+        sessionId: "child-session-789",
+        parentSessionId: "parent-session-456",
+        title: "Follow-up Session",
+        purpose: "general",
+      });
+    });
+
+    expect(chatStoreMocks.setAgentStatus).not.toHaveBeenCalled();
+    expect(chatStoreMocks.updateLastAgentEvent).not.toHaveBeenCalled();
   });
 });

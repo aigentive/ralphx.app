@@ -10,10 +10,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { IntegratedChatPanel } from "./IntegratedChatPanel";
+import { PreviousRunBanner } from "./IntegratedChatPanel.components";
+import { chatApi } from "@/api/chat";
 import { useChatStore } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
 
@@ -643,6 +645,148 @@ describe("IntegratedChatPanel", () => {
       expect(html.indexOf("Aaa response")).toBeGreaterThanOrEqual(0);
       expect(html.indexOf("Zzz response")).toBeGreaterThanOrEqual(0);
       expect(html.indexOf("Aaa response")).toBeLessThan(html.indexOf("Zzz response"));
+    });
+  });
+});
+
+// ============================================================================
+// PreviousRunBanner unit tests
+// ============================================================================
+
+describe("PreviousRunBanner", () => {
+  describe("status label text", () => {
+    it("shows 'completed' label when agentRunStatus is 'completed'", () => {
+      render(<PreviousRunBanner agentRunStatus="completed" contextType="execution" />);
+      expect(screen.getByTestId("previous-run-banner")).toHaveTextContent("completed");
+    });
+
+    it("shows 'failed' label when agentRunStatus is 'failed'", () => {
+      render(<PreviousRunBanner agentRunStatus="failed" contextType="execution" />);
+      expect(screen.getByTestId("previous-run-banner")).toHaveTextContent("failed");
+    });
+
+    it("shows 'cancelled' label when agentRunStatus is 'cancelled'", () => {
+      render(<PreviousRunBanner agentRunStatus="cancelled" contextType="execution" />);
+      expect(screen.getByTestId("previous-run-banner")).toHaveTextContent("cancelled");
+    });
+
+    it("shows 'in progress' label when agentRunStatus is 'running' (safety fallback)", () => {
+      render(<PreviousRunBanner agentRunStatus="running" contextType="execution" />);
+      expect(screen.getByTestId("previous-run-banner")).toHaveTextContent("in progress");
+    });
+
+    it("shows 'completed' label when agentRunStatus is null", () => {
+      render(<PreviousRunBanner agentRunStatus={null} contextType="execution" />);
+      expect(screen.getByTestId("previous-run-banner")).toHaveTextContent("completed");
+    });
+  });
+
+  describe("context type label", () => {
+    it("shows 'worker' for contextType 'execution'", () => {
+      render(<PreviousRunBanner agentRunStatus="completed" contextType="execution" />);
+      expect(screen.getByTestId("previous-run-banner")).toHaveTextContent("worker");
+    });
+
+    it("shows 'reviewer' for contextType 'review'", () => {
+      render(<PreviousRunBanner agentRunStatus="completed" contextType="review" />);
+      expect(screen.getByTestId("previous-run-banner")).toHaveTextContent("reviewer");
+    });
+
+    it("shows 'merge agent' for contextType 'merge'", () => {
+      render(<PreviousRunBanner agentRunStatus="completed" contextType="merge" />);
+      expect(screen.getByTestId("previous-run-banner")).toHaveTextContent("merge agent");
+    });
+  });
+});
+
+// ============================================================================
+// PreviousRunBanner visibility integration tests
+// ============================================================================
+
+describe("PreviousRunBanner visibility in IntegratedChatPanel", () => {
+  const agentRunMessage = {
+    id: "msg-1",
+    role: "user",
+    content: "Hello",
+    createdAt: new Date(2026, 0, 1, 12, 0).toISOString(),
+    toolCalls: null,
+    contentBlocks: null,
+  };
+
+  beforeEach(() => {
+    // Set execution mode via task status — makes isAgentContext = true
+    mockTasks = [{ id: "task-1", internalStatus: "executing" }];
+    // Enable agentRunQuery by providing active conversation
+    mockChatPanelContext.activeConversationId = "conv-1";
+    // Provide messages so sortedMessages.length > 0
+    useChatMockState.messages = [agentRunMessage];
+    // task_execution contextType satisfies the "task" + "task_execution" special case in isConversationInCurrentContext
+    useChatMockState.conversation = { contextType: "task_execution", contextId: "task-1" };
+    useChatMockState.conversations = [{ id: "conv-1" }];
+    // Reset agentRunStatus mock to null (no status) for each test
+    vi.mocked(chatApi.getAgentRunStatus).mockResolvedValue(null);
+  });
+
+  it("does NOT show banner when backend agentRunStatus is 'running' (agentStatus idle)", async () => {
+    vi.mocked(chatApi.getAgentRunStatus).mockResolvedValue({ id: "run-1", status: "running", errorMessage: null });
+
+    render(
+      <TestWrapper>
+        <IntegratedChatPanel projectId="project-1" />
+      </TestWrapper>
+    );
+
+    // Wait for query to resolve and banner to be removed (initially shows because data=undefined)
+    await waitFor(() => {
+      expect(screen.queryByTestId("previous-run-banner")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows banner with 'completed' label when backend agentRunStatus is 'completed' (agentStatus idle)", async () => {
+    vi.mocked(chatApi.getAgentRunStatus).mockResolvedValue({ id: "run-1", status: "completed", errorMessage: null });
+
+    render(
+      <TestWrapper>
+        <IntegratedChatPanel projectId="project-1" />
+      </TestWrapper>
+    );
+
+    // Wait for query to resolve and banner to show correct label
+    await waitFor(() => {
+      expect(vi.mocked(chatApi.getAgentRunStatus)).toHaveBeenCalledWith("conv-1");
+    });
+
+    expect(screen.getByTestId("previous-run-banner")).toBeInTheDocument();
+    expect(screen.getByTestId("previous-run-banner")).toHaveTextContent("completed");
+  });
+
+  it("shows banner with 'failed' label when backend agentRunStatus is 'failed'", async () => {
+    vi.mocked(chatApi.getAgentRunStatus).mockResolvedValue({ id: "run-1", status: "failed", errorMessage: "execution error" });
+
+    render(
+      <TestWrapper>
+        <IntegratedChatPanel projectId="project-1" />
+      </TestWrapper>
+    );
+
+    // Wait for query to resolve and label to update from default "completed" to "failed"
+    await waitFor(() => {
+      expect(screen.getByTestId("previous-run-banner")).toHaveTextContent("failed");
+    });
+  });
+
+  it("shows banner with 'cancelled' label when backend agentRunStatus is 'cancelled'", async () => {
+    vi.mocked(chatApi.getAgentRunStatus).mockResolvedValue({ id: "run-1", status: "cancelled", errorMessage: null });
+
+    render(
+      <TestWrapper>
+        <IntegratedChatPanel projectId="project-1" />
+      </TestWrapper>
+    );
+
+    // Wait for query to resolve and label to update from default "completed" to "cancelled"
+    await waitFor(() => {
+      expect(screen.getByTestId("previous-run-banner")).toHaveTextContent("cancelled");
     });
   });
 });

@@ -8,12 +8,25 @@ import type { ApiKeyContext } from "../types.js";
 export interface StartIdeationInput {
     projectId: string;
     prompt: string;
+    idempotencyKey?: string;
 }
 export interface StartIdeationResult {
     sessionId: string;
     status: "started" | "blocked";
     agentSpawned: boolean;
     agentSpawnBlockedReason?: string;
+    existingActiveSessions?: Array<{
+        sessionId: string;
+        title?: string;
+        status: string;
+        createdAt: string;
+        externalActivityPhase?: string;
+    }>;
+    exists?: boolean;
+    duplicateDetected?: boolean;
+    similarityScore?: number;
+    nextAction?: string;
+    hint?: string;
 }
 /**
  * Start an ideation session on the backend and return session_id + status.

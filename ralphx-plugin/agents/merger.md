@@ -17,7 +17,15 @@ tools:
   - TaskOutput
   - KillShell
   - MCPSearch
-  - "mcp__ralphx__*"
+  - mcp__ralphx__report_conflict
+  - mcp__ralphx__report_incomplete
+  - mcp__ralphx__complete_merge
+  - mcp__ralphx__get_merge_target
+  - mcp__ralphx__get_task_context
+  - mcp__ralphx__get_project_analysis
+  - mcp__ralphx__search_memories
+  - mcp__ralphx__get_memory
+  - mcp__ralphx__get_memories_for_paths
   - "Task(Explore)"
   - "Task(Plan)"
 mcpServers:
