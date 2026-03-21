@@ -422,4 +422,111 @@ describe("StatusActivityBadge", () => {
     expect(screen.queryByText("Verifying...")).toBeNull();
     expect(screen.getByText("Agent responding...")).toBeDefined();
   });
+
+  // --------------------------------------------------------------------------
+  // Post-stream "Completing..." label
+  // --------------------------------------------------------------------------
+
+  it("shows 'Completing merge...' when generating with no events for >3s in merge context", () => {
+    const storeKey = "merge:task-123";
+    setLastEvent(storeKey, 4_000); // 4 seconds ago — past the 3s threshold
+
+    render(
+      <StatusActivityBadge
+        {...baseProps}
+        contextType="merge"
+        contextId="task-123"
+        storeKey={storeKey}
+      />
+    );
+
+    expect(screen.getByText("Completing merge...")).toBeDefined();
+  });
+
+  it("shows 'Completing review...' when generating with no events for >3s in review context", () => {
+    const storeKey = "review:task-123";
+    setLastEvent(storeKey, 5_000); // 5 seconds ago
+
+    render(
+      <StatusActivityBadge
+        {...baseProps}
+        contextType="review"
+        contextId="task-123"
+        storeKey={storeKey}
+      />
+    );
+
+    expect(screen.getByText("Completing review...")).toBeDefined();
+  });
+
+  it("does not show 'Completing...' when last event is within 3s for merge context", () => {
+    const storeKey = "merge:task-123";
+    setLastEvent(storeKey, 1_000); // 1 second ago — within threshold
+
+    render(
+      <StatusActivityBadge
+        {...baseProps}
+        contextType="merge"
+        contextId="task-123"
+        storeKey={storeKey}
+      />
+    );
+
+    expect(screen.queryByText(/Completing/)).toBeNull();
+    expect(screen.getByText("Agent responding...")).toBeDefined();
+  });
+
+  it("does not show 'Completing...' for task_execution context even after 3s", () => {
+    const storeKey = "task_execution:task-123";
+    setLastEvent(storeKey, 4_000); // 4 seconds ago
+
+    render(<StatusActivityBadge {...baseProps} storeKey={storeKey} />);
+
+    expect(screen.queryByText(/Completing/)).toBeNull();
+    expect(screen.getByText("Agent responding...")).toBeDefined();
+  });
+
+  it("prefers 'Tool active' over 'Completing merge...' when tool calls are active", () => {
+    const storeKey = "merge:task-123";
+    setLastEvent(storeKey, 4_000);
+    setToolCallActive(storeKey, "tool-1");
+
+    render(
+      <StatusActivityBadge
+        {...baseProps}
+        contextType="merge"
+        contextId="task-123"
+        storeKey={storeKey}
+      />
+    );
+
+    expect(screen.getByText("Tool active")).toBeDefined();
+    expect(screen.queryByText(/Completing/)).toBeNull();
+  });
+
+  it("transitions to 'Completing merge...' after 3s timer fires", () => {
+    const storeKey = "merge:task-123";
+    // Set event to "just now"
+    mockLastAgentEventTimestamp[storeKey] = Date.now();
+
+    render(
+      <StatusActivityBadge
+        {...baseProps}
+        contextType="merge"
+        contextId="task-123"
+        storeKey={storeKey}
+      />
+    );
+
+    // Before threshold: still shows normal label
+    expect(screen.queryByText(/Completing/)).toBeNull();
+
+    // Advance time past the 3s threshold
+    act(() => {
+      mockLastAgentEventTimestamp[storeKey] -= 3_500;
+      vi.advanceTimersByTime(3_500);
+    });
+
+    expect(screen.getByText("Completing merge...")).toBeDefined();
+  });
 });

@@ -972,20 +972,6 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     )
     .await;
 
-    // Emit error event
-    if let Some(ref handle) = app_handle {
-        let _ = handle.emit(
-            "agent:error",
-            AgentErrorPayload {
-                conversation_id: Some(conversation_id.as_str().to_string()),
-                context_type: context_type.to_string(),
-                context_id: context_id.to_string(),
-                error: redacted_error.clone(),
-                stderr: Some(redacted_error.clone()),
-            },
-        );
-    }
-
     // For worker execution failures, transition task out of active execution
     // Use StreamError::suggested_task_status() for precise transition when available
     // For ProviderErrors, store metadata and pause instead of failing
@@ -1641,6 +1627,22 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
             "agent_error",
         )
         .await;
+    }
+
+    // Emit error event AFTER all state transitions are complete so the UI reflects
+    // the final task state (Failed/Escalated/etc.) rather than showing idle while
+    // the backend is still processing the error state change.
+    if let Some(ref handle) = app_handle {
+        let _ = handle.emit(
+            "agent:error",
+            AgentErrorPayload {
+                conversation_id: Some(conversation_id.as_str().to_string()),
+                context_type: context_type.to_string(),
+                context_id: context_id.to_string(),
+                error: redacted_error.clone(),
+                stderr: Some(redacted_error.clone()),
+            },
+        );
     }
 
     false // Normal error handling performed, no retry spawned

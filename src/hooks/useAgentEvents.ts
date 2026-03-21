@@ -95,6 +95,17 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
     // the child session running. Normal termination events must not clear it prematurely.
     // Uses getState() pattern (not closure-captured values) matching watchdog at line 438.
     function guardedTermination(storeKey: string, eventContextId: string, conversationId: string) {
+      // Conversation ID validation: ignore stale run_completed/stopped/error events from
+      // previous conversations. Fail-open when activeConvId is null (unmounted panels)
+      // to prevent stuck generating states.
+      const activeConvId = useChatStore.getState().activeConversationIds[storeKey];
+      if (activeConvId != null && conversationId !== activeConvId) {
+        logger.warn(
+          `[AgentEvents] Ignoring stale termination event: conversation_id=${conversationId} does not match active=${activeConvId} for key=${storeKey}`
+        );
+        return;
+      }
+
       const parsed = parseStoreKey(storeKey);
       if (parsed?.contextType === "ideation") {
         const activeChildId = useIdeationStore.getState().activeVerificationChildId[parsed.contextId];

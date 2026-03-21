@@ -515,9 +515,9 @@ function ChatPanelContent({ context }: ChatPanelProps) {
                   ? "agent"
                   : "idle" as AgentType
             }
-            contextType={context.view}
+            contextType={contextType}
             contextId={
-              context.view === "ideation" && context.ideationSessionId
+              contextType === "ideation" && context.ideationSessionId
                 ? context.ideationSessionId
                 : context.selectedTaskId || null
             }

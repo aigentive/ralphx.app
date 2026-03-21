@@ -725,6 +725,10 @@ describe("PreviousRunBanner visibility in IntegratedChatPanel", () => {
     useChatMockState.conversations = [{ id: "conv-1" }];
     // Reset agentRunStatus mock to null (no status) for each test
     vi.mocked(chatApi.getAgentRunStatus).mockResolvedValue(null);
+    // Seed lastAgentEventTimestamp >10s ago so isRecentlyActive = false and banner can show
+    useChatStore.setState((state) => {
+      state.lastAgentEventTimestamp["task:task-1"] = Date.now() - 30_000;
+    });
   });
 
   it("does NOT show banner when backend agentRunStatus is 'running' (agentStatus idle)", async () => {

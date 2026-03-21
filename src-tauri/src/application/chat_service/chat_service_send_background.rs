@@ -198,6 +198,24 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
         tracing::debug!("send_background start");
         let event_ctx = event_context(&conversation_id, &context_type, &context_id);
 
+        // Clone completion signal EARLY for Merge/Review contexts.
+        // The HTTP handlers (complete_merge, complete_review) call notify_one() then remove()
+        // the IPR entry while the agent is still running. We must clone the Arc<Notify> now,
+        // before the stream starts, so the deferral select! at the end of this function can
+        // still await the signal even after the HTTP handler removes the IPR entry.
+        let completion_signal: Option<Arc<tokio::sync::Notify>> =
+            if matches!(context_type, ChatContextType::Merge | ChatContextType::Review) {
+                if let Some(ref registry) = interactive_process_registry {
+                    let ipr_key =
+                        InteractiveProcessKey::new(context_type.to_string(), &context_id);
+                    registry.get_completion_signal(&ipr_key).await
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
         // Pre-spawn cleanup: disband any stale teams for this context before the new run.
         // Handles mode-switch (team → solo) and crash-recovery re-execution scenarios.
         if let Some(ref service) = team_service {
@@ -675,6 +693,37 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     );
 
                     if will_emit_run_completed {
+                        // Defer run_completed for merge/review until the HTTP handler signals
+                        // completion (or 15s timeout). This prevents the premature "previous run"
+                        // banner while branch cleanup and notifications are still in progress.
+                        if outcome.silent_interactive_exit
+                            && matches!(context_type, ChatContextType::Merge | ChatContextType::Review)
+                        {
+                            if let Some(ref signal) = completion_signal {
+                                tracing::info!(
+                                    context_type = %context_type,
+                                    context_id = %context_id,
+                                    "[LIFECYCLE] Deferring run_completed: awaiting CompletionSignal from HTTP handler (15s max)"
+                                );
+                                tokio::select! {
+                                    _ = signal.notified() => {
+                                        tracing::info!(
+                                            context_type = %context_type,
+                                            context_id = %context_id,
+                                            "[LIFECYCLE] CompletionSignal received — emitting run_completed"
+                                        );
+                                    }
+                                    _ = tokio::time::sleep(std::time::Duration::from_secs(15)) => {
+                                        tracing::warn!(
+                                            context_type = %context_type,
+                                            context_id = %context_id,
+                                            "[LIFECYCLE] CompletionSignal timeout (15s) — emitting run_completed anyway"
+                                        );
+                                    }
+                                }
+                            }
+                        }
+
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 "agent:run_completed",

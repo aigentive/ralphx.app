@@ -8,9 +8,10 @@
 // mid-turn are queued and processed after the current turn completes.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::process::ChildStdin;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 
 /// Key for identifying an interactive process by context.
 /// Reuses the same (context_type, context_id) pattern as RunningAgentKey.
@@ -29,13 +30,23 @@ impl InteractiveProcessKey {
     }
 }
 
+/// Wrapper around an interactive CLI process's stdin handle and its completion signal.
+///
+/// The `completion_signal` notifier allows waiters to be unblocked when the process
+/// has finished (i.e., after `run_completed` should fire).
+#[derive(Debug)]
+pub struct InteractiveProcess {
+    pub stdin: ChildStdin,
+    pub completion_signal: Arc<Notify>,
+}
+
 /// Registry for interactive CLI processes with open stdin handles.
 ///
 /// Thread-safe: uses tokio::sync::Mutex for async-compatible locking.
 /// ChildStdin is not Clone, so the registry owns it exclusively.
 #[derive(Debug)]
 pub struct InteractiveProcessRegistry {
-    processes: Mutex<HashMap<InteractiveProcessKey, ChildStdin>>,
+    processes: Mutex<HashMap<InteractiveProcessKey, InteractiveProcess>>,
 }
 
 impl Default for InteractiveProcessRegistry {
@@ -53,8 +64,10 @@ impl InteractiveProcessRegistry {
 
     /// Register a stdin handle for an interactive process.
     ///
-    /// If a stdin already exists for this key, the old one is dropped (closes the pipe).
-    pub async fn register(&self, key: InteractiveProcessKey, stdin: ChildStdin) {
+    /// Wraps the stdin in an `InteractiveProcess` with a fresh `Arc<Notify>` completion signal.
+    /// Returns the completion signal so callers can await it without holding the registry lock.
+    /// If a process already exists for this key, the old one is dropped (closes the pipe).
+    pub async fn register(&self, key: InteractiveProcessKey, stdin: ChildStdin) -> Arc<Notify> {
         let mut processes = self.processes.lock().await;
         if processes.contains_key(&key) {
             tracing::warn!(
@@ -63,7 +76,13 @@ impl InteractiveProcessRegistry {
                 "InteractiveProcessRegistry: replacing existing stdin for context"
             );
         }
-        processes.insert(key, stdin);
+        let completion_signal = Arc::new(Notify::new());
+        let entry = InteractiveProcess {
+            stdin,
+            completion_signal: Arc::clone(&completion_signal),
+        };
+        processes.insert(key, entry);
+        completion_signal
     }
 
     /// Check if an interactive process exists for this context.
@@ -79,7 +98,7 @@ impl InteractiveProcessRegistry {
     /// should end with a newline (this method appends one if missing).
     pub async fn write_message(&self, key: &InteractiveProcessKey, message: &str) -> Result<(), String> {
         let mut processes = self.processes.lock().await;
-        let stdin = processes.get_mut(key).ok_or_else(|| {
+        let entry = processes.get_mut(key).ok_or_else(|| {
             format!(
                 "No interactive process for {}/{}",
                 key.context_type, key.context_id
@@ -93,14 +112,14 @@ impl InteractiveProcessRegistry {
             format!("{}\n", message)
         };
 
-        stdin.write_all(msg.as_bytes()).await.map_err(|e| {
+        entry.stdin.write_all(msg.as_bytes()).await.map_err(|e| {
             format!(
                 "Failed to write to interactive process stdin for {}/{}: {}",
                 key.context_type, key.context_id, e
             )
         })?;
 
-        stdin.flush().await.map_err(|e| {
+        entry.stdin.flush().await.map_err(|e| {
             format!(
                 "Failed to flush interactive process stdin for {}/{}: {}",
                 key.context_type, key.context_id, e
@@ -108,12 +127,22 @@ impl InteractiveProcessRegistry {
         })
     }
 
-    /// Remove and return the stdin handle for a context (e.g., on process exit).
+    /// Remove and return the InteractiveProcess for a context (e.g., on process exit).
     ///
-    /// Dropping the returned ChildStdin closes the pipe, signaling EOF to the process.
-    pub async fn remove(&self, key: &InteractiveProcessKey) -> Option<ChildStdin> {
+    /// Dropping the returned InteractiveProcess (and its ChildStdin) closes the pipe,
+    /// signaling EOF to the process.
+    pub async fn remove(&self, key: &InteractiveProcessKey) -> Option<InteractiveProcess> {
         let mut processes = self.processes.lock().await;
         processes.remove(key)
+    }
+
+    /// Return the completion signal for a running process, or None if not registered.
+    ///
+    /// Callers can clone and `.await` the returned notifier to be woken when the process
+    /// signals completion. The Arc keeps the Notify alive even after the process is removed.
+    pub async fn get_completion_signal(&self, key: &InteractiveProcessKey) -> Option<Arc<Notify>> {
+        let processes = self.processes.lock().await;
+        processes.get(key).map(|entry| Arc::clone(&entry.completion_signal))
     }
 
     /// Remove all registered processes.
@@ -177,6 +206,42 @@ mod tests {
         let result = registry.write_message(&key, "hello").await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("No interactive process"));
+    }
+
+    #[tokio::test]
+    async fn test_register_returns_completion_signal() {
+        let (stdin, _child) = create_test_stdin().await;
+        let registry = InteractiveProcessRegistry::new();
+        let key = InteractiveProcessKey::new("task", "task-789");
+
+        let signal = registry.register(key.clone(), stdin).await;
+        // Signal is live and shared with the entry
+        let fetched = registry.get_completion_signal(&key).await.unwrap();
+        assert!(Arc::ptr_eq(&signal, &fetched));
+    }
+
+    #[tokio::test]
+    async fn test_get_completion_signal_none_if_not_registered() {
+        let registry = InteractiveProcessRegistry::new();
+        let key = InteractiveProcessKey::new("ideation", "session-999");
+        assert!(registry.get_completion_signal(&key).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_completion_signal_survives_remove() {
+        // The Arc<Notify> should remain usable after the process is removed,
+        // so any awaiter that cloned it before removal can still be notified.
+        let (stdin, _child) = create_test_stdin().await;
+        let registry = InteractiveProcessRegistry::new();
+        let key = InteractiveProcessKey::new("merge", "merge-1");
+
+        let signal = registry.register(key.clone(), stdin).await;
+        let _removed = registry.remove(&key).await;
+
+        // Notifying after removal should not panic
+        signal.notify_waiters();
+        // Signal for key is gone from registry
+        assert!(registry.get_completion_signal(&key).await.is_none());
     }
 
     #[tokio::test]

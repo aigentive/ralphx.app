@@ -412,16 +412,7 @@ pub async fn complete_review(
         }
     };
 
-    // 7. Close stdin via IPR to signal EOF to the reviewer agent
-    {
-        use crate::application::interactive_process_registry::InteractiveProcessKey;
-        let key = InteractiveProcessKey::new("review", task_id.as_str());
-        if state.app_state.interactive_process_registry.remove(&key).await.is_some() {
-            tracing::info!("IPR removed for reviewer on task {}", task_id.as_str());
-        }
-    }
-
-    // 8. Emit events
+    // 7. Emit events
     if let Some(app_handle) = &state.app_state.app_handle {
         let _ = app_handle.emit(
             "review:completed",
@@ -447,6 +438,18 @@ pub async fn complete_review(
                     "task_id": task_id.as_str(),
                 }),
             );
+        }
+    }
+
+    // 8. Notify completion signal then close stdin via IPR
+    {
+        use crate::application::interactive_process_registry::InteractiveProcessKey;
+        let key = InteractiveProcessKey::new("review", task_id.as_str());
+        if let Some(signal) = state.app_state.interactive_process_registry.get_completion_signal(&key).await {
+            signal.notify_one();
+        }
+        if state.app_state.interactive_process_registry.remove(&key).await.is_some() {
+            tracing::info!("IPR removed for reviewer on task {}", task_id.as_str());
         }
     }
 

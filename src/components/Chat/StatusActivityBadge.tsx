@@ -19,7 +19,7 @@ import { useUiStore } from "@/stores/uiStore";
 import { useChatStore, selectToolCallStartTimes, selectLastToolCallCompletionTimestamp } from "@/stores/chatStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { AGENT_WORKER, AGENT_REVIEWER } from "@/constants/agents";
-import type { ViewType } from "@/types/chat";
+import type { ContextType } from "@/types/chat-conversation";
 import type { AgentStatus } from "@/stores/chatStore";
 
 // ============================================================================
@@ -28,6 +28,9 @@ import type { AgentStatus } from "@/stores/chatStore";
 
 /** Grace period after last tool completion before "Tool active" label clears (ms) */
 const TOOL_CALL_GRACE_MS = 5_000;
+
+/** Inactivity threshold before "Completing..." label appears during deferral window (ms) */
+const POST_STREAM_THRESHOLD_MS = 3_000;
 
 // ============================================================================
 // Types
@@ -40,8 +43,8 @@ export interface StatusActivityBadgeProps {
   isAgentActive: boolean;
   /** Type of agent that is active */
   agentType: AgentType;
-  /** Current view context type */
-  contextType: ViewType;
+  /** Context type for the agent conversation (used for label and activity navigation) */
+  contextType: ContextType;
   /** Context ID (taskId or sessionId) for activity filtering */
   contextId: string | null;
   /** Whether there is historical activity available for this context */
@@ -157,6 +160,19 @@ export function StatusActivityBadge({
     return () => { clearTimeout(timer); };
   }, [lastToolCallCompletionTimestamp]);
 
+  // Trigger re-render when post-stream threshold is reached so isPostStreamWork updates
+  useEffect(() => {
+    if (agentStatus !== "generating" || lastEventTimestamp <= 0) return;
+    const elapsed = Date.now() - lastEventTimestamp;
+    const remaining = POST_STREAM_THRESHOLD_MS - elapsed;
+    if (remaining <= 0) {
+      setNow(Date.now());
+      return;
+    }
+    const timer = setTimeout(() => { setNow(Date.now()); }, remaining);
+    return () => { clearTimeout(timer); };
+  }, [agentStatus, lastEventTimestamp]);
+
   // Navigate to activity view with context filter
   const handleActivityClick = () => {
     // Set filter based on context type
@@ -220,6 +236,12 @@ export function StatusActivityBadge({
     now - lastToolCallCompletionTimestamp < TOOL_CALL_GRACE_MS;
   const showToolActive = hasActiveToolCalls || isInGracePeriod;
 
+  // True when generating but no new agent events in >3s (deferral window post-stream work)
+  const isPostStreamWork =
+    agentStatus === "generating" &&
+    lastEventTimestamp > 0 &&
+    now - lastEventTimestamp > POST_STREAM_THRESHOLD_MS;
+
   // Determine badge label and color for generating state
   let badgeLabel: string;
   let badgeColorClass: string;
@@ -229,6 +251,9 @@ export function StatusActivityBadge({
   } else if (activeVerificationChildId) {
     badgeLabel = "Verifying...";
     badgeColorClass = "text-blue-400";
+  } else if (isPostStreamWork && (contextType === "merge" || contextType === "review")) {
+    badgeLabel = `Completing ${contextType}...`;
+    badgeColorClass = "";
   } else {
     badgeLabel = getStatusText(agentType);
     badgeColorClass = "";

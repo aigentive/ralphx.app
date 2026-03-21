@@ -19,6 +19,7 @@ import {
   selectAgentStatus,
   selectIsSending,
   selectToolCallStartTimes,
+  selectLastAgentEventTimestamp,
 } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskStore } from "@/stores/taskStore";
@@ -363,6 +364,8 @@ export function IntegratedChatPanel({
   const agentStatusSelector = useMemo(() => selectAgentStatus(storeContextKey), [storeContextKey]);
   const agentStatus = useChatStore(agentStatusSelector);
   const isAgentRunning = agentStatus !== "idle"; // backward-compat boolean (agent process alive)
+  const lastAgentEventTsSelector = useMemo(() => selectLastAgentEventTimestamp(storeContextKey), [storeContextKey]);
+  const lastAgentEventTs = useChatStore(lastAgentEventTsSelector);
   const toolCallStartTimesSelector = useMemo(
     () => selectToolCallStartTimes(storeContextKey),
     [storeContextKey],
@@ -714,6 +717,18 @@ export function IntegratedChatPanel({
   const hasEmptyConversation = !isLoading && activeConversationId && sortedMessages.length === 0;
   const isEmpty = hasNoConversations || hasEmptyConversation;
 
+  // Recency guard: suppress PreviousRunBanner if the agent was active within the last 10s.
+  // Aligned with agentRunQuery.staleTime (10s) to avoid banner flash during run_completed transition.
+  const [isRecentlyActive, setIsRecentlyActive] = useState(false);
+  useEffect(() => {
+    if (lastAgentEventTs <= 0) { setIsRecentlyActive(false); return; }
+    const elapsed = Date.now() - lastAgentEventTs;
+    if (elapsed >= 10_000) { setIsRecentlyActive(false); return; }
+    setIsRecentlyActive(true);
+    const timer = setTimeout(() => setIsRecentlyActive(false), 10_000 - elapsed);
+    return () => clearTimeout(timer);
+  }, [lastAgentEventTs]);
+
   return (
     <>
       <style>{animationStyles}</style>
@@ -759,7 +774,7 @@ export function IntegratedChatPanel({
             <StatusActivityBadge
               isAgentActive={isAgentActive}
               agentType={agentType}
-              contextType={chatContext.view}
+              contextType={currentContextType as ContextType}
               contextId={ideationSessionId || selectedTaskId || null}
               agentStatus={isHistoryMode ? "idle" : agentStatus}
               storeKey={storeContextKey}
@@ -882,7 +897,7 @@ export function IntegratedChatPanel({
           )}
 
           {/* Previous Run Banner - shown when viewing stale agent conversation */}
-          {isAgentContext && !isHistoryMode && agentStatus === "idle" && agentRunQuery.data?.status !== "running" && !isSending && sortedMessages.length > 0 && (
+          {isAgentContext && !isHistoryMode && agentStatus === "idle" && agentRunQuery.data?.status !== "running" && !isSending && sortedMessages.length > 0 && !isRecentlyActive && (
             <PreviousRunBanner
               agentRunStatus={agentRunQuery.data?.status ?? null}
               contextType={isMergeMode ? "merge" : isReviewMode ? "review" : "execution"}

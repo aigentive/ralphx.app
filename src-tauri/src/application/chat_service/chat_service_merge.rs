@@ -1369,7 +1369,11 @@ pub async fn merge_completion_watcher_loop(
                     task_id = %task_id,
                     "Merge watcher: merge verified on target branch, closing IPR"
                 );
-                let _ = ipr.remove(&key).await;
+                if ipr.remove(&key).await.is_some() {
+                    tracing::info!(task_id = %task_id, "Merge watcher: IPR removed (merge verified, first remover)");
+                } else {
+                    tracing::debug!(task_id = %task_id, "Merge watcher: IPR already removed by another path (dedup guard)");
+                }
                 return;
             }
         }

@@ -16,6 +16,7 @@ import { renderHook, act } from "@testing-library/react";
 const chatStoreMocks = vi.hoisted(() => ({
   setAgentStatus: vi.fn(),
   agentStatus: {} as Record<string, string>,
+  activeConversationIds: {} as Record<string, string | null>,
   lastAgentEventTimestamp: {} as Record<string, number>,
   toolCallStartTimes: {} as Record<string, Record<string, number>>,
   lastToolCallCompletionTimestamp: {} as Record<string, number>,
@@ -141,6 +142,7 @@ describe("useAgentEvents — child termination reverse lookup (PO6)", () => {
     chatStoreMocks.setAgentStatus.mockClear();
     chatStoreMocks.updateLastAgentEvent.mockClear();
     chatStoreMocks.agentStatus = {};
+    chatStoreMocks.activeConversationIds = {};
     chatStoreMocks.lastAgentEventTimestamp = {};
     chatStoreMocks.toolCallStartTimes = {};
     chatStoreMocks.lastToolCallCompletionTimestamp = {};
@@ -248,6 +250,7 @@ describe("useAgentEvents — abnormal termination detection", () => {
     mockInvalidateQueries.mockClear();
     chatStoreMocks.setAgentStatus.mockClear();
     chatStoreMocks.agentStatus = {};
+    chatStoreMocks.activeConversationIds = {};
     chatStoreMocks.lastAgentEventTimestamp = {};
     chatStoreMocks.toolCallStartTimes = {};
     chatStoreMocks.lastToolCallCompletionTimestamp = {};
