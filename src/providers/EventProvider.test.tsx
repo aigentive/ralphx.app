@@ -32,6 +32,10 @@ vi.mock("@/hooks/useFreshnessBlockedNotification", () => ({
   useFreshnessBlockedNotification: vi.fn(),
 }));
 
+vi.mock("@/hooks/useGlobalAgentLifecycle", () => ({
+  useGlobalAgentLifecycle: vi.fn(),
+}));
+
 // Mock the event bus module
 vi.mock("@/lib/event-bus", () => ({
   createEventBus: vi.fn(() => ({

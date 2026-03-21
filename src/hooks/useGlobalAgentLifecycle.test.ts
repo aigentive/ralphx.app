@@ -1,0 +1,683 @@
+/**
+ * useGlobalAgentLifecycle — always-on global agent lifecycle hook tests.
+ *
+ * Tests verify:
+ * - run_started sets agentStatus to generating globally
+ * - run_completed, stopped, error: guardedTermination sets idle / re-asserts generating
+ * - turn_completed: sets waiting_for_input with verification child guard
+ * - Verification child reverse link cleanup on child termination
+ * - clearActiveQuestion scoped to ideation contexts only
+ * - clearPendingPlan scoped to team-mode-active contexts only
+ * - Error toasts with deterministic id for task_execution/review/merge
+ * - heartbeat/task events update lastAgentEventTimestamp
+ * - Teammate events are skipped
+ * - watchdog guard: run_started does NOT update lastAgentEvent when already generating
+ * - Cross-session integration: agentStatus populated without IntegratedChatPanel
+ * - Verification cache invalidated on abnormal child termination
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { renderHook, act } from "@testing-library/react";
+
+// ============================================================================
+// Hoisted mocks
+// ============================================================================
+
+const chatStoreMocks = vi.hoisted(() => ({
+  setAgentStatus: vi.fn(),
+  agentStatus: {} as Record<string, string>,
+  lastAgentEventTimestamp: {} as Record<string, number>,
+  updateLastAgentEvent: vi.fn(),
+  isTeamActive: {} as Record<string, boolean>,
+}));
+
+vi.mock("@/stores/chatStore", () => ({
+  useChatStore: Object.assign(
+    vi.fn((selector: (s: typeof chatStoreMocks) => unknown) => selector(chatStoreMocks)),
+    { getState: () => chatStoreMocks }
+  ),
+}));
+
+const uiStoreMocks = vi.hoisted(() => ({
+  clearActiveQuestion: vi.fn(),
+}));
+
+vi.mock("@/stores/uiStore", () => ({
+  useUiStore: Object.assign(
+    vi.fn((selector: (s: typeof uiStoreMocks) => unknown) => selector(uiStoreMocks)),
+    { getState: () => uiStoreMocks }
+  ),
+}));
+
+const teamStoreMocks = vi.hoisted(() => ({
+  clearPendingPlan: vi.fn(),
+}));
+
+vi.mock("@/stores/teamStore", () => ({
+  useTeamStore: Object.assign(
+    vi.fn((selector: (s: typeof teamStoreMocks) => unknown) => selector(teamStoreMocks)),
+    { getState: () => teamStoreMocks }
+  ),
+}));
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn(), info: vi.fn() },
+}));
+
+// Capture event bus subscriptions so tests can fire events manually
+const subscriptions = new Map<string, ((...args: unknown[]) => void)[]>();
+
+function fireEvent<T>(event: string, payload: T) {
+  const handlers = subscriptions.get(event);
+  if (handlers) for (const h of handlers) h(payload as unknown);
+}
+
+vi.mock("@/providers/EventProvider", () => ({
+  useEventBus: () => ({
+    subscribe: (event: string, handler: (...args: unknown[]) => void) => {
+      if (!subscriptions.has(event)) subscriptions.set(event, []);
+      subscriptions.get(event)!.push(handler);
+      return () => {
+        const hs = subscriptions.get(event);
+        if (hs) {
+          const i = hs.indexOf(handler);
+          if (i >= 0) hs.splice(i, 1);
+        }
+      };
+    },
+  }),
+}));
+
+const mockInvalidateQueries = vi.fn().mockResolvedValue(undefined);
+const mockGetQueryData = vi.fn().mockReturnValue(undefined);
+
+vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({
+    invalidateQueries: mockInvalidateQueries,
+    getQueryData: (...args: unknown[]) => mockGetQueryData(...args),
+  }),
+}));
+
+vi.mock("@/lib/logger", () => ({
+  logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+}));
+
+// ============================================================================
+// Import hook and stores after mocks
+// ============================================================================
+
+import { useGlobalAgentLifecycle } from "./useGlobalAgentLifecycle";
+import { useIdeationStore } from "@/stores/ideationStore";
+import { toast } from "sonner";
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+const PARENT_SESSION_ID = "parent-session-abc";
+const CHILD_SESSION_ID = "child-session-xyz";
+
+function mkRunStarted(contextType: string, contextId: string, teammateName?: string) {
+  return {
+    run_id: "run-1",
+    context_type: contextType,
+    context_id: contextId,
+    conversation_id: "conv-" + contextId,
+    teammate_name: teammateName ?? null,
+  };
+}
+
+function mkRunCompleted(contextType: string, contextId: string, teammateName?: string) {
+  return {
+    context_type: contextType,
+    context_id: contextId,
+    conversation_id: "conv-" + contextId,
+    status: "completed",
+    teammate_name: teammateName ?? null,
+  };
+}
+
+function mkTurnCompleted(contextType: string, contextId: string, teammateName?: string) {
+  return {
+    context_type: contextType,
+    context_id: contextId,
+    conversation_id: "conv-" + contextId,
+    status: "turn_completed",
+    teammate_name: teammateName ?? null,
+  };
+}
+
+function mkStopped(contextType: string, contextId: string, teammateName?: string) {
+  return {
+    context_type: contextType,
+    context_id: contextId,
+    conversation_id: "conv-" + contextId,
+    agent_run_id: "run-" + contextId,
+    teammate_name: teammateName ?? null,
+  };
+}
+
+function mkError(contextType: string, contextId: string, error = "process crashed", teammateName?: string) {
+  return {
+    context_type: contextType,
+    context_id: contextId,
+    conversation_id: "conv-" + contextId,
+    error,
+    teammate_name: teammateName ?? null,
+  };
+}
+
+// ============================================================================
+// Test suite
+// ============================================================================
+
+describe("useGlobalAgentLifecycle", () => {
+  beforeEach(() => {
+    subscriptions.clear();
+    mockInvalidateQueries.mockClear();
+    mockGetQueryData.mockReturnValue(undefined);
+    chatStoreMocks.setAgentStatus.mockClear();
+    chatStoreMocks.updateLastAgentEvent.mockClear();
+    chatStoreMocks.agentStatus = {};
+    chatStoreMocks.lastAgentEventTimestamp = {};
+    chatStoreMocks.isTeamActive = {};
+    uiStoreMocks.clearActiveQuestion.mockClear();
+    teamStoreMocks.clearPendingPlan.mockClear();
+    vi.mocked(toast.error).mockClear();
+
+    useIdeationStore.setState({
+      sessions: {},
+      activeSessionId: null,
+      isLoading: false,
+      error: null,
+      planArtifact: null,
+      activeVerificationChildId: {},
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // run_started
+  // --------------------------------------------------------------------------
+
+  it("run_started sets agentStatus to generating", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_started", mkRunStarted("ideation", "session-1"));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith("session:session-1", "generating");
+  });
+
+  it("run_started calls updateLastAgentEvent when not already generating", () => {
+    chatStoreMocks.agentStatus = {};
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_started", mkRunStarted("task_execution", "task-1"));
+    });
+
+    expect(chatStoreMocks.updateLastAgentEvent).toHaveBeenCalledWith("task_execution:task-1");
+  });
+
+  it("run_started skips updateLastAgentEvent when already generating (queue re-run guard)", () => {
+    chatStoreMocks.agentStatus = { "task_execution:task-1": "generating" };
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_started", mkRunStarted("task_execution", "task-1"));
+    });
+
+    expect(chatStoreMocks.updateLastAgentEvent).not.toHaveBeenCalled();
+  });
+
+  it("run_started skips teammate events", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_started", mkRunStarted("ideation", "session-1", "teammate-alice"));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).not.toHaveBeenCalled();
+  });
+
+  // --------------------------------------------------------------------------
+  // Cross-session integration (core bug scenario)
+  // --------------------------------------------------------------------------
+
+  it("(cross-session) run_started populates agentStatus for a session without a mounted chat panel", () => {
+    // This is the core bug fix — no IntegratedChatPanel mounted, only GlobalEventListeners
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_started", mkRunStarted("ideation", "session-b"));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith("session:session-b", "generating");
+  });
+
+  // --------------------------------------------------------------------------
+  // run_completed
+  // --------------------------------------------------------------------------
+
+  it("run_completed sets status to idle (no verification child)", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_completed", mkRunCompleted("task_execution", "task-1"));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith("task_execution:task-1", "idle");
+  });
+
+  it("run_completed calls updateLastAgentEvent (final heartbeat)", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_completed", mkRunCompleted("task_execution", "task-1"));
+    });
+
+    expect(chatStoreMocks.updateLastAgentEvent).toHaveBeenCalledWith("task_execution:task-1");
+  });
+
+  it("run_completed skips teammate events", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_completed", mkRunCompleted("ideation", "session-1", "teammate-bob"));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).not.toHaveBeenCalled();
+  });
+
+  it("run_completed re-asserts generating when parent has active verification child", () => {
+    useIdeationStore.setState({
+      activeVerificationChildId: { [PARENT_SESSION_ID]: CHILD_SESSION_ID },
+    });
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_completed", mkRunCompleted("ideation", PARENT_SESSION_ID));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith(
+      "session:" + PARENT_SESSION_ID,
+      "generating"
+    );
+  });
+
+  // --------------------------------------------------------------------------
+  // turn_completed
+  // --------------------------------------------------------------------------
+
+  it("turn_completed sets status to waiting_for_input for non-ideation context", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:turn_completed", mkTurnCompleted("task_execution", "task-1"));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith("task_execution:task-1", "waiting_for_input");
+  });
+
+  it("turn_completed sets waiting_for_input for ideation without verification child", () => {
+    useIdeationStore.setState({ activeVerificationChildId: {} });
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:turn_completed", mkTurnCompleted("ideation", "session-1"));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith("session:session-1", "waiting_for_input");
+  });
+
+  it("turn_completed re-asserts generating for ideation with active verification child", () => {
+    useIdeationStore.setState({
+      activeVerificationChildId: { [PARENT_SESSION_ID]: CHILD_SESSION_ID },
+    });
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:turn_completed", mkTurnCompleted("ideation", PARENT_SESSION_ID));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith(
+      "session:" + PARENT_SESSION_ID,
+      "generating"
+    );
+  });
+
+  it("turn_completed skips teammate events", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:turn_completed", mkTurnCompleted("ideation", "session-1", "teammate-carol"));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).not.toHaveBeenCalled();
+  });
+
+  // --------------------------------------------------------------------------
+  // stopped
+  // --------------------------------------------------------------------------
+
+  it("stopped sets status to idle", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:stopped", mkStopped("review", "task-2"));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith("review:task-2", "idle");
+  });
+
+  it("stopped skips teammate events", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:stopped", mkStopped("ideation", "session-1", "teammate-dave"));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).not.toHaveBeenCalled();
+  });
+
+  // --------------------------------------------------------------------------
+  // error
+  // --------------------------------------------------------------------------
+
+  it("error sets status to idle", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:error", mkError("task_execution", "task-1"));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith("task_execution:task-1", "idle");
+  });
+
+  it("error shows toast for task_execution with deterministic id", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:error", mkError("task_execution", "task-1", "OOM error"));
+    });
+
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining("Worker agent error"),
+      expect.objectContaining({ id: "error:task_execution:task-1" })
+    );
+  });
+
+  it("error shows toast for review context with deterministic id", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:error", mkError("review", "task-2", "timeout"));
+    });
+
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining("Reviewer agent error"),
+      expect.objectContaining({ id: "error:review:task-2" })
+    );
+  });
+
+  it("error shows toast for merge context with deterministic id", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:error", mkError("merge", "task-3", "conflict"));
+    });
+
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining("Merger agent error"),
+      expect.objectContaining({ id: "error:merge:task-3" })
+    );
+  });
+
+  it("error does NOT show toast for ideation context", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:error", mkError("ideation", "session-1", "crash"));
+    });
+
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("error skips teammate events", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:error", mkError("task_execution", "task-1", "crash", "teammate-eve"));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  // --------------------------------------------------------------------------
+  // clearActiveQuestion scope guard
+  // --------------------------------------------------------------------------
+
+  it("clearActiveQuestion called for ideation context on termination", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_completed", mkRunCompleted("ideation", "session-1"));
+    });
+
+    expect(uiStoreMocks.clearActiveQuestion).toHaveBeenCalledWith("session-1");
+  });
+
+  it("clearActiveQuestion NOT called for task_execution context", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_completed", mkRunCompleted("task_execution", "task-1"));
+    });
+
+    expect(uiStoreMocks.clearActiveQuestion).not.toHaveBeenCalled();
+  });
+
+  // --------------------------------------------------------------------------
+  // clearPendingPlan scope guard
+  // --------------------------------------------------------------------------
+
+  it("clearPendingPlan called when team mode is active for context", () => {
+    chatStoreMocks.isTeamActive = { "session:session-1": true };
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_completed", mkRunCompleted("ideation", "session-1"));
+    });
+
+    expect(teamStoreMocks.clearPendingPlan).toHaveBeenCalledWith("session:session-1");
+  });
+
+  it("clearPendingPlan NOT called when team mode is not active", () => {
+    chatStoreMocks.isTeamActive = {};
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_completed", mkRunCompleted("ideation", "session-1"));
+    });
+
+    expect(teamStoreMocks.clearPendingPlan).not.toHaveBeenCalled();
+  });
+
+  // --------------------------------------------------------------------------
+  // Verification child reverse link
+  // --------------------------------------------------------------------------
+
+  it("child run_completed clears parent activeVerificationChildId and sets parent idle", () => {
+    useIdeationStore.setState({
+      activeVerificationChildId: { [PARENT_SESSION_ID]: CHILD_SESSION_ID },
+    });
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_completed", mkRunCompleted("ideation", CHILD_SESSION_ID));
+    });
+
+    expect(useIdeationStore.getState().activeVerificationChildId[PARENT_SESSION_ID]).toBeNull();
+    expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith(
+      "session:" + PARENT_SESSION_ID,
+      "idle"
+    );
+  });
+
+  it("child error event triggers reverse link and sets parent idle", () => {
+    useIdeationStore.setState({
+      activeVerificationChildId: { [PARENT_SESSION_ID]: CHILD_SESSION_ID },
+    });
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:error", mkError("ideation", CHILD_SESSION_ID));
+    });
+
+    expect(useIdeationStore.getState().activeVerificationChildId[PARENT_SESSION_ID]).toBeNull();
+    expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith(
+      "session:" + PARENT_SESSION_ID,
+      "idle"
+    );
+  });
+
+  it("child stopped triggers reverse link and sets parent idle", () => {
+    useIdeationStore.setState({
+      activeVerificationChildId: { [PARENT_SESSION_ID]: CHILD_SESSION_ID },
+    });
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:stopped", mkStopped("ideation", CHILD_SESSION_ID));
+    });
+
+    expect(useIdeationStore.getState().activeVerificationChildId[PARENT_SESSION_ID]).toBeNull();
+    expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith(
+      "session:" + PARENT_SESSION_ID,
+      "idle"
+    );
+  });
+
+  it("multi-parent isolation: only matching parent cleared; unrelated untouched", () => {
+    const OTHER_PARENT = "other-parent";
+    const OTHER_CHILD = "other-child";
+    useIdeationStore.setState({
+      activeVerificationChildId: {
+        [PARENT_SESSION_ID]: CHILD_SESSION_ID,
+        [OTHER_PARENT]: OTHER_CHILD,
+      },
+    });
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_completed", mkRunCompleted("ideation", CHILD_SESSION_ID));
+    });
+
+    expect(useIdeationStore.getState().activeVerificationChildId[PARENT_SESSION_ID]).toBeNull();
+    expect(useIdeationStore.getState().activeVerificationChildId[OTHER_PARENT]).toBe(OTHER_CHILD);
+  });
+
+  // --------------------------------------------------------------------------
+  // Verification cache invalidation on abnormal termination
+  // --------------------------------------------------------------------------
+
+  it("invalidates verification query when child terminates with inProgress=true", () => {
+    mockGetQueryData.mockReturnValue({ inProgress: true });
+    useIdeationStore.setState({
+      activeVerificationChildId: { [PARENT_SESSION_ID]: CHILD_SESSION_ID },
+    });
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_completed", mkRunCompleted("ideation", CHILD_SESSION_ID));
+    });
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ["verification", PARENT_SESSION_ID] })
+    );
+  });
+
+  it("does NOT invalidate verification when inProgress=false", () => {
+    mockGetQueryData.mockReturnValue({ inProgress: false });
+    useIdeationStore.setState({
+      activeVerificationChildId: { [PARENT_SESSION_ID]: CHILD_SESSION_ID },
+    });
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_completed", mkRunCompleted("ideation", CHILD_SESSION_ID));
+    });
+
+    const verificationInvalidation = mockInvalidateQueries.mock.calls.find(
+      (c: unknown[]) =>
+        JSON.stringify(c[0]) ===
+        JSON.stringify({ queryKey: ["verification", PARENT_SESSION_ID] })
+    );
+    expect(verificationInvalidation).toBeUndefined();
+  });
+
+  // --------------------------------------------------------------------------
+  // heartbeat / task events
+  // --------------------------------------------------------------------------
+
+  it("heartbeat updates lastAgentEventTimestamp via findStoreKeyForContextId scan", () => {
+    // Pre-populate agentStatus so findStoreKeyForContextId can find the key
+    chatStoreMocks.agentStatus = { "session:session-1": "generating" };
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:heartbeat", {
+        conversation_id: "conv-1",
+        context_id: "session-1",
+        reason: "pid_alive",
+      });
+    });
+
+    expect(chatStoreMocks.updateLastAgentEvent).toHaveBeenCalledWith("session:session-1");
+  });
+
+  it("heartbeat is no-op when no agentStatus entry exists for context_id", () => {
+    chatStoreMocks.agentStatus = {};
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:heartbeat", {
+        conversation_id: "conv-1",
+        context_id: "unknown-session",
+        reason: "pid_alive",
+      });
+    });
+
+    expect(chatStoreMocks.updateLastAgentEvent).not.toHaveBeenCalled();
+  });
+
+  it("task_started updates lastAgentEventTimestamp via buildStoreKey when context_type provided", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:task_started", {
+        conversation_id: "conv-1",
+        context_id: "task-1",
+        context_type: "task_execution",
+      });
+    });
+
+    expect(chatStoreMocks.updateLastAgentEvent).toHaveBeenCalledWith("task_execution:task-1");
+  });
+
+  it("task_completed updates lastAgentEventTimestamp via buildStoreKey when context_type provided", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:task_completed", {
+        conversation_id: "conv-1",
+        context_id: "task-1",
+        context_type: "task_execution",
+      });
+    });
+
+    expect(chatStoreMocks.updateLastAgentEvent).toHaveBeenCalledWith("task_execution:task-1");
+  });
+});

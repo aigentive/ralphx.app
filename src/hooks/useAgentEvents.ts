@@ -18,23 +18,10 @@ import { useIdeationStore } from "@/stores/ideationStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useTeamStore } from "@/stores/teamStore";
 import { buildStoreKey, parseStoreKey } from "@/lib/chat-context-registry";
+import { findStoreKeyForContextId } from "@/lib/agent-event-utils";
 import { chatKeys } from "./useChat";
 import type { Unsubscribe } from "@/lib/event-bus";
 import { logger } from "@/lib/logger";
-
-/**
- * Finds the store key for a given context ID by scanning all known agent statuses.
- * Used by heartbeat/task lifecycle events that only have the raw context_id.
- */
-function findStoreKeyForContextId(contextId: string): string | undefined {
-  const state = useChatStore.getState();
-  for (const key of Object.keys(state.agentStatus)) {
-    if (key.includes(contextId)) {
-      return key;
-    }
-  }
-  return undefined;
-}
 
 /**
  * Hook to manage agent event listeners
@@ -402,7 +389,7 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
             : context_type === "review" ? "Reviewer"
             : "Merger";
           const errorMsg = payload.error ? String(payload.error).slice(0, 150) : "Agent process exited unexpectedly";
-          toast.error(`${contextLabel} agent error: ${errorMsg}`, { duration: 8000 });
+          toast.error(`${contextLabel} agent error: ${errorMsg}`, { id: `error:${eventContextKey}`, duration: 8000 });
         }
       })
     );
