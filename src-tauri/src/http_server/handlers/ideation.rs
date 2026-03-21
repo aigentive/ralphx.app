@@ -25,6 +25,7 @@ use crate::application::{CreateProposalOptions, InteractiveProcessKey, UpdatePro
 use crate::error::AppError;
 use crate::domain::entities::ideation::IdeationSessionStatus;
 use crate::domain::entities::{ChatContextType, IdeationSessionId, Priority, TaskProposalId};
+use crate::domain::repositories::ExternalEventsRepository;
 use crate::domain::services::emit_verification_status_changed;
 use crate::domain::services::running_agent_registry::RunningAgentKey;
 
@@ -133,6 +134,8 @@ pub async fn finalize_proposals(
     State(state): State<HttpServerState>,
     Json(req): Json<FinalizeProposalsRequest>,
 ) -> Result<Json<FinalizeProposalsResponse>, JsonError> {
+    // TODO(webhook): emit EventType::IdeationProposalsReady via AppState::webhook_publisher
+    // when AppState gains that field. Payload: { session_id, project_id, proposal_count }.
     finalize_proposals_impl(&state.app_state, &req.session_id)
         .await
         .map(Json)
@@ -859,7 +862,8 @@ pub(crate) async fn stop_verification_children(
 /// Send an `<auto-propose>` message to the orchestrator agent for external sessions
 /// that reached verification convergence via `zero_blocking`.
 ///
-/// Fire-and-forget: errors are logged with `warn!` but do not affect the caller.
+/// Retries up to 3 times with exponential backoff (1s/2s/4s between retries).
+/// On final failure: emits `ideation:auto_propose_failed` to the external_events table.
 async fn auto_propose_for_external(
     session_id: &str,
     session: &crate::domain::entities::ideation::IdeationSession,
@@ -896,32 +900,105 @@ async fn auto_propose_for_external(
     }
     chat_service = chat_service.with_team_mode(is_team_mode);
 
-    let message = "<auto-propose>\nThe plan has been verified with zero blocking gaps (convergence: zero_blocking).\nThis is an external MCP session. Auto-propose triggered.\n</auto-propose>";
+    let project_id = session.project_id.as_str().to_string();
+    auto_propose_with_retry(
+        session_id,
+        &project_id,
+        &chat_service,
+        Arc::clone(&app.external_events_repo),
+        &[1_000, 2_000, 4_000],
+    )
+    .await;
+}
 
-    match chat_service
-        .send_message(
-            ChatContextType::Ideation,
-            session_id,
-            message,
-            SendMessageOptions::default(),
+/// Core retry logic for auto-propose delivery.
+///
+/// Attempts delivery up to `retry_delays_ms.len() + 1` times. Between each retry,
+/// sleeps for the corresponding duration from `retry_delays_ms`. On final failure,
+/// writes an `ideation:auto_propose_failed` row to the `external_events` table.
+///
+/// # Test usage
+/// Pass `retry_delays_ms = &[0, 0, 0]` to eliminate sleep delays in tests.
+#[doc(hidden)]
+pub async fn auto_propose_with_retry(
+    session_id: &str,
+    project_id: &str,
+    chat_service: &dyn ChatService,
+    external_events_repo: Arc<dyn ExternalEventsRepository>,
+    retry_delays_ms: &[u64],
+) {
+    let message = "<auto-propose>\nThe plan has been verified with zero blocking gaps (convergence: zero_blocking).\nThis is an external MCP session. Auto-propose triggered.\n</auto-propose>";
+    let max_attempts = retry_delays_ms.len() + 1;
+    let mut last_error: Option<String> = None;
+
+    for attempt in 0..max_attempts {
+        match chat_service
+            .send_message(
+                ChatContextType::Ideation,
+                session_id,
+                message,
+                SendMessageOptions::default(),
+            )
+            .await
+        {
+            Ok(result) => {
+                tracing::info!(
+                    session_id = %session_id,
+                    attempt = attempt + 1,
+                    delivery_status = if result.was_queued { "queued" } else { "spawned" },
+                    "auto_propose_for_external: message delivered"
+                );
+                // TODO(webhook): emit EventType::IdeationAutoProposeSent via AppState::webhook_publisher
+                // when AppState gains that field. Payload: { session_id, project_id }.
+                return;
+            }
+            Err(e) => {
+                let err_str = e.to_string();
+                tracing::warn!(
+                    session_id = %session_id,
+                    attempt = attempt + 1,
+                    max_attempts = max_attempts,
+                    error = %err_str,
+                    "auto_propose_for_external: send attempt failed"
+                );
+                last_error = Some(err_str);
+                if attempt < retry_delays_ms.len() {
+                    tokio::time::sleep(std::time::Duration::from_millis(retry_delays_ms[attempt]))
+                        .await;
+                }
+            }
+        }
+    }
+
+    // All attempts exhausted — emit failure event to external_events table.
+    let error_msg = last_error.unwrap_or_else(|| "unknown error".to_string());
+    tracing::error!(
+        session_id = %session_id,
+        max_attempts = max_attempts,
+        error = %error_msg,
+        "auto_propose_for_external: all retry attempts exhausted, emitting failure event"
+    );
+    let payload = serde_json::json!({
+        "session_id": session_id,
+        "project_id": project_id,
+        "error": error_msg,
+    });
+    if let Err(insert_err) = external_events_repo
+        .insert_event(
+            "ideation:auto_propose_failed",
+            project_id,
+            &payload.to_string(),
         )
         .await
     {
-        Ok(result) => {
-            tracing::info!(
-                session_id = %session_id,
-                delivery_status = if result.was_queued { "queued" } else { "spawned" },
-                "auto_propose_for_external: message delivered"
-            );
-        }
-        Err(e) => {
-            tracing::warn!(
-                session_id = %session_id,
-                error = %e,
-                "auto_propose_for_external: failed to send auto-propose message"
-            );
-        }
+        tracing::warn!(
+            session_id = %session_id,
+            error = %insert_err,
+            "auto_propose_for_external: failed to persist failure event (non-fatal)"
+        );
     }
+    // TODO(webhook): emit EventType::IdeationAutoProposeFailed via AppState::webhook_publisher
+    // when AppState gains that field. Payload: { session_id, project_id, error }.
 }
 
 /// POST /api/ideation/sessions/:id/verification
@@ -1344,6 +1421,10 @@ pub async fn update_plan_verification(
             Some(session.verification_generation),
         );
     }
+
+    // TODO(webhook): emit EventType::IdeationVerified via AppState::webhook_publisher when
+    // new_status == Verified and AppState gains that field.
+    // Payload: { session_id, project_id, convergence_reason }.
 
     // Auto-propose for external sessions that converged via zero_blocking
     if new_status == VerificationStatus::Verified

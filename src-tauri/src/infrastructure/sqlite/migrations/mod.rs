@@ -103,6 +103,7 @@ mod v74_permission_identity;
 mod v75_plan_version_last_read;
 mod v76_session_origin;
 mod v77_expected_proposal_count;
+mod v78_webhook_registrations;
 
 #[cfg(test)]
 mod tests;
@@ -218,7 +219,7 @@ mod v72_proposal_migrated_from_tests;
 mod v76_session_origin_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 77;
+pub const SCHEMA_VERSION: i32 = 78;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -617,6 +618,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 77,
         name: "expected_proposal_count",
         migrate: v77_expected_proposal_count::migrate,
+    },
+    Migration {
+        version: 78,
+        name: "webhook_registrations",
+        migrate: v78_webhook_registrations::migrate,
     },
 ];
 

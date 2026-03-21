@@ -300,3 +300,31 @@ export async function handleResumeScheduling(
     return handleError(err);
   }
 }
+
+/**
+ * v1_create_task_note — annotate a task with a progress note.
+ * POST /api/external/task-note
+ */
+export async function handleCreateTaskNote(
+  args: Record<string, unknown>,
+  context: ApiKeyContext
+): Promise<string> {
+  const taskId = args.task_id as string;
+  const note = args.note as string;
+  if (!taskId) {
+    return JSON.stringify({ error: "missing_argument", message: "task_id is required" }, null, 2);
+  }
+  if (!note) {
+    return JSON.stringify({ error: "missing_argument", message: "note is required" }, null, 2);
+  }
+  try {
+    const response = await getBackendClient().post(
+      "/api/external/task-note",
+      context,
+      { task_id: taskId, note }
+    );
+    return JSON.stringify(response.body, null, 2);
+  } catch (err) {
+    return handleError(err);
+  }
+}

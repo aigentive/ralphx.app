@@ -1165,7 +1165,7 @@ pub async fn external_task_transition_http(
     };
 
     // Build transition service
-    let transition_service = crate::application::TaskTransitionService::new(
+    let mut transition_service_builder = crate::application::TaskTransitionService::new(
         std::sync::Arc::clone(&state.app_state.task_repo),
         std::sync::Arc::clone(&state.app_state.task_dependency_repo),
         std::sync::Arc::clone(&state.app_state.project_repo),
@@ -1184,8 +1184,14 @@ pub async fn external_task_transition_http(
     .with_plan_branch_repo(std::sync::Arc::clone(&state.app_state.plan_branch_repo))
     .with_interactive_process_registry(std::sync::Arc::clone(
         &state.app_state.interactive_process_registry,
-    ))
-    .with_external_events_repo(std::sync::Arc::clone(&state.app_state.external_events_repo));
+    ));
+
+    if let Some(ref pub_) = state.app_state.webhook_publisher {
+        transition_service_builder = transition_service_builder.with_webhook_publisher_for_emitter(std::sync::Arc::clone(pub_));
+    }
+
+    let transition_service = transition_service_builder
+        .with_external_events_repo(std::sync::Arc::clone(&state.app_state.external_events_repo));
 
     let updated_task = transition_service
         .transition_task(&task_id, target_status)
@@ -1590,7 +1596,7 @@ pub async fn review_action_http(
         }
     };
 
-    let transition_service = crate::application::TaskTransitionService::new(
+    let mut transition_service_builder = crate::application::TaskTransitionService::new(
         std::sync::Arc::clone(&state.app_state.task_repo),
         std::sync::Arc::clone(&state.app_state.task_dependency_repo),
         std::sync::Arc::clone(&state.app_state.project_repo),
@@ -1609,8 +1615,14 @@ pub async fn review_action_http(
     .with_plan_branch_repo(std::sync::Arc::clone(&state.app_state.plan_branch_repo))
     .with_interactive_process_registry(std::sync::Arc::clone(
         &state.app_state.interactive_process_registry,
-    ))
-    .with_external_events_repo(std::sync::Arc::clone(&state.app_state.external_events_repo));
+    ));
+
+    if let Some(ref pub_) = state.app_state.webhook_publisher {
+        transition_service_builder = transition_service_builder.with_webhook_publisher_for_emitter(std::sync::Arc::clone(pub_));
+    }
+
+    let transition_service = transition_service_builder
+        .with_external_events_repo(std::sync::Arc::clone(&state.app_state.external_events_repo));
 
     let updated_task = transition_service
         .transition_task(&task_id, target_status)
@@ -2274,6 +2286,14 @@ pub struct TriggerVerificationResponse {
     pub session_id: String,
 }
 
+/// A single verification gap in the external API response
+#[derive(Debug, Serialize)]
+pub struct ExternalGapDetail {
+    pub severity: String,
+    pub category: String,
+    pub description: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ExternalVerificationResponse {
     pub status: String,
@@ -2281,6 +2301,9 @@ pub struct ExternalVerificationResponse {
     pub round: Option<u32>,
     pub max_rounds: Option<u32>,
     pub gap_count: Option<u32>,
+    pub gap_score: Option<u32>,
+    #[serde(default)]
+    pub gaps: Vec<ExternalGapDetail>,
     pub convergence_reason: Option<String>,
 }
 
@@ -2436,6 +2459,19 @@ pub async fn get_plan_verification_external_http(
         .and_then(|m| if m.max_rounds > 0 { Some(m.max_rounds) } else { None });
     let gap_count = metadata.as_ref().map(|m| gap_score(&m.current_gaps));
     let convergence_reason = metadata.as_ref().and_then(|m| m.convergence_reason.clone());
+    let gaps: Vec<ExternalGapDetail> = metadata
+        .as_ref()
+        .map(|m| {
+            m.current_gaps
+                .iter()
+                .map(|g| ExternalGapDetail {
+                    severity: g.severity.clone(),
+                    category: g.category.clone(),
+                    description: g.description.clone(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
 
     Ok(Json(ExternalVerificationResponse {
         status: status_str,
@@ -2443,6 +2479,8 @@ pub async fn get_plan_verification_external_http(
         round,
         max_rounds,
         gap_count,
+        gap_score: gap_count,
+        gaps,
         convergence_reason,
     }))
 }
@@ -2657,5 +2695,305 @@ pub async fn batch_task_status_http(
         errors,
         requested_count,
         returned_count,
+    }))
+}
+
+// ============================================================================
+// Webhook Registration Endpoints
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct RegisterWebhookRequest {
+    pub url: String,
+    #[serde(default)]
+    pub event_types: Option<Vec<String>>,
+    #[serde(default)]
+    pub project_ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RegisterWebhookResponse {
+    pub id: String,
+    pub url: String,
+    pub secret: String,
+    pub event_types: Option<Vec<String>>,
+    pub project_ids: Vec<String>,
+    pub active: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WebhookSummary {
+    pub id: String,
+    pub url: String,
+    pub event_types: Option<Vec<String>>,
+    pub project_ids: Vec<String>,
+    pub active: bool,
+    pub failure_count: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ListWebhooksResponse {
+    pub webhooks: Vec<WebhookSummary>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UnregisterWebhookResponse {
+    pub success: bool,
+    pub id: String,
+}
+
+/// POST /api/external/webhooks/register — register a webhook URL
+pub async fn register_webhook_http(
+    State(state): State<HttpServerState>,
+    scope: ProjectScope,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<RegisterWebhookRequest>,
+) -> Result<Json<RegisterWebhookResponse>, HttpError> {
+    // Extract the API key ID from the X-RalphX-Key-Id header (injected by external MCP server)
+    let api_key_id = headers
+        .get(crate::http_server::handlers::external_auth::EXTERNAL_KEY_ID_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+
+    // Extract authorized project IDs from scope (empty means unrestricted)
+    let authorized_project_ids: Vec<String> = scope
+        .0
+        .as_deref()
+        .map(|ids| ids.iter().map(|id| id.to_string()).collect())
+        .unwrap_or_default();
+
+    let svc = crate::application::WebhookService::new(
+        Arc::clone(&state.app_state.webhook_registration_repo),
+    );
+
+    let registration = svc
+        .register(
+            &api_key_id,
+            &req.url,
+            req.event_types,
+            req.project_ids,
+            &authorized_project_ids,
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to register webhook: {}", e);
+            HttpError {
+                status: axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+                message: Some(e.to_string()),
+            }
+        })?;
+
+    let event_types: Option<Vec<String>> = registration
+        .event_types
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok());
+    let project_ids: Vec<String> =
+        serde_json::from_str(&registration.project_ids).unwrap_or_default();
+
+    Ok(Json(RegisterWebhookResponse {
+        id: registration.id,
+        url: registration.url,
+        secret: registration.secret,
+        event_types,
+        project_ids,
+        active: registration.active,
+        created_at: registration.created_at,
+    }))
+}
+
+/// DELETE /api/external/webhooks/:id — unregister a webhook
+pub async fn unregister_webhook_http(
+    State(state): State<HttpServerState>,
+    headers: axum::http::HeaderMap,
+    Path(webhook_id): Path<String>,
+) -> Result<Json<UnregisterWebhookResponse>, HttpError> {
+    let api_key_id = headers
+        .get(crate::http_server::handlers::external_auth::EXTERNAL_KEY_ID_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+
+    let svc = crate::application::WebhookService::new(
+        Arc::clone(&state.app_state.webhook_registration_repo),
+    );
+
+    let found = svc
+        .unregister(&webhook_id, &api_key_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to unregister webhook: {}", e);
+            HttpError {
+                status: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                message: Some(e.to_string()),
+            }
+        })?;
+
+    if !found {
+        return Err(HttpError {
+            status: axum::http::StatusCode::NOT_FOUND,
+            message: Some("Webhook not found or not owned by this API key".to_string()),
+        });
+    }
+
+    Ok(Json(UnregisterWebhookResponse {
+        success: true,
+        id: webhook_id,
+    }))
+}
+
+/// GET /api/external/webhooks — list webhooks for this API key
+pub async fn list_webhooks_http(
+    State(state): State<HttpServerState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<ListWebhooksResponse>, HttpError> {
+    let api_key_id = headers
+        .get(crate::http_server::handlers::external_auth::EXTERNAL_KEY_ID_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+
+    let svc = crate::application::WebhookService::new(
+        Arc::clone(&state.app_state.webhook_registration_repo),
+    );
+
+    let registrations = svc.list(&api_key_id).await.map_err(|e| {
+        error!("Failed to list webhooks: {}", e);
+        HttpError {
+            status: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            message: Some(e.to_string()),
+        }
+    })?;
+
+    let webhooks = registrations
+        .into_iter()
+        .map(|r| {
+            let event_types: Option<Vec<String>> = r
+                .event_types
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok());
+            let project_ids: Vec<String> =
+                serde_json::from_str(&r.project_ids).unwrap_or_default();
+            WebhookSummary {
+                id: r.id,
+                url: r.url,
+                event_types,
+                project_ids,
+                active: r.active,
+                failure_count: r.failure_count,
+                created_at: r.created_at,
+            }
+        })
+        .collect();
+
+    Ok(Json(ListWebhooksResponse { webhooks }))
+}
+
+/// GET /api/external/webhooks/health — delivery health stats per webhook
+pub async fn get_webhook_health_http(
+    State(state): State<HttpServerState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<WebhookHealthResponse>, HttpError> {
+    let api_key_id = headers
+        .get(crate::http_server::handlers::external_auth::EXTERNAL_KEY_ID_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+
+    let svc = crate::application::WebhookService::new(
+        Arc::clone(&state.app_state.webhook_registration_repo),
+    );
+
+    let registrations = svc.list(&api_key_id).await.map_err(|e| {
+        error!("Failed to get webhook health: {}", e);
+        HttpError {
+            status: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            message: Some(e.to_string()),
+        }
+    })?;
+
+    let webhooks = registrations
+        .into_iter()
+        .map(|r| WebhookHealthItem {
+            id: r.id,
+            url: r.url,
+            active: r.active,
+            failure_count: r.failure_count,
+            last_failure_at: r.last_failure_at,
+        })
+        .collect();
+
+    Ok(Json(WebhookHealthResponse { webhooks }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct WebhookHealthItem {
+    pub id: String,
+    pub url: String,
+    pub active: bool,
+    pub failure_count: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_failure_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WebhookHealthResponse {
+    pub webhooks: Vec<WebhookHealthItem>,
+}
+
+// ============================================================================
+// Task note
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct CreateTaskNoteRequest {
+    pub task_id: String,
+    pub note: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TaskNoteResponse {
+    pub task_id: String,
+    pub success: bool,
+}
+
+/// POST /api/external/task-note
+/// Add a progress note to a task. Proxies to add_task_note logic.
+pub async fn create_task_note_http(
+    State(state): State<HttpServerState>,
+    scope: ProjectScope,
+    Json(req): Json<CreateTaskNoteRequest>,
+) -> Result<Json<TaskNoteResponse>, StatusCode> {
+    let task_id = crate::domain::entities::TaskId::from_string(req.task_id);
+
+    let mut task = state
+        .app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get task {}: {}", task_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    task.assert_project_scope(&scope).map_err(|e| e.status)?;
+
+    let note_text = format!("\n\n---\n**Note:** {}", req.note);
+    task.description = Some(match task.description {
+        Some(existing) => format!("{}{}", existing, note_text),
+        None => note_text,
+    });
+
+    state.app_state.task_repo.update(&task).await.map_err(|e| {
+        error!("Failed to update task {}: {}", task_id.as_str(), e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(TaskNoteResponse {
+        task_id: task.id.to_string(),
+        success: true,
     }))
 }

@@ -929,6 +929,20 @@ impl<'a> super::TransitionHandler<'a> {
                             .await;
                     }
                 }
+
+                // Emit review:ready webhook event
+                if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+                    let payload = serde_json::json!({
+                        "task_id": self.machine.context.task_id,
+                        "project_id": self.machine.context.project_id,
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                    });
+                    publisher.publish(
+                        ralphx_domain::entities::EventType::ReviewReady,
+                        &self.machine.context.project_id,
+                        payload,
+                    ).await;
+                }
             }
             State::Reviewing => {
                 // Freshness check: ensure branches are up-to-date before spawning reviewer
@@ -1156,6 +1170,20 @@ impl<'a> super::TransitionHandler<'a> {
                         "AI review passed. Please review and approve.",
                     )
                     .await;
+
+                // Emit review:approved webhook event
+                if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+                    let payload = serde_json::json!({
+                        "task_id": self.machine.context.task_id,
+                        "project_id": self.machine.context.project_id,
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                    });
+                    publisher.publish(
+                        ralphx_domain::entities::EventType::ReviewApproved,
+                        &self.machine.context.project_id,
+                        payload,
+                    ).await;
+                }
             }
             State::Escalated => {
                 // Emit 'review:escalated' event
@@ -1177,6 +1205,20 @@ impl<'a> super::TransitionHandler<'a> {
                         "AI review escalated. Please review and decide.",
                     )
                     .await;
+
+                // Also emit via webhook publisher
+                if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+                    let payload = serde_json::json!({
+                        "task_id": self.machine.context.task_id,
+                        "project_id": self.machine.context.project_id,
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                    });
+                    publisher.publish(
+                        ralphx_domain::entities::EventType::ReviewEscalated,
+                        &self.machine.context.project_id,
+                        payload,
+                    ).await;
+                }
             }
             State::ReExecuting => {
                 // Plan branch guard: block re-execution on merged/abandoned branches
@@ -1317,6 +1359,20 @@ impl<'a> super::TransitionHandler<'a> {
             }
             State::RevisionNeeded => {
                 // Auto-transition to ReExecuting will be handled by check_auto_transition
+
+                // Emit review:changes_requested webhook event
+                if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+                    let payload = serde_json::json!({
+                        "task_id": self.machine.context.task_id,
+                        "project_id": self.machine.context.project_id,
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                    });
+                    publisher.publish(
+                        ralphx_domain::entities::EventType::ReviewChangesRequested,
+                        &self.machine.context.project_id,
+                        payload,
+                    ).await;
+                }
             }
             State::Approved => {
                 // Emit task completed event

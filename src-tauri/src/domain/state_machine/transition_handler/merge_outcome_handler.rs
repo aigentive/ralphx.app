@@ -429,6 +429,25 @@ impl<'a> super::TransitionHandler<'a> {
             self.post_merge_cleanup(task_id_str, task_id, repo_path, plan_branch_repo)
                 .await;
 
+            // Emit merge:completed webhook event.
+            if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+                let webhook_payload = serde_json::json!({
+                    "task_id": task_id_str,
+                    "project_id": project.id.to_string(),
+                    "source_branch": source_branch,
+                    "target_branch": target_branch,
+                    "commit_sha": commit_sha,
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                });
+                publisher
+                    .publish(
+                        ralphx_domain::entities::EventType::MergeCompleted,
+                        &project.id.to_string(),
+                        webhook_payload,
+                    )
+                    .await;
+            }
+
             // Phase 3: spawn fire-and-forget cleanup for slow operations
             let task_repo_clone = Arc::clone(task_repo);
             let task_id_clone = task_id.clone();
@@ -561,6 +580,30 @@ impl<'a> super::TransitionHandler<'a> {
             .event_emitter
             .emit_status_change(task_id_str, "pending_merge", "merging")
             .await;
+
+        // Emit merge:conflict webhook event.
+        if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+            let conflict_file_strings: Vec<String> = conflict_files
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
+            let webhook_payload = serde_json::json!({
+                "task_id": task_id_str,
+                "project_id": project.id.to_string(),
+                "source_branch": source_branch,
+                "target_branch": target_branch,
+                "conflict_files": conflict_file_strings,
+                "strategy": opts.strategy_label,
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            });
+            publisher
+                .publish(
+                    ralphx_domain::entities::EventType::MergeConflict,
+                    &project.id.to_string(),
+                    webhook_payload,
+                )
+                .await;
+        }
 
         // Spawn merger agent
         let prompt = format!(

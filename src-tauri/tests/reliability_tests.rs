@@ -1,0 +1,716 @@
+// Reliability test suite — C1, C2, C3, C4 gap coverage
+//
+// C1: auto-propose retry + failure event emission (auto_propose_with_retry)
+// C2: `origin: External` propagates through create_child_session(purpose: "verification")
+// C3: team_mode preserved for external sessions through child creation
+// C4: auto-accept → task linking produces no orphaned proposals
+
+use axum::{extract::State, Json};
+use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
+use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::entities::{
+    Artifact, ArtifactId, ArtifactType, Complexity, IdeationSession, IdeationSessionId,
+    IdeationSessionStatus, Priority, Project, ProjectId, ProposalCategory, ProposalStatus,
+    SessionOrigin, SessionPurpose, TaskProposal, TaskProposalId, VerificationStatus,
+};
+use ralphx_lib::error::AppError;
+use ralphx_lib::http_server::handlers::create_child_session;
+use ralphx_lib::http_server::helpers::finalize_proposals_impl;
+use ralphx_lib::http_server::types::{CreateChildSessionRequest, HttpServerState};
+use std::sync::Arc;
+
+// ============================================================================
+// Shared Setup Helpers
+// ============================================================================
+
+async fn setup_sqlite_state() -> HttpServerState {
+    let app_state = Arc::new(AppState::new_sqlite_test());
+    let execution_state = Arc::new(ExecutionState::new());
+    let tracker = TeamStateTracker::new();
+    let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
+    HttpServerState {
+        app_state,
+        execution_state,
+        team_tracker: tracker,
+        team_service,
+    }
+}
+
+fn make_external_session(
+    project_id: &ProjectId,
+    team_mode: Option<&str>,
+    plan_artifact_id: Option<ArtifactId>,
+) -> IdeationSession {
+    IdeationSession {
+        id: IdeationSessionId::new(),
+        project_id: project_id.clone(),
+        title: Some("External Parent Session".to_string()),
+        status: IdeationSessionStatus::Active,
+        plan_artifact_id,
+        inherited_plan_artifact_id: None,
+        seed_task_id: None,
+        parent_session_id: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        archived_at: None,
+        converted_at: None,
+        team_mode: team_mode.map(|s| s.to_string()),
+        team_config_json: None,
+        title_source: None,
+        verification_status: Default::default(),
+        verification_in_progress: false,
+        verification_metadata: None,
+        verification_generation: 0,
+        source_project_id: None,
+        source_session_id: None,
+        session_purpose: Default::default(),
+        cross_project_checked: true,
+        plan_version_last_read: None,
+        origin: SessionOrigin::External,
+        expected_proposal_count: None,
+        auto_accept_status: None,
+        auto_accept_started_at: None,
+    }
+}
+
+// ============================================================================
+// C2: origin: External propagates through create_child_session(purpose: verification)
+// ============================================================================
+
+/// C2: Verify that a verification child session inherits `origin: External` from its parent.
+///
+/// The handler sets `origin: parent.origin` when creating the child. This test confirms
+/// the inheritance chain is intact for the verification code path.
+#[tokio::test]
+async fn c2_external_origin_propagates_to_verification_child() {
+    let state = setup_sqlite_state().await;
+
+    let project_id = ProjectId::from_string("proj-c2-test".to_string());
+
+    // Create External parent session with a plan artifact (FK OFF — no real artifact needed
+    // because the SQLite test state disables FK enforcement for simplicity)
+    let parent = make_external_session(&project_id, None, Some(ArtifactId::new()));
+    let parent_id = parent.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    // Call the handler to create a verification child session
+    let req = CreateChildSessionRequest {
+        parent_session_id: parent_id.as_str().to_string(),
+        title: None,
+        description: Some("Verify the plan".to_string()),
+        inherit_context: false,
+        initial_prompt: None,
+        team_mode: None,
+        team_config: None,
+        purpose: Some("verification".to_string()),
+    };
+
+    let result = create_child_session(State(state.clone()), Json(req)).await;
+    assert!(
+        result.is_ok(),
+        "create_child_session must succeed for external parent, got: {:?}",
+        result.err()
+    );
+
+    let response = result.unwrap().0;
+    let child_session_id = IdeationSessionId::from_string(response.session_id.clone());
+
+    // Fetch child from DB and assert origin is External
+    let child = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&child_session_id)
+        .await
+        .unwrap()
+        .expect("Verification child session must exist in DB");
+
+    assert_eq!(
+        child.origin,
+        SessionOrigin::External,
+        "Verification child must inherit origin: External from parent (got: {:?})",
+        child.origin
+    );
+    assert_eq!(
+        child.session_purpose,
+        SessionPurpose::Verification,
+        "Child session_purpose must be Verification"
+    );
+    assert_eq!(
+        child.parent_session_id,
+        Some(parent_id),
+        "Child must reference parent via parent_session_id"
+    );
+}
+
+/// C2b: Internal sessions produce Internal children (control case).
+///
+/// Ensures the inheritance works bidirectionally — Internal sessions don't
+/// accidentally produce External children.
+#[tokio::test]
+async fn c2_internal_origin_produces_internal_verification_child() {
+    let state = setup_sqlite_state().await;
+
+    let project_id = ProjectId::from_string("proj-c2b-test".to_string());
+
+    // Create Internal parent (default origin)
+    let mut parent = make_external_session(&project_id, None, Some(ArtifactId::new()));
+    parent.origin = SessionOrigin::Internal;
+    let parent_id = parent.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    let req = CreateChildSessionRequest {
+        parent_session_id: parent_id.as_str().to_string(),
+        title: None,
+        description: Some("Verify internal plan".to_string()),
+        inherit_context: false,
+        initial_prompt: None,
+        team_mode: None,
+        team_config: None,
+        purpose: Some("verification".to_string()),
+    };
+
+    let result = create_child_session(State(state.clone()), Json(req)).await;
+    assert!(result.is_ok(), "Handler must succeed, got: {:?}", result.err());
+
+    let response = result.unwrap().0;
+    let child_session_id = IdeationSessionId::from_string(response.session_id);
+
+    let child = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&child_session_id)
+        .await
+        .unwrap()
+        .expect("Child must exist");
+
+    assert_eq!(
+        child.origin,
+        SessionOrigin::Internal,
+        "Internal parent must produce Internal verification child"
+    );
+}
+
+// ============================================================================
+// C3: team_mode preservation for external sessions
+// ============================================================================
+
+/// C3: External session with team_mode="debate" → child inherits team_mode when inherit_context=true.
+///
+/// Verifies that autonomous external sessions using team mode (debate/research) pass
+/// team configuration through to child sessions correctly, ensuring the right agent
+/// type is dispatched.
+#[tokio::test]
+async fn c3_team_mode_inherited_for_external_session_with_inherit_context() {
+    let state = setup_sqlite_state().await;
+
+    let project_id = ProjectId::from_string("proj-c3-inherit".to_string());
+
+    // Create External parent with team_mode="debate"
+    let parent = make_external_session(&project_id, Some("debate"), None);
+    let parent_id = parent.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    // Create child with inherit_context=true — should inherit team_mode from parent
+    let req = CreateChildSessionRequest {
+        parent_session_id: parent_id.as_str().to_string(),
+        title: Some("Follow-up Analysis".to_string()),
+        description: None,
+        inherit_context: true,
+        initial_prompt: None,
+        team_mode: None, // no explicit mode; must inherit from parent
+        team_config: None,
+        purpose: None, // general purpose
+    };
+
+    let result = create_child_session(State(state.clone()), Json(req)).await;
+    assert!(
+        result.is_ok(),
+        "create_child_session must succeed, got: {:?}",
+        result.err()
+    );
+
+    let response = result.unwrap().0;
+    let child_session_id = IdeationSessionId::from_string(response.session_id.clone());
+
+    // Check response-level team_mode (handler returns resolved config)
+    assert_eq!(
+        response.team_mode.as_deref(),
+        Some("debate"),
+        "Response team_mode must be 'debate' (inherited from External parent)"
+    );
+
+    // Also verify the DB record is consistent
+    let child = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&child_session_id)
+        .await
+        .unwrap()
+        .expect("Child session must exist in DB");
+
+    assert_eq!(
+        child.team_mode.as_deref(),
+        Some("debate"),
+        "DB team_mode must be 'debate' (inherited from External parent)"
+    );
+    assert_eq!(
+        child.origin,
+        SessionOrigin::External,
+        "Child origin must remain External"
+    );
+}
+
+/// C3b: External session with team_mode → child does NOT inherit when inherit_context=false.
+///
+/// Boundary condition: origin is always inherited, but team_mode is only inherited
+/// when inherit_context=true. This test verifies the two fields are independent.
+#[tokio::test]
+async fn c3_team_mode_not_inherited_without_inherit_context() {
+    let state = setup_sqlite_state().await;
+
+    let project_id = ProjectId::from_string("proj-c3-noinherit".to_string());
+
+    // External parent with team_mode="research"
+    let parent = make_external_session(&project_id, Some("research"), None);
+    let parent_id = parent.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    // Child with inherit_context=false — should NOT inherit team_mode
+    let req = CreateChildSessionRequest {
+        parent_session_id: parent_id.as_str().to_string(),
+        title: Some("Solo Child".to_string()),
+        description: None,
+        inherit_context: false,
+        initial_prompt: None,
+        team_mode: None,
+        team_config: None,
+        purpose: None,
+    };
+
+    let result = create_child_session(State(state.clone()), Json(req)).await;
+    assert!(result.is_ok(), "Handler must succeed, got: {:?}", result.err());
+
+    let response = result.unwrap().0;
+    let child_session_id = IdeationSessionId::from_string(response.session_id.clone());
+
+    let child = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&child_session_id)
+        .await
+        .unwrap()
+        .expect("Child must exist");
+
+    // origin IS inherited (always), but team_mode is NOT (inherit_context=false)
+    assert_eq!(
+        child.origin,
+        SessionOrigin::External,
+        "Origin is always inherited regardless of inherit_context"
+    );
+    assert_eq!(
+        child.team_mode, None,
+        "team_mode must be None when inherit_context=false"
+    );
+    assert_eq!(
+        response.team_mode, None,
+        "Response team_mode must be None when inherit_context=false"
+    );
+}
+
+// ============================================================================
+// C4: auto-accept → task linking — no orphaned proposals
+// ============================================================================
+
+/// C4: finalize_proposals links all proposals to tasks (no orphaned proposals).
+///
+/// Simulates the auto-accept flow: session with proposals → finalize_proposals_impl
+/// → verify every proposal has created_task_id set to a valid task ID.
+#[tokio::test]
+async fn c4_finalize_proposals_links_all_proposals_to_tasks() {
+    let state = AppState::new_sqlite_test();
+
+    // Create project with use_feature_branches=false to skip git operations
+    let mut project = Project::new("Reliability Test Project".to_string(), "/tmp/test-c4".to_string());
+    project.use_feature_branches = false;
+    let project_id = project.id.clone();
+    state.project_repo.create(project).await.unwrap();
+
+    // Create plan artifact (real DB row for FK safety)
+    let artifact = Artifact::new_inline(
+        "Test Plan",
+        ArtifactType::Specification,
+        "# Reliability Plan\n\nTest content for C4.",
+        "test",
+    );
+    let artifact_id = artifact.id.clone();
+    state.artifact_repo.create(artifact).await.unwrap();
+
+    // Create session
+    let session_id = IdeationSessionId::new();
+    let session = IdeationSession {
+        id: session_id.clone(),
+        project_id: project_id.clone(),
+        title: Some("Auto-Accept Session".to_string()),
+        status: IdeationSessionStatus::Active,
+        plan_artifact_id: Some(artifact_id.clone()),
+        inherited_plan_artifact_id: None,
+        seed_task_id: None,
+        parent_session_id: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        archived_at: None,
+        converted_at: None,
+        team_mode: None,
+        team_config_json: None,
+        title_source: None,
+        verification_status: VerificationStatus::Skipped, // bypass verification gate
+        verification_in_progress: false,
+        verification_metadata: None,
+        verification_generation: 0,
+        source_project_id: None,
+        source_session_id: None,
+        session_purpose: Default::default(),
+        cross_project_checked: true,
+        plan_version_last_read: None,
+        origin: SessionOrigin::External,
+        expected_proposal_count: None,
+        auto_accept_status: None,
+        auto_accept_started_at: None,
+    };
+    state.ideation_session_repo.create(session).await.unwrap();
+
+    // Create 3 proposals linked to the session
+    let mut proposal_ids = Vec::new();
+    for i in 1..=3i32 {
+        let proposal = TaskProposal {
+            id: TaskProposalId::new(),
+            session_id: session_id.clone(),
+            title: format!("Proposal {}", i),
+            description: Some(format!("Description for proposal {}", i)),
+            category: ProposalCategory::Feature,
+            status: ProposalStatus::Pending,
+            suggested_priority: Priority::Medium,
+            priority_score: 50,
+            priority_reason: None,
+            priority_factors: None,
+            estimated_complexity: Complexity::Moderate,
+            user_priority: None,
+            user_modified: false,
+            steps: None,
+            acceptance_criteria: None,
+            plan_artifact_id: Some(artifact_id.clone()),
+            plan_version_at_creation: None,
+            created_task_id: None, // starts as None — will be linked after finalize
+            selected: false,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            archived_at: None,
+            sort_order: i,
+            target_project: None,
+            migrated_from_session_id: None,
+            migrated_from_proposal_id: None,
+        };
+        let pid = proposal.id.clone();
+        state.task_proposal_repo.create(proposal).await.unwrap();
+        proposal_ids.push(pid);
+    }
+
+    // Call finalize_proposals_impl — the auto-accept entry point
+    let result = finalize_proposals_impl(&state, session_id.as_str()).await;
+    assert!(
+        result.is_ok(),
+        "finalize_proposals_impl must succeed, got: {:?}",
+        result.err()
+    );
+
+    let finalize_response = result.unwrap();
+    assert_eq!(
+        finalize_response.created_task_ids.len(),
+        3,
+        "Must create exactly 3 tasks (one per proposal)"
+    );
+
+    // Verify every proposal has created_task_id set — no orphans
+    for pid in &proposal_ids {
+        let proposal = state
+            .task_proposal_repo
+            .get_by_id(pid)
+            .await
+            .unwrap()
+            .unwrap_or_else(|| panic!("Proposal {} must exist after finalize", pid.as_str()));
+
+        assert!(
+            proposal.created_task_id.is_some(),
+            "Proposal '{}' must have created_task_id set after finalize_proposals (orphaned proposal detected)",
+            proposal.title
+        );
+
+        // Verify the linked task actually exists in the task repo
+        let task_id = proposal.created_task_id.as_ref().unwrap();
+        let task = state
+            .task_repo
+            .get_by_id(task_id)
+            .await
+            .unwrap()
+            .unwrap_or_else(|| {
+                panic!(
+                    "Task {} linked from proposal '{}' must exist",
+                    task_id.as_str(),
+                    proposal.title
+                )
+            });
+
+        assert_eq!(
+            task.ideation_session_id,
+            Some(session_id.clone()),
+            "Task must be linked to the source session"
+        );
+    }
+
+    // Verify session was converted to Accepted
+    assert_eq!(
+        finalize_response.session_status, "accepted",
+        "Session must transition to accepted after finalize"
+    );
+}
+
+/// C4b: Proposal count mismatch prevents finalize (expected_proposal_count gate).
+///
+/// If the session has expected_proposal_count set and the actual count doesn't match,
+/// finalize_proposals_impl must return a validation error — not silently create partial tasks.
+#[tokio::test]
+async fn c4_count_mismatch_prevents_finalize_and_leaves_no_orphans() {
+    let state = AppState::new_sqlite_test();
+
+    let mut project = Project::new("Count Test Project".to_string(), "/tmp/test-c4b".to_string());
+    project.use_feature_branches = false;
+    let project_id = project.id.clone();
+    state.project_repo.create(project).await.unwrap();
+
+    let artifact = Artifact::new_inline("Plan", ArtifactType::Specification, "# Plan", "test");
+    let artifact_id = artifact.id.clone();
+    state.artifact_repo.create(artifact).await.unwrap();
+
+    let session_id = IdeationSessionId::new();
+    let session = IdeationSession {
+        id: session_id.clone(),
+        project_id: project_id.clone(),
+        title: Some("Count Gate Session".to_string()),
+        status: IdeationSessionStatus::Active,
+        plan_artifact_id: Some(artifact_id.clone()),
+        inherited_plan_artifact_id: None,
+        seed_task_id: None,
+        parent_session_id: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        archived_at: None,
+        converted_at: None,
+        team_mode: None,
+        team_config_json: None,
+        title_source: None,
+        verification_status: VerificationStatus::Skipped,
+        verification_in_progress: false,
+        verification_metadata: None,
+        verification_generation: 0,
+        source_project_id: None,
+        source_session_id: None,
+        session_purpose: Default::default(),
+        cross_project_checked: true,
+        plan_version_last_read: None,
+        origin: SessionOrigin::External,
+        expected_proposal_count: None, // will be set via SQL below (create() doesn't persist it)
+        auto_accept_status: None,
+        auto_accept_started_at: None,
+    };
+    state.ideation_session_repo.create(session).await.unwrap();
+
+    // create() does not persist expected_proposal_count — set it via SQL
+    // (consistent with how http_helpers.rs tests set fields not included in the INSERT)
+    let sid = session_id.as_str().to_string();
+    state
+        .db
+        .run(move |conn| {
+            conn.execute(
+                "UPDATE ideation_sessions SET expected_proposal_count = 5 WHERE id = ?1",
+                rusqlite::params![sid],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+    // Create only 2 proposals (mismatches the expected count of 5)
+    let mut proposal_ids = Vec::new();
+    for i in 1..=2i32 {
+        let proposal = TaskProposal {
+            id: TaskProposalId::new(),
+            session_id: session_id.clone(),
+            title: format!("Proposal {}", i),
+            description: None,
+            category: ProposalCategory::Feature,
+            status: ProposalStatus::Pending,
+            suggested_priority: Priority::Medium,
+            priority_score: 50,
+            priority_reason: None,
+            priority_factors: None,
+            estimated_complexity: Complexity::Moderate,
+            user_priority: None,
+            user_modified: false,
+            steps: None,
+            acceptance_criteria: None,
+            plan_artifact_id: Some(artifact_id.clone()),
+            plan_version_at_creation: None,
+            created_task_id: None,
+            selected: false,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            archived_at: None,
+            sort_order: i,
+            target_project: None,
+            migrated_from_session_id: None,
+            migrated_from_proposal_id: None,
+        };
+        let pid = proposal.id.clone();
+        state.task_proposal_repo.create(proposal).await.unwrap();
+        proposal_ids.push(pid);
+    }
+
+    // finalize_proposals_impl must fail due to count mismatch
+    let result = finalize_proposals_impl(&state, session_id.as_str()).await;
+    assert!(
+        result.is_err(),
+        "finalize_proposals_impl must fail when proposal count doesn't match expected"
+    );
+    match result.unwrap_err() {
+        AppError::Validation(msg) => {
+            assert!(
+                msg.contains("mismatch") || msg.contains("count"),
+                "Error must mention count mismatch, got: {}",
+                msg
+            );
+        }
+        other => panic!("Expected AppError::Validation for count mismatch, got: {:?}", other),
+    }
+
+    // Verify proposals are NOT linked to any tasks (no orphaned partial state)
+    for pid in &proposal_ids {
+        let proposal = state
+            .task_proposal_repo
+            .get_by_id(pid)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            proposal.created_task_id.is_none(),
+            "Proposal '{}' must NOT have created_task_id after failed finalize",
+            proposal.title
+        );
+    }
+}
+
+// ============================================================================
+// C1: Auto-propose delivery retry logic
+// ============================================================================
+
+/// All attempts fail → retry fires 4 times total (initial + 3 retries) and
+/// exactly one `ideation:auto_propose_failed` event is written to external_events.
+#[tokio::test]
+async fn test_auto_propose_all_attempts_fail_emits_failure_event() {
+    use ralphx_lib::application::MockChatService;
+    use ralphx_lib::domain::repositories::ExternalEventsRepository;
+    use ralphx_lib::http_server::handlers::auto_propose_with_retry;
+    use ralphx_lib::infrastructure::memory::MemoryExternalEventsRepository;
+
+    let mock_service = MockChatService::new();
+    mock_service.set_available(false).await;
+
+    let repo = Arc::new(MemoryExternalEventsRepository::new());
+    let events_repo: Arc<dyn ExternalEventsRepository> = Arc::clone(&repo) as _;
+
+    let session_id = "test-session-c1";
+    let project_id = "test-project-c1";
+
+    // Zero delays so the test completes instantly (4 total attempts: initial + 3 retries)
+    auto_propose_with_retry(session_id, project_id, &mock_service, events_repo, &[0, 0, 0]).await;
+
+    // All 4 attempts (initial + 3 retries) should have been tried
+    assert_eq!(
+        mock_service.call_count(),
+        4,
+        "should attempt initial send + 3 retries = 4 total calls"
+    );
+
+    // Exactly one failure event written to external_events
+    let events = repo
+        .get_events_after_cursor(&[project_id.to_string()], 0, 10)
+        .await
+        .unwrap();
+    assert_eq!(events.len(), 1, "should emit exactly one failure event");
+    assert_eq!(events[0].event_type, "ideation:auto_propose_failed");
+    assert_eq!(events[0].project_id, project_id);
+
+    let payload: serde_json::Value = serde_json::from_str(&events[0].payload).unwrap();
+    assert_eq!(payload["session_id"], session_id);
+    assert_eq!(payload["project_id"], project_id);
+    assert!(
+        payload["error"].is_string(),
+        "payload must contain error field"
+    );
+}
+
+/// Success on first attempt → exactly one call made and no failure event written.
+#[tokio::test]
+async fn test_auto_propose_success_no_failure_event() {
+    use ralphx_lib::application::MockChatService;
+    use ralphx_lib::domain::repositories::ExternalEventsRepository;
+    use ralphx_lib::http_server::handlers::auto_propose_with_retry;
+    use ralphx_lib::infrastructure::memory::MemoryExternalEventsRepository;
+
+    let mock_service = MockChatService::new(); // available by default
+
+    let repo = Arc::new(MemoryExternalEventsRepository::new());
+    let events_repo: Arc<dyn ExternalEventsRepository> = Arc::clone(&repo) as _;
+
+    let session_id = "test-session-c1-ok";
+    let project_id = "test-project-c1-ok";
+
+    auto_propose_with_retry(session_id, project_id, &mock_service, events_repo, &[0, 0, 0]).await;
+
+    // Succeeds on first attempt — no retries needed
+    assert_eq!(
+        mock_service.call_count(),
+        1,
+        "should succeed on first attempt with no retries"
+    );
+
+    // No failure event written
+    let events = repo
+        .get_events_after_cursor(&[project_id.to_string()], 0, 10)
+        .await
+        .unwrap();
+    assert!(
+        events.is_empty(),
+        "no failure events should be written on success"
+    );
+}

@@ -7,7 +7,7 @@ use crate::infrastructure::sqlite::connection::open_memory_connection;
 
 #[test]
 fn test_schema_version_constant() {
-    assert_eq!(SCHEMA_VERSION, 77);
+    assert_eq!(SCHEMA_VERSION, 78);
 }
 
 #[test]

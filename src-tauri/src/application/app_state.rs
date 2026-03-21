@@ -23,7 +23,7 @@ use crate::domain::repositories::{
     ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository,
     SessionLinkRepository, TaskDependencyRepository, TaskProposalRepository, TaskQARepository,
     TaskRepository, TaskStepRepository, TeamMessageRepository, TeamSessionRepository,
-    WorkflowRepository,
+    WebhookRegistrationRepository, WorkflowRepository,
 };
 use crate::domain::services::{
     GithubServiceTrait, MemoryRunningAgentRegistry, MessageQueue, RunningAgentRegistry,
@@ -44,7 +44,8 @@ use crate::infrastructure::memory::{
     MemoryReviewIssueRepository, MemoryReviewRepository, MemoryReviewSettingsRepository,
     MemorySessionLinkRepository, MemoryTaskDependencyRepository, MemoryTaskProposalRepository,
     MemoryTaskQARepository, MemoryTaskRepository, MemoryTaskStepRepository,
-    MemoryTeamMessageRepository, MemoryTeamSessionRepository, MemoryWorkflowRepository,
+    MemoryTeamMessageRepository, MemoryTeamSessionRepository,
+    MemoryWebhookRegistrationRepository, MemoryWorkflowRepository,
 };
 use crate::infrastructure::sqlite::ReviewIssueRepository;
 use crate::infrastructure::sqlite::{
@@ -63,7 +64,7 @@ use crate::infrastructure::sqlite::{
     SqliteRunningAgentRegistry, SqliteSessionLinkRepository, SqliteTaskDependencyRepository,
     SqliteTaskProposalRepository, SqliteTaskQARepository, SqliteTaskRepository,
     SqliteTaskStepRepository, SqliteTeamMessageRepository, SqliteTeamSessionRepository,
-    SqliteWorkflowRepository,
+    SqliteWebhookRegistrationRepository, SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, GhCliGithubService, MockAgenticClient};
 
@@ -179,6 +180,12 @@ pub struct AppState {
     pub github_service: Option<Arc<dyn GithubServiceTrait>>,
     /// Registry of active GitHub PR polling tasks (AD1, AD18).
     pub pr_poller_registry: Arc<PrPollerRegistry>,
+    /// Webhook registration repository for managing external webhook subscriptions
+    pub webhook_registration_repo: Arc<dyn WebhookRegistrationRepository>,
+    /// Optional webhook publisher for pushing events to registered external endpoints.
+    /// Constructed ONCE in lib.rs and Arc-cloned into both AppState instances.
+    /// None in test constructors.
+    pub webhook_publisher: Option<Arc<dyn crate::domain::state_machine::services::WebhookPublisher>>,
 }
 
 impl AppState {
@@ -365,7 +372,9 @@ impl AppState {
                     Arc::clone(&shared_conn),
                 )),
             )),
-            running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(shared_conn)),
+            running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(Arc::clone(&shared_conn))),
+            webhook_registration_repo: Arc::new(SqliteWebhookRegistrationRepository::from_shared(Arc::clone(&shared_conn))),
+            webhook_publisher: None,
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),
@@ -531,7 +540,9 @@ impl AppState {
                     Arc::clone(&shared_conn),
                 )),
             )),
-            running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(shared_conn)),
+            running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(Arc::clone(&shared_conn))),
+            webhook_registration_repo: Arc::new(SqliteWebhookRegistrationRepository::from_shared(Arc::clone(&shared_conn))),
+            webhook_publisher: None,
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),
@@ -611,6 +622,8 @@ impl AppState {
             ),
             external_events_repo: Arc::new(MemoryExternalEventsRepository::new()),
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
+            webhook_registration_repo: Arc::new(MemoryWebhookRegistrationRepository::new()),
+            webhook_publisher: None,
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),
@@ -705,6 +718,8 @@ impl AppState {
             db: crate::infrastructure::sqlite::DbConnection::from_shared(Arc::clone(&shared_conn)),
             external_events_repo: Arc::new(MemoryExternalEventsRepository::new()),
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
+            webhook_registration_repo: Arc::new(MemoryWebhookRegistrationRepository::new()),
+            webhook_publisher: None,
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(
@@ -798,6 +813,8 @@ impl AppState {
             db: crate::infrastructure::sqlite::DbConnection::from_shared(Arc::clone(&shared_conn)),
             external_events_repo: Arc::new(MemoryExternalEventsRepository::new()),
             running_agent_registry: registry,
+            webhook_registration_repo: Arc::new(MemoryWebhookRegistrationRepository::new()),
+            webhook_publisher: None,
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(
@@ -886,6 +903,8 @@ impl AppState {
             ),
             external_events_repo: Arc::new(MemoryExternalEventsRepository::new()),
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
+            webhook_registration_repo: Arc::new(MemoryWebhookRegistrationRepository::new()),
+            webhook_publisher: None,
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),

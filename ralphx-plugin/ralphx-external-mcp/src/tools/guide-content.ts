@@ -201,6 +201,7 @@ Calling \`v1_accept_plan_and_schedule\` on an already-accepted session is safe �
 | v1_cancel_task | Cancel task | task_id | Task active | — |
 | v1_retry_task | Retry failed/stopped task | task_id | Task failed/stopped | — |
 | v1_resume_scheduling | Resume failed accept_plan_and_schedule | session_id | Previous accept failed | v1_get_task_detail |
+| v1_create_task_note | Annotate task with progress note | task_id, note | — | — |
 
 ### Task States
 
@@ -216,7 +217,7 @@ pending → executing → pending_review → reviewing → pending_merge → mer
 - \`"cancel"\` — cancel the task
 `,
 
-  events: `## Flow 4: Events & Monitoring (4 tools)
+  events: `## Flow 4: Events & Monitoring (8 tools)
 
 | Tool | Purpose | Required Args | Preconditions | Next Step |
 |------|---------|---------------|---------------|-----------|
@@ -224,6 +225,10 @@ pending → executing → pending_review → reviewing → pending_merge → mer
 | v1_get_recent_events | Cursor-based event fetch from DB | last_id, project_id (optional) | — | — |
 | v1_get_attention_items | Tasks needing action (reviews, conflicts) | project_id (optional) | — | v1_get_task_detail |
 | v1_get_execution_capacity | Can more work run? Running/queued counts | project_id | — | v1_start_ideation |
+| v1_register_webhook | Register URL to receive pipeline events via HTTP POST | url, project_id | — | v1_list_webhooks |
+| v1_unregister_webhook | Remove a registered webhook URL | webhook_id | — | v1_list_webhooks |
+| v1_list_webhooks | List all registered webhooks and their status | project_id (optional) | — | — |
+| v1_get_webhook_health | Check delivery health for a webhook | webhook_id | — | — |
 
 ### Cursor-Based Polling
 
@@ -393,9 +398,14 @@ export const ALL_TOOL_NAMES: string[] = [
   "v1_cancel_task",
   "v1_retry_task",
   "v1_resume_scheduling",
-  // Flow 4: Events & Monitoring (4)
+  "v1_create_task_note",
+  // Flow 4: Events & Monitoring (8)
   "v1_subscribe_events",
   "v1_get_recent_events",
   "v1_get_attention_items",
   "v1_get_execution_capacity",
+  "v1_register_webhook",
+  "v1_unregister_webhook",
+  "v1_list_webhooks",
+  "v1_get_webhook_health",
 ];

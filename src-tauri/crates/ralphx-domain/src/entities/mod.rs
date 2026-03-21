@@ -1,5 +1,6 @@
 pub mod activity_event;
 pub mod agent_run;
+pub mod event_type;
 pub mod api_key;
 pub mod app_state;
 pub mod artifact;
@@ -35,6 +36,7 @@ pub use activity_event::{
     ParseActivityEventRoleError, ParseActivityEventTypeError,
 };
 pub use agent_run::{AgentRun, AgentRunId, AgentRunStatus, InterruptedConversation};
+pub use event_type::{EventType, ParseEventTypeError};
 pub use api_key::{
     ApiKey, AuditLogEntry, PERMISSION_ADMIN, PERMISSION_CREATE_PROJECT, PERMISSION_MAX,
     PERMISSION_READ, PERMISSION_WRITE,

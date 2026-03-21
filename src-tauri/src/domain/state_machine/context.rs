@@ -7,6 +7,7 @@ use super::mocks::{
 };
 use super::services::{
     AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter, TaskScheduler,
+    WebhookPublisher,
 };
 use super::types::Blocker;
 use crate::application::ChatService;
@@ -120,6 +121,10 @@ pub struct TaskServices {
     /// Used by PR merge poller (started in on_enter(Merging)) to fire Merging → Merged when
     /// GitHub reports the PR as merged. Optional — None when not wired (tests, non-PR paths).
     pub transition_service: Option<Arc<TaskTransitionService<Wry>>>,
+
+    /// Webhook publisher for broadcasting events to registered external endpoints.
+    /// Optional — None when webhook delivery is not configured.
+    pub webhook_publisher: Option<Arc<dyn WebhookPublisher>>,
 }
 
 impl TaskServices {
@@ -155,6 +160,7 @@ impl TaskServices {
             pr_creation_guard: None,
             github_service: None,
             transition_service: None,
+            webhook_publisher: None,
         }
     }
 
@@ -285,6 +291,12 @@ impl TaskServices {
         self
     }
 
+    /// Set the webhook publisher for broadcasting events to external endpoints (builder pattern).
+    pub fn with_webhook_publisher(mut self, publisher: Arc<dyn WebhookPublisher>) -> Self {
+        self.webhook_publisher = Some(publisher);
+        self
+    }
+
     /// Creates a TaskServices with all mock implementations for testing
     pub fn new_mock() -> Self {
         use crate::application::MockChatService;
@@ -312,6 +324,7 @@ impl TaskServices {
             pr_creation_guard: None,
             github_service: None,
             transition_service: None,
+            webhook_publisher: None,
         }
     }
 }
@@ -393,6 +406,10 @@ impl std::fmt::Debug for TaskServices {
             .field(
                 "transition_service",
                 &self.transition_service.as_ref().map(|_| "<TaskTransitionService>"),
+            )
+            .field(
+                "webhook_publisher",
+                &self.webhook_publisher.as_ref().map(|_| "<WebhookPublisher>"),
             )
             .finish()
     }

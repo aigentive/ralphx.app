@@ -4,6 +4,7 @@
  * 4 tools for real-time monitoring, attention items, and capacity checks.
  * All tools perform project scope validation before forwarding to backend.
  */
+// ─────────────────────────────────────────────────────────────────────────────
 import { getBackendClient, BackendError } from "../backend-client.js";
 function handleError(err) {
     if (err instanceof BackendError) {
@@ -156,6 +157,86 @@ export async function handleGetExecutionCapacity(args, context) {
                 note: "Execution capacity endpoint not yet available on this backend version.",
             }, null, 2);
         }
+        return handleError(err);
+    }
+}
+/**
+ * v1_register_webhook — register a webhook URL for real-time event delivery.
+ * POST /api/external/webhooks/register
+ *
+ * Returns the webhook registration including the HMAC secret (shown ONCE — store it).
+ * Idempotent: re-registering the same URL returns the existing registration.
+ */
+export async function handleRegisterWebhook(args, context) {
+    const url = args.url;
+    if (!url) {
+        return JSON.stringify({ error: "missing_argument", message: "url is required" }, null, 2);
+    }
+    const eventTypes = Array.isArray(args.event_types)
+        ? args.event_types
+        : undefined;
+    const projectIds = Array.isArray(args.project_ids)
+        ? args.project_ids
+        : [];
+    // Project scope validation for explicit project_ids
+    if (projectIds.length > 0) {
+        for (const pid of projectIds) {
+            const scopeError = checkProjectScope(pid, context);
+            if (scopeError)
+                return scopeError;
+        }
+    }
+    try {
+        const response = await getBackendClient().post("/api/external/webhooks/register", context, { url, event_types: eventTypes, project_ids: projectIds });
+        return JSON.stringify(response.body, null, 2);
+    }
+    catch (err) {
+        return handleError(err);
+    }
+}
+/**
+ * v1_unregister_webhook — remove a webhook registration.
+ * DELETE /api/external/webhooks/:id
+ */
+export async function handleUnregisterWebhook(args, context) {
+    const webhookId = args.webhook_id;
+    if (!webhookId) {
+        return JSON.stringify({ error: "missing_argument", message: "webhook_id is required" }, null, 2);
+    }
+    try {
+        const response = await getBackendClient().delete(`/api/external/webhooks/${encodeURIComponent(webhookId)}`, context);
+        return JSON.stringify(response.body, null, 2);
+    }
+    catch (err) {
+        return handleError(err);
+    }
+}
+/**
+ * v1_list_webhooks — list all registered webhooks for this API key.
+ * GET /api/external/webhooks
+ */
+export async function handleListWebhooks(args, context) {
+    try {
+        const response = await getBackendClient().get("/api/external/webhooks", context);
+        return JSON.stringify(response.body, null, 2);
+    }
+    catch (err) {
+        return handleError(err);
+    }
+}
+/**
+ * v1_get_webhook_health — check delivery health for all registered webhooks.
+ * GET /api/external/webhooks/health
+ *
+ * Returns per-webhook stats: active status, failure count, and last failure time.
+ * Use this to detect broken webhooks before relying on event delivery.
+ */
+export async function handleGetWebhookHealth(args, context) {
+    try {
+        const response = await getBackendClient().get("/api/external/webhooks/health", context);
+        return JSON.stringify(response.body, null, 2);
+    }
+    catch (err) {
         return handleError(err);
     }
 }

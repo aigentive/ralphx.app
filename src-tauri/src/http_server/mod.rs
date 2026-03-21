@@ -355,6 +355,17 @@ pub async fn start_http_server(
             "/api/external/tasks/batch_status",
             post(batch_task_status_http),
         )
+        .route(
+            "/api/external/webhooks/register",
+            post(register_webhook_http),
+        )
+        .route("/api/external/webhooks/:id", delete(unregister_webhook_http))
+        .route("/api/external/webhooks", get(list_webhooks_http))
+        .route("/api/external/webhooks/health", get(get_webhook_health_http))
+        .route(
+            "/api/external/task-note",
+            post(create_task_note_http),
+        )
         // Team endpoints (agent teams) — two-phase plan flow
         .route("/api/team/plan/request", post(request_team_plan_register))
         .route("/api/team/plan/await/:plan_id", get(await_team_plan))

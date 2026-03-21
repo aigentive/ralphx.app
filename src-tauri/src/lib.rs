@@ -245,8 +245,17 @@ pub fn run() {
             }
 
             // Create application state with production SQLite repositories
-            let app_state =
+            let mut app_state =
                 AppState::new_production(app_handle.clone()).expect("Failed to initialize AppState");
+
+            // Construct WebhookPublisher ONCE — Arc-clone into both AppState instances.
+            // Follows the question_state/permission_state dual-AppState sharing pattern.
+            let webhook_publisher: Arc<dyn crate::domain::state_machine::services::WebhookPublisher> =
+                Arc::new(crate::infrastructure::ConcreteWebhookPublisher::new(
+                    Arc::clone(&app_state.webhook_registration_repo),
+                    Arc::new(crate::infrastructure::HyperWebhookClient::new()),
+                ));
+            app_state.webhook_publisher = Some(Arc::clone(&webhook_publisher));
 
             // Load execution settings from database and apply to ExecutionState
             // This must happen before HTTP server starts to ensure consistent configuration
@@ -358,6 +367,7 @@ pub fn run() {
             // INVARIANT: streaming_state_cache uses Arc internally — .clone() shares the same data.
             // Do NOT change StreamingStateCache to deep-clone without updating this sharing.
             http_app_state_inner.streaming_state_cache = app_state.streaming_state_cache.clone();
+            http_app_state_inner.webhook_publisher = app_state.webhook_publisher.clone();
             let http_app_state = Arc::new(http_app_state_inner);
             // Spawn HTTP server with pre-cloned state
             tauri::async_runtime::spawn(async move {
@@ -407,6 +417,7 @@ pub fn run() {
             let startup_review_repo = Arc::clone(&app_state.review_repo);
             let startup_external_events_repo = Arc::clone(&app_state.external_events_repo);
             let startup_pr_poller_registry = Arc::clone(&app_state.pr_poller_registry);
+            let startup_webhook_publisher = app_state.webhook_publisher.clone();
             // Clone app handle to enable event emission in startup tasks
             let startup_app_handle = app.handle().clone();
 
@@ -494,7 +505,7 @@ pub fn run() {
                 let watchdog_task_repo = Arc::clone(&startup_task_repo);
 
                 // Create TaskTransitionService for startup resumption
-                let transition_service = Arc::new(TaskTransitionService::new(
+                let mut transition_service_builder = TaskTransitionService::new(
                     Arc::clone(&startup_task_repo),
                     Arc::clone(&startup_task_dependency_repo),
                     Arc::clone(&startup_project_repo),
@@ -513,8 +524,15 @@ pub fn run() {
                 .with_task_scheduler(Arc::clone(&task_scheduler))
                 .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
                 .with_step_repo(Arc::clone(&startup_step_repo))
-                .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry))
-                .with_external_events_repo(Arc::clone(&startup_external_events_repo)));
+                .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry));
+
+                if let Some(ref pub_) = startup_webhook_publisher {
+                    transition_service_builder = transition_service_builder.with_webhook_publisher_for_emitter(Arc::clone(pub_));
+                }
+
+                let transition_service = Arc::new(
+                    transition_service_builder.with_external_events_repo(Arc::clone(&startup_external_events_repo))
+                );
 
                 // PR startup recovery: restart pollers for tasks that were polling when app shut down.
                 // Must run BEFORE StartupJobRunner to prevent reconciler re-entering on_enter(Merging)
@@ -613,7 +631,9 @@ pub fn run() {
 
                 chat_resumption.run().await;
 
-                let reconcile_transition_service = Arc::new(TaskTransitionService::new(
+                let reconcile_webhook_publisher = startup_webhook_publisher.clone();
+
+                let mut reconcile_transition_service_builder = TaskTransitionService::new(
                         Arc::clone(&reconcile_task_repo),
                         Arc::clone(&reconcile_task_dependency_repo),
                         Arc::clone(&reconcile_project_repo),
@@ -632,8 +652,15 @@ pub fn run() {
                     .with_task_scheduler(Arc::clone(&task_scheduler))
                     .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
                     .with_step_repo(Arc::clone(&startup_step_repo))
-                    .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry))
-                    .with_external_events_repo(Arc::clone(&startup_external_events_repo)));
+                    .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry));
+
+                if let Some(ref pub_) = reconcile_webhook_publisher {
+                    reconcile_transition_service_builder = reconcile_transition_service_builder.with_webhook_publisher_for_emitter(Arc::clone(pub_));
+                }
+
+                let reconcile_transition_service = Arc::new(
+                    reconcile_transition_service_builder.with_external_events_repo(Arc::clone(&startup_external_events_repo))
+                );
 
                 let reconcile_runner = ReconciliationRunner::new(
                     reconcile_task_repo,

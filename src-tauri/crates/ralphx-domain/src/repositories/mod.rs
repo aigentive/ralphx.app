@@ -39,6 +39,7 @@ pub mod task_repository;
 pub mod task_step_repository;
 pub mod team_message_repository;
 pub mod team_session_repository;
+pub mod webhook_registration_repository;
 pub mod workflow_repository;
 
 pub use active_plan_repository::ActivePlanRepository;
@@ -85,4 +86,5 @@ pub use task_repository::{StateHistoryMetadata, TaskRepository};
 pub use task_step_repository::TaskStepRepository;
 pub use team_message_repository::TeamMessageRepository;
 pub use team_session_repository::TeamSessionRepository;
+pub use webhook_registration_repository::{WebhookRegistration, WebhookRegistrationRepository};
 pub use workflow_repository::WorkflowRepository;
