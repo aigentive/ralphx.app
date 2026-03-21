@@ -1517,6 +1517,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "update_plan_verification",
     "get_plan_verification",
     "revert_and_skip",
+    "stop_verification",
     // memory read tools
     "search_memories",
     "get_memory",
@@ -1779,6 +1780,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "update_plan_verification",
     "get_plan_verification",
     "revert_and_skip",
+    "stop_verification",
     // Memory read tools
     "search_memories",
     "get_memory",

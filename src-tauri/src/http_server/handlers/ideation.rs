@@ -915,6 +915,129 @@ pub(crate) async fn stop_verification_children(
     Ok(())
 }
 
+/// Stop an in-progress verification loop for a session.
+///
+/// Kills any running verification child agents, sets verification status to `skipped`
+/// with `convergence_reason: "user_stopped"`, clears the `verification_in_progress` flag,
+/// and increments the verification generation to prevent zombie agents from writing stale state.
+///
+/// Idempotent: if no verification is in progress, returns 200 with a message.
+///
+/// Route: `POST /api/ideation/sessions/:id/stop-verification`
+pub async fn stop_verification(
+    State(state): State<HttpServerState>,
+    Path(session_id): Path<String>,
+) -> Result<Json<SuccessResponse>, JsonError> {
+    use crate::domain::entities::ideation::{VerificationMetadata, VerificationStatus};
+
+    let session_id_obj =
+        crate::domain::entities::IdeationSessionId::from_string(session_id.clone());
+
+    // Read session
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_obj)
+        .await
+        .map_err(|e| {
+            error!("Failed to get session {}: {}", session_id, e);
+            json_error(StatusCode::INTERNAL_SERVER_ERROR, "Failed to get session")
+        })?
+        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
+
+    // Guard: reject calls targeting verification child sessions — orchestrators must use parent session_id
+    if session.session_purpose == crate::domain::entities::SessionPurpose::Verification {
+        return Err(json_error(
+            StatusCode::BAD_REQUEST,
+            "Cannot stop verification on a verification child session. Use the parent session_id.",
+        ));
+    }
+
+    // Session must be active
+    if !session.is_active() {
+        return Err(json_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Session is not active",
+        ));
+    }
+
+    // Guard: external sessions cannot stop plan verification
+    if session.origin == crate::domain::entities::ideation::SessionOrigin::External {
+        return Err(json_error(
+            StatusCode::FORBIDDEN,
+            "External sessions cannot stop plan verification.",
+        ));
+    }
+
+    // Idempotent: if no verification is running, return 200 without doing anything
+    if !session.verification_in_progress {
+        return Ok(Json(SuccessResponse {
+            success: true,
+            message: "Verification is not in progress".to_string(),
+        }));
+    }
+
+    // Kill any running verification child agents (best-effort)
+    stop_verification_children(&session_id, &state.app_state).await.ok();
+
+    // Update metadata: preserve existing metadata and set convergence_reason = "user_stopped"
+    let mut metadata: VerificationMetadata = session
+        .verification_metadata
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    metadata.convergence_reason = Some("user_stopped".to_string());
+    let metadata_json = serde_json::to_string(&metadata).ok();
+
+    // Persist: verification_status = skipped, verification_in_progress = false
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&session_id_obj, VerificationStatus::Skipped, false, metadata_json)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to update verification state for {}: {}",
+                session_id, e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to stop verification",
+            )
+        })?;
+
+    tracing::info!(
+        session_id = %session_id,
+        "Verification stopped by user"
+    );
+
+    // Increment generation to prevent zombie verifier from writing stale terminal status
+    state
+        .app_state
+        .ideation_session_repo
+        .increment_verification_generation(&session_id_obj)
+        .await
+        .ok();
+
+    // Emit plan_verification:status_changed event so frontend VerificationBadge updates
+    if let Some(app_handle) = &state.app_state.app_handle {
+        emit_verification_status_changed(
+            app_handle,
+            &session_id,
+            VerificationStatus::Skipped,
+            false,
+            Some(&metadata),
+            Some("user_stopped"),
+            Some(session.verification_generation),
+        );
+    }
+
+    Ok(Json(SuccessResponse {
+        success: true,
+        message: "Verification stopped".to_string(),
+    }))
+}
+
 /// Send an `<auto-propose>` message to the orchestrator agent for external sessions
 /// that reached verification convergence via `zero_blocking`.
 ///

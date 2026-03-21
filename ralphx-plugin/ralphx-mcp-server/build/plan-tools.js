@@ -191,6 +191,20 @@ export const PLAN_TOOLS = [
         },
     },
     {
+        name: "stop_verification",
+        description: "Stop a running verification loop and skip to completion. Kills the verification child agent immediately, sets status to skipped with convergence_reason user_stopped, and unfreezes the plan artifact. Idempotent: returns success if no verification is in progress.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                session_id: {
+                    type: "string",
+                    description: "The ideation session ID",
+                },
+            },
+            required: ["session_id"],
+        },
+    },
+    {
         name: "edit_plan_artifact",
         description: "Apply anchor-based edit operations to an existing implementation plan. More token-efficient than update_plan_artifact for targeted changes — only send the text to find and replace, not the entire plan content. Each edit finds the first occurrence of old_text and replaces it with new_text. Stale artifact IDs are auto-resolved to the latest version. Edits are applied sequentially; if any edit fails (old_text not found or ambiguous), the entire operation is rejected with details of which edit failed.",
         inputSchema: {

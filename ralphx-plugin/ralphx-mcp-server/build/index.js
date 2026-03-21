@@ -373,6 +373,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const { session_id, plan_version_to_restore } = args;
             result = await callTauri(`ideation/sessions/${session_id}/revert-and-skip`, { plan_version_to_restore });
         }
+        else if (name === "stop_verification") {
+            // POST /api/ideation/sessions/:id/stop-verification
+            const { session_id } = args;
+            result = await callTauri(`ideation/sessions/${session_id}/stop-verification`, {});
+        }
         else if (name === "get_task_steps") {
             // GET /api/task_steps/:task_id
             const { task_id } = args;

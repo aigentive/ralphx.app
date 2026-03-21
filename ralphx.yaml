@@ -469,6 +469,7 @@ agents:
         update_plan_verification,
         get_plan_verification,
         revert_and_skip,
+        stop_verification,
         # memory read tools
         search_memories,
         get_memory,
@@ -910,6 +911,7 @@ agents:
         update_plan_verification,
         get_plan_verification,
         revert_and_skip,
+        stop_verification,
         search_memories,
         get_memory,
         get_memories_for_paths,

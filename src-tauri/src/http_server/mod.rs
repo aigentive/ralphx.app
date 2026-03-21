@@ -175,6 +175,10 @@ pub async fn start_http_server(
             "/api/ideation/sessions/:id/revert-and-skip",
             post(revert_and_skip),
         )
+        .route(
+            "/api/ideation/sessions/:id/stop-verification",
+            post(stop_verification),
+        )
         // Child session tools (orchestrator-ideation + ideation-team-lead + plan-verifier agents)
         .route(
             "/api/ideation/sessions/:id/child-status",

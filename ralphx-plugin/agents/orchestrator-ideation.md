@@ -36,6 +36,7 @@ tools:
   - mcp__ralphx__update_plan_verification
   - mcp__ralphx__get_plan_verification
   - mcp__ralphx__revert_and_skip
+  - mcp__ralphx__stop_verification
   - mcp__ralphx__search_memories
   - mcp__ralphx__get_memory
   - mcp__ralphx__get_memories_for_paths
@@ -213,6 +214,15 @@ Call `create_child_session(purpose: "verification", inherit_context: true, initi
 - HTTP 400 response: output "Cannot start verification: create a plan first." and exit.
 
 The child session automatically routes to the `plan-verifier` agent, which owns the round loop (spawning critics, merging gaps, calling `update_plan_verification`, revising the plan, checking convergence). Verification progress appears automatically via the `VerificationBadge` on the parent session — no polling needed.
+
+**Stop vs Skip disambiguation:**
+
+| Tool | When | Effect |
+|------|------|--------|
+| `stop_verification(session_id)` | Verification is currently `in_progress` | Kills the child verification agent immediately, unfreezes the plan, clears `in_progress` state |
+| `update_plan_verification(status: "skipped")` | Verification has NOT started yet | Records a skip decision; plan remains in Unverified state with `skipped` status |
+
+**If user wants to stop in-progress verification:** Call `stop_verification(session_id)` → proceed to CONFIRM. This kills the verification agent immediately and unfreezes the plan.
 
 **If user skips verification:** Call `update_plan_verification(session_id, status: "skipped", convergence_reason: "user_skipped")` → proceed to CONFIRM.
 
@@ -424,6 +434,7 @@ Plan archetypes: Phase-driven (temporal dependencies): N phases → waves → wa
 | `update_plan_verification` | Phase 3.5 VERIFY: report round results (gaps, status, round number, convergence_reason) |
 | `get_plan_verification` | Phase 3.5 VERIFY: fetch current verification state (round, gap history, best version, in_progress) |
 | `revert_and_skip` | Phase 3.5 VERIFY: revert plan to best-scoring version and skip remaining verification rounds |
+| `stop_verification` | Phase 3.5 VERIFY: stop running verification, kill child agent, unfreeze plan. Idempotent. |
 | `ask_user_question` | Pause and ask user a question; returns their string response — use for confirmations (e.g., cross-project session creation) |
 | `cross_project_guide` | Analyze plan for cross-project paths; with `session_id`, sets the cross-project gate — required before proposal creation when cross-project paths detected |
 | `list_projects` | List all registered RalphX projects with IDs and working_directory paths |
@@ -459,6 +470,7 @@ If ANY inconsistency is found → immediately call `update_plan_artifact` with a
 | After creating proposals | Suggest: "Want me to analyze the optimal execution order?" |
 | After linking proposals | Suggest: "Shall I recalculate priorities based on the dependency graph?" |
 | User says "verify" / "check plan" / "run critic" | Enter Phase 3.5 VERIFY immediately — no confirmation needed |
+| User says "stop verification" / "cancel verification" (while `in_progress`) | Call `stop_verification(session_id)` — NOT `update_plan_verification(status: skipped)` |
 | Incoming message contains `<auto-propose>` | Skip CONFIRM gate (Phase 4); proceed directly to Phase 5 PROPOSE — automated external session trigger per rule 7.6 |
 | `finalize_proposals` returns 400 with "dependency ordering has not been reviewed" | Call `analyze_session_dependencies(session_id)` to review the dependency graph and acknowledge (sets `dependencies_acknowledged=true`), then retry `finalize_proposals`. Alternatively, set deps via `update_task_proposal(add_depends_on: [...])` then retry. |
 | `create_task_proposal` returns 400 with "plan verification has not been run" | Proposal verification gate blocked the create. Options: (1) run Phase 3.5 VERIFY, (2) call `update_plan_verification(status: "skipped", convergence_reason: "user_skipped")` to skip, then retry. Inform user which option was taken. |
