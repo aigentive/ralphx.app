@@ -48,7 +48,10 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   // Skill tool → SkillWidget (skill invocation card)
   "skill": SkillWidget,
   // Context tool → ContextWidget (always-visible context card)
+  // Bare-name entries kept for backward compat with non-MCP contexts (test fixtures, CLI direct mode)
   "get_task_context": ContextWidget,
+  // MCP-prefixed entries for actual MCP tool calls (getToolCallWidget uses exact-match lookup)
+  "mcp__ralphx__get_task_context": ContextWidget,
   // Step lifecycle tools → StepIndicator (ultra-compact inline indicators)
   "mcp__ralphx__start_step": StepIndicator,
   "mcp__ralphx__complete_step": StepIndicator,
@@ -58,16 +61,24 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   "mcp__ralphx__get_step_progress": StepIndicator,
   // Steps manifest → StepsManifestWidget (collapsible checklist)
   "get_task_steps": StepsManifestWidget,
+  "mcp__ralphx__get_task_steps": StepsManifestWidget,
   // Issues summary → IssuesSummaryWidget (severity-badged issue list)
   "get_task_issues": IssuesSummaryWidget,
+  "mcp__ralphx__get_task_issues": IssuesSummaryWidget,
   // Artifact tools → ArtifactWidget (type badge + title + markdown preview)
   "get_artifact": ArtifactWidget,
   "get_artifact_version": ArtifactWidget,
   "get_related_artifacts": ArtifactWidget,
   "search_project_artifacts": ArtifactWidget,
+  "mcp__ralphx__get_artifact": ArtifactWidget,
+  "mcp__ralphx__get_artifact_version": ArtifactWidget,
+  "mcp__ralphx__get_related_artifacts": ArtifactWidget,
+  "mcp__ralphx__search_project_artifacts": ArtifactWidget,
   // Review tools → ReviewWidget (outcome-colored cards + note list)
   "complete_review": ReviewWidget,
   "get_review_notes": ReviewWidget,
+  "mcp__ralphx__complete_review": ReviewWidget,
+  "mcp__ralphx__get_review_notes": ReviewWidget,
   // Merge tools → MergeWidget (success/conflict/incomplete cards + merge target)
   "mcp__ralphx__complete_merge": MergeWidget,
   "mcp__ralphx__report_conflict": MergeWidget,

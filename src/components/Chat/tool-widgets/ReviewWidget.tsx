@@ -16,6 +16,7 @@ import {
   Clock,
 } from "lucide-react";
 import type { ToolCallWidgetProps } from "./shared";
+import { parseMcpToolResult, getArray } from "./shared.constants";
 
 // ============================================================================
 // Types
@@ -53,33 +54,9 @@ interface ReviewNoteEntry {
   created_at: string;
 }
 
-interface ReviewNotesResult {
-  task_id?: string;
-  revision_count?: number;
-  max_revisions?: number;
-  reviews?: ReviewNoteEntry[];
-}
-
 // ============================================================================
 // Helpers
 // ============================================================================
-
-function parseArgs<T>(args: unknown): T {
-  if (!args || typeof args !== "object") return {} as T;
-  return args as T;
-}
-
-function parseResult<T>(result: unknown): T | null {
-  if (result == null) return null;
-  if (typeof result === "string") {
-    try {
-      return JSON.parse(result) as T;
-    } catch {
-      return null;
-    }
-  }
-  return result as T;
-}
 
 const OUTCOME_STYLES = {
   approved: {
@@ -196,8 +173,17 @@ function formatTimestamp(ts: string): string {
 
 function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolCallWidgetProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const args = useMemo(() => parseArgs<CompleteReviewArgs>(toolCall.arguments), [toolCall.arguments]);
-  const result = useMemo(() => parseResult<CompleteReviewResult>(toolCall.result), [toolCall.result]);
+  const args = useMemo((): CompleteReviewArgs => {
+    const raw = typeof toolCall.arguments === "string"
+      ? (() => { try { return JSON.parse(toolCall.arguments as string); } catch { return {}; } })()
+      : (toolCall.arguments ?? {});
+    return (raw as CompleteReviewArgs);
+  }, [toolCall.arguments]);
+  const result = useMemo((): CompleteReviewResult | null => {
+    if (!toolCall.result) return null;
+    const parsed = parseMcpToolResult(toolCall.result);
+    return Object.keys(parsed).length > 0 ? (parsed as unknown as CompleteReviewResult) : null;
+  }, [toolCall.result]);
   const hasError = Boolean(toolCall.error);
 
   const style = getOutcomeStyle(args.decision);
@@ -218,7 +204,7 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
       {/* Header */}
       <button
         onClick={() => hasBody && setIsExpanded(!isExpanded)}
-        className={`w-full flex items-center gap-2 ${compact ? "px-2 py-1.5" : "px-3 py-2"} text-left ${hasBody ? "hover:opacity-80 cursor-pointer" : "cursor-default"} transition-opacity`}
+        className={`w-full flex items-center flex-wrap gap-2 ${compact ? "px-2 py-1.5" : "px-3 py-2"} text-left ${hasBody ? "hover:opacity-80 cursor-pointer" : "cursor-default"} transition-opacity`}
         aria-expanded={hasBody ? isExpanded : undefined}
       >
         {/* Expand/collapse chevron */}
@@ -329,14 +315,30 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
 
 function GetReviewNotesCard({ toolCall, className = "", compact = false }: ToolCallWidgetProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const result = useMemo(() => parseResult<ReviewNotesResult>(toolCall.result), [toolCall.result]);
+  const { reviews, revisionCount, maxRevisions, severityCounts } = useMemo(() => {
+    const parsed = parseMcpToolResult(toolCall.result);
+    const reviewList = (getArray(parsed, "reviews") as ReviewNoteEntry[] | undefined) ?? [];
+    const counts: Record<string, number> = {};
+    for (const review of reviewList) {
+      for (const issue of review.issues ?? []) {
+        counts[issue.severity] = (counts[issue.severity] ?? 0) + 1;
+      }
+    }
+    return {
+      reviews: reviewList,
+      revisionCount: typeof parsed.revision_count === "number" ? parsed.revision_count : 0,
+      maxRevisions: typeof parsed.max_revisions === "number" ? parsed.max_revisions : undefined,
+      severityCounts: counts,
+    };
+  }, [toolCall.result]);
   const hasError = Boolean(toolCall.error);
 
-  const reviews = result?.reviews ?? [];
-  const revisionCount = result?.revision_count ?? 0;
-  const maxRevisions = result?.max_revisions;
   const hasBody = reviews.length > 0;
   const iconSize = compact ? 12 : 14;
+
+  // Approval status from latest review
+  const latestOutcome = reviews.length > 0 ? reviews[reviews.length - 1]?.outcome : undefined;
+  const latestStyle = latestOutcome ? getOutcomeStyle(latestOutcome) : null;
 
   // Empty state
   if (!hasError && reviews.length === 0 && toolCall.result != null) {
@@ -368,7 +370,7 @@ function GetReviewNotesCard({ toolCall, className = "", compact = false }: ToolC
       {/* Header */}
       <button
         onClick={() => hasBody && setIsExpanded(!isExpanded)}
-        className={`w-full flex items-center gap-2 ${compact ? "px-2 py-1.5" : "px-3 py-2"} text-left ${hasBody ? "hover:opacity-80 cursor-pointer" : "cursor-default"} transition-opacity`}
+        className={`w-full flex items-center flex-wrap gap-2 ${compact ? "px-2 py-1.5" : "px-3 py-2"} text-left ${hasBody ? "hover:opacity-80 cursor-pointer" : "cursor-default"} transition-opacity`}
         aria-expanded={hasBody ? isExpanded : undefined}
       >
         {hasBody ? (
@@ -380,6 +382,16 @@ function GetReviewNotesCard({ toolCall, className = "", compact = false }: ToolC
         ) : null}
 
         <FileText size={iconSize} className="flex-shrink-0" style={{ color: "hsl(14, 100%, 60%)" }} />
+
+        {/* Approval status badge from latest review */}
+        {latestStyle && (
+          <span
+            className={`${compact ? "text-[9px]" : "text-[10px]"} px-1.5 py-0.5 rounded font-medium flex-shrink-0`}
+            style={{ backgroundColor: latestStyle.bg, color: latestStyle.text, border: `1px solid ${latestStyle.border}` }}
+          >
+            {latestStyle.label}
+          </span>
+        )}
 
         <span
           className={`${compact ? "text-[11px]" : "text-xs"} flex-1 min-w-0`}
@@ -408,6 +420,19 @@ function GetReviewNotesCard({ toolCall, className = "", compact = false }: ToolC
           >
             Failed
           </span>
+        )}
+
+        {/* Severity breakdown badges (wrapped second line) */}
+        {Object.entries(severityCounts).map(([severity, count]) =>
+          count > 0 ? (
+            <span
+              key={severity}
+              className="text-[9px] px-1 py-0.5 rounded font-medium flex-shrink-0"
+              style={{ backgroundColor: getSeverityBg(severity), color: getSeverityColor(severity) }}
+            >
+              {severity}: {count}
+            </span>
+          ) : null
         )}
       </button>
 
@@ -468,9 +493,8 @@ function GetReviewNotesCard({ toolCall, className = "", compact = false }: ToolC
 
 export const ReviewWidget = React.memo(function ReviewWidget(props: ToolCallWidgetProps) {
   const toolName = props.toolCall.name.toLowerCase();
-  if (toolName === "complete_review") {
+  if (toolName.includes("complete_review")) {
     return <CompleteReviewCard {...props} />;
   }
   return <GetReviewNotesCard {...props} />;
 });
-
