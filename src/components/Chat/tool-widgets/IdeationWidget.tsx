@@ -10,6 +10,8 @@
  * - get_proposal: summary card
  * - get_session_plan: summary card
  * - analyze_session_dependencies: summary card
+ * - finalize_proposals: task count + deps + session status
+ * - cross_project_guide: cross-project detection + gate status
  */
 
 import React from "react";
@@ -21,9 +23,11 @@ import {
   Search,
   GitBranch,
   MessageSquare,
+  CheckCircle2,
+  FolderTree,
 } from "lucide-react";
 import { InlineIndicator, Badge, WidgetRow } from "./shared";
-import { colors, getString, getNumber, getArray, parseMcpToolResult } from "./shared.constants";
+import { colors, getString, getNumber, getArray, getBool, parseMcpToolResult } from "./shared.constants";
 import type { ToolCallWidgetProps } from "./shared.constants";
 
 // ============================================================================
@@ -40,7 +44,9 @@ type IdeationTool =
   | "list_session_proposals"
   | "get_proposal"
   | "get_session_plan"
-  | "analyze_session_dependencies";
+  | "analyze_session_dependencies"
+  | "finalize_proposals"
+  | "cross_project_guide";
 
 function getToolType(toolName: string): IdeationTool | null {
   const name = toolName.toLowerCase();
@@ -54,6 +60,8 @@ function getToolType(toolName: string): IdeationTool | null {
   if (name.includes("get_proposal")) return "get_proposal";
   if (name.includes("get_session_plan")) return "get_session_plan";
   if (name.includes("analyze_session_dependencies")) return "analyze_session_dependencies";
+  if (name.includes("finalize_proposals")) return "finalize_proposals";
+  if (name.includes("cross_project_guide")) return "cross_project_guide";
   return null;
 }
 
@@ -366,6 +374,88 @@ function AnalyzeDependencies({ toolCall, compact }: ToolCallWidgetProps) {
   );
 }
 
+function FinalizeProposals({ toolCall, compact }: ToolCallWidgetProps) {
+  const parsed = parseMcpToolResult(toolCall.result);
+  const taskIds = getArray(parsed, "created_task_ids");
+  const depsCreated = getNumber(parsed, "dependencies_created");
+  const sessionStatus = getString(parsed, "session_status");
+  const warnings = getArray(parsed, "warnings");
+
+  if (taskIds == null && sessionStatus == null) {
+    return <InlineIndicator icon={<CheckCircle2 size={11} style={{ color: colors.success }} />} text="Finalizing proposals..." />;
+  }
+
+  const taskCount = taskIds?.length ?? 0;
+  const statusVariant = sessionStatus?.toLowerCase() === "accepted" ? "success" : "muted";
+  const statusLabel = sessionStatus
+    ? sessionStatus.charAt(0).toUpperCase() + sessionStatus.slice(1)
+    : null;
+
+  return (
+    <WidgetRow compact={compact}>
+      <CheckCircle2 size={11} style={{ color: colors.success, flexShrink: 0 }} />
+      <span
+        style={{
+          flex: 1,
+          fontSize: compact ? 10.5 : 11,
+          color: colors.textSecondary,
+        }}
+      >
+        {taskCount === 0 ? "No tasks created" : `${taskCount} task${taskCount !== 1 ? "s" : ""} created`}
+      </span>
+      {depsCreated != null && depsCreated > 0 && (
+        <Badge variant="muted" compact>{depsCreated} deps</Badge>
+      )}
+      {statusLabel && <Badge variant={statusVariant} compact>{statusLabel}</Badge>}
+      {warnings != null && warnings.length > 0 && (
+        <Badge variant="accent" compact>{warnings.length} warnings</Badge>
+      )}
+    </WidgetRow>
+  );
+}
+
+function CrossProjectGuide({ toolCall, compact }: ToolCallWidgetProps) {
+  const parsed = parseMcpToolResult(toolCall.result);
+  const hasCrossPaths = getBool(parsed, "has_cross_project_paths");
+  const detectedPaths = getArray(parsed, "detected_paths");
+  const gateStatus = getString(parsed, "gate_status");
+
+  if (hasCrossPaths == null && gateStatus == null) {
+    return <InlineIndicator icon={<FolderTree size={11} style={{ color: colors.textMuted }} />} text="Analyzing cross-project paths..." />;
+  }
+
+  const pathCount = detectedPaths?.length ?? 0;
+  const gateVariant =
+    gateStatus === "set" ? "success" :
+    gateStatus === "backend_unavailable" ? "error" :
+    "muted";
+  const gateLabel =
+    gateStatus === "set" ? "Gate set" :
+    gateStatus === "backend_unavailable" ? "Gate error" :
+    gateStatus === "no_session_id" ? "No gate" :
+    gateStatus ?? null;
+
+  return (
+    <WidgetRow compact={compact}>
+      <FolderTree size={11} style={{ color: colors.textMuted, flexShrink: 0 }} />
+      <span
+        style={{
+          flex: 1,
+          fontSize: compact ? 10.5 : 11,
+          color: colors.textSecondary,
+        }}
+      >
+        {hasCrossPaths ? `${pathCount} project${pathCount !== 1 ? "s" : ""} detected` : "No cross-project paths"}
+      </span>
+      {hasCrossPaths
+        ? <Badge variant="success" compact>Cross-project</Badge>
+        : <Badge variant="muted" compact>Single project</Badge>
+      }
+      {gateLabel && <Badge variant={gateVariant} compact>{gateLabel}</Badge>}
+    </WidgetRow>
+  );
+}
+
 // ============================================================================
 // IdeationWidget (main component)
 // ============================================================================
@@ -394,6 +484,10 @@ export const IdeationWidget = React.memo(function IdeationWidget(props: ToolCall
       return <GetSessionPlan {...props} />;
     case "analyze_session_dependencies":
       return <AnalyzeDependencies {...props} />;
+    case "finalize_proposals":
+      return <FinalizeProposals {...props} />;
+    case "cross_project_guide":
+      return <CrossProjectGuide {...props} />;
     default:
       return <InlineIndicator text={props.toolCall.name} />;
   }
