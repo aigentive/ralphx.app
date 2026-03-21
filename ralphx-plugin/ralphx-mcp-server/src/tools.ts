@@ -1916,9 +1916,16 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     // Child session tools
     "get_child_session_status",
     "send_ideation_session_message",
-    // Specialist artifact retrieval (read-only — NOT create_team_artifact)
+    // Specialist artifact creation and retrieval
     "get_team_artifacts",
     "get_artifact",
+    "create_team_artifact",
+    "list_session_proposals",
+    "get_proposal",
+    // Memory tools (inherited by specialist subagents via parent MCP connection)
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
   ],
   // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
   debug: ALL_TOOLS.map((t) => t.name),

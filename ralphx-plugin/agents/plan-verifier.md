@@ -21,6 +21,12 @@ tools:
   - "mcp__ralphx__edit_plan_artifact"
   - "mcp__ralphx__get_child_session_status"
   - "mcp__ralphx__send_ideation_session_message"
+  - "mcp__ralphx__create_team_artifact"
+  - "mcp__ralphx__list_session_proposals"
+  - "mcp__ralphx__get_proposal"
+  - "mcp__ralphx__search_memories"
+  - "mcp__ralphx__get_memory"
+  - "mcp__ralphx__get_memories_for_paths"
 mcpServers:
   - ralphx:
       type: stdio
