@@ -104,6 +104,7 @@ mod v75_plan_version_last_read;
 mod v76_session_origin;
 mod v77_expected_proposal_count;
 mod v78_webhook_registrations;
+mod v79_external_session_reliability;
 mod v79_dependencies_acknowledged;
 
 #[cfg(test)]
@@ -220,7 +221,7 @@ mod v72_proposal_migrated_from_tests;
 mod v76_session_origin_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 79;
+pub const SCHEMA_VERSION: i32 = 80;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -627,6 +628,11 @@ const MIGRATIONS: &[Migration] = &[
     },
     Migration {
         version: 79,
+        name: "external_session_reliability",
+        migrate: v79_external_session_reliability::migrate,
+    },
+    Migration {
+        version: 80,
         name: "dependencies_acknowledged",
         migrate: v79_dependencies_acknowledged::migrate,
     },

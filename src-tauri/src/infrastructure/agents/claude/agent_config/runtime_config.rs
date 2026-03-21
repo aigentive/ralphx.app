@@ -56,6 +56,18 @@ fn default_accept_stale_execution_plan_secs() -> u64 {
     30
 }
 
+fn default_external_session_stale_secs() -> u64 {
+    7200 // 2 hours
+}
+
+fn default_external_message_queue_cap() -> u32 {
+    10
+}
+
+fn default_external_session_similarity_threshold() -> f64 {
+    0.7
+}
+
 impl Default for VerificationConfig {
     fn default() -> Self {
         Self {
@@ -102,6 +114,21 @@ pub struct ExternalMcpConfig {
     /// always-create-session-first behaviour. Field retained permanently for backward-compatible
     /// YAML parsing. Value is ignored at runtime.
     pub max_external_ideation_sessions: u32,
+    /// Seconds of inactivity before an external session is considered stale and archived.
+    /// External sessions older than this with no proposals and idle agent are archived.
+    /// Default: 7200 (2 hours).
+    #[serde(default = "default_external_session_stale_secs")]
+    pub external_session_stale_secs: u64,
+    /// Maximum number of queued messages per external session.
+    /// When queue depth reaches this limit, new messages return 429.
+    /// Default: 10.
+    #[serde(default = "default_external_message_queue_cap")]
+    pub external_message_queue_cap: u32,
+    /// Jaccard similarity threshold for session dedup.
+    /// Prompts/titles with similarity >= this value are treated as duplicates.
+    /// Default: 0.7. Range [0.0, 1.0]. Set to 0.0 to disable dedup; 1.0 for exact match only.
+    #[serde(default = "default_external_session_similarity_threshold")]
+    pub external_session_similarity_threshold: f64,
 }
 
 impl Default for ExternalMcpConfig {
@@ -116,6 +143,9 @@ impl Default for ExternalMcpConfig {
             auth_token: None,
             node_path: None,
             max_external_ideation_sessions: 1,
+            external_session_stale_secs: 7200,
+            external_message_queue_cap: 10,
+            external_session_similarity_threshold: 0.7,
         }
     }
 }

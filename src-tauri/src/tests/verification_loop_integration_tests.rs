@@ -88,9 +88,9 @@ fn make_reconciliation_service(
     repo: Arc<MemoryIdeationSessionRepository>,
 ) -> VerificationReconciliationService {
     let config = VerificationReconciliationConfig {
-        stale_after_secs: 5400,       // 90 min
-        auto_verify_stale_secs: 600,  // 10 min
-        interval_secs: 300,
+        stale_after_secs: 5400,
+        auto_verify_stale_secs: 600,
+        ..Default::default()
     };
     VerificationReconciliationService::new(repo as Arc<dyn IdeationSessionRepository>, config)
 }

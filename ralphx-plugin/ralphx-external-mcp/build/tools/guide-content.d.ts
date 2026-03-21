@@ -5,7 +5,7 @@
  * IMPORTANT: ALL_TOOL_NAMES must stay in sync with TOOL_CATEGORIES in index.ts.
  * The bidirectional sync test validates: TOOL_CATEGORIES ↔ ALL_TOOL_NAMES ↔ FULL_GUIDE content.
  */
-export type GuideSection = "setup" | "overview" | "discovery" | "ideation" | "tasks" | "pipeline" | "events" | "patterns";
+export type GuideSection = "setup" | "overview" | "discovery" | "ideation" | "tasks" | "pipeline" | "events" | "patterns" | "resilience";
 export declare const GUIDE_SECTIONS: Record<GuideSection, string>;
 export declare const VALID_SECTIONS: GuideSection[];
 export declare const FULL_GUIDE: string;

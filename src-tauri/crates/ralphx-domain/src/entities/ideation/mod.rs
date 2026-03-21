@@ -104,6 +104,15 @@ pub struct IdeationSession {
     pub auto_accept_status: Option<String>,
     /// ISO timestamp when auto-accept was triggered
     pub auto_accept_started_at: Option<String>,
+    /// API key that created this external session (NULL for internal sessions)
+    pub api_key_id: Option<String>,
+    /// Client-provided idempotency key for safe retries (NULL if not provided)
+    pub idempotency_key: Option<String>,
+    /// External session lifecycle phase (NULL for internal sessions)
+    /// Values: "created" | "planning" | "proposing" | "verifying" | "ready" | "error" | "stalled"
+    pub external_activity_phase: Option<String>,
+    /// Last message ID the external agent fetched (NULL = never read)
+    pub external_last_read_message_id: Option<String>,
     /// Whether the agent has explicitly acknowledged cross-proposal dependencies.
     /// False = finalize_proposals will block if inter-proposal dependencies exist.
     #[serde(default)]
@@ -141,6 +150,10 @@ pub struct IdeationSessionBuilder {
     expected_proposal_count: Option<u32>,
     auto_accept_status: Option<String>,
     auto_accept_started_at: Option<String>,
+    api_key_id: Option<String>,
+    idempotency_key: Option<String>,
+    external_activity_phase: Option<String>,
+    external_last_read_message_id: Option<String>,
     dependencies_acknowledged: Option<bool>,
 }
 
@@ -294,6 +307,30 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set the API key ID (for external sessions)
+    pub fn api_key_id(mut self, api_key_id: impl Into<String>) -> Self {
+        self.api_key_id = Some(api_key_id.into());
+        self
+    }
+
+    /// Set the idempotency key (for safe retries)
+    pub fn idempotency_key(mut self, key: impl Into<String>) -> Self {
+        self.idempotency_key = Some(key.into());
+        self
+    }
+
+    /// Set the external activity phase
+    pub fn external_activity_phase(mut self, phase: impl Into<String>) -> Self {
+        self.external_activity_phase = Some(phase.into());
+        self
+    }
+
+    /// Set the external last read message ID
+    pub fn external_last_read_message_id(mut self, message_id: impl Into<String>) -> Self {
+        self.external_last_read_message_id = Some(message_id.into());
+        self
+    }
+
     /// Set whether dependencies have been acknowledged
     pub fn dependencies_acknowledged(mut self, acknowledged: bool) -> Self {
         self.dependencies_acknowledged = Some(acknowledged);
@@ -333,6 +370,10 @@ impl IdeationSessionBuilder {
             expected_proposal_count: self.expected_proposal_count,
             auto_accept_status: self.auto_accept_status,
             auto_accept_started_at: self.auto_accept_started_at,
+            api_key_id: self.api_key_id,
+            idempotency_key: self.idempotency_key,
+            external_activity_phase: self.external_activity_phase,
+            external_last_read_message_id: self.external_last_read_message_id,
             dependencies_acknowledged: self.dependencies_acknowledged.unwrap_or(false),
         }
     }
@@ -500,6 +541,18 @@ impl IdeationSession {
                 .unwrap_or(None),
             auto_accept_started_at: row
                 .get::<_, Option<String>>("auto_accept_started_at")
+                .unwrap_or(None),
+            api_key_id: row
+                .get::<_, Option<String>>("api_key_id")
+                .unwrap_or(None),
+            idempotency_key: row
+                .get::<_, Option<String>>("idempotency_key")
+                .unwrap_or(None),
+            external_activity_phase: row
+                .get::<_, Option<String>>("external_activity_phase")
+                .unwrap_or(None),
+            external_last_read_message_id: row
+                .get::<_, Option<String>>("external_last_read_message_id")
                 .unwrap_or(None),
             dependencies_acknowledged: row
                 .get::<_, Option<i64>>("dependencies_acknowledged")

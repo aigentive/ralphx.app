@@ -333,6 +333,24 @@ impl MessageQueue {
     pub fn delete_for_task(&self, task_id: &TaskId, message_id: &str) -> bool {
         self.delete(ChatContextType::TaskExecution, task_id.as_str(), message_id)
     }
+
+    /// Count the number of queued messages for a given context.
+    ///
+    /// Used by the queue depth cap check and status response enrichment.
+    pub fn count_for_context(&self, context_type: &str, context_id: &str) -> usize {
+        let ctx_type = match context_type {
+            "ideation" => ChatContextType::Ideation,
+            "task_execution" => ChatContextType::TaskExecution,
+            "task" => ChatContextType::Task,
+            "project" => ChatContextType::Project,
+            "review" => ChatContextType::Review,
+            "merge" => ChatContextType::Merge,
+            _ => return 0,
+        };
+        let key = QueueKey::new(ctx_type, context_id);
+        let queues = self.queues.lock().unwrap();
+        queues.get(&key).map(|v| v.len()).unwrap_or(0)
+    }
 }
 
 impl Default for MessageQueue {

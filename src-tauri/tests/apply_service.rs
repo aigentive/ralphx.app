@@ -318,6 +318,51 @@ impl IdeationSessionRepository for MockSessionRepository {
         unimplemented!()
     }
 
+    async fn get_by_idempotency_key(
+        &self,
+        _api_key_id: &str,
+        _idempotency_key: &str,
+    ) -> AppResult<Option<IdeationSession>> {
+        Ok(None)
+    }
+
+    async fn update_external_activity_phase(
+        &self,
+        _id: &IdeationSessionId,
+        _phase: &str,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn update_external_last_read_message_id(
+        &self,
+        _id: &IdeationSessionId,
+        _message_id: &str,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn list_active_external_by_project(
+        &self,
+        _project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(vec![])
+    }
+
+    async fn list_active_external_sessions_for_archival(
+        &self,
+        _stale_before: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(vec![])
+    }
+
+    async fn list_stalled_external_sessions(
+        &self,
+        _stalled_before: chrono::DateTime<chrono::Utc>,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(vec![])
+    }
+
     async fn set_dependencies_acknowledged(&self, _session_id: &str) -> AppResult<()> {
         unimplemented!()
     }

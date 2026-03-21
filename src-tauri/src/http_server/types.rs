@@ -1415,6 +1415,12 @@ impl IntoResponse for HttpError {
     fn into_response(self) -> axum::response::Response {
         match self.message {
             Some(msg) => {
+                // If message is a pre-serialized JSON object, use it directly as the body.
+                // This allows rich error responses (e.g. queue_full with queued_count + hint)
+                // without changing the HttpError struct layout.
+                if let Ok(serde_json::Value::Object(obj)) = serde_json::from_str(&msg) {
+                    return (self.status, Json(serde_json::Value::Object(obj))).into_response();
+                }
                 (self.status, Json(serde_json::json!({"error": msg}))).into_response()
             }
             None => self.status.into_response(),

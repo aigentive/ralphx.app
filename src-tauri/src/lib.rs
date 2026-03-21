@@ -713,10 +713,12 @@ pub fn run() {
                         VerificationReconciliationConfig, VerificationReconciliationService,
                     };
                     let vcfg = infrastructure::agents::claude::verification_config();
+                    let ext_cfg = infrastructure::agents::claude::external_mcp_config();
                     let verification_config = VerificationReconciliationConfig {
                         stale_after_secs: vcfg.reconciliation_stale_after_secs,
                         auto_verify_stale_secs: vcfg.auto_verify_stale_secs,
                         interval_secs: vcfg.reconciliation_interval_secs,
+                        external_session_stale_secs: ext_cfg.external_session_stale_secs,
                     };
                     let verification_session_repo = Arc::clone(&startup_ideation_session_repo);
                     let svc = Arc::new(VerificationReconciliationService::new(

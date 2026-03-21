@@ -118,6 +118,10 @@ pub fn make_session_no_title(session_id: &str) -> IdeationSession {
         expected_proposal_count: None,
         auto_accept_status: None,
         auto_accept_started_at: None,
+        api_key_id: None,
+        idempotency_key: None,
+        external_activity_phase: None,
+        external_last_read_message_id: None,
         dependencies_acknowledged: false,
     }
 }
@@ -153,6 +157,10 @@ pub fn make_session_with_title_for_test(session_id: &str, title: &str) -> Ideati
         expected_proposal_count: None,
         auto_accept_status: None,
         auto_accept_started_at: None,
+        api_key_id: None,
+        idempotency_key: None,
+        external_activity_phase: None,
+        external_last_read_message_id: None,
         dependencies_acknowledged: false,
     }
 }

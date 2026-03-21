@@ -271,6 +271,64 @@ pub trait IdeationSessionRepository: Send + Sync {
     where
         Self: Sized;
 
+    /// Get a session by idempotency key + api_key_id combination.
+    /// Returns None if no session found with that key for the given API key.
+    async fn get_by_idempotency_key(
+        &self,
+        api_key_id: &str,
+        idempotency_key: &str,
+    ) -> AppResult<Option<IdeationSession>>;
+
+    /// Update the external_activity_phase for a session.
+    async fn update_external_activity_phase(
+        &self,
+        id: &IdeationSessionId,
+        phase: &str,
+    ) -> AppResult<()>;
+
+    /// Update the external_last_read_message_id cursor for a session.
+    /// Called when an external agent fetches messages, to track read position.
+    async fn update_external_last_read_message_id(
+        &self,
+        id: &IdeationSessionId,
+        message_id: &str,
+    ) -> AppResult<()>;
+
+    /// List active external sessions for a project (origin = 'external', status = 'active').
+    /// Used for Jaccard dedup check and existing-session awareness in start_ideation.
+    async fn list_active_external_by_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>>;
+
+    /// List active external sessions eligible for stale archival reconciliation.
+    ///
+    /// Returns sessions where:
+    /// - origin = 'external'
+    /// - status = 'active'
+    /// - external_activity_phase IN ('created', 'error')
+    /// - created_at < stale_before (if Some; if None, no TTL filter — startup scan)
+    ///
+    /// Ordered by created_at ASC.
+    async fn list_active_external_sessions_for_archival(
+        &self,
+        stale_before: Option<DateTime<Utc>>,
+    ) -> AppResult<Vec<IdeationSession>>;
+
+    /// List external sessions that appear stalled (no recent activity).
+    ///
+    /// Returns sessions where:
+    /// - origin = 'external'
+    /// - status = 'active'
+    /// - external_activity_phase IS NOT NULL AND external_activity_phase NOT IN ('error', 'stalled')
+    /// - updated_at < stalled_before
+    ///
+    /// Ordered by updated_at ASC.
+    async fn list_stalled_external_sessions(
+        &self,
+        stalled_before: DateTime<Utc>,
+    ) -> AppResult<Vec<IdeationSession>>;
+
     /// Mark dependencies as acknowledged for a session.
     /// Sets `dependencies_acknowledged = true` and updates `updated_at`.
     async fn set_dependencies_acknowledged(&self, session_id: &str) -> AppResult<()>;

@@ -35,6 +35,7 @@ export async function handleStartIdeation(
 ): Promise<string> {
   const projectId = args.project_id as string;
   const prompt = args.prompt as string;
+  const idempotencyKey = args.idempotency_key as string | undefined;
   if (!projectId) {
     return JSON.stringify({ error: "missing_argument", message: "project_id is required" }, null, 2);
   }
@@ -42,7 +43,7 @@ export async function handleStartIdeation(
     return JSON.stringify({ error: "missing_argument", message: "prompt is required" }, null, 2);
   }
   try {
-    const result = await startIdeation({ projectId, prompt }, context);
+    const result = await startIdeation({ projectId, prompt, idempotencyKey }, context);
     return JSON.stringify(result, null, 2);
   } catch (err) {
     return handleError(err);

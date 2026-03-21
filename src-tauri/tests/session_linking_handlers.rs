@@ -42,6 +42,10 @@ fn make_session(team_mode: Option<&str>) -> IdeationSession {
         expected_proposal_count: None,
         auto_accept_status: None,
         auto_accept_started_at: None,
+        api_key_id: None,
+        idempotency_key: None,
+        external_activity_phase: None,
+        external_last_read_message_id: None,
         dependencies_acknowledged: false,
     }
 }
@@ -120,6 +124,10 @@ mod verification_init_tests {
             expected_proposal_count: None,
             auto_accept_status: None,
             auto_accept_started_at: None,
+            api_key_id: None,
+            idempotency_key: None,
+            external_activity_phase: None,
+            external_last_read_message_id: None,
             dependencies_acknowledged: false,
         }
     }

@@ -247,4 +247,74 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
             Ok(())
         }).await
     }
+
+    async fn count_unread_assistant_messages(
+        &self,
+        session_id: &str,
+        after_message_id: Option<&str>,
+    ) -> AppResult<u32> {
+        let session_id = session_id.to_string();
+        let after_message_id = after_message_id.map(|s| s.to_string());
+        self.db
+            .run(move |conn| {
+                let count: i64 = if let Some(ref cursor) = after_message_id {
+                    conn.query_row(
+                        "SELECT COUNT(*) FROM chat_messages \
+                         WHERE session_id = ?1 \
+                         AND role IN ('assistant', 'orchestrator') \
+                         AND created_at > ( \
+                             SELECT created_at FROM chat_messages WHERE id = ?2 \
+                         )",
+                        rusqlite::params![session_id, cursor],
+                        |row| row.get(0),
+                    )?
+                } else {
+                    conn.query_row(
+                        "SELECT COUNT(*) FROM chat_messages \
+                         WHERE session_id = ?1 \
+                         AND role IN ('assistant', 'orchestrator')",
+                        rusqlite::params![session_id],
+                        |row| row.get(0),
+                    )?
+                };
+                Ok(count as u32)
+            })
+            .await
+    }
+
+    async fn get_first_user_message_by_context(
+        &self,
+        context_type: &str,
+        context_id: &str,
+    ) -> AppResult<Option<String>> {
+        let context_type = context_type.to_string();
+        let context_id = context_id.to_string();
+        self.db
+            .query_optional(move |conn| {
+                let sql = match context_type.as_str() {
+                    "ideation" => {
+                        "SELECT content FROM chat_messages \
+                         WHERE session_id = ?1 AND role = 'user' \
+                         ORDER BY created_at ASC LIMIT 1"
+                    }
+                    "task" | "task_execution" => {
+                        "SELECT content FROM chat_messages \
+                         WHERE task_id = ?1 AND role = 'user' \
+                         ORDER BY created_at ASC LIMIT 1"
+                    }
+                    "project" => {
+                        "SELECT content FROM chat_messages \
+                         WHERE project_id = ?1 AND session_id IS NULL AND role = 'user' \
+                         ORDER BY created_at ASC LIMIT 1"
+                    }
+                    _ => {
+                        "SELECT content FROM chat_messages \
+                         WHERE session_id = ?1 AND role = 'user' \
+                         ORDER BY created_at ASC LIMIT 1"
+                    }
+                };
+                conn.query_row(sql, rusqlite::params![context_id], |row| row.get(0))
+            })
+            .await
+    }
 }

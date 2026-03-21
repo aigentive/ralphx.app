@@ -354,6 +354,79 @@ impl IdeationSessionRepository for MockSessionRepository {
         unimplemented!()
     }
 
+    async fn get_by_idempotency_key(
+        &self,
+        api_key_id: &str,
+        idempotency_key: &str,
+    ) -> AppResult<Option<IdeationSession>> {
+        Ok(self
+            .sessions
+            .lock()
+            .unwrap()
+            .values()
+            .find(|s| {
+                s.api_key_id.as_deref() == Some(api_key_id)
+                    && s.idempotency_key.as_deref() == Some(idempotency_key)
+            })
+            .cloned())
+    }
+
+    async fn update_external_activity_phase(
+        &self,
+        id: &IdeationSessionId,
+        phase: &str,
+    ) -> AppResult<()> {
+        if let Some(session) = self.sessions.lock().unwrap().get_mut(&id.to_string()) {
+            session.external_activity_phase = Some(phase.to_string());
+            session.updated_at = Utc::now();
+        }
+        Ok(())
+    }
+
+    async fn update_external_last_read_message_id(
+        &self,
+        id: &IdeationSessionId,
+        message_id: &str,
+    ) -> AppResult<()> {
+        if let Some(session) = self.sessions.lock().unwrap().get_mut(&id.to_string()) {
+            session.external_last_read_message_id = Some(message_id.to_string());
+            session.updated_at = Utc::now();
+        }
+        Ok(())
+    }
+
+    async fn list_active_external_by_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(self
+            .sessions
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|s| {
+                &s.project_id == project_id
+                    && s.status == IdeationSessionStatus::Active
+                    && s.origin == SessionOrigin::External
+            })
+            .cloned()
+            .collect())
+    }
+
+    async fn list_active_external_sessions_for_archival(
+        &self,
+        _stale_before: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(vec![])
+    }
+
+    async fn list_stalled_external_sessions(
+        &self,
+        _stalled_before: chrono::DateTime<chrono::Utc>,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(vec![])
+    }
+
     async fn set_dependencies_acknowledged(&self, _session_id: &str) -> AppResult<()> {
         unimplemented!()
     }
@@ -689,6 +762,22 @@ impl ChatMessageRepository for MockMessageRepository {
         _content_blocks: Option<&str>,
     ) -> AppResult<()> {
         Ok(())
+    }
+
+    async fn count_unread_assistant_messages(
+        &self,
+        _session_id: &str,
+        _after_message_id: Option<&str>,
+    ) -> AppResult<u32> {
+        Ok(0)
+    }
+
+    async fn get_first_user_message_by_context(
+        &self,
+        _context_type: &str,
+        _context_id: &str,
+    ) -> AppResult<Option<String>> {
+        Ok(None)
     }
 }
 

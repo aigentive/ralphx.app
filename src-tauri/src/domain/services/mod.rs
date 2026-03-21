@@ -11,6 +11,7 @@ pub mod artifact_service;
 pub mod key_crypto;
 pub mod bucket_classifier;
 pub mod gap_fingerprint;
+pub mod text_similarity;
 pub mod index_rewriter;
 pub mod message_queue;
 pub mod methodology_service;

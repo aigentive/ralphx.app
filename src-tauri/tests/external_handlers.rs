@@ -12,11 +12,11 @@ use axum::{
 use ralphx_lib::application::{AppState, InteractiveProcessKey, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
-    ideation::{ChatMessage, IdeationSession, IdeationSessionStatus, VerificationStatus},
+    ideation::{ChatMessage, IdeationSession, IdeationSessionStatus, SessionOrigin, VerificationStatus},
     project::{GitMode, Project},
     task::Task,
     types::ProjectId,
-    IdeationSessionId, InternalStatus, Priority, ProposalCategory, TaskProposal,
+    ChatContextType, IdeationSessionId, InternalStatus, Priority, ProposalCategory, TaskProposal,
 };
 use ralphx_lib::domain::services::running_agent_registry::RunningAgentKey;
 use ralphx_lib::error::AppError;
@@ -352,11 +352,13 @@ async fn test_start_ideation_creates_session() {
     let result = start_ideation_http(
         State(state.clone()),
         unrestricted_scope(),
+        axum::http::HeaderMap::new(),
         Json(StartIdeationRequest {
             project_id: project_id.to_string(),
             title: Some("New feature brainstorm".to_string()),
             prompt: None,
             initial_prompt: Some("Let's ideate on authentication".to_string()),
+            idempotency_key: None,
         }),
     )
     .await;
@@ -379,11 +381,13 @@ async fn test_start_ideation_scope_violation() {
     let result = start_ideation_http(
         State(state),
         scoped(&["proj-other"]),
+        axum::http::HeaderMap::new(),
         Json(StartIdeationRequest {
             project_id: project_id.to_string(),
             title: Some("Forbidden".to_string()),
             prompt: None,
             initial_prompt: None,
+            idempotency_key: None,
         }),
     )
     .await;
@@ -408,11 +412,13 @@ async fn test_start_ideation_no_prompt_agent_not_spawned() {
     let result = start_ideation_http(
         State(state.clone()),
         unrestricted_scope(),
+        axum::http::HeaderMap::new(),
         Json(StartIdeationRequest {
             project_id: project_id.to_string(),
             title: None,
             prompt: None,
             initial_prompt: None,
+            idempotency_key: None,
         }),
     )
     .await;
@@ -438,11 +444,13 @@ async fn test_start_ideation_with_title_preserved() {
     let result = start_ideation_http(
         State(state.clone()),
         unrestricted_scope(),
+        axum::http::HeaderMap::new(),
         Json(StartIdeationRequest {
             project_id: project_id.to_string(),
             title: Some("My Custom Session Title".to_string()),
             prompt: None,
             initial_prompt: None,
+            idempotency_key: None,
         }),
     )
     .await;
@@ -478,11 +486,13 @@ async fn test_start_ideation_invalid_project_returns_404() {
     let result = start_ideation_http(
         State(state),
         unrestricted_scope(),
+        axum::http::HeaderMap::new(),
         Json(StartIdeationRequest {
             project_id: "nonexistent-project-xyz".to_string(),
             title: None,
             prompt: None,
             initial_prompt: None,
+            idempotency_key: None,
         }),
     )
     .await;
@@ -507,11 +517,13 @@ async fn test_start_ideation_initial_prompt_backward_compat() {
     let result = start_ideation_http(
         State(state.clone()),
         unrestricted_scope(),
+        axum::http::HeaderMap::new(),
         Json(StartIdeationRequest {
             project_id: project_id.to_string(),
             title: None,
             prompt: None,
             initial_prompt: Some("Legacy initial prompt text".to_string()),
+            idempotency_key: None,
         }),
     )
     .await;
@@ -547,11 +559,13 @@ async fn test_start_ideation_prompt_takes_precedence_over_initial_prompt() {
     let result = start_ideation_http(
         State(state.clone()),
         unrestricted_scope(),
+        axum::http::HeaderMap::new(),
         Json(StartIdeationRequest {
             project_id: project_id.to_string(),
             title: None,
             prompt: Some("Primary prompt".to_string()),
             initial_prompt: Some("Legacy fallback".to_string()),
+            idempotency_key: None,
         }),
     )
     .await;
@@ -590,11 +604,13 @@ async fn test_start_ideation_with_prompt_returns_200_regardless_of_spawn_outcome
     let result = start_ideation_http(
         State(state.clone()),
         unrestricted_scope(),
+        axum::http::HeaderMap::new(),
         Json(StartIdeationRequest {
             project_id: project_id.to_string(),
             title: None,
             prompt: Some("Please ideate on caching strategies".to_string()),
             initial_prompt: None,
+            idempotency_key: None,
         }),
     )
     .await;
@@ -634,11 +650,13 @@ async fn test_start_ideation_scope_mismatch_returns_403() {
     let result = start_ideation_http(
         State(state),
         scoped(&["proj-different-from-target"]),
+        axum::http::HeaderMap::new(),
         Json(StartIdeationRequest {
             project_id: project_id.to_string(),
             title: None,
             prompt: Some("Should be blocked".to_string()),
             initial_prompt: None,
+            idempotency_key: None,
         }),
     )
     .await;
@@ -673,11 +691,13 @@ async fn test_start_ideation_no_session_cap() {
     let result = start_ideation_http(
         State(state),
         unrestricted_scope(),
+        axum::http::HeaderMap::new(),
         Json(StartIdeationRequest {
             project_id: project_id.to_string(),
             title: Some("Second session".to_string()),
             prompt: None,
             initial_prompt: None,
+            idempotency_key: None,
         }),
     )
     .await;
@@ -701,11 +721,13 @@ async fn test_start_ideation_spawn_failure_populates_blocked_reason() {
     let result = start_ideation_http(
         State(state.clone()),
         unrestricted_scope(),
+        axum::http::HeaderMap::new(),
         Json(StartIdeationRequest {
             project_id: project_id.to_string(),
             title: None,
             prompt: Some("Trigger spawn attempt".to_string()),
             initial_prompt: None,
+            idempotency_key: None,
         }),
     )
     .await;
@@ -736,6 +758,282 @@ async fn test_start_ideation_spawn_failure_populates_blocked_reason() {
     if let Some(reason) = &response.agent_spawn_blocked_reason {
         assert!(!reason.is_empty(), "Blocked reason must not be empty string");
     }
+}
+
+/// Idempotency key match → returns pre-existing session with exists: true instead of creating new.
+#[tokio::test]
+async fn test_start_ideation_idempotency_returns_existing_session() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-idempotency";
+    let p = make_project(project_id, "Idempotency Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    // Pre-create a session with api_key_id + idempotency_key
+    let mut existing = IdeationSession::new(ProjectId::from_string(project_id.to_string()));
+    existing.origin = SessionOrigin::External;
+    existing.api_key_id = Some("key-test-idempotency".to_string());
+    existing.idempotency_key = Some("idem-key-abc123".to_string());
+    let pre = state
+        .app_state
+        .ideation_session_repo
+        .create(existing)
+        .await
+        .unwrap();
+    let expected_session_id = pre.id.to_string();
+
+    // Repeat request with same api_key_id + idempotency_key — must return existing session
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        "x-ralphx-key-id",
+        axum::http::HeaderValue::from_static("key-test-idempotency"),
+    );
+    let result = start_ideation_http(
+        State(state),
+        unrestricted_scope(),
+        headers,
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: Some("Completely different title".to_string()),
+            prompt: Some("Completely different prompt".to_string()),
+            initial_prompt: None,
+            idempotency_key: Some("idem-key-abc123".to_string()),
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(
+        response.session_id, expected_session_id,
+        "Must return pre-existing session, not create a new one"
+    );
+    assert_eq!(
+        response.exists,
+        Some(true),
+        "exists must be true on idempotent retry"
+    );
+    assert_eq!(response.next_action, "poll_status");
+    assert!(
+        response.hint.as_deref().unwrap_or("").contains("Idempotent"),
+        "hint must indicate idempotent retry"
+    );
+}
+
+/// Jaccard dedup: active external session with similar text → duplicate_detected: true.
+#[tokio::test]
+async fn test_start_ideation_jaccard_dedup_returns_duplicate_detected() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-jaccard";
+    let p = make_project(project_id, "Jaccard Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    // Pre-create an active external session — status defaults to Active
+    let mut existing = IdeationSession::new_with_title(
+        ProjectId::from_string(project_id.to_string()),
+        "design authentication module",
+    );
+    existing.origin = SessionOrigin::External;
+    let pre = state
+        .app_state
+        .ideation_session_repo
+        .create(existing)
+        .await
+        .unwrap();
+    let pre_session_id = pre.id.to_string();
+
+    // Request with identical prompt — Jaccard score = 1.0 → dedup triggered
+    let result = start_ideation_http(
+        State(state),
+        unrestricted_scope(),
+        axum::http::HeaderMap::new(),
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: None,
+            prompt: Some("design authentication module".to_string()),
+            initial_prompt: None,
+            idempotency_key: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(
+        response.duplicate_detected,
+        Some(true),
+        "duplicate_detected must be true when Jaccard similarity >= threshold"
+    );
+    assert!(
+        response.similarity_score.is_some(),
+        "similarity_score must be present on dedup"
+    );
+    assert!(
+        response.similarity_score.unwrap() >= 0.7,
+        "similarity_score must be >= threshold (0.7)"
+    );
+    assert_eq!(
+        response.next_action, "use_existing_session",
+        "next_action must be use_existing_session on dedup"
+    );
+    assert_eq!(
+        response.session_id, pre_session_id,
+        "Must return the matched session, not create a new one"
+    );
+    assert!(
+        !response.existing_active_sessions.is_empty(),
+        "existing_active_sessions must be populated on dedup"
+    );
+}
+
+/// New external sessions have external_activity_phase = "created" stored in the repository.
+#[tokio::test]
+async fn test_start_ideation_sets_external_activity_phase_on_new_session() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-ext-phase";
+    let p = make_project(project_id, "Phase Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let result = start_ideation_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        axum::http::HeaderMap::new(),
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: None,
+            prompt: None,
+            initial_prompt: None,
+            idempotency_key: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    let session_id = IdeationSessionId::from_string(response.session_id);
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .expect("Session must exist");
+    assert_eq!(
+        session.external_activity_phase.as_deref(),
+        Some("created"),
+        "external_activity_phase must be 'created' on new external sessions"
+    );
+}
+
+/// api_key_id from X-RalphX-Key-Id header is stored on the new session.
+#[tokio::test]
+async fn test_start_ideation_stores_api_key_id_from_header() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-apikeyid";
+    let p = make_project(project_id, "API Key ID Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        "x-ralphx-key-id",
+        axum::http::HeaderValue::from_static("key-stored-xyz"),
+    );
+
+    let result = start_ideation_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        headers,
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: None,
+            prompt: None,
+            initial_prompt: None,
+            idempotency_key: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    let session_id = IdeationSessionId::from_string(response.session_id);
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .expect("Session must exist");
+    assert_eq!(
+        session.api_key_id.as_deref(),
+        Some("key-stored-xyz"),
+        "api_key_id must be stored from X-RalphX-Key-Id header"
+    );
+}
+
+/// existing_active_sessions in response includes pre-existing active external sessions
+/// plus the newly created session.
+#[tokio::test]
+async fn test_start_ideation_existing_active_sessions_populated() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-active-sessions";
+    let p = make_project(project_id, "Active Sessions Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    // Pre-create an active external session
+    let mut pre_existing = IdeationSession::new_with_title(
+        ProjectId::from_string(project_id.to_string()),
+        "Pre-existing external session",
+    );
+    pre_existing.origin = SessionOrigin::External;
+    let pre = state
+        .app_state
+        .ideation_session_repo
+        .create(pre_existing)
+        .await
+        .unwrap();
+    let pre_id = pre.id.to_string();
+
+    // Use a title sufficiently different to avoid Jaccard dedup
+    let result = start_ideation_http(
+        State(state),
+        unrestricted_scope(),
+        axum::http::HeaderMap::new(),
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: Some("xyz-fresh-unrelated-session-title-2024".to_string()),
+            prompt: None,
+            initial_prompt: None,
+            idempotency_key: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    // Response must contain at least 2 sessions: the new one + pre-existing
+    assert!(
+        response.existing_active_sessions.len() >= 2,
+        "existing_active_sessions must include both new and pre-existing sessions, got: {:?}",
+        response
+            .existing_active_sessions
+            .iter()
+            .map(|s| &s.session_id)
+            .collect::<Vec<_>>()
+    );
+    // The pre-existing external session must appear in the list
+    let ids: Vec<&str> = response
+        .existing_active_sessions
+        .iter()
+        .map(|s| s.session_id.as_str())
+        .collect();
+    assert!(
+        ids.contains(&pre_id.as_str()),
+        "Pre-existing active external session must appear in existing_active_sessions"
+    );
 }
 
 // ============================================================================
@@ -1447,6 +1745,31 @@ async fn setup_session(
     (project_id.to_string(), created.id.as_str().to_string())
 }
 
+/// Creates a project + active external ideation session (origin = External). Returns (project_id_str, session_id_str).
+async fn setup_external_session(
+    state: &HttpServerState,
+    project_id: &str,
+    project_name: &str,
+) -> (String, String) {
+    let project = make_project(project_id, project_name);
+    state.app_state.project_repo.create(project).await.unwrap();
+
+    let pid = ProjectId::from_string(project_id.to_string());
+    let session = IdeationSession::builder()
+        .project_id(pid)
+        .origin(SessionOrigin::External)
+        .api_key_id("test-api-key")
+        .build();
+    let created = state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    (project_id.to_string(), created.id.as_str().to_string())
+}
+
 #[tokio::test]
 async fn test_external_apply_proposals_session_not_found() {
     let state = setup_test_state().await;
@@ -1607,7 +1930,7 @@ async fn test_ideation_message_invalid_session_returns_404() {
     .await;
 
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().status, axum::http::StatusCode::NOT_FOUND);
+    assert_eq!(result.unwrap_err().0, axum::http::StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -1635,7 +1958,7 @@ async fn test_ideation_message_session_not_active_returns_400() {
     .await;
 
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().status, axum::http::StatusCode::BAD_REQUEST);
+    assert_eq!(result.unwrap_err().0, axum::http::StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -1656,7 +1979,7 @@ async fn test_ideation_message_scope_violation_returns_403() {
     .await;
 
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().status, axum::http::StatusCode::FORBIDDEN);
+    assert_eq!(result.unwrap_err().0, axum::http::StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
@@ -1735,6 +2058,342 @@ async fn test_ideation_message_sent_when_interactive_process_registered() {
     assert!(result.is_ok(), "expected Ok response, got: {:?}", result.err());
     let response = result.unwrap().0;
     assert_eq!(response.status, "sent");
+}
+
+// ============================================================================
+// ideation_message_http — read-before-write guard (Task 3)
+// ============================================================================
+
+/// External session with unread assistant messages → 409 with structured error
+#[tokio::test]
+async fn test_ideation_message_unread_returns_409() {
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_external_session(&state, "proj-rbw-unread", "RBW Unread").await;
+    let session_id = IdeationSessionId::from_string(session_id_str.clone());
+
+    // Add a user message followed by an unread orchestrator response
+    state
+        .app_state
+        .chat_message_repo
+        .create(ChatMessage::user_in_session(session_id.clone(), "user message"))
+        .await
+        .unwrap();
+    state
+        .app_state
+        .chat_message_repo
+        .create(ChatMessage::orchestrator_in_session(session_id.clone(), "agent response"))
+        .await
+        .unwrap();
+
+    let result = ideation_message_http(
+        State(state),
+        unrestricted_scope(),
+        Json(IdeationMessageRequest {
+            session_id: session_id_str,
+            message: "follow-up without reading".to_string(),
+        }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    let (status, body) = result.unwrap_err();
+    assert_eq!(status, axum::http::StatusCode::CONFLICT);
+    assert_eq!(body.0["error"], "unread_messages");
+    assert_eq!(body.0["next_action"], "fetch_messages");
+    assert_eq!(body.0["unread_count"], 1u64);
+}
+
+/// External session with NO prior messages → initial message allowed (no unread)
+#[tokio::test]
+async fn test_ideation_message_external_initial_message_allowed() {
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_external_session(&state, "proj-rbw-initial", "RBW Initial").await;
+
+    // Register a running agent so we get "queued" instead of spawn attempt
+    let agent_key = RunningAgentKey::new("ideation", &session_id_str);
+    state
+        .app_state
+        .running_agent_registry
+        .register(agent_key, 99999, "conv".to_string(), "run".to_string(), None, None)
+        .await;
+
+    let result = ideation_message_http(
+        State(state),
+        unrestricted_scope(),
+        Json(IdeationMessageRequest {
+            session_id: session_id_str,
+            message: "initial message".to_string(),
+        }),
+    )
+    .await;
+
+    // Guard must NOT trigger — no unread messages → allowed through
+    assert!(result.is_ok(), "expected Ok for initial message, got: {:?}", result.err());
+    let response = result.unwrap().0;
+    assert_eq!(response.status, "queued");
+}
+
+/// External session: messages read (cursor set past agent response) → allowed
+#[tokio::test]
+async fn test_ideation_message_post_read_allowed() {
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_external_session(&state, "proj-rbw-postread", "RBW Post-read").await;
+    let session_id = IdeationSessionId::from_string(session_id_str.clone());
+
+    // Add an orchestrator message
+    let agent_msg =
+        ChatMessage::orchestrator_in_session(session_id.clone(), "agent response");
+    let created_agent_msg = state
+        .app_state
+        .chat_message_repo
+        .create(agent_msg)
+        .await
+        .unwrap();
+
+    // Simulate read: update cursor to the agent message ID
+    state
+        .app_state
+        .ideation_session_repo
+        .update_external_last_read_message_id(&session_id, created_agent_msg.id.as_str())
+        .await
+        .unwrap();
+
+    // Register a running agent to get "queued"
+    let agent_key = RunningAgentKey::new("ideation", &session_id_str);
+    state
+        .app_state
+        .running_agent_registry
+        .register(agent_key, 99998, "conv2".to_string(), "run2".to_string(), None, None)
+        .await;
+
+    let result = ideation_message_http(
+        State(state),
+        unrestricted_scope(),
+        Json(IdeationMessageRequest {
+            session_id: session_id_str,
+            message: "follow-up after reading".to_string(),
+        }),
+    )
+    .await;
+
+    // Cursor is past the agent message → no unread → allowed
+    assert!(result.is_ok(), "expected Ok after reading, got: {:?}", result.err());
+    let response = result.unwrap().0;
+    assert_eq!(response.status, "queued");
+}
+
+/// Internal session with unread assistant messages → guard bypassed entirely
+#[tokio::test]
+async fn test_ideation_message_internal_session_bypasses_guard() {
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-rbw-internal", "RBW Internal").await;
+    let session_id = IdeationSessionId::from_string(session_id_str.clone());
+
+    // Add unread orchestrator messages — would trigger 409 for an external session
+    state
+        .app_state
+        .chat_message_repo
+        .create(ChatMessage::orchestrator_in_session(session_id.clone(), "agent response"))
+        .await
+        .unwrap();
+
+    // Register a running agent
+    let agent_key = RunningAgentKey::new("ideation", &session_id_str);
+    state
+        .app_state
+        .running_agent_registry
+        .register(agent_key, 99997, "conv3".to_string(), "run3".to_string(), None, None)
+        .await;
+
+    let result = ideation_message_http(
+        State(state),
+        unrestricted_scope(),
+        Json(IdeationMessageRequest {
+            session_id: session_id_str,
+            message: "internal message".to_string(),
+        }),
+    )
+    .await;
+
+    // Internal sessions bypass the read-before-write guard entirely
+    assert!(result.is_ok(), "internal session should bypass guard, got: {:?}", result.err());
+    let response = result.unwrap().0;
+    assert_eq!(response.status, "queued");
+}
+
+// ============================================================================
+// get_ideation_messages_http — external read cursor update (Task 3)
+// ============================================================================
+
+/// Fetching messages for an external session updates external_last_read_message_id
+#[tokio::test]
+async fn test_get_ideation_messages_updates_external_read_cursor() {
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_external_session(&state, "proj-cursor-update", "Cursor Update").await;
+    let session_id = IdeationSessionId::from_string(session_id_str.clone());
+
+    // Add an orchestrator message
+    let msg = ChatMessage::orchestrator_in_session(session_id.clone(), "agent response");
+    let created_msg = state
+        .app_state
+        .chat_message_repo
+        .create(msg)
+        .await
+        .unwrap();
+    let expected_msg_id = created_msg.id.to_string();
+
+    // Fetch messages — should set external_last_read_message_id as a side-effect
+    let result = get_ideation_messages_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Path(session_id_str),
+        axum::extract::Query(GetIdeationMessagesQuery { limit: 50, offset: 0 }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.messages.len(), 1);
+
+    // Verify cursor was updated on the session
+    let updated_session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_session.external_last_read_message_id.as_deref(),
+        Some(expected_msg_id.as_str()),
+        "cursor should be updated to the latest message ID"
+    );
+}
+
+/// Fetching messages for an internal session does NOT update external_last_read_message_id
+#[tokio::test]
+async fn test_get_ideation_messages_internal_no_cursor_update() {
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-cursor-internal", "Cursor Internal").await;
+    let session_id = IdeationSessionId::from_string(session_id_str.clone());
+
+    // Add a message
+    state
+        .app_state
+        .chat_message_repo
+        .create(ChatMessage::orchestrator_in_session(session_id.clone(), "agent response"))
+        .await
+        .unwrap();
+
+    let result = get_ideation_messages_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Path(session_id_str),
+        axum::extract::Query(GetIdeationMessagesQuery { limit: 50, offset: 0 }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+
+    // Internal sessions: cursor must NOT be updated
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        session.external_last_read_message_id.is_none(),
+        "internal session cursor must remain None"
+    );
+}
+
+// ============================================================================
+// SQLite-backed SQL query test for count_unread_assistant_messages
+// ============================================================================
+
+/// SQLite integration test: verifies the cursor-based SQL COUNT query is correct
+#[tokio::test]
+async fn test_count_unread_assistant_messages_sql_query() {
+    use ralphx_lib::domain::repositories::ChatMessageRepository;
+    use ralphx_lib::infrastructure::sqlite::{
+        open_connection, run_migrations, SqliteChatMessageRepository,
+    };
+
+    let conn = open_connection(&std::path::PathBuf::from(":memory:")).unwrap();
+    run_migrations(&conn).unwrap();
+    // Disable FK constraints so we can insert messages without creating a real session
+    conn.execute("PRAGMA foreign_keys = OFF", []).unwrap();
+    let repo = SqliteChatMessageRepository::new(conn);
+
+    let session_id = IdeationSessionId::from_string("sql-test-session".to_string());
+
+    // Empty session → 0 unread
+    let count = repo
+        .count_unread_assistant_messages(session_id.as_str(), None)
+        .await
+        .unwrap();
+    assert_eq!(count, 0, "empty session: 0 unread");
+
+    // User message only → still 0 (user messages not counted)
+    repo.create(ChatMessage::user_in_session(session_id.clone(), "user msg"))
+        .await
+        .unwrap();
+    let count = repo
+        .count_unread_assistant_messages(session_id.as_str(), None)
+        .await
+        .unwrap();
+    assert_eq!(count, 0, "only user message: 0 unread");
+
+    // Add orchestrator message m1
+    let m1 = repo
+        .create(ChatMessage::orchestrator_in_session(session_id.clone(), "agent reply 1"))
+        .await
+        .unwrap();
+
+    // No cursor → count all orchestrator messages = 1
+    let count = repo
+        .count_unread_assistant_messages(session_id.as_str(), None)
+        .await
+        .unwrap();
+    assert_eq!(count, 1, "one orchestrator message: 1 unread");
+
+    // Cursor at m1 → no messages newer than m1 → 0
+    let count = repo
+        .count_unread_assistant_messages(session_id.as_str(), Some(m1.id.as_str()))
+        .await
+        .unwrap();
+    assert_eq!(count, 0, "cursor at m1: 0 unread");
+
+    // Brief sleep to ensure distinct created_at timestamps
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+    // Add orchestrator message m2 (newer than m1)
+    let m2 = repo
+        .create(ChatMessage::orchestrator_in_session(session_id.clone(), "agent reply 2"))
+        .await
+        .unwrap();
+
+    // Cursor at m1 → m2 is newer → 1
+    let count = repo
+        .count_unread_assistant_messages(session_id.as_str(), Some(m1.id.as_str()))
+        .await
+        .unwrap();
+    assert_eq!(count, 1, "cursor at m1, m2 newer: 1 unread");
+
+    // Cursor at m2 → nothing newer → 0
+    let count = repo
+        .count_unread_assistant_messages(session_id.as_str(), Some(m2.id.as_str()))
+        .await
+        .unwrap();
+    assert_eq!(count, 0, "cursor at m2: 0 unread");
 }
 
 // ============================================================================
@@ -3219,4 +3878,465 @@ async fn test_get_session_tasks_delivery_status_active_tasks_is_in_progress() {
 
     assert!(result.is_ok());
     assert_eq!(result.unwrap().0.delivery_status, "in_progress");
+}
+
+// ============================================================================
+// next_action hints and enriched status fields (Wave 3)
+// ============================================================================
+
+/// start_ideation without a prompt → no agent spawned → next_action: "poll_status"
+#[tokio::test]
+async fn test_start_ideation_returns_next_action_poll_status() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-na-start";
+    let p = make_project(project_id, "Next Action Start Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let result = start_ideation_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        axum::http::HeaderMap::new(),
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: None,
+            prompt: None,
+            initial_prompt: None,
+            idempotency_key: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(
+        response.next_action, "poll_status",
+        "start_ideation must return next_action: poll_status"
+    );
+    assert!(
+        response.hint.is_some(),
+        "start_ideation must return a non-None hint"
+    );
+}
+
+/// get_ideation_status with no agent running → agent_status: "idle" → next_action: "send_message"
+#[tokio::test]
+async fn test_status_idle_agent_next_action_send_message() {
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-na-idle", "Idle Agent Status Session").await;
+
+    let result = get_ideation_status_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.agent_status, "idle");
+    assert_eq!(
+        response.next_action, "send_message",
+        "idle agent → next_action must be send_message"
+    );
+    assert_eq!(response.queued_message_count, 0);
+    assert_eq!(response.unread_message_count, 0);
+}
+
+/// get_ideation_status with agent registered (generating) → next_action: "wait"
+#[tokio::test]
+async fn test_status_generating_agent_next_action_wait() {
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-na-generating", "Generating Agent Status Session").await;
+
+    let agent_key = RunningAgentKey::new("ideation", &session_id_str);
+    state
+        .app_state
+        .running_agent_registry
+        .register(
+            agent_key,
+            0,
+            "conv-id-na-gen".to_string(),
+            "run-id-na-gen".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let result = get_ideation_status_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.agent_status, "generating");
+    assert_eq!(
+        response.next_action, "wait",
+        "generating agent → next_action must be wait"
+    );
+    let hint = response.hint.as_deref().unwrap_or("");
+    assert!(
+        hint.contains("5-10s"),
+        "generating hint must contain '5-10s', got: {hint}"
+    );
+}
+
+/// get_ideation_status with waiting_for_input + unread messages → next_action: "fetch_messages"
+#[tokio::test]
+async fn test_status_waiting_with_unread_next_action_fetch_messages() {
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-na-unread", "Waiting With Unread Session").await;
+    let session_id = IdeationSessionId::from_string(session_id_str.clone());
+
+    // Register running agent
+    let agent_key = RunningAgentKey::new("ideation", &session_id_str);
+    state
+        .app_state
+        .running_agent_registry
+        .register(
+            agent_key,
+            0,
+            "conv-id-na-unread".to_string(),
+            "run-id-na-unread".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    // Register interactive process → waiting_for_input
+    let mut child = tokio::process::Command::new("cat")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("failed to spawn cat for test");
+    let stdin = child.stdin.take().expect("no stdin on cat process");
+
+    let ipr_key = InteractiveProcessKey::new("ideation", &session_id_str);
+    state
+        .app_state
+        .interactive_process_registry
+        .register(ipr_key, stdin)
+        .await;
+
+    // Create an Orchestrator (assistant) message — this is "unread" since last_read is None
+    create_message(
+        &state,
+        ChatMessage::orchestrator_in_session(session_id, "Agent has responded with a plan."),
+    )
+    .await;
+
+    let result = get_ideation_status_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+    )
+    .await;
+
+    drop(child);
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.agent_status, "waiting_for_input");
+    assert_eq!(response.unread_message_count, 1, "expected 1 unread message");
+    assert_eq!(
+        response.next_action, "fetch_messages",
+        "waiting_for_input + unread → next_action must be fetch_messages"
+    );
+    let hint = response.hint.as_deref().unwrap_or("");
+    assert!(
+        hint.contains("Fetch messages"),
+        "hint must mention fetching messages, got: {hint}"
+    );
+}
+
+/// get_ideation_status with waiting_for_input + no unread messages → next_action: "send_message"
+#[tokio::test]
+async fn test_status_waiting_no_unread_next_action_send_message() {
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-na-no-unread", "Waiting No Unread Session").await;
+
+    // Register running agent
+    let agent_key = RunningAgentKey::new("ideation", &session_id_str);
+    state
+        .app_state
+        .running_agent_registry
+        .register(
+            agent_key,
+            0,
+            "conv-id-na-no-unread".to_string(),
+            "run-id-na-no-unread".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    // Register interactive process → waiting_for_input
+    let mut child = tokio::process::Command::new("cat")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("failed to spawn cat for test");
+    let stdin = child.stdin.take().expect("no stdin on cat process");
+
+    let ipr_key = InteractiveProcessKey::new("ideation", &session_id_str);
+    state
+        .app_state
+        .interactive_process_registry
+        .register(ipr_key, stdin)
+        .await;
+
+    // No assistant messages — unread_message_count = 0
+    let result = get_ideation_status_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+    )
+    .await;
+
+    drop(child);
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.agent_status, "waiting_for_input");
+    assert_eq!(response.unread_message_count, 0);
+    assert_eq!(
+        response.next_action, "send_message",
+        "waiting_for_input + no unread → next_action must be send_message"
+    );
+    let hint = response.hint.as_deref().unwrap_or("");
+    assert!(
+        hint.contains("ready for input"),
+        "hint must mention ready for input, got: {hint}"
+    );
+}
+
+/// get_ideation_messages with no agent running → next_action: "send_message"
+#[tokio::test]
+async fn test_get_ideation_messages_next_action_idle() {
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-na-msg-idle", "Messages Next Action Idle").await;
+
+    let result = get_ideation_messages_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+        axum::extract::Query(GetIdeationMessagesQuery { limit: 50, offset: 0 }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.agent_status, "idle");
+    assert_eq!(
+        response.next_action, "send_message",
+        "idle agent → next_action must be send_message"
+    );
+}
+
+/// get_ideation_messages with agent generating → next_action: "wait"
+#[tokio::test]
+async fn test_get_ideation_messages_next_action_generating() {
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-na-msg-gen", "Messages Next Action Generating").await;
+
+    // Register running agent (no interactive process → generating)
+    let agent_key = RunningAgentKey::new("ideation", &session_id_str);
+    state
+        .app_state
+        .running_agent_registry
+        .register(
+            agent_key,
+            0,
+            "conv-id-na-msg-gen".to_string(),
+            "run-id-na-msg-gen".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let result = get_ideation_messages_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+        axum::extract::Query(GetIdeationMessagesQuery { limit: 50, offset: 0 }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.agent_status, "generating");
+    assert_eq!(
+        response.next_action, "wait",
+        "generating agent → next_action must be wait"
+    );
+}
+
+/// A regular (non-external) session has no external_activity_phase set → field is None
+#[tokio::test]
+async fn test_status_external_activity_phase_none_for_internal_session() {
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-na-phase", "Internal Session Phase Test").await;
+
+    let result = get_ideation_status_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert!(
+        response.external_activity_phase.is_none(),
+        "internal session must have external_activity_phase: None, got: {:?}",
+        response.external_activity_phase
+    );
+}
+
+// ============================================================================
+// ideation_message_http — queue depth cap (Task 4)
+// ============================================================================
+
+/// Helper: create an active ideation session and return its string ID.
+async fn create_active_ideation_session(state: &HttpServerState) -> String {
+    let session = IdeationSession::new(ProjectId::new());
+    let sid = session.id.as_str().to_string();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+    sid
+}
+
+/// Helper: register a fake running agent for the "ideation" context.
+async fn register_fake_ideation_agent(state: &HttpServerState, session_id: &str) {
+    let key = RunningAgentKey::new("ideation", session_id);
+    state
+        .app_state
+        .running_agent_registry
+        .register(key, 99999, "test-conv".to_string(), "test-run".to_string(), None, None)
+        .await;
+}
+
+/// Helper: pre-fill the message queue with `n` messages for a session.
+fn fill_queue(state: &HttpServerState, session_id: &str, n: usize) {
+    for i in 0..n {
+        state.app_state.message_queue.queue(
+            ChatContextType::Ideation,
+            session_id,
+            format!("queued message {i}"),
+        );
+    }
+}
+
+/// When agent is running and queue is at cap (default 10), next message returns 429
+/// with structured error: error=queue_full, queued_count, hint, next_action=poll_status.
+#[tokio::test]
+async fn test_ideation_message_queue_cap_returns_429_when_full() {
+    let state = setup_test_state().await;
+    let session_id = create_active_ideation_session(&state).await;
+
+    // Register a fake running agent (triggers the "queued" delivery path)
+    register_fake_ideation_agent(&state, &session_id).await;
+
+    // Fill queue to the default cap (10)
+    let cap = 10_usize;
+    fill_queue(&state, &session_id, cap);
+
+    // Assert queue is exactly at cap
+    assert_eq!(
+        state.app_state.message_queue.count_for_context("ideation", &session_id),
+        cap
+    );
+
+    let req = IdeationMessageRequest {
+        session_id: session_id.clone(),
+        message: "this should be rejected".to_string(),
+    };
+    let result = ideation_message_http(State(state), unrestricted_scope(), Json(req)).await;
+
+    assert!(result.is_err(), "expected 429 error when queue is full");
+    let (status, Json(body)) = result.unwrap_err();
+    assert_eq!(status, axum::http::StatusCode::TOO_MANY_REQUESTS);
+
+    // Verify rich JSON body
+    assert_eq!(body["error"], "queue_full");
+    assert_eq!(body["next_action"], "poll_status");
+    assert_eq!(body["queued_count"], cap);
+    assert!(
+        body["hint"].as_str().unwrap().contains("queue is full"),
+        "hint should mention queue is full"
+    );
+}
+
+/// When agent is running but queue is below cap, message is accepted and delivery is "queued".
+#[tokio::test]
+async fn test_ideation_message_queue_below_cap_accepts_message() {
+    let state = setup_test_state().await;
+    let session_id = create_active_ideation_session(&state).await;
+
+    register_fake_ideation_agent(&state, &session_id).await;
+
+    // Fill queue to cap - 1 (9 messages)
+    let cap = 10_usize;
+    fill_queue(&state, &session_id, cap - 1);
+
+    let req = IdeationMessageRequest {
+        session_id: session_id.clone(),
+        message: "this should be accepted".to_string(),
+    };
+    let result = ideation_message_http(State(state), unrestricted_scope(), Json(req)).await;
+
+    assert!(result.is_ok(), "expected success when queue is below cap");
+    let response = result.unwrap().0;
+    assert_eq!(response.status, "queued");
+    assert_eq!(response.session_id, session_id);
+}
+
+/// When no agent is running, queue depth is irrelevant — delivery falls through to "spawned"
+/// path and the cap is never checked. Even with a full queue, no 429 is returned from
+/// the cap guard (a different error from the spawn path may occur in test env).
+#[tokio::test]
+async fn test_ideation_message_no_running_agent_bypasses_queue_cap() {
+    let state = setup_test_state().await;
+    let session_id = create_active_ideation_session(&state).await;
+
+    // Do NOT register a running agent — is_running() will return false
+
+    // Fill queue beyond cap to prove it doesn't matter
+    fill_queue(&state, &session_id, 20);
+
+    let req = IdeationMessageRequest {
+        session_id: session_id.clone(),
+        message: "spawned path message".to_string(),
+    };
+    let result = ideation_message_http(State(state), unrestricted_scope(), Json(req)).await;
+
+    // The cap guard is in the is_running() branch; since no agent is running, we
+    // fall through to the spawn path. In the test environment the spawn may fail
+    // (no real Claude process), but it must NOT return 429 (queue_full).
+    match result {
+        Ok(resp) => assert_ne!(resp.status, "429"),
+        Err((status, _)) => assert_ne!(
+            status,
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            "no-agent path must never return 429 from queue cap guard"
+        ),
+    }
 }

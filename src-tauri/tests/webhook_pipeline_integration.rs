@@ -153,10 +153,12 @@ async fn test_pipeline_session_to_tasks_e2e() {
         title: Some("E2E Pipeline Session".to_string()),
         prompt: None,
         initial_prompt: None,
+        idempotency_key: None,
     };
     let start_result = start_ideation_http(
         State(state.clone()),
         unrestricted_scope(),
+        axum::http::HeaderMap::new(),
         Json(start_req),
     )
     .await;

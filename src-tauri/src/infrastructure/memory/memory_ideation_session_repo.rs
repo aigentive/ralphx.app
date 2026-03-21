@@ -9,8 +9,8 @@ use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 
 use crate::domain::entities::{
-    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, VerificationMetadata,
-    VerificationStatus,
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, SessionOrigin,
+    VerificationMetadata, VerificationStatus,
 };
 use crate::domain::repositories::ideation_session_repository::{
     IdeationSessionWithProgress, SessionGroupCounts,
@@ -601,6 +601,121 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         Err(AppError::Infrastructure(
             "count_active_by_session_sync not supported in memory repo".to_string(),
         ))
+    }
+
+    async fn get_by_idempotency_key(
+        &self,
+        api_key_id: &str,
+        idempotency_key: &str,
+    ) -> AppResult<Option<IdeationSession>> {
+        let sessions = self.sessions.read().unwrap();
+        Ok(sessions
+            .values()
+            .find(|s| {
+                s.api_key_id.as_deref() == Some(api_key_id)
+                    && s.idempotency_key.as_deref() == Some(idempotency_key)
+            })
+            .cloned())
+    }
+
+    async fn update_external_activity_phase(
+        &self,
+        id: &IdeationSessionId,
+        phase: &str,
+    ) -> AppResult<()> {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(session) = sessions.get_mut(id.as_str()) {
+            session.external_activity_phase = Some(phase.to_string());
+            session.updated_at = chrono::Utc::now();
+        }
+        Ok(())
+    }
+
+    async fn update_external_last_read_message_id(
+        &self,
+        id: &IdeationSessionId,
+        message_id: &str,
+    ) -> AppResult<()> {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(session) = sessions.get_mut(id.as_str()) {
+            session.external_last_read_message_id = Some(message_id.to_string());
+            session.updated_at = chrono::Utc::now();
+        }
+        Ok(())
+    }
+
+    async fn list_active_external_by_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>> {
+        let sessions = self.sessions.read().unwrap();
+        let mut result: Vec<IdeationSession> = sessions
+            .values()
+            .filter(|s| {
+                s.project_id == *project_id
+                    && s.status == IdeationSessionStatus::Active
+                    && s.origin == SessionOrigin::External
+            })
+            .cloned()
+            .collect();
+        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(result)
+    }
+
+    async fn list_active_external_sessions_for_archival(
+        &self,
+        stale_before: Option<DateTime<Utc>>,
+    ) -> AppResult<Vec<IdeationSession>> {
+        let sessions = self.sessions.read().unwrap();
+        let mut result: Vec<IdeationSession> = sessions
+            .values()
+            .filter(|s| {
+                if s.origin != SessionOrigin::External || s.status != IdeationSessionStatus::Active
+                {
+                    return false;
+                }
+                let phase_matches = matches!(
+                    s.external_activity_phase.as_deref(),
+                    Some("created") | Some("error")
+                );
+                if !phase_matches {
+                    return false;
+                }
+                if let Some(cutoff) = stale_before {
+                    s.created_at < cutoff
+                } else {
+                    true
+                }
+            })
+            .cloned()
+            .collect();
+        result.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        Ok(result)
+    }
+
+    async fn list_stalled_external_sessions(
+        &self,
+        stalled_before: DateTime<Utc>,
+    ) -> AppResult<Vec<IdeationSession>> {
+        let sessions = self.sessions.read().unwrap();
+        let mut result: Vec<IdeationSession> = sessions
+            .values()
+            .filter(|s| {
+                if s.origin != SessionOrigin::External || s.status != IdeationSessionStatus::Active
+                {
+                    return false;
+                }
+                let phase_eligible = match s.external_activity_phase.as_deref() {
+                    None => false,
+                    Some("error") | Some("stalled") => false,
+                    Some(_) => true,
+                };
+                phase_eligible && s.updated_at < stalled_before
+            })
+            .cloned()
+            .collect();
+        result.sort_by(|a, b| a.updated_at.cmp(&b.updated_at));
+        Ok(result)
     }
 
     async fn set_dependencies_acknowledged(&self, session_id: &str) -> AppResult<()> {

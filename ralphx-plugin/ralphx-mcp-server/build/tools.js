@@ -189,7 +189,8 @@ export const ALL_TOOLS = [
     {
         name: "analyze_session_dependencies",
         description: "Get full dependency graph analysis including critical path, cycle detection, and blocking relationships. " +
-            "Use to provide intelligent recommendations about proposal execution order.",
+            "Use to provide intelligent recommendations about proposal execution order. " +
+            "Side effect: sets dependencies_acknowledged=true on the session, satisfying the finalize gate for multi-proposal sessions.",
         inputSchema: {
             type: "object",
             properties: {
@@ -203,7 +204,9 @@ export const ALL_TOOLS = [
     },
     {
         name: "finalize_proposals",
-        description: "Signal that all proposals and dependencies are complete. Validates expected count and applies all proposals to create tasks. Call this AFTER all create_task_proposal and update_task_proposal calls are done.",
+        description: "Signal that all proposals and dependencies are complete. Validates expected count and applies all proposals to create tasks. Call this AFTER all create_task_proposal and update_task_proposal calls are done. " +
+            "Gate: blocks with 400 if a multi-proposal session has not acknowledged dependencies (call analyze_session_dependencies, or set deps via create_task_proposal(depends_on) / update_task_proposal(add_depends_on/add_blocks)). " +
+            "Response includes tasks_created (number of tasks created) and message (null on success, error detail on gate block).",
         inputSchema: {
             type: "object",
             properties: {

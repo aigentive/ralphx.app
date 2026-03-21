@@ -190,12 +190,17 @@ export function registerTools(
       {
         name: "v1_start_ideation",
         description:
-          "Create an ideation session and spawn an orchestrator agent with the given prompt",
+          "Create an ideation session and spawn an orchestrator agent with the given prompt. Returns existing_active_sessions for visibility. Use idempotency_key for safe retries — same key returns same session without creating a duplicate.",
         inputSchema: {
           type: "object" as const,
           properties: {
             project_id: { type: "string", description: "Target project ID" },
             prompt: { type: "string", description: "Initial prompt for the orchestrator" },
+            idempotency_key: {
+              type: "string",
+              description:
+                "Optional client-provided key for safe retries. Same key+API key always returns the same session.",
+            },
           },
           required: ["project_id", "prompt"],
         },

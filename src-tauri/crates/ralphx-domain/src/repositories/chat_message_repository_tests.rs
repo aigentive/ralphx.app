@@ -171,6 +171,22 @@ impl ChatMessageRepository for MockChatMessageRepository {
     ) -> AppResult<()> {
         Ok(())
     }
+
+    async fn count_unread_assistant_messages(
+        &self,
+        _session_id: &str,
+        _after_message_id: Option<&str>,
+    ) -> AppResult<u32> {
+        Ok(0)
+    }
+
+    async fn get_first_user_message_by_context(
+        &self,
+        _context_type: &str,
+        _context_id: &str,
+    ) -> AppResult<Option<String>> {
+        Ok(None)
+    }
 }
 
 fn create_test_message_in_session(session_id: &IdeationSessionId) -> ChatMessage {

@@ -930,6 +930,17 @@ async fn auto_propose_for_external(
         return;
     }
 
+    // Transition external activity phase to "proposing" (fire-and-forget)
+    {
+        let repo = std::sync::Arc::clone(&state.app_state.ideation_session_repo);
+        let sid = crate::domain::entities::IdeationSessionId::from_string(session_id.to_string());
+        tokio::spawn(async move {
+            if let Err(e) = repo.update_external_activity_phase(&sid, "proposing").await {
+                tracing::error!("Failed to set activity phase 'proposing' for session {}: {}", sid.as_str(), e);
+            }
+        });
+    }
+
     let is_team_mode = session_is_team_mode(session);
     let app = &state.app_state;
     let mut chat_service = ClaudeChatService::new(
@@ -965,6 +976,23 @@ async fn auto_propose_for_external(
         &[1_000, 2_000, 4_000],
     )
     .await;
+
+    // Set "ready" phase after proposing completes
+    {
+        let repo_ready = std::sync::Arc::clone(&state.app_state.ideation_session_repo);
+        let sid_ready =
+            crate::domain::entities::IdeationSessionId::from_string(session_id.to_string());
+        if let Err(e) = repo_ready
+            .update_external_activity_phase(&sid_ready, "ready")
+            .await
+        {
+            tracing::error!(
+                "Failed to set activity phase 'ready' for session {}: {}",
+                session_id,
+                e
+            );
+        }
+    }
 }
 
 /// Core retry logic for auto-propose delivery.
@@ -1488,6 +1516,25 @@ pub async fn update_plan_verification(
         && session.origin == crate::domain::entities::ideation::SessionOrigin::External
     {
         auto_propose_for_external(&session_id, &session, &state).await;
+    }
+
+    // For external sessions that reach Verified WITHOUT auto-propose (non-zero_blocking):
+    // transition to "ready" immediately since there's no proposing phase
+    if new_status == VerificationStatus::Verified
+        && session.origin == crate::domain::entities::ideation::SessionOrigin::External
+        && metadata.convergence_reason.as_deref() != Some("zero_blocking")
+    {
+        let repo = std::sync::Arc::clone(&state.app_state.ideation_session_repo);
+        let sid = crate::domain::entities::IdeationSessionId::from_string(session_id.clone());
+        tokio::spawn(async move {
+            if let Err(e) = repo.update_external_activity_phase(&sid, "ready").await {
+                error!(
+                    "Failed to set activity phase 'ready' for session {}: {}",
+                    sid.as_str(),
+                    e
+                );
+            }
+        });
     }
 
     use crate::http_server::types::{VerificationGapResponse, VerificationRoundSummary};
