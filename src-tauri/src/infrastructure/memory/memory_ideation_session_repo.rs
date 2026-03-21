@@ -725,6 +725,18 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         }
         Ok(())
     }
+
+    async fn reset_acceptance_cycle_fields(&self, session_id: &str) -> AppResult<()> {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(session) = sessions.values_mut().find(|s| s.id.as_str() == session_id) {
+            session.expected_proposal_count = None;
+            session.dependencies_acknowledged = false;
+            session.auto_accept_status = None;
+            session.auto_accept_started_at = None;
+            session.cross_project_checked = false;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

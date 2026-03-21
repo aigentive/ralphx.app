@@ -332,6 +332,18 @@ pub trait IdeationSessionRepository: Send + Sync {
     /// Mark dependencies as acknowledged for a session.
     /// Sets `dependencies_acknowledged = true` and updates `updated_at`.
     async fn set_dependencies_acknowledged(&self, session_id: &str) -> AppResult<()>;
+
+    /// Reset all acceptance-cycle fields so the session can be re-accepted cleanly.
+    ///
+    /// Sets:
+    /// - `expected_proposal_count = NULL`
+    /// - `dependencies_acknowledged = 0`
+    /// - `auto_accept_status = NULL`
+    /// - `auto_accept_started_at = NULL`
+    /// - `cross_project_checked = 0`
+    ///
+    /// Called by `SessionReopenService` before resetting status to Active.
+    async fn reset_acceptance_cycle_fields(&self, session_id: &str) -> AppResult<()>;
 }
 
 #[cfg(test)]

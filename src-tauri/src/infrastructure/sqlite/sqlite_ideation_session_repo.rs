@@ -1346,4 +1346,25 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
             })
             .await
     }
+
+    async fn reset_acceptance_cycle_fields(&self, session_id: &str) -> AppResult<()> {
+        let session_id = session_id.to_string();
+        self.db
+            .run(move |conn| {
+                let now = Utc::now().to_rfc3339();
+                conn.execute(
+                    "UPDATE ideation_sessions \
+                     SET expected_proposal_count = NULL, \
+                         dependencies_acknowledged = 0, \
+                         auto_accept_status = NULL, \
+                         auto_accept_started_at = NULL, \
+                         cross_project_checked = 0, \
+                         updated_at = ?1 \
+                     WHERE id = ?2",
+                    rusqlite::params![now, session_id],
+                )?;
+                Ok(())
+            })
+            .await
+    }
 }

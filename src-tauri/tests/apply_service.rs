@@ -366,6 +366,10 @@ impl IdeationSessionRepository for MockSessionRepository {
     async fn set_dependencies_acknowledged(&self, _session_id: &str) -> AppResult<()> {
         unimplemented!()
     }
+
+    async fn reset_acceptance_cycle_fields(&self, _session_id: &str) -> AppResult<()> {
+        Ok(())
+    }
 }
 
 struct MockProposalRepository {
