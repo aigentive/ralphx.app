@@ -81,12 +81,25 @@ vi.mock("@/stores/chatStore", () => ({
 vi.mock("@/hooks/useIdeation", () => ({
   ideationKeys: {
     sessions: () => ["sessions"],
+    sessionWithData: (sessionId: string) => ["sessions", "detail", sessionId, "with-data"],
   },
 }));
 
 vi.mock("@/hooks/useDependencyGraph", () => ({
   dependencyKeys: {
     graphs: () => ["dependency-graphs"],
+  },
+}));
+
+vi.mock("@/hooks/useTasks", () => ({
+  taskKeys: {
+    all: ["tasks"],
+  },
+}));
+
+vi.mock("@/hooks/useProposals", () => ({
+  proposalKeys: {
+    list: (sessionId: string) => ["proposals", "list", sessionId],
   },
 }));
 
@@ -132,6 +145,49 @@ describe("useIdeationEvents — ideation:session_created", () => {
     );
     // invalidateQueries must NOT have been called for the malformed payload
     expect(mockInvalidateQueries).not.toHaveBeenCalledWith({ queryKey: ["sessions"] });
+
+    consoleError.mockRestore();
+  });
+});
+
+describe("useIdeationEvents — ideation:session_accepted", () => {
+  beforeEach(() => {
+    subscriptions.clear();
+    mockInvalidateQueries.mockClear();
+  });
+
+  it("(1) valid payload invalidates sessions, sessionWithData, tasks, proposals, and plan-branch", () => {
+    renderHook(() => useIdeationEvents());
+
+    act(() => {
+      fireEvent("ideation:session_accepted", { sessionId: "sess-123", projectId: "proj-456" });
+    });
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ["sessions"] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["sessions", "detail", "sess-123", "with-data"],
+    });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ["tasks"] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["proposals", "list", "sess-123"],
+    });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ["plan-branch"] });
+  });
+
+  it("(2) malformed payload (missing sessionId) rejected by Zod without crash", () => {
+    renderHook(() => useIdeationEvents());
+
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    act(() => {
+      fireEvent("ideation:session_accepted", { projectId: "proj-456" });
+    });
+
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining("Invalid ideation:session_accepted event:"),
+      expect.any(String)
+    );
+    expect(mockInvalidateQueries).not.toHaveBeenCalled();
 
     consoleError.mockRestore();
   });

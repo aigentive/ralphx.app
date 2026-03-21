@@ -153,6 +153,7 @@ pub struct FinalizeProposalsResponse {
     pub session_status: String,
     pub execution_plan_id: Option<String>,
     pub warnings: Vec<String>,
+    pub project_id: String,
 }
 
 #[derive(Debug, Deserialize)]

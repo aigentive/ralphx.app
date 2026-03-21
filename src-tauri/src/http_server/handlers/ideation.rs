@@ -136,9 +136,8 @@ pub async fn finalize_proposals(
 ) -> Result<Json<FinalizeProposalsResponse>, JsonError> {
     // TODO(webhook): emit EventType::IdeationProposalsReady via AppState::webhook_publisher
     // when AppState gains that field. Payload: { session_id, project_id, proposal_count }.
-    finalize_proposals_impl(&state.app_state, &req.session_id)
+    let response = finalize_proposals_impl(&state.app_state, &req.session_id)
         .await
-        .map(Json)
         .map_err(|e| {
             error!("Failed to finalize proposals for session {}: {}", req.session_id, e);
             let status = match &e {
@@ -147,7 +146,49 @@ pub async fn finalize_proposals(
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             json_error(status, e.to_string())
-        })
+        })?;
+
+    if response.session_status == "accepted" {
+        if let Some(app_handle) = &state.app_state.app_handle {
+            // Notify frontend: session moved to Accepted → PlanBrowser refreshes
+            if let Err(e) = app_handle.emit(
+                "ideation:session_accepted",
+                serde_json::json!({
+                    "sessionId": req.session_id,
+                    "projectId": response.project_id,
+                }),
+            ) {
+                tracing::warn!("Failed to emit ideation:session_accepted event: {}", e);
+            }
+
+            // Notify task scheduler: newly created tasks may be Ready
+            let project_id = crate::domain::entities::ProjectId::from_string(response.project_id.clone());
+            let queued_count = match state
+                .app_state
+                .task_repo
+                .get_by_status(&project_id, crate::domain::entities::InternalStatus::Ready)
+                .await
+            {
+                Ok(tasks) => tasks.len(),
+                Err(e) => {
+                    tracing::warn!("Failed to count Ready tasks for queue_changed event: {}", e);
+                    0
+                }
+            };
+            if let Err(e) = app_handle.emit(
+                "execution:queue_changed",
+                serde_json::json!({
+                    "queuedCount": queued_count,
+                    "projectId": response.project_id,
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                }),
+            ) {
+                tracing::warn!("Failed to emit execution:queue_changed event: {}", e);
+            }
+        }
+    }
+
+    Ok(Json(response))
 }
 
 pub async fn update_task_proposal(

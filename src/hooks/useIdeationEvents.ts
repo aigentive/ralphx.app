@@ -12,6 +12,8 @@ import { useIdeationStore } from "@/stores/ideationStore";
 import { useChatStore } from "@/stores/chatStore";
 import { ideationKeys } from "./useIdeation";
 import { dependencyKeys } from "./useDependencyGraph";
+import { taskKeys } from "./useTasks";
+import { proposalKeys } from "./useProposals";
 import type { Unsubscribe } from "@/lib/event-bus";
 import { logger } from "@/lib/logger";
 
@@ -63,6 +65,14 @@ const ChildSessionCreatedEventSchema = z.object({
  * Schema for session created event payload
  */
 const SessionCreatedEventSchema = z.object({
+  sessionId: z.string(),
+  projectId: z.string(),
+});
+
+/**
+ * Schema for session accepted event payload (emitted by finalize_proposals HTTP handler)
+ */
+const SessionAcceptedEventSchema = z.object({
   sessionId: z.string(),
   projectId: z.string(),
 });
@@ -196,6 +206,28 @@ export function useIdeationEvents() {
 
         // Refresh session list so newly created session appears in sidebar
         queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
+      })
+    );
+
+    // Listen for session accepted (emitted by finalize_proposals HTTP handler)
+    unsubscribes.push(
+      bus.subscribe<unknown>("ideation:session_accepted", (payload) => {
+        logger.debug("[IdeationEvents] Received ideation:session_accepted:", payload);
+        const parsed = SessionAcceptedEventSchema.safeParse(payload);
+
+        if (!parsed.success) {
+          console.error("Invalid ideation:session_accepted event:", parsed.error.message);
+          return;
+        }
+
+        const { sessionId } = parsed.data;
+
+        // Mirror useApplyProposals.onSuccess() — same queries to refresh
+        queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
+        queryClient.invalidateQueries({ queryKey: ideationKeys.sessionWithData(sessionId) });
+        queryClient.invalidateQueries({ queryKey: taskKeys.all });
+        queryClient.invalidateQueries({ queryKey: proposalKeys.list(sessionId) });
+        queryClient.invalidateQueries({ queryKey: ["plan-branch"] });
       })
     );
 

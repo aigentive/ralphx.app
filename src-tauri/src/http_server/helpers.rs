@@ -786,6 +786,7 @@ pub async fn finalize_proposals_impl(
         session_status,
         execution_plan_id: result.execution_plan_id,
         warnings: result.warnings,
+        project_id: result.project_id,
     })
 }
 
