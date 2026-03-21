@@ -36,6 +36,66 @@ use super::{
     AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ProcessExitDetails {
+    pub exit_code: Option<i32>,
+    pub exit_signal: Option<i32>,
+    pub success: bool,
+}
+
+#[doc(hidden)]
+pub(crate) fn process_exit_details(status: &std::process::ExitStatus) -> ProcessExitDetails {
+    #[cfg(unix)]
+    let exit_signal = {
+        use std::os::unix::process::ExitStatusExt;
+        status.signal()
+    };
+    #[cfg(not(unix))]
+    let exit_signal = None;
+
+    ProcessExitDetails {
+        exit_code: status.code(),
+        exit_signal,
+        success: status.success(),
+    }
+}
+
+#[cfg(unix)]
+fn signal_name(signal: i32) -> Option<&'static str> {
+    match signal {
+        6 => Some("SIGABRT"),
+        9 => Some("SIGKILL"),
+        11 => Some("SIGSEGV"),
+        15 => Some("SIGTERM"),
+        _ => None,
+    }
+}
+
+#[cfg(not(unix))]
+fn signal_name(_signal: i32) -> Option<&'static str> {
+    None
+}
+
+#[doc(hidden)]
+pub(crate) fn format_agent_exit_stderr(details: ProcessExitDetails, stderr: &str) -> String {
+    let trimmed = stderr.trim();
+    if !trimmed.is_empty() {
+        return trimmed.to_string();
+    }
+
+    if let Some(signal) = details.exit_signal {
+        if let Some(name) = signal_name(signal) {
+            return format!("Agent process exited with signal {signal} ({name})");
+        }
+        return format!("Agent process exited with signal {signal}");
+    }
+
+    format!(
+        "Agent exited with non-zero status (code={:?})",
+        details.exit_code
+    )
+}
+
 /// Final flush of accumulated content to DB before returning an error.
 ///
 /// Ensures that any content streamed before timeout/cancellation/parse-stall
@@ -1646,24 +1706,72 @@ pub async fn process_stream_background<R: Runtime>(
         exit_code: None,
         stderr: e.to_string(),
     })?;
-    #[cfg(unix)]
-    let signal = {
-        use std::os::unix::process::ExitStatusExt;
-        status.signal()
-    };
-    #[cfg(not(unix))]
-    let signal: Option<i32> = None;
+    let exit_details = process_exit_details(&status);
+    let stderr_preview = truncate_str(stderr_content.trim(), 2000);
+    let response_len = result.response_text.len();
+    let tool_calls_count = result.tool_calls.len();
+    let content_blocks_count = result.content_blocks.len();
 
     // Log stderr and exit metadata when agent produced no output (critical diagnostic)
     if lines_seen == 0 {
-        let stderr_preview = &stderr_content[..stderr_content.len().min(2000)];
         tracing::warn!(
             conversation_id = %conversation_id_str,
-            exit_code = status.code(),
-            exit_signal = signal,
+            exit_code = exit_details.exit_code,
+            exit_signal = exit_details.exit_signal,
             stderr_len = stderr_content.len(),
+            stderr_preview = %stderr_preview,
             "Stream ended with ZERO lines from stdout. stderr: {}",
             stderr_preview
+        );
+    }
+
+    if !exit_details.success && !silent_interactive_exit {
+        tracing::error!(
+            conversation_id = %conversation_id_str,
+            context_id,
+            lines_seen,
+            lines_parsed,
+            turns_finalized,
+            response_len,
+            tool_calls = tool_calls_count,
+            content_blocks = content_blocks_count,
+            exit_code = exit_details.exit_code,
+            exit_signal = exit_details.exit_signal,
+            stderr_len = stderr_content.len(),
+            stderr_preview = %stderr_preview,
+            "Agent process exited unsuccessfully during stream"
+        );
+
+        flush_content_before_error(
+            &chat_message_repo,
+            &assistant_message_id,
+            &result.response_text,
+            &result.tool_calls,
+            &result.content_blocks,
+        )
+        .await;
+
+        return Err(StreamError::AgentExit {
+            exit_code: exit_details.exit_code,
+            stderr: format_agent_exit_stderr(exit_details, &stderr_content),
+        });
+    }
+
+    if context_type == ChatContextType::Ideation && turns_finalized == 0 && !silent_interactive_exit
+    {
+        tracing::warn!(
+            conversation_id = %conversation_id_str,
+            context_id,
+            lines_seen,
+            lines_parsed,
+            response_len,
+            tool_calls = tool_calls_count,
+            content_blocks = content_blocks_count,
+            exit_code = exit_details.exit_code,
+            exit_signal = exit_details.exit_signal,
+            stderr_len = stderr_content.len(),
+            stderr_preview = %stderr_preview,
+            "Ideation stream ended without TurnComplete"
         );
     }
 
@@ -1704,9 +1812,9 @@ pub async fn process_stream_background<R: Runtime>(
 
     tracing::debug!(
         conversation_id = %conversation_id_str,
-        success = status.success(),
-        exit_code = status.code(),
-        exit_signal = signal,
+        success = exit_details.success,
+        exit_code = exit_details.exit_code,
+        exit_signal = exit_details.exit_signal,
         response_len = outcome.response_text.len(),
         tool_calls = outcome.tool_calls.len(),
         "Stream finished"
@@ -1718,16 +1826,16 @@ pub async fn process_stream_background<R: Runtime>(
         let payload = if debug_lines.is_empty() {
             format!(
                 "no stdout lines captured\n\nexit_code: {:?}\nexit_signal: {:?}\n\nstderr:\n{}",
-                status.code(),
-                signal,
+                exit_details.exit_code,
+                exit_details.exit_signal,
                 outcome.stderr_text.trim(),
             )
         } else {
             format!(
                 "stdout sample:\n{}\n\nexit_code: {:?}\nexit_signal: {:?}\n\nstderr:\n{}",
                 debug_lines.join("\n"),
-                status.code(),
-                signal,
+                exit_details.exit_code,
+                exit_details.exit_signal,
                 outcome.stderr_text.trim()
             )
         };
@@ -1869,3 +1977,7 @@ fn emit_heartbeat<R: Runtime>(
         let _ = handle.emit("agent:heartbeat", payload);
     }
 }
+
+#[cfg(test)]
+#[path = "chat_service_streaming_tests.rs"]
+mod tests;
