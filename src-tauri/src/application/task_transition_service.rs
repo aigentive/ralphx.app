@@ -1489,6 +1489,67 @@ impl<R: Runtime> TaskTransitionService<R> {
                     // Clean up the auto-transition target state using dynamically-determined target
                     handler.on_exit(&auto_state, &target_state).await;
 
+                    // L1: When routing back to PendingReview (reviewing_origin path), restore
+                    // worktree_path from merge-prefixed path back to the task execution worktree.
+                    // apply_corrective_transition re-fetches the task and preserves worktree_path,
+                    // so we must persist the restored path BEFORE the corrective transition.
+                    if reviewing_origin {
+                        if let Ok(Some(mut task)) = self.task_repo.get_by_id(task_id).await {
+                            let needs_restore = task
+                                .worktree_path
+                                .as_deref()
+                                .map(crate::domain::state_machine::transition_handler::is_merge_worktree_path)
+                                .unwrap_or(false);
+                            if needs_restore {
+                                match self.project_repo.get_by_id(&task.project_id).await {
+                                    Ok(Some(project)) => {
+                                        let repo_path = std::path::Path::new(&project.working_directory);
+                                        match crate::domain::state_machine::transition_handler::restore_task_worktree(
+                                            &mut task, &project, repo_path,
+                                        )
+                                        .await
+                                        {
+                                            Ok(restored) => {
+                                                tracing::info!(
+                                                    task_id = task_id.as_str(),
+                                                    restored_path = %restored.display(),
+                                                    "L1: restored worktree_path on Merging→PendingReview transition"
+                                                );
+                                                if let Err(e) = self.task_repo.update(&task).await {
+                                                    tracing::warn!(
+                                                        task_id = task_id.as_str(),
+                                                        error = %e,
+                                                        "L1: failed to persist restored worktree_path"
+                                                    );
+                                                }
+                                            }
+                                            Err(e) => {
+                                                tracing::warn!(
+                                                    task_id = task_id.as_str(),
+                                                    error = %e,
+                                                    "L1: failed to restore task worktree on Merging→PendingReview"
+                                                );
+                                            }
+                                        }
+                                    }
+                                    Ok(None) => {
+                                        tracing::warn!(
+                                            task_id = task_id.as_str(),
+                                            "L1: project not found for worktree restoration"
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            task_id = task_id.as_str(),
+                                            error = %e,
+                                            "L1: failed to fetch project for worktree restoration"
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if let Some(result) = self
                         .apply_corrective_transition(
                             task_id,

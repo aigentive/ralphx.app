@@ -251,3 +251,13 @@ mod pr_mode_state_machine_tests;
 //   3. Removes a plain (non-registered) directory via rm-rf fallback
 //   4. Second-chance after transient lock: permissions restored during 100ms sleep (Unix)
 mod pre_delete_worktree_resilience_tests;
+
+// Unit tests for is_merge_worktree_path(): prefix detection for all merge-pipeline
+// worktree basename prefixes (merge-, rebase-, source-update-, plan-update-).
+mod is_merge_worktree_path_tests;
+
+// Integration tests for worktree restoration — three layers:
+//   Test 1 (re_review_worktree_restore): restore_task_worktree() direct call (L3)
+//   Test 2 (merging_to_pending_review_worktree_path_reset): L1 via state machine transition
+//   Test 3 (on_enter_reviewing_restores_merge_prefixed_worktree): L2 via on_enter(Reviewing)
+mod worktree_restore_tests;
