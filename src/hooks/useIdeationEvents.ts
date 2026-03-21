@@ -9,6 +9,7 @@ import { z } from "zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEventBus } from "@/providers/EventProvider";
 import { useIdeationStore } from "@/stores/ideationStore";
+import { useChatStore } from "@/stores/chatStore";
 import { ideationKeys } from "./useIdeation";
 import { dependencyKeys } from "./useDependencyGraph";
 import type { Unsubscribe } from "@/lib/event-bus";
@@ -213,6 +214,10 @@ export function useIdeationEvents() {
         if (parsed.data.purpose === 'verification') {
           setVerificationNotification(parsed.data.parentSessionId, parsed.data.sessionId);
           setActiveVerificationChildId(parsed.data.parentSessionId, parsed.data.sessionId);
+          // Synthetic "generating" status on parent while verification child is running
+          const parentKey = 'session:' + parsed.data.parentSessionId;
+          useChatStore.getState().setAgentStatus(parentKey, 'generating');
+          useChatStore.getState().updateLastAgentEvent(parentKey);
         }
 
         // Emit a local event for UI components to handle

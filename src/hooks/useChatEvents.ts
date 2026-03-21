@@ -123,9 +123,13 @@ export function useChatEvents({
           // Extract tool_use_id from tool_name by stripping "result:" prefix
           const toolUseId = tool_name.slice(7); // "result:".length === 7
 
-          // Remove start time when tool call completes
+          // Remove start time when tool call completes; update heartbeat + grace period timestamp + per-tool completion
           if (storeKey) {
-            useChatStore.getState().removeToolCallStartTime(storeKey, toolUseId);
+            const store = useChatStore.getState();
+            store.removeToolCallStartTime(storeKey, toolUseId);
+            store.updateLastAgentEvent(storeKey);
+            store.setLastToolCallCompletionTimestamp(storeKey, Date.now());
+            store.setToolCallCompletionTimestamp(storeKey, toolUseId, Date.now());
           }
 
           // 1. Update matching entry in streamingToolCalls
@@ -197,11 +201,14 @@ export function useChatEvents({
         }
 
         // Record start time for new non-result tool calls (for elapsed timer display)
+        // Also update heartbeat timestamp so watchdog doesn't false-trigger during long tool calls
         if (storeKey && result == null) {
-          const existingTimes = useChatStore.getState().toolCallStartTimes[storeKey];
+          const store = useChatStore.getState();
+          const existingTimes = store.toolCallStartTimes[storeKey];
           if (!existingTimes?.[id]) {
-            useChatStore.getState().setToolCallStartTime(storeKey, id, Date.now());
+            store.setToolCallStartTime(storeKey, id, Date.now());
           }
+          store.updateLastAgentEvent(storeKey);
         }
 
         // Route to parent task's childToolCalls if this is a subagent tool call
@@ -517,9 +524,11 @@ export function useChatEvents({
         setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
         setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
 
-        // Clear all tool call start times on run completion
+        // Clear all tool call start times and completion timestamps on run completion
         if (storeKey) {
-          useChatStore.getState().clearToolCallStartTimes(storeKey);
+          const store = useChatStore.getState();
+          store.clearToolCallStartTimes(storeKey);
+          store.clearToolCallCompletionTimestamps(storeKey);
         }
       })
     );

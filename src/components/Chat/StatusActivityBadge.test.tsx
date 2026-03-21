@@ -1,10 +1,12 @@
 /**
  * StatusActivityBadge tests
  *
- * Tests for the "Last activity X ago" indicator with progressive color coding.
+ * Tests for the "Last activity X ago" indicator with progressive color coding,
+ * "Tool active" display during active tool calls and grace period,
+ * and "Verifying..." label during verification child sessions.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 import { StatusActivityBadge } from "./StatusActivityBadge";
 
@@ -13,16 +15,57 @@ import { StatusActivityBadge } from "./StatusActivityBadge";
 // ============================================================================
 
 const mockLastAgentEventTimestamp: Record<string, number> = {};
+const mockToolCallStartTimes: Record<string, Record<string, number>> = {};
+const mockLastToolCallCompletionTimestamp: Record<string, number> = {};
 
 vi.mock("@/stores/chatStore", () => ({
-  useChatStore: vi.fn((selector: (state: { lastAgentEventTimestamp: Record<string, number> }) => unknown) => {
-    return selector({ lastAgentEventTimestamp: mockLastAgentEventTimestamp });
-  }),
+  useChatStore: vi.fn(
+    (
+      selector: (state: {
+        lastAgentEventTimestamp: Record<string, number>;
+        toolCallStartTimes: Record<string, Record<string, number>>;
+        lastToolCallCompletionTimestamp: Record<string, number>;
+      }) => unknown
+    ) => {
+      return selector({
+        lastAgentEventTimestamp: mockLastAgentEventTimestamp,
+        toolCallStartTimes: mockToolCallStartTimes,
+        lastToolCallCompletionTimestamp: mockLastToolCallCompletionTimestamp,
+      });
+    }
+  ),
+  selectToolCallStartTimes:
+    (contextKey: string) =>
+    (state: { toolCallStartTimes: Record<string, Record<string, number>> }) =>
+      state.toolCallStartTimes[contextKey] ?? {},
+  selectLastToolCallCompletionTimestamp:
+    (contextKey: string) =>
+    (state: { lastToolCallCompletionTimestamp: Record<string, number> }) =>
+      state.lastToolCallCompletionTimestamp[contextKey] ?? 0,
 }));
 
 vi.mock("@/stores/uiStore", () => ({
-  useUiStore: vi.fn((selector: (state: { setActivityFilter: () => void; setCurrentView: () => void }) => unknown) =>
-    selector({ setActivityFilter: vi.fn(), setCurrentView: vi.fn() })
+  useUiStore: vi.fn(
+    (
+      selector: (state: {
+        setActivityFilter: () => void;
+        setCurrentView: () => void;
+      }) => unknown
+    ) => selector({ setActivityFilter: vi.fn(), setCurrentView: vi.fn() })
+  ),
+}));
+
+const mockActiveVerificationChildId: Record<string, string | null> = {};
+
+vi.mock("@/stores/ideationStore", () => ({
+  useIdeationStore: vi.fn(
+    (
+      selector: (state: {
+        activeVerificationChildId: Record<string, string | null>;
+      }) => unknown
+    ) => {
+      return selector({ activeVerificationChildId: mockActiveVerificationChildId });
+    }
   ),
 }));
 
@@ -42,15 +85,42 @@ function setLastEvent(storeKey: string, msAgo: number) {
   mockLastAgentEventTimestamp[storeKey] = Date.now() - msAgo;
 }
 
+function setToolCallActive(storeKey: string, toolId: string, msAgo = 1_000) {
+  if (!mockToolCallStartTimes[storeKey]) {
+    mockToolCallStartTimes[storeKey] = {};
+  }
+  mockToolCallStartTimes[storeKey][toolId] = Date.now() - msAgo;
+}
+
+function clearToolCalls(storeKey: string) {
+  delete mockToolCallStartTimes[storeKey];
+}
+
+function setLastToolCompletion(storeKey: string, msAgo: number) {
+  mockLastToolCallCompletionTimestamp[storeKey] = Date.now() - msAgo;
+}
+
+function clearLastToolCompletion(storeKey: string) {
+  delete mockLastToolCallCompletionTimestamp[storeKey];
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
 
 describe("StatusActivityBadge", () => {
   beforeEach(() => {
-    // Clear timestamps between tests
     for (const key of Object.keys(mockLastAgentEventTimestamp)) {
       delete mockLastAgentEventTimestamp[key];
+    }
+    for (const key of Object.keys(mockToolCallStartTimes)) {
+      delete mockToolCallStartTimes[key];
+    }
+    for (const key of Object.keys(mockLastToolCallCompletionTimestamp)) {
+      delete mockLastToolCallCompletionTimestamp[key];
+    }
+    for (const key of Object.keys(mockActiveVerificationChildId)) {
+      delete mockActiveVerificationChildId[key];
     }
     vi.useFakeTimers();
   });
@@ -58,6 +128,10 @@ describe("StatusActivityBadge", () => {
   afterEach(() => {
     vi.useRealTimers();
   });
+
+  // --------------------------------------------------------------------------
+  // Existing behavior preserved
+  // --------------------------------------------------------------------------
 
   it("renders without 'Last activity' when no storeKey provided", () => {
     render(<StatusActivityBadge {...baseProps} />);
@@ -74,13 +148,11 @@ describe("StatusActivityBadge", () => {
         storeKey="task_execution:task-123"
       />
     );
-    // Should show the muted activity icon (not the badge with Last:)
     expect(screen.queryByText(/Last:/)).toBeNull();
   });
 
   it("renders without 'Last activity' when storeKey provided but timestamp is 0", () => {
     render(<StatusActivityBadge {...baseProps} storeKey="task_execution:task-123" />);
-    // lastAgentEventTimestamp["task_execution:task-123"] is undefined → 0 → no display
     expect(screen.queryByText(/Last:/)).toBeNull();
   });
 
@@ -145,17 +217,13 @@ describe("StatusActivityBadge", () => {
 
     render(<StatusActivityBadge {...baseProps} storeKey={storeKey} />);
 
-    // Initially shows 30s
     expect(screen.getByText(/Last: 30s ago/)).toBeDefined();
 
-    // Advance time by 10 seconds
     act(() => {
-      // Move lastEvent back by 10 more seconds and advance fake timers
       mockLastAgentEventTimestamp[storeKey] -= 10_000;
       vi.advanceTimersByTime(10_000);
     });
 
-    // Should now show ~40s ago
     expect(screen.getByText(/Last: 40s ago/)).toBeDefined();
   });
 
@@ -187,5 +255,171 @@ describe("StatusActivityBadge", () => {
     render(<StatusActivityBadge {...baseProps} agentType="worker" storeKey={storeKey} />);
 
     expect(screen.getByText("Worker running...")).toBeDefined();
+  });
+
+  // --------------------------------------------------------------------------
+  // Tool active display
+  // --------------------------------------------------------------------------
+
+  it("shows 'Tool active' with green color when toolCallStartTimes is non-empty", () => {
+    const storeKey = "task_execution:task-123";
+    setToolCallActive(storeKey, "tool-1");
+
+    render(<StatusActivityBadge {...baseProps} storeKey={storeKey} />);
+
+    const label = screen.getByText("Tool active");
+    expect(label).toBeDefined();
+    expect(label.className).toContain("text-green-400");
+  });
+
+  it("hides 'Last: X ago' when tool calls are active", () => {
+    const storeKey = "task_execution:task-123";
+    setLastEvent(storeKey, 30_000);
+    setToolCallActive(storeKey, "tool-1");
+
+    render(<StatusActivityBadge {...baseProps} storeKey={storeKey} />);
+
+    expect(screen.queryByText(/Last:/)).toBeNull();
+    expect(screen.getByText("Tool active")).toBeDefined();
+  });
+
+  it("shows 'Tool active' with multiple concurrent tool calls (static label)", () => {
+    const storeKey = "task_execution:task-123";
+    setToolCallActive(storeKey, "tool-1");
+    setToolCallActive(storeKey, "tool-2");
+
+    render(<StatusActivityBadge {...baseProps} storeKey={storeKey} />);
+
+    // Single "Tool active" label, not per-tool
+    const labels = screen.getAllByText("Tool active");
+    expect(labels).toHaveLength(1);
+  });
+
+  // --------------------------------------------------------------------------
+  // Grace period visual
+  // --------------------------------------------------------------------------
+
+  it("shows 'Tool active' during grace period (within 5s of last completion)", () => {
+    const storeKey = "task_execution:task-123";
+    clearToolCalls(storeKey);
+    setLastToolCompletion(storeKey, 2_000); // 2 seconds ago
+
+    render(<StatusActivityBadge {...baseProps} storeKey={storeKey} />);
+
+    const label = screen.getByText("Tool active");
+    expect(label).toBeDefined();
+    expect(label.className).toContain("text-green-400");
+  });
+
+  it("shows 'Last: X ago' when no tool calls active AND grace period expired (>5s)", () => {
+    const storeKey = "task_execution:task-123";
+    setLastEvent(storeKey, 30_000);
+    clearToolCalls(storeKey);
+    setLastToolCompletion(storeKey, 10_000); // 10 seconds ago — grace expired
+
+    render(<StatusActivityBadge {...baseProps} storeKey={storeKey} />);
+
+    expect(screen.queryByText("Tool active")).toBeNull();
+    expect(screen.getByText(/Last: 30s ago/)).toBeDefined();
+  });
+
+  it("shows 'Last: X ago' when no tool calls and no lastToolCallCompletionTimestamp", () => {
+    const storeKey = "task_execution:task-123";
+    setLastEvent(storeKey, 45_000);
+    clearToolCalls(storeKey);
+    clearLastToolCompletion(storeKey);
+
+    render(<StatusActivityBadge {...baseProps} storeKey={storeKey} />);
+
+    expect(screen.queryByText("Tool active")).toBeNull();
+    expect(screen.getByText(/Last: 45s ago/)).toBeDefined();
+  });
+
+  // --------------------------------------------------------------------------
+  // Verification child display
+  // --------------------------------------------------------------------------
+
+  it("shows 'Verifying...' with blue color when activeVerificationChildId is set", () => {
+    const storeKey = "session:session-abc";
+    mockActiveVerificationChildId["session-abc"] = "child-session-123";
+
+    render(
+      <StatusActivityBadge
+        {...baseProps}
+        contextType="ideation"
+        contextId="session-abc"
+        storeKey={storeKey}
+      />
+    );
+
+    const label = screen.getByText("Verifying...");
+    expect(label).toBeDefined();
+    expect(label.className).toContain("text-blue-400");
+  });
+
+  it("hides 'Last: X ago' when verification child is active", () => {
+    const storeKey = "session:session-abc";
+    setLastEvent(storeKey, 30_000);
+    mockActiveVerificationChildId["session-abc"] = "child-session-123";
+
+    render(
+      <StatusActivityBadge
+        {...baseProps}
+        contextType="ideation"
+        contextId="session-abc"
+        storeKey={storeKey}
+      />
+    );
+
+    expect(screen.queryByText(/Last:/)).toBeNull();
+    expect(screen.getByText("Verifying...")).toBeDefined();
+  });
+
+  it("shows normal generating state when no verification child is active", () => {
+    const storeKey = "session:session-abc";
+    // No activeVerificationChildId set
+
+    render(
+      <StatusActivityBadge
+        {...baseProps}
+        contextType="ideation"
+        contextId="session-abc"
+        storeKey={storeKey}
+      />
+    );
+
+    expect(screen.queryByText("Verifying...")).toBeNull();
+    expect(screen.getByText("Agent responding...")).toBeDefined();
+  });
+
+  it("prefers 'Tool active' over 'Verifying...' when both conditions are true", () => {
+    // Tool active takes priority over verification child per display logic order
+    const storeKey = "session:session-abc";
+    setToolCallActive(storeKey, "tool-1");
+    mockActiveVerificationChildId["session-abc"] = "child-session-123";
+
+    render(
+      <StatusActivityBadge
+        {...baseProps}
+        contextType="ideation"
+        contextId="session-abc"
+        storeKey={storeKey}
+      />
+    );
+
+    expect(screen.getByText("Tool active")).toBeDefined();
+    expect(screen.queryByText("Verifying...")).toBeNull();
+  });
+
+  it("does not show 'Verifying...' for non-session storeKeys", () => {
+    // activeVerificationChildId only applies to session: storeKeys
+    const storeKey = "task_execution:task-123";
+    // Even if we set something in the ideation store, it won't match a non-session key
+    mockActiveVerificationChildId["task-123"] = "child-session-123";
+
+    render(<StatusActivityBadge {...baseProps} storeKey={storeKey} />);
+
+    expect(screen.queryByText("Verifying...")).toBeNull();
+    expect(screen.getByText("Agent responding...")).toBeDefined();
   });
 });

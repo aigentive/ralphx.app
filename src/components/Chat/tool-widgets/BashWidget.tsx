@@ -4,19 +4,23 @@
  * Design reference: mockups/tool-call-widgets.html (Widget 11)
  * Replaces generic auto-expanded bash renderer with a compact terminal card.
  *
- * - Header: terminal icon + description (or truncated command) + exit code badge
+ * - Header: terminal icon + description (or truncated command) + optional duration + exit code badge
  * - Body: command with green $ prompt, output on darker bg with gradient fade
  * - Collapsed by default (~3 lines), auto-expand on non-zero exit code
  * - Strips ANSI codes from output
+ * - Shows live elapsed timer during execution; static final duration after completion
  */
 
-import React, { useMemo } from "react";
+import React, { useContext, useEffect, useMemo, useState } from "react";
 import { Terminal } from "lucide-react";
 
 import { WidgetCard, WidgetHeader, Badge } from "./shared";
 import { colors } from "./shared.constants";
 import type { ToolCallWidgetProps } from "./shared.constants";
 import { stripAnsiCodes } from "../ToolCallIndicator.helpers";
+import { ToolCallStoreKeyContext } from "./ToolCallStoreKeyContext";
+import { useChatStore, selectToolCallStartTimes, selectToolCallCompletionTimestamps } from "@/stores/chatStore";
+import { formatDuration } from "@/components/tasks/detail-views/shared/DurationDisplay";
 
 // ============================================================================
 // Helpers
@@ -94,6 +98,45 @@ function truncate(text: string, maxLen: number): string {
 }
 
 // ============================================================================
+// Duration display hook
+// ============================================================================
+
+/**
+ * Returns a formatted duration string for a tool call:
+ * - In-progress: live elapsed time ticking every second
+ * - Completed: static final duration
+ * - Neither: null (backward compat — historical messages without timing)
+ */
+function useBashDuration(toolCallId: string, storeKey: string | null): string | null {
+  const startTimes = useChatStore(selectToolCallStartTimes(storeKey ?? ""));
+  const completionTimestamps = useChatStore(selectToolCallCompletionTimestamps(storeKey ?? ""));
+
+  const startTime = storeKey ? (startTimes[toolCallId] ?? null) : null;
+  const completedAt = storeKey ? (completionTimestamps[toolCallId] ?? null) : null;
+
+  // Live elapsed timer when in-progress (startTime set, no completedAt)
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (startTime === null || completedAt !== null) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [startTime, completedAt]);
+
+  if (startTime === null) return null;
+
+  if (completedAt !== null) {
+    // Static final duration
+    const seconds = Math.round((completedAt - startTime) / 1000);
+    return formatDuration(seconds);
+  }
+
+  // Live elapsed
+  const elapsed = Math.round((now - startTime) / 1000);
+  return formatDuration(elapsed);
+}
+
+// ============================================================================
 // Component
 // ============================================================================
 
@@ -103,6 +146,8 @@ export const BashWidget = React.memo(function BashWidget({
   className = "",
 }: ToolCallWidgetProps) {
   const parsed = useMemo(() => parseBashToolCall(toolCall), [toolCall]);
+  const storeKey = useContext(ToolCallStoreKeyContext);
+  const duration = useBashDuration(toolCall.id, storeKey);
 
   // Header title: prefer description, fall back to truncated command
   const headerTitle = parsed.description || truncate(parsed.command, 60) || "Ran command";
@@ -113,6 +158,26 @@ export const BashWidget = React.memo(function BashWidget({
       {parsed.hasError ? `exit ${parsed.exitCode}` : "exit 0"}
     </Badge>
   ) : null;
+
+  // Duration + exit badge composed together
+  const headerBadge = (
+    <>
+      {duration !== null && (
+        <span
+          style={{
+            fontSize: 10.5,
+            color: colors.textMuted,
+            flexShrink: 0,
+            whiteSpace: "nowrap",
+          }}
+          data-testid="bash-duration"
+        >
+          {duration}
+        </span>
+      )}
+      {exitBadge}
+    </>
+  );
 
   // Auto-expand on non-zero exit code
   const defaultExpanded = parsed.hasError;
@@ -126,7 +191,7 @@ export const BashWidget = React.memo(function BashWidget({
         <WidgetHeader
           icon={<Terminal size={14} />}
           title={headerTitle}
-          badge={exitBadge}
+          badge={headerBadge}
           compact={compact}
         />
       }

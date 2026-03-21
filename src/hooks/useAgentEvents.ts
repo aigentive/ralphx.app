@@ -14,6 +14,7 @@ import { useEventBus } from "@/providers/EventProvider";
 import type { ChatMessageResponse } from "@/api/chat";
 import type { ChatConversation, ContextType } from "@/types/chat-conversation";
 import { useChatStore } from "@/stores/chatStore";
+import { useIdeationStore } from "@/stores/ideationStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useTeamStore } from "@/stores/teamStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
@@ -406,6 +407,38 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
       })
     );
 
+    // Listen for task lifecycle events to reset watchdog timer.
+    // These are Tauri events distinct from the streaming tool call events in useChatEvents.
+    unsubscribes.push(
+      bus.subscribe<{
+        conversation_id: string;
+        context_id: string;
+      }>("agent:task_started", (payload) => {
+        const state = useChatStore.getState();
+        for (const key of Object.keys(state.agentStatus)) {
+          if (key.includes(payload.context_id)) {
+            updateLastAgentEvent(key);
+            break;
+          }
+        }
+      })
+    );
+
+    unsubscribes.push(
+      bus.subscribe<{
+        conversation_id: string;
+        context_id: string;
+      }>("agent:task_completed", (payload) => {
+        const state = useChatStore.getState();
+        for (const key of Object.keys(state.agentStatus)) {
+          if (key.includes(payload.context_id)) {
+            updateLastAgentEvent(key);
+            break;
+          }
+        }
+      })
+    );
+
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
@@ -416,20 +449,43 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
   // 5 minutes of no agent events for a context still in "generating" state.
   // Runs once per hook mount (empty deps) and checks all contexts every 30s.
   useEffect(() => {
-    const WATCHDOG_TIMEOUT_MS = 300_000; // 5 minutes
-    const CHECK_INTERVAL_MS = 30_000;    // Check every 30s
+    const WATCHDOG_TIMEOUT_MS = 300_000;     // 5 minutes
+    const TOOL_CALL_MAX_DURATION_MS = 600_000; // 10 minutes per-tool ceiling
+    const TOOL_CALL_GRACE_MS = 5_000;        // 5s grace after last tool completion
+    const CHECK_INTERVAL_MS = 30_000;        // Check every 30s
 
     const interval = setInterval(() => {
       const now = Date.now();
-      const state = useChatStore.getState();
+      const chatState = useChatStore.getState();
+      const ideationState = useIdeationStore.getState();
 
-      for (const [key, status] of Object.entries(state.agentStatus)) {
+      for (const [key, status] of Object.entries(chatState.agentStatus)) {
         if (status !== "generating") continue;
-        const lastEvent = state.lastAgentEventTimestamp[key] ?? 0;
-        if (now - lastEvent > WATCHDOG_TIMEOUT_MS) {
-          toast.warning('Agent appears to have stalled. Status reset to idle.');
-          state.setAgentStatus(key, "idle");
+        const lastEvent = chatState.lastAgentEventTimestamp[key] ?? 0;
+        if (now - lastEvent <= WATCHDOG_TIMEOUT_MS) continue;
+
+        // Check 1: Active tool calls with per-tool ceiling (10 min)
+        const toolCalls = chatState.toolCallStartTimes[key];
+        if (toolCalls && Object.keys(toolCalls).length > 0) {
+          const hasActiveToolCall = (Object.values(toolCalls) as number[]).some(
+            (startTime) => now - startTime <= TOOL_CALL_MAX_DURATION_MS
+          );
+          if (hasActiveToolCall) continue; // suppress — tool actively running
         }
+
+        // Check 2: Grace period after last tool completion (5s)
+        const lastCompletion = chatState.lastToolCallCompletionTimestamp[key] ?? 0;
+        if (lastCompletion > 0 && now - lastCompletion < TOOL_CALL_GRACE_MS) continue;
+
+        // Check 3: Verification child session running (synthetic generating)
+        if (key.startsWith("session:")) {
+          const sessionId = key.slice(8);
+          if (ideationState.activeVerificationChildId[sessionId]) continue;
+        }
+
+        // Genuinely stalled — silent reset (no toast — bad UX)
+        chatState.clearToolCallStartTimes(key); // prevent contradictory "Tool active" badge
+        chatState.setAgentStatus(key, "idle");
       }
     }, CHECK_INTERVAL_MS);
 

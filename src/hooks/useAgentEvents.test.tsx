@@ -15,6 +15,7 @@ import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAgentEvents } from "./useAgentEvents";
 import { useChatStore } from "@/stores/chatStore";
+import { useIdeationStore } from "@/stores/ideationStore";
 import { useUiStore } from "@/stores/uiStore";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 
@@ -97,7 +98,14 @@ describe("useAgentEvents", () => {
       agentStatus: {},
       isSending: {},
       lastAgentEventTimestamp: {},
+      toolCallStartTimes: {},
+      lastToolCallCompletionTimestamp: {},
     });
+
+    // Reset ideation store verification child state
+    useIdeationStore.setState({
+      activeVerificationChildId: {},
+    } as Parameters<typeof useIdeationStore.setState>[0]);
   });
 
   describe("agent:run_started", () => {
@@ -1117,6 +1125,207 @@ describe("useAgentEvents", () => {
 
       // 5 min passed, but events came every 30s — watchdog should NOT have fired
       expect(useChatStore.getState().agentStatus["session:active-session"]).toBe("generating");
+    });
+
+    it("does NOT fire when toolCallStartTimes has an active entry within 10-min ceiling", () => {
+      const wrapper = createWrapper();
+      renderHook(() => useAgentEvents(null), { wrapper });
+
+      const now = Date.now();
+      act(() => {
+        // lastAgentEventTimestamp is past the 5-min watchdog timeout,
+        // but the tool call itself started recently (within 10-min ceiling)
+        useChatStore.setState((state) => ({
+          ...state,
+          agentStatus: { "session:abc": "generating" },
+          lastAgentEventTimestamp: { "session:abc": now - 360_000 }, // 6 min ago
+          toolCallStartTimes: { "session:abc": { "tool-1": now - 60_000 } }, // 1 min ago — active
+        }));
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(30_000); // One check interval
+      });
+
+      // Watchdog should NOT have fired — tool call is still within 10-min ceiling
+      expect(useChatStore.getState().agentStatus["session:abc"]).toBe("generating");
+    });
+
+    it("DOES fire when all tool calls exceed the 10-min ceiling", () => {
+      const wrapper = createWrapper();
+      renderHook(() => useAgentEvents(null), { wrapper });
+
+      const now = Date.now();
+      act(() => {
+        // Set both lastAgentEventTimestamp and toolCall start to > 10 min ago
+        useChatStore.setState((state) => ({
+          ...state,
+          agentStatus: { "session:stalled": "generating" },
+          lastAgentEventTimestamp: { "session:stalled": now - 660_000 }, // 11 min ago
+          toolCallStartTimes: { "session:stalled": { "tool-old": now - 660_000 } }, // also 11 min old
+        }));
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(30_000); // One check interval
+      });
+
+      // All tool calls exceeded ceiling — watchdog should fire and reset to idle
+      expect(useChatStore.getState().agentStatus["session:stalled"]).toBeUndefined();
+    });
+
+    it("does NOT fire during grace period after last tool completion", () => {
+      const wrapper = createWrapper();
+      renderHook(() => useAgentEvents(null), { wrapper });
+
+      // Set stale lastAgentEventTimestamp (past watchdog timeout)
+      act(() => {
+        useChatStore.setState((state) => ({
+          ...state,
+          agentStatus: { "session:grace": "generating" },
+          lastAgentEventTimestamp: { "session:grace": Date.now() - 360_000 }, // 6 min ago
+        }));
+      });
+
+      // Advance to 1ms before the check fires (check fires at 30_000ms)
+      act(() => { vi.advanceTimersByTime(29_999); });
+
+      // Set completion timestamp to "just now" — it will be <1ms old when check fires
+      act(() => {
+        useChatStore.setState((state) => ({
+          ...state,
+          lastToolCallCompletionTimestamp: { "session:grace": Date.now() },
+        }));
+      });
+
+      // Advance the last 1ms — watchdog check fires, completion is <1ms old → within 5s grace
+      act(() => { vi.advanceTimersByTime(1); });
+
+      // Should not have fired — within grace period
+      expect(useChatStore.getState().agentStatus["session:grace"]).toBe("generating");
+    });
+
+    it("does NOT fire when activeVerificationChildId is set for the parent session", () => {
+      const wrapper = createWrapper();
+      renderHook(() => useAgentEvents(null), { wrapper });
+
+      const now = Date.now();
+      act(() => {
+        useChatStore.setState((state) => ({
+          ...state,
+          agentStatus: { "session:parent": "generating" },
+          lastAgentEventTimestamp: { "session:parent": now - 360_000 }, // 6 min ago
+        }));
+        // Set verification child — synthetic generating status
+        useIdeationStore.getState().setActiveVerificationChildId("parent", "child-session-id");
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+      });
+
+      // Should not have fired — verification child is active
+      expect(useChatStore.getState().agentStatus["session:parent"]).toBe("generating");
+
+      // Cleanup
+      act(() => {
+        useIdeationStore.getState().setActiveVerificationChildId("parent", null);
+      });
+    });
+
+    it("clears toolCallStartTimes when firing stall reset", () => {
+      const wrapper = createWrapper();
+      renderHook(() => useAgentEvents(null), { wrapper });
+
+      const stalledStart = Date.now() - 660_000; // 11 min ago (> 10-min ceiling)
+      act(() => {
+        useChatStore.setState((state) => ({
+          ...state,
+          agentStatus: { "session:clear-test": "generating" },
+          lastAgentEventTimestamp: { "session:clear-test": Date.now() - 360_000 },
+          toolCallStartTimes: { "session:clear-test": { "tool-stale": stalledStart } },
+        }));
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+      });
+
+      // Status reset to idle AND toolCallStartTimes cleared
+      expect(useChatStore.getState().agentStatus["session:clear-test"]).toBeUndefined();
+      expect(useChatStore.getState().toolCallStartTimes["session:clear-test"]).toBeUndefined();
+    });
+
+    it("fires silently — status resets to idle without requiring external side effects", () => {
+      // The watchdog previously called toast.warning(). We verify it no longer does
+      // by confirming the stall fires cleanly: no unhandled exceptions, status becomes idle.
+      const wrapper = createWrapper();
+      renderHook(() => useAgentEvents(null), { wrapper });
+
+      const now = Date.now();
+      act(() => {
+        useChatStore.setState((state) => ({
+          ...state,
+          agentStatus: { "session:silent": "generating" },
+          lastAgentEventTimestamp: { "session:silent": now - 360_000 }, // 6 min ago
+        }));
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+      });
+
+      // Status reset to idle — no exception thrown, no toast dependency needed
+      expect(useChatStore.getState().agentStatus["session:silent"]).toBeUndefined();
+    });
+  });
+
+  describe("agent:task_started / agent:task_completed", () => {
+    it("agent:task_started resets lastAgentEventTimestamp for matching context", () => {
+      const wrapper = createWrapper();
+      renderHook(() => useAgentEvents(null), { wrapper });
+
+      act(() => {
+        useChatStore.setState((state) => ({
+          ...state,
+          agentStatus: { "session:task-ctx": "generating" },
+          lastAgentEventTimestamp: { "session:task-ctx": 100 }, // very old timestamp
+        }));
+      });
+
+      act(() => {
+        emitEvent("agent:task_started", {
+          conversation_id: "conv-x",
+          context_id: "task-ctx",
+        });
+      });
+
+      // Timestamp should be updated to a recent value (> 100)
+      const ts = useChatStore.getState().lastAgentEventTimestamp["session:task-ctx"] ?? 0;
+      expect(ts).toBeGreaterThan(100);
+    });
+
+    it("agent:task_completed resets lastAgentEventTimestamp for matching context", () => {
+      const wrapper = createWrapper();
+      renderHook(() => useAgentEvents(null), { wrapper });
+
+      act(() => {
+        useChatStore.setState((state) => ({
+          ...state,
+          agentStatus: { "session:task-done": "generating" },
+          lastAgentEventTimestamp: { "session:task-done": 100 }, // very old timestamp
+        }));
+      });
+
+      act(() => {
+        emitEvent("agent:task_completed", {
+          conversation_id: "conv-x",
+          context_id: "task-done",
+        });
+      });
+
+      const ts = useChatStore.getState().lastAgentEventTimestamp["session:task-done"] ?? 0;
+      expect(ts).toBeGreaterThan(100);
     });
   });
 });

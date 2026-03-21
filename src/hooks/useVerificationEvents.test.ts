@@ -30,6 +30,20 @@ import { renderHook, act } from "@testing-library/react";
 import type { IdeationSession } from "@/types/ideation";
 
 // ============================================================================
+// Hoisted mocks (must run before vi.mock factories)
+// ============================================================================
+
+const chatStoreMocks = vi.hoisted(() => ({
+  setAgentStatus: vi.fn(),
+}));
+
+vi.mock("@/stores/chatStore", () => ({
+  useChatStore: Object.assign(vi.fn(), {
+    getState: () => chatStoreMocks,
+  }),
+}));
+
+// ============================================================================
 // Mock sonner toast
 // ============================================================================
 
@@ -533,5 +547,59 @@ describe("useVerificationEvents — toast notifications", () => {
 
     expect(mockToastSuccess).not.toHaveBeenCalled();
     expect(mockToastWarning).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// Tests — parent synthetic status cleared on verification complete
+// ============================================================================
+
+describe("useVerificationEvents — synthetic parent status cleared on completion", () => {
+  beforeEach(() => {
+    subscriptions.clear();
+    mockInvalidateQueries.mockClear();
+    mockSetQueryData.mockClear();
+    mockCancelQueries.mockClear();
+    mockToastSuccess.mockClear();
+    mockToastWarning.mockClear();
+    mockGetQueryData = vi.fn().mockReturnValue(undefined);
+    chatStoreMocks.setAgentStatus.mockClear();
+    useIdeationStore.setState({
+      sessions: { [SESSION_ID]: createTestSession() },
+      activeSessionId: SESSION_ID,
+      isLoading: false,
+      error: null,
+      planArtifact: null,
+      activeVerificationChildId: { [SESSION_ID]: "child-session-xyz" },
+    });
+  });
+
+  it("(17) clears parent synthetic generating status when in_progress=false and verification child was active", () => {
+    renderHook(() => useVerificationEvents());
+
+    act(() => {
+      fireEvent("plan_verification:status_changed", makeVerificationEvent({
+        status: "verified",
+        in_progress: false,
+      }));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith(
+      "session:" + SESSION_ID,
+      "idle"
+    );
+  });
+
+  it("(18) does NOT clear parent status when in_progress=true (non-terminal)", () => {
+    renderHook(() => useVerificationEvents());
+
+    act(() => {
+      fireEvent("plan_verification:status_changed", makeVerificationEvent({
+        status: "reviewing",
+        in_progress: true,
+      }));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).not.toHaveBeenCalled();
   });
 });
