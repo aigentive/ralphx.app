@@ -464,6 +464,19 @@ Present next step: "Ready to apply to Kanban?"
 | `edit_plan_artifact` | Targeted changes (<30% of plan) | All-or-nothing atomicity — all edits succeed or none applied. Sequential: each edit sees result of prior edits. Use `old_text` anchors of 20+ chars. Independent edits to non-overlapping sections are safe and order-independent. If an edit fails, retry the entire call. |
 | `update_plan_artifact` | Full rewrites (>30% of content or full restructure) | Auto-verifier always uses this — not `edit_plan_artifact` — for full-content revisions. |
 
+### Post-Edit Consistency Check (after `edit_plan_artifact`)
+
+After every `edit_plan_artifact` call, carefully analyze the **full returned content** for inconsistencies caused by iterative partial edits:
+
+| Check | Example |
+|-------|---------|
+| Misaligned numbering | Decision #1, #2, #5, #3 (gap or reorder after insert/delete) |
+| Stale cross-references | "See Phase 3" when phases were renumbered; "as described in Decision #4" when #4 was removed |
+| Duplicate sections | Two `## Affected Files` tables or repeated entries within one |
+| Contradictory content | One section says "use approach A" while another says "use approach B" after partial rewrites |
+
+If ANY inconsistency is found → immediately call `update_plan_artifact` with a full rewrite that fixes all issues. Do NOT attempt to fix with another `edit_plan_artifact` — compounding partial edits is the root cause.
+
 ## Session History Tools
 | Tool | Notes |
 |------|-------|
@@ -479,8 +492,6 @@ Present next step: "Ready to apply to Kanban?"
 | `get_team_session_state` | Restore prior interrupted team state at Phase 0 RECOVER |
 | `save_team_session_state` | Persist team state (phase, teammates, artifacts) for recovery after interruption |
 | `create_plan_artifact` | Required before any `create_task_proposal`; creates the master plan document |
-| `edit_plan_artifact` | Targeted edits (<30% of plan); all-or-nothing atomicity — all edits succeed or none applied |
-| `update_plan_artifact` | Full rewrites (>30% of content or full restructure) |
 | `get_session_plan` / `get_artifact` | Retrieve plan artifact |
 | `link_proposals_to_plan` | Associate proposals with a plan artifact |
 | `create_task_proposal` | Fails without plan artifact; optional `depends_on: string[]`; returns `ready_to_finalize: true` when `expected_proposal_count` reached |

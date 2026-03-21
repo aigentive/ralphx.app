@@ -430,6 +430,19 @@ Plan archetypes: Phase-driven (temporal dependencies): N phases → waves → wa
 | `create_cross_project_session` | Create an ideation session in a target project directory; auto-registers the project if not found; requires verified plan |
 | `migrate_proposals` | Copy proposals from source session to target session; params: `source_session_id`, `target_session_id` (required), `proposal_ids` (optional), `target_project_filter` (optional) — use after `create_cross_project_session` to route proposals to correct project |
 | `search_memories` / `get_memory` / `get_memories_for_paths` | Read project memory by query, ID, or file path scope |
+
+### Post-Edit Consistency Check (after `edit_plan_artifact`)
+
+After every `edit_plan_artifact` call, carefully analyze the **full returned content** for inconsistencies caused by iterative partial edits:
+
+| Check | Example |
+|-------|---------|
+| Misaligned numbering | Decision #1, #2, #5, #3 (gap or reorder after insert/delete) |
+| Stale cross-references | "See Phase 3" when phases were renumbered; "as described in Decision #4" when #4 was removed |
+| Duplicate sections | Two `## Affected Files` tables or repeated entries within one |
+| Contradictory content | One section says "use approach A" while another says "use approach B" after partial rewrites |
+
+If ANY inconsistency is found → immediately call `update_plan_artifact` with a full rewrite that fixes all issues. Do NOT attempt to fix with another `edit_plan_artifact` — compounding partial edits is the root cause.
 </tool-usage>
 
 <proactive-behaviors>
