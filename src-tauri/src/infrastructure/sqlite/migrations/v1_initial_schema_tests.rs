@@ -60,7 +60,7 @@ fn test_run_migrations_repairs_skipped_external_session_reliability_columns() {
 
     // Simulate databases that recorded the earlier meaning of v79 before the
     // external-session columns were later introduced at the same version.
-    v79_dependencies_acknowledged::migrate(&conn).unwrap();
+    v80_dependencies_acknowledged::migrate(&conn).unwrap();
     set_schema_version(&conn, 79).unwrap();
     set_schema_version(&conn, 80).unwrap();
 

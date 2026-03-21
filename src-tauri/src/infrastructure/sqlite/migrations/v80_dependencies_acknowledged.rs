@@ -1,4 +1,4 @@
-// Migration v79: Add dependencies_acknowledged column to ideation_sessions
+// Migration v80: Add dependencies_acknowledged column to ideation_sessions
 //
 // Adds `dependencies_acknowledged BOOLEAN NOT NULL DEFAULT 0` to ideation_sessions.
 // This column is the foundation for the dependency acknowledgment gate:
@@ -20,7 +20,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
     )?;
 
     tracing::info!(
-        "v79: added dependencies_acknowledged column to ideation_sessions"
+        "v80: added dependencies_acknowledged column to ideation_sessions"
     );
 
     Ok(())

@@ -240,10 +240,11 @@ IdeationSession (has plan proposals)
 **Root cause:** Task created off main before plan branch integrated earlier migration work. On rebase, both try to add v33.
 
 **Resolution:**
-1. Check plan branch `MIGRATIONS` array in `migrations_impl.rs` for canonical version
-2. Keep plan branch (HEAD) migration file as-is
-3. Remove task branch's redundant version from `MIGRATIONS` array
-4. Adapt task-branch-specific entity/repo methods to the plan branch's type definitions (don't change types mid-rebase)
+1. Do not hand-pick the next integer migration version
+2. Regenerate the task-branch migration with `python3 scripts/new_sqlite_migration.py <description>` after rebasing on latest `main`
+3. Keep the already-shipped migration ids on the target branch untouched
+4. Run `python3 scripts/validate_sqlite_migrations.py` before continuing the rebase or merge
+5. Adapt task-branch-specific entity/repo methods to the plan branch's type definitions (don't change types mid-rebase)
 
 **File:** `src-tauri/src/domain/repositories/migrations_impl.rs`
 

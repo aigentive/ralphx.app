@@ -1,9 +1,9 @@
-// V26 migration tests - merge_strategy column
+// V27 migration tests - merge_strategy column
 
 use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
 
 #[test]
-fn test_v26_column_exists() {
+fn test_v27_column_exists() {
     let conn = open_memory_connection().unwrap();
     run_migrations(&conn).unwrap();
 
@@ -19,7 +19,7 @@ fn test_v26_column_exists() {
 }
 
 #[test]
-fn test_v26_defaults_to_rebase() {
+fn test_v27_defaults_to_rebase() {
     let conn = open_memory_connection().unwrap();
     run_migrations(&conn).unwrap();
 
@@ -41,7 +41,7 @@ fn test_v26_defaults_to_rebase() {
 }
 
 #[test]
-fn test_v26_accepts_valid_values() {
+fn test_v27_accepts_valid_values() {
     let conn = open_memory_connection().unwrap();
     run_migrations(&conn).unwrap();
 
@@ -66,7 +66,7 @@ fn test_v26_accepts_valid_values() {
 }
 
 #[test]
-fn test_v26_idempotent() {
+fn test_v27_idempotent() {
     let conn = open_memory_connection().unwrap();
     run_migrations(&conn).unwrap();
     run_migrations(&conn).unwrap();

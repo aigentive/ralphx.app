@@ -105,7 +105,7 @@ Multi-stream workflow: `.claude/rules/stream-*.md` (features/refactor/polish). F
 
 ## Database
 `ralphx.db` (dev) | Migrations: `infrastructure/sqlite/migrations/` | System: `.claude/rules/code-quality-standards.md`
-New migration: `vN_description.rs` + register in `MIGRATIONS` + bump `SCHEMA_VERSION` | Use `IF NOT EXISTS` | `helpers::add_column_if_not_exists()`
+New migration: `python3 scripts/new_sqlite_migration.py <description>` → `vYYYYMMDDHHMMSS_description.rs` + matching `*_tests.rs`, then register in `MIGRATIONS`, bump `SCHEMA_VERSION`, and run `python3 scripts/validate_sqlite_migrations.py` | Use `IF NOT EXISTS` | `helpers::add_column_if_not_exists()`
 
 ## Commands
 ❌ `cargo check` (hangs) | ❌ full broad `cargo test` | ❌ `--nocapture`

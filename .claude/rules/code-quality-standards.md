@@ -48,10 +48,12 @@ See api-layer.md for complete API patterns.
 
 | Step | Action |
 |------|--------|
-| 1 | Create `vN_description.rs` with `IF NOT EXISTS` |
+| 1 | Run `python3 scripts/new_sqlite_migration.py <description>` to create `vYYYYMMDDHHMMSS_description.rs` + matching tests |
 | 2 | Register in `MIGRATIONS` array |
 | 3 | Bump `SCHEMA_VERSION` |
-| 4 | Add tests to `vN_description_tests.rs` |
+| 4 | Run `python3 scripts/validate_sqlite_migrations.py` before commit |
+
+**Rule:** Legacy numeric versions stay as-is; any new migration after schema `81` must use a UTC timestamp version (`YYYYMMDDHHMMSS`) so parallel branches do not race on hand-picked integers.
 
 **Helpers:** `column_exists`, `table_exists`, `add_column_if_not_exists(conn, table, col, "TYPE DEFAULT x")`
 

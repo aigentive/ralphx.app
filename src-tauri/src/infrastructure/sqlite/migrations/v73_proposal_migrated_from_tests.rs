@@ -1,9 +1,9 @@
-//! Tests for migration v72: migrated_from traceability columns on task_proposals
+//! Tests for migration v73: migrated_from traceability columns on task_proposals
 
 use rusqlite::Connection;
 
 use super::helpers;
-use super::v72_proposal_migrated_from;
+use super::v73_proposal_migrated_from;
 
 fn setup_test_db() -> Connection {
     let conn = Connection::open_in_memory().expect("Failed to create in-memory database");
@@ -28,7 +28,7 @@ fn test_migrated_from_session_id_column_added() {
         "migrated_from_session_id should not exist before migration"
     );
 
-    v72_proposal_migrated_from::migrate(&conn).unwrap();
+    v73_proposal_migrated_from::migrate(&conn).unwrap();
 
     assert!(
         helpers::column_exists(&conn, "task_proposals", "migrated_from_session_id"),
@@ -45,7 +45,7 @@ fn test_migrated_from_proposal_id_column_added() {
         "migrated_from_proposal_id should not exist before migration"
     );
 
-    v72_proposal_migrated_from::migrate(&conn).unwrap();
+    v73_proposal_migrated_from::migrate(&conn).unwrap();
 
     assert!(
         helpers::column_exists(&conn, "task_proposals", "migrated_from_proposal_id"),
@@ -63,7 +63,7 @@ fn test_existing_proposals_have_null_migrated_from_fields() {
     )
     .unwrap();
 
-    v72_proposal_migrated_from::migrate(&conn).unwrap();
+    v73_proposal_migrated_from::migrate(&conn).unwrap();
 
     let (session_val, proposal_val): (Option<String>, Option<String>) = conn
         .query_row(
@@ -80,7 +80,7 @@ fn test_existing_proposals_have_null_migrated_from_fields() {
 #[test]
 fn test_new_proposal_can_set_migrated_from_fields() {
     let conn = setup_test_db();
-    v72_proposal_migrated_from::migrate(&conn).unwrap();
+    v73_proposal_migrated_from::migrate(&conn).unwrap();
 
     conn.execute(
         "INSERT INTO task_proposals (id, title, migrated_from_session_id, migrated_from_proposal_id) \
@@ -105,8 +105,8 @@ fn test_new_proposal_can_set_migrated_from_fields() {
 fn test_migration_idempotent() {
     let conn = setup_test_db();
 
-    v72_proposal_migrated_from::migrate(&conn).unwrap();
-    v72_proposal_migrated_from::migrate(&conn).unwrap();
+    v73_proposal_migrated_from::migrate(&conn).unwrap();
+    v73_proposal_migrated_from::migrate(&conn).unwrap();
 
     assert!(helpers::column_exists(&conn, "task_proposals", "migrated_from_session_id"));
     assert!(helpers::column_exists(&conn, "task_proposals", "migrated_from_proposal_id"));
