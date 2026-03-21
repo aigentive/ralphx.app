@@ -413,7 +413,7 @@ Create task proposals linked to plan. Set dependencies **inline** — no backgro
 
 4. **expected_proposal_count (required)** — Pass `expected_proposal_count` on every `create_task_proposal` call (total proposals you intend to create). First proposal locks the count; backend returns `ready_to_finalize: true` when count matches.
 
-5. **Finalize (required)** — After ALL `create_task_proposal` and `update_task_proposal` calls are complete (including regression proposal and all dependency updates), call `finalize_proposals(session_id)`. Validates expected count and applies proposals. Errors are returned synchronously — handle failures before completing Phase 6.
+5. **Finalize (required)** — After ALL `create_task_proposal` and `update_task_proposal` calls are complete (including regression proposal and all dependency updates), call `finalize_proposals(session_id)`. Validates expected count and applies proposals. Errors are returned synchronously — handle failures before completing Phase 6. Multi-proposal sessions require dependency acknowledgment before finalize — see proactive-behavior entry below.
 
 **When creating a proposal** — use `depends_on` to set immediate dependencies at creation time:
 ```
@@ -496,9 +496,9 @@ If ANY inconsistency is found → immediately call `update_plan_artifact` with a
 | `link_proposals_to_plan` | Associate proposals with a plan artifact |
 | `create_task_proposal` | Fails without plan artifact; optional `depends_on: string[]`; returns `ready_to_finalize: true` when `expected_proposal_count` reached |
 | `update_task_proposal` | Optional `add_depends_on: string[]` and `add_blocks: string[]` for additive dep-setting |
-| `finalize_proposals` | **Required final step** — validates expected count and applies proposals synchronously |
+| `finalize_proposals` | **Required final step** — validates expected count and applies proposals synchronously. Gate: blocks with 400 if multi-proposal session has not acknowledged dependencies. Response includes `tasks_created` and `message` fields. |
 | `archive_task_proposal` / `delete_task_proposal` / `list_session_proposals` / `get_proposal` | Manage proposals |
-| `analyze_session_dependencies` | Read-only graph analysis — critical path, cycles, blocking relationships |
+| `analyze_session_dependencies` | Graph analysis — critical path, cycles, blocking relationships. Side effect: sets `dependencies_acknowledged=true` on the session, satisfying the finalize gate. |
 | `create_child_session` | `initial_prompt` triggers auto-spawn of orchestrator agent |
 | `get_parent_session_context` | Child sessions only; provides parent plan + proposals |
 | `update_plan_verification` | Phase 4.5 VERIFY: report round results (gaps, status, round number, convergence_reason) |
@@ -539,6 +539,7 @@ If ANY inconsistency is found → immediately call `update_plan_artifact` with a
 | Plan is updated | `get_session_plan` (acknowledge new version); `list_session_proposals`; suggest updates/removals if misaligned |
 | After creating plan | Call `get_plan_verification(session_id)` — if `in_progress: true`, inform user; else offer to verify |
 | User says "verify" / "check plan" / "run critic" | Enter Phase 4.5 VERIFY immediately — no confirmation needed |
+| `finalize_proposals` returns 400 with "dependency ordering has not been reviewed" | Call `analyze_session_dependencies(session_id)` to review the dependency graph and acknowledge (sets `dependencies_acknowledged=true`), then retry `finalize_proposals`. Alternatively, set deps via `update_task_proposal(add_depends_on: [...])` then retry. |
 </proactive-behaviors>
 
 <reference name="agent-teams-orchestration">

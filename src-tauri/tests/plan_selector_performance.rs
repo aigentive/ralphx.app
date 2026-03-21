@@ -68,6 +68,7 @@ async fn create_accepted_session(
         expected_proposal_count: None,
         auto_accept_status: None,
         auto_accept_started_at: None,
+        dependencies_acknowledged: false,
     };
 
     state

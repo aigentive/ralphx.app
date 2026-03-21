@@ -149,7 +149,12 @@ pub struct FinalizeProposalsRequest {
 #[derive(Debug, Serialize)]
 pub struct FinalizeProposalsResponse {
     pub created_task_ids: Vec<String>,
+    /// Number of proposal-to-proposal dependency edges created (excludes merge task edges).
     pub dependencies_created: u32,
+    /// Number of plan tasks created (excludes the auto-generated merge task).
+    pub tasks_created: u32,
+    /// Human-readable summary of the finalization result.
+    pub message: Option<String>,
     pub session_status: String,
     pub execution_plan_id: Option<String>,
     pub warnings: Vec<String>,

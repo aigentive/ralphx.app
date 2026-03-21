@@ -322,6 +322,7 @@ pub async fn create_proposal_impl(
     // Process depends_on deps in separate db.run() calls (AD5: deadlock avoidance)
     // Each dep: validate session membership + cycle check + insert + emit
     let mut dep_errors: Vec<String> = Vec::new();
+    let had_depends_on = !options.depends_on.is_empty();
 
     for dep_id_str in options.depends_on {
         let dep_id = TaskProposalId::from_string(dep_id_str.clone());
@@ -382,6 +383,21 @@ pub async fn create_proposal_impl(
             Ok(_) => {
                 emit_dependency_added(state, proposal_id_clone.as_str(), dep_id.as_str());
             }
+        }
+    }
+
+    // Set dependencies_acknowledged if agent specified deps at creation
+    if had_depends_on {
+        if let Err(e) = state
+            .ideation_session_repo
+            .set_dependencies_acknowledged(proposal.session_id.as_str())
+            .await
+        {
+            tracing::warn!(
+                "Failed to set dependencies_acknowledged for session {}: {}",
+                proposal.session_id.as_str(),
+                e
+            );
         }
     }
 
@@ -544,6 +560,7 @@ pub async fn update_proposal_impl(
 
     // Process add_depends_on and add_blocks deps in separate db.run() calls (AD5: deadlock avoidance)
     let mut dep_errors: Vec<String> = Vec::new();
+    let had_dep_changes = !options.add_depends_on.is_empty() || !options.add_blocks.is_empty();
     let proposal_id_for_deps = updated.id.clone();
     let session_id_for_deps = updated.session_id.clone();
 
@@ -608,6 +625,21 @@ pub async fn update_proposal_impl(
         match state.proposal_dependency_repo.add_dependency(&blocker_id, &pid, None, Some("agent")).await {
             Err(e) => { dep_errors.push(format!("add_blocks {} rejected: insert failed: {}", blocker_id.as_str(), e)); continue; }
             Ok(_) => { emit_dependency_added(state, blocker_id.as_str(), pid.as_str()); }
+        }
+    }
+
+    // Set dependencies_acknowledged if agent set deps via update
+    if had_dep_changes {
+        if let Err(e) = state
+            .ideation_session_repo
+            .set_dependencies_acknowledged(updated.session_id.as_str())
+            .await
+        {
+            tracing::warn!(
+                "Failed to set dependencies_acknowledged for session {}: {}",
+                updated.session_id.as_str(),
+                e
+            );
         }
     }
 
@@ -783,6 +815,8 @@ pub async fn finalize_proposals_impl(
     Ok(crate::http_server::types::FinalizeProposalsResponse {
         created_task_ids: result.created_task_ids,
         dependencies_created: result.dependencies_created as u32,
+        tasks_created: result.tasks_created as u32,
+        message: result.message,
         session_status,
         execution_plan_id: result.execution_plan_id,
         warnings: result.warnings,

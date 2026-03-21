@@ -1781,6 +1781,13 @@ async fn test_apply_proposals_core_creates_tasks_with_ready_status() {
     let state = setup_test_state();
     let (project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
 
+    // Acknowledge dependencies (required by gate for multi-proposal sessions)
+    state
+        .ideation_session_repo
+        .set_dependencies_acknowledged(session.id.as_str())
+        .await
+        .expect("Failed to set dependencies_acknowledged");
+
     let input = ApplyProposalsInput {
         session_id: session.id.as_str().to_string(),
         proposal_ids: proposal_ids.clone(),
@@ -1942,6 +1949,13 @@ async fn test_apply_proposals_core_repairs_stale_orphaned_execution_plan() {
         .await
         .expect("Failed to create stale execution plan");
 
+    // Acknowledge dependencies (required by gate for multi-proposal sessions)
+    state
+        .ideation_session_repo
+        .set_dependencies_acknowledged(session.id.as_str())
+        .await
+        .expect("Failed to set dependencies_acknowledged");
+
     let input = ApplyProposalsInput {
         session_id: session.id.as_str().to_string(),
         proposal_ids,
@@ -2042,6 +2056,13 @@ async fn test_apply_proposals_core_result_contains_context_fields() {
     let state = setup_test_state();
     let (project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
 
+    // Acknowledge dependencies (required by gate for multi-proposal sessions)
+    state
+        .ideation_session_repo
+        .set_dependencies_acknowledged(session.id.as_str())
+        .await
+        .expect("Failed to set dependencies_acknowledged");
+
     let input = ApplyProposalsInput {
         session_id: session.id.as_str().to_string(),
         proposal_ids,
@@ -2111,6 +2132,13 @@ async fn test_apply_proposals_core_preserves_dependencies() {
         .add_dependency(&p2.id, &p1.id, None, Some("manual"))
         .await
         .expect("Failed to add proposal dependency");
+
+    // Acknowledge dependencies (deps were set, simulating agent having used dep tools)
+    state
+        .ideation_session_repo
+        .set_dependencies_acknowledged(session.id.as_str())
+        .await
+        .expect("Failed to set dependencies_acknowledged");
 
     let input = ApplyProposalsInput {
         session_id: session.id.as_str().to_string(),
@@ -2307,4 +2335,237 @@ async fn test_apply_proposals_core_branch_creation_failure_leaves_no_orphaned_ex
         active_plan.is_none(),
         "No ExecutionPlan should be created when branch creation fails (Proof Obligation #5)"
     );
+}
+
+// ============================================================================
+// Counter fix + dependency acknowledgment gate integration tests
+// ============================================================================
+
+/// Proof Obligation #1/#2: `tasks_created` equals the number of plan tasks (not counting merge
+/// task), and `dependencies_created` is 0 when no proposal-to-proposal deps exist even when a
+/// merge task edge is created (feature branch path).
+#[tokio::test]
+async fn test_apply_proposals_core_tasks_created_count_excludes_merge_task() {
+    use ralphx_lib::domain::entities::{IdeationSession, Priority, Project, ProposalCategory, TaskProposal};
+
+    let state = setup_test_state();
+    let dir = setup_git_repo_for_apply_test();
+
+    // Project pointing to a real git repo; "main" is a valid source branch.
+    let mut project = Project::new(
+        "Counter Fix Test Project".to_string(),
+        dir.path().to_str().unwrap().to_string(),
+    );
+    project.base_branch = Some("main".to_string());
+    let project = state
+        .project_repo
+        .create(project)
+        .await
+        .expect("Failed to create project");
+
+    let session = IdeationSession::new(project.id.clone());
+    let session = state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .expect("Failed to create session");
+
+    // Create 3 proposals (no dependencies between them)
+    let mut proposal_ids = Vec::new();
+    for i in 1..=3 {
+        let p = state
+            .task_proposal_repo
+            .create(TaskProposal::new(
+                session.id.clone(),
+                format!("Proposal {}", i),
+                ProposalCategory::Feature,
+                Priority::Medium,
+            ))
+            .await
+            .expect("Failed to create proposal");
+        proposal_ids.push(p.id.as_str().to_string());
+    }
+
+    // Acknowledge dependencies (agent reviewed the graph — no proposal-to-proposal deps).
+    state
+        .ideation_session_repo
+        .set_dependencies_acknowledged(session.id.as_str())
+        .await
+        .expect("Failed to set dependencies_acknowledged");
+
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids: proposal_ids.clone(),
+        target_column: "auto".to_string(),
+        use_feature_branch: Some(true),
+        base_branch_override: Some("feature/counter-fix-test".to_string()),
+    };
+
+    let result = apply_proposals_core(&state, input)
+        .await
+        .expect("apply_proposals_core should succeed with valid feature branch");
+
+    // Proof Obligation #2: tasks_created counts only plan tasks, NOT the merge task.
+    assert_eq!(
+        result.tasks_created, 3,
+        "tasks_created should equal the number of proposals (3), excluding the auto-generated merge task"
+    );
+    // Proof Obligation #1: merge task edge must NOT be counted in dependencies_created.
+    assert_eq!(
+        result.dependencies_created, 0,
+        "dependencies_created should be 0 — no proposal-to-proposal deps exist (merge task edge excluded)"
+    );
+}
+
+/// Proof Obligation #3: gate blocks `apply_proposals_core` for multi-proposal sessions where
+/// the agent never acknowledged dependency ordering.
+#[tokio::test]
+async fn test_apply_proposals_core_gate_blocks_unacknowledged_session() {
+    let state = setup_test_state();
+    let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
+
+    // Intentionally do NOT call set_dependencies_acknowledged — simulates an agent that
+    // created proposals and called finalize without reviewing dependency ordering at all.
+
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids,
+        target_column: "auto".to_string(),
+        use_feature_branch: Some(false),
+        base_branch_override: None,
+    };
+
+    let err = apply_proposals_core(&state, input)
+        .await
+        .expect_err("apply_proposals_core should be blocked by the dependency acknowledgment gate");
+
+    assert!(
+        matches!(err, ralphx_lib::error::AppError::Validation(_)),
+        "Expected Validation error from dependency gate, got: {:?}",
+        err
+    );
+    // The error message must be actionable — tell the agent exactly what tool to call.
+    let msg = err.to_string();
+    assert!(
+        msg.contains("dependency ordering has not been reviewed"),
+        "Gate error message must be actionable, got: {}",
+        msg
+    );
+}
+
+/// Proof Obligation #4: gate passes after `analyze_session_dependencies` is called (even with
+/// 0 proposal-to-proposal deps). Calling the tool proves the agent considered the dep graph.
+#[tokio::test]
+async fn test_apply_proposals_core_gate_passes_after_analyze_session_dependencies() {
+    let state = setup_test_state();
+    let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
+
+    // Simulate `analyze_session_dependencies` handler: it calls set_dependencies_acknowledged
+    // after computing the graph, marking that the agent reviewed dependency ordering.
+    state
+        .ideation_session_repo
+        .set_dependencies_acknowledged(session.id.as_str())
+        .await
+        .expect("Failed to simulate analyze_session_dependencies acknowledgment");
+
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids,
+        target_column: "auto".to_string(),
+        use_feature_branch: Some(false),
+        base_branch_override: None,
+    };
+
+    let result = apply_proposals_core(&state, input)
+        .await
+        .expect("apply_proposals_core should succeed after analyze_session_dependencies");
+
+    // Gate passed; 0 proposal-to-proposal deps is valid when agent explicitly reviewed the graph.
+    assert_eq!(
+        result.dependencies_created, 0,
+        "0 deps is acceptable when agent acknowledged via analyze_session_dependencies"
+    );
+    assert_eq!(result.created_task_ids.len(), 2, "Should create 2 tasks");
+}
+
+/// Proof Obligation #5: gate passes when deps were set via `create_task_proposal(depends_on:[...])`
+/// at creation time. `create_proposal_impl` auto-sets `dependencies_acknowledged=true` as a side
+/// effect of any non-empty `depends_on`. This test simulates that auto-set path.
+#[tokio::test]
+async fn test_apply_proposals_core_gate_passes_with_deps_set_at_creation() {
+    use ralphx_lib::domain::entities::{IdeationSession, Priority, Project, ProposalCategory, TaskProposal};
+
+    let state = setup_test_state();
+
+    let project = Project::new("Dep At Creation Test".to_string(), "/tmp/test".to_string());
+    let project = state
+        .project_repo
+        .create(project)
+        .await
+        .expect("Failed to create project");
+
+    let session = IdeationSession::new(project.id.clone());
+    let session = state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .expect("Failed to create session");
+
+    let p1 = state
+        .task_proposal_repo
+        .create(TaskProposal::new(
+            session.id.clone(),
+            "Foundation Task".to_string(),
+            ProposalCategory::Feature,
+            Priority::High,
+        ))
+        .await
+        .expect("Failed to create p1");
+
+    let p2 = state
+        .task_proposal_repo
+        .create(TaskProposal::new(
+            session.id.clone(),
+            "Dependent Task".to_string(),
+            ProposalCategory::Feature,
+            Priority::Medium,
+        ))
+        .await
+        .expect("Failed to create p2");
+
+    // p2 depends on p1 — set via proposal_dependency_repo as create_proposal_impl would do.
+    state
+        .proposal_dependency_repo
+        .add_dependency(&p2.id, &p1.id, None, Some("set_at_creation"))
+        .await
+        .expect("Failed to add proposal dependency");
+
+    // Auto-set by create_proposal_impl when depends_on is non-empty at creation time.
+    state
+        .ideation_session_repo
+        .set_dependencies_acknowledged(session.id.as_str())
+        .await
+        .expect("Failed to simulate auto-acknowledgment from create_proposal_impl");
+
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids: vec![
+            p1.id.as_str().to_string(),
+            p2.id.as_str().to_string(),
+        ],
+        target_column: "auto".to_string(),
+        use_feature_branch: Some(false),
+        base_branch_override: None,
+    };
+
+    let result = apply_proposals_core(&state, input)
+        .await
+        .expect("apply_proposals_core should succeed when deps were set at creation");
+
+    // Gate passed because deps were acknowledged via the creation path.
+    assert_eq!(
+        result.dependencies_created, 1,
+        "One proposal-to-proposal dependency should be created"
+    );
+    assert_eq!(result.created_task_ids.len(), 2, "Should create 2 tasks");
 }

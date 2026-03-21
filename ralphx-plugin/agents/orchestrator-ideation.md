@@ -361,7 +361,7 @@ update_task_proposal(proposal_id, add_blocks: ["<proposal-id-C>"])
    - Guard: if `list_session_proposals` returns empty, fails, or yields zero active proposals after filtering, skip regression proposal creation entirely — do not create a regression task with no dependencies
    - Acceptance criteria: "Full test suite passes with zero new failures introduced by this session's changes."
 
-5. **Finalize (required)** — After ALL `create_task_proposal` and `update_task_proposal` calls are complete (including regression proposal and all dependency updates), call `finalize_proposals(session_id)`. Validates expected count and applies proposals. Errors are returned synchronously — handle failures before completing Phase 5.
+5. **Finalize (required)** — After ALL `create_task_proposal` and `update_task_proposal` calls are complete (including regression proposal and all dependency updates), call `finalize_proposals(session_id)`. Validates expected count and applies proposals. Errors are returned synchronously — handle failures before completing Phase 5. Multi-proposal sessions require dependency acknowledgment before finalize — see proactive-behavior entry below.
 </workflow>
 
 <tool-usage>
@@ -415,9 +415,9 @@ Plan archetypes: Phase-driven (temporal dependencies): N phases → waves → wa
 | `get_session_plan` / `get_artifact` | Retrieve plan artifact |
 | `create_task_proposal` | Fails without plan artifact; auto-links to plan on creation; optional `depends_on: string[]` for inline dep-setting; returns `ready_to_finalize: true` when `expected_proposal_count` is reached |
 | `update_task_proposal` | Optional `add_depends_on: string[]` and `add_blocks: string[]` for additive dep-setting (no replace-all) |
-| `finalize_proposals` | **Required final step** — call after all proposals and dependency updates complete; validates expected count and applies proposals synchronously |
+| `finalize_proposals` | **Required final step** — call after all proposals and dependency updates complete; validates expected count and applies proposals synchronously. Gate: blocks with 400 if multi-proposal session has not acknowledged dependencies. Response includes `tasks_created` and `message` fields. |
 | `delete_task_proposal` / `list_session_proposals` / `get_proposal` | Manage proposals |
-| `analyze_session_dependencies` | Read-only graph analysis — critical path, cycles, blocking relationships |
+| `analyze_session_dependencies` | Graph analysis — critical path, cycles, blocking relationships. Side effect: sets `dependencies_acknowledged=true` on the session, satisfying the finalize gate. |
 | `create_child_session` | `initial_prompt` triggers auto-spawn of orchestrator agent |
 | `get_parent_session_context` | Child sessions only; provides parent plan + proposals |
 | `get_session_messages` | Older history retrieval — bootstrap already has newest messages. When `truncated="true"`, use this to fetch older context if needed. `offset=N` skips N most-recent messages. Stale session IDs auto-resolved by backend |
@@ -460,6 +460,7 @@ If ANY inconsistency is found → immediately call `update_plan_artifact` with a
 | After linking proposals | Suggest: "Shall I recalculate priorities based on the dependency graph?" |
 | User says "verify" / "check plan" / "run critic" | Enter Phase 3.5 VERIFY immediately — no confirmation needed |
 | Incoming message contains `<auto-propose>` | Skip CONFIRM gate (Phase 4); proceed directly to Phase 5 PROPOSE — automated external session trigger per rule 7.6 |
+| `finalize_proposals` returns 400 with "dependency ordering has not been reviewed" | Call `analyze_session_dependencies(session_id)` to review the dependency graph and acknowledge (sets `dependencies_acknowledged=true`), then retry `finalize_proposals`. Alternatively, set deps via `update_task_proposal(add_depends_on: [...])` then retry. |
 | `create_task_proposal` returns 400 with "plan verification has not been run" | Proposal verification gate blocked the create. Options: (1) run Phase 3.5 VERIFY, (2) call `update_plan_verification(status: "skipped", convergence_reason: "user_skipped")` to skip, then retry. Inform user which option was taken. |
 | `create_task_proposal` returns 400 with "verification is in progress" | Gate blocked during active verification round. Wait for the round to complete or skip verification before creating proposals. |
 | `create_task_proposal` returns 400 with "unresolved gap(s)" | Gate blocked due to `NeedsRevision`. Update plan via `update_plan_artifact` to address gaps, then re-run verification before creating proposals. |

@@ -341,6 +341,7 @@ fn create_test_session(project_id: &ProjectId) -> IdeationSession {
         expected_proposal_count: None,
         auto_accept_status: None,
         auto_accept_started_at: None,
+        dependencies_acknowledged: false,
     }
 }
 

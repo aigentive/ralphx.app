@@ -70,6 +70,7 @@ fn make_external_session(
         expected_proposal_count: None,
         auto_accept_status: None,
         auto_accept_started_at: None,
+        dependencies_acknowledged: false,
     }
 }
 
@@ -396,6 +397,7 @@ async fn c4_finalize_proposals_links_all_proposals_to_tasks() {
         expected_proposal_count: None,
         auto_accept_status: None,
         auto_accept_started_at: None,
+        dependencies_acknowledged: false,
     };
     state.ideation_session_repo.create(session).await.unwrap();
 
@@ -541,6 +543,7 @@ async fn c4_count_mismatch_prevents_finalize_and_leaves_no_orphans() {
         expected_proposal_count: None, // will be set via SQL below (create() doesn't persist it)
         auto_accept_status: None,
         auto_accept_started_at: None,
+        dependencies_acknowledged: false,
     };
     state.ideation_session_repo.create(session).await.unwrap();
 

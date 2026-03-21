@@ -104,6 +104,10 @@ pub struct IdeationSession {
     pub auto_accept_status: Option<String>,
     /// ISO timestamp when auto-accept was triggered
     pub auto_accept_started_at: Option<String>,
+    /// Whether the agent has explicitly acknowledged cross-proposal dependencies.
+    /// False = finalize_proposals will block if inter-proposal dependencies exist.
+    #[serde(default)]
+    pub dependencies_acknowledged: bool,
 }
 
 /// Builder for creating IdeationSession instances
@@ -137,6 +141,7 @@ pub struct IdeationSessionBuilder {
     expected_proposal_count: Option<u32>,
     auto_accept_status: Option<String>,
     auto_accept_started_at: Option<String>,
+    dependencies_acknowledged: Option<bool>,
 }
 
 impl IdeationSessionBuilder {
@@ -289,6 +294,12 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set whether dependencies have been acknowledged
+    pub fn dependencies_acknowledged(mut self, acknowledged: bool) -> Self {
+        self.dependencies_acknowledged = Some(acknowledged);
+        self
+    }
+
     /// Build the IdeationSession
     /// Panics if project_id is not set
     pub fn build(self) -> IdeationSession {
@@ -322,6 +333,7 @@ impl IdeationSessionBuilder {
             expected_proposal_count: self.expected_proposal_count,
             auto_accept_status: self.auto_accept_status,
             auto_accept_started_at: self.auto_accept_started_at,
+            dependencies_acknowledged: self.dependencies_acknowledged.unwrap_or(false),
         }
     }
 }
@@ -489,6 +501,11 @@ impl IdeationSession {
             auto_accept_started_at: row
                 .get::<_, Option<String>>("auto_accept_started_at")
                 .unwrap_or(None),
+            dependencies_acknowledged: row
+                .get::<_, Option<i64>>("dependencies_acknowledged")
+                .unwrap_or(None)
+                .map(|v| v != 0)
+                .unwrap_or(false),
         })
     }
 

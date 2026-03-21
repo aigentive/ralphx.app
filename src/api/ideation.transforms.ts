@@ -185,9 +185,11 @@ export function transformApplyResult(raw: z.infer<typeof ApplyProposalsResultRes
   return {
     createdTaskIds: raw.created_task_ids,
     dependenciesCreated: raw.dependencies_created,
+    ...(raw.tasks_created !== undefined && { tasksCreated: raw.tasks_created }),
     warnings: raw.warnings,
     sessionConverted: raw.session_converted,
     executionPlanId: raw.execution_plan_id ?? null,
+    ...(raw.message !== undefined && { message: raw.message }),
   };
 }
 

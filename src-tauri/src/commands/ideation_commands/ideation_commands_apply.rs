@@ -159,6 +159,8 @@ pub async fn apply_proposals_core(
             return Ok(ApplyProposalsResult {
                 created_task_ids: vec![],
                 dependencies_created: 0,
+                tasks_created: 0,
+                message: None,
                 warnings: vec![format!(
                     "Execution plan {} already active for this session — skipped to prevent duplicates",
                     existing_plan.id
@@ -187,6 +189,19 @@ pub async fn apply_proposals_core(
         return Err(AppError::Validation(
             "Some proposals not found in session".to_string(),
         ));
+    }
+
+    // Dependency acknowledgment gate: multi-proposal sessions must have acknowledged dependency ordering.
+    // Gate lives here (not in finalize_proposals_impl) so ALL callers are protected:
+    // internal MCP, Tauri IPC (apply_proposals_to_kanban), and external MCP all go through apply_proposals_core.
+    if proposals_to_apply.len() >= 2 && !session.dependencies_acknowledged {
+        return Err(AppError::Validation(format!(
+            "Cannot finalize: dependency ordering has not been reviewed for {} proposals. \
+             Either set dependencies via create_task_proposal(depends_on) or \
+             update_task_proposal(add_depends_on/add_blocks), or call \
+             analyze_session_dependencies to review and acknowledge parallel execution.",
+            proposals_to_apply.len()
+        )));
     }
 
     // ========================================================================
@@ -445,14 +460,14 @@ pub async fn apply_proposals_core(
             .await
             .map_err(|e| AppError::Database(format!("Failed to create merge task: {}", e)))?;
 
-        // Add blockedBy dependencies: merge task blocked by all created plan tasks
+        // Add blockedBy dependencies: merge task blocked by all created plan tasks.
+        // These do NOT increment `dependencies_created` (which only counts proposal-to-proposal edges).
         for task in &created_tasks {
             app_state
                 .task_dependency_repo
                 .add_dependency(&created_merge_task.id, &task.id)
                 .await
                 .map_err(|e| AppError::Database(format!("Failed to add dependency: {}", e)))?;
-            dependencies_created += 1;
         }
 
         // Set merge_task_id on the plan branch record
@@ -560,12 +575,27 @@ pub async fn apply_proposals_core(
 
     let proposal_titles: Vec<String> = proposals_to_apply.iter().map(|p| p.title.clone()).collect();
 
+    let tasks_created = created_tasks.len();
+    let message = Some(format!(
+        "Created {} task{} with {} proposal {}.",
+        tasks_created,
+        if tasks_created == 1 { "" } else { "s" },
+        dependencies_created,
+        if dependencies_created == 1 {
+            "dependency"
+        } else {
+            "dependencies"
+        }
+    ));
+
     Ok(ApplyProposalsResult {
         created_task_ids: created_tasks
             .into_iter()
             .map(|t| t.id.as_str().to_string())
             .collect(),
         dependencies_created,
+        tasks_created,
+        message,
         warnings,
         session_converted,
         execution_plan_id: Some(execution_plan_id.as_str().to_string()),

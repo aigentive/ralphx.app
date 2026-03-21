@@ -2015,7 +2015,12 @@ impl From<ExternalApplyProposalsRequest> for ApplyProposalsInput {
 #[derive(Debug, Serialize)]
 pub struct ExternalApplyProposalsResponse {
     pub created_task_ids: Vec<String>,
+    /// Number of proposal-to-proposal dependency edges created (excludes merge task edges).
     pub dependencies_created: usize,
+    /// Number of plan tasks created (excludes the auto-generated merge task).
+    pub tasks_created: usize,
+    /// Human-readable summary of the finalization result.
+    pub message: Option<String>,
     pub warnings: Vec<String>,
     pub session_converted: bool,
     pub execution_plan_id: Option<String>,
@@ -2108,6 +2113,8 @@ pub async fn external_apply_proposals(
     Ok(Json(ExternalApplyProposalsResponse {
         created_task_ids: result.created_task_ids,
         dependencies_created: result.dependencies_created,
+        tasks_created: result.tasks_created,
+        message: result.message,
         warnings: result.warnings,
         session_converted: result.session_converted,
         execution_plan_id: result.execution_plan_id,

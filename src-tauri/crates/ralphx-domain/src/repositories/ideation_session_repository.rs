@@ -270,6 +270,10 @@ pub trait IdeationSessionRepository: Send + Sync {
     ) -> AppResult<i64>
     where
         Self: Sized;
+
+    /// Mark dependencies as acknowledged for a session.
+    /// Sets `dependencies_acknowledged = true` and updates `updated_at`.
+    async fn set_dependencies_acknowledged(&self, session_id: &str) -> AppResult<()>;
 }
 
 #[cfg(test)]

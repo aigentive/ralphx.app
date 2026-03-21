@@ -592,6 +592,21 @@ pub async fn analyze_session_dependencies(
         max_depth: critical_path.len(),
     };
 
+    // Mark dependencies as acknowledged: agent reviewed the graph, satisfying the finalize gate.
+    // Best-effort — don't fail the response if the flag update fails.
+    if let Err(e) = state
+        .app_state
+        .ideation_session_repo
+        .set_dependencies_acknowledged(session_id.as_str())
+        .await
+    {
+        error!(
+            "Failed to set dependencies_acknowledged for session {}: {}",
+            session_id.as_str(),
+            e
+        );
+    }
+
     Ok(Json(AnalyzeDependenciesResponse {
         nodes: response_nodes,
         edges: response_edges,

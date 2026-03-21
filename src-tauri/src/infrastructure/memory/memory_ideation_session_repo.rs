@@ -602,6 +602,14 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
             "count_active_by_session_sync not supported in memory repo".to_string(),
         ))
     }
+
+    async fn set_dependencies_acknowledged(&self, session_id: &str) -> AppResult<()> {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(session) = sessions.values_mut().find(|s| s.id.as_str() == session_id) {
+            session.dependencies_acknowledged = true;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

@@ -24,16 +24,17 @@ use super::DbConnection;
 // IDLE: tasks that haven't started yet
 const _IDLE_STATUSES: &[&str] = &["backlog", "ready", "blocked"];
 
-/// All 28 SELECT columns for IdeationSession — single source of truth (DRY).
+/// All 29 SELECT columns for IdeationSession — single source of truth (DRY).
 /// Must be kept in sync with IdeationSession::from_row column names.
-/// Column order: id(0)..origin(24), expected_proposal_count(25), auto_accept_status(26), auto_accept_started_at(27)
+/// Column order: id(0)..origin(24), expected_proposal_count(25), auto_accept_status(26), auto_accept_started_at(27), dependencies_acknowledged(28)
 const SESSION_COLUMNS: &str = "id, project_id, title, title_source, status, plan_artifact_id, \
     inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
     updated_at, archived_at, converted_at, team_mode, team_config_json, \
     verification_status, verification_in_progress, verification_metadata, \
     verification_generation, source_project_id, source_session_id, session_purpose, \
     cross_project_checked, plan_version_last_read, origin, \
-    expected_proposal_count, auto_accept_status, auto_accept_started_at";
+    expected_proposal_count, auto_accept_status, auto_accept_started_at, \
+    dependencies_acknowledged";
 // TERMINAL: tasks that have reached a final state
 const _TERMINAL_STATUSES: &[&str] = &["approved", "merged", "failed", "cancelled", "stopped"];
 // ACTIVE: any status NOT in IDLE or TERMINAL (catch-all, matches categorizeStatus() logic)
@@ -1204,5 +1205,19 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
             |row| row.get(0),
         )?;
         Ok(count)
+    }
+
+    async fn set_dependencies_acknowledged(&self, session_id: &str) -> AppResult<()> {
+        let session_id = session_id.to_string();
+        self.db
+            .run(move |conn| {
+                let now = Utc::now().to_rfc3339();
+                conn.execute(
+                    "UPDATE ideation_sessions SET dependencies_acknowledged = 1, updated_at = ?1 WHERE id = ?2",
+                    rusqlite::params![now, session_id],
+                )?;
+                Ok(())
+            })
+            .await
     }
 }
