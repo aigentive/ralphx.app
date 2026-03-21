@@ -197,6 +197,7 @@ export function PreviousRunBanner({ agentRunStatus, contextType }: PreviousRunBa
 
   const statusLabel = agentRunStatus === "failed" ? "failed"
     : agentRunStatus === "cancelled" ? "cancelled"
+    : agentRunStatus === "running" ? "in progress"
     : "completed";
 
   return (

@@ -882,7 +882,7 @@ export function IntegratedChatPanel({
           )}
 
           {/* Previous Run Banner - shown when viewing stale agent conversation */}
-          {isAgentContext && !isHistoryMode && agentStatus === "idle" && !isSending && sortedMessages.length > 0 && (
+          {isAgentContext && !isHistoryMode && agentStatus === "idle" && agentRunQuery.data?.status !== "running" && !isSending && sortedMessages.length > 0 && (
             <PreviousRunBanner
               agentRunStatus={agentRunQuery.data?.status ?? null}
               contextType={isMergeMode ? "merge" : isReviewMode ? "review" : "execution"}

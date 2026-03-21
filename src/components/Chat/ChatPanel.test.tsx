@@ -89,6 +89,8 @@ let mockChatStoreState = {
   deleteQueuedMessage: mockDeleteQueuedMessage,
   setAgentRunning: mockSetAgentRunning,
   startEditingQueuedMessage: mockStartEditingQueuedMessage,
+  lastAgentEventTimestamp: {} as Record<string, number>,
+  toolCallStartTimes: {} as Record<string, Record<string, number>>,
 };
 
 // Mock UI store state for chat visibility (all views visible by default for tests)
@@ -148,6 +150,8 @@ vi.mock("@/stores/chatStore", () => ({
   selectAgentStatus: vi.fn(() => () => "idle"),
   selectActiveConversationId: vi.fn((state: typeof mockChatStoreState) => state.activeConversationId || null),
   selectIsTeamActive: vi.fn(() => () => false),
+  selectToolCallStartTimes: vi.fn(() => () => ({})),
+  selectLastToolCallCompletionTimestamp: vi.fn(() => () => 0),
 }));
 
 vi.mock("@/stores/teamStore", () => ({
@@ -263,6 +267,8 @@ describe("ChatPanel", () => {
       queuedMessages: [],
       agentStatus: {},
       activeConversationIds: {},
+      lastAgentEventTimestamp: {} as Record<string, number>,
+      toolCallStartTimes: {} as Record<string, Record<string, number>>,
     };
 
     // Reset UI store state for chat visibility (all views visible by default for tests)
