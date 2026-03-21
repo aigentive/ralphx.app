@@ -309,6 +309,59 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
     {
         unimplemented!()
     }
+
+    async fn get_by_idempotency_key(
+        &self,
+        _api_key_id: &str,
+        _idempotency_key: &str,
+    ) -> AppResult<Option<IdeationSession>> {
+        Ok(None)
+    }
+
+    async fn update_external_activity_phase(
+        &self,
+        _id: &IdeationSessionId,
+        _phase: &str,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn update_external_last_read_message_id(
+        &self,
+        _id: &IdeationSessionId,
+        _message_id: &str,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn list_active_external_by_project(
+        &self,
+        _project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(Vec::new())
+    }
+
+    async fn list_active_external_sessions_for_archival(
+        &self,
+        _stale_before: Option<DateTime<Utc>>,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(Vec::new())
+    }
+
+    async fn list_stalled_external_sessions(
+        &self,
+        _stalled_before: DateTime<Utc>,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(Vec::new())
+    }
+
+    async fn set_dependencies_acknowledged(&self, _session_id: &str) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn reset_acceptance_cycle_fields(&self, _session_id: &str) -> AppResult<()> {
+        Ok(())
+    }
 }
 
 fn create_test_session(project_id: &ProjectId) -> IdeationSession {
@@ -341,6 +394,10 @@ fn create_test_session(project_id: &ProjectId) -> IdeationSession {
         expected_proposal_count: None,
         auto_accept_status: None,
         auto_accept_started_at: None,
+        api_key_id: None,
+        idempotency_key: None,
+        external_activity_phase: None,
+        external_last_read_message_id: None,
         dependencies_acknowledged: false,
     }
 }

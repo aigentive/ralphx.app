@@ -124,6 +124,12 @@ export interface IdeationAutoProposeFailedEvent {
     error: string;
     timestamp: string;
 }
+export interface IdeationSessionAcceptedEvent {
+    event_type: 'ideation:session_accepted';
+    session_id: string;
+    project_id: string;
+    timestamp: string;
+}
 export interface SystemWebhookUnhealthyEvent {
     event_type: 'system:webhook_unhealthy';
     webhook_id: string;
@@ -137,7 +143,7 @@ export interface SystemRateLimitWarningEvent {
     api_key_id: string;
     timestamp: string;
 }
-export type RalphXEvent = TaskCreatedEvent | TaskStatusChangedEvent | TaskStepCompletedEvent | TaskExecutionStartedEvent | TaskExecutionCompletedEvent | ReviewReadyEvent | ReviewApprovedEvent | ReviewChangesRequestedEvent | ReviewEscalatedEvent | MergeReadyEvent | MergeCompletedEvent | MergeConflictEvent | IdeationSessionCreatedEvent | IdeationPlanCreatedEvent | IdeationVerifiedEvent | IdeationProposalsReadyEvent | IdeationAutoProposeSentEvent | IdeationAutoProposeFailedEvent | SystemWebhookUnhealthyEvent | SystemRateLimitWarningEvent;
+export type RalphXEvent = TaskCreatedEvent | TaskStatusChangedEvent | TaskStepCompletedEvent | TaskExecutionStartedEvent | TaskExecutionCompletedEvent | ReviewReadyEvent | ReviewApprovedEvent | ReviewChangesRequestedEvent | ReviewEscalatedEvent | MergeReadyEvent | MergeCompletedEvent | MergeConflictEvent | IdeationSessionCreatedEvent | IdeationPlanCreatedEvent | IdeationVerifiedEvent | IdeationProposalsReadyEvent | IdeationAutoProposeSentEvent | IdeationAutoProposeFailedEvent | IdeationSessionAcceptedEvent | SystemWebhookUnhealthyEvent | SystemRateLimitWarningEvent;
 import type { ApiKeyContext } from "../types.js";
 /**
  * v1_get_recent_events — cursor-based event retrieval from DB.

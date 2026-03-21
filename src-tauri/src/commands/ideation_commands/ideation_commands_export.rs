@@ -1,5 +1,6 @@
 // Export/import Tauri commands for ideation sessions
 
+use ralphx_domain::entities::EventType;
 use serde::Deserialize;
 use tauri::{Emitter, State};
 
@@ -50,12 +51,40 @@ pub async fn import_ideation_session(
         .await
         .map_err(|e| e.to_string())?;
 
+    let payload_json = serde_json::json!({
+        "sessionId": result.session_id,
+        "projectId": input.project_id,
+    });
     app_handle
-        .emit("ideation:session_created", &result.session_id)
+        .emit("ideation:session_created", &payload_json)
         .ok();
     app_handle
         .emit("ideation:session_imported", &result.session_id)
         .ok();
+
+    // Layer 2: persist to external_events table (non-fatal)
+    if let Err(e) = app_state
+        .external_events_repo
+        .insert_event(
+            "ideation:session_created",
+            &input.project_id,
+            &payload_json.to_string(),
+        )
+        .await
+    {
+        tracing::warn!(error = %e, "Failed to persist IdeationSessionCreated event");
+    }
+
+    // Layer 3: webhook push (fire-and-forget, non-fatal)
+    if let Some(ref publisher) = app_state.webhook_publisher {
+        let _ = publisher
+            .publish(
+                EventType::IdeationSessionCreated,
+                &input.project_id,
+                payload_json,
+            )
+            .await;
+    }
 
     Ok(result)
 }

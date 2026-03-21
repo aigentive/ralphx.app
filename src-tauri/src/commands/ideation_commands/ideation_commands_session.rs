@@ -5,6 +5,8 @@ use std::sync::Arc;
 
 use tauri::{Emitter, State};
 
+use ralphx_domain::entities::EventType;
+
 use crate::application::git_service::GitService;
 use crate::application::AppState;
 use crate::application::{StopMode, TaskCleanupService};
@@ -61,13 +63,35 @@ pub async fn create_ideation_session_impl<R: tauri::Runtime>(
         .await
         .map_err(|e| e.to_string())?;
 
-    let _ = app.emit(
-        "ideation:session_created",
-        serde_json::json!({
-            "sessionId": created.id.to_string(),
-            "projectId": created.project_id.to_string(),
-        }),
-    );
+    let payload_json = serde_json::json!({
+        "sessionId": created.id.to_string(),
+        "projectId": created.project_id.to_string(),
+    });
+    let _ = app.emit("ideation:session_created", &payload_json);
+
+    // Layer 2: persist to external_events table (non-fatal)
+    if let Err(e) = state
+        .external_events_repo
+        .insert_event(
+            "ideation:session_created",
+            &created.project_id.to_string(),
+            &payload_json.to_string(),
+        )
+        .await
+    {
+        tracing::warn!(error = %e, "Failed to persist IdeationSessionCreated event");
+    }
+
+    // Layer 3: webhook push (fire-and-forget, non-fatal)
+    if let Some(ref publisher) = state.webhook_publisher {
+        let _ = publisher
+            .publish(
+                EventType::IdeationSessionCreated,
+                &created.project_id.to_string(),
+                payload_json,
+            )
+            .await;
+    }
 
     Ok(IdeationSessionResponse::from(created))
 }

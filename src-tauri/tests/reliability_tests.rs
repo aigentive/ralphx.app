@@ -667,7 +667,7 @@ async fn test_auto_propose_all_attempts_fail_emits_failure_event() {
     let project_id = "test-project-c1";
 
     // Zero delays so the test completes instantly (4 total attempts: initial + 3 retries)
-    auto_propose_with_retry(session_id, project_id, &mock_service, events_repo, &[0, 0, 0]).await;
+    auto_propose_with_retry(session_id, project_id, &mock_service, events_repo, None, &[0, 0, 0]).await;
 
     // All 4 attempts (initial + 3 retries) should have been tried
     assert_eq!(
@@ -710,7 +710,7 @@ async fn test_auto_propose_success_no_failure_event() {
     let session_id = "test-session-c1-ok";
     let project_id = "test-project-c1-ok";
 
-    auto_propose_with_retry(session_id, project_id, &mock_service, events_repo, &[0, 0, 0]).await;
+    auto_propose_with_retry(session_id, project_id, &mock_service, events_repo, None, &[0, 0, 0]).await;
 
     // Succeeds on first attempt — no retries needed
     assert_eq!(
@@ -719,13 +719,15 @@ async fn test_auto_propose_success_no_failure_event() {
         "should succeed on first attempt with no retries"
     );
 
-    // No failure event written
+    // On success, exactly one auto_propose_sent event written (Layer 2)
     let events = repo
         .get_events_after_cursor(&[project_id.to_string()], 0, 10)
         .await
         .unwrap();
-    assert!(
-        events.is_empty(),
-        "no failure events should be written on success"
-    );
+    assert_eq!(events.len(), 1, "should write exactly one auto_propose_sent event on success");
+    assert_eq!(events[0].event_type, "ideation:auto_propose_sent");
+    assert_eq!(events[0].project_id, project_id);
+    let payload: serde_json::Value = serde_json::from_str(&events[0].payload).unwrap();
+    assert_eq!(payload["session_id"], session_id);
+    assert_eq!(payload["project_id"], project_id);
 }

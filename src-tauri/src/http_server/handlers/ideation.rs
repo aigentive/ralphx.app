@@ -27,6 +27,7 @@ use crate::domain::entities::ideation::IdeationSessionStatus;
 use crate::domain::entities::{ChatContextType, IdeationSessionId, Priority, TaskProposalId};
 use crate::domain::repositories::ExternalEventsRepository;
 use crate::domain::services::emit_verification_status_changed;
+use crate::domain::state_machine::services::WebhookPublisher;
 use crate::domain::services::running_agent_registry::RunningAgentKey;
 
 use super::super::helpers::{
@@ -134,8 +135,6 @@ pub async fn finalize_proposals(
     State(state): State<HttpServerState>,
     Json(req): Json<FinalizeProposalsRequest>,
 ) -> Result<Json<FinalizeProposalsResponse>, JsonError> {
-    // TODO(webhook): emit EventType::IdeationProposalsReady via AppState::webhook_publisher
-    // when AppState gains that field. Payload: { session_id, project_id, proposal_count }.
     let response = finalize_proposals_impl(&state.app_state, &req.session_id)
         .await
         .map_err(|e| {
@@ -148,7 +147,51 @@ pub async fn finalize_proposals(
             json_error(status, e.to_string())
         })?;
 
+    // Layer 2: persist IdeationProposalsReady to external_events table (non-fatal)
+    {
+        let payload = serde_json::json!({
+            "session_id": req.session_id,
+            "project_id": response.project_id,
+            "proposal_count": response.tasks_created,
+        });
+        if let Err(e) = state.app_state.external_events_repo
+            .insert_event("ideation:proposals_ready", &response.project_id, &payload.to_string())
+            .await
+        {
+            tracing::warn!(error = %e, "Failed to persist ideation:proposals_ready event");
+        }
+        // Layer 3: webhook push (non-fatal, fire-and-forget)
+        if let Some(ref publisher) = state.app_state.webhook_publisher {
+            let _ = publisher.publish(
+                ralphx_domain::entities::EventType::IdeationProposalsReady,
+                &response.project_id,
+                payload,
+            ).await;
+        }
+    }
+
     if response.session_status == "accepted" {
+        // Layer 2: persist IdeationSessionAccepted to external_events table (non-fatal)
+        let accepted_payload = serde_json::json!({
+            "session_id": req.session_id,
+            "project_id": response.project_id,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        });
+        if let Err(e) = state.app_state.external_events_repo
+            .insert_event("ideation:session_accepted", &response.project_id, &accepted_payload.to_string())
+            .await
+        {
+            tracing::warn!(error = %e, "Failed to persist ideation:session_accepted event");
+        }
+        // Layer 3: webhook push (non-fatal, fire-and-forget)
+        if let Some(ref publisher) = state.app_state.webhook_publisher {
+            let _ = publisher.publish(
+                ralphx_domain::entities::EventType::IdeationSessionAccepted,
+                &response.project_id,
+                accepted_payload,
+            ).await;
+        }
+
         if let Some(app_handle) = &state.app_state.app_handle {
             // Notify frontend: session moved to Accepted → PlanBrowser refreshes
             if let Err(e) = app_handle.emit(
@@ -1096,6 +1139,7 @@ async fn auto_propose_for_external(
         &project_id,
         &chat_service,
         Arc::clone(&app.external_events_repo),
+        app.webhook_publisher.as_ref().map(Arc::clone),
         &[1_000, 2_000, 4_000],
     )
     .await;
@@ -1132,6 +1176,7 @@ pub async fn auto_propose_with_retry(
     project_id: &str,
     chat_service: &dyn ChatService,
     external_events_repo: Arc<dyn ExternalEventsRepository>,
+    webhook_publisher: Option<Arc<dyn WebhookPublisher>>,
     retry_delays_ms: &[u64],
 ) {
     let message = "<auto-propose>\nThe plan has been verified with zero blocking gaps (convergence: zero_blocking).\nThis is an external MCP session. Auto-propose triggered.\n</auto-propose>";
@@ -1155,8 +1200,29 @@ pub async fn auto_propose_with_retry(
                     delivery_status = if result.was_queued { "queued" } else { "spawned" },
                     "auto_propose_for_external: message delivered"
                 );
-                // TODO(webhook): emit EventType::IdeationAutoProposeSent via AppState::webhook_publisher
-                // when AppState gains that field. Payload: { session_id, project_id }.
+                // Layer 2: persist IdeationAutoProposeSent to external_events table (non-fatal)
+                let sent_payload = serde_json::json!({
+                    "session_id": session_id,
+                    "project_id": project_id,
+                });
+                if let Err(e) = external_events_repo
+                    .insert_event("ideation:auto_propose_sent", project_id, &sent_payload.to_string())
+                    .await
+                {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        error = %e,
+                        "auto_propose_with_retry: failed to persist auto_propose_sent event (non-fatal)"
+                    );
+                }
+                // Layer 3: webhook push (non-fatal, fire-and-forget)
+                if let Some(ref publisher) = webhook_publisher {
+                    let _ = publisher.publish(
+                        ralphx_domain::entities::EventType::IdeationAutoProposeSent,
+                        project_id,
+                        sent_payload,
+                    ).await;
+                }
                 return;
             }
             Err(e) => {
@@ -1204,8 +1270,14 @@ pub async fn auto_propose_with_retry(
             "auto_propose_for_external: failed to persist failure event (non-fatal)"
         );
     }
-    // TODO(webhook): emit EventType::IdeationAutoProposeFailed via AppState::webhook_publisher
-    // when AppState gains that field. Payload: { session_id, project_id, error }.
+    // Layer 3: webhook push for failure (Layer 2 insert above) — non-fatal, fire-and-forget
+    if let Some(ref publisher) = webhook_publisher {
+        let _ = publisher.publish(
+            ralphx_domain::entities::EventType::IdeationAutoProposeFailed,
+            project_id,
+            payload,
+        ).await;
+    }
 }
 
 /// POST /api/ideation/sessions/:id/verification
@@ -1629,9 +1701,28 @@ pub async fn update_plan_verification(
         );
     }
 
-    // TODO(webhook): emit EventType::IdeationVerified via AppState::webhook_publisher when
-    // new_status == Verified and AppState gains that field.
-    // Payload: { session_id, project_id, convergence_reason }.
+    // Layer 2+3 for IdeationVerified — only when new_status == Verified (non-fatal)
+    if new_status == VerificationStatus::Verified {
+        let verified_payload = serde_json::json!({
+            "session_id": session_id,
+            "project_id": session.project_id.as_str(),
+            "convergence_reason": metadata.convergence_reason,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        });
+        if let Err(e) = state.app_state.external_events_repo
+            .insert_event("ideation:verified", session.project_id.as_str(), &verified_payload.to_string())
+            .await
+        {
+            tracing::warn!(error = %e, session_id = %session_id, "Failed to persist ideation:verified event");
+        }
+        if let Some(ref publisher) = state.app_state.webhook_publisher {
+            let _ = publisher.publish(
+                ralphx_domain::entities::EventType::IdeationVerified,
+                session.project_id.as_str(),
+                verified_payload,
+            ).await;
+        }
+    }
 
     // Auto-propose for external sessions that converged via zero_blocking
     if new_status == VerificationStatus::Verified

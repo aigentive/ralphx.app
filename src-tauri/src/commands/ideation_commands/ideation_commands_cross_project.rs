@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 
+use ralphx_domain::entities::EventType;
 use tauri::{Emitter, State};
 
 use crate::application::AppState;
@@ -191,13 +192,35 @@ pub(crate) async fn create_cross_project_session_impl<R: tauri::Runtime>(
     );
 
     // 7. Emit ideation:session_created event (same payload shape as regular sessions)
-    let _ = app.emit(
-        "ideation:session_created",
-        serde_json::json!({
-            "sessionId": created.id.to_string(),
-            "projectId": created.project_id.to_string(),
-        }),
-    );
+    let payload_json = serde_json::json!({
+        "sessionId": created.id.to_string(),
+        "projectId": created.project_id.to_string(),
+    });
+    let _ = app.emit("ideation:session_created", &payload_json);
+
+    // Layer 2: persist to external_events table (non-fatal)
+    if let Err(e) = state
+        .external_events_repo
+        .insert_event(
+            "ideation:session_created",
+            &created.project_id.to_string(),
+            &payload_json.to_string(),
+        )
+        .await
+    {
+        tracing::warn!(error = %e, "Failed to persist IdeationSessionCreated event");
+    }
+
+    // Layer 3: webhook push (fire-and-forget, non-fatal)
+    if let Some(ref publisher) = state.webhook_publisher {
+        let _ = publisher
+            .publish(
+                EventType::IdeationSessionCreated,
+                &created.project_id.to_string(),
+                payload_json,
+            )
+            .await;
+    }
 
     Ok(IdeationSessionResponse::from(created))
 }

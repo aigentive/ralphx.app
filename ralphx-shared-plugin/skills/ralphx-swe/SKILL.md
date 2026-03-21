@@ -18,33 +18,31 @@ argument-hint: "[section: quick-start | state-machine | decisions | events | rec
 
 ## 1. Bootstrap — Start Here Every Session
 
-Four steps before taking any pipeline action:
+Three steps before taking any pipeline action:
 
-**Step 1 — Register your webhook** (do this once per agent lifecycle):
-```
-v1_register_webhook(url: YOUR_GATEWAY_URL)
-→ Save returned webhook_id + HMAC secret. Never regenerate secret unless truly lost.
-→ All subsequent pipeline events arrive as HTTP POST to your gateway.
-```
-
-**Step 2 — Backfill missed events** (catch up on events since last run):
+**Step 1 — Backfill missed events** (catch up on events since last run):
 ```
 v1_get_recent_events(project_id, cursor: lastSeenCursor, limit: 100)
 → Process events in order. Advance cursor after each batch.
 → If this is a fresh start, use cursor: 0 to get recent events.
 ```
 
-**Step 3 — Check attention items** (find what needs action right now):
+**Step 2 — Check attention items** (find what needs action right now):
 ```
 v1_get_attention_items(project_id)
 → Returns escalated_reviews, failed_tasks, merge_conflicts.
 → Address these before doing anything else.
 ```
 
-**Step 4 — Load tool reference** (for argument schemas and preconditions):
+**Step 3 — Load tool reference** (for argument schemas and preconditions):
 ```
 v1_get_agent_guide()  → or v1_get_agent_guide(section: "pipeline") for supervision tools
 ```
+
+> **Webhook registration is automatic.** `RalphxWebhookRegistrar` handles registration at startup.
+> You do NOT need to call `v1_register_webhook` to begin receiving events. If the webhook becomes
+> unhealthy (`system:webhook_unhealthy` event), re-register the same URL to reactivate it — see
+> Do's and Don'ts table below.
 
 ---
 
@@ -54,9 +52,9 @@ v1_get_agent_guide()  → or v1_get_agent_guide(section: "pipeline") for supervi
 role in those states is to watch, not interrupt. Only take action in waiting states
 (`review_passed`, `escalated`, `qa_failed`, `merge_conflict`, `merge_incomplete`).
 
-**Webhook-first.** Subscribe to events via `v1_register_webhook`. Use `v1_get_recent_events` with
-a cursor as a fallback when the webhook is unhealthy. Polling task status in a tight loop is the
-last resort — it wastes rate limit budget.
+**Webhook-first.** Your webhook is auto-registered — events arrive as HTTP POST without any
+setup call. Use `v1_get_recent_events` with a cursor as fallback when the webhook is unhealthy.
+Polling task status in a tight loop is the last resort — it wastes rate limit budget.
 
 **Annotate before you intervene.** Before calling any action tool, call `v1_create_task_note` with
 your reasoning. This creates an audit trail for humans reviewing your decisions.

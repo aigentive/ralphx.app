@@ -23,11 +23,12 @@ pub enum EventType {
     MergeReady,
     MergeCompleted,
     MergeConflict,
-    // Ideation events (6)
+    // Ideation events (7)
     IdeationSessionCreated,
     IdeationPlanCreated,
     IdeationVerified,
     IdeationProposalsReady,
+    IdeationSessionAccepted,
     IdeationAutoProposeSent,
     IdeationAutoProposeFailed,
     // System events (2)
@@ -54,6 +55,7 @@ impl fmt::Display for EventType {
             EventType::IdeationPlanCreated => "ideation:plan_created",
             EventType::IdeationVerified => "ideation:verified",
             EventType::IdeationProposalsReady => "ideation:proposals_ready",
+            EventType::IdeationSessionAccepted => "ideation:session_accepted",
             EventType::IdeationAutoProposeSent => "ideation:auto_propose_sent",
             EventType::IdeationAutoProposeFailed => "ideation:auto_propose_failed",
             EventType::SystemWebhookUnhealthy => "system:webhook_unhealthy",
@@ -95,6 +97,7 @@ impl FromStr for EventType {
             "ideation:plan_created" => Ok(EventType::IdeationPlanCreated),
             "ideation:verified" => Ok(EventType::IdeationVerified),
             "ideation:proposals_ready" => Ok(EventType::IdeationProposalsReady),
+            "ideation:session_accepted" => Ok(EventType::IdeationSessionAccepted),
             "ideation:auto_propose_sent" => Ok(EventType::IdeationAutoProposeSent),
             "ideation:auto_propose_failed" => Ok(EventType::IdeationAutoProposeFailed),
             "system:webhook_unhealthy" => Ok(EventType::SystemWebhookUnhealthy),
@@ -120,6 +123,10 @@ mod tests {
         assert_eq!(
             EventType::IdeationSessionCreated.to_string(),
             "ideation:session_created"
+        );
+        assert_eq!(
+            EventType::IdeationSessionAccepted.to_string(),
+            "ideation:session_accepted"
         );
         assert_eq!(
             EventType::SystemWebhookUnhealthy.to_string(),
@@ -150,6 +157,7 @@ mod tests {
             EventType::IdeationPlanCreated,
             EventType::IdeationVerified,
             EventType::IdeationProposalsReady,
+            EventType::IdeationSessionAccepted,
             EventType::IdeationAutoProposeSent,
             EventType::IdeationAutoProposeFailed,
             EventType::SystemWebhookUnhealthy,

@@ -249,6 +249,19 @@ Emitted when the auto-propose pipeline successfully creates tasks from finalized
 }
 ```
 
+### `ideation:session_accepted`
+
+Emitted when all proposals in a session are finalized and applied as tasks, transitioning the session to the Accepted state. External agents can use this event as a trigger to begin monitoring the resulting tasks.
+
+```json
+{
+  "event_type": "ideation:session_accepted",
+  "session_id": "session-def456",
+  "project_id": "proj-xyz",
+  "timestamp": "2026-03-20T13:52:00Z"
+}
+```
+
 ### `ideation:auto_propose_failed`
 
 Emitted when the auto-propose pipeline fails to create tasks from proposals.
@@ -316,6 +329,7 @@ Emitted when an API key approaches its rate limit threshold.
 | `ideation:plan_created` | Ideation | `session_id` |
 | `ideation:verified` | Ideation | `session_id` |
 | `ideation:proposals_ready` | Ideation | `session_id`, `proposal_count` |
+| `ideation:session_accepted` | Ideation | `session_id` |
 | `ideation:auto_propose_sent` | Ideation | `session_id` |
 | `ideation:auto_propose_failed` | Ideation | `session_id`, `error` |
 | `system:webhook_unhealthy` | System | `webhook_id`, `failure_count` |

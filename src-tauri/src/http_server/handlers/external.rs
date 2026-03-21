@@ -20,6 +20,8 @@ use tauri::Emitter;
 use crate::application::chat_service::{ChatService, ClaudeChatService, SendMessageOptions};
 use crate::application::task_cleanup_service::TaskCleanupService;
 use crate::commands::ideation_commands::{apply_proposals_core, ApplyProposalsInput};
+use ralphx_domain::entities::EventType;
+
 use crate::domain::entities::{
     ideation::IdeationSession, task::Task, types::ProjectId, ChatContextType, IdeationSessionId,
     InternalStatus, SessionOrigin, TaskId,
@@ -860,14 +862,37 @@ pub async fn start_ideation_http(
     }
 
     // Emit ideation:session_created event for frontend
+    let session_created_payload = serde_json::json!({
+        "sessionId": session_id_str,
+        "projectId": project_id.to_string(),
+    });
     if let Some(ref handle) = state.app_state.app_handle {
-        let _ = handle.emit(
+        let _ = handle.emit("ideation:session_created", &session_created_payload);
+    }
+
+    // Layer 2: persist to external_events table (non-fatal)
+    if let Err(e) = state
+        .app_state
+        .external_events_repo
+        .insert_event(
             "ideation:session_created",
-            serde_json::json!({
-                "sessionId": session_id_str,
-                "projectId": project_id.to_string(),
-            }),
-        );
+            &project_id.to_string(),
+            &session_created_payload.to_string(),
+        )
+        .await
+    {
+        tracing::warn!(error = %e, "Failed to persist IdeationSessionCreated event");
+    }
+
+    // Layer 3: webhook push (fire-and-forget, non-fatal)
+    if let Some(ref publisher) = state.app_state.webhook_publisher {
+        let _ = publisher
+            .publish(
+                EventType::IdeationSessionCreated,
+                &project_id.to_string(),
+                session_created_payload,
+            )
+            .await;
     }
 
     // Build existing_active_sessions for response (include the freshly created session too)

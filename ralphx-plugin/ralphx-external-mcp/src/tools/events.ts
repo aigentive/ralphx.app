@@ -151,6 +151,13 @@ export interface IdeationAutoProposeFailedEvent {
   timestamp: string;
 }
 
+export interface IdeationSessionAcceptedEvent {
+  event_type: 'ideation:session_accepted';
+  session_id: string;
+  project_id: string;
+  timestamp: string;
+}
+
 // System events
 export interface SystemWebhookUnhealthyEvent {
   event_type: 'system:webhook_unhealthy';
@@ -187,6 +194,7 @@ export type RalphXEvent =
   | IdeationProposalsReadyEvent
   | IdeationAutoProposeSentEvent
   | IdeationAutoProposeFailedEvent
+  | IdeationSessionAcceptedEvent
   | SystemWebhookUnhealthyEvent
   | SystemRateLimitWarningEvent;
 

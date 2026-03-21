@@ -17,6 +17,7 @@ use crate::domain::services::{
 };
 use crate::domain::repositories::IdeationSessionRepository;
 use crate::domain::services::running_agent_registry::{RunningAgentKey, RunningAgentRegistry};
+use crate::domain::entities::EventType;
 use crate::error::AppError;
 use crate::infrastructure::agents::claude::verification_config;
 use crate::infrastructure::sqlite::{
@@ -236,7 +237,7 @@ pub async fn create_plan_artifact(
     // Single lock acquisition: all DB work in one transaction.
     // Events emitted after db.run_transaction() returns (acceptable crash-consistency gap).
     // Returns auto_verify_generation=Some(gen) if auto-verify trigger was atomically applied.
-    let (session_id, created, auto_verify_generation) = state
+    let (session_id, created, auto_verify_generation, project_id) = state
         .app_state
         .db
         .run_transaction(move |conn| {
@@ -296,7 +297,7 @@ pub async fn create_plan_artifact(
                 None
             };
 
-            Ok((sid, created, auto_verify_generation))
+            Ok((sid, created, auto_verify_generation, session.project_id.clone()))
         })
         .await
         .map_err(|e| {
@@ -322,6 +323,46 @@ pub async fn create_plan_artifact(
                 }
             }),
         );
+    }
+
+    // Three-layer emission for IdeationPlanCreated (was dead code — now wired).
+    // Non-fatal: event delivery failure must never block artifact creation.
+    let ideation_plan_payload = serde_json::json!({
+        "session_id": session_id.as_str(),
+        "project_id": project_id.as_str(),
+        "artifact_id": created.id.as_str(),
+        "plan_title": created.name,
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+    });
+
+    // Layer 1: Tauri frontend event
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let _ = app_handle.emit("ideation:plan_created", &ideation_plan_payload);
+    }
+
+    // Layer 2: external_events table (non-fatal)
+    if let Err(e) = state
+        .app_state
+        .external_events_repo
+        .insert_event(
+            "ideation:plan_created",
+            project_id.as_str(),
+            &ideation_plan_payload.to_string(),
+        )
+        .await
+    {
+        tracing::warn!(error = %e, "Failed to persist IdeationPlanCreated event (non-fatal)");
+    }
+
+    // Layer 3: webhook push (non-fatal, fire-and-forget)
+    if let Some(ref publisher) = state.app_state.webhook_publisher {
+        let _ = publisher
+            .publish(
+                EventType::IdeationPlanCreated,
+                project_id.as_str(),
+                ideation_plan_payload,
+            )
+            .await;
     }
 
     // Spawn auto-verifier after commit, if trigger was applied.
