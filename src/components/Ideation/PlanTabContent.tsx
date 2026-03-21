@@ -6,6 +6,7 @@ import { useIdeationStore } from "@/stores/ideationStore";
 import { PlanDisplay } from "./PlanDisplay";
 import type { TeamMetadata } from "./PlanDisplay";
 import { AcceptedSessionBanner } from "./AcceptedSessionBanner";
+import { PlanEmptyState } from "./PlanEmptyState";
 import { ExportPlanDialog } from "./ExportPlanDialog";
 import { chatApi } from "@/api/chat";
 import type { IdeationSession, TaskProposal } from "@/types/ideation";
@@ -18,7 +19,6 @@ interface PlanTabContentProps {
   session: IdeationSession;
   proposals: TaskProposal[];
   teamMetadata?: TeamMetadata;
-  isReadOnly: boolean;
   importStatus: { type: "success" | "error"; message: string } | null;
   onImportStatusChange: (status: { type: "success" | "error"; message: string } | null) => void;
   onImportPlan: () => void;
@@ -39,7 +39,6 @@ export function PlanTabContent({
   session,
   proposals,
   teamMetadata,
-  isReadOnly: _isReadOnly,
   importStatus,
   onImportStatusChange,
   onImportPlan,
@@ -152,6 +151,11 @@ export function PlanTabContent({
         planArtifact={planArtifact}
         projectId={session.projectId}
       />
+
+      {/* Empty state — shown when no plan, settings loaded, plan not required, and no proposals */}
+      {!planArtifact && ideationSettings !== null && ideationSettings.planMode !== "required" && proposals.length === 0 && (
+        <PlanEmptyState onBrowse={onImportPlan} />
+      )}
 
       {/* Waiting for plan — shown when plan is required but not yet created */}
       {!planArtifact && ideationSettings?.planMode === "required" && proposals.length === 0 && (

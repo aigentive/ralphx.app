@@ -943,7 +943,6 @@ export function PlanningView({
                         session={session}
                         proposals={proposals}
                         {...(teamMetadata !== undefined && { teamMetadata })}
-                        isReadOnly={isReadOnly}
                         importStatus={importStatus}
                         onImportStatusChange={setImportStatus}
                         onImportPlan={handleImportPlan}
