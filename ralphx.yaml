@@ -485,7 +485,7 @@ agents:
         finalize_proposals,
         migrate_proposals,
       ]
-    preapproved_cli_tools: [Task(Explore), Task(Plan)]
+    preapproved_cli_tools: [Task(Explore), Task(Plan), "Task(ralphx:ideation-specialist-ux)"]
 
   - name: orchestrator-ideation-readonly
     system_prompt_file: ralphx-plugin/agents/orchestrator-ideation-readonly.md
