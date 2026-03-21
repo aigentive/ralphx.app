@@ -175,6 +175,11 @@ pub struct IdeationStatusResponse {
     pub external_activity_phase: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct GetSessionTasksParams {
+    pub changed_since: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct SessionTask {
     pub id: String,
@@ -184,6 +189,7 @@ pub struct SessionTask {
     pub category: String,
     pub priority: i32,
     pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -266,6 +272,7 @@ pub struct SessionSummary {
     pub status: String,
     pub proposal_count: u32,
     pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -277,6 +284,7 @@ pub struct ListSessionsResponse {
 pub struct ListSessionsParams {
     pub status: Option<String>,
     pub limit: Option<u32>,
+    pub updated_after: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -293,9 +301,24 @@ pub struct PipelineStages {
 }
 
 #[derive(Debug, Serialize)]
+pub struct ChangedTask {
+    pub id: String,
+    pub title: String,
+    pub status: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GetPipelineParams {
+    pub since: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 pub struct PipelineOverviewResponse {
     pub project_id: String,
     pub stages: PipelineStages,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub changed_tasks: Option<Vec<ChangedTask>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -303,6 +326,7 @@ pub struct PollEventsQuery {
     pub project_id: String,
     pub cursor: Option<i64>,
     pub limit: Option<i64>,
+    pub event_type: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1097,6 +1121,7 @@ pub async fn get_session_tasks_http(
     State(state): State<HttpServerState>,
     scope: ProjectScope,
     Path(session_id): Path<String>,
+    Query(params): Query<GetSessionTasksParams>,
 ) -> Result<Json<SessionTasksResponse>, HttpError> {
     let session_id_obj = IdeationSessionId::from_string(session_id.clone());
 
@@ -1140,10 +1165,32 @@ pub async fn get_session_tasks_http(
             }
         })?;
 
-    let delivery_status = derive_delivery_status(&tasks);
-    let task_count = tasks.len();
+    // Parse changed_since filter if provided (400 on invalid RFC3339)
+    let since_cutoff = if let Some(ref cs) = params.changed_since {
+        let dt = chrono::DateTime::parse_from_rfc3339(cs).map_err(|_| HttpError {
+            status: StatusCode::BAD_REQUEST,
+            message: Some(format!(
+                "Invalid changed_since value '{}': must be ISO 8601 / RFC3339",
+                cs
+            )),
+        })?;
+        Some(dt.with_timezone(&chrono::Utc))
+    } else {
+        None
+    };
 
-    let session_tasks: Vec<SessionTask> = tasks
+    let delivery_status = derive_delivery_status(&tasks);
+
+    // Apply changed_since filter in-memory after loading
+    let filtered_tasks: Vec<_> = if let Some(cutoff) = since_cutoff {
+        tasks.into_iter().filter(|t| t.updated_at > cutoff).collect()
+    } else {
+        tasks.into_iter().collect()
+    };
+
+    let task_count = filtered_tasks.len();
+
+    let session_tasks: Vec<SessionTask> = filtered_tasks
         .into_iter()
         .map(|t| SessionTask {
             id: t.id.to_string(),
@@ -1153,6 +1200,7 @@ pub async fn get_session_tasks_http(
             category: t.category.to_string(),
             priority: t.priority,
             created_at: t.created_at.to_rfc3339(),
+            updated_at: t.updated_at.to_rfc3339(),
         })
         .collect();
 
@@ -1246,6 +1294,22 @@ pub async fn list_ideation_sessions_http(
         }
     };
 
+    // Apply updated_after filter before proposal-count loop
+    let sessions = if let Some(ref updated_after_str) = params.updated_after {
+        let cutoff = chrono::DateTime::parse_from_rfc3339(updated_after_str).map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid updated_after format. Expected ISO 8601 (RFC 3339)."})),
+            )
+        })?;
+        sessions
+            .into_iter()
+            .filter(|s| s.updated_at > cutoff.with_timezone(&chrono::Utc))
+            .collect::<Vec<_>>()
+    } else {
+        sessions
+    };
+
     // Build summaries with proposal counts
     let mut summaries = Vec::with_capacity(sessions.len());
     for session in &sessions {
@@ -1267,6 +1331,7 @@ pub async fn list_ideation_sessions_http(
             status: session.status.to_string(),
             proposal_count,
             created_at: session.created_at.to_rfc3339(),
+            updated_at: session.updated_at.to_rfc3339(),
         });
     }
 
@@ -1279,7 +1344,8 @@ pub async fn get_pipeline_overview_http(
     State(state): State<HttpServerState>,
     scope: ProjectScope,
     Path(project_id): Path<String>,
-) -> Result<Json<PipelineOverviewResponse>, StatusCode> {
+    Query(params): Query<GetPipelineParams>,
+) -> Result<Json<PipelineOverviewResponse>, HttpError> {
     let project_id = ProjectId::from_string(project_id);
 
     // Validate project exists and is in scope
@@ -1290,13 +1356,13 @@ pub async fn get_pipeline_overview_http(
         .await
         .map_err(|e| {
             error!("Failed to get project {}: {}", project_id.as_str(), e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            HttpError::from(StatusCode::INTERNAL_SERVER_ERROR)
         })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .ok_or_else(|| HttpError::from(StatusCode::NOT_FOUND))?;
 
     project
         .assert_project_scope(&scope)
-        .map_err(|e| e.status)?;
+        .map_err(|e| HttpError::from(e.status))?;
 
     // Load all tasks
     let tasks = state
@@ -1306,7 +1372,7 @@ pub async fn get_pipeline_overview_http(
         .await
         .map_err(|e| {
             error!("Failed to get tasks for project {}: {}", project_id.as_str(), e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            HttpError::from(StatusCode::INTERNAL_SERVER_ERROR)
         })?;
 
     let mut stages = PipelineStages {
@@ -1321,6 +1387,7 @@ pub async fn get_pipeline_overview_http(
         stopped: 0,
     };
 
+    // Stage counts over ALL tasks (regardless of `since` filter)
     for task in &tasks {
         match task.internal_status {
             InternalStatus::Backlog | InternalStatus::Ready => stages.pending += 1,
@@ -1346,9 +1413,29 @@ pub async fn get_pipeline_overview_http(
         }
     }
 
+    // If `since` is provided, compute changed_tasks (tasks with updated_at > since)
+    let changed_tasks = if let Some(since_str) = params.since {
+        let since = chrono::DateTime::parse_from_rfc3339(&since_str)
+            .map_err(|_| HttpError::validation(format!("Invalid `since` timestamp: {since_str}")))?;
+        let filtered: Vec<ChangedTask> = tasks
+            .iter()
+            .filter(|t| t.updated_at > since.with_timezone(&chrono::Utc))
+            .map(|t| ChangedTask {
+                id: t.id.to_string(),
+                title: t.title.clone(),
+                status: t.internal_status.to_string(),
+                updated_at: t.updated_at.to_rfc3339(),
+            })
+            .collect();
+        Some(filtered)
+    } else {
+        None
+    };
+
     Ok(Json(PipelineOverviewResponse {
         project_id: project.id.to_string(),
         stages,
+        changed_tasks,
     }))
 }
 
@@ -1380,31 +1467,42 @@ pub async fn poll_events_http(
     let cursor = params.cursor.unwrap_or(0);
     let limit = params.limit.unwrap_or(50).clamp(1, 200);
     let project_id_str = project_id.to_string();
+    let event_type_filter = params.event_type.clone();
 
     // Query external_events via the shared db connection
     let events = state
         .app_state
         .db
         .run(move |conn| {
-            let mut stmt = conn.prepare(
-                "SELECT id, event_type, project_id, payload, created_at \
+            let mut sql = "SELECT id, event_type, project_id, payload, created_at \
                  FROM external_events \
-                 WHERE project_id = ?1 AND id > ?2 \
-                 ORDER BY id ASC \
-                 LIMIT ?3",
-            )?;
-            let rows = stmt.query_map(
-                rusqlite::params![project_id_str, cursor, limit + 1],
-                |row| {
-                    Ok((
-                        row.get::<_, i64>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                        row.get::<_, String>(4)?,
-                    ))
-                },
-            )?;
+                 WHERE project_id = ?1 AND id > ?2"
+                .to_string();
+            let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
+                Box::new(project_id_str.clone()),
+                Box::new(cursor),
+            ];
+            if let Some(ref et) = event_type_filter {
+                sql.push_str(" AND event_type = ?3");
+                params_vec.push(Box::new(et.clone()));
+                sql.push_str(" ORDER BY id ASC LIMIT ?4");
+                params_vec.push(Box::new(limit + 1));
+            } else {
+                sql.push_str(" ORDER BY id ASC LIMIT ?3");
+                params_vec.push(Box::new(limit + 1));
+            }
+            let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+                params_vec.iter().map(|p| p.as_ref()).collect();
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(params_refs.as_slice(), |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            })?;
             let mut result = Vec::new();
             for row in rows {
                 result.push(row.map_err(|e| crate::error::AppError::Database(e.to_string()))?);

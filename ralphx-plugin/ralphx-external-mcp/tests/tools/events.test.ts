@@ -115,6 +115,34 @@ describe("handleGetRecentEvents", () => {
     expect(parsed.error).toBe("backend_error");
     expect(parsed.status).toBe(500);
   });
+
+  it("accepts last_id as backward-compat alias for cursor", async () => {
+    mockGet.mockResolvedValueOnce({ status: 200, body: { events: [], next_cursor: null, has_more: false } });
+    await handleGetRecentEvents({ project_id: "proj-alpha", last_id: 99 }, testContext);
+    const [, , params] = mockGet.mock.calls[0]!;
+    expect(params.cursor).toBe("99");
+  });
+
+  it("prefers cursor over last_id when both provided", async () => {
+    mockGet.mockResolvedValueOnce({ status: 200, body: { events: [], next_cursor: null, has_more: false } });
+    await handleGetRecentEvents({ project_id: "proj-alpha", cursor: 5, last_id: 99 }, testContext);
+    const [, , params] = mockGet.mock.calls[0]!;
+    expect(params.cursor).toBe("5");
+  });
+
+  it("forwards event_type filter to backend", async () => {
+    mockGet.mockResolvedValueOnce({ status: 200, body: { events: [], next_cursor: null, has_more: false } });
+    await handleGetRecentEvents({ project_id: "proj-alpha", event_type: "task:status_changed" }, testContext);
+    const [, , params] = mockGet.mock.calls[0]!;
+    expect(params.event_type).toBe("task:status_changed");
+  });
+
+  it("omits event_type param when not provided", async () => {
+    mockGet.mockResolvedValueOnce({ status: 200, body: { events: [], next_cursor: null, has_more: false } });
+    await handleGetRecentEvents({ project_id: "proj-alpha" }, testContext);
+    const [, , params] = mockGet.mock.calls[0]!;
+    expect(params.event_type).toBeUndefined();
+  });
 });
 
 // ─── v1_subscribe_events ─────────────────────────────────────────────────────

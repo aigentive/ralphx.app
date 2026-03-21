@@ -244,6 +244,7 @@ export async function handleListIdeationSessions(
   const params = new URLSearchParams();
   if (args.status) params.set("status", args.status as string);
   if (args.limit) params.set("limit", String(args.limit));
+  if (args.updated_after) params.set("updated_after", args.updated_after as string);
   const queryString = params.toString() ? `?${params.toString()}` : "";
   try {
     const response = await getBackendClient().get(
@@ -298,8 +299,11 @@ export async function handleGetSessionTasks(
     return JSON.stringify({ error: "missing_argument", message: "session_id is required" }, null, 2);
   }
   try {
+    const qs = new URLSearchParams();
+    if (args.changed_since) qs.set("changed_since", args.changed_since as string);
+    const query = qs.toString() ? `?${qs.toString()}` : "";
     const response = await getBackendClient().get(
-      `/api/external/sessions/${encodeURIComponent(sessionId)}/tasks`,
+      `/api/external/sessions/${encodeURIComponent(sessionId)}/tasks${query}`,
       context
     );
     return JSON.stringify(response.body, null, 2);

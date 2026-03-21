@@ -182,6 +182,10 @@ export function registerTools(
           type: "object" as const,
           properties: {
             project_id: { type: "string", description: "Project ID" },
+            since: {
+              type: "string",
+              description: "ISO 8601 timestamp — only return tasks changed after this time in changed_tasks list. Stage counts always reflect all tasks.",
+            },
           },
           required: ["project_id"],
         },
@@ -360,6 +364,10 @@ export function registerTools(
               description: "Filter by status (default: all)",
             },
             limit: { type: "number", description: "Max sessions to return (default: 20, max: 100)" },
+            updated_after: {
+              type: "string",
+              description: "ISO 8601 timestamp (RFC 3339). Only return sessions updated after this time.",
+            },
           },
           required: ["project_id"],
         },
@@ -371,6 +379,7 @@ export function registerTools(
           type: "object" as const,
           properties: {
             session_id: { type: "string", description: "Ideation session ID" },
+            changed_since: { type: "string", description: "ISO 8601 / RFC3339 timestamp — only return tasks updated after this time" },
           },
           required: ["session_id"],
         },
@@ -544,16 +553,24 @@ export function registerTools(
       {
         name: "v1_get_recent_events",
         description:
-          "Cursor-based event retrieval from DB (survives restarts). Pass last_id=0 for all recent events.",
+          "Cursor-based event retrieval from DB (survives restarts). Pass cursor=0 or omit for all recent events.",
         inputSchema: {
           type: "object" as const,
           properties: {
             project_id: { type: "string", description: "Project ID to filter events" },
+            cursor: {
+              type: "number",
+              description: "Last event ID received (0 for all recent). Primary pagination field.",
+            },
             last_id: {
               type: "number",
-              description: "Last event ID received (0 for all recent)",
+              description: "Deprecated alias for cursor. Use cursor instead.",
             },
             limit: { type: "number", description: "Max events to return (default: 50)" },
+            event_type: {
+              type: "string",
+              description: "Optional event type filter (e.g. 'task:status_changed'). Omit to receive all types.",
+            },
           },
           required: [],
         },

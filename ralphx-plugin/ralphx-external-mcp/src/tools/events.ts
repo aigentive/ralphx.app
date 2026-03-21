@@ -255,9 +255,11 @@ export async function handleGetRecentEvents(
   context: ApiKeyContext
 ): Promise<string> {
   const projectId = args.project_id as string | undefined;
-  const cursor = typeof args.cursor === "number" ? args.cursor : 0;
+  const cursorRaw = typeof args.cursor === "number" ? args.cursor : typeof args.last_id === "number" ? args.last_id : 0;
+  const cursor = cursorRaw;
   const rawLimit = typeof args.limit === "number" ? args.limit : 50;
   const limit = Math.min(Math.max(1, rawLimit), 200);
+  const eventType = typeof args.event_type === "string" ? args.event_type : undefined;
 
   if (!projectId) {
     return JSON.stringify(
@@ -277,6 +279,9 @@ export async function handleGetRecentEvents(
     };
     if (cursor > 0) {
       params.cursor = String(cursor);
+    }
+    if (eventType !== undefined) {
+      params.event_type = eventType;
     }
 
     const response = await getBackendClient().get<EventPollResponse>(

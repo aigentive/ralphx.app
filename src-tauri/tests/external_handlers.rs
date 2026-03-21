@@ -307,6 +307,7 @@ async fn test_get_pipeline_overview_counts_stages() {
         State(state),
         unrestricted_scope(),
         Path(project_id.to_string()),
+        Query(GetPipelineParams { since: None }),
     )
     .await;
 
@@ -316,6 +317,7 @@ async fn test_get_pipeline_overview_counts_stages() {
     assert_eq!(response.stages.pending, 1);
     assert_eq!(response.stages.executing, 1);
     assert_eq!(response.stages.merged, 1);
+    assert!(response.changed_tasks.is_none());
 }
 
 #[tokio::test]
@@ -330,11 +332,81 @@ async fn test_get_pipeline_overview_scope_violation() {
         State(state),
         scoped(&["proj-different"]),
         Path(project_id.to_string()),
+        Query(GetPipelineParams { since: None }),
     )
     .await;
 
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), axum::http::StatusCode::FORBIDDEN);
+    assert_eq!(result.unwrap_err().status, axum::http::StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_get_pipeline_overview_since_filters_changed_tasks() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-pipeline-since";
+    let p = make_project(project_id, "Pipeline Since Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let past = chrono::Utc::now() - chrono::Duration::hours(2);
+    let since = chrono::Utc::now() - chrono::Duration::hours(1);
+
+    // task_old: updated before `since` (should NOT appear in changed_tasks)
+    let mut task_old = Task::new(
+        ProjectId::from_string(project_id.to_string()),
+        "Old Task".to_string(),
+    );
+    task_old.updated_at = past;
+    task_old.internal_status = InternalStatus::Ready;
+
+    // task_new: updated after `since` (should appear in changed_tasks)
+    let mut task_new = Task::new(
+        ProjectId::from_string(project_id.to_string()),
+        "New Task".to_string(),
+    );
+    task_new.updated_at = chrono::Utc::now();
+    task_new.internal_status = InternalStatus::Executing;
+
+    state.app_state.task_repo.create(task_old).await.unwrap();
+    state.app_state.task_repo.create(task_new).await.unwrap();
+
+    let result = get_pipeline_overview_http(
+        State(state),
+        unrestricted_scope(),
+        Path(project_id.to_string()),
+        Query(GetPipelineParams { since: Some(since.to_rfc3339()) }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    // Stage counts are over ALL tasks
+    assert_eq!(response.stages.pending, 1);
+    assert_eq!(response.stages.executing, 1);
+    // changed_tasks contains only the new task
+    let changed = response.changed_tasks.expect("changed_tasks should be present");
+    assert_eq!(changed.len(), 1);
+    assert_eq!(changed[0].title, "New Task");
+}
+
+#[tokio::test]
+async fn test_get_pipeline_overview_since_invalid_timestamp_returns_error() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-pipeline-invalid";
+    let p = make_project(project_id, "Pipeline Invalid");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let result = get_pipeline_overview_http(
+        State(state),
+        unrestricted_scope(),
+        Path(project_id.to_string()),
+        Query(GetPipelineParams { since: Some("not-a-timestamp".to_string()) }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().status, axum::http::StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 // ============================================================================
@@ -1092,6 +1164,7 @@ async fn test_poll_events_cursor_based() {
             project_id: project_id.to_string(),
             cursor: None,
             limit: None,
+            event_type: None,
         }),
     )
     .await;
@@ -1111,6 +1184,7 @@ async fn test_poll_events_cursor_based() {
             project_id: project_id.to_string(),
             cursor: Some(first_id),
             limit: None,
+            event_type: None,
         }),
     )
     .await;
@@ -1166,6 +1240,7 @@ async fn test_poll_events_limit_and_has_more() {
             project_id: project_id.to_string(),
             cursor: None,
             limit: Some(2),
+            event_type: None,
         }),
     )
     .await;
@@ -1192,12 +1267,92 @@ async fn test_poll_events_scope_violation() {
             project_id: project_id.to_string(),
             cursor: None,
             limit: None,
+            event_type: None,
         }),
     )
     .await;
 
     assert!(result.is_err());
     assert_eq!(result.unwrap_err(), axum::http::StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_poll_events_event_type_filter() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-events-filter";
+    let p = make_project(project_id, "Events Filter Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let proj_id_clone = project_id.to_string();
+    state
+        .app_state
+        .db
+        .run(move |conn| {
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS external_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_type TEXT NOT NULL,
+                    project_id TEXT NOT NULL,
+                    payload TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
+                );",
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+            conn.execute(
+                "INSERT INTO external_events (event_type, project_id, payload) VALUES ('task:created', ?1, '{}')",
+                rusqlite::params![proj_id_clone],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+            conn.execute(
+                "INSERT INTO external_events (event_type, project_id, payload) VALUES ('task:status_changed', ?1, '{}')",
+                rusqlite::params![proj_id_clone],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+            conn.execute(
+                "INSERT INTO external_events (event_type, project_id, payload) VALUES ('task:created', ?1, '{}')",
+                rusqlite::params![proj_id_clone],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+    // Filter by event_type — should return only 2 task:created events
+    let result = poll_events_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Query(PollEventsQuery {
+            project_id: project_id.to_string(),
+            cursor: None,
+            limit: None,
+            event_type: Some("task:created".to_string()),
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.events.len(), 2);
+    assert!(response.events.iter().all(|e| e.event_type == "task:created"));
+
+    // Filter by a type with no matches — should return empty
+    let result2 = poll_events_http(
+        State(state),
+        unrestricted_scope(),
+        Query(PollEventsQuery {
+            project_id: project_id.to_string(),
+            cursor: None,
+            limit: None,
+            event_type: Some("review:approved".to_string()),
+        }),
+    )
+    .await;
+
+    assert!(result2.is_ok());
+    let response2 = result2.unwrap().0;
+    assert_eq!(response2.events.len(), 0);
 }
 
 // ============================================================================
@@ -2419,7 +2574,7 @@ async fn test_list_sessions_no_scope_returns_all() {
         State(state),
         unrestricted_scope(),
         Path(project_id.to_string()),
-        Query(ListSessionsParams { status: None, limit: None }),
+        Query(ListSessionsParams { status: None, limit: None, updated_after: None }),
     )
     .await;
 
@@ -2460,7 +2615,7 @@ async fn test_list_sessions_filter_active() {
         State(state),
         unrestricted_scope(),
         Path(project_id.to_string()),
-        Query(ListSessionsParams { status: Some("active".to_string()), limit: None }),
+        Query(ListSessionsParams { status: Some("active".to_string()), limit: None, updated_after: None }),
     )
     .await;
 
@@ -2505,7 +2660,7 @@ async fn test_list_sessions_filter_accepted() {
         State(state),
         unrestricted_scope(),
         Path(project_id.to_string()),
-        Query(ListSessionsParams { status: Some("accepted".to_string()), limit: None }),
+        Query(ListSessionsParams { status: Some("accepted".to_string()), limit: None, updated_after: None }),
     )
     .await;
 
@@ -2549,7 +2704,7 @@ async fn test_list_sessions_filter_archived() {
         State(state),
         unrestricted_scope(),
         Path(project_id.to_string()),
-        Query(ListSessionsParams { status: Some("archived".to_string()), limit: None }),
+        Query(ListSessionsParams { status: Some("archived".to_string()), limit: None, updated_after: None }),
     )
     .await;
 
@@ -2585,7 +2740,7 @@ async fn test_list_sessions_filter_all() {
         State(state),
         unrestricted_scope(),
         Path(project_id.to_string()),
-        Query(ListSessionsParams { status: Some("all".to_string()), limit: None }),
+        Query(ListSessionsParams { status: Some("all".to_string()), limit: None, updated_after: None }),
     )
     .await;
 
@@ -2607,7 +2762,7 @@ async fn test_list_sessions_invalid_status_returns_400() {
         State(state),
         unrestricted_scope(),
         Path(project_id.to_string()),
-        Query(ListSessionsParams { status: Some("invalid_xyz".to_string()), limit: None }),
+        Query(ListSessionsParams { status: Some("invalid_xyz".to_string()), limit: None, updated_after: None }),
     )
     .await;
 
@@ -2629,7 +2784,7 @@ async fn test_list_sessions_scope_violation_returns_403() {
         State(state),
         scoped(&["proj-list-scope-b"]),
         Path(project_id.to_string()),
-        Query(ListSessionsParams { status: None, limit: None }),
+        Query(ListSessionsParams { status: None, limit: None, updated_after: None }),
     )
     .await;
 
@@ -2651,7 +2806,7 @@ async fn test_list_sessions_empty_project() {
         State(state),
         unrestricted_scope(),
         Path(project_id.to_string()),
-        Query(ListSessionsParams { status: None, limit: None }),
+        Query(ListSessionsParams { status: None, limit: None, updated_after: None }),
     )
     .await;
 
@@ -2688,7 +2843,7 @@ async fn test_list_sessions_includes_proposal_count() {
         State(state),
         unrestricted_scope(),
         Path(project_id.to_string()),
-        Query(ListSessionsParams { status: None, limit: None }),
+        Query(ListSessionsParams { status: None, limit: None, updated_after: None }),
     )
     .await;
 
@@ -2698,6 +2853,103 @@ async fn test_list_sessions_includes_proposal_count() {
     assert_eq!(
         response.sessions[0].proposal_count, 2,
         "proposal_count must reflect actual number of proposals"
+    );
+}
+
+/// updated_after filter — only returns sessions updated after the given timestamp
+#[tokio::test]
+async fn test_list_sessions_updated_after_filter() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-list-updated-after";
+    let p = make_project(project_id, "Updated After Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let pid = ProjectId::from_string(project_id.to_string());
+
+    // Create two sessions with different updated_at timestamps
+    let mut old_session = IdeationSession::new_with_title(pid.clone(), "Old Session");
+    old_session.updated_at = chrono::DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    let mut new_session = IdeationSession::new_with_title(pid.clone(), "New Session");
+    new_session.updated_at = chrono::DateTime::parse_from_rfc3339("2025-06-01T00:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    state.app_state.ideation_session_repo.create(old_session).await.unwrap();
+    state.app_state.ideation_session_repo.create(new_session).await.unwrap();
+
+    let result = list_ideation_sessions_http(
+        State(state),
+        unrestricted_scope(),
+        Path(project_id.to_string()),
+        Query(ListSessionsParams {
+            status: None,
+            limit: None,
+            updated_after: Some("2025-01-01T00:00:00Z".to_string()),
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.sessions.len(), 1, "only the new session should be returned");
+    assert_eq!(response.sessions[0].title.as_deref(), Some("New Session"));
+}
+
+/// updated_after filter — invalid timestamp returns 400
+#[tokio::test]
+async fn test_list_sessions_updated_after_invalid_timestamp() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-list-updated-after-invalid";
+    let p = make_project(project_id, "Invalid Timestamp Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let result = list_ideation_sessions_http(
+        State(state),
+        unrestricted_scope(),
+        Path(project_id.to_string()),
+        Query(ListSessionsParams {
+            status: None,
+            limit: None,
+            updated_after: Some("not-a-timestamp".to_string()),
+        }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    let (status, _) = result.unwrap_err();
+    assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+}
+
+/// updated_at field is present in response
+#[tokio::test]
+async fn test_list_sessions_response_includes_updated_at() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-list-updated-at-field";
+    let p = make_project(project_id, "Updated At Field Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let pid = ProjectId::from_string(project_id.to_string());
+    let session = IdeationSession::new_with_title(pid.clone(), "Session With Updated At");
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let result = list_ideation_sessions_http(
+        State(state),
+        unrestricted_scope(),
+        Path(project_id.to_string()),
+        Query(ListSessionsParams { status: None, limit: None, updated_after: None }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.sessions.len(), 1);
+    assert!(
+        !response.sessions[0].updated_at.is_empty(),
+        "updated_at must be present in session summary"
     );
 }
 
@@ -3510,6 +3762,7 @@ async fn test_get_session_tasks_empty_session_returns_not_scheduled() {
         State(state),
         unrestricted_scope(),
         Path(session_id.as_str().to_string()),
+        Query(GetSessionTasksParams { changed_since: None }),
     )
     .await;
 
@@ -3564,6 +3817,7 @@ async fn test_get_session_tasks_with_tasks_returns_task_list() {
         State(state),
         unrestricted_scope(),
         Path(session_id.as_str().to_string()),
+        Query(GetSessionTasksParams { changed_since: None }),
     )
     .await;
 
@@ -3630,6 +3884,7 @@ async fn test_get_session_tasks_excludes_unlinked_tasks() {
         State(state),
         unrestricted_scope(),
         Path(session_id.as_str().to_string()),
+        Query(GetSessionTasksParams { changed_since: None }),
     )
     .await;
 
@@ -3648,6 +3903,7 @@ async fn test_get_session_tasks_nonexistent_session_returns_404() {
         State(state),
         unrestricted_scope(),
         Path("nonexistent-session-id".to_string()),
+        Query(GetSessionTasksParams { changed_since: None }),
     )
     .await;
 
@@ -3684,6 +3940,7 @@ async fn test_get_session_tasks_scope_violation_returns_403() {
         State(state),
         scoped(&["proj-different"]),
         Path(session_id.as_str().to_string()),
+        Query(GetSessionTasksParams { changed_since: None }),
     )
     .await;
 
@@ -3733,6 +3990,7 @@ async fn test_get_session_tasks_delivery_status_all_merged_is_delivered() {
         State(state),
         unrestricted_scope(),
         Path(session_id.as_str().to_string()),
+        Query(GetSessionTasksParams { changed_since: None }),
     )
     .await;
 
@@ -3782,6 +4040,7 @@ async fn test_get_session_tasks_delivery_status_mixed_terminal_is_partial() {
         State(state),
         unrestricted_scope(),
         Path(session_id.as_str().to_string()),
+        Query(GetSessionTasksParams { changed_since: None }),
     )
     .await;
 
@@ -3823,6 +4082,7 @@ async fn test_get_session_tasks_delivery_status_in_review_is_pending_review() {
         State(state),
         unrestricted_scope(),
         Path(session_id.as_str().to_string()),
+        Query(GetSessionTasksParams { changed_since: None }),
     )
     .await;
 
@@ -3873,11 +4133,183 @@ async fn test_get_session_tasks_delivery_status_active_tasks_is_in_progress() {
         State(state),
         unrestricted_scope(),
         Path(session_id.as_str().to_string()),
+        Query(GetSessionTasksParams { changed_since: None }),
     )
     .await;
 
     assert!(result.is_ok());
     assert_eq!(result.unwrap().0.delivery_status, "in_progress");
+}
+
+/// Session tasks response includes updated_at on each task.
+#[tokio::test]
+async fn test_get_session_tasks_includes_updated_at() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-session-tasks-updated-at";
+    let p = make_project(project_id, "Session Tasks UpdatedAt");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let session = IdeationSession::new_with_title(
+        ProjectId::from_string(project_id.to_string()),
+        "Session UpdatedAt",
+    );
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    let mut task = Task::new(
+        ProjectId::from_string(project_id.to_string()),
+        "Task With Timestamp".to_string(),
+    );
+    task.ideation_session_id = Some(session_id.clone());
+    state.app_state.task_repo.create(task).await.unwrap();
+
+    let result = get_session_tasks_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id.as_str().to_string()),
+        Query(GetSessionTasksParams { changed_since: None }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.task_count, 1);
+    let task_item = &response.tasks[0];
+    // updated_at must be a non-empty RFC3339 string
+    assert!(!task_item.updated_at.is_empty(), "updated_at should be present");
+    assert!(
+        chrono::DateTime::parse_from_rfc3339(&task_item.updated_at).is_ok(),
+        "updated_at should be valid RFC3339"
+    );
+}
+
+/// changed_since filters out tasks updated before the cutoff.
+#[tokio::test]
+async fn test_get_session_tasks_changed_since_filters_older_tasks() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-session-tasks-changed-since";
+    let p = make_project(project_id, "Session Tasks ChangedSince");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let session = IdeationSession::new_with_title(
+        ProjectId::from_string(project_id.to_string()),
+        "Session ChangedSince",
+    );
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    let mut task = Task::new(
+        ProjectId::from_string(project_id.to_string()),
+        "Old Task".to_string(),
+    );
+    task.ideation_session_id = Some(session_id.clone());
+    state.app_state.task_repo.create(task).await.unwrap();
+
+    // Use a far-future cutoff — all tasks should be filtered out
+    let future_cutoff = "2099-01-01T00:00:00Z";
+    let result = get_session_tasks_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id.as_str().to_string()),
+        Query(GetSessionTasksParams { changed_since: Some(future_cutoff.to_string()) }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.task_count, 0, "All tasks should be filtered out by future cutoff");
+    assert!(response.tasks.is_empty());
+}
+
+/// changed_since with a past cutoff returns all tasks.
+#[tokio::test]
+async fn test_get_session_tasks_changed_since_past_cutoff_returns_all() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-session-tasks-past-cutoff";
+    let p = make_project(project_id, "Session Tasks PastCutoff");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let session = IdeationSession::new_with_title(
+        ProjectId::from_string(project_id.to_string()),
+        "Session PastCutoff",
+    );
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    let mut task = Task::new(
+        ProjectId::from_string(project_id.to_string()),
+        "Recent Task".to_string(),
+    );
+    task.ideation_session_id = Some(session_id.clone());
+    state.app_state.task_repo.create(task).await.unwrap();
+
+    // Use a past cutoff — task should be included
+    let past_cutoff = "2000-01-01T00:00:00Z";
+    let result = get_session_tasks_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id.as_str().to_string()),
+        Query(GetSessionTasksParams { changed_since: Some(past_cutoff.to_string()) }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.task_count, 1, "Task should be included with past cutoff");
+}
+
+/// changed_since with invalid value returns 400.
+#[tokio::test]
+async fn test_get_session_tasks_invalid_changed_since_returns_400() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-session-tasks-bad-cs";
+    let p = make_project(project_id, "Session Tasks BadChangedSince");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let session = IdeationSession::new_with_title(
+        ProjectId::from_string(project_id.to_string()),
+        "Session BadChangedSince",
+    );
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    let result = get_session_tasks_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id.as_str().to_string()),
+        Query(GetSessionTasksParams { changed_since: Some("not-a-date".to_string()) }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().status,
+        axum::http::StatusCode::BAD_REQUEST
+    );
 }
 
 // ============================================================================

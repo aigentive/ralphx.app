@@ -86,10 +86,14 @@ export async function handleGetPipelineOverview(
     return JSON.stringify({ error: "missing_argument", message: "project_id is required" }, null, 2);
   }
   try {
-    const response = await getBackendClient().get(
-      `/api/external/pipeline/${encodeURIComponent(projectId)}`,
-      context
-    );
+    const params = new URLSearchParams();
+    const since = args.since as string | undefined;
+    if (since) {
+      params.set("since", since);
+    }
+    const query = params.toString();
+    const url = `/api/external/pipeline/${encodeURIComponent(projectId)}${query ? `?${query}` : ""}`;
+    const response = await getBackendClient().get(url, context);
     return JSON.stringify(response.body, null, 2);
   } catch (err) {
     if (err instanceof BackendError) {
