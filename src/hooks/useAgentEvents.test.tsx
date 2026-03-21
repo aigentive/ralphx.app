@@ -1280,6 +1280,199 @@ describe("useAgentEvents", () => {
     });
   });
 
+  describe("verification child guard — parent status protected during verification", () => {
+    it("PO1: run_completed with active verification child → re-asserts generating, skips termination", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("session:parent-session", true);
+        useIdeationStore.getState().setActiveVerificationChildId("parent-session", "child-session-id");
+      });
+
+      expect(useChatStore.getState().agentStatus["session:parent-session"]).toBe("generating");
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_completed", {
+          context_type: "ideation",
+          context_id: "parent-session",
+          conversation_id: "conv-1",
+          status: "completed",
+        });
+      });
+
+      // Status must remain generating — verification child is still running
+      expect(useChatStore.getState().agentStatus["session:parent-session"]).toBe("generating");
+
+      // Cleanup
+      act(() => {
+        useIdeationStore.getState().setActiveVerificationChildId("parent-session", null);
+      });
+    });
+
+    it("PO5: stopped with active verification child → re-asserts generating, skips termination", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("session:parent-session", true);
+        useIdeationStore.getState().setActiveVerificationChildId("parent-session", "child-session-id");
+      });
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:stopped", {
+          context_type: "ideation",
+          context_id: "parent-session",
+          conversation_id: "conv-1",
+          agent_run_id: "run-1",
+        });
+      });
+
+      // Status must remain generating — verification child is still running
+      expect(useChatStore.getState().agentStatus["session:parent-session"]).toBe("generating");
+
+      // Cleanup
+      act(() => {
+        useIdeationStore.getState().setActiveVerificationChildId("parent-session", null);
+      });
+    });
+
+    it("error with active verification child → re-asserts generating, skips termination", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("session:parent-session", true);
+        useIdeationStore.getState().setActiveVerificationChildId("parent-session", "child-session-id");
+      });
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:error", {
+          context_type: "ideation",
+          context_id: "parent-session",
+          conversation_id: "conv-1",
+          error: "Agent exited",
+        });
+      });
+
+      // Status must remain generating — verification child is still running
+      expect(useChatStore.getState().agentStatus["session:parent-session"]).toBe("generating");
+
+      // Cleanup
+      act(() => {
+        useIdeationStore.getState().setActiveVerificationChildId("parent-session", null);
+      });
+    });
+
+    it("PO2: turn_completed with active verification child → re-asserts generating, does not transition to waiting_for_input", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("session:parent-session", true);
+        useIdeationStore.getState().setActiveVerificationChildId("parent-session", "child-session-id");
+      });
+
+      expect(useChatStore.getState().agentStatus["session:parent-session"]).toBe("generating");
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:turn_completed", {
+          context_type: "ideation",
+          context_id: "parent-session",
+          conversation_id: "conv-1",
+          status: "turn_complete",
+        });
+      });
+
+      // Status must remain generating — verification child is still running
+      expect(useChatStore.getState().agentStatus["session:parent-session"]).toBe("generating");
+
+      // Cleanup
+      act(() => {
+        useIdeationStore.getState().setActiveVerificationChildId("parent-session", null);
+      });
+    });
+
+    it("turn_completed with NO verification child → transitions to waiting_for_input (normal flow unchanged)", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("session:parent-session", true);
+        // No verification child set
+      });
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:turn_completed", {
+          context_type: "ideation",
+          context_id: "parent-session",
+          conversation_id: "conv-1",
+          status: "turn_complete",
+        });
+      });
+
+      // Normal flow: transitions to waiting_for_input
+      expect(useChatStore.getState().agentStatus["session:parent-session"]).toBe("waiting_for_input");
+    });
+
+    it("run_completed with NO verification child → clears to idle (normal flow unchanged)", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("session:parent-session", true);
+        // No verification child set
+      });
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_completed", {
+          context_type: "ideation",
+          context_id: "parent-session",
+          conversation_id: "conv-1",
+          status: "completed",
+        });
+      });
+
+      // Normal flow: status cleared
+      expect(useChatStore.getState().agentStatus["session:parent-session"]).toBeUndefined();
+    });
+
+    it("non-ideation run_completed is not guarded even if unrelated verification child exists", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("task_execution:task-abc", true);
+        // Verification child on some ideation session (unrelated to this event)
+        useIdeationStore.getState().setActiveVerificationChildId("some-session", "child-id");
+      });
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_completed", {
+          context_type: "task_execution",
+          context_id: "task-abc",
+          conversation_id: "conv-1",
+          status: "completed",
+        });
+      });
+
+      // Non-ideation context: normal termination applies
+      expect(useChatStore.getState().agentStatus["task_execution:task-abc"]).toBeUndefined();
+
+      // Cleanup
+      act(() => {
+        useIdeationStore.getState().setActiveVerificationChildId("some-session", null);
+      });
+    });
+  });
+
   describe("agent:task_started / agent:task_completed", () => {
     it("agent:task_started resets lastAgentEventTimestamp for matching context", () => {
       const wrapper = createWrapper();

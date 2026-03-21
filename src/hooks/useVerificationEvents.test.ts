@@ -602,4 +602,53 @@ describe("useVerificationEvents — synthetic parent status cleared on completio
 
     expect(chatStoreMocks.setAgentStatus).not.toHaveBeenCalled();
   });
+
+  // PO3: verification complete → activeVerificationChildId cleared + parent idle
+  it("(PO3) clears activeVerificationChildId before setting parent idle on terminal event", () => {
+    renderHook(() => useVerificationEvents());
+
+    expect(useIdeationStore.getState().activeVerificationChildId[SESSION_ID]).toBe("child-session-xyz");
+
+    act(() => {
+      fireEvent("plan_verification:status_changed", makeVerificationEvent({
+        status: "verified",
+        in_progress: false,
+      }));
+    });
+
+    // Child ref cleared
+    expect(useIdeationStore.getState().activeVerificationChildId[SESSION_ID]).toBeNull();
+    // Parent set to idle
+    expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith("session:" + SESSION_ID, "idle");
+  });
+
+  // PO3: always sets parent idle even when no active child (unconditional)
+  it("(PO3b) sets parent idle on terminal event even when no verification child was active", () => {
+    useIdeationStore.setState({ activeVerificationChildId: {} });
+    renderHook(() => useVerificationEvents());
+
+    act(() => {
+      fireEvent("plan_verification:status_changed", makeVerificationEvent({
+        status: "needs_revision",
+        in_progress: false,
+      }));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith("session:" + SESSION_ID, "idle");
+  });
+
+  // PO7: terminal status → no stale indicator left after cleanup
+  it("(PO7) after terminal verification event, activeVerificationChildId is null and parent is idle", () => {
+    renderHook(() => useVerificationEvents());
+
+    act(() => {
+      fireEvent("plan_verification:status_changed", makeVerificationEvent({
+        status: "needs_revision",
+        in_progress: false,
+      }));
+    });
+
+    expect(useIdeationStore.getState().activeVerificationChildId[SESSION_ID]).toBeNull();
+    expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith("session:" + SESSION_ID, "idle");
+  });
 });

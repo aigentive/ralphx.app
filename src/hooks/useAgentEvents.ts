@@ -17,9 +17,24 @@ import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useTeamStore } from "@/stores/teamStore";
-import { buildStoreKey } from "@/lib/chat-context-registry";
+import { buildStoreKey, parseStoreKey } from "@/lib/chat-context-registry";
 import { chatKeys } from "./useChat";
 import type { Unsubscribe } from "@/lib/event-bus";
+import { logger } from "@/lib/logger";
+
+/**
+ * Finds the store key for a given context ID by scanning all known agent statuses.
+ * Used by heartbeat/task lifecycle events that only have the raw context_id.
+ */
+function findStoreKeyForContextId(contextId: string): string | undefined {
+  const state = useChatStore.getState();
+  for (const key of Object.keys(state.agentStatus)) {
+    if (key.includes(contextId)) {
+      return key;
+    }
+  }
+  return undefined;
+}
 
 /**
  * Hook to manage agent event listeners
@@ -53,6 +68,57 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
 
   useEffect(() => {
     const unsubscribes: Unsubscribe[] = [];
+
+    // Shared cleanup for agent termination (run_completed, stopped, error).
+    // Handler-specific logic (updateLastAgentEvent, toast) stays in each caller.
+    function handleAgentTermination(storeKey: string, eventContextId: string, conversationId: string) {
+      setAgentStatus(storeKey, "idle");
+      clearActiveQuestion(eventContextId);
+      clearPendingPlan(storeKey);
+      queryClient.invalidateQueries({ queryKey: chatKeys.agentRun(conversationId) });
+      queryClient.invalidateQueries({ queryKey: chatKeys.conversation(conversationId) });
+    }
+
+    // Reverse lookup: when a child verification session terminates, find any parent that has
+    // it as activeVerificationChildId and clean up parent's synthetic generating state.
+    // Called in all three termination handlers (run_completed, error, stopped).
+    function handleChildTerminationReverseLink(eventContextId: string) {
+      const ideationState = useIdeationStore.getState();
+      const chatState = useChatStore.getState();
+      for (const [parentSessionId, childId] of Object.entries(ideationState.activeVerificationChildId)) {
+        if (childId !== null && childId === eventContextId) {
+          // Clear parent's child ref and set parent to idle
+          ideationState.setActiveVerificationChildId(parentSessionId, null);
+          chatState.setAgentStatus(buildStoreKey('ideation', parentSessionId), 'idle');
+          // Abnormal termination detection: if verification is still in_progress per cached data,
+          // log a warning and invalidate so the backend can reconcile.
+          const verificationData = queryClient.getQueryData<{ inProgress?: boolean }>(['verification', parentSessionId]);
+          if (verificationData?.inProgress) {
+            logger.warn(
+              `[AgentEvents] Child session ${eventContextId} terminated while verification still in_progress for parent ${parentSessionId} — invalidating verification cache`
+            );
+            queryClient.invalidateQueries({ queryKey: ['verification', parentSessionId] });
+          }
+        }
+      }
+    }
+
+    // Guard: if the parent session has an active verification child, re-assert `generating`
+    // instead of clearing to `idle`. The parent's generating state is synthetic — it reflects
+    // the child session running. Normal termination events must not clear it prematurely.
+    // Uses getState() pattern (not closure-captured values) matching watchdog at line 438.
+    function guardedTermination(storeKey: string, eventContextId: string, conversationId: string) {
+      const parsed = parseStoreKey(storeKey);
+      if (parsed?.contextType === "ideation") {
+        const activeChildId = useIdeationStore.getState().activeVerificationChildId[parsed.contextId];
+        if (activeChildId) {
+          // Verification child is running — re-assert generating instead of clearing
+          setAgentStatus(storeKey, "generating");
+          return;
+        }
+      }
+      handleAgentTermination(storeKey, eventContextId, conversationId);
+    }
 
     // NOTE: Streaming cache updates disabled per user request.
     // Instead of trying to stream text/tool calls character-by-character,
@@ -191,25 +257,8 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         // Final heartbeat — clears the "stuck" condition before transitioning to idle.
         updateLastAgentEvent(eventContextKey);
 
-        // Clear agent status for the specific context (run is done)
-        setAgentStatus(eventContextKey, "idle");
-
-        // Clean up any pending questions for this session — the agent is gone,
-        // so questions can no longer be answered.
-        clearActiveQuestion(eventContextId);
-
-        // Clear any pending team plan — the lead agent is gone so the plan
-        // can no longer be approved or rejected.
-        clearPendingPlan(eventContextKey);
-
-        // Invalidate using conversation_id from the payload — avoids stale closure mismatch
-        // where activeConversationId in the closure might differ from the just-completed run.
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.agentRun(conversation_id),
-        });
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.conversation(conversation_id),
-        });
+        guardedTermination(eventContextKey, eventContextId, conversation_id);
+        handleChildTerminationReverseLink(eventContextId);
 
         // NOTE: Queue processing is now handled by the BACKEND
         // The backend automatically processes queued messages via --resume
@@ -238,7 +287,20 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         // Heartbeat: agent is alive between turns, reset watchdog timer.
         updateLastAgentEvent(eventContextKey);
 
-        setAgentStatus(eventContextKey, "waiting_for_input");
+        // Guard: if parent ideation session has active verification child, maintain
+        // generating instead of transitioning to waiting_for_input. Child's generating
+        // state must dominate parent's waiting_for_input (PO2).
+        const parsedKey = parseStoreKey(eventContextKey);
+        if (parsedKey?.contextType === "ideation") {
+          const activeChildId = useIdeationStore.getState().activeVerificationChildId[parsedKey.contextId];
+          if (activeChildId) {
+            setAgentStatus(eventContextKey, "generating");
+          } else {
+            setAgentStatus(eventContextKey, "waiting_for_input");
+          }
+        } else {
+          setAgentStatus(eventContextKey, "waiting_for_input");
+        }
 
         // Invalidate using conversation_id from payload to avoid stale closure mismatch
         queryClient.invalidateQueries({
@@ -309,22 +371,8 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
 
         const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
 
-        setAgentStatus(eventContextKey, "idle");
-
-        // Clean up any pending questions — agent is being killed
-        clearActiveQuestion(eventContextId);
-
-        // Clear any pending team plan — the lead agent is gone so the plan
-        // can no longer be approved or rejected.
-        clearPendingPlan(eventContextKey);
-
-        // Invalidate using conversation_id from payload to avoid stale closure mismatch
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.agentRun(conversation_id),
-        });
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.conversation(conversation_id),
-        });
+        guardedTermination(eventContextKey, eventContextId, conversation_id);
+        handleChildTerminationReverseLink(eventContextId);
       })
     );
 
@@ -345,23 +393,8 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         // Build context key from the event payload
         const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
 
-        // Clear agent status on error for the specific context
-        setAgentStatus(eventContextKey, "idle");
-
-        // Clean up any pending questions — agent errored out
-        clearActiveQuestion(eventContextId);
-
-        // Clear any pending team plan — the lead agent is gone so the plan
-        // can no longer be approved or rejected.
-        clearPendingPlan(eventContextKey);
-
-        // Invalidate using conversation_id from payload to avoid stale closure mismatch
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.agentRun(conversation_id),
-        });
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.conversation(conversation_id),
-        });
+        guardedTermination(eventContextKey, eventContextId, conversation_id);
+        handleChildTerminationReverseLink(eventContextId);
 
         // Show error toast for agent failures in execution contexts
         if (["task_execution", "review", "merge"].includes(context_type)) {
@@ -394,16 +427,8 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         reason: string;
         pid?: number;
       }>("agent:heartbeat", (payload) => {
-        // Find the store key by scanning all generating contexts for a matching conversation
-        // The heartbeat payload has context_id, so we look up which context keys are generating
-        // and match by context_id substring (context_id is the raw id, key is "type:id")
-        const state = useChatStore.getState();
-        for (const key of Object.keys(state.agentStatus)) {
-          if (key.includes(payload.context_id)) {
-            updateLastAgentEvent(key);
-            break;
-          }
-        }
+        const key = findStoreKeyForContextId(payload.context_id);
+        if (key) updateLastAgentEvent(key);
       })
     );
 
@@ -414,13 +439,8 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         conversation_id: string;
         context_id: string;
       }>("agent:task_started", (payload) => {
-        const state = useChatStore.getState();
-        for (const key of Object.keys(state.agentStatus)) {
-          if (key.includes(payload.context_id)) {
-            updateLastAgentEvent(key);
-            break;
-          }
-        }
+        const key = findStoreKeyForContextId(payload.context_id);
+        if (key) updateLastAgentEvent(key);
       })
     );
 
@@ -429,13 +449,8 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         conversation_id: string;
         context_id: string;
       }>("agent:task_completed", (payload) => {
-        const state = useChatStore.getState();
-        for (const key of Object.keys(state.agentStatus)) {
-          if (key.includes(payload.context_id)) {
-            updateLastAgentEvent(key);
-            break;
-          }
-        }
+        const key = findStoreKeyForContextId(payload.context_id);
+        if (key) updateLastAgentEvent(key);
       })
     );
 
@@ -478,9 +493,9 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         if (lastCompletion > 0 && now - lastCompletion < TOOL_CALL_GRACE_MS) continue;
 
         // Check 3: Verification child session running (synthetic generating)
-        if (key.startsWith("session:")) {
-          const sessionId = key.slice(8);
-          if (ideationState.activeVerificationChildId[sessionId]) continue;
+        const parsedKey = parseStoreKey(key);
+        if (parsedKey?.contextType === "ideation") {
+          if (ideationState.activeVerificationChildId[parsedKey.contextId]) continue;
         }
 
         // Genuinely stalled — silent reset (no toast — bad UX)

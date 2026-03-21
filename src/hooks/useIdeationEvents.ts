@@ -10,6 +10,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEventBus } from "@/providers/EventProvider";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useChatStore } from "@/stores/chatStore";
+import { buildStoreKey } from "@/lib/chat-context-registry";
 import { ideationKeys } from "./useIdeation";
 import { dependencyKeys } from "./useDependencyGraph";
 import { taskKeys } from "./useTasks";
@@ -247,7 +248,7 @@ export function useIdeationEvents() {
           setVerificationNotification(parsed.data.parentSessionId, parsed.data.sessionId);
           setActiveVerificationChildId(parsed.data.parentSessionId, parsed.data.sessionId);
           // Synthetic "generating" status on parent while verification child is running
-          const parentKey = 'session:' + parsed.data.parentSessionId;
+          const parentKey = buildStoreKey('ideation', parsed.data.parentSessionId);
           useChatStore.getState().setAgentStatus(parentKey, 'generating');
           useChatStore.getState().updateLastAgentEvent(parentKey);
         }

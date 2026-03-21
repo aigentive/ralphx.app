@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useChatStore, selectAgentStatus } from "@/stores/chatStore";
+import { useIdeationStore } from "@/stores/ideationStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
 import type { IdeationSessionWithProgress, SessionProgress } from "@/types/ideation";
 import type { SessionGroup } from "./planBrowserUtils";
@@ -58,6 +59,32 @@ function formatDate(dateString: string): string {
   } catch {
     return "";
   }
+}
+
+// ============================================================================
+// ActivityIndicator
+// ============================================================================
+
+const ACCENT_COLOR = "hsl(14 100% 60%)";
+const VERIFYING_COLOR = "hsl(217 91% 60%)";
+
+interface ActivityIndicatorProps {
+  isActive: boolean;
+  isWaiting: boolean;
+  label?: string | undefined;
+  separator?: string | undefined;
+  color?: string | undefined;
+}
+
+function ActivityIndicator({ isActive, isWaiting, label = "Agent working...", separator, color = ACCENT_COLOR }: ActivityIndicatorProps) {
+  if (!isActive && !isWaiting) return null;
+  return (
+    <>
+      {isActive && <span style={{ color }}>{label}</span>}
+      {isWaiting && <span style={{ color: "hsl(220 10% 45%)" }}>Awaiting input</span>}
+      {separator && <span style={{ color: "hsl(220 10% 35%)" }}>{separator}</span>}
+    </>
+  );
 }
 
 // ============================================================================
@@ -95,10 +122,13 @@ interface MetadataLineProps {
   progress: SessionProgress | null;
   isIdeationActive: boolean;
   isIdeationWaiting: boolean;
+  isVerifying: boolean;
 }
 
-function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiting }: MetadataLineProps) {
+function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiting, isVerifying }: MetadataLineProps) {
   const parentSessionTitle = plan.parentSessionTitle;
+  const activityLabel = isVerifying ? "Verifying..." : undefined;
+  const activityColor = isVerifying ? VERIFYING_COLOR : undefined;
 
   // Show parent session indicator if this is a child session
   if (parentSessionTitle) {
@@ -107,10 +137,7 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
         className="flex flex-col gap-0.5 text-[10px]"
         style={{ color: "hsl(220 10% 45%)" }}
       >
-        {isIdeationActive && (
-          <span style={{ color: "hsl(14 100% 60%)" }}>Agent working...</span>
-        )}
-        {isIdeationWaiting && <span>Awaiting input</span>}
+        <ActivityIndicator isActive={isIdeationActive} isWaiting={isIdeationWaiting} label={activityLabel} color={activityColor} />
         <div className="flex items-center gap-1">
           <CornerDownRight className="w-2.5 h-2.5" />
           <span className="truncate">Follow-up of: {parentSessionTitle}</span>
@@ -126,10 +153,8 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
           className="flex items-center gap-1 text-[10px]"
           style={{ color: "hsl(220 10% 45%)" }}
         >
-          {isIdeationActive ? (
-            <span style={{ color: "hsl(14 100% 60%)" }}>Agent working...</span>
-          ) : isIdeationWaiting ? (
-            <span>Awaiting input</span>
+          {(isIdeationActive || isIdeationWaiting) ? (
+            <ActivityIndicator isActive={isIdeationActive} isWaiting={isIdeationWaiting} label={activityLabel} color={activityColor} />
           ) : (
             <>
               <Clock className="w-2.5 h-2.5" />
@@ -141,24 +166,18 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
 
     case "in-progress":
       if (!progress) {
-        if (isIdeationActive) return <span className="text-[10px]" style={{ color: "hsl(14 100% 60%)" }}>Agent working...</span>;
-        if (isIdeationWaiting) return <span className="text-[10px]" style={{ color: "hsl(220 10% 45%)" }}>Awaiting input</span>;
+        if (isIdeationActive || isIdeationWaiting) {
+          return (
+            <span className="text-[10px]">
+              <ActivityIndicator isActive={isIdeationActive} isWaiting={isIdeationWaiting} label={activityLabel} color={activityColor} />
+            </span>
+          );
+        }
         return null;
       }
       return (
         <div className="flex items-center gap-1 text-[10px]">
-          {isIdeationActive && (
-            <>
-              <span style={{ color: "hsl(14 100% 60%)" }}>Agent working</span>
-              <span style={{ color: "hsl(220 10% 35%)" }}>&middot;</span>
-            </>
-          )}
-          {isIdeationWaiting && (
-            <>
-              <span style={{ color: "hsl(220 10% 45%)" }}>Awaiting input</span>
-              <span style={{ color: "hsl(220 10% 35%)" }}>&middot;</span>
-            </>
-          )}
+          <ActivityIndicator isActive={isIdeationActive} isWaiting={isIdeationWaiting} label={activityLabel ?? "Agent working"} separator="·" color={activityColor} />
           <span style={{ color: "hsl(145 70% 50%)" }}>
             {progress.done}/{progress.total} done
           </span>
@@ -179,8 +198,7 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
           className="flex items-center gap-1 text-[10px]"
           style={{ color: "hsl(220 10% 45%)" }}
         >
-          {isIdeationActive && <span style={{ color: "hsl(14 100% 60%)" }}>Agent working... • </span>}
-          {isIdeationWaiting && <span>Awaiting input • </span>}
+          <ActivityIndicator isActive={isIdeationActive} isWaiting={isIdeationWaiting} separator="·" label={activityLabel} color={activityColor} />
           <span>{progress?.total ?? 0} {(progress?.total ?? 0) === 1 ? "task" : "tasks"}</span>
           {plan.convertedAt && (
             <>
@@ -197,8 +215,7 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
           className="flex items-center gap-1 text-[10px]"
           style={{ color: "hsl(220 10% 40%)" }}
         >
-          {isIdeationActive && <span style={{ color: "hsl(14 100% 60%)" }}>Agent working... • </span>}
-          {isIdeationWaiting && <span>Awaiting input • </span>}
+          <ActivityIndicator isActive={isIdeationActive} isWaiting={isIdeationWaiting} separator="·" label={activityLabel} color={activityColor} />
           <CircleCheck className="w-2.5 h-2.5" style={{ color: "hsl(145 70% 40%)" }} />
           <span>Completed</span>
         </div>
@@ -210,8 +227,7 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
           className="flex items-center gap-1 text-[10px]"
           style={{ color: "hsl(220 10% 40%)" }}
         >
-          {isIdeationActive && <span style={{ color: "hsl(14 100% 60%)" }}>Agent working... • </span>}
-          {isIdeationWaiting && <span>Awaiting input • </span>}
+          <ActivityIndicator isActive={isIdeationActive} isWaiting={isIdeationWaiting} separator="·" label={activityLabel} color={activityColor} />
           {plan.archivedAt ? (
             <span>Archived {formatDate(plan.archivedAt)}</span>
           ) : (
@@ -336,6 +352,8 @@ export function PlanItem({
   const agentStatus = useChatStore(selectAgentStatus(storeKey));
   const isIdeationActive = agentStatus === "generating";
   const isIdeationWaiting = agentStatus === "waiting_for_input";
+  const activeVerificationChildId = useIdeationStore(state => state.activeVerificationChildId);
+  const isVerifying = isIdeationActive && !!(activeVerificationChildId[plan.id]);
 
   return (
     <div
@@ -384,7 +402,7 @@ export function PlanItem({
           {isIdeationActive ? (
             <Loader2
               className="w-3 h-3 animate-spin"
-              style={{ color: "hsl(14 100% 60%)" }}
+              style={{ color: isVerifying ? VERIFYING_COLOR : ACCENT_COLOR }}
             />
           ) : (
             <MessageSquare
@@ -455,6 +473,7 @@ export function PlanItem({
                 progress={plan.progress ?? null}
                 isIdeationActive={isIdeationActive}
                 isIdeationWaiting={isIdeationWaiting}
+                isVerifying={isVerifying}
               />
             </>
           )}
