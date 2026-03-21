@@ -25,10 +25,11 @@ use crate::application::ReconciliationRunner;
 use crate::commands::execution_commands::{
     ActiveProjectState, ExecutionState, AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES,
 };
-use crate::domain::entities::InternalStatus;
+use crate::domain::entities::{InternalStatus, ReviewNote, ReviewOutcome, ReviewerType};
 use crate::domain::repositories::{
     AgentRunRepository, AppStateRepository, ChatConversationRepository,
-    ExecutionSettingsRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
+    ExecutionSettingsRepository, ProjectRepository, ReviewRepository, TaskDependencyRepository,
+    TaskRepository,
 };
 use crate::domain::state_machine::services::TaskScheduler;
 
@@ -55,6 +56,30 @@ pub fn is_startup_recovery_disabled() -> bool {
             std::env::var_os(RALPHX_DISABLE_STARTUP_RECOVERY_ENV).as_deref(),
         )
     }
+}
+
+/// Returns true if a task's metadata indicates it should be auto-recovered on startup.
+///
+/// Criteria: (`shutdown_interrupted == true` OR `last_agent_error` contains
+/// "completed without calling") AND `startup_recovery_attempts < 1`.
+fn should_auto_recover(meta: &serde_json::Value) -> bool {
+    let shutdown_interrupted = meta
+        .get("shutdown_interrupted")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let crash_indicator = meta
+        .get("last_agent_error")
+        .and_then(|v| v.as_str())
+        .map(|e| e.contains("completed without calling"))
+        .unwrap_or(false);
+
+    let recovery_attempts = meta
+        .get("startup_recovery_attempts")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
+    (shutdown_interrupted || crash_indicator) && recovery_attempts < 1
 }
 
 /// Runs startup jobs, primarily task resumption.
@@ -88,6 +113,8 @@ pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
     task_scheduler: Option<Arc<dyn TaskScheduler>>,
     /// Optional app handle for event emission
     app_handle: Option<AppHandle<R>>,
+    /// Optional review repository for adding audit-trail ReviewNotes on crash recovery
+    review_repo: Option<Arc<dyn ReviewRepository>>,
 }
 
 impl<R: Runtime> StartupJobRunner<R> {
@@ -147,6 +174,7 @@ impl<R: Runtime> StartupJobRunner<R> {
             reconciler,
             task_scheduler: None,
             app_handle: None,
+            review_repo: None,
         }
     }
 
@@ -163,6 +191,12 @@ impl<R: Runtime> StartupJobRunner<R> {
     pub fn with_app_handle(mut self, app_handle: AppHandle<R>) -> Self {
         self.app_handle = Some(app_handle.clone());
         self.reconciler = self.reconciler.with_app_handle(app_handle);
+        self
+    }
+
+    /// Set the review repository for crash recovery audit notes (builder pattern).
+    pub fn with_review_repo(mut self, review_repo: Arc<dyn ReviewRepository>) -> Self {
+        self.review_repo = Some(review_repo);
         self
     }
 
@@ -333,6 +367,11 @@ impl<R: Runtime> StartupJobRunner<R> {
         // Phase 0.6: Repair stale non-merge worktree paths before spawning any agents.
         // Prevents task/review contexts from ever falling back to main repo checkout.
         self.repair_non_merge_task_worktrees(&projects).await;
+
+        // Phase 0.8: Recover tasks escalated by app crash / unclean shutdown.
+        // Finds Escalated tasks with crash metadata and transitions them back to their
+        // pre-escalation states so Phase 1/2/3 can re-process them normally.
+        self.recover_crash_escalated_tasks(&projects).await;
 
         // Phase 1: Merge-first recovery — process PendingMerge and Merging tasks
         // before spawning other agents. This ensures main branch is in a clean state
@@ -585,6 +624,149 @@ impl<R: Runtime> StartupJobRunner<R> {
                 scheduler.try_retry_main_merges().await;
             }
         }
+    }
+
+    /// Phase 0.8: Recover tasks that were escalated due to app crash or unclean shutdown.
+    ///
+    /// Scans Escalated tasks across the given projects for auto-recovery criteria:
+    /// - `shutdown_interrupted == true` in metadata (set by L1 shutdown handler), OR
+    /// - `last_agent_error` contains "completed without calling" (crash indicator);
+    ///   AND `startup_recovery_attempts < 1` (prevent infinite recovery loops).
+    ///
+    /// Matching tasks are transitioned back to their pre-escalation state based on
+    /// `last_agent_error_context`: "review" → PendingReview, "execution" → Ready,
+    /// "merge" → PendingMerge. Phase 1/2/3 then pick them up for normal re-processing.
+    async fn recover_crash_escalated_tasks(
+        &self,
+        projects: &[crate::domain::entities::Project],
+    ) -> u32 {
+        let mut recovered = 0u32;
+
+        for project in projects {
+            let escalated_tasks = match self
+                .task_repo
+                .get_by_status(&project.id, InternalStatus::Escalated)
+                .await
+            {
+                Ok(tasks) => tasks,
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        project_id = project.id.as_str(),
+                        "Phase 0.8: Failed to query Escalated tasks for crash recovery"
+                    );
+                    continue;
+                }
+            };
+
+            for mut task in escalated_tasks {
+                if task.archived_at.is_some() {
+                    debug!(task_id = task.id.as_str(), "Phase 0.8: Skipping archived task");
+                    continue;
+                }
+
+                // Parse metadata JSON (task.metadata is Option<String>)
+                let mut meta: serde_json::Value = task
+                    .metadata
+                    .as_deref()
+                    .and_then(|s| serde_json::from_str(s).ok())
+                    .unwrap_or_else(|| serde_json::json!({}));
+
+                if !should_auto_recover(&meta) {
+                    continue;
+                }
+
+                // Determine recovery target from last_agent_error_context
+                let recovery_target = match meta
+                    .get("last_agent_error_context")
+                    .and_then(|v| v.as_str())
+                {
+                    Some("review") => InternalStatus::PendingReview,
+                    Some("execution") => InternalStatus::Ready,
+                    Some("merge") => InternalStatus::PendingMerge,
+                    other => {
+                        debug!(
+                            task_id = task.id.as_str(),
+                            context = ?other,
+                            "Phase 0.8: Unknown or missing last_agent_error_context, skipping"
+                        );
+                        continue;
+                    }
+                };
+
+                let from_status = task.internal_status;
+
+                // Update recovery metadata: increment counter, clear shutdown flag
+                if let Some(obj) = meta.as_object_mut() {
+                    let attempts = obj
+                        .get("startup_recovery_attempts")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    obj.insert(
+                        "startup_recovery_attempts".to_string(),
+                        serde_json::json!(attempts + 1),
+                    );
+                    obj.remove("shutdown_interrupted");
+                }
+
+                task.metadata = Some(meta.to_string());
+                task.internal_status = recovery_target;
+                task.touch();
+
+                if let Err(e) = self.task_repo.update(&task).await {
+                    tracing::error!(
+                        error = %e,
+                        task_id = task.id.as_str(),
+                        "Phase 0.8: Failed to persist crash recovery transition"
+                    );
+                    continue;
+                }
+
+                // Persist status change for audit trail
+                let _ = self
+                    .task_repo
+                    .persist_status_change(&task.id, from_status, recovery_target, "crash_recovery")
+                    .await;
+
+                // Add ReviewNote so the frontend can display the auto-recovery reason
+                if let Some(ref repo) = self.review_repo {
+                    let note = ReviewNote::with_notes(
+                        task.id.clone(),
+                        ReviewerType::System,
+                        ReviewOutcome::Approved,
+                        format!(
+                            "Auto-recovered by startup crash recovery: task was escalated due to \
+                             app shutdown/crash and automatically transitioned to {:?} for re-processing.",
+                            recovery_target
+                        ),
+                    );
+                    if let Err(e) = repo.add_note(&note).await {
+                        tracing::warn!(
+                            error = %e,
+                            task_id = task.id.as_str(),
+                            "Phase 0.8: Failed to add crash recovery ReviewNote"
+                        );
+                    }
+                }
+
+                info!(
+                    task_id = task.id.as_str(),
+                    from = from_status.as_str(),
+                    to = recovery_target.as_str(),
+                    "Phase 0.8: Auto-recovered crash-escalated task"
+                );
+
+                recovered += 1;
+            }
+        }
+
+        if recovered > 0 {
+            info!(count = recovered, "Phase 0.8: Crash-escalated task recovery complete");
+        } else {
+            debug!("Phase 0.8: No crash-escalated tasks found for auto-recovery");
+        }
+
+        recovered
     }
 
     /// Unblock tasks whose blockers are all complete.
@@ -1160,3 +1342,7 @@ impl<R: Runtime> StartupJobRunner<R> {
         has_main_merge_deferred_metadata(task) && running_count > 0
     }
 }
+
+#[cfg(test)]
+#[path = "startup_jobs_tests.rs"]
+mod tests;

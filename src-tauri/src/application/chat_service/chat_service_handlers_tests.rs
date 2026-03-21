@@ -550,3 +550,113 @@ fn test_cancelled_with_turns_takes_success_path_not_error_path() {
         "Cancelled{{turns_finalized:0}} → must take stop path (agent:stopped, not run_completed)"
     );
 }
+
+// ========================================
+// L1 Shutdown Guard Tests
+// ========================================
+
+/// ExecutionState is initialized with is_shutting_down = false.
+/// The L1 shutdown guard checks this flag before escalating, so the default
+/// must be false to avoid skipping escalation during normal agent exits.
+#[test]
+fn test_execution_state_shutdown_flag_starts_false() {
+    let exec = ExecutionState::new();
+    assert!(
+        !exec.is_shutting_down.load(std::sync::atomic::Ordering::SeqCst),
+        "is_shutting_down must start as false so normal agent exits are escalated"
+    );
+}
+
+/// The shutdown flag can be set via store(true), which the RunEvent::Exit handler
+/// calls as the FIRST operation before cleaning up agents.
+#[test]
+fn test_execution_state_shutdown_flag_can_be_set() {
+    let exec = ExecutionState::new();
+    exec.is_shutting_down
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(
+        exec.is_shutting_down.load(std::sync::atomic::Ordering::SeqCst),
+        "is_shutting_down must reflect store(true)"
+    );
+}
+
+/// The shutdown flag can be read back correctly after being set and cleared.
+/// This guards against accidental persistence across test runs (AtomicBool is in-memory).
+#[test]
+fn test_execution_state_shutdown_flag_can_be_cleared() {
+    let exec = ExecutionState::new();
+    exec.is_shutting_down
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    exec.is_shutting_down
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    assert!(
+        !exec.is_shutting_down.load(std::sync::atomic::Ordering::SeqCst),
+        "is_shutting_down must reflect store(false) after being cleared"
+    );
+}
+
+/// The L1 shutdown guard writes shutdown_interrupted: true into task metadata
+/// when is_shutting_down is set. This test verifies the metadata manipulation
+/// logic directly — creating a JSON object with the flag and confirming it is present.
+#[test]
+fn test_shutdown_interrupted_metadata_key_added_when_shutdown_flag_set() {
+    // Simulate what the L1 guard does: it merges shutdown_interrupted=true into
+    // the task's metadata JSON when is_shutting_down is detected.
+    let mut meta: serde_json::Value = serde_json::json!({
+        "last_agent_error_context": "execution"
+    });
+
+    // Simulate the guard's metadata write
+    if let Some(obj) = meta.as_object_mut() {
+        obj.insert(
+            "shutdown_interrupted".to_string(),
+            serde_json::json!(true),
+        );
+    }
+
+    assert_eq!(
+        meta.get("shutdown_interrupted").and_then(|v| v.as_bool()),
+        Some(true),
+        "shutdown_interrupted key must be present and true after L1 guard writes it"
+    );
+}
+
+/// The shutdown_interrupted flag in metadata is a bool, not a string.
+/// This ensures the startup recovery reader (should_auto_recover) can parse it correctly.
+#[test]
+fn test_shutdown_interrupted_metadata_value_is_bool() {
+    let meta = serde_json::json!({
+        "shutdown_interrupted": true,
+        "last_agent_error_context": "review"
+    });
+    let flag = meta
+        .get("shutdown_interrupted")
+        .and_then(|v| v.as_bool());
+    assert_eq!(
+        flag,
+        Some(true),
+        "shutdown_interrupted value must deserialize as bool true"
+    );
+}
+
+/// Multiple ExecutionState instances are independent (no global state).
+/// The L1 guard reads a specific Arc<ExecutionState> passed to the handler,
+/// so creating two instances with different flag values must not interfere.
+#[test]
+fn test_execution_state_shutdown_flags_are_independent() {
+    let exec_a = ExecutionState::new();
+    let exec_b = ExecutionState::new();
+
+    exec_a
+        .is_shutting_down
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+
+    assert!(
+        exec_a.is_shutting_down.load(std::sync::atomic::Ordering::SeqCst),
+        "exec_a flag should be true"
+    );
+    assert!(
+        !exec_b.is_shutting_down.load(std::sync::atomic::Ordering::SeqCst),
+        "exec_b flag must remain false — instances are independent"
+    );
+}

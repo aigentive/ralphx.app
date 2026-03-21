@@ -39,6 +39,7 @@ pub use error::{AppError, AppResult};
 mod tests;
 
 use std::path::PathBuf;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::Manager;
@@ -567,7 +568,8 @@ pub fn run() {
                     Some(Arc::clone(&startup_plan_branch_repo)),
                 )
                 .with_task_scheduler(Arc::clone(&task_scheduler))
-                .with_app_handle(startup_runner_app_handle);
+                .with_app_handle(startup_runner_app_handle)
+                .with_review_repo(Arc::clone(&startup_review_repo));
 
                 runner.run().await;
 
@@ -1179,6 +1181,13 @@ pub fn run() {
         .run(|app_handle, event| {
             if matches!(event, tauri::RunEvent::Exit) {
                 let app_state = app_handle.state::<AppState>();
+
+                // Set shutdown flag FIRST — before killing agents — so that any stream handlers
+                // still in flight can detect the shutdown and skip escalation. SeqCst ensures
+                // immediate visibility across all threads.
+                let exec_state = app_handle.state::<Arc<commands::ExecutionState>>();
+                exec_state.is_shutting_down.store(true, Ordering::SeqCst);
+
                 let registry = Arc::clone(&app_state.running_agent_registry);
                 let interactive = Arc::clone(&app_state.interactive_process_registry);
                 let db = app_state.db.clone();
