@@ -1,5 +1,21 @@
 // Ideation commands module - aggregates all ideation-related submodules
 
+use std::path::{Path, PathBuf};
+use crate::domain::entities::TaskProposal;
+
+/// Returns true if the proposal belongs to the local project (not a foreign cross-project proposal).
+/// Uses canonicalized path comparison with fallback to raw PathBuf.
+pub(crate) fn is_local_proposal(proposal: &TaskProposal, project_dir: &Path) -> bool {
+    match &proposal.target_project {
+        None => true,
+        Some(tp) => {
+            let tp_path = std::fs::canonicalize(tp)
+                .unwrap_or_else(|_| PathBuf::from(tp));
+            tp_path == project_dir
+        }
+    }
+}
+
 mod ideation_commands_apply;
 mod ideation_commands_chat;
 mod ideation_commands_cross_project;

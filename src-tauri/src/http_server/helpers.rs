@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::application::{AppState, CreateProposalOptions, UpdateProposalOptions, UpdateSource};
-use crate::commands::ideation_commands::{apply_proposals_core, ApplyProposalsInput, TaskProposalResponse};
+use crate::commands::ideation_commands::{apply_proposals_core, is_local_proposal, ApplyProposalsInput, TaskProposalResponse};
 use crate::domain::services::{check_proposal_verification_gate, ProposalOperation};
 use crate::domain::entities::{
     Artifact, ArtifactContent, ArtifactSummary, ArtifactType, Complexity, IdeationSession,
@@ -793,14 +793,7 @@ pub async fn finalize_proposals_impl(
 
     let (local_proposals, foreign_proposals): (Vec<_>, Vec<_>) = active_proposals
         .into_iter()
-        .partition(|p| match &p.target_project {
-            None => true,
-            Some(tp) => {
-                let tp_path = std::fs::canonicalize(tp)
-                    .unwrap_or_else(|_| PathBuf::from(tp));
-                tp_path == project_dir
-            }
-        });
+        .partition(|p| is_local_proposal(p, &project_dir));
 
     let count_local = local_proposals.len() as u32;
     let count_foreign = foreign_proposals.len() as u32;
@@ -816,8 +809,13 @@ pub async fn finalize_proposals_impl(
         }
     }
 
-    // Short-circuit if no local proposals — avoid orphan ExecutionPlan
+    // Short-circuit if no local proposals — all have been migrated to foreign projects
     if count_local == 0 {
+        // All proposals are foreign (migrated) — transition session to Accepted
+        state
+            .ideation_session_repo
+            .update_status(&session_id_typed, IdeationSessionStatus::Accepted)
+            .await?;
         return Ok(crate::http_server::types::FinalizeProposalsResponse {
             created_task_ids: vec![],
             dependencies_created: 0,
@@ -826,7 +824,7 @@ pub async fn finalize_proposals_impl(
                 "No local proposals to finalize ({} foreign skipped)",
                 count_foreign
             )),
-            session_status: "active".to_string(),
+            session_status: "accepted".to_string(),
             execution_plan_id: None,
             warnings: vec![],
             project_id: session.project_id.to_string(),

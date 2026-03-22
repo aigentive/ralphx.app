@@ -17,8 +17,8 @@ use ralphx_lib::commands::ideation_commands::{
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
     project::{GitMode, Project},
-    IdeationSession, IdeationSessionId, Priority, ProjectId, ProposalCategory, TaskProposal,
-    TaskProposalId,
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, Priority, ProjectId,
+    ProposalCategory, TaskProposal, TaskProposalId,
 };
 use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::types::HttpServerState;
@@ -503,7 +503,7 @@ async fn test_migrate_proposals_target_project_filter() {
         .await
         .unwrap();
     assert_eq!(target_proposals.len(), 1);
-    assert_eq!(target_proposals[0].target_project.as_deref(), Some("project-alpha"));
+    assert_eq!(target_proposals[0].target_project, None, "target_project must be cleared on migrated proposals");
 }
 
 #[tokio::test]
@@ -639,4 +639,137 @@ async fn test_migrate_proposals_traceability_fields_set() {
     assert_eq!(migrated.migrated_from_session_id.as_deref(), Some(source_id.as_str()));
     assert_eq!(migrated.migrated_from_proposal_id.as_deref(), Some(p1_id.as_str()));
     assert!(migrated.created_task_id.is_none(), "created_task_id should be reset on migration");
+}
+
+// ============================================================================
+// finalize_proposals_impl — all-foreign short-circuit
+// ============================================================================
+
+/// When every proposal in a session has `target_project` pointing to a
+/// different directory than the session's own project, `finalize_proposals_impl`
+/// must:
+///   - return `session_status = "accepted"`
+///   - create no local tasks (`tasks_created == 0`)
+///   - report the number of skipped foreign proposals
+///   - persist `Accepted` status on the session in the repo
+#[tokio::test]
+async fn test_all_foreign_finalize_transitions_session_to_accepted() {
+    let state = setup_test_state().await;
+
+    // Create a project with a known working directory
+    let project = make_project("foreign-proj-1", "SourceProject", "/tmp/source-project");
+    let project_id = project.id.as_str().to_string();
+    state.app_state.project_repo.create(project).await.unwrap();
+
+    // Create an Active ideation session for that project
+    let session = IdeationSession::new(ProjectId::from_string(project_id));
+    let session_id = session.id.as_str().to_string();
+    let session_id_typed = IdeationSessionId::from_string(session_id.clone());
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    // Create proposals that all point to a DIFFERENT project directory
+    let p1 = make_proposal_with_target(&session_id_typed, "Foreign Task 1", "/tmp/other-project");
+    let p2 = make_proposal_with_target(&session_id_typed, "Foreign Task 2", "/tmp/other-project");
+    let p3 = make_proposal_with_target(&session_id_typed, "Foreign Task 3", "/tmp/other-project");
+    state.app_state.task_proposal_repo.create(p1).await.unwrap();
+    state.app_state.task_proposal_repo.create(p2).await.unwrap();
+    state.app_state.task_proposal_repo.create(p3).await.unwrap();
+
+    // Call finalize_proposals_impl — accessible via the handlers::* glob re-export
+    let result = finalize_proposals_impl(&state.app_state, &session_id).await;
+
+    assert!(result.is_ok(), "finalize_proposals_impl should succeed: {:?}", result.err());
+    let response = result.unwrap();
+
+    // Session status must be "accepted" (all proposals were foreign)
+    assert_eq!(
+        response.session_status, "accepted",
+        "Expected session_status 'accepted', got '{}'",
+        response.session_status
+    );
+
+    // No local proposals → no tasks created
+    assert_eq!(
+        response.tasks_created, 0,
+        "Expected tasks_created == 0 (no local proposals)"
+    );
+
+    // All 3 foreign proposals should be reported as skipped
+    assert!(
+        response.skipped_foreign_count > 0,
+        "Expected skipped_foreign_count > 0, got {}",
+        response.skipped_foreign_count
+    );
+    assert_eq!(
+        response.skipped_foreign_count, 3,
+        "Expected skipped_foreign_count == 3 (one per foreign proposal)"
+    );
+
+    // Verify the session was persisted as Accepted in the repo
+    let updated_session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_typed)
+        .await
+        .unwrap()
+        .expect("Session must still exist after finalize");
+
+    assert_eq!(
+        updated_session.status,
+        IdeationSessionStatus::Accepted,
+        "Session in repo must be Accepted after all-foreign finalize"
+    );
+}
+
+#[tokio::test]
+async fn test_migrate_then_finalize_target_session_accepted() {
+    // Use SQLite-backed state so apply_proposals_core's db.run_transaction can see
+    // all rows inserted by the repo trait methods in the same test.
+    let app_state = AppState::new_sqlite_for_apply_test();
+
+    // Create source and target projects; project IDs must match the sessions.
+    let src_project = make_project("proj-src", "Source", "/tmp/src");
+    let dst_project = make_project("proj-dst", "Destination", "/tmp/dst");
+    app_state.project_repo.create(src_project).await.unwrap();
+    app_state.project_repo.create(dst_project).await.unwrap();
+
+    let src = make_session("proj-src");
+    let dst = make_session("proj-dst");
+    let source_id = src.id.as_str().to_string();
+    let target_id = dst.id.as_str().to_string();
+    let source_sid = IdeationSessionId::from_string(source_id.clone());
+    app_state.ideation_session_repo.create(src).await.unwrap();
+    app_state.ideation_session_repo.create(dst).await.unwrap();
+
+    // Proposal targeting proj-dst — before fix this would stay foreign after migration
+    let p = make_proposal_with_target(&source_sid, "Cross-project Feature", "proj-dst");
+    app_state.task_proposal_repo.create(p).await.unwrap();
+
+    // Migrate to target session
+    let migrate_input = MigrateProposalsInput {
+        source_session_id: source_id,
+        target_session_id: target_id.clone(),
+        proposal_ids: None,
+        target_project_filter: Some("proj-dst".to_string()),
+    };
+    let result = migrate_proposals_impl(&app_state, migrate_input).await.unwrap();
+    assert_eq!(result.migrated.len(), 1);
+
+    // After fix: target_project is cleared so the proposal is local to the target session
+    let target_sid = IdeationSessionId::from_string(target_id.clone());
+    let target_proposals = app_state.task_proposal_repo.get_by_session(&target_sid).await.unwrap();
+    assert_eq!(target_proposals[0].target_project, None);
+
+    // finalize_proposals_impl sees all proposals as local → calls apply_proposals_core
+    // → session converts to Accepted
+    let response = finalize_proposals_impl(&app_state, &target_id).await.unwrap();
+    assert_eq!(
+        response.session_status, "accepted",
+        "All proposals local (target_project cleared) — session should transition to Accepted"
+    );
 }
