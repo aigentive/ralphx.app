@@ -695,6 +695,413 @@ impl<'a> super::TransitionHandler<'a> {
         Ok(())
     }
 
+    async fn reset_stale_steps_on_entry(&self, task_id_str: &str) {
+        if let Some(ref step_repo) = self.machine.context.services.step_repo {
+            let task_id_typed = TaskId::from_string(task_id_str.to_string());
+            match step_repo.reset_all_to_pending(&task_id_typed).await {
+                Ok(count) if count > 0 => {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        count,
+                        "Reset stale steps to Pending on re-entry"
+                    );
+                    self.machine
+                        .context
+                        .services
+                        .event_emitter
+                        .emit("step:updated", task_id_str)
+                        .await;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = task_id_str,
+                        error = %e,
+                        "Failed to reset steps on re-entry"
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+
+    async fn run_execution_freshness_check(
+        &self,
+        task_id_str: &str,
+        project_id_str: &str,
+        stage: &'static str,
+    ) -> AppResult<()> {
+        if let (Some(ref task_repo), Some(ref project_repo)) = (
+            &self.machine.context.services.task_repo,
+            &self.machine.context.services.project_repo,
+        ) {
+            let task_id_typed = TaskId::from_string(task_id_str.to_string());
+            let project_id_typed = ProjectId::from_string(project_id_str.to_string());
+            if let (Ok(Some(task)), Ok(Some(project))) = (
+                task_repo.get_by_id(&task_id_typed).await,
+                project_repo.get_by_id(&project_id_typed).await,
+            ) {
+                let repo_path = Path::new(&project.working_directory);
+                let plan_branch = get_task_plan_branch(
+                    &task,
+                    &project,
+                    &self.machine.context.services.plan_branch_repo,
+                    &self.machine.context.services.task_repo,
+                )
+                .await;
+                let config = reconciliation_config();
+                let app_handle = self.machine.context.services.app_handle.as_ref();
+                let activity_event_repo = self.machine.context.services.activity_event_repo.as_ref();
+                let freshness_result = freshness::ensure_branches_fresh(
+                    repo_path,
+                    &task,
+                    &project,
+                    task_id_str,
+                    plan_branch.as_deref(),
+                    app_handle,
+                    activity_event_repo,
+                    stage,
+                    config,
+                )
+                .await;
+                apply_freshness_result(freshness_result, &task, task_id_str, task_repo).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn ensure_executing_branch_and_worktree(
+        &self,
+        task_id_str: &str,
+        project_id_str: &str,
+    ) -> AppResult<()> {
+        if let (Some(ref task_repo), Some(ref project_repo)) = (
+            &self.machine.context.services.task_repo,
+            &self.machine.context.services.project_repo,
+        ) {
+            let task_id = TaskId::from_string(task_id_str.to_string());
+            let project_id = ProjectId::from_string(project_id_str.to_string());
+
+            let task_result = task_repo.get_by_id(&task_id).await;
+            let project_result = project_repo.get_by_id(&project_id).await;
+
+            if let (Ok(Some(mut task)), Ok(Some(project))) = (task_result, project_result) {
+                let repo_path = Path::new(&project.working_directory);
+                let plan_branch_repo = &self.machine.context.services.plan_branch_repo;
+                let task_repo_ref = &self.machine.context.services.task_repo;
+                let pr_creation_guard_ref = &self.machine.context.services.pr_creation_guard;
+                let github_service_ref = &self.machine.context.services.github_service;
+
+                let mut branch_self_healed = false;
+                if let Some(ref branch) = task.task_branch.clone() {
+                    let branch_exists = GitService::branch_exists(repo_path, branch)
+                        .await
+                        .unwrap_or(false);
+                    if !branch_exists {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            branch = %branch,
+                            "Stale task_branch detected — branch deleted, self-healing by creating fresh branch"
+                        );
+                        if let Some(ref stored_wt) = task.worktree_path.clone() {
+                            let stored = std::path::PathBuf::from(stored_wt);
+                            if stored.exists() {
+                                let _ = GitService::delete_worktree(repo_path, &stored).await;
+                            }
+                        }
+                        let expected_wt_path_str = compute_task_worktree_path(&project, task_id_str);
+                        let expected_wt_path = std::path::PathBuf::from(&expected_wt_path_str);
+                        if expected_wt_path.exists() {
+                            let _ = GitService::delete_worktree(repo_path, &expected_wt_path).await;
+                        }
+                        task.task_branch = None;
+                        task.worktree_path = None;
+                        task.merge_commit_sha = None;
+                        task.touch();
+                        if let Err(e) = task_repo.update(&task).await {
+                            tracing::error!(
+                                task_id = task_id_str,
+                                error = %e,
+                                "Failed to clear stale git refs during self-heal"
+                            );
+                        }
+                        match create_fresh_branch_and_worktree(
+                            &task,
+                            &project,
+                            task_id_str,
+                            repo_path,
+                            plan_branch_repo,
+                            task_repo_ref,
+                            pr_creation_guard_ref,
+                            github_service_ref,
+                        )
+                        .await
+                        {
+                            Ok((new_branch, new_worktree)) => {
+                                task.task_branch = Some(new_branch.clone());
+                                task.worktree_path = Some(new_worktree.to_string_lossy().to_string());
+                                task.touch();
+                                tracing::info!(
+                                    task_id = task_id_str,
+                                    branch = %new_branch,
+                                    worktree_path = %new_worktree.display(),
+                                    "Self-healed: created fresh branch and worktree for deleted branch"
+                                );
+                                if let Err(e) = task_repo.update(&task).await {
+                                    tracing::error!(
+                                        task_id = task_id_str,
+                                        error = %e,
+                                        "Failed to persist self-healed branch info"
+                                    );
+                                }
+                                branch_self_healed = true;
+                            }
+                            Err(e) => return Err(e),
+                        }
+                    }
+                }
+
+                if !branch_self_healed {
+                    if task.task_branch.is_none() {
+                        match create_fresh_branch_and_worktree(
+                            &task,
+                            &project,
+                            task_id_str,
+                            repo_path,
+                            plan_branch_repo,
+                            task_repo_ref,
+                            pr_creation_guard_ref,
+                            github_service_ref,
+                        )
+                        .await
+                        {
+                            Ok((branch_name, worktree_path)) => {
+                                tracing::info!(
+                                    task_id = task_id_str,
+                                    branch = %branch_name,
+                                    worktree_path = %worktree_path.display(),
+                                    "Created worktree with task branch"
+                                );
+                                task.task_branch = Some(branch_name);
+                                task.worktree_path =
+                                    Some(worktree_path.to_string_lossy().to_string());
+                                task.touch();
+                                if let Err(e) = task_repo.update(&task).await {
+                                    tracing::error!(error = %e, "Failed to persist task branch info");
+                                }
+                            }
+                            Err(e) => return Err(e),
+                        }
+                    }
+
+                    if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await {
+                        if let Some(ref branch) = task.task_branch.clone() {
+                            let expected_wt_path = compute_task_worktree_path(&project, task_id_str);
+                            let expected_wt_buf = std::path::PathBuf::from(&expected_wt_path);
+                            let stored_path_exists = task
+                                .worktree_path
+                                .as_ref()
+                                .map(|p| std::path::PathBuf::from(p).exists())
+                                .unwrap_or(false);
+                            let expected_path_exists = expected_wt_buf.exists();
+                            if !stored_path_exists && !expected_path_exists {
+                                let branch_exists = GitService::branch_exists(repo_path, branch)
+                                    .await
+                                    .unwrap_or(false);
+                                if !branch_exists {
+                                    return Err(AppError::ExecutionBlocked(format!(
+                                        "{}: branch '{}' no longer exists (deleted during prior merge cleanup). Task needs manual recovery or reset to Ready.",
+                                        GIT_ISOLATION_ERROR_PREFIX,
+                                        branch
+                                    )));
+                                }
+                                tracing::info!(
+                                    task_id = task_id_str,
+                                    branch = %branch,
+                                    expected_wt = %expected_wt_path,
+                                    "Worktree missing for task with existing branch — re-creating"
+                                );
+                                match GitService::checkout_existing_branch_worktree(
+                                    repo_path,
+                                    &expected_wt_buf,
+                                    branch,
+                                )
+                                .await
+                                {
+                                    Ok(_) => {
+                                        task.worktree_path = Some(expected_wt_path);
+                                        task.touch();
+                                        if let Err(e) = task_repo.update(&task).await {
+                                            tracing::error!(
+                                                error = %e,
+                                                "Failed to persist re-created worktree_path"
+                                            );
+                                        }
+                                    }
+                                    Err(e) => {
+                                        return Err(AppError::ExecutionBlocked(format!(
+                                            "{}: could not re-create missing worktree for task with existing branch: {}",
+                                            GIT_ISOLATION_ERROR_PREFIX,
+                                            e
+                                        )));
+                                    }
+                                }
+                            } else if !stored_path_exists && expected_path_exists {
+                                task.worktree_path = Some(expected_wt_path);
+                                task.touch();
+                                if let Err(e) = task_repo.update(&task).await {
+                                    tracing::error!(
+                                        error = %e,
+                                        "Failed to update stale worktree_path in DB"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn build_execution_prompt(
+        &self,
+        task_id_str: &str,
+        base_prompt: String,
+    ) -> String {
+        let mut prompt = base_prompt;
+        if let Some(ref task_repo) = self.machine.context.services.task_repo {
+            let task_id_typed = TaskId::from_string(task_id_str.to_string());
+            if let Ok(Some(task)) = task_repo.get_by_id(&task_id_typed).await {
+                if let Some(note) = extract_restart_note(task.metadata.as_deref()) {
+                    prompt = format!("{}\n\nUser note: {}", prompt, note);
+                    let cleared = MetadataUpdate::new()
+                        .with_null("restart_note")
+                        .merge_into(task.metadata.as_deref());
+                    if let Err(e) = task_repo
+                        .update_metadata(&task_id_typed, Some(cleared))
+                        .await
+                    {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            error = %e,
+                            "Failed to clear restart_note from metadata"
+                        );
+                    }
+                }
+            }
+        }
+        prompt
+    }
+
+    async fn send_task_execution_message(
+        &self,
+        task_id_str: &str,
+        prompt: &str,
+        failure_log: &str,
+    ) -> AppResult<()> {
+        match self
+            .machine
+            .context
+            .services
+            .chat_service
+            .send_message(
+                crate::domain::entities::ChatContextType::TaskExecution,
+                task_id_str,
+                prompt,
+                Default::default(),
+            )
+            .await
+        {
+            Ok(result) if result.was_queued => {
+                tracing::info!(
+                    task_id = task_id_str,
+                    "Agent already running for this task — treating on_enter as no-op"
+                );
+                Ok(())
+            }
+            Ok(_) => Ok(()),
+            Err(e) => {
+                tracing::error!(
+                    task_id = task_id_str,
+                    error = %e,
+                    "{}",
+                    failure_log
+                );
+                Err(AppError::ExecutionBlocked(format!(
+                    "Failed to start agent: {}",
+                    e
+                )))
+            }
+        }
+    }
+
+    async fn enter_executing_state(&self) -> AppResult<()> {
+        let task_id_str = self.machine.context.task_id.as_str();
+        let project_id_str = self.machine.context.project_id.as_str();
+
+        self.check_plan_branch_active(task_id_str).await?;
+        self.reset_stale_steps_on_entry(task_id_str).await;
+        self.ensure_executing_branch_and_worktree(task_id_str, project_id_str)
+            .await?;
+        self.run_execution_freshness_check(task_id_str, project_id_str, "executing")
+            .await?;
+        self.run_and_store_pre_execution_setup(
+            task_id_str,
+            project_id_str,
+            "execution",
+            "execution_setup_log",
+        )
+        .await?;
+
+        let prompt = self
+            .build_execution_prompt(task_id_str, format!("Execute task: {}", task_id_str))
+            .await;
+        tracing::debug!(
+            task_id = task_id_str,
+            prompt_len = prompt.len(),
+            "Transition handler sending task_execution message"
+        );
+        self.send_task_execution_message(
+            task_id_str,
+            &prompt,
+            "Failed to send task execution message — agent not started",
+        )
+        .await
+    }
+
+    async fn enter_reexecuting_state(&self) -> AppResult<()> {
+        let task_id_str = self.machine.context.task_id.as_str();
+        let project_id_str = self.machine.context.project_id.as_str();
+
+        self.check_plan_branch_active(task_id_str).await?;
+        self.reset_stale_steps_on_entry(task_id_str).await;
+        self.run_execution_freshness_check(task_id_str, project_id_str, "re_executing")
+            .await?;
+        self.run_and_store_pre_execution_setup(
+            task_id_str,
+            project_id_str,
+            "execution",
+            "execution_setup_log",
+        )
+        .await?;
+
+        let prompt = self
+            .build_execution_prompt(
+                task_id_str,
+                format!("Re-execute task (revision): {}", task_id_str),
+            )
+            .await;
+        self.send_task_execution_message(
+            task_id_str,
+            &prompt,
+            "Failed to send re-execution message — agent not started",
+        )
+        .await
+    }
+
     async fn load_merge_prompt_context(&self, task_id: &str) -> MergePromptContext {
         let Some(task_repo) = &self.machine.context.services.task_repo else {
             return MergePromptContext::default();
@@ -1164,362 +1571,7 @@ impl<'a> super::TransitionHandler<'a> {
                 }
             }
             State::Executing => {
-                let task_id_str = &self.machine.context.task_id;
-                let project_id_str = &self.machine.context.project_id;
-
-                // Plan branch guard: block execution on merged/abandoned branches
-                self.check_plan_branch_active(task_id_str).await?;
-
-                // Reset stale steps from previous execution
-                if let Some(ref step_repo) = self.machine.context.services.step_repo {
-                    let task_id_typed = TaskId::from_string(task_id_str.clone());
-                    match step_repo.reset_all_to_pending(&task_id_typed).await {
-                        Ok(count) if count > 0 => {
-                            tracing::info!(task_id = task_id_str, count, "Reset stale steps to Pending on re-entry");
-                            self.machine
-                                .context
-                                .services
-                                .event_emitter
-                                .emit("step:updated", task_id_str)
-                                .await;
-                        }
-                        Err(e) => {
-                            tracing::warn!(task_id = task_id_str, error = %e, "Failed to reset steps on re-entry");
-                        }
-                        _ => {}
-                    }
-                }
-
-                // Setup branch/worktree for task isolation (Phase 66)
-                // Only setup if task_repo and project_repo are available
-                if let (Some(ref task_repo), Some(ref project_repo)) = (
-                    &self.machine.context.services.task_repo,
-                    &self.machine.context.services.project_repo,
-                ) {
-                    let task_id = TaskId::from_string(task_id_str.clone());
-                    let project_id = ProjectId::from_string(project_id_str.clone());
-
-                    // Fetch task and project
-                    let task_result = task_repo.get_by_id(&task_id).await;
-                    let project_result = project_repo.get_by_id(&project_id).await;
-
-                    if let (Ok(Some(mut task)), Ok(Some(project))) = (task_result, project_result) {
-                        let repo_path = Path::new(&project.working_directory);
-                        let plan_branch_repo = &self.machine.context.services.plan_branch_repo;
-                        let task_repo_ref = &self.machine.context.services.task_repo;
-                        let pr_creation_guard_ref =
-                            &self.machine.context.services.pr_creation_guard;
-                        let github_service_ref = &self.machine.context.services.github_service;
-
-                        // Layer 2 self-healing guard: detect deleted branches BEFORE the three-way
-                        // worktree guard. Covers paths where Layer 1 (move_task) is bypassed
-                        // (reconciler, scheduler, direct transitions).
-                        let mut branch_self_healed = false;
-                        if let Some(ref branch) = task.task_branch.clone() {
-                            let branch_exists =
-                                GitService::branch_exists(repo_path, branch).await.unwrap_or(false);
-                            if !branch_exists {
-                                tracing::warn!(
-                                    task_id = task_id_str,
-                                    branch = %branch,
-                                    "Stale task_branch detected — branch deleted, self-healing by creating fresh branch"
-                                );
-                                // Clean up stored worktree directory if it exists
-                                if let Some(ref stored_wt) = task.worktree_path.clone() {
-                                    let stored = std::path::PathBuf::from(stored_wt);
-                                    if stored.exists() {
-                                        let _ =
-                                            GitService::delete_worktree(repo_path, &stored).await;
-                                    }
-                                }
-                                // Also clean up the expected path (may differ from stored path)
-                                let expected_wt_path_str =
-                                    compute_task_worktree_path(&project, task_id_str);
-                                let expected_wt_path =
-                                    std::path::PathBuf::from(&expected_wt_path_str);
-                                if expected_wt_path.exists() {
-                                    let _ = GitService::delete_worktree(repo_path, &expected_wt_path)
-                                        .await;
-                                }
-                                // Clear stale refs and persist to DB
-                                task.task_branch = None;
-                                task.worktree_path = None;
-                                task.merge_commit_sha = None;
-                                task.touch();
-                                if let Err(e) = task_repo.update(&task).await {
-                                    tracing::error!(
-                                        task_id = task_id_str,
-                                        error = %e,
-                                        "Failed to clear stale git refs during self-heal"
-                                    );
-                                }
-                                // Create a fresh branch and worktree
-                                match create_fresh_branch_and_worktree(
-                                    &task,
-                                    &project,
-                                    task_id_str,
-                                    repo_path,
-                                    plan_branch_repo,
-                                    task_repo_ref,
-                                    pr_creation_guard_ref,
-                                    github_service_ref,
-                                )
-                                .await
-                                {
-                                    Ok((new_branch, new_worktree)) => {
-                                        task.task_branch = Some(new_branch.clone());
-                                        task.worktree_path =
-                                            Some(new_worktree.to_string_lossy().to_string());
-                                        task.touch();
-                                        tracing::info!(
-                                            task_id = task_id_str,
-                                            branch = %new_branch,
-                                            worktree_path = %new_worktree.display(),
-                                            "Self-healed: created fresh branch and worktree for deleted branch"
-                                        );
-                                        if let Err(e) = task_repo.update(&task).await {
-                                            tracing::error!(
-                                                task_id = task_id_str,
-                                                error = %e,
-                                                "Failed to persist self-healed branch info"
-                                            );
-                                        }
-                                        branch_self_healed = true;
-                                    }
-                                    Err(e) => return Err(e),
-                                }
-                            }
-                        }
-
-                        // Original branch/worktree setup — skipped when self-heal already handled it.
-                        if !branch_self_healed {
-                            if task.task_branch.is_none() {
-                                // Fresh task — create branch + worktree via shared helper
-                                match create_fresh_branch_and_worktree(
-                                    &task,
-                                    &project,
-                                    task_id_str,
-                                    repo_path,
-                                    plan_branch_repo,
-                                    task_repo_ref,
-                                    pr_creation_guard_ref,
-                                    github_service_ref,
-                                )
-                                .await
-                                {
-                                    Ok((branch_name, worktree_path)) => {
-                                        tracing::info!(
-                                            task_id = task_id_str,
-                                            branch = %branch_name,
-                                            worktree_path = %worktree_path.display(),
-                                            "Created worktree with task branch"
-                                        );
-                                        task.task_branch = Some(branch_name);
-                                        task.worktree_path =
-                                            Some(worktree_path.to_string_lossy().to_string());
-                                        task.touch();
-                                        if let Err(e) = task_repo.update(&task).await {
-                                            tracing::error!(
-                                                error = %e,
-                                                "Failed to persist task branch info"
-                                            );
-                                        }
-                                    }
-                                    Err(e) => return Err(e),
-                                }
-                            }
-
-                            // Worktree existence guard: even when task_branch is already set (prior run),
-                            // the worktree may have been cleaned up. Re-create if missing to prevent
-                            // run_and_store_pre_execution_setup from using a stale/nonexistent path.
-                            // Also handles the race where create_worktree succeeded but DB persist failed.
-                            if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await {
-                                if let Some(ref branch) = task.task_branch.clone() {
-                                    let expected_wt_path =
-                                        compute_task_worktree_path(&project, task_id_str);
-                                    let expected_wt_buf =
-                                        std::path::PathBuf::from(&expected_wt_path);
-                                    // Check both the expected path AND the stored path
-                                    let stored_path_exists = task
-                                        .worktree_path
-                                        .as_ref()
-                                        .map(|p| std::path::PathBuf::from(p).exists())
-                                        .unwrap_or(false);
-                                    let expected_path_exists = expected_wt_buf.exists();
-                                    if !stored_path_exists && !expected_path_exists {
-                                        let branch_exists =
-                                            GitService::branch_exists(repo_path, branch)
-                                                .await
-                                                .unwrap_or(false);
-                                        if !branch_exists {
-                                            return Err(AppError::ExecutionBlocked(format!(
-                                                "{}: branch '{}' no longer exists (deleted during prior merge cleanup). Task needs manual recovery or reset to Ready.",
-                                                GIT_ISOLATION_ERROR_PREFIX,
-                                                branch
-                                            )));
-                                        }
-                                        tracing::info!(
-                                            task_id = task_id_str,
-                                            branch = %branch,
-                                            expected_wt = %expected_wt_path,
-                                            "Worktree missing for task with existing branch — re-creating"
-                                        );
-                                        match GitService::checkout_existing_branch_worktree(
-                                            repo_path,
-                                            &expected_wt_buf,
-                                            branch,
-                                        )
-                                        .await
-                                        {
-                                            Ok(_) => {
-                                                task.worktree_path = Some(expected_wt_path);
-                                                task.touch();
-                                                if let Err(e) = task_repo.update(&task).await {
-                                                    tracing::error!(error = %e, "Failed to persist re-created worktree_path");
-                                                }
-                                            }
-                                            Err(e) => {
-                                                return Err(AppError::ExecutionBlocked(format!(
-                                                    "{}: could not re-create missing worktree for task with existing branch: {}",
-                                                    GIT_ISOLATION_ERROR_PREFIX,
-                                                    e
-                                                )));
-                                            }
-                                        }
-                                    } else if !stored_path_exists && expected_path_exists {
-                                        // Expected path exists but DB has wrong/missing worktree_path — update DB
-                                        task.worktree_path = Some(expected_wt_path);
-                                        task.touch();
-                                        if let Err(e) = task_repo.update(&task).await {
-                                            tracing::error!(error = %e, "Failed to update stale worktree_path in DB");
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Freshness check: ensure branches are up-to-date before spawning agent
-                // Runs AFTER worktree setup but BEFORE pre-execution setup and agent spawn.
-                if let (Some(ref task_repo), Some(ref project_repo)) = (
-                    &self.machine.context.services.task_repo,
-                    &self.machine.context.services.project_repo,
-                ) {
-                    let task_id_typed = TaskId::from_string(task_id_str.clone());
-                    let project_id_typed = ProjectId::from_string(project_id_str.clone());
-                    if let (Ok(Some(task)), Ok(Some(project))) = (
-                        task_repo.get_by_id(&task_id_typed).await,
-                        project_repo.get_by_id(&project_id_typed).await,
-                    ) {
-                        let repo_path = Path::new(&project.working_directory);
-                        let plan_branch = get_task_plan_branch(
-                            &task,
-                            &project,
-                            &self.machine.context.services.plan_branch_repo,
-                            &self.machine.context.services.task_repo,
-                        )
-                        .await;
-                        let config = reconciliation_config();
-                        let app_handle = self.machine.context.services.app_handle.as_ref();
-                        let activity_event_repo =
-                            self.machine.context.services.activity_event_repo.as_ref();
-                        let freshness_result = freshness::ensure_branches_fresh(
-                            repo_path,
-                            &task,
-                            &project,
-                            task_id_str,
-                            plan_branch.as_deref(),
-                            app_handle,
-                            activity_event_repo,
-                            "executing",
-                            config,
-                        )
-                        .await;
-                        apply_freshness_result(freshness_result, &task, task_id_str, task_repo)
-                            .await?;
-                    }
-                }
-
-                // Run pre-execution setup (worktree_setup + install) before spawning agent
-                self.run_and_store_pre_execution_setup(
-                    task_id_str,
-                    project_id_str,
-                    "execution",
-                    "execution_setup_log",
-                )
-                .await?;
-
-                // Use ChatService for persistent worker execution (Phase 15B)
-                // Read restart_note from metadata (one-shot: append to prompt, then clear)
-                let mut prompt = format!("Execute task: {}", task_id_str);
-                if let Some(ref task_repo) = self.machine.context.services.task_repo {
-                    let task_id_typed = TaskId::from_string(task_id_str.clone());
-                    if let Ok(Some(task)) = task_repo.get_by_id(&task_id_typed).await {
-                        if let Some(note) = extract_restart_note(task.metadata.as_deref()) {
-                            prompt = format!("{}\n\nUser note: {}", prompt, note);
-                            // Clear restart_note from metadata (one-shot consumption)
-                            let cleared = MetadataUpdate::new()
-                                .with_null("restart_note")
-                                .merge_into(task.metadata.as_deref());
-                            if let Err(e) = task_repo
-                                .update_metadata(&task_id_typed, Some(cleared))
-                                .await
-                            {
-                                tracing::warn!(
-                                    task_id = task_id_str,
-                                    error = %e,
-                                    "Failed to clear restart_note from metadata"
-                                );
-                            }
-                        }
-                    }
-                }
-                tracing::debug!(
-                    task_id = task_id_str,
-                    prompt_len = prompt.len(),
-                    "Transition handler sending task_execution message"
-                );
-
-                // send_message handles:
-                // 1. Creating chat_conversation (context_type: 'task_execution')
-                // 2. Creating agent_run (status: 'running')
-                // 3. Spawning Claude CLI with --agent worker
-                // 4. Persisting stream output to chat_messages
-                // 5. Processing queued messages on completion
-                match self
-                    .machine
-                    .context
-                    .services
-                    .chat_service
-                    .send_message(
-                        crate::domain::entities::ChatContextType::TaskExecution,
-                        task_id_str,
-                        &prompt,
-                        Default::default(),
-                    )
-                    .await
-                {
-                    Ok(result) if result.was_queued => {
-                        tracing::info!(
-                            task_id = task_id_str,
-                            "Agent already running for this task — treating on_enter as no-op"
-                        );
-                        return Ok(());
-                    }
-                    Ok(_) => {}
-                    Err(e) => {
-                        tracing::error!(
-                            task_id = task_id_str,
-                            error = %e,
-                            "Failed to send task execution message — agent not started"
-                        );
-                        return Err(AppError::ExecutionBlocked(format!(
-                            "Failed to start agent: {}",
-                            e
-                        )));
-                    }
-                }
+                self.enter_executing_state().await?;
             }
             State::QaRefining => {
                 // Set trigger_origin="qa" for QA cycle (skip if already set by transition_task_with_metadata)
@@ -1746,141 +1798,7 @@ impl<'a> super::TransitionHandler<'a> {
                 }
             }
             State::ReExecuting => {
-                // Plan branch guard: block re-execution on merged/abandoned branches
-                let task_id_str = &self.machine.context.task_id;
-                self.check_plan_branch_active(task_id_str).await?;
-
-                // Reset stale steps from previous execution
-                if let Some(ref step_repo) = self.machine.context.services.step_repo {
-                    let task_id_typed = TaskId::from_string(task_id_str.clone());
-                    match step_repo.reset_all_to_pending(&task_id_typed).await {
-                        Ok(count) if count > 0 => {
-                            tracing::info!(task_id = task_id_str, count, "Reset stale steps to Pending on re-entry");
-                            self.machine
-                                .context
-                                .services
-                                .event_emitter
-                                .emit("step:updated", task_id_str)
-                                .await;
-                        }
-                        Err(e) => {
-                            tracing::warn!(task_id = task_id_str, error = %e, "Failed to reset steps on re-entry");
-                        }
-                        _ => {}
-                    }
-                }
-
-                // Freshness check: ensure branches are up-to-date before re-executing
-                // Runs AFTER plan branch guard but BEFORE pre-execution setup and agent spawn.
-                if let (Some(ref task_repo), Some(ref project_repo)) = (
-                    &self.machine.context.services.task_repo,
-                    &self.machine.context.services.project_repo,
-                ) {
-                    let task_id_typed = TaskId::from_string(task_id_str.clone());
-                    let project_id_typed = ProjectId::from_string(self.machine.context.project_id.clone());
-                    if let (Ok(Some(task)), Ok(Some(project))) = (
-                        task_repo.get_by_id(&task_id_typed).await,
-                        project_repo.get_by_id(&project_id_typed).await,
-                    ) {
-                        let repo_path = Path::new(&project.working_directory);
-                        let plan_branch = get_task_plan_branch(
-                            &task,
-                            &project,
-                            &self.machine.context.services.plan_branch_repo,
-                            &self.machine.context.services.task_repo,
-                        )
-                        .await;
-                        let config = reconciliation_config();
-                        let app_handle = self.machine.context.services.app_handle.as_ref();
-                        let activity_event_repo =
-                            self.machine.context.services.activity_event_repo.as_ref();
-                        let freshness_result = freshness::ensure_branches_fresh(
-                            repo_path,
-                            &task,
-                            &project,
-                            task_id_str,
-                            plan_branch.as_deref(),
-                            app_handle,
-                            activity_event_repo,
-                            "re_executing",
-                            config,
-                        )
-                        .await;
-                        apply_freshness_result(freshness_result, &task, task_id_str, task_repo)
-                            .await?;
-                    }
-                }
-
-                // Run pre-execution setup before re-executing
-                let project_id_str = &self.machine.context.project_id;
-                self.run_and_store_pre_execution_setup(
-                    task_id_str,
-                    project_id_str,
-                    "execution",
-                    "execution_setup_log",
-                )
-                .await?;
-
-                // Spawn worker agent with revision context via ChatService
-                let task_id = &self.machine.context.task_id;
-                // Read restart_note from metadata (one-shot: append to prompt, then clear)
-                let mut prompt = format!("Re-execute task (revision): {}", task_id);
-                if let Some(ref task_repo) = self.machine.context.services.task_repo {
-                    let task_id_typed = TaskId::from_string(task_id.clone());
-                    if let Ok(Some(task)) = task_repo.get_by_id(&task_id_typed).await {
-                        if let Some(note) = extract_restart_note(task.metadata.as_deref()) {
-                            prompt = format!("{}\n\nUser note: {}", prompt, note);
-                            // Clear restart_note from metadata (one-shot consumption)
-                            let cleared = MetadataUpdate::new()
-                                .with_null("restart_note")
-                                .merge_into(task.metadata.as_deref());
-                            if let Err(e) = task_repo
-                                .update_metadata(&task_id_typed, Some(cleared))
-                                .await
-                            {
-                                tracing::warn!(
-                                    task_id = task_id,
-                                    error = %e,
-                                    "Failed to clear restart_note from metadata"
-                                );
-                            }
-                        }
-                    }
-                }
-
-                match self
-                    .machine
-                    .context
-                    .services
-                    .chat_service
-                    .send_message(
-                        crate::domain::entities::ChatContextType::TaskExecution,
-                        task_id,
-                        &prompt,
-                        Default::default(),
-                    )
-                    .await
-                {
-                    Ok(result) if result.was_queued => {
-                        tracing::info!(
-                            task_id = task_id,
-                            "Agent already running for this task — treating on_enter as no-op"
-                        );
-                        return Ok(());
-                    }
-                    Ok(_) => {}
-                    Err(e) => {
-                        tracing::error!(
-                            task_id = task_id,
-                            error = %e,
-                            "Failed to send re-execution message — agent not started"
-                        );
-                        return Err(AppError::ExecutionBlocked(format!(
-                            "Failed to start agent: {}",
-                            e
-                        )));
-                    }
-                }
+                self.enter_reexecuting_state().await?;
             }
             State::RevisionNeeded => {
                 // Auto-transition to ReExecuting will be handled by check_auto_transition
