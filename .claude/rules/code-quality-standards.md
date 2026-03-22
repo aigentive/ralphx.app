@@ -31,7 +31,7 @@ paths:
 |------|---------|
 | Atomic commits | New files + deletions in same commit |
 | No .bak | Git is backup |
-| Copy don't rewrite | Read original, copy signatures, verify types |
+| Copy don't rewrite | For large refactors, move/extract existing code blocks programmatically first; patch after, don't hand-rewrite working code |
 | Validate | `cargo clippy --all-targets --all-features -- -D warnings` / `npm run typecheck` before commit |
 | Hook for logic | Complex state→hook, component only renders |
 | Re-export on extract | `export { New as Old }` — don't break imports |
