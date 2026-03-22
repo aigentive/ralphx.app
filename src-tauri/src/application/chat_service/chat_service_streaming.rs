@@ -96,8 +96,14 @@ pub(crate) fn format_agent_exit_stderr(details: ProcessExitDetails, stderr: &str
     )
 }
 
-const COMPLETION_TOOL_NAMES: &[&str] =
-    &["execution_complete", "complete_review", "complete_merge"];
+const COMPLETION_TOOL_NAMES: &[&str] = &[
+    "execution_complete",
+    "complete_review",
+    "complete_merge",
+    "mcp__ralphx__execution_complete",
+    "mcp__ralphx__complete_review",
+    "mcp__ralphx__complete_merge",
+];
 
 #[doc(hidden)]
 pub fn is_completion_tool_name(name: &str) -> bool {

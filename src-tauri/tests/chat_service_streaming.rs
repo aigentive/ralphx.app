@@ -207,6 +207,29 @@ fn test_completion_tool_detection_marks_tracker_and_bypasses_timeout() {
 }
 
 #[test]
+fn test_completion_tool_detection_accepts_fully_qualified_mcp_names() {
+    let mut tracker = CompletionSignalTracker::default();
+
+    if is_completion_tool_name("mcp__ralphx__execution_complete") {
+        tracker.mark_completion_called();
+    }
+
+    assert!(tracker.was_called());
+    assert!(tracker.is_in_grace_period(dur(30)));
+}
+
+#[test]
+fn test_completion_tool_detection_rejects_non_completion_mcp_names() {
+    let mut tracker = CompletionSignalTracker::default();
+
+    if is_completion_tool_name("mcp__ralphx__get_task_context") {
+        tracker.mark_completion_called();
+    }
+
+    assert!(!tracker.was_called());
+}
+
+#[test]
 fn test_timeout_config_task_execution() {
     let config = StreamTimeoutConfig::for_context(&ChatContextType::TaskExecution);
     assert_eq!(config.line_read_timeout, Duration::from_secs(600));
