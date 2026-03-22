@@ -95,6 +95,7 @@ New pattern → add one-liner here. Pattern name + rule only.
 | Forward-only migration repairs | Never reuse or renumber shipped migration versions; schema repair for already-upgraded DBs must be a new forward-only migration |
 | Oversized lib suite split | Move massive orchestration/state-machine/worktree suites out of `src/**` lib tests into `src-tauri/tests/*.rs` integration binaries, and expose only the minimum internal-facing API needed for them |
 | HTTP handler suite split | Move large handler sidecar suites to `src-tauri/tests/*.rs`; import via `ralphx_lib::http_server::{handlers,types}` and use `AppState::new_sqlite_test()` only for SQLite-backed handler cases |
+| HTTP handler module split | Move oversized production handler files to directory-backed modules (`foo/mod.rs` + endpoint-family files) and keep the module root as a thin prelude/re-export layer |
 | Ideation/external runtime suite split | Keep ideation and external handler runtime flows in dedicated integration binaries (`ideation_runtime_handlers`, `external_ideation_runtime_handlers`) and keep `.claude/rules/rust-test-execution.md` in sync when splitting more suites |
 | Integration helper visibility | When a moved integration suite needs private handler/helpers, expose the minimum surface as `#[doc(hidden)] pub` instead of keeping `#[cfg(test)]` sidecar-only access |
 | SQLite write transactions | `DbConnection::run_transaction()` uses `BEGIN IMMEDIATE`; keep read-then-write sync-helper flows inside it to avoid WAL upgrade failures surfaced as `database is locked` |
