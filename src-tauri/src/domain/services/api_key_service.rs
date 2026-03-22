@@ -3,13 +3,16 @@
 // Centralizes key creation, rotation, and revocation logic so that
 // both the HTTP API and the Tauri settings UI share the same rules.
 
-use crate::domain::entities::api_key::ApiKey;
+use crate::domain::entities::api_key::{ApiKey, PERMISSION_MAX};
 use crate::domain::entities::types::ApiKeyId;
 use crate::domain::repositories::api_key_repository::{
     ApiKeyRepository, CreateKeyParams, RotateKeyParams,
 };
 use crate::domain::services::key_crypto::{generate_raw_key, hash_key, key_prefix};
 use crate::error::{AppError, AppResult};
+
+/// ISO 8601 / RFC 3339 timestamp format used throughout this module.
+const TIMESTAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%SZ";
 
 /// Identifies the caller context so that appropriate permission defaults are applied.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,7 +60,7 @@ impl ApiKeyService {
     ///
     /// # Errors
     ///
-    /// Returns [`AppError::Validation`] if `permissions` is outside `0..=7`.
+    /// Returns [`AppError::Validation`] if `permissions` is outside `0..=PERMISSION_MAX`.
     /// Returns [`AppError::Database`] if the repository call fails.
     pub async fn create_key(
         repo: &dyn ApiKeyRepository,
@@ -67,19 +70,17 @@ impl ApiKeyService {
         source: KeySource,
     ) -> AppResult<ApiKeyCreated> {
         let permissions = permissions.unwrap_or_else(|| source.default_permissions());
-        if !(0..=7).contains(&permissions) {
+        if !(0..=PERMISSION_MAX).contains(&permissions) {
             return Err(AppError::Validation(format!(
-                "permissions must be between 0 and 7, got {}",
-                permissions
+                "permissions must be between 0 and {}, got {}",
+                PERMISSION_MAX, permissions
             )));
         }
 
         let raw_key = generate_raw_key();
         let key_hash = hash_key(&raw_key);
         let prefix = key_prefix(&raw_key);
-        let now = chrono::Utc::now()
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string();
+        let now = chrono::Utc::now().format(TIMESTAMP_FORMAT).to_string();
 
         let new_key = ApiKey {
             id: ApiKeyId::new(),
@@ -146,9 +147,9 @@ impl ApiKeyService {
         let new_prefix = key_prefix(&raw_key);
         let now = chrono::Utc::now();
         let grace_expires_at = (now + chrono::Duration::seconds(60))
-            .format("%Y-%m-%dT%H:%M:%SZ")
+            .format(TIMESTAMP_FORMAT)
             .to_string();
-        let now_str = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let now_str = now.format(TIMESTAMP_FORMAT).to_string();
 
         let project_ids = repo
             .get_projects(&old_key_id)

@@ -8,6 +8,7 @@ use axum::{
 
 use super::*;
 use crate::domain::entities::{ApiKey, ApiKeyId, PERMISSION_ADMIN, PERMISSION_CREATE_PROJECT, PERMISSION_MAX, PERMISSION_READ, PERMISSION_WRITE};
+use crate::domain::repositories::ApiKeyRepository;
 use crate::domain::services::api_key_service::{ApiKeyService, KeySource};
 
 /// Response for GET /api/validate_key
@@ -41,6 +42,12 @@ fn sha256_hex(raw: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(raw.as_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+/// Log an error and return 500 INTERNAL_SERVER_ERROR.
+fn internal_error<E: std::fmt::Display>(msg: &str, e: E) -> StatusCode {
+    tracing::error!("{}: {}", msg, e);
+    StatusCode::INTERNAL_SERVER_ERROR
 }
 
 /// Middleware: require a valid admin-level API key for management routes.
@@ -112,10 +119,7 @@ pub async fn create_api_key(
         KeySource::HttpApi,
     )
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to create API key: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    .map_err(|e| internal_error("Failed to create API key", e))?;
 
     Ok(Json(CreateApiKeyResponse {
         id: result.key.id.to_string(),
@@ -134,10 +138,7 @@ pub async fn list_api_keys(
     let keys = state.app_state.api_key_repo
         .list()
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to list API keys: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        .map_err(|e| internal_error("Failed to list API keys", e))?;
 
     let mut key_infos = Vec::with_capacity(keys.len());
     for key in keys {
@@ -184,10 +185,7 @@ pub async fn delete_api_key(
         KeySource::HttpApi,
     )
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to revoke API key: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    .map_err(|e| internal_error("Failed to revoke API key", e))?;
 
     Ok(Json(SuccessResponse {
         success: true,
@@ -209,10 +207,7 @@ pub async fn rotate_api_key(
     .map_err(|e| match e {
         crate::error::AppError::NotFound(_) => StatusCode::NOT_FOUND,
         crate::error::AppError::Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
-        other => {
-            tracing::error!("Failed to rotate API key: {}", other);
-            StatusCode::INTERNAL_SERVER_ERROR
-        }
+        other => internal_error("Failed to rotate API key", other),
     })?;
 
     // Reconstruct the grace expiry that was applied to the old key.
@@ -249,10 +244,7 @@ pub async fn update_api_key_projects(
     state.app_state.api_key_repo
         .set_projects(&key_id, &req.project_ids)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to update API key projects: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        .map_err(|e| internal_error("Failed to update API key projects", e))?;
 
     Ok(Json(SuccessResponse {
         success: true,
@@ -272,10 +264,7 @@ pub async fn get_audit_log(
         .api_key_repo
         .get_audit_log(key_id.as_str(), Some(100))
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to get audit log: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        .map_err(|e| internal_error("Failed to get audit log", e))?;
 
     Ok(Json(AuditLogResponse { entries }))
 }
@@ -301,8 +290,7 @@ pub async fn update_key_permissions(
             if matches!(e, crate::error::AppError::NotFound(_)) {
                 StatusCode::NOT_FOUND
             } else {
-                tracing::error!("Failed to update API key permissions: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
+                internal_error("Failed to update API key permissions", e)
             }
         })?;
 
@@ -315,75 +303,35 @@ pub async fn update_key_permissions(
 /// GET /api/auth/validate-key — Validate a bearer token, return metadata + project_ids
 /// Used by external MCP server to validate incoming API keys.
 /// Returns permissions as i32 bitmask and project_ids list (not human-readable names).
+/// Returns HTTP 401 for missing, invalid, or revoked keys.
 pub async fn validate_api_key(
     State(state): State<HttpServerState>,
     headers: HeaderMap,
 ) -> Result<Json<ExternalValidateKeyResponse>, StatusCode> {
-    let raw_key = match extract_raw_key(&headers) {
-        Some(k) => k,
-        None => {
-            return Ok(Json(ExternalValidateKeyResponse {
-                valid: false,
-                key_id: None,
-                key_name: None,
-                permissions: None,
-                project_ids: vec![],
-                message: "Missing API key. Provide via Authorization: Bearer <key>.".to_string(),
-            }));
-        }
-    };
+    let key = resolve_key_from_headers(state.app_state.api_key_repo.as_ref(), &headers).await?;
 
-    let key_hash = sha256_hex(&raw_key);
-
-    let key = state.app_state.api_key_repo
-        .get_by_hash(&key_hash)
+    // Fetch project associations synchronously before spawning background tasks
+    let project_ids = state.app_state.api_key_repo
+        .get_projects(&key.id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .unwrap_or_default();
 
-    match key {
-        None => Ok(Json(ExternalValidateKeyResponse {
-            valid: false,
-            key_id: None,
-            key_name: None,
-            permissions: None,
-            project_ids: vec![],
-            message: "Invalid API key.".to_string(),
-        })),
-        Some(key) if !key.is_active() && !key.is_in_grace_period() => {
-            Ok(Json(ExternalValidateKeyResponse {
-                valid: false,
-                key_id: Some(key.id.as_str().to_string()),
-                key_name: Some(key.name),
-                permissions: None,
-                project_ids: vec![],
-                message: "API key has been revoked.".to_string(),
-            }))
-        }
-        Some(key) => {
-            // Fetch project associations synchronously before spawning background tasks
-            let project_ids = state.app_state.api_key_repo
-                .get_projects(&key.id)
-                .await
-                .unwrap_or_default();
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let repo = state.app_state.api_key_repo.clone();
+    let key_id_clone = key.id.clone();
+    tokio::spawn(async move {
+        let _ = repo.update_last_used(&key_id_clone, &now).await;
+        let _ = repo.log_audit(key_id_clone.as_str(), "validate_key", None, true, None).await;
+    });
 
-            let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-            let repo = state.app_state.api_key_repo.clone();
-            let key_id_clone = key.id.clone();
-            tokio::spawn(async move {
-                let _ = repo.update_last_used(&key_id_clone, &now).await;
-                let _ = repo.log_audit(key_id_clone.as_str(), "validate_key", None, true, None).await;
-            });
-
-            Ok(Json(ExternalValidateKeyResponse {
-                valid: true,
-                key_id: Some(key.id.as_str().to_string()),
-                key_name: Some(key.name),
-                permissions: Some(key.permissions),
-                project_ids,
-                message: "API key is valid.".to_string(),
-            }))
-        }
-    }
+    Ok(Json(ExternalValidateKeyResponse {
+        valid: true,
+        key_id: Some(key.id.as_str().to_string()),
+        key_name: Some(key.name),
+        permissions: Some(key.permissions),
+        project_ids,
+        message: "API key is valid.".to_string(),
+    }))
 }
 
 /// Extract the raw API key value from request headers.
@@ -418,6 +366,30 @@ fn extract_raw_key(headers: &HeaderMap) -> Option<String> {
     None
 }
 
+/// Look up and validate an API key from the Authorization or X-RalphX-Key header.
+///
+/// Returns the active [`ApiKey`] on success.
+///
+/// # Errors
+/// - `StatusCode::UNAUTHORIZED` — missing, unknown, or revoked key
+/// - `StatusCode::INTERNAL_SERVER_ERROR` — repository failure
+async fn resolve_key_from_headers(
+    repo: &dyn ApiKeyRepository,
+    headers: &HeaderMap,
+) -> Result<ApiKey, StatusCode> {
+    let raw_key = extract_raw_key(headers).ok_or(StatusCode::UNAUTHORIZED)?;
+    let key_hash = sha256_hex(&raw_key);
+    let key = repo
+        .get_by_hash(&key_hash)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    match key {
+        None => Err(StatusCode::UNAUTHORIZED),
+        Some(k) if !k.is_active() && !k.is_in_grace_period() => Err(StatusCode::UNAUTHORIZED),
+        Some(k) => Ok(k),
+    }
+}
+
 /// Convert numeric permission bitmask to human-readable list.
 fn permission_names(permissions: i32) -> Vec<String> {
     let mut names = Vec::new();
@@ -447,46 +419,16 @@ pub async fn validate_key(
     State(state): State<HttpServerState>,
     headers: HeaderMap,
 ) -> Result<Json<ValidateKeyResponse>, StatusCode> {
-    let raw_key = match extract_raw_key(&headers) {
-        Some(k) => k,
-        None => {
-            return Ok(Json(ValidateKeyResponse {
-                valid: false,
-                key_id: None,
-                key_name: None,
-                permissions: None,
-                message: "Missing API key. Provide via Authorization: Bearer <key> or X-RalphX-Key header.".to_string(),
-            }));
-        }
-    };
-
-    let key_hash = sha256_hex(&raw_key);
-
-    let api_key: Option<ApiKey> = state
-        .app_state
-        .api_key_repo
-        .get_by_hash(&key_hash)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    match api_key {
-        None => Ok(Json(ValidateKeyResponse {
+    match resolve_key_from_headers(state.app_state.api_key_repo.as_ref(), &headers).await {
+        Err(e) if e == StatusCode::UNAUTHORIZED => Ok(Json(ValidateKeyResponse {
             valid: false,
             key_id: None,
             key_name: None,
             permissions: None,
-            message: "Invalid API key.".to_string(),
+            message: "API key is missing, invalid, or revoked.".to_string(),
         })),
-        Some(key) if !key.is_active() && !key.is_in_grace_period() => {
-            Ok(Json(ValidateKeyResponse {
-                valid: false,
-                key_id: Some(key.id.as_str().to_string()),
-                key_name: Some(key.name.clone()),
-                permissions: None,
-                message: "API key has been revoked.".to_string(),
-            }))
-        }
-        Some(key) => {
+        Err(e) => Err(e),
+        Ok(key) => {
             // Update last_used_at in the background (non-blocking; ignore errors)
             let repo = state.app_state.api_key_repo.clone();
             let key_id = key.id.clone();

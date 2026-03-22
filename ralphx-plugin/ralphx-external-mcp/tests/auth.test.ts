@@ -5,6 +5,7 @@ import {
   authMiddleware,
   clearAuthCache,
   invalidateCacheEntry,
+  invalidateCacheByKeyId,
   configureAuth,
   AuthError,
 } from "../src/auth.js";
@@ -196,5 +197,48 @@ describe("authMiddleware", () => {
     const result = await authMiddleware(req, res);
     expect(result).not.toBeUndefined();
     expect(result?.keyId).toBe("key-valid");
+  });
+});
+
+// ─── invalidateCacheByKeyId ───────────────────────────────────────────────────
+
+describe("invalidateCacheByKeyId", () => {
+  beforeEach(() => {
+    clearAuthCache();
+    configureAuth({ backendUrl: "http://127.0.0.1:3847" });
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearAuthCache();
+  });
+
+  it("removes cache entries matching keyId", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        key_id: "key-to-invalidate",
+        project_ids: ["proj-1"],
+        permissions: 3,
+      }),
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    await validateKey("rxk_live_somekey");
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    // Invalidate by key_id
+    invalidateCacheByKeyId("key-to-invalidate");
+
+    // Next call should go to backend again (cache cleared)
+    await validateKey("rxk_live_somekey");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("is a no-op for empty keyId", () => {
+    // Should not throw
+    expect(() => invalidateCacheByKeyId("")).not.toThrow();
   });
 });

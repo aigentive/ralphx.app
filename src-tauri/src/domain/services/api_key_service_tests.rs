@@ -46,11 +46,46 @@ async fn test_create_key_custom_permissions() {
 
 #[tokio::test]
 async fn test_create_key_invalid_permissions() {
+    // permissions=16 is above PERMISSION_MAX (15) and must be rejected
     let repo = make_repo();
-    let err = ApiKeyService::create_key(&repo, "bad-key", Some(8), &[], KeySource::HttpApi)
+    let err = ApiKeyService::create_key(&repo, "bad-key", Some(16), &[], KeySource::HttpApi)
         .await
-        .expect_err("permissions=8 should fail");
+        .expect_err("permissions=16 should fail");
 
+    assert!(
+        matches!(err, crate::error::AppError::Validation(_)),
+        "expected Validation error, got {:?}",
+        err
+    );
+}
+
+#[tokio::test]
+async fn test_create_key_create_project_permission_allowed() {
+    // PERMISSION_CREATE_PROJECT = 8 must be accepted after range fix
+    let repo = make_repo();
+    let result = ApiKeyService::create_key(&repo, "cp-key", Some(8), &[], KeySource::SettingsUi)
+        .await
+        .expect("permissions=8 (PERMISSION_CREATE_PROJECT) should succeed");
+    assert_eq!(result.key.permissions, 8);
+}
+
+#[tokio::test]
+async fn test_create_key_permission_max_allowed() {
+    // PERMISSION_MAX = 15 (all bits set) must be accepted
+    let repo = make_repo();
+    let result = ApiKeyService::create_key(&repo, "max-key", Some(15), &[], KeySource::SettingsUi)
+        .await
+        .expect("permissions=15 (PERMISSION_MAX) should succeed");
+    assert_eq!(result.key.permissions, 15);
+}
+
+#[tokio::test]
+async fn test_create_key_above_permission_max_rejected() {
+    // permissions=16 is above PERMISSION_MAX and must return a Validation error
+    let repo = make_repo();
+    let err = ApiKeyService::create_key(&repo, "over-key", Some(16), &[], KeySource::HttpApi)
+        .await
+        .expect_err("permissions=16 should fail");
     assert!(
         matches!(err, crate::error::AppError::Validation(_)),
         "expected Validation error, got {:?}",

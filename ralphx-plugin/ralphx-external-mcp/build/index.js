@@ -19,7 +19,7 @@ import { createServer as createHttpsServer } from "node:https";
 import { randomUUID } from "node:crypto";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { authMiddleware, configureAuth } from "./auth.js";
+import { authMiddleware, configureAuth, invalidateCacheByKeyId } from "./auth.js";
 import { configureRateLimiter, getRateLimiter } from "./rate-limiter.js";
 import { validateTlsConfig, buildTlsOptions } from "./tls.js";
 import { configureBackendClient } from "./backend-client.js";
@@ -66,6 +66,10 @@ async function handleRequest(req, res, config) {
     }
     if (url === "/ready") {
         await handleReady(req, res);
+        return;
+    }
+    if (url === "/api/auth/invalidate-cache" && req.method === "POST") {
+        await handleInvalidateCache(req, res);
         return;
     }
     // Connection limit — checked before auth to shed load early
@@ -244,6 +248,38 @@ export async function startServer(config = {}) {
  */
 function getClientIp(req) {
     return req.socket.remoteAddress ?? "unknown";
+}
+function readJsonBody(req) {
+    return new Promise((resolve) => {
+        let data = "";
+        req.on("data", (chunk) => {
+            data += String(chunk);
+        });
+        req.on("end", () => {
+            try {
+                resolve(JSON.parse(data));
+            }
+            catch {
+                resolve(null);
+            }
+        });
+        req.on("error", () => resolve(null));
+    });
+}
+async function handleInvalidateCache(req, res) {
+    const body = await readJsonBody(req);
+    const keyId = body?.key_id;
+    if (!keyId || typeof keyId !== "string") {
+        sendError(res, 400, "Missing or invalid key_id in request body");
+        return;
+    }
+    invalidateCacheByKeyId(keyId);
+    const responseBody = JSON.stringify({ ok: true });
+    res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Content-Length": responseBody.length,
+    });
+    res.end(responseBody);
 }
 function sendError(res, status, message) {
     const body = JSON.stringify({ error: message });

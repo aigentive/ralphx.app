@@ -94,6 +94,13 @@ export async function validateKey(rawKey: string): Promise<ApiKeyContext> {
   }
 
   const body = (await resp.json()) as ValidateKeyResponse;
+
+  // Defense-in-depth: reject if backend returns 200 but valid=false
+  if (!body.valid) {
+    cache.delete(rawKey);
+    throw new AuthError(401, "Invalid or revoked API key");
+  }
+
   const context: ApiKeyContext = {
     keyId: body.key_id,
     projectIds: body.project_ids,
