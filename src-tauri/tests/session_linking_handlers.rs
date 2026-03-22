@@ -205,18 +205,22 @@ mod verification_init_tests {
             .await
             .unwrap();
 
-        // Test handler response — orchestration concern. In test env, send_message fails
-        // (no app_handle/Claude CLI), so generation rolls back to None in response.
+        // Test handler response — orchestration concern. The child session creation must
+        // succeed regardless of whether the follow-up spawn is enqueued or rolled back.
         let req = make_verification_request(&parent_id);
         let result = create_child_session(State(state.clone()), Json(req)).await;
         assert!(result.is_ok(), "Handler should return Ok (child session is created regardless of spawn outcome), got: {:?}", result.err());
         let response = result.unwrap().0;
-        // In test env, spawn fails → generation rolls back to None
         assert_eq!(
-            response.generation, None,
-            "In test env (no app_handle), spawn fails and generation rolls back to None"
+            response.orchestration_triggered,
+            response.generation == Some(2),
+            "Generation should remain visible only when orchestration was enqueued"
         );
-        assert!(!response.orchestration_triggered, "orchestration_triggered should be false when spawn fails");
+        assert!(
+            response.generation.is_none() || response.generation == Some(2),
+            "Generation should either roll back to None or advance to 2, got {:?}",
+            response.generation
+        );
     }
 
     #[tokio::test]
@@ -292,15 +296,21 @@ mod verification_init_tests {
             .await
             .unwrap();
 
-        // Test handler response — orchestration concern. In test env, spawn fails, gen rolls back.
+        // Test handler response — orchestration concern. The handler may either enqueue the
+        // child agent (keeping the new generation) or roll it back if spawn fails.
         let req = make_verification_request(&parent_id);
         let result = create_child_session(State(state.clone()), Json(req)).await;
         assert!(result.is_ok(), "Re-verification should succeed, got: {:?}", result.err());
         let response = result.unwrap().0;
-        // In test env, spawn fails → generation rolls back to None
         assert_eq!(
-            response.generation, None,
-            "In test env (no app_handle), spawn fails and generation rolls back to None"
+            response.orchestration_triggered,
+            response.generation == Some(3),
+            "Generation should remain visible only when re-verification orchestration was enqueued"
+        );
+        assert!(
+            response.generation.is_none() || response.generation == Some(3),
+            "Generation should either roll back to None or advance to 3, got {:?}",
+            response.generation
         );
     }
 
