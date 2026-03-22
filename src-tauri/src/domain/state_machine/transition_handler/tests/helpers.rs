@@ -28,7 +28,20 @@ use std::time::Duration;
 pub fn make_project(base_branch: Option<&str>) -> Project {
     let mut p = Project::new("test-project".into(), "/tmp/test".into());
     p.base_branch = base_branch.map(|s| s.to_string());
+    p.worktree_parent_directory = Some("/tmp/test/worktrees".into());
     p
+}
+
+pub fn make_real_git_project(repo_path: &str) -> Project {
+    let mut project = Project::new("test-project".to_string(), repo_path.to_string());
+    project.base_branch = Some("main".to_string());
+    project.worktree_parent_directory = Some(
+        std::path::Path::new(repo_path)
+            .join("worktrees")
+            .to_string_lossy()
+            .to_string(),
+    );
+    project
 }
 
 pub fn make_task(plan_artifact_id: Option<&str>, task_branch: Option<&str>) -> Task {
@@ -437,9 +450,8 @@ pub async fn setup_pending_merge_with_real_repo(
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), repo_path.to_string());
+    let mut project = make_real_git_project(repo_path);
     project.id = project_id;
-    project.base_branch = Some("main".to_string());
     project.merge_strategy = merge_strategy;
     project_repo.create(project).await.unwrap();
 

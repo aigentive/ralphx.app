@@ -12,7 +12,7 @@
 use super::helpers::*;
 use crate::domain::entities::{
     IdeationSessionId, InternalStatus, MergeStrategy, MergeValidationMode, PlanBranchStatus,
-    Project, ProjectId, Task,
+    ProjectId, Task,
 };
 use crate::domain::repositories::PlanBranchRepository;
 use crate::domain::state_machine::services::TaskScheduler;
@@ -95,9 +95,8 @@ async fn b2_merge_conflict_transitions_to_merging_and_spawns_agent() {
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
-    project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;
     project_repo.create(project).await.unwrap();
 
@@ -174,9 +173,8 @@ async fn c1_autofix_validation_failure_transitions_to_merging_and_spawns_agent()
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
-    project.base_branch = Some("main".to_string());
     // RebaseSquash with current_branch != target_branch → dual-worktree path.
     // merge_path = merge_wt != repo_path → handle_validation_failure's else-branch
     // reuses the existing merge worktree; no new git worktree add is attempted.
@@ -276,9 +274,8 @@ async fn toctou_merge_branches_cached_in_metadata_before_merge() {
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
-    project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;
     project_repo.create(project).await.unwrap();
 

@@ -28,6 +28,12 @@ use support::real_git_repo::setup_real_git_repo;
 fn make_project_at(repo_path: &str) -> Project {
     let mut p = Project::new("test-project".to_string(), repo_path.to_string());
     p.base_branch = Some("main".to_string());
+    p.worktree_parent_directory = Some(
+        std::path::Path::new(repo_path)
+            .join("worktrees")
+            .to_string_lossy()
+            .to_string(),
+    );
     p
 }
 
@@ -192,9 +198,7 @@ async fn concurrent_freshness_same_plan_branch_no_deadlock() {
         let task_branch = Arc::clone(&task_branch);
         handles.push(tokio::spawn(async move {
             let path = std::path::Path::new(path_str.as_str());
-            let mut project =
-                Project::new("test-project".to_string(), path_str.to_string());
-            project.base_branch = Some("main".to_string());
+            let project = make_project_at(path_str.as_str());
             let mut task = Task::new(
                 ProjectId::from_string("proj-1".to_string()),
                 format!("Concurrent task {i}"),
@@ -655,9 +659,7 @@ async fn concurrent_plan_branch_updates_no_deadlock_or_blocked() {
         let task_branch = Arc::clone(&task_branch);
         handles.push(tokio::spawn(async move {
             let path = std::path::Path::new(path_str.as_str());
-            let mut project =
-                Project::new("test-project".to_string(), path_str.to_string());
-            project.base_branch = Some("main".to_string());
+            let project = make_project_at(path_str.as_str());
             let mut task = Task::new(
                 ProjectId::from_string("proj-1".to_string()),
                 format!("Concurrent lock task {i}"),

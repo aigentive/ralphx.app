@@ -34,9 +34,7 @@ fn setup_plan_behind_main() -> (RealGitRepo, String) {
 
 /// Helper: create a project entity pointing at a repo path.
 fn make_test_project(repo_path: &str) -> Project {
-    let mut project = Project::new("test-project".to_string(), repo_path.to_string());
-    project.base_branch = Some("main".to_string());
-    project
+    make_real_git_project(repo_path)
 }
 
 #[tokio::test]

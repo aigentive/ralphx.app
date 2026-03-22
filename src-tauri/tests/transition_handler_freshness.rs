@@ -22,6 +22,12 @@ use support::real_git_repo::setup_real_git_repo;
 fn make_test_project(repo_path: &str) -> Project {
     let mut project = Project::new("test-project".to_string(), repo_path.to_string());
     project.base_branch = Some("main".to_string());
+    project.worktree_parent_directory = Some(
+        std::path::Path::new(repo_path)
+            .join("worktrees")
+            .to_string_lossy()
+            .to_string(),
+    );
     project
 }
 
