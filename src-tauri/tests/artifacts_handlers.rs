@@ -24,6 +24,7 @@ use ralphx_lib::domain::services::{MemoryRunningAgentRegistry, RunningAgentRegis
 use ralphx_lib::error::AppError;
 use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::types::HttpServerState;
+use ralphx_lib::infrastructure::sqlite::SqliteIdeationSessionRepository as SessionRepo;
 use ralphx_lib::infrastructure::memory::MemoryIdeationSessionRepository;
 use std::sync::Arc;
 
@@ -42,6 +43,63 @@ async fn setup_test_state() -> HttpServerState {
         team_tracker: tracker,
         team_service,
     }
+}
+
+async fn quiesce_auto_verification(
+    state: &HttpServerState,
+    session_id: &IdeationSessionId,
+) {
+    let sid = session_id.as_str().to_string();
+    state
+        .app_state
+        .db
+        .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &sid))
+        .await
+        .unwrap();
+
+    let children = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_children(session_id)
+        .await
+        .unwrap();
+    for child in children {
+        let key = RunningAgentKey::new("ideation", child.id.as_str());
+        if let Some(info) = state.app_state.running_agent_registry.get(&key).await {
+            state
+                .app_state
+                .running_agent_registry
+                .unregister(&key, &info.agent_run_id)
+                .await;
+        }
+        state
+            .app_state
+            .ideation_session_repo
+            .update_status(&child.id, IdeationSessionStatus::Archived)
+            .await
+            .unwrap();
+    }
+}
+
+async fn create_plan_artifact_quiesced(
+    state: &HttpServerState,
+    session_id: &IdeationSessionId,
+    title: &str,
+    content: &str,
+) -> ArtifactResponse {
+    let response = create_plan_artifact(
+        State(state.clone()),
+        Json(CreatePlanArtifactRequest {
+            session_id: session_id.as_str().to_string(),
+            title: title.to_string(),
+            content: content.to_string(),
+        }),
+    )
+    .await
+    .expect("Plan creation should succeed")
+    .0;
+    quiesce_auto_verification(state, session_id).await;
+    response
 }
 
 fn make_active_session() -> IdeationSession {
@@ -94,18 +152,11 @@ async fn create_parent_with_plan(state: &HttpServerState) -> (IdeationSessionId,
         .await
         .unwrap();
 
-    let result = create_plan_artifact(
-        State(state.clone()),
-        Json(CreatePlanArtifactRequest {
-            session_id: parent_id.as_str().to_string(),
-            title: "Parent Plan".to_string(),
-            content: "Parent plan content".to_string(),
-        }),
-    )
-    .await
-    .expect("Parent plan creation should succeed");
+    let result =
+        create_plan_artifact_quiesced(state, &parent_id, "Parent Plan", "Parent plan content")
+            .await;
 
-    let artifact_id = result.0.id.clone();
+    let artifact_id = result.id.clone();
     (parent_id, artifact_id)
 }
 
@@ -222,17 +273,9 @@ async fn test_child_can_update_own_plan() {
     let child_id = create_child_inheriting(&state, &parent_id, &parent_artifact_id).await;
 
     // Child creates its own plan first
-    let create_result = create_plan_artifact(
-        State(state.clone()),
-        Json(CreatePlanArtifactRequest {
-            session_id: child_id.as_str().to_string(),
-            title: "Child Plan v1".to_string(),
-            content: "v1 content".to_string(),
-        }),
-    )
-    .await
-    .unwrap();
-    let child_artifact_id = create_result.0.id.clone();
+    let create_result =
+        create_plan_artifact_quiesced(&state, &child_id, "Child Plan v1", "v1 content").await;
+    let child_artifact_id = create_result.id.clone();
 
     // Child updates its own plan
     let update_result = update_plan_artifact(
@@ -445,17 +488,9 @@ async fn test_parent_plan_unaffected_by_child_plan_operations() {
     let child_id = create_child_inheriting(&state, &parent_id, &parent_artifact_id).await;
 
     // Child creates its own plan
-    let child_create = create_plan_artifact(
-        State(state.clone()),
-        Json(CreatePlanArtifactRequest {
-            session_id: child_id.as_str().to_string(),
-            title: "Child Plan".to_string(),
-            content: "Child content v1".to_string(),
-        }),
-    )
-    .await
-    .unwrap();
-    let child_artifact_id = child_create.0.id.clone();
+    let child_create =
+        create_plan_artifact_quiesced(&state, &child_id, "Child Plan", "Child content v1").await;
+    let child_artifact_id = child_create.id.clone();
 
     // Child updates its own plan
     let _ = update_plan_artifact(
@@ -713,17 +748,9 @@ async fn test_update_plan_artifact_resets_verification_when_not_in_progress() {
         .unwrap();
 
     // Create initial plan artifact for this session
-    let create_result = create_plan_artifact(
-        State(state.clone()),
-        Json(CreatePlanArtifactRequest {
-            session_id: session_id.as_str().to_string(),
-            title: "Plan v1".to_string(),
-            content: "Initial content".to_string(),
-        }),
-    )
-    .await
-    .expect("Plan creation should succeed");
-    let artifact_id = create_result.0.id.clone();
+    let create_result =
+        create_plan_artifact_quiesced(&state, &session_id, "Plan v1", "Initial content").await;
+    let artifact_id = create_result.id.clone();
 
     // Update the plan artifact
     let _ = update_plan_artifact(
@@ -1243,17 +1270,9 @@ async fn test_update_plan_artifact_does_not_trigger_auto_verify() {
         .create(session)
         .await
         .unwrap();
-    let create_result = create_plan_artifact(
-        State(state.clone()),
-        Json(CreatePlanArtifactRequest {
-            session_id: session_id.as_str().to_string(),
-            title: "Plan v1".to_string(),
-            content: "initial".to_string(),
-        }),
-    )
-    .await
-    .unwrap();
-    let artifact_id = create_result.0.id.clone();
+    let create_result =
+        create_plan_artifact_quiesced(&state, &session_id, "Plan v1", "initial").await;
+    let artifact_id = create_result.id.clone();
 
     // Read session to get the current plan_artifact_id (create may have changed it)
     // and capture generation (may be >0 if auto_verify=true in YAML)
@@ -2068,17 +2087,9 @@ async fn test_edit_plan_artifact_rejects_oversized_output() {
 
     // 499KB of filler + unique anchor — total still under 500KB
     let large_content = format!("{}{}", "A".repeat(499_000), "UNIQUE_ANCHOR_FOR_SIZE_TEST");
-    let create_result = create_plan_artifact(
-        State(state.clone()),
-        Json(CreatePlanArtifactRequest {
-            session_id: parent_id.as_str().to_string(),
-            title: "Plan".to_string(),
-            content: large_content,
-        }),
-    )
-    .await
-    .expect("Plan creation should succeed");
-    let artifact_id = create_result.0.id.clone();
+    let create_result =
+        create_plan_artifact_quiesced(&state, &parent_id, "Plan", &large_content).await;
+    let artifact_id = create_result.id.clone();
 
     // Replace anchor with 5KB — total becomes ≈ 504KB, exceeds 500KB post-apply guard.
     // new_text is well under the 100KB per-field limit.

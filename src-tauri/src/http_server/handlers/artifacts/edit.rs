@@ -1,0 +1,123 @@
+use super::*;
+
+pub async fn edit_plan_artifact(
+    State(state): State<HttpServerState>,
+    Json(req): Json<EditPlanArtifactRequest>,
+) -> Result<Json<ArtifactResponse>, HttpError> {
+    let input_artifact_id = req.artifact_id.clone();
+    let caller_session_id = req.caller_session_id;
+    let edits = req.edits;
+
+    if edits.is_empty() {
+        return Err(HttpError::validation("edits array must not be empty".to_string()));
+    }
+    for (i, edit) in edits.iter().enumerate() {
+        if edit.old_text.is_empty() {
+            return Err(HttpError::validation(format!(
+                "Edit #{i}: old_text must not be empty"
+            )));
+        }
+        if edit.old_text.len() > 100_000 || edit.new_text.len() > 100_000 {
+            return Err(HttpError::validation(format!(
+                "Edit #{i}: old_text/new_text exceeds 100KB limit"
+            )));
+        }
+    }
+
+    let id_for_freeze = input_artifact_id.clone();
+    let latest_artifact_id = state
+        .app_state
+        .db
+        .run(move |conn| ArtifactRepo::resolve_latest_sync(conn, &id_for_freeze))
+        .await
+        .map_err(map_app_err)?;
+
+    let owning_sessions = state
+        .app_state
+        .ideation_session_repo
+        .get_by_plan_artifact_id(&latest_artifact_id)
+        .await
+        .map_err(map_app_err)?;
+
+    check_verification_freeze(
+        &owning_sessions,
+        caller_session_id.as_deref(),
+        state.app_state.running_agent_registry.as_ref(),
+        state.app_state.ideation_session_repo.as_ref(),
+    )
+    .await
+    .map_err(map_app_err)?;
+
+    let (created, old_artifact_id_str, sessions, linked_proposal_ids, verification_reset) = state
+        .app_state
+        .db
+        .run_transaction(move |conn| {
+            let old_id = ArtifactRepo::resolve_latest_sync(conn, &input_artifact_id)?;
+            let old_artifact = ArtifactRepo::get_by_id_sync(conn, &old_id)?
+                .ok_or_else(|| AppError::NotFound(format!("Artifact {old_id} not found")))?;
+
+            let owning_sessions = SessionRepo::get_by_plan_artifact_id_sync(conn, &old_id)?;
+            if let Some(session) = owning_sessions.first() {
+                crate::http_server::helpers::assert_session_mutable(session)?;
+            }
+
+            if owning_sessions.is_empty() {
+                let inherited =
+                    SessionRepo::get_by_inherited_plan_artifact_id_sync(conn, &old_id)?;
+                if !inherited.is_empty() {
+                    return Err(AppError::Validation(
+                        "Cannot edit inherited plan. Use create_plan_artifact to create a session-specific plan.".to_string(),
+                    ));
+                }
+            }
+
+            let current_content = match &old_artifact.content {
+                ArtifactContent::Inline { text } => text.clone(),
+                ArtifactContent::File { .. } => {
+                    return Err(AppError::Validation(
+                        "Cannot edit file-backed artifacts. Use update_plan_artifact with full content.".to_string(),
+                    ));
+                }
+            };
+
+            let new_content = apply_edits(&current_content, &edits).map_err(|e| {
+                let http_err: HttpError = e.into();
+                AppError::Validation(
+                    http_err
+                        .message
+                        .unwrap_or_else(|| "Edit failed".to_string()),
+                )
+            })?;
+
+            if new_content.len() > 500_000 {
+                return Err(AppError::Validation(format!(
+                    "Resulting plan content exceeds 500KB limit ({} bytes). Use fewer/smaller edits.",
+                    new_content.len()
+                )));
+            }
+
+            finalize_plan_update(conn, &old_artifact, new_content)
+        })
+        .await
+        .map_err(|e| {
+            error!("edit_plan_artifact transaction failed: {}", e);
+            map_app_err(e)
+        })?;
+
+    if let Some(app_handle) = &state.app_state.app_handle {
+        emit_plan_update_events(
+            app_handle,
+            &created,
+            &old_artifact_id_str,
+            &sessions,
+            linked_proposal_ids,
+            verification_reset,
+        );
+    }
+
+    let mut response = ArtifactResponse::from(created);
+    response.previous_artifact_id = Some(old_artifact_id_str);
+    response.session_id = sessions.first().map(|s| s.id.to_string());
+
+    Ok(Json(response))
+}
