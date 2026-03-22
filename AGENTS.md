@@ -41,6 +41,7 @@ When working in `src-tauri/`, also follow:
 | Priority | Area | Next Step |
 |---|---|---|
 | P0 | Rust regression stabilization | Keep broad Rust runs green before taking on more structural refactors; fix stale or capability-misclassified failures first |
-| P1 | Transition handler entry paths | Refactor oversized `on_enter_*` / recovery branches into thin dispatch arms plus focused helpers for git/worktree, metadata, prompt building, and agent spawn decisions |
-| P1 | Capability test split | Continue moving OS-capability checks out of default broad suites into explicit ignored tests or dedicated capability binaries |
-| P2 | Oversized backend modules | After regressions are stable, continue splitting oversized Rust modules by responsibility, not just line count, with thin `mod.rs` roots |
+| P1 | Transition handler support layer | Split `merge_validation`, `merge_coordination`, and remaining `side_effects` hot spots while transition-handler context is still fresh |
+| P1 | Transition handler follow-up regression | Re-run broad Rust regression after each support-layer split before moving to a different subsystem |
+| P2 | Capability test split | Continue moving OS-capability checks out of default broad suites into explicit ignored tests or dedicated capability binaries |
+| P2 | Oversized HTTP handlers | After transition-handler stabilization, resume large backend handler refactors like `git.rs` and `teams.rs` |
