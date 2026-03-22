@@ -81,7 +81,8 @@ pub use chat_service_mock::{MockChatResponse, MockChatService};
 pub use chat_service_replay::{build_rehydration_prompt, ConversationReplay, ReplayBuilder, Turn};
 pub use chat_service_streaming::process_stream_background;
 pub use chat_service_streaming::{
-    should_kill_on_timeout, ActiveTaskTracker, StreamOutcome, StreamTimeoutConfig,
+    is_completion_tool_name, should_kill_on_timeout, ActiveTaskTracker,
+    CompletionSignalTracker, StreamOutcome, StreamTimeoutConfig,
 };
 pub use chat_service_types::{
     events, AgentChunkPayload, AgentConversationCreatedPayload, AgentErrorPayload, AgentHookPayload,

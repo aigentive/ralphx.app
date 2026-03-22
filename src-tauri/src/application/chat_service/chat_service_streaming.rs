@@ -96,6 +96,14 @@ pub(crate) fn format_agent_exit_stderr(details: ProcessExitDetails, stderr: &str
     )
 }
 
+const COMPLETION_TOOL_NAMES: &[&str] =
+    &["execution_complete", "complete_review", "complete_merge"];
+
+#[doc(hidden)]
+pub fn is_completion_tool_name(name: &str) -> bool {
+    COMPLETION_TOOL_NAMES.contains(&name)
+}
+
 /// Final flush of accumulated content to DB before returning an error.
 ///
 /// Ensures that any content streamed before timeout/cancellation/parse-stall
@@ -245,6 +253,42 @@ impl ActiveTaskTracker {
     }
 }
 
+/// Tracks whether a completion MCP tool has been called for this stream run.
+///
+/// Completion tools intentionally close stdin and enter a quiet shutdown window
+/// where Claude may emit no more stdout before exiting. This tracker lets the
+/// timeout logic bypass line-read and parse-stall kills briefly so the process
+/// can exit naturally.
+#[derive(Debug, Default)]
+#[doc(hidden)]
+pub struct CompletionSignalTracker {
+    completion_called_at: Option<std::time::Instant>,
+}
+
+impl CompletionSignalTracker {
+    #[doc(hidden)]
+    pub fn mark_completion_called(&mut self) {
+        self.completion_called_at = Some(std::time::Instant::now());
+    }
+
+    #[doc(hidden)]
+    pub fn mark_completion_called_at(&mut self, now: std::time::Instant) {
+        self.completion_called_at = Some(now);
+    }
+
+    #[doc(hidden)]
+    pub fn was_called(&self) -> bool {
+        self.completion_called_at.is_some()
+    }
+
+    #[doc(hidden)]
+    pub fn is_in_grace_period(&self, grace_duration: std::time::Duration) -> bool {
+        self.completion_called_at
+            .map(|called_at| called_at.elapsed() < grace_duration)
+            .unwrap_or(false)
+    }
+}
+
 // ============================================================================
 // Background stream processing
 // ============================================================================
@@ -365,6 +409,8 @@ pub async fn process_stream_background<R: Runtime>(
     // Wall-clock cap: hard kill after max_wall_clock_secs regardless of PID state
     let stream_start = std::time::Instant::now();
     let max_wall_clock = std::time::Duration::from_secs(stream_cfg.max_wall_clock_secs);
+    let completion_grace_duration =
+        std::time::Duration::from_secs(stream_cfg.completion_grace_secs);
 
     // Debounced flush for incremental persistence (every 2 seconds)
     let mut last_flush = std::time::Instant::now();
@@ -384,6 +430,7 @@ pub async fn process_stream_background<R: Runtime>(
     // When the lead spawns in-process subagents, stdout goes silent — this tracker
     // lets the timeout handler know work is still happening.
     let mut active_task_tracker = ActiveTaskTracker::default();
+    let mut completion_signal_tracker = CompletionSignalTracker::default();
 
     // Count of turns fully finalized in the loop (interactive mode).
     // Used to tell the caller whether post-loop finalization should be skipped.
@@ -472,6 +519,8 @@ pub async fn process_stream_background<R: Runtime>(
                         } else {
                             (false, true)
                         };
+                        let is_completion_grace_period = completion_signal_tracker
+                            .is_in_grace_period(completion_grace_duration);
 
                         if should_kill_on_timeout(
                             stream_start.elapsed(),
@@ -481,6 +530,7 @@ pub async fn process_stream_background<R: Runtime>(
                             pid_alive,
                             child_exited,
                             active_task_tracker.has_active_tasks(),
+                            is_completion_grace_period,
                         ) {
                             if stream_start.elapsed() > max_wall_clock {
                                 tracing::warn!(
@@ -496,6 +546,14 @@ pub async fn process_stream_background<R: Runtime>(
                                 "Stream timeout: no output for {} seconds, killing agent",
                                 timeout_config.line_read_timeout.as_secs()
                             );
+                            if completion_signal_tracker.was_called() {
+                                tracing::warn!(
+                                    conversation_id = %conversation_id_str,
+                                    context_id,
+                                    grace_secs = completion_grace_duration.as_secs(),
+                                    "Completion grace period expired after completion tool call, proceeding with kill"
+                                );
+                            }
                             let _ = child.kill().await;
                             flush_content_before_error(
                                 &chat_message_repo, &assistant_message_id,
@@ -546,7 +604,7 @@ pub async fn process_stream_background<R: Runtime>(
                                 );
                             }
                             continue;
-                        } else {
+                        } else if active_task_tracker.has_active_tasks() {
                             // Active tasks bypass: subagent tasks active (sidechain work in progress).
                             // Lead stdout goes silent while Task tool subagents work — their
                             // output goes to JSONL sidechain files, not the lead's stdout.
@@ -565,6 +623,15 @@ pub async fn process_stream_background<R: Runtime>(
                                 context_id,
                                 "active_tasks_bypass",
                                 Some(serde_json::json!({ "active_tasks": active_count })),
+                            );
+                            continue;
+                        } else {
+                            tracing::info!(
+                                conversation_id = %conversation_id_str,
+                                context_id,
+                                lines_seen,
+                                grace_secs = completion_grace_duration.as_secs(),
+                                "Stream no output after completion tool call, staying in shutdown grace period"
                             );
                             continue;
                         }
@@ -868,6 +935,17 @@ pub async fn process_stream_background<R: Runtime>(
                         mut tool_call,
                         parent_tool_use_id,
                     } => {
+                        if is_completion_tool_name(&tool_call.name) {
+                            completion_signal_tracker.mark_completion_called();
+                            tracing::info!(
+                                conversation_id = %conversation_id_str,
+                                context_id,
+                                tool_name = %tool_call.name,
+                                grace_secs = completion_grace_duration.as_secs(),
+                                "Completion tool called, entering shutdown grace period"
+                            );
+                        }
+
                         // Capture old file content for Edit/Write tool calls
                         let name_lower = tool_call.name.to_lowercase();
                         if name_lower == "edit" || name_lower == "write" {
@@ -1565,6 +1643,8 @@ pub async fn process_stream_background<R: Runtime>(
             } else {
                 (false, true)
             };
+            let is_completion_grace_period = completion_signal_tracker
+                .is_in_grace_period(completion_grace_duration);
 
             if should_kill_on_timeout(
                 stream_start.elapsed(),
@@ -1574,6 +1654,7 @@ pub async fn process_stream_background<R: Runtime>(
                 pid_alive,
                 child_exited,
                 active_task_tracker.has_active_tasks(),
+                is_completion_grace_period,
             ) {
                 if stream_start.elapsed() > max_wall_clock {
                     tracing::warn!(
@@ -1588,6 +1669,14 @@ pub async fn process_stream_background<R: Runtime>(
                         lines_parsed,
                         stall_secs = timeout_config.parse_stall_timeout.as_secs(),
                         "Stream parse stall: received stdout but no parseable events, killing agent"
+                    );
+                }
+                if completion_signal_tracker.was_called() {
+                    tracing::warn!(
+                        conversation_id = %conversation_id_str,
+                        context_id,
+                        grace_secs = completion_grace_duration.as_secs(),
+                        "Completion grace period expired after completion tool call, proceeding with kill"
                     );
                 }
                 let _ = child.kill().await;
@@ -1614,6 +1703,21 @@ pub async fn process_stream_background<R: Runtime>(
                         lines_seen,
                         "Stream parse stall but pending question exists, resetting stall timer"
                     );
+                } else if pid_alive && !child_exited {
+                    if let Some(pid) = child.id() {
+                        tracing::info!(
+                            conversation_id = %conversation_id_str,
+                            pid,
+                            "Parse stall but child process alive — resetting"
+                        );
+                        emit_heartbeat(
+                            &app_handle,
+                            &conversation_id_str,
+                            context_id,
+                            "pid_alive_bypass_parse_stall",
+                            Some(serde_json::json!({ "pid": pid })),
+                        );
+                    }
                 } else if active_task_tracker.has_active_tasks() {
                     let active_count = active_task_tracker.count();
                     tracing::info!(
@@ -1631,22 +1735,16 @@ pub async fn process_stream_background<R: Runtime>(
                         "active_tasks_bypass",
                         Some(serde_json::json!({ "active_tasks": active_count })),
                     );
+                } else if is_completion_grace_period {
+                    tracing::info!(
+                        conversation_id = %conversation_id_str,
+                        context_id,
+                        lines_seen,
+                        grace_secs = completion_grace_duration.as_secs(),
+                        "Stream parse stall after completion tool call, staying in shutdown grace period"
+                    );
                 } else {
-                    // pid_alive && !child_exited
-                    if let Some(pid) = child.id() {
-                        tracing::info!(
-                            conversation_id = %conversation_id_str,
-                            pid,
-                            "Parse stall but child process alive — resetting"
-                        );
-                        emit_heartbeat(
-                            &app_handle,
-                            &conversation_id_str,
-                            context_id,
-                            "pid_alive_bypass_parse_stall",
-                            Some(serde_json::json!({ "pid": pid })),
-                        );
-                    }
+                    debug_assert!(false, "parse stall bypass branch should be exhaustively handled");
                 }
                 // CRITICAL: reset last_parsed_at to prevent hot spin loop
                 last_parsed_at = std::time::Instant::now();
@@ -1726,35 +1824,53 @@ pub async fn process_stream_background<R: Runtime>(
     }
 
     if !exit_details.success && !silent_interactive_exit {
-        tracing::error!(
-            conversation_id = %conversation_id_str,
-            context_id,
-            lines_seen,
-            lines_parsed,
-            turns_finalized,
-            response_len,
-            tool_calls = tool_calls_count,
-            content_blocks = content_blocks_count,
-            exit_code = exit_details.exit_code,
-            exit_signal = exit_details.exit_signal,
-            stderr_len = stderr_content.len(),
-            stderr_preview = %stderr_preview,
-            "Agent process exited unsuccessfully during stream"
-        );
+        if completion_signal_tracker.was_called() {
+            tracing::warn!(
+                conversation_id = %conversation_id_str,
+                context_id,
+                lines_seen,
+                lines_parsed,
+                turns_finalized,
+                response_len,
+                tool_calls = tool_calls_count,
+                content_blocks = content_blocks_count,
+                exit_code = exit_details.exit_code,
+                exit_signal = exit_details.exit_signal,
+                stderr_len = stderr_content.len(),
+                stderr_preview = %stderr_preview,
+                "Agent exited non-zero after completion tool call; treating as successful completion"
+            );
+        } else {
+            tracing::error!(
+                conversation_id = %conversation_id_str,
+                context_id,
+                lines_seen,
+                lines_parsed,
+                turns_finalized,
+                response_len,
+                tool_calls = tool_calls_count,
+                content_blocks = content_blocks_count,
+                exit_code = exit_details.exit_code,
+                exit_signal = exit_details.exit_signal,
+                stderr_len = stderr_content.len(),
+                stderr_preview = %stderr_preview,
+                "Agent process exited unsuccessfully during stream"
+            );
 
-        flush_content_before_error(
-            &chat_message_repo,
-            &assistant_message_id,
-            &result.response_text,
-            &result.tool_calls,
-            &result.content_blocks,
-        )
-        .await;
+            flush_content_before_error(
+                &chat_message_repo,
+                &assistant_message_id,
+                &result.response_text,
+                &result.tool_calls,
+                &result.content_blocks,
+            )
+            .await;
 
-        return Err(StreamError::AgentExit {
-            exit_code: exit_details.exit_code,
-            stderr: format_agent_exit_stderr(exit_details, &stderr_content),
-        });
+            return Err(StreamError::AgentExit {
+                exit_code: exit_details.exit_code,
+                stderr: format_agent_exit_stderr(exit_details, &stderr_content),
+            });
+        }
     }
 
     if context_type == ChatContextType::Ideation && turns_finalized == 0 && !silent_interactive_exit
@@ -1891,7 +2007,12 @@ pub async fn process_stream_background<R: Runtime>(
         });
     }
 
-    if !status.success() && !has_output && turns_finalized == 0 && !silent_interactive_exit {
+    if !status.success()
+        && !has_output
+        && turns_finalized == 0
+        && !silent_interactive_exit
+        && !completion_signal_tracker.was_called()
+    {
         let stderr_trimmed = outcome.stderr_text.trim().to_string();
         // Check for recoverable provider errors in stderr
         if let Some(provider_err) =
@@ -1912,7 +2033,8 @@ pub async fn process_stream_background<R: Runtime>(
 ///
 /// Returns `true` = kill (terminate with error), `false` = reset timeout and continue.
 /// Ordering mirrors the actual `Err(_)` branch in `process_stream_background`:
-/// wall-clock → question_state → interactive_turns → PID-alive → active_tasks → kill
+/// wall-clock → question_state → interactive_turns → PID-alive → active_tasks
+/// → completion_grace → kill
 ///
 /// This pure function is extracted for unit testability. Side effects (tracing,
 /// heartbeat emission) remain in the calling code.
@@ -1925,6 +2047,7 @@ pub fn should_kill_on_timeout(
     pid_alive: bool,
     child_exited: bool,
     has_active_tasks: bool,
+    is_completion_grace_period: bool,
 ) -> bool {
     // 1. Wall-clock cap overrides everything
     if wall_clock_elapsed > max_wall_clock {
@@ -1946,7 +2069,11 @@ pub fn should_kill_on_timeout(
     if has_active_tasks {
         return false;
     }
-    // 6. Default: kill
+    // 6. Completion grace bypass (post-completion quiet shutdown window)
+    if is_completion_grace_period {
+        return false;
+    }
+    // 7. Default: kill
     true
 }
 

@@ -14,6 +14,7 @@ fn test_all_defaults_are_sensible() {
         child_session_activity_threshold_secs: None,
     };
     assert_eq!(cfg.stream.merge_line_read_secs, 600);
+    assert_eq!(cfg.stream.completion_grace_secs, 30);
     assert_eq!(cfg.reconciliation.merger_timeout_secs, 1200);
     assert_eq!(cfg.reconciliation.validation_deadline_secs, 1200);
     assert_eq!(cfg.reconciliation.branch_freshness_timeout_secs, 60);
@@ -90,6 +91,7 @@ fn test_env_overrides_apply() {
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
         "RALPHX_STREAM_MERGE_LINE_READ_SECS" => Some("999".to_string()),
+        "RALPHX_STREAM_COMPLETION_GRACE_SECS" => Some("45".to_string()),
         "RALPHX_RECONCILIATION_MERGER_TIMEOUT_SECS" => Some("2400".to_string()),
         "RALPHX_GIT_CMD_TIMEOUT_SECS" => Some("120".to_string()),
         "RALPHX_GIT_RETRY_BACKOFF_SECS" => Some("2,4,8,16".to_string()),
@@ -100,6 +102,7 @@ fn test_env_overrides_apply() {
     });
 
     assert_eq!(cfg.stream.merge_line_read_secs, 999);
+    assert_eq!(cfg.stream.completion_grace_secs, 45);
     assert_eq!(cfg.reconciliation.merger_timeout_secs, 2400);
     // validation_deadline_secs not overridden — should keep default
     assert_eq!(cfg.reconciliation.validation_deadline_secs, 1200);
@@ -230,6 +233,7 @@ team_parse_stall_secs: 3600
     let cfg: StreamTimeoutsConfig = serde_yaml::from_str(yaml).unwrap();
     assert_eq!(cfg.merge_line_read_secs, 900);
     assert_eq!(cfg.merge_parse_stall_secs, 180);
+    assert_eq!(cfg.completion_grace_secs, 30);
 }
 
 #[test]

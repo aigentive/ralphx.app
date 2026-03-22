@@ -1,7 +1,8 @@
 use ralphx_lib::application::chat_service::{
-    events, should_kill_on_timeout, ActiveTaskTracker, AgentChunkPayload,
-    AgentRunCompletedPayload, AgentTaskCompletedPayload, AgentTaskStartedPayload,
-    AgentToolCallPayload, StreamError, StreamOutcome, StreamTimeoutConfig,
+    events, is_completion_tool_name, should_kill_on_timeout, ActiveTaskTracker,
+    AgentChunkPayload, AgentRunCompletedPayload, AgentTaskCompletedPayload,
+    AgentTaskStartedPayload, AgentToolCallPayload, CompletionSignalTracker, StreamError,
+    StreamOutcome, StreamTimeoutConfig,
 };
 use ralphx_lib::domain::entities::ChatContextType;
 use ralphx_lib::infrastructure::agents::claude::stream_timeouts;
@@ -26,6 +27,7 @@ fn test_pid_alive_resets_timeout() {
         true,      // pid_alive
         false,     // child NOT exited
         false,     // no active tasks
+        false,     // not in completion grace period
     ));
 }
 
@@ -40,6 +42,7 @@ fn test_dead_process_killed() {
         false, // pid NOT alive
         true,  // child exited
         false, // no active tasks
+        false, // not in completion grace period
     ));
 }
 
@@ -54,6 +57,7 @@ fn test_wall_clock_overrides_pid_alive() {
         true,  // pid_alive — would bypass normally
         false, // child NOT exited
         false, // no active tasks
+        false, // not in completion grace period
     ));
 }
 
@@ -69,6 +73,7 @@ fn test_pid_recycling_guard() {
         true,  // pid_alive (recycled PID shows alive)
         true,  // child_exited=true (try_wait returned Some(status))
         false, // no active tasks
+        false, // not in completion grace period
     ));
 }
 
@@ -83,6 +88,7 @@ fn test_interactive_turn_bypass() {
         false, // pid not alive
         true,  // child exited
         false, // no active tasks
+        false, // not in completion grace period
     ));
 }
 
@@ -97,6 +103,7 @@ fn test_pending_question_bypass() {
         false, // pid not alive
         true,  // child exited
         false, // no active tasks
+        false, // not in completion grace period
     ));
 }
 
@@ -111,6 +118,7 @@ fn test_wall_clock_overrides_question() {
         false, // pid not alive
         true,  // child exited
         false, // no active tasks
+        false, // not in completion grace period
     ));
 }
 
@@ -126,6 +134,75 @@ fn test_parse_stall_pid_alive_resets() {
         true,      // pid_alive
         false,     // child NOT exited
         false,     // no active tasks
+        false,     // not in completion grace period
+    ));
+}
+
+#[test]
+fn test_completion_grace_bypasses_timeout() {
+    assert!(!should_kill_on_timeout(
+        dur(601),
+        dur(1800),
+        false,
+        false,
+        false,
+        true,
+        false,
+        true,
+    ));
+}
+
+#[test]
+fn test_wall_clock_overrides_completion_grace() {
+    assert!(should_kill_on_timeout(
+        dur(1801),
+        dur(1800),
+        false,
+        false,
+        false,
+        true,
+        false,
+        true,
+    ));
+}
+
+#[test]
+fn test_completion_tracker_grace_expires_and_timeout_kills() {
+    let mut tracker = CompletionSignalTracker::default();
+    tracker.mark_completion_called_at(std::time::Instant::now() - dur(31));
+
+    assert!(!tracker.is_in_grace_period(dur(30)));
+    assert!(should_kill_on_timeout(
+        dur(601),
+        dur(1800),
+        false,
+        false,
+        false,
+        true,
+        false,
+        tracker.is_in_grace_period(dur(30)),
+    ));
+}
+
+#[test]
+fn test_completion_tool_detection_marks_tracker_and_bypasses_timeout() {
+    let mut tracker = CompletionSignalTracker::default();
+
+    if is_completion_tool_name("execution_complete") {
+        tracker.mark_completion_called();
+    }
+
+    assert!(tracker.was_called());
+    assert!(tracker.is_in_grace_period(dur(30)));
+    assert!(!should_kill_on_timeout(
+        dur(601),
+        dur(1800),
+        false,
+        false,
+        false,
+        true,
+        false,
+        tracker.is_in_grace_period(dur(30)),
     ));
 }
 
@@ -422,6 +499,38 @@ fn test_active_task_tracker_prevents_timeout_during_sidechain() {
         !tracker.has_active_tasks(),
         "Should allow timeout when all subagents done"
     );
+}
+
+#[test]
+fn test_completion_tracker_recognizes_all_completion_tools() {
+    for tool_name in ["execution_complete", "complete_review", "complete_merge"] {
+        let mut tracker = CompletionSignalTracker::default();
+        if is_completion_tool_name(tool_name) {
+            tracker.mark_completion_called();
+        }
+        assert!(tracker.was_called(), "{tool_name} should mark completion");
+    }
+}
+
+#[test]
+fn test_non_completion_tool_does_not_mark_tracker() {
+    let mut tracker = CompletionSignalTracker::default();
+
+    if is_completion_tool_name("mcp__ralphx__get_task_context") {
+        tracker.mark_completion_called();
+    }
+
+    assert!(!tracker.was_called());
+    assert!(should_kill_on_timeout(
+        dur(601),
+        dur(1800),
+        false,
+        false,
+        false,
+        true,
+        false,
+        tracker.is_in_grace_period(dur(30)),
+    ));
 }
 
 // ============================================================================
