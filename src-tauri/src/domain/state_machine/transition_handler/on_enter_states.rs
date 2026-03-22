@@ -9,6 +9,7 @@ use std::sync::Arc;
 use chrono::Utc;
 
 use super::super::machine::State;
+use super::super::types::FailedData;
 use super::freshness::{self, FreshnessAction};
 use super::merge_helpers::{
     compute_merge_worktree_path, compute_task_worktree_path,
@@ -1445,6 +1446,330 @@ impl<'a> super::TransitionHandler<'a> {
         }
     }
 
+    async fn enter_review_passed_state(&self) {
+        if let Some(task_repo) = &self.machine.context.services.task_repo {
+            let task_id_typed = TaskId::from_string(self.machine.context.task_id.clone());
+            if let Ok(Some(task)) = task_repo.get_by_id(&task_id_typed).await {
+                let mut meta: serde_json::Value = task
+                    .metadata
+                    .as_deref()
+                    .and_then(|s| serde_json::from_str(s).ok())
+                    .unwrap_or_else(|| serde_json::json!({}));
+                freshness::FreshnessMetadata::cleanup(
+                    freshness::FreshnessCleanupScope::RoutingOnly,
+                    &mut meta,
+                );
+                if let Err(e) = task_repo
+                    .update_metadata(&task_id_typed, Some(meta.to_string()))
+                    .await
+                {
+                    tracing::warn!(
+                        task_id = %self.machine.context.task_id,
+                        error = %e,
+                        "Failed to clear freshness routing metadata on ReviewPassed"
+                    );
+                }
+            }
+        }
+
+        self.machine
+            .context
+            .services
+            .event_emitter
+            .emit("review:ai_approved", &self.machine.context.task_id)
+            .await;
+
+        self.machine
+            .context
+            .services
+            .notifier
+            .notify_with_message(
+                "review:ai_approved",
+                &self.machine.context.task_id,
+                "AI review passed. Please review and approve.",
+            )
+            .await;
+
+        if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+            let payload = serde_json::json!({
+                "task_id": self.machine.context.task_id,
+                "project_id": self.machine.context.project_id,
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            });
+            publisher
+                .publish(
+                    ralphx_domain::entities::EventType::ReviewApproved,
+                    &self.machine.context.project_id,
+                    payload,
+                )
+                .await;
+        }
+    }
+
+    async fn enter_escalated_state(&self) {
+        self.machine
+            .context
+            .services
+            .event_emitter
+            .emit("review:escalated", &self.machine.context.task_id)
+            .await;
+
+        self.machine
+            .context
+            .services
+            .notifier
+            .notify_with_message(
+                "review:escalated",
+                &self.machine.context.task_id,
+                "AI review escalated. Please review and decide.",
+            )
+            .await;
+
+        if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+            let payload = serde_json::json!({
+                "task_id": self.machine.context.task_id,
+                "project_id": self.machine.context.project_id,
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            });
+            publisher
+                .publish(
+                    ralphx_domain::entities::EventType::ReviewEscalated,
+                    &self.machine.context.project_id,
+                    payload,
+                )
+                .await;
+        }
+    }
+
+    async fn enter_revision_needed_state(&self) {
+        if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+            let payload = serde_json::json!({
+                "task_id": self.machine.context.task_id,
+                "project_id": self.machine.context.project_id,
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            });
+            publisher
+                .publish(
+                    ralphx_domain::entities::EventType::ReviewChangesRequested,
+                    &self.machine.context.project_id,
+                    payload,
+                )
+                .await;
+        }
+    }
+
+    async fn enter_approved_state(&self) {
+        self.machine
+            .context
+            .services
+            .event_emitter
+            .emit("task_completed", &self.machine.context.task_id)
+            .await;
+    }
+
+    async fn persist_failed_task_metadata(
+        &self,
+        task_id: &str,
+        data: &FailedData,
+    ) {
+        if let Some(ref task_repo) = self.machine.context.services.task_repo {
+            let task_id_typed = TaskId::from_string(task_id.to_string());
+            match task_repo.get_by_id(&task_id_typed).await {
+                Ok(Some(task)) => {
+                    let attempt_count = task
+                        .metadata
+                        .as_deref()
+                        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                        .and_then(|v| {
+                            v.get("auto_retry_count_executing").and_then(|c| c.as_u64())
+                        })
+                        .unwrap_or(0) as u32;
+
+                    let merged_metadata: String = if MetadataUpdate::key_exists_in(
+                        "failure_error",
+                        task.metadata.as_deref(),
+                    ) {
+                        tracing::debug!(
+                            task_id = task_id,
+                            attempt_count = attempt_count,
+                            "failure_error already present (pre-computed); writing attempt_count only"
+                        );
+                        MetadataUpdate::new()
+                            .with_u32("attempt_count", attempt_count)
+                            .merge_into(task.metadata.as_deref())
+                    } else {
+                        let enriched_data = data.clone().with_attempt_count(attempt_count);
+                        build_failed_metadata(&enriched_data).merge_into(task.metadata.as_deref())
+                    };
+
+                    let mut metadata_obj: serde_json::Map<String, serde_json::Value> =
+                        serde_json::from_str(&merged_metadata).unwrap_or_default();
+
+                    if ExecutionRecoveryMetadata::from_task_metadata(Some(&merged_metadata))
+                        .unwrap_or(None)
+                        .is_none()
+                    {
+                        let mut recovery = ExecutionRecoveryMetadata::new();
+                        recovery.append_event_with_state(
+                            ExecutionRecoveryEvent::new(
+                                ExecutionRecoveryEventKind::Failed,
+                                ExecutionRecoverySource::System,
+                                ExecutionRecoveryReasonCode::Unknown,
+                                "Failed without pre-written recovery metadata (fallback)",
+                            )
+                            .with_failure_source(ExecutionFailureSource::Unknown),
+                            ExecutionRecoveryState::Retrying,
+                        );
+                        if let Ok(recovery_value) = serde_json::to_value(&recovery) {
+                            metadata_obj.insert("execution_recovery".to_string(), recovery_value);
+                        }
+                    }
+
+                    if !metadata_obj.contains_key("failed_at") {
+                        metadata_obj.insert(
+                            "failed_at".to_string(),
+                            serde_json::json!(Utc::now().to_rfc3339()),
+                        );
+                    }
+
+                    let final_metadata =
+                        serde_json::to_string(&serde_json::Value::Object(metadata_obj))
+                            .unwrap_or(merged_metadata);
+
+                    if let Err(e) = task_repo
+                        .update_metadata(&task_id_typed, Some(final_metadata))
+                        .await
+                    {
+                        tracing::error!(
+                            task_id = task_id,
+                            error = %e,
+                            "Failed to update task failure metadata"
+                        );
+                    }
+                }
+                Ok(None) => {
+                    tracing::error!(
+                        task_id = task_id,
+                        "Task not found when storing failure metadata"
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(
+                        task_id = task_id,
+                        error = %e,
+                        "Error retrieving task for failure metadata"
+                    );
+                }
+            }
+        }
+    }
+
+    async fn fail_in_progress_steps_for_task(&self, task_id: &str) {
+        if let Some(ref step_repo) = self.machine.context.services.step_repo {
+            let task_id_typed = TaskId::from_string(task_id.to_string());
+            match step_repo.get_by_task(&task_id_typed).await {
+                Ok(steps) => {
+                    for step in steps.iter().filter(|s| s.status == TaskStepStatus::InProgress) {
+                        let mut failed_step = step.clone();
+                        failed_step.status = TaskStepStatus::Failed;
+                        failed_step.completion_note = Some("Task execution failed".to_string());
+                        failed_step.completed_at = Some(Utc::now());
+
+                        if let Err(e) = step_repo.update(&failed_step).await {
+                            tracing::error!(
+                                task_id = task_id,
+                                step_id = %step.id,
+                                error = %e,
+                                "Failed to update in-progress step to failed status"
+                            );
+                        } else {
+                            self.machine
+                                .context
+                                .services
+                                .event_emitter
+                                .emit("step:updated", &format!("{}", step.id))
+                                .await;
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        task_id = task_id,
+                        error = %e,
+                        "Failed to retrieve steps for failure handling"
+                    );
+                }
+            }
+        }
+    }
+
+    async fn enter_failed_state(
+        &self,
+        data: &FailedData,
+    ) {
+        let task_id = self.machine.context.task_id.as_str();
+        self.persist_failed_task_metadata(task_id, data).await;
+        self.fail_in_progress_steps_for_task(task_id).await;
+        self.machine
+            .context
+            .services
+            .event_emitter
+            .emit("task_failed", task_id)
+            .await;
+    }
+
+    async fn enter_merged_state(&self) {
+        let task_id_str = &self.machine.context.task_id.clone();
+        let task_id = TaskId::from_string(task_id_str.clone());
+        let plan_branch_repo = &self.machine.context.services.plan_branch_repo;
+
+        if let (Some(ref task_repo), Some(ref project_repo)) = (
+            &self.machine.context.services.task_repo,
+            &self.machine.context.services.project_repo,
+        ) {
+            if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
+                if task.category == TaskCategory::PlanMerge {
+                    let project_id =
+                        ProjectId::from_string(self.machine.context.project_id.clone());
+                    if let Ok(Some(project)) = project_repo.get_by_id(&project_id).await {
+                        let repo_path = std::path::PathBuf::from(&project.working_directory);
+                        self.post_merge_cleanup(task_id_str, &task_id, &repo_path, plan_branch_repo)
+                            .await;
+                    }
+                }
+            }
+        }
+
+        self.machine
+            .context
+            .services
+            .dependency_manager
+            .unblock_dependents(&self.machine.context.task_id)
+            .await;
+
+        if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
+            let scheduler = Arc::clone(scheduler);
+            let merge_settle_ms = scheduler_config().merge_settle_ms;
+            tokio::spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_millis(merge_settle_ms)).await;
+                scheduler.try_schedule_ready_tasks().await;
+            });
+        } else {
+            tracing::warn!(
+                task_id = self.machine.context.task_id.as_str(),
+                "task_scheduler not wired — Ready tasks will not be auto-scheduled after Merged"
+            );
+        }
+
+        if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
+            let scheduler = Arc::clone(scheduler);
+            let project_id = self.machine.context.project_id.clone();
+            tokio::spawn(async move {
+                scheduler.try_retry_deferred_merges(&project_id).await;
+            });
+        }
+    }
+
     /// Execute on-enter dispatch for all state arms.
     ///
     /// Called by `on_enter` in side_effects.rs.
@@ -1666,295 +1991,22 @@ impl<'a> super::TransitionHandler<'a> {
                 self.enter_reviewing_state().await?;
             }
             State::ReviewPassed => {
-                // Clear stale freshness routing metadata so freshness_routing.rs defense-in-depth
-                // is not confused if this task later reaches Merging via a different path.
-                if let Some(task_repo) = &self.machine.context.services.task_repo {
-                    let task_id_typed = TaskId::from_string(self.machine.context.task_id.clone());
-                    if let Ok(Some(task)) = task_repo.get_by_id(&task_id_typed).await {
-                        let mut meta: serde_json::Value = task
-                            .metadata
-                            .as_deref()
-                            .and_then(|s| serde_json::from_str(s).ok())
-                            .unwrap_or_else(|| serde_json::json!({}));
-                        freshness::FreshnessMetadata::cleanup(
-                            freshness::FreshnessCleanupScope::RoutingOnly,
-                            &mut meta,
-                        );
-                        if let Err(e) = task_repo
-                            .update_metadata(&task_id_typed, Some(meta.to_string()))
-                            .await
-                        {
-                            tracing::warn!(
-                                task_id = %self.machine.context.task_id,
-                                error = %e,
-                                "Failed to clear freshness routing metadata on ReviewPassed"
-                            );
-                        }
-                    }
-                }
-
-                // Emit 'review:ai_approved' event
-                self.machine
-                    .context
-                    .services
-                    .event_emitter
-                    .emit("review:ai_approved", &self.machine.context.task_id)
-                    .await;
-
-                // Notify user that review passed and awaits approval
-                self.machine
-                    .context
-                    .services
-                    .notifier
-                    .notify_with_message(
-                        "review:ai_approved",
-                        &self.machine.context.task_id,
-                        "AI review passed. Please review and approve.",
-                    )
-                    .await;
-
-                // Emit review:approved webhook event
-                if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
-                    let payload = serde_json::json!({
-                        "task_id": self.machine.context.task_id,
-                        "project_id": self.machine.context.project_id,
-                        "timestamp": chrono::Utc::now().to_rfc3339(),
-                    });
-                    publisher.publish(
-                        ralphx_domain::entities::EventType::ReviewApproved,
-                        &self.machine.context.project_id,
-                        payload,
-                    ).await;
-                }
+                self.enter_review_passed_state().await;
             }
             State::Escalated => {
-                // Emit 'review:escalated' event
-                self.machine
-                    .context
-                    .services
-                    .event_emitter
-                    .emit("review:escalated", &self.machine.context.task_id)
-                    .await;
-
-                // Notify user that AI escalated review
-                self.machine
-                    .context
-                    .services
-                    .notifier
-                    .notify_with_message(
-                        "review:escalated",
-                        &self.machine.context.task_id,
-                        "AI review escalated. Please review and decide.",
-                    )
-                    .await;
-
-                // Also emit via webhook publisher
-                if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
-                    let payload = serde_json::json!({
-                        "task_id": self.machine.context.task_id,
-                        "project_id": self.machine.context.project_id,
-                        "timestamp": chrono::Utc::now().to_rfc3339(),
-                    });
-                    publisher.publish(
-                        ralphx_domain::entities::EventType::ReviewEscalated,
-                        &self.machine.context.project_id,
-                        payload,
-                    ).await;
-                }
+                self.enter_escalated_state().await;
             }
             State::ReExecuting => {
                 self.enter_reexecuting_state().await?;
             }
             State::RevisionNeeded => {
-                // Auto-transition to ReExecuting will be handled by check_auto_transition
-
-                // Emit review:changes_requested webhook event
-                if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
-                    let payload = serde_json::json!({
-                        "task_id": self.machine.context.task_id,
-                        "project_id": self.machine.context.project_id,
-                        "timestamp": chrono::Utc::now().to_rfc3339(),
-                    });
-                    publisher.publish(
-                        ralphx_domain::entities::EventType::ReviewChangesRequested,
-                        &self.machine.context.project_id,
-                        payload,
-                    ).await;
-                }
+                self.enter_revision_needed_state().await;
             }
             State::Approved => {
-                // Emit task completed event
-                self.machine
-                    .context
-                    .services
-                    .event_emitter
-                    .emit("task_completed", &self.machine.context.task_id)
-                    .await;
-                // NOTE: Do NOT unblock dependents here. Approved auto-transitions to
-                // PendingMerge (Phase 66). Unblocking happens at on_enter(Merged) after
-                // the task's work is actually on main.
+                self.enter_approved_state().await;
             }
             State::Failed(data) => {
-                let task_id = &self.machine.context.task_id;
-
-                // Store failure reason in task metadata for frontend access
-                if let Some(ref task_repo) = self.machine.context.services.task_repo {
-                    let task_id_typed = TaskId::from_string(task_id.clone());
-
-                    // Skip guard: check if metadata was already pre-computed (e.g., by transition_task_with_metadata)
-                    match task_repo.get_by_id(&task_id_typed).await {
-                        Ok(Some(task)) => {
-                            // Read auto_retry_count_executing from task metadata for observability
-                            let attempt_count =
-                                task.metadata
-                                    .as_deref()
-                                    .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-                                    .and_then(|v| {
-                                        v.get("auto_retry_count_executing").and_then(|c| c.as_u64())
-                                    })
-                                    .unwrap_or(0) as u32;
-
-                            // Compute base metadata (without persisting yet — fallback check runs after)
-                            let merged_metadata: String = if MetadataUpdate::key_exists_in(
-                                "failure_error",
-                                task.metadata.as_deref(),
-                            ) {
-                                tracing::debug!(
-                                    task_id = task_id,
-                                    attempt_count = attempt_count,
-                                    "failure_error already present (pre-computed); writing attempt_count only"
-                                );
-                                // Write attempt_count even when other failure metadata was pre-computed
-                                MetadataUpdate::new()
-                                    .with_u32("attempt_count", attempt_count)
-                                    .merge_into(task.metadata.as_deref())
-                            } else {
-                                // Fallback: metadata not pre-computed, write it now for backward compatibility
-                                let enriched_data = data.clone().with_attempt_count(attempt_count);
-                                build_failed_metadata(&enriched_data)
-                                    .merge_into(task.metadata.as_deref())
-                            };
-
-                            // Fallback safety net: ensure execution_recovery exists.
-                            // Terminal paths (E7, wall-clock, paths 8-9) pre-write execution_recovery
-                            // with stop_retrying=true before transition, so is_none() check skips them.
-                            // This catches path #5 (empty output) and any future unknown paths.
-                            let mut metadata_obj: serde_json::Map<String, serde_json::Value> =
-                                serde_json::from_str(&merged_metadata).unwrap_or_default();
-
-                            if ExecutionRecoveryMetadata::from_task_metadata(Some(&merged_metadata))
-                                .unwrap_or(None)
-                                .is_none()
-                            {
-                                let mut recovery = ExecutionRecoveryMetadata::new();
-                                recovery.append_event_with_state(
-                                    ExecutionRecoveryEvent::new(
-                                        ExecutionRecoveryEventKind::Failed,
-                                        ExecutionRecoverySource::System,
-                                        ExecutionRecoveryReasonCode::Unknown,
-                                        "Failed without pre-written recovery metadata (fallback)",
-                                    )
-                                    .with_failure_source(ExecutionFailureSource::Unknown),
-                                    ExecutionRecoveryState::Retrying,
-                                );
-                                // stop_retrying stays false (default) — conservative, gives task
-                                // a recovery chance via reconciler's reconcile_failed_execution_task
-                                if let Ok(recovery_value) = serde_json::to_value(&recovery) {
-                                    metadata_obj
-                                        .insert("execution_recovery".to_string(), recovery_value);
-                                }
-                            }
-
-                            // Add failed_at if absent (merge-safe, used for staleness tracking)
-                            if !metadata_obj.contains_key("failed_at") {
-                                metadata_obj.insert(
-                                    "failed_at".to_string(),
-                                    serde_json::json!(Utc::now().to_rfc3339()),
-                                );
-                            }
-
-                            let final_metadata = serde_json::to_string(
-                                &serde_json::Value::Object(metadata_obj),
-                            )
-                            .unwrap_or(merged_metadata);
-
-                            if let Err(e) = task_repo
-                                .update_metadata(&task_id_typed, Some(final_metadata))
-                                .await
-                            {
-                                tracing::error!(
-                                    task_id = task_id,
-                                    error = %e,
-                                    "Failed to update task failure metadata"
-                                );
-                            }
-                        }
-                        Ok(None) => {
-                            tracing::error!(
-                                task_id = task_id,
-                                "Task not found when storing failure metadata"
-                            );
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                task_id = task_id,
-                                error = %e,
-                                "Error retrieving task for failure metadata"
-                            );
-                        }
-                    }
-                }
-
-                // Fail any in-progress steps (Bug 2: agent was terminated, won't call fail_step)
-                if let Some(ref step_repo) = self.machine.context.services.step_repo {
-                    let task_id_typed = TaskId::from_string(task_id.clone());
-                    match step_repo.get_by_task(&task_id_typed).await {
-                        Ok(steps) => {
-                            for step in steps
-                                .iter()
-                                .filter(|s| s.status == TaskStepStatus::InProgress)
-                            {
-                                let mut failed_step = step.clone();
-                                failed_step.status = TaskStepStatus::Failed;
-                                failed_step.completion_note =
-                                    Some("Task execution failed".to_string());
-                                failed_step.completed_at = Some(Utc::now());
-
-                                if let Err(e) = step_repo.update(&failed_step).await {
-                                    tracing::error!(
-                                        task_id = task_id,
-                                        step_id = %step.id,
-                                        error = %e,
-                                        "Failed to update in-progress step to failed status"
-                                    );
-                                } else {
-                                    // Emit step updated event
-                                    self.machine
-                                        .context
-                                        .services
-                                        .event_emitter
-                                        .emit("step:updated", &format!("{}", step.id))
-                                        .await;
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                task_id = task_id,
-                                error = %e,
-                                "Failed to retrieve steps for failure handling"
-                            );
-                        }
-                    }
-                }
-
-                // Emit task failed event
-                self.machine
-                    .context
-                    .services
-                    .event_emitter
-                    .emit("task_failed", task_id)
-                    .await;
+                self.enter_failed_state(data).await;
             }
             State::PendingMerge => {
                 // Phase 1 of merge workflow: Attempt programmatic rebase and merge
@@ -1966,73 +2018,7 @@ impl<'a> super::TransitionHandler<'a> {
                 Box::pin(self.enter_merging_state()).await?;
             }
             State::Merged => {
-                // For plan merge tasks: run post_merge_cleanup to update plan branch status,
-                // delete feature branch, emit plan:merge_complete event, and cascade-stop siblings.
-                // Idempotency guard in post_merge_cleanup prevents double-execution if already
-                // called during push-to-main pipeline (plan_branch.status == Merged → early return).
-                // This call is the PRIMARY path for PR-mode merges (poller triggers Merging→Merged).
-                let task_id_str = &self.machine.context.task_id.clone();
-                let task_id = TaskId::from_string(task_id_str.clone());
-                let plan_branch_repo = &self.machine.context.services.plan_branch_repo;
-
-                if let (Some(ref task_repo), Some(ref project_repo)) = (
-                    &self.machine.context.services.task_repo,
-                    &self.machine.context.services.project_repo,
-                ) {
-                    if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
-                        if task.category == TaskCategory::PlanMerge {
-                            let project_id = ProjectId::from_string(self.machine.context.project_id.clone());
-                            if let Ok(Some(project)) = project_repo.get_by_id(&project_id).await {
-                                let repo_path = std::path::PathBuf::from(&project.working_directory);
-                                self.post_merge_cleanup(
-                                    task_id_str,
-                                    &task_id,
-                                    &repo_path,
-                                    plan_branch_repo,
-                                ).await;
-                            }
-                        }
-                    }
-                }
-
-                // Auto-unblock tasks that were waiting on this task
-                // This handles the HTTP handler path where transition_task triggers on_enter
-                self.machine
-                    .context
-                    .services
-                    .dependency_manager
-                    .unblock_dependents(&self.machine.context.task_id)
-                    .await;
-
-                // Schedule newly-unblocked tasks (e.g. plan_merge tasks that just became Ready)
-                // Internal transition — no UI settle needed → merge_settle_ms
-                if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
-                    let scheduler = Arc::clone(scheduler);
-                    let merge_settle_ms = scheduler_config().merge_settle_ms;
-                    tokio::spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(merge_settle_ms))
-                            .await;
-                        scheduler.try_schedule_ready_tasks().await;
-                    });
-                } else {
-                    tracing::warn!(
-                        task_id = self.machine.context.task_id.as_str(),
-                        "task_scheduler not wired — Ready tasks will not be auto-scheduled after Merged"
-                    );
-                }
-
-                // Retry deferred merges — covers the HTTP handler path (e.g. ConflictResolved)
-                // where on_enter(Merged) is called directly without going through
-                // post_merge_cleanup(). No sleep needed: scheduling_lock mutex in
-                // task_scheduler_service.rs serializes concurrent calls via try_lock(), and
-                // has_merge_deferred_metadata is the actual safety guard.
-                if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
-                    let scheduler = Arc::clone(scheduler);
-                    let project_id = self.machine.context.project_id.clone();
-                    tokio::spawn(async move {
-                        scheduler.try_retry_deferred_merges(&project_id).await;
-                    });
-                }
+                self.enter_merged_state().await;
             }
             _ => {}
         }
