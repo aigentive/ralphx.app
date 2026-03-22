@@ -188,7 +188,7 @@ fn test_completion_tracker_grace_expires_and_timeout_kills() {
 fn test_completion_tool_detection_marks_tracker_and_bypasses_timeout() {
     let mut tracker = CompletionSignalTracker::default();
 
-    if is_completion_tool_name("execution_complete") {
+    if is_completion_tool_name("mcp__ralphx__execution_complete") {
         tracker.mark_completion_called();
     }
 
@@ -207,10 +207,22 @@ fn test_completion_tool_detection_marks_tracker_and_bypasses_timeout() {
 }
 
 #[test]
-fn test_completion_tool_detection_accepts_fully_qualified_mcp_names() {
+fn test_completion_tool_detection_accepts_review_mcp_name() {
     let mut tracker = CompletionSignalTracker::default();
 
-    if is_completion_tool_name("mcp__ralphx__execution_complete") {
+    if is_completion_tool_name("mcp__ralphx__complete_review") {
+        tracker.mark_completion_called();
+    }
+
+    assert!(tracker.was_called());
+    assert!(tracker.is_in_grace_period(dur(30)));
+}
+
+#[test]
+fn test_completion_tool_detection_accepts_merge_mcp_name() {
+    let mut tracker = CompletionSignalTracker::default();
+
+    if is_completion_tool_name("mcp__ralphx__complete_merge") {
         tracker.mark_completion_called();
     }
 
@@ -223,6 +235,17 @@ fn test_completion_tool_detection_rejects_non_completion_mcp_names() {
     let mut tracker = CompletionSignalTracker::default();
 
     if is_completion_tool_name("mcp__ralphx__get_task_context") {
+        tracker.mark_completion_called();
+    }
+
+    assert!(!tracker.was_called());
+}
+
+#[test]
+fn test_completion_tool_detection_rejects_legacy_bare_completion_names() {
+    let mut tracker = CompletionSignalTracker::default();
+
+    if is_completion_tool_name("execution_complete") {
         tracker.mark_completion_called();
     }
 
