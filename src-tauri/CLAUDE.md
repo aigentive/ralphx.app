@@ -114,15 +114,6 @@ New pattern → add one-liner here. Pattern name + rule only.
 Multi-stream workflow: `.claude/rules/stream-*.md` (features/refactor/polish). File limits + migration rules: `.claude/rules/code-quality-standards.md`.
 **500 lines max** (refactor@400). Zero warnings policy — see root CLAUDE.md #8. Public API → doc `/// # Errors` section.
 
-## Current Optimization Backlog
-| Priority | Area | Next Step |
-|---|---|---|
-| P0 | Rust regression stabilization | Keep `cargo nextest run --manifest-path src-tauri/Cargo.toml --profile ci` and doctests green before taking on more structural refactors |
-| P1 | Transition handler support layer | Split `merge_validation`, `merge_coordination`, and remaining `side_effects` hot spots before context goes cold |
-| P1 | Transition handler follow-up regression | Run a broad Rust regression pass after each support-layer split; treat failures as blockers before moving subsystems |
-| P2 | Capability test split | Keep default suites sandbox-safe and isolate true socket/process checks into explicit capability tests or binaries |
-| P2 | Oversized HTTP handlers | After transition-handler stabilization, resume large handler refactors such as `git.rs` and `teams.rs` |
-
 ## Database
 `ralphx.db` (dev) | Migrations: `infrastructure/sqlite/migrations/` | System: `.claude/rules/code-quality-standards.md`
 New migration: `python3 scripts/new_sqlite_migration.py <description>` → `vYYYYMMDDHHMMSS_description.rs` + matching `*_tests.rs`, then register in `MIGRATIONS`, bump `SCHEMA_VERSION`, and run `python3 scripts/validate_sqlite_migrations.py` | Use `IF NOT EXISTS` | `helpers::add_column_if_not_exists()`
