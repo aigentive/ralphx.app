@@ -67,8 +67,10 @@ cargo test --manifest-path src-tauri/Cargo.toml --test per_project_execution_sco
 cargo test --manifest-path src-tauri/Cargo.toml --test review_flows
 cargo test --manifest-path src-tauri/Cargo.toml --test execution_control_flows
 cargo test --manifest-path src-tauri/Cargo.toml --test external_handlers
+cargo test --manifest-path src-tauri/Cargo.toml --test external_ideation_runtime_handlers
 cargo test --manifest-path src-tauri/Cargo.toml --test artifacts_handlers
 cargo test --manifest-path src-tauri/Cargo.toml --test ideation_handlers
+cargo test --manifest-path src-tauri/Cargo.toml --test ideation_runtime_handlers
 cargo test --manifest-path src-tauri/Cargo.toml --test reviews_handlers
 cargo test --manifest-path src-tauri/Cargo.toml --test projects_handlers
 cargo test --manifest-path src-tauri/Cargo.toml --test git_handlers
@@ -207,6 +209,7 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Seeing remaining `open_memory_connection()` calls after migration work | Check whether the suite is connection/formatting-only before converting it; optimize real migration-replay hotspots first |
 | Splitting oversized lib suites | Move them to `src-tauri/tests/<suite>.rs`, compile them as a separate integration binary, and keep the exported surface minimal and explicitly internal-facing |
 | Splitting HTTP handler suites | Make the handler/types module reachable from integration tests, import through `ralphx_lib::http_server::{handlers, types}`, and keep SQLite-only handler helpers on `AppState::new_sqlite_test()` / `new_sqlite_test_with_registry()` instead of duplicating ad hoc setup |
+| Splitting ideation/external handler runtime suites | Keep runtime-heavy handler flows in dedicated integration binaries such as `ideation_runtime_handlers` and `external_ideation_runtime_handlers`, and add the new targets to the selective command list in this file |
 | Exposing helper surfaces for moved integration suites | Prefer `#[doc(hidden)] pub` on the smallest needed helper fn/const instead of keeping `#[cfg(test)]` visibility tied to lib-side sidecar tests |
 | Prefer test accessors over exposed fields | If an integration suite needs scheduler/cache/watchdog internals, add narrow `*_for_test()` accessors instead of making raw fields public |
 | Adding a new repo suite | Start from a suite-local `setup_*()` helper; only introduce a shared helper when repetition appears in multiple files |
