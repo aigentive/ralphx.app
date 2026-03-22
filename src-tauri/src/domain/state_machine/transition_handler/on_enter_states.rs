@@ -186,6 +186,17 @@ async fn create_fresh_branch_and_worktree(
     }
 }
 
+#[derive(Default)]
+struct MergePromptContext {
+    is_validation_recovery: bool,
+    is_plan_update_conflict: bool,
+    is_source_update_conflict: bool,
+    freshness_conflict_count: u32,
+    base_branch: Option<String>,
+    source_branch: Option<String>,
+    target_branch: Option<String>,
+}
+
 impl<'a> super::TransitionHandler<'a> {
     /// Check that the task's plan branch is still Active.
     /// Returns Err(ExecutionBlocked) if the branch is Merged or Abandoned.
@@ -684,6 +695,126 @@ impl<'a> super::TransitionHandler<'a> {
         Ok(())
     }
 
+    async fn load_merge_prompt_context(&self, task_id: &str) -> MergePromptContext {
+        let Some(task_repo) = &self.machine.context.services.task_repo else {
+            return MergePromptContext::default();
+        };
+
+        let tid = TaskId::from_string(task_id.to_string());
+        let Ok(Some(task)) = task_repo.get_by_id(&tid).await else {
+            return MergePromptContext::default();
+        };
+
+        let meta = task
+            .metadata
+            .as_ref()
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok());
+
+        MergePromptContext {
+            is_validation_recovery: meta
+                .as_ref()
+                .and_then(|v| v.get("validation_recovery")?.as_bool())
+                .unwrap_or(false),
+            is_plan_update_conflict: meta
+                .as_ref()
+                .and_then(|v| v.get("plan_update_conflict")?.as_bool())
+                .unwrap_or(false),
+            is_source_update_conflict: meta
+                .as_ref()
+                .and_then(|v| v.get("source_update_conflict")?.as_bool())
+                .unwrap_or(false),
+            freshness_conflict_count: meta
+                .as_ref()
+                .and_then(|v| v.get("freshness_conflict_count")?.as_u64())
+                .unwrap_or(0) as u32,
+            base_branch: meta
+                .as_ref()
+                .and_then(|v| v.get("base_branch")?.as_str().map(String::from)),
+            source_branch: meta
+                .as_ref()
+                .and_then(|v| v.get("source_branch")?.as_str().map(String::from)),
+            target_branch: meta
+                .as_ref()
+                .and_then(|v| v.get("target_branch")?.as_str().map(String::from)),
+        }
+    }
+
+    fn build_merge_prompt(&self, task_id: &str, context: &MergePromptContext) -> String {
+        let prompt = if context.is_validation_recovery {
+            format!(
+                "Fix validation failures for task: {}. The merge succeeded but post-merge \
+                 validation commands failed. The failing code is on the target branch. \
+                 Read the validation failures from task context, fix the code, run validation \
+                 to confirm, then commit your fixes.",
+                task_id
+            )
+        } else if context.is_plan_update_conflict {
+            let base_branch = context
+                .base_branch
+                .clone()
+                .unwrap_or_else(|| "main".to_string());
+            let plan_branch = context.target_branch.clone().unwrap_or_default();
+            format!(
+                "Resolve the plan branch update conflict for task {task_id}.\n\n\
+                 The plan branch ({plan_branch}) needs to be updated from {base_branch} \
+                 before the task can merge, but there are merge conflicts.\n\n\
+                 Your working directory is the merge worktree where the plan branch is \
+                 already checked out. DO NOT merge the task branch — the system handles \
+                 that automatically after you finish.\n\n\
+                 Steps:\n\
+                 1. Run `git status` to confirm you are on the plan branch ({plan_branch})\n\
+                 2. Run `git merge {base_branch}` to trigger the merge and expose conflicts\n\
+                 3. Resolve all conflict markers in the conflicted files\n\
+                 4. Stage resolved files: `git add <files>`\n\
+                 5. Commit: `git commit --no-edit`\n\
+                 6. Exit — the system will automatically retry the task merge\n\n\
+                 If the conflict is too complex, call report_incomplete with a description.",
+                task_id = task_id,
+                base_branch = base_branch,
+                plan_branch = plan_branch,
+            )
+        } else if context.is_source_update_conflict {
+            let source_branch = context.source_branch.clone().unwrap_or_default();
+            let target_branch = context.target_branch.clone().unwrap_or_default();
+            format!(
+                "Resolve the source branch update conflict for task {task_id}.\n\n\
+                 The task branch ({source_branch}) needs to incorporate changes from \
+                 {target_branch} before it can be merged, but there are conflicts.\n\n\
+                 Your working directory is the merge worktree with the task branch checked out.\n\n\
+                 Steps:\n\
+                 1. Run `git status` to confirm you are on the task branch ({source_branch})\n\
+                 2. Run `git merge {target_branch}` to trigger the merge and expose conflicts\n\
+                 3. Resolve all conflict markers in the conflicted files\n\
+                 4. Stage resolved files: `git add <files>`\n\
+                 5. Commit: `git commit --no-edit`\n\
+                 6. Exit — the system will automatically retry the task merge\n\n\
+                 If the conflict is too complex, call report_incomplete with a description.",
+                task_id = task_id,
+                source_branch = source_branch,
+                target_branch = target_branch,
+            )
+        } else {
+            format!("Resolve merge conflicts for task: {}", task_id)
+        };
+
+        if context.freshness_conflict_count > 1
+            && (context.is_plan_update_conflict || context.is_source_update_conflict)
+        {
+            let config = reconciliation_config();
+            format!(
+                "{}\n\nIMPORTANT: This is retry {} of {}. Previous resolution \
+                 attempts did not fully resolve the staleness. Take extra care to \
+                 resolve ALL conflicts completely. If you cannot resolve cleanly, \
+                 call report_incomplete rather than committing a partial resolution.",
+                prompt,
+                context.freshness_conflict_count,
+                config.freshness_max_conflict_retries
+            )
+        } else {
+            prompt
+        }
+    }
+
     /// Execute on-enter dispatch for all state arms.
     ///
     /// Called by `on_enter` in side_effects.rs.
@@ -956,159 +1087,15 @@ impl<'a> super::TransitionHandler<'a> {
             }
         }
 
-        // Check task metadata for merger prompt context flags
-        let (
-            is_validation_recovery,
-            is_plan_update_conflict,
-            is_source_update_conflict,
-            freshness_conflict_count,
-        ) = if let Some(ref task_repo) = self.machine.context.services.task_repo {
-            let tid = TaskId::from_string(task_id.clone());
-            if let Ok(Some(task)) = task_repo.get_by_id(&tid).await {
-                let meta = task
-                    .metadata
-                    .as_ref()
-                    .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok());
-                let validation = meta
-                    .as_ref()
-                    .and_then(|v| v.get("validation_recovery")?.as_bool())
-                    .unwrap_or(false);
-                let plan_conflict = meta
-                    .as_ref()
-                    .and_then(|v| v.get("plan_update_conflict")?.as_bool())
-                    .unwrap_or(false);
-                let source_conflict = meta
-                    .as_ref()
-                    .and_then(|v| v.get("source_update_conflict")?.as_bool())
-                    .unwrap_or(false);
-                let freshness_count = meta
-                    .as_ref()
-                    .and_then(|v| v.get("freshness_conflict_count")?.as_u64())
-                    .unwrap_or(0) as u32;
-                (validation, plan_conflict, source_conflict, freshness_count)
-            } else {
-                (false, false, false, 0)
-            }
-        } else {
-            (false, false, false, 0)
-        };
-
-        let prompt = if is_validation_recovery {
-            format!(
-                "Fix validation failures for task: {}. The merge succeeded but post-merge \
-                 validation commands failed. The failing code is on the target branch. \
-                 Read the validation failures from task context, fix the code, run validation \
-                 to confirm, then commit your fixes.",
-                task_id
-            )
-        } else if is_plan_update_conflict {
-            // Read base_branch and plan branch name from task metadata for the prompt.
-            let plan_meta: Option<serde_json::Value> =
-                if let Some(ref task_repo) = self.machine.context.services.task_repo {
-                    let tid = TaskId::from_string(task_id.clone());
-                    task_repo.get_by_id(&tid).await.ok().flatten().and_then(|t| {
-                        t.metadata
-                            .as_ref()
-                            .and_then(|m| serde_json::from_str(m).ok())
-                    })
-                } else {
-                    None
-                };
-            let base_branch = plan_meta
-                .as_ref()
-                .and_then(|v| v.get("base_branch")?.as_str().map(String::from))
-                .unwrap_or_else(|| "main".to_string());
-            let plan_branch = plan_meta
-                .as_ref()
-                .and_then(|v| v.get("target_branch")?.as_str().map(String::from))
-                .unwrap_or_default();
-            format!(
-                "Resolve the plan branch update conflict for task {task_id}.\n\n\
-                 The plan branch ({plan_branch}) needs to be updated from {base_branch} \
-                 before the task can merge, but there are merge conflicts.\n\n\
-                 Your working directory is the merge worktree where the plan branch is \
-                 already checked out. DO NOT merge the task branch — the system handles \
-                 that automatically after you finish.\n\n\
-                 Steps:\n\
-                 1. Run `git status` to confirm you are on the plan branch ({plan_branch})\n\
-                 2. Run `git merge {base_branch}` to trigger the merge and expose conflicts\n\
-                 3. Resolve all conflict markers in the conflicted files\n\
-                 4. Stage resolved files: `git add <files>`\n\
-                 5. Commit: `git commit --no-edit`\n\
-                 6. Exit — the system will automatically retry the task merge\n\n\
-                 If the conflict is too complex, call report_incomplete with a description.",
-                task_id = task_id,
-                base_branch = base_branch,
-                plan_branch = plan_branch,
-            )
-        } else if is_source_update_conflict {
-            // Read source_branch and target_branch from task metadata for the prompt.
-            let source_meta: Option<serde_json::Value> =
-                if let Some(ref task_repo) = self.machine.context.services.task_repo {
-                    let tid = TaskId::from_string(task_id.clone());
-                    task_repo.get_by_id(&tid).await.ok().flatten().and_then(|t| {
-                        t.metadata
-                            .as_ref()
-                            .and_then(|m| serde_json::from_str(m).ok())
-                    })
-                } else {
-                    None
-                };
-            let source_branch = source_meta
-                .as_ref()
-                .and_then(|v| v.get("source_branch")?.as_str().map(String::from))
-                .unwrap_or_default();
-            let target_branch = source_meta
-                .as_ref()
-                .and_then(|v| v.get("target_branch")?.as_str().map(String::from))
-                .unwrap_or_default();
-            format!(
-                "Resolve the source branch update conflict for task {task_id}.\n\n\
-                 The task branch ({source_branch}) needs to incorporate changes from \
-                 {target_branch} before it can be merged, but there are conflicts.\n\n\
-                 Your working directory is the merge worktree with the task branch checked out.\n\n\
-                 Steps:\n\
-                 1. Run `git status` to confirm you are on the task branch ({source_branch})\n\
-                 2. Run `git merge {target_branch}` to trigger the merge and expose conflicts\n\
-                 3. Resolve all conflict markers in the conflicted files\n\
-                 4. Stage resolved files: `git add <files>`\n\
-                 5. Commit: `git commit --no-edit`\n\
-                 6. Exit — the system will automatically retry the task merge\n\n\
-                 If the conflict is too complex, call report_incomplete with a description.",
-                task_id = task_id,
-                source_branch = source_branch,
-                target_branch = target_branch,
-            )
-        } else {
-            format!("Resolve merge conflicts for task: {}", task_id)
-        };
-
-        // Append retry context when this is a freshness conflict retry (count > 1).
-        // Only applies to freshness conflicts (plan_update or source_update).
-        let prompt =
-            if freshness_conflict_count > 1
-                && (is_plan_update_conflict || is_source_update_conflict)
-            {
-                let config = reconciliation_config();
-                format!(
-                    "{}\n\nIMPORTANT: This is retry {} of {}. Previous resolution \
-                     attempts did not fully resolve the staleness. Take extra care to \
-                     resolve ALL conflicts completely. If you cannot resolve cleanly, \
-                     call report_incomplete rather than committing a partial resolution.",
-                    prompt,
-                    freshness_conflict_count,
-                    config.freshness_max_conflict_retries
-                )
-            } else {
-                prompt
-            };
+        let prompt_context = self.load_merge_prompt_context(task_id).await;
+        let prompt = self.build_merge_prompt(task_id, &prompt_context);
 
         tracing::info!(
             task_id = task_id,
-            is_validation_recovery = is_validation_recovery,
-            is_plan_update_conflict = is_plan_update_conflict,
-            is_source_update_conflict = is_source_update_conflict,
-            freshness_conflict_count = freshness_conflict_count,
+            is_validation_recovery = prompt_context.is_validation_recovery,
+            is_plan_update_conflict = prompt_context.is_plan_update_conflict,
+            is_source_update_conflict = prompt_context.is_source_update_conflict,
+            freshness_conflict_count = prompt_context.freshness_conflict_count,
             "on_enter(Merging): Spawning merger agent via ChatService"
         );
 
