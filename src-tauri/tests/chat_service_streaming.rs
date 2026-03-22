@@ -549,7 +549,11 @@ fn test_active_task_tracker_prevents_timeout_during_sidechain() {
 
 #[test]
 fn test_completion_tracker_recognizes_all_completion_tools() {
-    for tool_name in ["execution_complete", "complete_review", "complete_merge"] {
+    for tool_name in [
+        "mcp__ralphx__execution_complete",
+        "mcp__ralphx__complete_review",
+        "mcp__ralphx__complete_merge",
+    ] {
         let mut tracker = CompletionSignalTracker::default();
         if is_completion_tool_name(tool_name) {
             tracker.mark_completion_called();
