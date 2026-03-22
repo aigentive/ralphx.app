@@ -445,6 +445,14 @@ async fn c4_finalize_proposals_links_all_proposals_to_tasks() {
         proposal_ids.push(pid);
     }
 
+    // Mirror the real flow: 2+ proposal finalize requires dependency review acknowledgment.
+    // In production this is set by analyze_session_dependencies or explicit dependency edits.
+    state
+        .ideation_session_repo
+        .set_dependencies_acknowledged(session_id.as_str())
+        .await
+        .unwrap();
+
     // Call finalize_proposals_impl — the auto-accept entry point
     let result = finalize_proposals_impl(&state, session_id.as_str()).await;
     assert!(
