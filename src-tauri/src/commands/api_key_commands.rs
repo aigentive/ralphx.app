@@ -185,6 +185,7 @@ pub async fn update_api_key_projects(
     let _ = repo
         .log_audit(&input.id, "settings_ui", None, true, None)
         .await;
+    invalidate_external_mcp_cache(&input.id).await;
     Ok(())
 }
 
@@ -201,6 +202,7 @@ pub async fn update_api_key_permissions(
     let _ = repo
         .log_audit(&input.id, "settings_ui", None, true, None)
         .await;
+    invalidate_external_mcp_cache(&input.id).await;
     Ok(())
 }
 
@@ -214,4 +216,41 @@ pub async fn get_api_key_audit_log(
     repo.get_audit_log(&input.id, Some(100))
         .await
         .map_err(|e| e.to_string())
+}
+
+// ── Private helpers ─────────────────────────────────────────────────────────
+
+/// Fire-and-forget cache invalidation to the external MCP server.
+///
+/// On any failure (connection refused, timeout, error response), logs a warning
+/// and returns — the 30s TTL cache serves as the fallback.
+async fn invalidate_external_mcp_cache(key_id: &str) {
+    let port = crate::infrastructure::agents::claude::external_mcp_config().port;
+    let url = format!("http://127.0.0.1:{}/api/auth/invalidate-cache", port);
+    let body = format!(r#"{{"key_id":"{}"}}"#, key_id);
+
+    let client = crate::infrastructure::webhook_http_client::HyperWebhookClient::new();
+    use crate::infrastructure::webhook_http_client::WebhookHttpClient;
+    match client
+        .post(&url, body.into_bytes(), std::collections::HashMap::new())
+        .await
+    {
+        Ok(status) if status < 300 => {
+            tracing::debug!(key_id, "External MCP auth cache invalidated");
+        }
+        Ok(status) => {
+            tracing::warn!(
+                key_id,
+                status,
+                "External MCP cache invalidation returned unexpected status"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(
+                key_id,
+                error = %e,
+                "External MCP cache invalidation failed — 30s TTL will expire stale entry"
+            );
+        }
+    }
 }

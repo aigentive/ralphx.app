@@ -11,6 +11,13 @@ use ralphx_lib::testing::SqliteTestDb;
 use std::sync::Arc;
 use tower::ServiceExt;
 
+/// Build a minimal axum router exposing `GET /validate-key` backed by `validate_api_key`.
+fn validate_api_key_app(state: HttpServerState) -> axum::Router {
+    axum::Router::new()
+        .route("/validate-key", get(validate_api_key))
+        .with_state(state)
+}
+
 // ============================================================================
 // Test helpers
 // ============================================================================
@@ -321,4 +328,90 @@ async fn test_update_key_permissions_handler_invalid_permissions() {
 
     let err = result.expect_err("negative permissions should be rejected");
     assert_eq!(err, axum::http::StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+// ============================================================================
+// validate_api_key handler — HTTP 401 for invalid/revoked keys
+// ============================================================================
+
+#[tokio::test]
+async fn test_validate_api_key_returns_401_for_invalid_key() {
+    // An unknown key (not in the repo) must produce HTTP 401.
+    let state = setup_test_state().await;
+    let app = validate_api_key_app(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/validate-key")
+                .header("Authorization", "Bearer rxk_live_notarealkey")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_validate_api_key_returns_401_for_revoked_key() {
+    // A revoked key must produce HTTP 401 (not 200 with valid=false).
+    let state = setup_test_state().await;
+    let (raw, id) = create_test_key(&state, PERMISSION_READ).await;
+    state.app_state.api_key_repo.revoke(&id).await.unwrap();
+    let app = validate_api_key_app(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/validate-key")
+                .header("Authorization", format!("Bearer {}", raw))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_validate_api_key_returns_200_for_valid_key() {
+    // A valid active key must produce HTTP 200.
+    let state = setup_test_state().await;
+    let (raw, _) = create_test_key(&state, PERMISSION_READ).await;
+    let app = validate_api_key_app(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/validate-key")
+                .header("Authorization", format!("Bearer {}", raw))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_validate_api_key_returns_401_for_missing_key() {
+    // No Authorization header must produce HTTP 401.
+    let state = setup_test_state().await;
+    let app = validate_api_key_app(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/validate-key")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
 }

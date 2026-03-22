@@ -25,7 +25,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { authMiddleware, configureAuth } from "./auth.js";
+import { authMiddleware, configureAuth, invalidateCacheByKeyId } from "./auth.js";
 import { configureRateLimiter, getRateLimiter } from "./rate-limiter.js";
 import { validateTlsConfig, buildTlsOptions } from "./tls.js";
 import { configureBackendClient } from "./backend-client.js";
@@ -90,6 +90,11 @@ async function handleRequest(
 
   if (url === "/ready") {
     await handleReady(req, res);
+    return;
+  }
+
+  if (url === "/api/auth/invalidate-cache" && req.method === "POST") {
+    await handleInvalidateCache(req, res);
     return;
   }
 
@@ -313,6 +318,42 @@ export async function startServer(
  */
 function getClientIp(req: IncomingMessage): string {
   return req.socket.remoteAddress ?? "unknown";
+}
+
+function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown> | null> {
+  return new Promise((resolve) => {
+    let data = "";
+    req.on("data", (chunk: unknown) => {
+      data += String(chunk);
+    });
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(data) as Record<string, unknown>);
+      } catch {
+        resolve(null);
+      }
+    });
+    req.on("error", () => resolve(null));
+  });
+}
+
+async function handleInvalidateCache(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
+  const body = await readJsonBody(req);
+  const keyId = body?.key_id;
+  if (!keyId || typeof keyId !== "string") {
+    sendError(res, 400, "Missing or invalid key_id in request body");
+    return;
+  }
+  invalidateCacheByKeyId(keyId);
+  const responseBody = JSON.stringify({ ok: true });
+  res.writeHead(200, {
+    "Content-Type": "application/json",
+    "Content-Length": responseBody.length,
+  });
+  res.end(responseBody);
 }
 
 function sendError(res: ServerResponse, status: number, message: string): void {

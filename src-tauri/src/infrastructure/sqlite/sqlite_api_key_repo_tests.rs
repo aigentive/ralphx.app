@@ -582,6 +582,48 @@ async fn test_old_key_usable_during_grace_period() {
 }
 
 // ============================================================================
+// set_projects transaction safety tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_set_projects_transaction_rollback_preserves_existing_associations() {
+    // If any INSERT in set_projects fails (e.g. duplicate project_id triggers PRIMARY KEY
+    // violation), the DELETE must also be rolled back — existing associations must be intact.
+    let repo = setup_repo();
+    let key = make_key("Transaction Safety Key");
+    let id = key.id.clone();
+    repo.create(key).await.expect("create");
+
+    insert_test_project(repo.db(), "safe-proj");
+
+    // Set initial association
+    repo.set_projects(&id, &["safe-proj".to_string()])
+        .await
+        .expect("initial set_projects");
+
+    let initial = repo.get_projects(&id).await.expect("get initial");
+    assert_eq!(initial, vec!["safe-proj".to_string()]);
+
+    // Trigger failure: duplicate project_id causes PRIMARY KEY violation on the second INSERT
+    let result = repo
+        .set_projects(
+            &id,
+            &["safe-proj".to_string(), "safe-proj".to_string()],
+        )
+        .await;
+
+    assert!(result.is_err(), "set_projects with duplicate project_id must fail");
+
+    // The DELETE must have been rolled back — original association still present
+    let after = repo.get_projects(&id).await.expect("get after rollback");
+    assert_eq!(
+        after,
+        vec!["safe-proj".to_string()],
+        "existing project associations must be preserved after failed set_projects"
+    );
+}
+
+// ============================================================================
 // CREATE_PROJECT permission tests
 // ============================================================================
 

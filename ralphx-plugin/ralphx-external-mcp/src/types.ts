@@ -43,9 +43,11 @@ export interface RateLimitConfig {
 
 /** Validate key response from :3847/api/auth/validate-key */
 export interface ValidateKeyResponse {
+  valid: boolean;
   key_id: string;
   project_ids: string[];
   permissions: number;
+  message: string;
 }
 
 /** Permission bitmask constants */

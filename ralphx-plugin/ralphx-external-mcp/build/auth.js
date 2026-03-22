@@ -75,6 +75,11 @@ export async function validateKey(rawKey) {
         throw new AuthError(502, `Backend validation error: ${resp.status}`);
     }
     const body = (await resp.json());
+    // Defense-in-depth: reject if backend returns 200 but valid=false
+    if (!body.valid) {
+        cache.delete(rawKey);
+        throw new AuthError(401, "Invalid or revoked API key");
+    }
     const context = {
         keyId: body.key_id,
         projectIds: body.project_ids,
