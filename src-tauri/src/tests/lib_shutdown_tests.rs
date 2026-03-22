@@ -216,15 +216,69 @@ fn test_external_mcp_handle_set_once_succeeds() {
 // ── wait_for_backend_ready tests ──────────────────────────────────────────
 
 #[tokio::test]
-async fn test_wait_for_backend_ready_succeeds_when_server_returns_200() {
+async fn test_wait_for_backend_ready_succeeds_after_probe_retries() {
+    use std::sync::atomic::AtomicUsize;
+
+    use super::super::{wait_for_backend_ready_with_probe, BackendReadyProbeResult};
+
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let result = wait_for_backend_ready_with_probe(3847, Duration::from_millis(700), {
+        let attempts = Arc::clone(&attempts);
+        move |_| {
+            let attempts = Arc::clone(&attempts);
+            async move {
+                match attempts.fetch_add(1, Ordering::SeqCst) {
+                    0 => BackendReadyProbeResult::Unreachable,
+                    1 => BackendReadyProbeResult::HttpStatus(404),
+                    _ => BackendReadyProbeResult::Ready,
+                }
+            }
+        }
+    })
+    .await;
+
+    assert!(result.is_ok(), "probe should eventually report ready: {result:?}");
+    assert_eq!(attempts.load(Ordering::SeqCst), 3);
+}
+
+#[tokio::test]
+async fn test_wait_for_backend_ready_times_out_after_non_200_probe() {
+    use super::super::{wait_for_backend_ready_with_probe, BackendReadyProbeResult};
+
+    let result = wait_for_backend_ready_with_probe(3847, Duration::from_millis(450), move |_| async {
+        BackendReadyProbeResult::HttpStatus(404)
+    })
+    .await;
+
+    assert!(result.is_err(), "non-200 probe should time out");
+}
+
+#[tokio::test]
+async fn test_wait_for_backend_ready_times_out_when_probe_unreachable() {
+    use super::super::{wait_for_backend_ready_with_probe, BackendReadyProbeResult};
+
+    let start = std::time::Instant::now();
+    let result = wait_for_backend_ready_with_probe(3847, Duration::from_millis(450), move |_| async {
+        BackendReadyProbeResult::Unreachable
+    })
+    .await;
+
+    assert!(result.is_err(), "unreachable probe should time out");
+    assert!(
+        start.elapsed() >= Duration::from_millis(400),
+        "probe path should retry before timing out"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires loopback socket capability"]
+async fn test_wait_for_backend_ready_real_socket_returns_200() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
-    // Bind to port 0 — OS assigns a free port
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
 
-    // Spawn a minimal server that accepts one connection and responds HTTP 200
     tokio::spawn(async move {
         if let Ok((mut stream, _)) = listener.accept().await {
             let mut buf = [0u8; 256];
@@ -235,115 +289,9 @@ async fn test_wait_for_backend_ready_succeeds_when_server_returns_200() {
         }
     });
 
-    let result = wait_for_backend_ready_with_timeout(port, Duration::from_millis(500)).await;
-
+    let result = super::super::wait_for_backend_ready(port, Duration::from_millis(500)).await;
     assert!(
         result.is_ok(),
-        "should return Ok when server responds HTTP 200, got: {:?}",
-        result
+        "real socket probe should return Ok when server responds 200: {result:?}"
     );
-}
-
-#[tokio::test]
-async fn test_wait_for_backend_ready_times_out_when_server_returns_404() {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::TcpListener;
-
-    // Bind to port 0 — OS assigns a free port
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let port = listener.local_addr().unwrap().port();
-
-    // Spawn a server that always returns HTTP 404 (never 200)
-    tokio::spawn(async move {
-        loop {
-            if let Ok((mut stream, _)) = listener.accept().await {
-                let mut buf = [0u8; 256];
-                let _ = stream.read(&mut buf).await;
-                let _ = stream
-                    .write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n")
-                    .await;
-            }
-        }
-    });
-
-    let result = wait_for_backend_ready_with_timeout(port, Duration::from_millis(300)).await;
-
-    assert!(
-        result.is_err(),
-        "should time out when server always returns 404"
-    );
-}
-
-#[tokio::test]
-async fn test_wait_for_backend_ready_times_out_when_no_server() {
-    use tokio::net::TcpListener;
-
-    // Bind to port 0 to get a guaranteed-free port, then drop the listener
-    // so the port is immediately connection-refused.
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let port = listener.local_addr().unwrap().port();
-    drop(listener);
-
-    let start = std::time::Instant::now();
-
-    // Use a very short timeout for test speed
-    let result = wait_for_backend_ready_with_timeout(port, Duration::from_millis(300)).await;
-
-    assert!(result.is_err(), "should time out when server not running");
-    assert!(
-        start.elapsed() >= Duration::from_millis(200),
-        "should have retried for at least 200ms"
-    );
-}
-
-// Expose wait_for_backend_ready with a configurable timeout for testing.
-// In production, the function in lib.rs always uses 30s.
-pub(crate) async fn wait_for_backend_ready_with_timeout(
-    port: u16,
-    timeout: Duration,
-) -> Result<(), String> {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use std::time::Instant;
-
-    let start = Instant::now();
-    loop {
-        if start.elapsed() > timeout {
-            return Err(format!("Backend :{port} not ready after {timeout:?}"));
-        }
-        let addr = format!("127.0.0.1:{port}");
-        let conn = tokio::time::timeout(
-            Duration::from_millis(100),
-            tokio::net::TcpStream::connect(&addr),
-        )
-        .await;
-        if let Ok(Ok(mut stream)) = conn {
-            let req = "GET /health HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
-            if tokio::time::timeout(
-                Duration::from_millis(100),
-                stream.write_all(req.as_bytes()),
-            )
-            .await
-            .is_ok()
-            {
-                let mut buf = [0u8; 256];
-                if let Ok(Ok(n)) = tokio::time::timeout(
-                    Duration::from_millis(100),
-                    stream.read(&mut buf),
-                )
-                .await
-                {
-                    let response = std::str::from_utf8(&buf[..n]).unwrap_or("");
-                    let status = response
-                        .split_whitespace()
-                        .nth(1)
-                        .and_then(|s| s.parse::<u16>().ok())
-                        .unwrap_or(0);
-                    if status == 200 {
-                        return Ok(());
-                    }
-                }
-            }
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
 }

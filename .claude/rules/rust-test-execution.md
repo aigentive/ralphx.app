@@ -211,12 +211,28 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Splitting HTTP handler suites | Make the handler/types module reachable from integration tests, import through `ralphx_lib::http_server::{handlers, types}`, and keep SQLite-only handler helpers on `AppState::new_sqlite_test()` / `new_sqlite_test_with_registry()` instead of duplicating ad hoc setup |
 | Splitting ideation/external handler runtime suites | Keep runtime-heavy handler flows in dedicated integration binaries such as `ideation_runtime_handlers` and `external_ideation_runtime_handlers`, and add the new targets to the selective command list in this file |
 | Runtime-config determinism | Integration tests must not assume ambient `ralphx.yaml`, cached runtime config, entity defaults, or default worktree roots like `~/ralphx-worktrees`; set or neutralize the precondition explicitly in suite helpers/builders |
+| Sandbox-safe by default | Default `cargo test` / `cargo nextest run` suites should avoid requiring loopback sockets, process killing, or ambient HOME writes; extract those behind seams and keep true OS-capability checks as explicit `#[ignore]` capability tests or dedicated capability targets |
 | Artifacts handler post-create mutations | In `artifacts_handlers`, tests that create a plan and then mutate it should quiesce auto-verify first (reset parent + archive/unregister verification children) unless they are asserting the freeze/bypass path |
 | Exposing helper surfaces for moved integration suites | Prefer `#[doc(hidden)] pub` on the smallest needed helper fn/const instead of keeping `#[cfg(test)]` visibility tied to lib-side sidecar tests |
 | Prefer test accessors over exposed fields | If an integration suite needs scheduler/cache/watchdog internals, add narrow `*_for_test()` accessors instead of making raw fields public |
 | Adding a new repo suite | Start from a suite-local `setup_*()` helper; only introduce a shared helper when repetition appears in multiple files |
 | Verifying a migration | Test the migration itself explicitly; do not force every repo test to replay the full migration chain |
 | Considering `cargo-nextest` tuning | Adjust `src-tauri/.config/nextest.toml` groups/profiles instead of ad hoc command-line concurrency flags |
+
+## Capability Tests
+
+| Situation | Rule |
+|---|---|
+| Test only needs to verify decision logic around sockets/processes/HOME paths | Extract a seam and keep the default suite on a fake probe/controller/temp workspace path |
+| Test must bind loopback, kill real processes, or depend on OS-level permissions | Mark it `#[ignore = "requires <capability>"]` or move it to a dedicated capability target |
+| Broad default run | Keep `cargo test` / `cargo nextest run` green without requiring those ignored capability tests |
+| Capability verification | Run the explicit ignored test or capability target separately in a permissive environment |
+
+Capability examples:
+
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml 'tests::lib_shutdown_tests::test_wait_for_backend_ready_real_socket_returns_200' --lib -- --ignored
+```
 
 ## Adding Tests Framework
 

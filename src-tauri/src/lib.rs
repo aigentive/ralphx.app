@@ -64,8 +64,25 @@ fn greet(name: &str) -> String {
 /// Wait for the local HTTP backend at `port` to respond with HTTP 200 on `/health`.
 /// Retries every 200ms until `timeout` elapses (2s per-request timeout).
 async fn wait_for_backend_ready(port: u16, timeout: Duration) -> Result<(), String> {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    wait_for_backend_ready_with_probe(port, timeout, probe_backend_health).await
+}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BackendReadyProbeResult {
+    Ready,
+    HttpStatus(u16),
+    Unreachable,
+}
+
+async fn wait_for_backend_ready_with_probe<F, Fut>(
+    port: u16,
+    timeout: Duration,
+    mut probe: F,
+) -> Result<(), String>
+where
+    F: FnMut(u16) -> Fut,
+    Fut: std::future::Future<Output = BackendReadyProbeResult>,
+{
     let start = Instant::now();
     let mut logged_non_200 = false;
     let mut logged_conn_refused = false;
@@ -73,50 +90,66 @@ async fn wait_for_backend_ready(port: u16, timeout: Duration) -> Result<(), Stri
         if start.elapsed() > timeout {
             return Err(format!("Backend :{port} not ready after {timeout:?}"));
         }
-        let addr = format!("127.0.0.1:{port}");
-        let conn = tokio::time::timeout(
-            Duration::from_secs(2),
-            tokio::net::TcpStream::connect(&addr),
-        )
-        .await;
-        match conn {
-            Ok(Ok(mut stream)) => {
-                logged_conn_refused = false; // reset so reconnect events are re-logged
-                let req = "GET /health HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
-                if tokio::time::timeout(Duration::from_secs(2), stream.write_all(req.as_bytes()))
-                    .await
-                    .is_ok()
-                {
-                    let mut buf = [0u8; 1024];
-                    if let Ok(Ok(n)) =
-                        tokio::time::timeout(Duration::from_secs(2), stream.read(&mut buf)).await
-                    {
-                        let response = std::str::from_utf8(&buf[..n]).unwrap_or("");
-                        let status = response
-                            .split_whitespace()
-                            .nth(1)
-                            .and_then(|s| s.parse::<u16>().ok())
-                            .unwrap_or(0);
-                        if status == 200 {
-                            return Ok(());
-                        }
-                        if !logged_non_200 {
-                            tracing::debug!(
-                                "Backend :{port} /health returned status {status} (expected 200), retrying"
-                            );
-                            logged_non_200 = true;
-                        }
-                    }
+
+        match probe(port).await {
+            BackendReadyProbeResult::Ready => return Ok(()),
+            BackendReadyProbeResult::HttpStatus(status) => {
+                logged_conn_refused = false;
+                if !logged_non_200 {
+                    tracing::debug!(
+                        "Backend :{port} /health returned status {status} (expected 200), retrying"
+                    );
+                    logged_non_200 = true;
                 }
             }
-            _ => {
+            BackendReadyProbeResult::Unreachable => {
                 if !logged_conn_refused {
                     tracing::debug!("Backend :{port} not yet accepting connections, retrying");
                     logged_conn_refused = true;
                 }
             }
         }
+
         tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+}
+
+async fn probe_backend_health(port: u16) -> BackendReadyProbeResult {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let addr = format!("127.0.0.1:{port}");
+    let conn = tokio::time::timeout(
+        Duration::from_secs(2),
+        tokio::net::TcpStream::connect(&addr),
+    )
+    .await;
+    match conn {
+        Ok(Ok(mut stream)) => {
+            let req = "GET /health HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+            if tokio::time::timeout(Duration::from_secs(2), stream.write_all(req.as_bytes()))
+                .await
+                .is_ok()
+            {
+                let mut buf = [0u8; 1024];
+                if let Ok(Ok(n)) =
+                    tokio::time::timeout(Duration::from_secs(2), stream.read(&mut buf)).await
+                {
+                    let response = std::str::from_utf8(&buf[..n]).unwrap_or("");
+                    let status = response
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|s| s.parse::<u16>().ok())
+                        .unwrap_or(0);
+                    if status == 200 {
+                        return BackendReadyProbeResult::Ready;
+                    }
+                    return BackendReadyProbeResult::HttpStatus(status);
+                }
+            }
+
+            BackendReadyProbeResult::Unreachable
+        }
+        _ => BackendReadyProbeResult::Unreachable,
     }
 }
 
