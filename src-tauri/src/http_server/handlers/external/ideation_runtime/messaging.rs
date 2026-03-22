@@ -1,0 +1,274 @@
+use super::*;
+
+#[derive(Debug, Deserialize)]
+pub struct IdeationMessageRequest {
+    pub session_id: String,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct IdeationMessageResponse {
+    /// Delivery outcome: "sent" | "queued" | "spawned"
+    pub status: String,
+    pub session_id: String,
+    pub next_action: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
+}
+
+/// POST /api/external/ideation_message
+/// Send a message to an active ideation session.
+///
+/// Tri-state delivery:
+/// 1. "sent"    — interactive process is open; message written directly to stdin
+/// 2. "queued"  — agent is running but has no open stdin; message queued for resume
+/// 3. "spawned" — no agent running; new agent process is spawned with the message
+pub async fn ideation_message_http(
+    State(state): State<HttpServerState>,
+    scope: ProjectScope,
+    Json(req): Json<IdeationMessageRequest>,
+) -> Result<Json<IdeationMessageResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let session_id = IdeationSessionId::from_string(req.session_id.clone());
+
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get ideation session {}: {}", session_id.as_str(), e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "Failed to get ideation session"})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "Session not found"})),
+            )
+        })?;
+
+    session.assert_project_scope(&scope).map_err(|e| {
+        (
+            e.status,
+            Json(serde_json::json!({"error": e.message.unwrap_or_default()})),
+        )
+    })?;
+
+    if session.status != crate::domain::entities::ideation::IdeationSessionStatus::Active {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Session is not active"})),
+        ));
+    }
+
+    let session_id_str = session_id.as_str().to_string();
+    let current_phase = session.external_activity_phase.clone();
+
+    let maybe_transition_to_planning = |
+        repo: Arc<dyn crate::domain::repositories::IdeationSessionRepository>,
+        sid: IdeationSessionId,
+        phase: Option<String>,
+    | {
+        if phase.as_deref() == Some("created") {
+            tokio::spawn(async move {
+                if let Err(e) = repo.update_external_activity_phase(&sid, "planning").await {
+                    error!(
+                        "Failed to set activity phase 'planning' for session {}: {}",
+                        sid.as_str(),
+                        e
+                    );
+                }
+            });
+        }
+    };
+
+    if session.origin == SessionOrigin::External {
+        let last_read = session.external_last_read_message_id.as_deref();
+        match state
+            .app_state
+            .chat_message_repo
+            .count_unread_assistant_messages(&session_id_str, last_read)
+            .await
+        {
+            Ok(unread_count) if unread_count > 0 => {
+                return Err((
+                    StatusCode::CONFLICT,
+                    Json(serde_json::json!({
+                        "error": "unread_messages",
+                        "unread_count": unread_count,
+                        "hint": format!(
+                            "You have {} unread agent response(s). Call v1_get_ideation_messages to read them before sending another message.",
+                            unread_count
+                        ),
+                        "next_action": "fetch_messages"
+                    })),
+                ));
+            }
+            Ok(_) => {}
+            Err(e) => {
+                error!(
+                    "Failed to count unread messages for session {}: {}",
+                    session_id_str, e
+                );
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": "Failed to check message read status"})),
+                ));
+            }
+        }
+    }
+
+    let ipr_key = crate::application::InteractiveProcessKey {
+        context_type: "ideation".to_string(),
+        context_id: session_id_str.clone(),
+    };
+    if state
+        .app_state
+        .interactive_process_registry
+        .has_process(&ipr_key)
+        .await
+    {
+        let stream_json_message = crate::http_server::handlers::format_interactive_stdin_message(
+            ChatContextType::Ideation,
+            &session_id_str,
+            &req.message,
+        );
+        match state
+            .app_state
+            .interactive_process_registry
+            .write_message(&ipr_key, &stream_json_message)
+            .await
+        {
+            Ok(()) => {
+                maybe_transition_to_planning(
+                    Arc::clone(&state.app_state.ideation_session_repo),
+                    IdeationSessionId::from_string(session_id_str.clone()),
+                    current_phase,
+                );
+                return Ok(Json(IdeationMessageResponse {
+                    status: "sent".to_string(),
+                    session_id: session_id_str,
+                    next_action: "poll_status".to_string(),
+                    hint: Some(
+                        "Wait for agent to respond. Poll v1_get_ideation_status (5-10s interval)"
+                            .to_string(),
+                    ),
+                }));
+            }
+            Err(e) => {
+                error!(
+                    "Failed to write to interactive process for session {}: {}",
+                    session_id_str, e
+                );
+            }
+        }
+    }
+
+    let agent_key =
+        crate::domain::services::running_agent_registry::RunningAgentKey::new("ideation", &session_id_str);
+    if state
+        .app_state
+        .running_agent_registry
+        .is_running(&agent_key)
+        .await
+    {
+        let cap = crate::infrastructure::agents::claude::external_mcp_config()
+            .external_message_queue_cap as usize;
+        let queued_count = state
+            .app_state
+            .message_queue
+            .count_for_context("ideation", &session_id_str);
+        if queued_count >= cap {
+            return Err((
+                axum::http::StatusCode::TOO_MANY_REQUESTS,
+                Json(serde_json::json!({
+                    "error": "queue_full",
+                    "queued_count": queued_count,
+                    "hint": format!(
+                        "Message queue is full ({queued_count} pending). Wait for the agent to process messages. Poll v1_get_ideation_status."
+                    ),
+                    "next_action": "poll_status"
+                })),
+            ));
+        }
+
+        state
+            .app_state
+            .message_queue
+            .queue(ChatContextType::Ideation, &session_id_str, req.message.clone());
+        maybe_transition_to_planning(
+            Arc::clone(&state.app_state.ideation_session_repo),
+            IdeationSessionId::from_string(session_id_str.clone()),
+            current_phase,
+        );
+        return Ok(Json(IdeationMessageResponse {
+            status: "queued".to_string(),
+            session_id: session_id_str,
+            next_action: "poll_status".to_string(),
+            hint: Some(
+                "Wait for agent to respond. Poll v1_get_ideation_status (5-10s interval)"
+                    .to_string(),
+            ),
+        }));
+    }
+
+    let chat_service = build_chat_service(&state.app_state, &state.execution_state);
+    let send_result = chat_service
+        .send_message(
+            ChatContextType::Ideation,
+            &session_id_str,
+            &req.message,
+            SendMessageOptions {
+                is_external_mcp: true,
+                ..Default::default()
+            },
+        )
+        .await;
+
+    match send_result {
+        Ok(result) if result.was_queued => {
+            maybe_transition_to_planning(
+                Arc::clone(&state.app_state.ideation_session_repo),
+                IdeationSessionId::from_string(session_id_str.clone()),
+                current_phase,
+            );
+            return Ok(Json(IdeationMessageResponse {
+                status: "queued".to_string(),
+                session_id: session_id_str,
+                next_action: "poll_status".to_string(),
+                hint: Some(
+                    "Wait for agent to respond. Poll v1_get_ideation_status (5-10s interval)"
+                        .to_string(),
+                ),
+            }));
+        }
+        Ok(_) => {}
+        Err(e) => {
+            error!(
+                "Failed to send message to ideation session {}: {}",
+                session_id_str, e
+            );
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "Failed to send message"})),
+            ));
+        }
+    }
+
+    maybe_transition_to_planning(
+        Arc::clone(&state.app_state.ideation_session_repo),
+        IdeationSessionId::from_string(session_id_str.clone()),
+        current_phase,
+    );
+    Ok(Json(IdeationMessageResponse {
+        status: "spawned".to_string(),
+        session_id: session_id_str,
+        next_action: "poll_status".to_string(),
+        hint: Some(
+            "Wait for agent to respond. Poll v1_get_ideation_status (5-10s interval)"
+                .to_string(),
+        ),
+    }))
+}
