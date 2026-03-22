@@ -123,7 +123,7 @@ async fn gap1_conflict_resolved_then_auto_complete_to_merged() {
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;
@@ -239,7 +239,7 @@ async fn gap2_two_phase_plan_update_then_task_merge() {
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;
@@ -324,7 +324,7 @@ async fn gap3_pre_merge_cleanup_deletes_all_worktree_types() {
     let task_id = task.id.clone();
     let task_id_str = task_id.as_str().to_string();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;
@@ -489,7 +489,7 @@ async fn gap4_post_conflict_incomplete_resolution_goes_to_merge_incomplete_or_me
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;
@@ -691,7 +691,7 @@ async fn gap6_source_update_with_existing_worktree_no_crash() {
     );
 
     let project = {
-        let mut p = Project::new("test-project".to_string(), git_repo.path_string());
+        let mut p = make_real_git_project(&git_repo.path_string());
         p.base_branch = Some("main".to_string());
         p
     };
@@ -791,7 +791,7 @@ async fn gap6b_source_update_when_source_is_current_branch_returns_error() {
         .output();
 
     let project = {
-        let mut p = Project::new("test-project".to_string(), git_repo.path_string());
+        let mut p = make_real_git_project(&git_repo.path_string());
         p.base_branch = Some("main".to_string());
         p
     };

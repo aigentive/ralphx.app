@@ -43,7 +43,7 @@
 
 use super::helpers::*;
 use crate::commands::ExecutionState;
-use crate::domain::entities::{InternalStatus, MergeStrategy, Project, ProjectId, Task};
+use crate::domain::entities::{InternalStatus, MergeStrategy, ProjectId, Task};
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::{State, TransitionHandler};
 
@@ -150,7 +150,7 @@ async fn test_rc1_merge_succeeds_despite_worktree_path_lsof_scan() {
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;
@@ -242,7 +242,7 @@ async fn test_rc1_cleanup_steps_run_after_lsof_step_with_stale_lock() {
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;
@@ -359,7 +359,7 @@ async fn test_rc2_merge_proceeds_correctly_while_agents_running() {
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;
@@ -553,7 +553,7 @@ async fn test_rc3_task_b_merges_when_reviewer_exit_does_not_leak_count() {
     let task_b_id = task_b.id.clone();
     task_repo.create(task_b).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;

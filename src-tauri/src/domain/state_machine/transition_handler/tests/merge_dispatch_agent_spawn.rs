@@ -217,7 +217,7 @@ async fn source_update_conflict_from_pending_merge_transitions_to_merging_and_sp
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;

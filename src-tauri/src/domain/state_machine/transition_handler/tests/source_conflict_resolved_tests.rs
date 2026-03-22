@@ -14,7 +14,7 @@
 //   5. Integration: Exact bug scenario — source_conflict_resolved prevents second agent
 
 use super::helpers::*;
-use crate::domain::entities::{InternalStatus, MergeStrategy, Project, ProjectId, Task};
+use crate::domain::entities::{InternalStatus, MergeStrategy, ProjectId, Task};
 use crate::domain::state_machine::transition_handler::merge_helpers::{
     has_source_conflict_resolved, set_source_conflict_resolved, parse_metadata,
 };
@@ -135,7 +135,7 @@ async fn rebase_squash_with_source_conflict_resolved_uses_squash_and_merges_clea
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::RebaseSquash;
@@ -298,7 +298,7 @@ async fn exact_bug_scenario_source_update_conflict_retry_does_not_spawn_second_a
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::RebaseSquash;
@@ -370,7 +370,7 @@ async fn both_rebase_and_source_flags_use_squash_only() {
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::RebaseSquash;

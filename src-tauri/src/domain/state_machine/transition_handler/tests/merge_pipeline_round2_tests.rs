@@ -7,7 +7,7 @@
 //   4. State freshness guard: complete_merge_internal proceeds when task is in Merging
 
 use super::helpers::*;
-use crate::domain::entities::{InternalStatus, Project, ProjectId, Task};
+use crate::domain::entities::{InternalStatus, ProjectId, Task};
 use crate::domain::state_machine::transition_handler::complete_merge_internal;
 use crate::infrastructure::agents::claude::{GitRuntimeConfig, ReconciliationConfig};
 
@@ -147,7 +147,7 @@ async fn test_merge_completion_aborts_on_stale_task_state() {
     task_repo.update(&stale_task).await.unwrap();
 
     // Create project pointing to the real git repo
-    let project = Project::new("test-project".to_string(), git_repo.path_string());
+    let project = make_real_git_project(&git_repo.path_string());
 
     // Now call complete_merge_internal — it should detect the stale state and abort
     let mut task_for_merge = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
@@ -208,7 +208,7 @@ async fn test_merge_completion_proceeds_on_pending_merge() {
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
 
@@ -267,7 +267,7 @@ async fn test_merge_completion_proceeds_on_merging() {
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
 

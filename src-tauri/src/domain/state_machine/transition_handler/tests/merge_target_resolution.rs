@@ -14,7 +14,7 @@
 
 use super::helpers::*;
 use crate::domain::entities::{
-    IdeationSessionId, InternalStatus, MergeStrategy, PlanBranchStatus, Project, ProjectId, Task,
+    IdeationSessionId, InternalStatus, MergeStrategy, PlanBranchStatus, ProjectId, Task,
 };
 use crate::domain::repositories::PlanBranchRepository;
 use crate::domain::state_machine::services::TaskScheduler;
@@ -150,10 +150,7 @@ async fn task_with_plan_branch_merges_to_plan_not_main() {
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new(
-        "test-project".to_string(),
-        path.to_string_lossy().to_string(),
-    );
+    let mut project = make_real_git_project(&path.to_string_lossy());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;
@@ -274,12 +271,8 @@ async fn check_already_merged_detects_prior_merge_on_plan_branch() {
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new(
-        "test-project".to_string(),
-        path.to_string_lossy().to_string(),
-    );
+    let mut project = make_real_git_project(&path.to_string_lossy());
     project.id = project_id;
-    project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;
     project_repo.create(project).await.unwrap();
 
@@ -502,12 +495,8 @@ async fn plan_update_conflict_retry_uses_correct_target() {
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new(
-        "test-project".to_string(),
-        path.to_string_lossy().to_string(),
-    );
+    let mut project = make_real_git_project(&path.to_string_lossy());
     project.id = project_id;
-    project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;
     project_repo.create(project).await.unwrap();
 
@@ -619,7 +608,7 @@ async fn plan_branch_repo_none_fallback_uses_metadata_guard() {
     task.metadata = Some(cached_meta.to_string());
 
     let project = {
-        let mut p = Project::new("test-project".to_string(), "/tmp/test".to_string());
+        let mut p = make_project(Some("main"));
         p.id = project_id;
         p.base_branch = Some("main".to_string());
         p

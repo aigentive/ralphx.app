@@ -18,7 +18,7 @@
 //   RC4 delete:  rc4_rebase_double_delete.rs::test_rebase_squash_leaves_no_stale_worktrees
 
 use super::helpers::*;
-use crate::domain::entities::{InternalStatus, MergeStrategy, Project, ProjectId, Task};
+use crate::domain::entities::{InternalStatus, MergeStrategy, ProjectId, Task};
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::{State, TransitionHandler};
 
@@ -78,7 +78,7 @@ async fn test_merge_retry_after_incomplete_reaches_merged() {
     let task_id = task.id.clone();
     task_repo.create(task.clone()).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;
@@ -153,7 +153,7 @@ async fn test_rc2_merge_runs_and_succeeds_with_agents_active() {
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;

@@ -621,6 +621,9 @@ async fn test_full_pipeline_with_webhook_registration() {
         proposal_ids.push(created.id.as_str().to_string());
     }
 
+    // Multi-proposal apply requires dependency review acknowledgment first.
+    acknowledge_dependencies(&state, session_id.as_str()).await;
+
     // --- Apply proposals → creates tasks ---
     let apply_req = ExternalApplyProposalsRequest {
         session_id: session_id.as_str().to_string(),

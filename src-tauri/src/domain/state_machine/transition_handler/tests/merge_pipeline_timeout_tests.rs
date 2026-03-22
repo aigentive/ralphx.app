@@ -10,7 +10,7 @@
 //   4. Full pipeline end-to-end: PendingMerge → Merged in bounded time
 
 use super::helpers::*;
-use crate::domain::entities::{InternalStatus, MergeStrategy, Project, ProjectId, Task};
+use crate::domain::entities::{InternalStatus, MergeStrategy, ProjectId, Task};
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::{State, TransitionHandler};
 
@@ -81,7 +81,7 @@ async fn test_pre_merge_cleanup_completes_in_bounded_time() {
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;
@@ -156,7 +156,7 @@ async fn test_stale_index_lock_doesnt_block_merge() {
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;
@@ -297,7 +297,7 @@ async fn test_stale_task_worktree_cleaned_before_merge() {
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    let mut project = make_real_git_project(&git_repo.path_string());
     project.id = project_id;
     project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;
