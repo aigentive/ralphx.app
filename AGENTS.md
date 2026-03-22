@@ -34,3 +34,12 @@ When working in `src-tauri/`, also follow:
 - `.claude/rules/rust-test-execution.md`
 - `.claude/rules/task-git-branching.md`
 - `.claude/rules/code-quality-standards.md`
+
+## Optimization Tracking
+
+| Priority | Area | Next Step |
+|---|---|---|
+| P0 | Rust regression stabilization | Keep broad Rust runs green before taking on more structural refactors; fix stale or capability-misclassified failures first |
+| P1 | Transition handler entry paths | Refactor oversized `on_enter_*` / recovery branches into thin dispatch arms plus focused helpers for git/worktree, metadata, prompt building, and agent spawn decisions |
+| P1 | Capability test split | Continue moving OS-capability checks out of default broad suites into explicit ignored tests or dedicated capability binaries |
+| P2 | Oversized backend modules | After regressions are stable, continue splitting oversized Rust modules by responsibility, not just line count, with thin `mod.rs` roots |
