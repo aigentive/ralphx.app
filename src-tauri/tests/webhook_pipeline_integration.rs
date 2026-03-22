@@ -80,6 +80,15 @@ fn make_proposal(session_id: IdeationSessionId, title: &str) -> TaskProposal {
     TaskProposal::new(session_id, title, ProposalCategory::Feature, Priority::Medium)
 }
 
+async fn acknowledge_dependencies(state: &HttpServerState, session_id: &str) {
+    let _ = analyze_session_dependencies(
+        State(state.clone()),
+        Path(session_id.to_string()),
+    )
+    .await
+    .expect("Failed to analyze and acknowledge dependencies");
+}
+
 /// Recompute HMAC-SHA256(secret, data) → lowercase hex (same algorithm as WebhookPublisher).
 fn compute_expected_hmac(secret: &str, data: &[u8]) -> String {
     let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key");
@@ -190,7 +199,10 @@ async fn test_pipeline_session_to_tasks_e2e() {
         .await
         .unwrap();
 
-    // --- Step 4: Apply proposals (accept + schedule) via HTTP handler ---
+    // --- Step 4: Simulate dependency review before finalize/apply ---
+    acknowledge_dependencies(&state, session_id.as_str()).await;
+
+    // --- Step 5: Apply proposals (accept + schedule) via HTTP handler ---
     let apply_req = ExternalApplyProposalsRequest {
         session_id: session_resp.session_id.clone(),
         proposal_ids: vec![
@@ -217,7 +229,7 @@ async fn test_pipeline_session_to_tasks_e2e() {
 
     let task_ids = apply_resp.created_task_ids.clone();
 
-    // --- Step 5: Verify tasks via batch status HTTP handler ---
+    // --- Step 6: Verify tasks via batch status HTTP handler ---
     let batch_req = BatchTaskStatusRequest {
         task_ids: task_ids.clone(),
     };

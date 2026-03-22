@@ -98,6 +98,7 @@ New pattern → add one-liner here. Pattern name + rule only.
 | HTTP handler module split | Move oversized production handler files to directory-backed modules (`foo/mod.rs` + endpoint-family files) and keep the module root as a thin prelude/re-export layer |
 | Ideation/external runtime suite split | Keep ideation and external handler runtime flows in dedicated integration binaries (`ideation_runtime_handlers`, `external_ideation_runtime_handlers`) and keep `.claude/rules/rust-test-execution.md` in sync when splitting more suites |
 | Integration helper visibility | When a moved integration suite needs private handler/helpers, expose the minimum surface as `#[doc(hidden)] pub` instead of keeping `#[cfg(test)]` sidecar-only access |
+| Dependency acknowledgment gate | Multi-proposal `apply_proposals_core` / external apply requires `dependencies_acknowledged=true`; tests must either expect `422` or simulate `analyze_session_dependencies` / explicit dependency edits before apply |
 | SQLite write transactions | `DbConnection::run_transaction()` uses `BEGIN IMMEDIATE`; keep read-then-write sync-helper flows inside it to avoid WAL upgrade failures surfaced as `database is locked` |
 | Tokio spawn | `tokio::spawn` → async fn ONLY. Sync code → `std::thread::spawn` \| `tauri::async_runtime::spawn`. See `.claude/rules/tokio-runtime-safety.md` |
 | Rust std API stability | Avoid unstable std APIs in production code (e.g., `is_multiple_of`) — use stable equivalents (e.g., `%`). See `.claude/rules/rust-stable-apis.md` |

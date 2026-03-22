@@ -1879,6 +1879,15 @@ fn make_proposal(session_id: IdeationSessionId, title: &str) -> TaskProposal {
     TaskProposal::new(session_id, title, ProposalCategory::Feature, Priority::Medium)
 }
 
+async fn acknowledge_dependencies(state: &HttpServerState, session_id: &str) {
+    let _ = analyze_session_dependencies(
+        State(state.clone()),
+        Path(session_id.to_string()),
+    )
+    .await
+    .expect("Failed to analyze and acknowledge dependencies");
+}
+
 /// Creates a project + active ideation session. Returns (project_id_str, session_id_str).
 async fn setup_session(
     state: &HttpServerState,
@@ -1990,7 +1999,8 @@ async fn test_external_apply_proposals_correct_scope_allowed() {
 
 #[tokio::test]
 async fn test_external_apply_proposals_creates_tasks_from_proposals() {
-    // Full apply: session with proposals → tasks created, session_converted = true
+    // Full apply: multi-proposal sessions must acknowledge dependency ordering first.
+    // This mirrors the real flow after analyze_session_dependencies or explicit dependency edits.
     let state = setup_test_state().await;
     let (_, session_id) = setup_session(&state, "proj-full-apply", "Full Apply").await;
 
@@ -2010,6 +2020,8 @@ async fn test_external_apply_proposals_creates_tasks_from_proposals() {
         .create(p2)
         .await
         .unwrap();
+
+    acknowledge_dependencies(&state, &session_id).await;
 
     let req = ExternalApplyProposalsRequest {
         session_id,
@@ -2034,6 +2046,52 @@ async fn test_external_apply_proposals_creates_tasks_from_proposals() {
     assert!(response.session_converted, "all proposals applied");
     assert!(response.execution_plan_id.is_some());
     assert!(response.warnings.is_empty());
+}
+
+#[tokio::test]
+async fn test_external_apply_proposals_blocks_unacknowledged_multi_proposal_session() {
+    let state = setup_test_state().await;
+    let (_, session_id) = setup_session(&state, "proj-full-apply-gate", "Full Apply Gate").await;
+
+    let session_id_typed = IdeationSessionId::from_string(session_id.clone());
+
+    let p1 = make_proposal(session_id_typed.clone(), "Task Alpha");
+    let p2 = make_proposal(session_id_typed, "Task Beta");
+    let created_p1 = state
+        .app_state
+        .task_proposal_repo
+        .create(p1)
+        .await
+        .unwrap();
+    let created_p2 = state
+        .app_state
+        .task_proposal_repo
+        .create(p2)
+        .await
+        .unwrap();
+
+    let req = ExternalApplyProposalsRequest {
+        session_id,
+        proposal_ids: vec![
+            created_p1.id.as_str().to_string(),
+            created_p2.id.as_str().to_string(),
+        ],
+        target_column: "auto".to_string(),
+        use_feature_branch: Some(false),
+        base_branch_override: None,
+    };
+
+    let err = external_apply_proposals(State(state), unrestricted_scope(), Json(req))
+        .await
+        .expect_err("multi-proposal apply must require dependency acknowledgment");
+
+    assert_eq!(err.status, axum::http::StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        err.message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("dependency ordering has not been reviewed")
+    );
 }
 
 // Note: Tests for "blocked when unverified", "allowed when verified", "allowed when skipped"
