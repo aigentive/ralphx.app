@@ -152,8 +152,8 @@ export function PlanTabContent({
         projectId={session.projectId}
       />
 
-      {/* Empty state — shown when no plan, settings loaded, plan not required, and no proposals */}
-      {!planArtifact && ideationSettings !== null && ideationSettings.planMode !== "required" && proposals.length === 0 && (
+      {/* Empty state — shown when no plan, plan not required (null settings treated as non-required), and no proposals */}
+      {!planArtifact && ideationSettings?.planMode !== "required" && proposals.length === 0 && (
         <PlanEmptyState onBrowse={onImportPlan} />
       )}
 

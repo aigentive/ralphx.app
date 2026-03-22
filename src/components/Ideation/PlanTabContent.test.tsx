@@ -91,10 +91,10 @@ describe("PlanTabContent — PlanEmptyState integration", () => {
     expect(screen.getByTestId("plan-empty-state")).toBeInTheDocument();
   });
 
-  it("does NOT render PlanEmptyState when ideationSettings is null (not yet loaded)", () => {
+  it("renders PlanEmptyState when ideationSettings is null (null treated as non-required mode)", () => {
     useIdeationStore.setState({ planArtifact: null, ideationSettings: null });
     render(<PlanTabContent {...defaultProps} />);
-    expect(screen.queryByTestId("plan-empty-state")).toBeNull();
+    expect(screen.getByTestId("plan-empty-state")).toBeInTheDocument();
   });
 
   it("does NOT render PlanEmptyState when planMode is 'required' (spinner shown instead)", () => {
