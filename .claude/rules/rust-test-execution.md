@@ -128,10 +128,11 @@ cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 | Install from Cargo | `cargo install cargo-nextest --locked` |
 | Broad local lib run | `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib` |
 | Broad CI-style lib run | `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci` |
+| Broad CI-style full suite | `cargo nextest run --manifest-path src-tauri/Cargo.toml --profile ci` |
 | Pinpoint module/test validation | `cargo test --manifest-path src-tauri/Cargo.toml <filter> --lib` or `cargo test --manifest-path src-tauri/Cargo.toml --test <target>` |
 | Lib-side capability check | `cargo test --manifest-path src-tauri/Cargo.toml '<filter>' --lib -- --ignored` |
 | Doctests | `cargo test --manifest-path src-tauri/Cargo.toml --doc` |
-| CI broad coverage | `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci && cargo test --manifest-path src-tauri/Cargo.toml --doc` |
+| CI broad coverage | `cargo nextest run --manifest-path src-tauri/Cargo.toml --profile ci && cargo test --manifest-path src-tauri/Cargo.toml --doc` |
 
 ## Nextest Groups
 
@@ -215,6 +216,7 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Runtime-config determinism | Integration tests must not assume ambient `ralphx.yaml`, cached runtime config, entity defaults, or default worktree roots like `~/ralphx-worktrees`; set or neutralize the precondition explicitly in suite helpers/builders |
 | Sandbox-safe by default | Default `cargo test` / `cargo nextest run` suites should avoid requiring loopback sockets, process killing, or ambient HOME writes; extract those behind seams and keep true OS-capability checks as explicit `#[ignore]` capability tests or dedicated capability targets |
 | Capability + nextest alignment | Do not invent a `nextest` group for ignored lib tests; `nextest` broad runs skip them by default. Add a `capability-serial` override only after moving those checks into a dedicated integration binary |
+| Dedicated capability binaries | When capability checks graduate out of `--lib`, give the binary a specific name (for example `backend_readiness_capability`), add exactly one `capability-serial` override in `src-tauri/.config/nextest.toml`, and list the command in this file |
 | Artifacts handler post-create mutations | In `artifacts_handlers`, tests that create a plan and then mutate it should quiesce auto-verify first (reset parent + archive/unregister verification children) unless they are asserting the freeze/bypass path |
 | Exposing helper surfaces for moved integration suites | Prefer `#[doc(hidden)] pub` on the smallest needed helper fn/const instead of keeping `#[cfg(test)]` visibility tied to lib-side sidecar tests |
 | Prefer test accessors over exposed fields | If an integration suite needs scheduler/cache/watchdog internals, add narrow `*_for_test()` accessors instead of making raw fields public |

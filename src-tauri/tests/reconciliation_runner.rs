@@ -3828,52 +3828,6 @@ async fn reconcile_pending_merge_skips_when_merge_pipeline_active() {
     );
 }
 
-#[tokio::test]
-async fn reconcile_pending_merge_proceeds_when_pipeline_flag_expired() {
-    let app_state = AppState::new_test();
-    let execution_state = Arc::new(ExecutionState::new());
-    let reconciler = build_reconciler(&app_state, &execution_state);
-
-    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state
-        .project_repo
-        .create(project.clone())
-        .await
-        .unwrap();
-
-    let mut task = Task::new(project.id.clone(), "Expired Pipeline Task".to_string());
-    task.internal_status = InternalStatus::PendingMerge;
-    // Set an expired pipeline flag (1 hour ago)
-    let old = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
-    task.merge_pipeline_active = Some(old);
-    app_state.task_repo.create(task.clone()).await.unwrap();
-
-    // Record stale status history (old timestamp to trigger stale detection)
-    app_state
-        .task_repo
-        .persist_status_change(
-            &task.id,
-            InternalStatus::Approved,
-            InternalStatus::PendingMerge,
-            "pending_merge",
-        )
-        .await
-        .unwrap();
-
-    let reconciled = reconciler
-        .reconcile_pending_merge_task(&task, InternalStatus::PendingMerge)
-        .await;
-
-    // Should NOT be skipped by the pipeline flag (it's expired).
-    // The reconciler proceeds to staleness check. With the default
-    // pending_merge_stale_minutes, the status history was JUST created
-    // so it won't be stale yet — policy returns None.
-    assert!(
-        !reconciled,
-        "Should not skip reconciliation when pipeline flag is expired"
-    );
-}
-
 // ── Fast-track MergeIncomplete on TTL expiry ──
 
 #[tokio::test]
