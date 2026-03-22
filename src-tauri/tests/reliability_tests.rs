@@ -739,3 +739,527 @@ async fn test_auto_propose_success_no_failure_event() {
     assert_eq!(payload["session_id"], session_id);
     assert_eq!(payload["project_id"], project_id);
 }
+
+// ============================================================================
+// C5: Cross-project finalize filtering — local vs foreign proposal partitioning
+// ============================================================================
+
+fn make_c5_session(
+    project_id: &ProjectId,
+    session_id: &IdeationSessionId,
+    artifact_id: &ArtifactId,
+) -> IdeationSession {
+    IdeationSession {
+        id: session_id.clone(),
+        project_id: project_id.clone(),
+        title: Some("C5 Cross-Project Session".to_string()),
+        status: IdeationSessionStatus::Active,
+        plan_artifact_id: Some(artifact_id.clone()),
+        inherited_plan_artifact_id: None,
+        seed_task_id: None,
+        parent_session_id: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        archived_at: None,
+        converted_at: None,
+        team_mode: None,
+        team_config_json: None,
+        title_source: None,
+        verification_status: VerificationStatus::Skipped,
+        verification_in_progress: false,
+        verification_metadata: None,
+        verification_generation: 0,
+        source_project_id: None,
+        source_session_id: None,
+        session_purpose: Default::default(),
+        cross_project_checked: true,
+        plan_version_last_read: None,
+        origin: SessionOrigin::External,
+        expected_proposal_count: None,
+        auto_accept_status: None,
+        auto_accept_started_at: None,
+        api_key_id: None,
+        idempotency_key: None,
+        external_activity_phase: None,
+        external_last_read_message_id: None,
+        dependencies_acknowledged: false,
+    }
+}
+
+fn make_c5_proposal(
+    session_id: &IdeationSessionId,
+    artifact_id: &ArtifactId,
+    sort_order: i32,
+    target_project: Option<String>,
+) -> TaskProposal {
+    TaskProposal {
+        id: TaskProposalId::new(),
+        session_id: session_id.clone(),
+        title: format!("C5 Proposal {}", sort_order),
+        description: Some(format!("Description for C5 proposal {}", sort_order)),
+        category: ProposalCategory::Feature,
+        status: ProposalStatus::Pending,
+        suggested_priority: Priority::Medium,
+        priority_score: 50,
+        priority_reason: None,
+        priority_factors: None,
+        estimated_complexity: Complexity::Moderate,
+        user_priority: None,
+        user_modified: false,
+        steps: None,
+        acceptance_criteria: None,
+        plan_artifact_id: Some(artifact_id.clone()),
+        plan_version_at_creation: None,
+        created_task_id: None,
+        selected: false,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        archived_at: None,
+        sort_order,
+        target_project,
+        migrated_from_session_id: None,
+        migrated_from_proposal_id: None,
+    }
+}
+
+/// C5a: All-local proposals (target_project=None) finalize normally.
+///
+/// Regression guard: ensures the foreign-filtering logic does NOT break the
+/// baseline path where all proposals are local.
+#[tokio::test]
+async fn c5a_finalize_local_only_regression() {
+    let state = AppState::new_sqlite_test();
+
+    let mut project = Project::new("C5a Project".to_string(), "/tmp/test-c5a".to_string());
+    project.use_feature_branches = false;
+    let project_id = project.id.clone();
+    state.project_repo.create(project).await.unwrap();
+
+    let artifact = Artifact::new_inline("C5a Plan", ArtifactType::Specification, "# C5a", "test");
+    let artifact_id = artifact.id.clone();
+    state.artifact_repo.create(artifact).await.unwrap();
+
+    let session_id = IdeationSessionId::new();
+    let session = make_c5_session(&project_id, &session_id, &artifact_id);
+    state.ideation_session_repo.create(session).await.unwrap();
+
+    // 2 local proposals (target_project=None)
+    for i in 1..=2i32 {
+        let proposal = make_c5_proposal(&session_id, &artifact_id, i, None);
+        state.task_proposal_repo.create(proposal).await.unwrap();
+    }
+
+    state
+        .ideation_session_repo
+        .set_dependencies_acknowledged(session_id.as_str())
+        .await
+        .unwrap();
+
+    let result = finalize_proposals_impl(&state, session_id.as_str()).await;
+    assert!(
+        result.is_ok(),
+        "C5a: finalize must succeed for all-local proposals, got: {:?}",
+        result.err()
+    );
+
+    let resp = result.unwrap();
+    assert_eq!(resp.tasks_created, 2, "C5a: must create exactly 2 tasks");
+    assert_eq!(resp.skipped_foreign_count, 0, "C5a: no foreign proposals to skip");
+    assert_eq!(
+        resp.session_status, "accepted",
+        "C5a: session must transition to accepted"
+    );
+}
+
+/// C5b: Mixed local + foreign proposals — only local become tasks, foreign are skipped.
+///
+/// 2 local (target_project=None) + 3 foreign (target_project="/tmp/test-c5b-other-project")
+/// → tasks_created=2, skipped_foreign_count=3, foreign proposals not archived, no created_task_id.
+#[tokio::test]
+async fn c5b_finalize_mixed_local_and_foreign() {
+    let state = AppState::new_sqlite_test();
+
+    let mut project = Project::new("C5b Project".to_string(), "/tmp/test-c5b".to_string());
+    project.use_feature_branches = false;
+    let project_id = project.id.clone();
+    state.project_repo.create(project).await.unwrap();
+
+    let artifact = Artifact::new_inline("C5b Plan", ArtifactType::Specification, "# C5b", "test");
+    let artifact_id = artifact.id.clone();
+    state.artifact_repo.create(artifact).await.unwrap();
+
+    let session_id = IdeationSessionId::new();
+    let session = make_c5_session(&project_id, &session_id, &artifact_id);
+    state.ideation_session_repo.create(session).await.unwrap();
+
+    // 2 local proposals
+    let mut local_ids = Vec::new();
+    for i in 1..=2i32 {
+        let proposal = make_c5_proposal(&session_id, &artifact_id, i, None);
+        local_ids.push(proposal.id.clone());
+        state.task_proposal_repo.create(proposal).await.unwrap();
+    }
+
+    // 3 foreign proposals
+    let mut foreign_ids = Vec::new();
+    for i in 3..=5i32 {
+        let proposal = make_c5_proposal(
+            &session_id,
+            &artifact_id,
+            i,
+            Some("/tmp/test-c5b-other-project".to_string()),
+        );
+        foreign_ids.push(proposal.id.clone());
+        state.task_proposal_repo.create(proposal).await.unwrap();
+    }
+
+    state
+        .ideation_session_repo
+        .set_dependencies_acknowledged(session_id.as_str())
+        .await
+        .unwrap();
+
+    let result = finalize_proposals_impl(&state, session_id.as_str()).await;
+    assert!(
+        result.is_ok(),
+        "C5b: finalize must succeed for mixed proposals, got: {:?}",
+        result.err()
+    );
+
+    let resp = result.unwrap();
+    assert_eq!(resp.tasks_created, 2, "C5b: must create exactly 2 tasks (local only)");
+    assert_eq!(resp.skipped_foreign_count, 3, "C5b: must report 3 skipped foreign proposals");
+
+    // Foreign proposals must NOT be archived and must NOT have created_task_id set
+    for fid in &foreign_ids {
+        let proposal = state
+            .task_proposal_repo
+            .get_by_id(fid)
+            .await
+            .unwrap()
+            .unwrap_or_else(|| panic!("C5b: foreign proposal {} must still exist", fid.as_str()));
+        assert!(
+            proposal.archived_at.is_none(),
+            "C5b: foreign proposal '{}' must NOT be archived",
+            proposal.title
+        );
+        assert!(
+            proposal.created_task_id.is_none(),
+            "C5b: foreign proposal '{}' must NOT have created_task_id set",
+            proposal.title
+        );
+    }
+
+    // Local proposals must have created_task_id set
+    for lid in &local_ids {
+        let proposal = state
+            .task_proposal_repo
+            .get_by_id(lid)
+            .await
+            .unwrap()
+            .unwrap_or_else(|| panic!("C5b: local proposal {} must exist", lid.as_str()));
+        assert!(
+            proposal.created_task_id.is_some(),
+            "C5b: local proposal '{}' must have created_task_id set after finalize",
+            proposal.title
+        );
+    }
+}
+
+/// C5c: All foreign proposals → no tasks created, session stays Active.
+///
+/// When all proposals are foreign, finalize short-circuits:
+/// tasks_created=0, skipped_foreign_count=3, session_status="active", execution_plan_id=None.
+#[tokio::test]
+async fn c5c_finalize_all_foreign_creates_nothing() {
+    let state = AppState::new_sqlite_test();
+
+    let mut project = Project::new("C5c Project".to_string(), "/tmp/test-c5c".to_string());
+    project.use_feature_branches = false;
+    let project_id = project.id.clone();
+    state.project_repo.create(project).await.unwrap();
+
+    let artifact = Artifact::new_inline("C5c Plan", ArtifactType::Specification, "# C5c", "test");
+    let artifact_id = artifact.id.clone();
+    state.artifact_repo.create(artifact).await.unwrap();
+
+    let session_id = IdeationSessionId::new();
+    let session = make_c5_session(&project_id, &session_id, &artifact_id);
+    state.ideation_session_repo.create(session).await.unwrap();
+
+    // 3 foreign proposals
+    for i in 1..=3i32 {
+        let proposal = make_c5_proposal(
+            &session_id,
+            &artifact_id,
+            i,
+            Some("/tmp/test-c5c-other-project".to_string()),
+        );
+        state.task_proposal_repo.create(proposal).await.unwrap();
+    }
+
+    // No need to call set_dependencies_acknowledged — short-circuit happens before the gate
+
+    let result = finalize_proposals_impl(&state, session_id.as_str()).await;
+    assert!(
+        result.is_ok(),
+        "C5c: finalize must succeed even when all proposals are foreign, got: {:?}",
+        result.err()
+    );
+
+    let resp = result.unwrap();
+    assert_eq!(resp.tasks_created, 0, "C5c: no tasks must be created");
+    assert_eq!(resp.skipped_foreign_count, 3, "C5c: must report 3 skipped foreign proposals");
+    assert_eq!(
+        resp.session_status, "active",
+        "C5c: session must remain active when all proposals are foreign"
+    );
+    assert!(
+        resp.execution_plan_id.is_none(),
+        "C5c: execution_plan_id must be None when no local proposals"
+    );
+
+    // Verify session is still Active in DB
+    let session_db = state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .expect("C5c: session must still exist in DB");
+    assert_eq!(
+        session_db.status,
+        IdeationSessionStatus::Active,
+        "C5c: session must remain Active in DB"
+    );
+}
+
+/// C5d: expected_proposal_count validation uses TOTAL count (local + foreign).
+///
+/// Subcase A: expected=3, actual=2 local + 1 foreign = 3 total → succeeds, tasks_created=2.
+/// Subcase B: expected=3, actual=1 local + 1 foreign = 2 total → AppError::Validation (count mismatch).
+#[tokio::test]
+async fn c5d_expected_count_uses_total_including_foreign() {
+    // --- Subcase A: count matches total (local + foreign) → succeeds ---
+    {
+        let state = AppState::new_sqlite_test();
+
+        let mut project =
+            Project::new("C5d-A Project".to_string(), "/tmp/test-c5d-a".to_string());
+        project.use_feature_branches = false;
+        let project_id = project.id.clone();
+        state.project_repo.create(project).await.unwrap();
+
+        let artifact =
+            Artifact::new_inline("C5d-A Plan", ArtifactType::Specification, "# C5d-A", "test");
+        let artifact_id = artifact.id.clone();
+        state.artifact_repo.create(artifact).await.unwrap();
+
+        let session_id = IdeationSessionId::new();
+        let session = make_c5_session(&project_id, &session_id, &artifact_id);
+        state.ideation_session_repo.create(session).await.unwrap();
+
+        // Set expected_proposal_count=3 via SQL
+        let sid = session_id.as_str().to_string();
+        state
+            .db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE ideation_sessions SET expected_proposal_count = 3 WHERE id = ?1",
+                    rusqlite::params![sid],
+                )
+                .map_err(|e| AppError::Database(e.to_string()))?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+        // 2 local + 1 foreign = 3 total (matches expected)
+        for i in 1..=2i32 {
+            let proposal = make_c5_proposal(&session_id, &artifact_id, i, None);
+            state.task_proposal_repo.create(proposal).await.unwrap();
+        }
+        let foreign = make_c5_proposal(
+            &session_id,
+            &artifact_id,
+            3,
+            Some("/tmp/test-c5d-other".to_string()),
+        );
+        state.task_proposal_repo.create(foreign).await.unwrap();
+
+        state
+            .ideation_session_repo
+            .set_dependencies_acknowledged(session_id.as_str())
+            .await
+            .unwrap();
+
+        let result = finalize_proposals_impl(&state, session_id.as_str()).await;
+        assert!(
+            result.is_ok(),
+            "C5d-A: finalize must succeed when total count (2+1=3) matches expected=3, got: {:?}",
+            result.err()
+        );
+        let resp = result.unwrap();
+        assert_eq!(resp.tasks_created, 2, "C5d-A: must create 2 tasks (local only)");
+        assert_eq!(resp.skipped_foreign_count, 1, "C5d-A: must skip 1 foreign proposal");
+    }
+
+    // --- Subcase B: count mismatches total → validation error ---
+    {
+        let state = AppState::new_sqlite_test();
+
+        let mut project =
+            Project::new("C5d-B Project".to_string(), "/tmp/test-c5d-b".to_string());
+        project.use_feature_branches = false;
+        let project_id = project.id.clone();
+        state.project_repo.create(project).await.unwrap();
+
+        let artifact =
+            Artifact::new_inline("C5d-B Plan", ArtifactType::Specification, "# C5d-B", "test");
+        let artifact_id = artifact.id.clone();
+        state.artifact_repo.create(artifact).await.unwrap();
+
+        let session_id = IdeationSessionId::new();
+        let session = make_c5_session(&project_id, &session_id, &artifact_id);
+        state.ideation_session_repo.create(session).await.unwrap();
+
+        // Set expected_proposal_count=3 via SQL
+        let sid = session_id.as_str().to_string();
+        state
+            .db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE ideation_sessions SET expected_proposal_count = 3 WHERE id = ?1",
+                    rusqlite::params![sid],
+                )
+                .map_err(|e| AppError::Database(e.to_string()))?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+        // 1 local + 1 foreign = 2 total (mismatches expected=3)
+        let local = make_c5_proposal(&session_id, &artifact_id, 1, None);
+        state.task_proposal_repo.create(local).await.unwrap();
+        let foreign = make_c5_proposal(
+            &session_id,
+            &artifact_id,
+            2,
+            Some("/tmp/test-c5d-other".to_string()),
+        );
+        state.task_proposal_repo.create(foreign).await.unwrap();
+
+        let result = finalize_proposals_impl(&state, session_id.as_str()).await;
+        assert!(
+            result.is_err(),
+            "C5d-B: finalize must fail when total count (1+1=2) mismatches expected=3"
+        );
+        match result.unwrap_err() {
+            AppError::Validation(msg) => {
+                assert!(
+                    msg.contains("mismatch") || msg.contains("count"),
+                    "C5d-B: validation error must mention count mismatch, got: {}",
+                    msg
+                );
+            }
+            other => panic!("C5d-B: expected AppError::Validation, got: {:?}", other),
+        }
+    }
+}
+
+/// C5e: Path canonicalization — trailing slash in target_project treated as local.
+///
+/// project working_dir="/tmp/test-c5e-path-canon"
+/// Proposal 1: target_project="/tmp/test-c5e-path-canon/" (trailing slash) → LOCAL
+/// Proposal 2: target_project="/tmp/test-c5e-different-project" → FOREIGN
+/// Assert: tasks_created=1, skipped_foreign_count=1, local proposal has created_task_id.
+#[tokio::test]
+async fn c5e_path_canonicalization_trailing_slash() {
+    // Create the directory so canonicalize() succeeds
+    std::fs::create_dir_all("/tmp/test-c5e-path-canon")
+        .expect("must be able to create test directory");
+
+    let state = AppState::new_sqlite_test();
+
+    let mut project = Project::new(
+        "C5e Project".to_string(),
+        "/tmp/test-c5e-path-canon".to_string(),
+    );
+    project.use_feature_branches = false;
+    let project_id = project.id.clone();
+    state.project_repo.create(project).await.unwrap();
+
+    let artifact = Artifact::new_inline("C5e Plan", ArtifactType::Specification, "# C5e", "test");
+    let artifact_id = artifact.id.clone();
+    state.artifact_repo.create(artifact).await.unwrap();
+
+    let session_id = IdeationSessionId::new();
+    let session = make_c5_session(&project_id, &session_id, &artifact_id);
+    state.ideation_session_repo.create(session).await.unwrap();
+
+    // Proposal 1: target_project with trailing slash → should canonicalize to same path → LOCAL
+    let local_proposal = make_c5_proposal(
+        &session_id,
+        &artifact_id,
+        1,
+        Some("/tmp/test-c5e-path-canon/".to_string()),
+    );
+    let local_id = local_proposal.id.clone();
+    state.task_proposal_repo.create(local_proposal).await.unwrap();
+
+    // Proposal 2: different project → FOREIGN
+    let foreign_proposal = make_c5_proposal(
+        &session_id,
+        &artifact_id,
+        2,
+        Some("/tmp/test-c5e-different-project".to_string()),
+    );
+    let foreign_id = foreign_proposal.id.clone();
+    state.task_proposal_repo.create(foreign_proposal).await.unwrap();
+
+    state
+        .ideation_session_repo
+        .set_dependencies_acknowledged(session_id.as_str())
+        .await
+        .unwrap();
+
+    let result = finalize_proposals_impl(&state, session_id.as_str()).await;
+    assert!(
+        result.is_ok(),
+        "C5e: finalize must succeed with canonicalized trailing-slash path, got: {:?}",
+        result.err()
+    );
+
+    let resp = result.unwrap();
+    assert_eq!(
+        resp.tasks_created, 1,
+        "C5e: must create exactly 1 task (trailing-slash local proposal)"
+    );
+    assert_eq!(
+        resp.skipped_foreign_count, 1,
+        "C5e: must skip 1 foreign proposal"
+    );
+
+    // Local proposal (trailing slash) must have created_task_id set
+    let local_db = state
+        .task_proposal_repo
+        .get_by_id(&local_id)
+        .await
+        .unwrap()
+        .expect("C5e: local proposal must exist");
+    assert!(
+        local_db.created_task_id.is_some(),
+        "C5e: local proposal (trailing-slash path) must have created_task_id set after finalize"
+    );
+
+    // Foreign proposal must NOT have created_task_id
+    let foreign_db = state
+        .task_proposal_repo
+        .get_by_id(&foreign_id)
+        .await
+        .unwrap()
+        .expect("C5e: foreign proposal must exist");
+    assert!(
+        foreign_db.created_task_id.is_none(),
+        "C5e: foreign proposal must NOT have created_task_id set"
+    );
+}

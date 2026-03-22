@@ -3,6 +3,7 @@
 //! Extracted from http_server.rs to manage file size and maintain separation of concerns.
 //! Contains parsing, transformation, and context aggregation functions.
 
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::application::{AppState, CreateProposalOptions, UpdateProposalOptions, UpdateSource};
@@ -769,6 +770,13 @@ pub async fn finalize_proposals_impl(
         )));
     }
 
+    // Fetch project to get working_directory for local/foreign classification
+    let project = state
+        .project_repo
+        .get_by_id(&session.project_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Project {} not found", session.project_id)))?;
+
     // Fetch active (non-archived) proposals
     let all_proposals = state
         .task_proposal_repo
@@ -779,19 +787,54 @@ pub async fn finalize_proposals_impl(
         .filter(|p| p.archived_at.is_none())
         .collect();
 
-    let count_active = active_proposals.len() as u32;
+    // Partition into local vs foreign proposals
+    let project_dir = std::fs::canonicalize(&project.working_directory)
+        .unwrap_or_else(|_| PathBuf::from(&project.working_directory));
 
-    // Validate count matches expected_proposal_count if set
+    let (local_proposals, foreign_proposals): (Vec<_>, Vec<_>) = active_proposals
+        .into_iter()
+        .partition(|p| match &p.target_project {
+            None => true,
+            Some(tp) => {
+                let tp_path = std::fs::canonicalize(tp)
+                    .unwrap_or_else(|_| PathBuf::from(tp));
+                tp_path == project_dir
+            }
+        });
+
+    let count_local = local_proposals.len() as u32;
+    let count_foreign = foreign_proposals.len() as u32;
+    let count_total = count_local + count_foreign;
+
+    // Validate count matches expected_proposal_count against TOTAL (local + foreign)
     if let Some(expected) = session.expected_proposal_count {
-        if count_active != expected {
+        if count_total != expected {
             return Err(AppError::Validation(format!(
-                "Proposal count mismatch: session expects {}, found {}",
-                expected, count_active
+                "Proposal count mismatch: session expects {}, found {} ({} local + {} foreign)",
+                expected, count_total, count_local, count_foreign
             )));
         }
     }
 
-    let proposal_ids: Vec<String> = active_proposals
+    // Short-circuit if no local proposals — avoid orphan ExecutionPlan
+    if count_local == 0 {
+        return Ok(crate::http_server::types::FinalizeProposalsResponse {
+            created_task_ids: vec![],
+            dependencies_created: 0,
+            tasks_created: 0,
+            message: Some(format!(
+                "No local proposals to finalize ({} foreign skipped)",
+                count_foreign
+            )),
+            session_status: "active".to_string(),
+            execution_plan_id: None,
+            warnings: vec![],
+            project_id: session.project_id.to_string(),
+            skipped_foreign_count: count_foreign,
+        });
+    }
+
+    let proposal_ids: Vec<String> = local_proposals
         .into_iter()
         .map(|p| p.id.as_str().to_string())
         .collect();
@@ -821,6 +864,7 @@ pub async fn finalize_proposals_impl(
         execution_plan_id: result.execution_plan_id,
         warnings: result.warnings,
         project_id: result.project_id,
+        skipped_foreign_count: count_foreign,
     })
 }
 

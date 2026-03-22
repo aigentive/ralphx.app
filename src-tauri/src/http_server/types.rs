@@ -159,6 +159,9 @@ pub struct FinalizeProposalsResponse {
     pub execution_plan_id: Option<String>,
     pub warnings: Vec<String>,
     pub project_id: String,
+    /// Number of proposals skipped because their target_project points to a different project.
+    #[serde(default)]
+    pub skipped_foreign_count: u32,
 }
 
 #[derive(Debug, Deserialize)]
