@@ -18,6 +18,41 @@ use nix::sys::signal::{self, Signal};
 #[cfg(unix)]
 use nix::unistd::Pid;
 
+#[derive(Clone)]
+struct ProcessOps {
+    is_alive: Arc<dyn Fn(u32) -> bool + Send + Sync>,
+    kill: Arc<dyn Fn(u32) + Send + Sync>,
+    kill_immediate: Arc<dyn Fn(u32) + Send + Sync>,
+}
+
+impl std::fmt::Debug for ProcessOps {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ProcessOps(..)")
+    }
+}
+
+impl ProcessOps {
+    fn real() -> Self {
+        Self {
+            is_alive: Arc::new(is_process_alive),
+            kill: Arc::new(kill_process),
+            kill_immediate: Arc::new(kill_process_immediate),
+        }
+    }
+
+    fn is_alive(&self, pid: u32) -> bool {
+        (self.is_alive)(pid)
+    }
+
+    fn kill(&self, pid: u32) {
+        (self.kill)(pid);
+    }
+
+    fn kill_immediate(&self, pid: u32) {
+        (self.kill_immediate)(pid);
+    }
+}
+
 /// Key for identifying a running agent by context
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct RunningAgentKey {
@@ -494,6 +529,16 @@ pub(crate) async fn await_process_death(
     timeout: std::time::Duration,
     immediate_kill: bool,
 ) -> Vec<u32> {
+    let process_ops = ProcessOps::real();
+    await_process_death_with_process_ops(pids, timeout, immediate_kill, &process_ops).await
+}
+
+async fn await_process_death_with_process_ops(
+    pids: &[u32],
+    timeout: std::time::Duration,
+    immediate_kill: bool,
+    process_ops: &ProcessOps,
+) -> Vec<u32> {
     if pids.is_empty() {
         return Vec::new();
     }
@@ -505,7 +550,7 @@ pub(crate) async fn await_process_death(
         );
 
         for &pid in pids {
-            kill_process_immediate(pid);
+            process_ops.kill_immediate(pid);
         }
 
         // Brief wait for SIGKILL to take effect
@@ -514,7 +559,7 @@ pub(crate) async fn await_process_death(
         let still_alive: Vec<u32> = pids
             .iter()
             .copied()
-            .filter(|&p| is_process_alive(p))
+            .filter(|&p| process_ops.is_alive(p))
             .collect();
         if !still_alive.is_empty() {
             tracing::error!(
@@ -538,7 +583,7 @@ pub(crate) async fn await_process_death(
         let survivors: Vec<u32> = pids
             .iter()
             .copied()
-            .filter(|&p| is_process_alive(p))
+            .filter(|&p| process_ops.is_alive(p))
             .collect();
 
         if survivors.is_empty() {
@@ -554,7 +599,7 @@ pub(crate) async fn await_process_death(
             );
 
             for &pid in &survivors {
-                kill_process_immediate(pid);
+                process_ops.kill_immediate(pid);
             }
 
             // Brief wait for SIGKILL to take effect before final check.
@@ -563,7 +608,7 @@ pub(crate) async fn await_process_death(
             let still_alive: Vec<u32> = survivors
                 .iter()
                 .copied()
-                .filter(|&p| is_process_alive(p))
+                .filter(|&p| process_ops.is_alive(p))
                 .collect();
             if !still_alive.is_empty() {
                 tracing::error!(
@@ -627,6 +672,7 @@ pub fn kill_orphaned_mcp_servers() -> u32 {
 #[derive(Debug, Clone)]
 pub struct MemoryRunningAgentRegistry {
     agents: Arc<Mutex<HashMap<RunningAgentKey, RunningAgentInfo>>>,
+    process_ops: ProcessOps,
 }
 
 impl Default for MemoryRunningAgentRegistry {
@@ -638,8 +684,14 @@ impl Default for MemoryRunningAgentRegistry {
 impl MemoryRunningAgentRegistry {
     /// Create a new empty registry
     pub fn new() -> Self {
+        Self::with_process_ops(ProcessOps::real())
+    }
+
+    #[doc(hidden)]
+    fn with_process_ops(process_ops: ProcessOps) -> Self {
         Self {
             agents: Arc::new(Mutex::new(HashMap::new())),
+            process_ops,
         }
     }
 
@@ -686,7 +738,7 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
         // Stop orphaned agent if one already exists for this key
         if let Some(existing) = agents.get(&key) {
             let old_pid = existing.pid;
-            if old_pid != pid && is_process_alive(old_pid) {
+            if old_pid != pid && self.process_ops.is_alive(old_pid) {
                 tracing::warn!(
                     old_pid,
                     new_pid = pid,
@@ -697,7 +749,7 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
                 if let Some(ref token) = existing.cancellation_token {
                     token.cancel();
                 }
-                kill_process(old_pid);
+                self.process_ops.kill(old_pid);
             }
         }
 
@@ -742,7 +794,7 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
             if let Some(ref token) = agent_info.cancellation_token {
                 token.cancel();
             }
-            kill_process(agent_info.pid);
+            self.process_ops.kill(agent_info.pid);
         }
 
         Ok(info)

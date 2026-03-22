@@ -1,4 +1,61 @@
 use super::*;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex as StdMutex};
+
+#[derive(Clone, Default)]
+struct FakeProcessState {
+    alive: Arc<StdMutex<HashSet<u32>>>,
+    kills: Arc<StdMutex<Vec<u32>>>,
+    immediate_kills: Arc<StdMutex<Vec<u32>>>,
+    remove_on_kill: bool,
+}
+
+impl FakeProcessState {
+    fn with_alive(pids: &[u32]) -> Self {
+        Self {
+            alive: Arc::new(StdMutex::new(pids.iter().copied().collect())),
+            kills: Arc::new(StdMutex::new(Vec::new())),
+            immediate_kills: Arc::new(StdMutex::new(Vec::new())),
+            remove_on_kill: false,
+        }
+    }
+
+    fn removing_on_kill(mut self) -> Self {
+        self.remove_on_kill = true;
+        self
+    }
+
+    fn process_ops(&self) -> ProcessOps {
+        let alive_for_check = Arc::clone(&self.alive);
+        let alive_for_kill = Arc::clone(&self.alive);
+        let alive_for_immediate = Arc::clone(&self.alive);
+        let kills = Arc::clone(&self.kills);
+        let immediate_kills = Arc::clone(&self.immediate_kills);
+        let remove_on_kill = self.remove_on_kill;
+
+        ProcessOps {
+            is_alive: Arc::new(move |pid| alive_for_check.lock().unwrap().contains(&pid)),
+            kill: Arc::new(move |pid| {
+                kills.lock().unwrap().push(pid);
+                if remove_on_kill {
+                    alive_for_kill.lock().unwrap().remove(&pid);
+                }
+            }),
+            kill_immediate: Arc::new(move |pid| {
+                immediate_kills.lock().unwrap().push(pid);
+                alive_for_immediate.lock().unwrap().remove(&pid);
+            }),
+        }
+    }
+
+    fn kills(&self) -> Vec<u32> {
+        self.kills.lock().unwrap().clone()
+    }
+
+    fn immediate_kills(&self) -> Vec<u32> {
+        self.immediate_kills.lock().unwrap().clone()
+    }
+}
 
 #[tokio::test]
 async fn test_register_and_get() {
@@ -26,7 +83,8 @@ async fn test_register_and_get() {
 
 #[tokio::test]
 async fn test_register_with_cancellation_token() {
-    let registry = MemoryRunningAgentRegistry::new();
+    let registry =
+        MemoryRunningAgentRegistry::with_process_ops(FakeProcessState::default().process_ops());
     let key = RunningAgentKey::new("task", "task-cancel");
     let token = CancellationToken::new();
 
@@ -48,6 +106,31 @@ async fn test_register_with_cancellation_token() {
     // Stop should cancel token
     let _ = registry.stop(&key).await;
     assert!(token.is_cancelled());
+}
+
+#[tokio::test]
+async fn test_stop_uses_process_ops_and_cancels_token() {
+    let state = FakeProcessState::with_alive(&[7777]);
+    let registry = MemoryRunningAgentRegistry::with_process_ops(state.process_ops());
+    let key = RunningAgentKey::new("task", "task-stop");
+    let token = CancellationToken::new();
+
+    registry
+        .register(
+            key.clone(),
+            7777,
+            "conv-stop".to_string(),
+            "run-stop".to_string(),
+            None,
+            Some(token.clone()),
+        )
+        .await;
+
+    let stopped = registry.stop(&key).await.unwrap().unwrap();
+    assert_eq!(stopped.pid, 7777);
+    assert!(token.is_cancelled());
+    assert_eq!(state.kills(), vec![7777]);
+    assert!(!registry.is_running(&key).await);
 }
 
 #[tokio::test]
@@ -99,16 +182,11 @@ async fn test_unregister() {
 
 #[tokio::test]
 async fn test_register_stops_orphaned_process() {
-    let registry = MemoryRunningAgentRegistry::new();
+    let state = FakeProcessState::with_alive(&[4242]);
+    let registry = MemoryRunningAgentRegistry::with_process_ops(state.process_ops());
     let key = RunningAgentKey::new("task", "task-orphan");
     let old_token = CancellationToken::new();
-
-    // Spawn a real process so is_process_alive returns true
-    let mut child = std::process::Command::new("sleep")
-        .arg("60")
-        .spawn()
-        .expect("spawn sleep");
-    let old_pid = child.id();
+    let old_pid = 4242;
 
     registry
         .register(
@@ -122,7 +200,6 @@ async fn test_register_stops_orphaned_process() {
         .await;
 
     assert!(!old_token.is_cancelled());
-    assert!(is_process_alive(old_pid));
 
     // Re-register with a new PID — should stop the old process
     registry
@@ -138,10 +215,7 @@ async fn test_register_stops_orphaned_process() {
 
     // Old token should be cancelled
     assert!(old_token.is_cancelled());
-
-    // Reap the zombie (SIGTERM was sent, wait collects exit status)
-    let _ = child.wait();
-    assert!(!is_process_alive(old_pid));
+    assert_eq!(state.kills(), vec![old_pid]);
 
     // New registration should be active
     let info = registry.get(&key).await.unwrap();
@@ -357,6 +431,7 @@ async fn test_try_register_blocks_concurrent_claim() {
 }
 
 #[tokio::test]
+#[ignore = "requires lsof process-enumeration capability"]
 async fn test_kill_worktree_processes_async_completes_within_timeout() {
     // Use a temp dir that exists but has no processes — lsof should return quickly
     let tmp = std::env::temp_dir().join("ralphx_test_lsof_async");
@@ -377,6 +452,7 @@ async fn test_kill_worktree_processes_async_completes_within_timeout() {
 }
 
 #[tokio::test]
+#[ignore = "requires lsof process-enumeration capability"]
 async fn test_kill_worktree_processes_async_nonexistent_path() {
     // Non-existent path — should not panic, just log debug
     let bogus = std::path::PathBuf::from("/tmp/ralphx_test_nonexistent_worktree_path_12345");
@@ -385,6 +461,7 @@ async fn test_kill_worktree_processes_async_nonexistent_path() {
 }
 
 #[tokio::test]
+#[ignore = "requires lsof process-enumeration capability"]
 async fn test_kill_worktree_processes_async_timeout_returns_quickly() {
     // Test that the timeout mechanism works by using a very short timeout (1s).
     // Even if lsof somehow takes longer, we should return within ~1s.
@@ -408,6 +485,7 @@ async fn test_kill_worktree_processes_async_timeout_returns_quickly() {
 /// Verify that kill_worktree_processes_async WAITS for processes to die
 /// (via await_process_death) instead of fire-and-forget SIGTERM.
 #[tokio::test]
+#[ignore = "requires real process spawn/kill capability"]
 async fn test_kill_worktree_processes_async_waits_for_process_exit() {
     let dir = tempfile::TempDir::new().unwrap();
     let dir_path = dir.path().to_path_buf();
@@ -460,6 +538,7 @@ fn test_is_process_alive_pid_zero() {
 }
 
 #[test]
+#[ignore = "requires real child process capability"]
 fn test_is_process_alive_spawned_child() {
     let mut child = std::process::Command::new("sleep")
         .arg("60")
@@ -480,6 +559,7 @@ fn test_is_process_alive_spawned_child() {
 }
 
 #[test]
+#[ignore = "requires real child process capability"]
 fn test_kill_process_immediate_kills_child() {
     let mut child = std::process::Command::new("sleep")
         .arg("60")
@@ -501,6 +581,7 @@ fn test_kill_process_immediate_kills_child() {
 }
 
 #[test]
+#[ignore = "requires real child process capability"]
 fn test_kill_process_immediate_sigterm_resistant() {
     // Spawn a process that ignores SIGTERM
     let mut child = std::process::Command::new("bash")
@@ -526,6 +607,7 @@ fn test_kill_process_immediate_sigterm_resistant() {
 }
 
 #[tokio::test]
+#[ignore = "requires real child process capability"]
 async fn test_await_process_death_immediate_kill_fast() {
     // Spawn a SIGTERM-resistant process
     let mut child = std::process::Command::new("bash")
@@ -565,6 +647,7 @@ async fn test_await_process_death_immediate_kill_fast() {
 }
 
 #[tokio::test]
+#[ignore = "requires real child process capability"]
 async fn test_await_process_death_graceful_exit() {
     // Spawn a short-lived process
     let mut child = std::process::Command::new("sleep")
@@ -586,6 +669,40 @@ async fn test_await_process_death_graceful_exit() {
     assert!(survivors.is_empty(), "Already-dead process should not be a survivor");
 }
 
+#[tokio::test]
+async fn test_await_process_death_immediate_mode_uses_process_ops() {
+    let state = FakeProcessState::with_alive(&[8001]).removing_on_kill();
+    let survivors = await_process_death_with_process_ops(
+        &[8001],
+        std::time::Duration::from_millis(50),
+        true,
+        &state.process_ops(),
+    )
+    .await;
+
+    assert!(survivors.is_empty());
+    assert_eq!(state.immediate_kills(), vec![8001]);
+}
+
+#[tokio::test]
+async fn test_await_process_death_escalates_after_timeout_with_process_ops() {
+    let state = FakeProcessState::with_alive(&[8002]);
+    let survivors = await_process_death_with_process_ops(
+        &[8002],
+        std::time::Duration::from_millis(50),
+        false,
+        &state.process_ops(),
+    )
+    .await;
+
+    assert!(survivors.is_empty());
+    assert!(
+        state.kills().is_empty(),
+        "await_process_death only observes prior SIGTERM handling"
+    );
+    assert_eq!(state.immediate_kills(), vec![8002]);
+}
+
 // ===== Regression tests for pkill .spawn() fix (7dbc2f32) =====
 // Before the fix, kill_process() and kill_process_immediate() used
 // std::process::Command::new("pkill").output() which blocks the tokio
@@ -595,6 +712,7 @@ async fn test_await_process_death_graceful_exit() {
 /// Before the fix, .output() would block and tokio::time::timeout could
 /// never fire. With .spawn(), the call returns nearly instantly.
 #[tokio::test]
+#[ignore = "requires real child process capability"]
 async fn test_kill_process_does_not_block_tokio_timeout() {
     let mut child = std::process::Command::new("sleep")
         .arg("60")
@@ -629,6 +747,7 @@ async fn test_kill_process_does_not_block_tokio_timeout() {
 
 /// Same regression test for kill_process_immediate() — must not block tokio.
 #[tokio::test]
+#[ignore = "requires real child process capability"]
 async fn test_kill_process_immediate_does_not_block_tokio_timeout() {
     let mut child = std::process::Command::new("sleep")
         .arg("60")
@@ -665,6 +784,7 @@ async fn test_kill_process_immediate_does_not_block_tokio_timeout() {
 /// The process group kill `kill(-(pid), SIGKILL)` is the reliable mechanism
 /// for child killing; pkill -P is supplementary and platform-dependent.
 #[tokio::test]
+#[ignore = "requires real process-group capability"]
 async fn test_kill_process_immediate_kills_process_group_children() {
     use std::os::unix::process::CommandExt;
 
@@ -737,6 +857,7 @@ async fn test_kill_process_immediate_kills_process_group_children() {
 /// Verify SIGKILL escalation for processes that ignore SIGTERM.
 /// This test takes ~5-6s due to the SIGTERM wait window.
 #[tokio::test]
+#[ignore = "requires real process spawn/kill capability"]
 async fn test_kill_worktree_processes_async_escalates_to_sigkill() {
     let dir = tempfile::TempDir::new().unwrap();
     let dir_path = dir.path().to_path_buf();

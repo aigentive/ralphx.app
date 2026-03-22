@@ -17,6 +17,9 @@ max-threads = 4
 [test-groups.perf-serial]
 max-threads = 1
 
+[test-groups.capability-serial]
+max-threads = 1
+
 [[profile.default.overrides]]
 filter = 'binary(plan_selector_performance)'
 test-group = 'perf-serial'

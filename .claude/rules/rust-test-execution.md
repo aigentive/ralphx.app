@@ -25,7 +25,7 @@ paths:
 
 | Layer | Standard |
 |---|---|
-| Test runner | `cargo test` for targeted filters and single suites; `cargo nextest run` for broad lib/test runs and CI |
+| Test runner | `cargo test` for targeted filters, single suites, doctests, and ignored lib-side capability checks; `cargo nextest run` for broad lib/test runs and CI |
 | Low-dependency workspace crate | `src-tauri/crates/ralphx-domain` holds pure `agents`, `qa`, `execution`, `ideation`, `review`, most `entities`, and the pure repository trait subset; `question`/`permission` repos stay in the root crate until their application-type dependencies move |
 | Target discovery | `cargo test --manifest-path src-tauri/Cargo.toml --lib -- --list | rg "<module>"` |
 | Async SQLite repo tests | `SqliteTestDb` + repo `from_shared(db.shared_conn())` |
@@ -129,6 +129,7 @@ cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 | Broad local lib run | `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib` |
 | Broad CI-style lib run | `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci` |
 | Pinpoint module/test validation | `cargo test --manifest-path src-tauri/Cargo.toml <filter> --lib` or `cargo test --manifest-path src-tauri/Cargo.toml --test <target>` |
+| Lib-side capability check | `cargo test --manifest-path src-tauri/Cargo.toml '<filter>' --lib -- --ignored` |
 | Doctests | `cargo test --manifest-path src-tauri/Cargo.toml --doc` |
 | CI broad coverage | `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci && cargo test --manifest-path src-tauri/Cargo.toml --doc` |
 
@@ -139,6 +140,7 @@ cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 | `git-heavy` | Caps the heaviest git/worktree integration binaries at 2 threads |
 | `sqlite-integration` | Caps file-backed SQLite integration binaries at 4 threads |
 | `perf-serial` | Forces `plan_selector_performance` to 1 thread |
+| `capability-serial` | Reserved for dedicated capability binaries if/when ignored socket/process tests move out of `--lib`; keep lib-side ignored capability checks on explicit `cargo test -- --ignored` runs |
 | Config source | Edit `src-tauri/.config/nextest.toml` rather than pasting long `-E` filters into docs or CI |
 
 ## Filter Rules
@@ -212,6 +214,7 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Splitting ideation/external handler runtime suites | Keep runtime-heavy handler flows in dedicated integration binaries such as `ideation_runtime_handlers` and `external_ideation_runtime_handlers`, and add the new targets to the selective command list in this file |
 | Runtime-config determinism | Integration tests must not assume ambient `ralphx.yaml`, cached runtime config, entity defaults, or default worktree roots like `~/ralphx-worktrees`; set or neutralize the precondition explicitly in suite helpers/builders |
 | Sandbox-safe by default | Default `cargo test` / `cargo nextest run` suites should avoid requiring loopback sockets, process killing, or ambient HOME writes; extract those behind seams and keep true OS-capability checks as explicit `#[ignore]` capability tests or dedicated capability targets |
+| Capability + nextest alignment | Do not invent a `nextest` group for ignored lib tests; `nextest` broad runs skip them by default. Add a `capability-serial` override only after moving those checks into a dedicated integration binary |
 | Artifacts handler post-create mutations | In `artifacts_handlers`, tests that create a plan and then mutate it should quiesce auto-verify first (reset parent + archive/unregister verification children) unless they are asserting the freeze/bypass path |
 | Exposing helper surfaces for moved integration suites | Prefer `#[doc(hidden)] pub` on the smallest needed helper fn/const instead of keeping `#[cfg(test)]` visibility tied to lib-side sidecar tests |
 | Prefer test accessors over exposed fields | If an integration suite needs scheduler/cache/watchdog internals, add narrow `*_for_test()` accessors instead of making raw fields public |
@@ -227,11 +230,13 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Test must bind loopback, kill real processes, or depend on OS-level permissions | Mark it `#[ignore = "requires <capability>"]` or move it to a dedicated capability target |
 | Broad default run | Keep `cargo test` / `cargo nextest run` green without requiring those ignored capability tests |
 | Capability verification | Run the explicit ignored test or capability target separately in a permissive environment |
+| `nextest` use | Only put capability tests in `nextest` groups after they live in dedicated binaries; ignored lib tests stay on explicit `cargo test -- --ignored` commands |
 
 Capability examples:
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml 'tests::lib_shutdown_tests::test_wait_for_backend_ready_real_socket_returns_200' --lib -- --ignored
+cargo test --manifest-path src-tauri/Cargo.toml 'domain::services::running_agent_registry::tests::test_kill_process_immediate_kills_process_group_children' --lib -- --ignored
 ```
 
 ## Adding Tests Framework
