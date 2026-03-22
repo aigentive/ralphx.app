@@ -40,6 +40,20 @@ impl PlanBranchRepository for MemoryPlanBranchRepository {
         Ok(branch)
     }
 
+    async fn create_or_update(&self, branch: PlanBranch) -> AppResult<PlanBranch> {
+        let mut branches = self.branches.write().await;
+        // Upsert by session_id: replace existing row for same session if present
+        let existing_id = branches
+            .values()
+            .find(|b| b.session_id == branch.session_id)
+            .map(|b| b.id.as_str().to_string());
+        if let Some(old_id) = existing_id {
+            branches.remove(&old_id);
+        }
+        branches.insert(branch.id.as_str().to_string(), branch.clone());
+        Ok(branch)
+    }
+
     async fn get_by_id(&self, id: &PlanBranchId) -> AppResult<Option<PlanBranch>> {
         let branches = self.branches.read().await;
         Ok(branches.get(id.as_str()).cloned())

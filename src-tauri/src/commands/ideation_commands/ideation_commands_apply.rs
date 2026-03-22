@@ -2,7 +2,6 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use chrono::Utc;
 use tauri::{Manager, State};
 
 use crate::application::{AppState, TaskCleanupService, TaskSchedulerService};
@@ -10,6 +9,7 @@ use crate::commands::ExecutionState;
 use crate::domain::entities::{
     ArtifactId, ExecutionPlan, IdeationSessionId, IdeationSessionStatus, InternalStatus,
     PlanBranch, PlanBranchId, ProjectId, Task, TaskCategory, TaskId, TaskProposal, TaskProposalId,
+    TaskStep,
 };
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::error::{AppError, AppResult};
@@ -24,11 +24,25 @@ use crate::commands::plan_branch_commands::slug_from_name;
 // Core Result Type
 // ============================================================================
 
+/// Output of the atomic transaction closure — all data needed for post-commit operations.
+struct TxOutput {
+    execution_plan_id: crate::domain::entities::ExecutionPlanId,
+    /// Tasks created (with final internal_status/blocked_reason already set when use_auto_status)
+    created_tasks: Vec<Task>,
+    dependencies_created: usize,
+    warnings: Vec<String>,
+    any_ready_tasks: bool,
+}
+
 /// Core apply-proposals logic — no Tauri types.
 ///
 /// Contains all proposal-to-task creation logic, dependency setup, and session
 /// status transition to Accepted. Returns transport-agnostic [`ApplyProposalsResult`]
 /// that can be used from both the Tauri IPC command and the HTTP endpoint (Wave 2).
+///
+/// All DB writes (ExecutionPlan, PlanBranch UPSERT, Tasks, TaskSteps, dependencies,
+/// proposal linking, merge task) are wrapped in a single atomic `db.run_transaction`.
+/// On failure the entire transaction rolls back — no orphan ExecutionPlans possible.
 ///
 /// # Errors
 ///
@@ -99,35 +113,28 @@ pub async fn apply_proposals_core(
             .get_by_ideation_session(&session_id)
             .await
             .map_err(|e| AppError::Database(format!("Failed to inspect existing tasks: {}", e)))?;
-        let stale_after_secs =
-            crate::infrastructure::agents::claude::verification_config()
-                .accept_stale_execution_plan_secs as i64;
-        let plan_age_secs = Utc::now()
-            .signed_duration_since(existing_plan.created_at)
-            .num_seconds();
 
-        if !has_applied_proposals
-            && existing_tasks.is_empty()
-            && plan_age_secs >= stale_after_secs
-        {
-            if let Some(stale_branch) = app_state
+        // Plans with 0 tasks and 0 applied proposals are always orphans from failed finalize
+        // attempts — supersede them immediately without any age heuristic.
+        if !has_applied_proposals && existing_tasks.is_empty() {
+            if let Some(orphan_branch) = app_state
                 .plan_branch_repo
                 .get_by_execution_plan_id(&existing_plan.id)
                 .await
                 .map_err(|e| {
                     AppError::Database(format!(
-                        "Failed to inspect stale execution plan branch: {}",
+                        "Failed to inspect orphan execution plan branch: {}",
                         e
                     ))
                 })?
             {
                 app_state
                     .plan_branch_repo
-                    .delete(&stale_branch.id)
+                    .delete(&orphan_branch.id)
                     .await
                     .map_err(|e| {
                         AppError::Database(format!(
-                            "Failed to delete stale execution plan branch: {}",
+                            "Failed to delete orphan execution plan branch: {}",
                             e
                         ))
                     })?;
@@ -139,7 +146,7 @@ pub async fn apply_proposals_core(
                 .await
                 .map_err(|e| {
                     AppError::Database(format!(
-                        "Failed to supersede stale execution plan: {}",
+                        "Failed to supersede orphan execution plan: {}",
                         e
                     ))
                 })?;
@@ -147,8 +154,7 @@ pub async fn apply_proposals_core(
             tracing::warn!(
                 execution_plan_id = %existing_plan.id,
                 session_id = %session_id,
-                age_secs = plan_age_secs,
-                "apply_proposals_core: superseded stale active ExecutionPlan before retry"
+                "apply_proposals_core: superseded orphan active ExecutionPlan before retry"
             );
         } else {
             tracing::warn!(
@@ -242,311 +248,428 @@ pub async fn apply_proposals_core(
         }
     }
 
-    // Create ExecutionPlan for this apply attempt
-    // Each re-accept creates a fresh ExecutionPlan with a unique ID, enabling unique branch naming
-    let execution_plan = ExecutionPlan::new(session_id.clone());
-    let execution_plan = app_state
-        .execution_plan_repo
-        .create(execution_plan)
-        .await
-        .map_err(|e| AppError::Database(format!("Failed to create execution plan: {}", e)))?;
-    let execution_plan_id = execution_plan.id.clone();
-
-    // Create plan branch record if needed (merge task created later, after tasks exist)
-    let mut pending_merge: Option<(PlanBranchId, String)> = None;
-    if use_feature_branch {
-        // Check if a feature branch already exists for this execution plan
-        // Each re-accept creates a new ExecutionPlan, so this will always be None on first apply
-        let existing = app_state
-            .plan_branch_repo
-            .get_by_execution_plan_id(&execution_plan_id)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        if existing.is_none() {
-            // Compute effective_plan_id for plan_branches.plan_artifact_id only (no FK constraint).
-            // Use real artifact_id when available, fall back to session_id string.
-            let effective_plan_id: ArtifactId = plan_artifact_id
-                .clone()
-                .unwrap_or_else(|| ArtifactId::from_string(session_id.as_str().to_string()));
-
-            // Abandon any existing active plan branches for this artifact (re-accept flow).
-            // Each re-accept creates a fresh PlanBranch; old ones must be marked abandoned.
-            let abandoned = app_state
-                .plan_branch_repo
-                .abandon_active_for_artifact(&effective_plan_id)
-                .await
-                .map_err(|e| {
-                    AppError::Database(format!("Failed to abandon old plan branches: {}", e))
-                })?;
-            if abandoned > 0 {
-                tracing::info!(
-                    "Re-accept: abandoned {} stale active plan branch(es) for artifact={}",
-                    abandoned,
-                    effective_plan_id.as_str()
-                );
-            }
-
-            let base_branch = input.base_branch_override.clone().unwrap_or_else(|| {
-                project.base_branch.as_deref().unwrap_or("main").to_string()
-            });
-
-            // Generate branch name: ralphx/{project-slug}/plan-{short-id}
-            // Use execution_plan_id (not plan_artifact_id) so each re-accept gets a unique branch
-            let project_slug = slug_from_name(&project.name);
-            let exec_plan_str = execution_plan_id.as_str();
-            let short_id = &exec_plan_str[..8.min(exec_plan_str.len())];
-            let branch_name = format!("ralphx/{}/plan-{}", project_slug, short_id);
-
-            let mut plan_branch = PlanBranch::new(
-                effective_plan_id,
-                session_id.clone(),
-                session.project_id.clone(),
-                branch_name,
-                base_branch.clone(),
-            );
-            plan_branch.execution_plan_id = Some(execution_plan_id.clone());
-            plan_branch.pr_eligible = project.github_pr_enabled;
-            plan_branch.base_branch_override = input.base_branch_override.clone();
-            let created_branch = app_state
-                .plan_branch_repo
-                .create(plan_branch)
-                .await
-                .map_err(|e| {
-                    AppError::Database(format!("Failed to create plan branch record: {}", e))
-                })?;
-
-            pending_merge = Some((created_branch.id, base_branch));
-        }
-    }
-
     // ========================================================================
-    // PHASE 1: Create Tasks
+    // PRE-FETCH: Collect proposal deps (async) before entering the transaction
     // ========================================================================
-    let mut created_tasks = Vec::new();
-    let mut proposal_to_task: HashMap<TaskProposalId, TaskId> = HashMap::new();
-    let mut warnings = Vec::new();
-
-    for proposal in &proposals_to_apply {
-        // Create task from proposal
-        let mut task = Task::new(session.project_id.clone(), proposal.title.clone());
-        task.description = proposal.description.clone();
-        // All tasks created from proposals are Regular (not system-managed PlanMerge tasks)
-        task.category = TaskCategory::Regular;
-        // Initial status - will be updated after dependencies are created
-        task.internal_status = InternalStatus::Backlog;
-        task.ideation_session_id = Some(session_id.clone());
-        task.execution_plan_id = Some(execution_plan_id.clone());
-        task.priority = proposal.priority_score;
-
-        let created_task = app_state
-            .task_repo
-            .create(task)
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        // Import steps from proposal if they exist
-        if let Some(steps_json) = &proposal.steps {
-            if let Ok(step_titles) = serde_json::from_str::<Vec<String>>(steps_json) {
-                if !step_titles.is_empty() {
-                    let task_steps: Vec<crate::domain::entities::TaskStep> = step_titles
-                        .into_iter()
-                        .enumerate()
-                        .map(|(idx, title)| {
-                            crate::domain::entities::TaskStep::new(
-                                created_task.id.clone(),
-                                title,
-                                idx as i32,
-                                "proposal".to_string(),
-                            )
-                        })
-                        .collect();
-
-                    // Use bulk_create to insert all steps
-                    let _ = app_state
-                        .task_step_repo
-                        .bulk_create(task_steps)
-                        .await
-                        .map_err(|e| AppError::Database(e.to_string()))?;
-                }
-            }
-        }
-
-        proposal_to_task.insert(proposal.id.clone(), created_task.id.clone());
-        created_tasks.push(created_task);
-    }
-
-    // Create task dependencies from proposal dependencies
-    let mut dependencies_created = 0;
+    let mut proposal_deps: HashMap<TaskProposalId, Vec<TaskProposalId>> = HashMap::new();
     for proposal in &proposals_to_apply {
         let deps = app_state
             .proposal_dependency_repo
             .get_dependencies(&proposal.id)
             .await
             .map_err(|e| AppError::Database(e.to_string()))?;
-
-        for dep_proposal_id in deps {
-            if let (Some(task_id), Some(dep_task_id)) = (
-                proposal_to_task.get(&proposal.id),
-                proposal_to_task.get(&dep_proposal_id),
-            ) {
-                app_state
-                    .task_dependency_repo
-                    .add_dependency(task_id, dep_task_id)
-                    .await
-                    .map_err(|e| AppError::Database(e.to_string()))?;
-                dependencies_created += 1;
-            } else {
-                warnings.push(format!(
-                    "Dependency from {} to {} not preserved (not in selection)",
-                    proposal.id, dep_proposal_id
-                ));
-            }
-        }
+        proposal_deps.insert(proposal.id.clone(), deps);
     }
 
     // ========================================================================
-    // PHASE 2: Set plan_artifact_id on tasks + create merge task
+    // ATOMIC TRANSACTION: ExecutionPlan + PlanBranch UPSERT + Tasks + Steps +
+    //                     Dependencies + Proposal linking + Merge task
     // ========================================================================
-    // Set plan_artifact_id on all created tasks (propagate from proposal or session)
-    if let Some(ref artifact_id) = plan_artifact_id {
-        for task in &created_tasks {
-            let mut task_to_update = app_state
-                .task_repo
-                .get_by_id(&task.id)
-                .await
-                .map_err(|e| AppError::Database(e.to_string()))?
-                .ok_or_else(|| {
-                    AppError::NotFound(format!("Task {} not found after creation", task.id))
-                })?;
-            // Use proposal's plan_artifact_id if set, else session's
-            let proposal_opt = proposals_to_apply
+
+    // Clone all data the closure needs (must be Send + 'static — no borrows into closure)
+    let session_id_str = session_id.as_str().to_string();
+    let project_id_str = session.project_id.as_str().to_string();
+    let plan_artifact_id_tx = plan_artifact_id.clone();
+    let use_feature_branch_tx = use_feature_branch;
+    let use_auto_status_tx = use_auto_status;
+    let base_branch_override_tx = input.base_branch_override.clone();
+    let project_base_branch_tx = project.base_branch.clone();
+    let project_name_tx = project.name.clone();
+    let project_pr_eligible_tx = project.github_pr_enabled;
+    let proposals_tx = proposals_to_apply.clone();
+    // Convert to String-keyed map so the closure is 'static
+    let proposal_deps_tx: HashMap<String, Vec<String>> = proposal_deps
+        .iter()
+        .map(|(k, vs)| {
+            (
+                k.as_str().to_string(),
+                vs.iter().map(|v| v.as_str().to_string()).collect(),
+            )
+        })
+        .collect();
+
+    let tx_output = app_state
+        .db
+        .run_transaction(move |conn| {
+            // ----------------------------------------------------------------
+            // (a) INSERT execution_plan
+            // ----------------------------------------------------------------
+            let exec_plan = ExecutionPlan::new(IdeationSessionId::from_string(
+                session_id_str.clone(),
+            ));
+            conn.execute(
+                "INSERT INTO execution_plans (id, session_id, status, created_at) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![
+                    exec_plan.id.as_str(),
+                    exec_plan.session_id.as_str(),
+                    exec_plan.status.to_db_string(),
+                    exec_plan.created_at.to_rfc3339(),
+                ],
+            )
+            .map_err(|e| AppError::Database(format!("Failed to create execution plan: {}", e)))?;
+            let execution_plan_id = exec_plan.id.clone();
+
+            // ----------------------------------------------------------------
+            // (b) UPSERT plan_branch if use_feature_branch
+            // ----------------------------------------------------------------
+            let mut pending_merge: Option<(PlanBranchId, String)> = None;
+            if use_feature_branch_tx {
+                let effective_plan_id_str = plan_artifact_id_tx
+                    .as_ref()
+                    .map(|id| id.as_str().to_string())
+                    .unwrap_or_else(|| session_id_str.clone());
+                let base_branch = base_branch_override_tx
+                    .clone()
+                    .unwrap_or_else(|| {
+                        project_base_branch_tx
+                            .as_deref()
+                            .unwrap_or("main")
+                            .to_string()
+                    });
+                let project_slug = slug_from_name(&project_name_tx);
+                let exec_plan_str = execution_plan_id.as_str();
+                let short_id = &exec_plan_str[..8.min(exec_plan_str.len())];
+                let branch_name =
+                    format!("ralphx/{}/plan-{}", project_slug, short_id);
+
+                let branch = PlanBranch::new(
+                    ArtifactId::from_string(effective_plan_id_str),
+                    IdeationSessionId::from_string(session_id_str.clone()),
+                    ProjectId::from_string(project_id_str.clone()),
+                    branch_name,
+                    base_branch.clone(),
+                );
+                let branch_with_plan = PlanBranch {
+                    execution_plan_id: Some(execution_plan_id.clone()),
+                    pr_eligible: project_pr_eligible_tx,
+                    base_branch_override: base_branch_override_tx.clone(),
+                    ..branch
+                };
+
+                conn.execute(
+                    "INSERT INTO plan_branches (id, plan_artifact_id, session_id, project_id, branch_name, source_branch, status, merge_task_id, created_at, merged_at, execution_plan_id, pr_eligible, base_branch_override)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                     ON CONFLICT(session_id) DO UPDATE SET
+                       plan_artifact_id=excluded.plan_artifact_id,
+                       project_id=excluded.project_id,
+                       branch_name=excluded.branch_name,
+                       source_branch=excluded.source_branch,
+                       status=excluded.status,
+                       merge_task_id=excluded.merge_task_id,
+                       execution_plan_id=excluded.execution_plan_id,
+                       pr_eligible=excluded.pr_eligible,
+                       base_branch_override=excluded.base_branch_override",
+                    rusqlite::params![
+                        branch_with_plan.id.as_str(),
+                        branch_with_plan.plan_artifact_id.as_str(),
+                        branch_with_plan.session_id.as_str(),
+                        branch_with_plan.project_id.as_str(),
+                        branch_with_plan.branch_name,
+                        branch_with_plan.source_branch,
+                        branch_with_plan.status.to_db_string(),
+                        branch_with_plan.merge_task_id.as_ref().map(|t| t.as_str().to_string()),
+                        branch_with_plan.created_at.to_rfc3339(),
+                        branch_with_plan.merged_at.map(|dt| dt.to_rfc3339()),
+                        branch_with_plan.execution_plan_id.as_ref().map(|id| id.as_str().to_string()),
+                        branch_with_plan.pr_eligible as i64,
+                        branch_with_plan.base_branch_override.clone(),
+                    ],
+                )
+                .map_err(|e| AppError::Database(format!("Failed to upsert plan branch: {}", e)))?;
+
+                // Re-fetch by session_id to get the persisted row's id
+                // (UPSERT may have preserved an existing row's id)
+                let mut stmt = conn
+                    .prepare("SELECT * FROM plan_branches WHERE session_id = ?1")
+                    .map_err(|e| AppError::Database(format!("Failed to prepare branch fetch: {}", e)))?;
+                let persisted = stmt
+                    .query_row(rusqlite::params![session_id_str.as_str()], |row| {
+                        PlanBranch::from_row(row)
+                    })
+                    .map_err(|e| AppError::Database(format!("Failed to fetch upserted branch: {}", e)))?;
+
+                pending_merge = Some((persisted.id, base_branch));
+            }
+
+            // ----------------------------------------------------------------
+            // (c) INSERT tasks + task_steps
+            // ----------------------------------------------------------------
+            let mut created_tasks: Vec<Task> = Vec::new();
+            // String → String map (proposal_id → task_id) for 'static closure
+            let mut proposal_to_task: HashMap<String, String> = HashMap::new();
+            let mut any_ready_tasks = false;
+            let now_str = chrono::Utc::now().to_rfc3339();
+
+            // Build proposal_id → title map for blocked_reason computation
+            let proposal_titles_map: HashMap<String, String> = proposals_tx
                 .iter()
-                .find(|p| proposal_to_task.get(&p.id) == Some(&task.id));
-            let task_artifact_id = proposal_opt
-                .and_then(|p| p.plan_artifact_id.clone())
-                .unwrap_or_else(|| artifact_id.clone());
-            task_to_update.plan_artifact_id = Some(task_artifact_id);
-            app_state
-                .task_repo
-                .update(&task_to_update)
-                .await
-                .map_err(|e| AppError::Database(e.to_string()))?;
-        }
-    }
+                .map(|p| (p.id.as_str().to_string(), p.title.clone()))
+                .collect();
 
-    // Create merge task if a plan branch was created in Phase 0
-    if let Some((branch_id, base_branch)) = pending_merge {
-        let plan_title = format!("Merge plan into {}", base_branch);
-        let mut merge_task = Task::new_with_category(
-            session.project_id.clone(),
-            plan_title,
-            TaskCategory::PlanMerge,
-        );
-        merge_task.description = Some(format!(
-            "Auto-created merge task: merges feature branch into {}",
-            base_branch
-        ));
-        // Only set plan_artifact_id when real artifact exists (FK safety for tasks table)
-        merge_task.plan_artifact_id = plan_artifact_id.clone();
-        merge_task.ideation_session_id = Some(session_id.clone());
-        merge_task.execution_plan_id = Some(execution_plan_id.clone());
-        merge_task.internal_status = InternalStatus::Blocked;
-        merge_task.blocked_reason = Some("Waiting for all plan tasks to complete".to_string());
+            for proposal in &proposals_tx {
+                let mut task =
+                    Task::new(ProjectId::from_string(project_id_str.clone()), proposal.title.clone());
+                task.description = proposal.description.clone();
+                task.category = TaskCategory::Regular;
+                task.internal_status = InternalStatus::Backlog;
+                task.ideation_session_id =
+                    Some(IdeationSessionId::from_string(session_id_str.clone()));
+                task.execution_plan_id = Some(execution_plan_id.clone());
+                task.priority = proposal.priority_score;
+                // Set plan_artifact_id during INSERT — eliminates the Phase 2 update loop
+                task.plan_artifact_id = proposal
+                    .plan_artifact_id
+                    .clone()
+                    .or_else(|| plan_artifact_id_tx.clone());
 
-        let created_merge_task = app_state
-            .task_repo
-            .create(merge_task)
-            .await
-            .map_err(|e| AppError::Database(format!("Failed to create merge task: {}", e)))?;
+                // Compute auto-status from pre-fetched proposal_deps (no async calls needed)
+                if use_auto_status_tx {
+                    let has_blockers = proposal_deps_tx
+                        .get(proposal.id.as_str())
+                        .map(|deps| {
+                            deps.iter()
+                                .any(|dep_id| proposals_tx.iter().any(|p| p.id.as_str() == dep_id))
+                        })
+                        .unwrap_or(false);
+                    if has_blockers {
+                        let dep_ids = proposal_deps_tx
+                            .get(proposal.id.as_str())
+                            .cloned()
+                            .unwrap_or_default();
+                        let blocker_names: Vec<String> = dep_ids
+                            .iter()
+                            .filter_map(|dep_id| proposal_titles_map.get(dep_id))
+                            .cloned()
+                            .collect();
+                        task.internal_status = InternalStatus::Blocked;
+                        task.blocked_reason =
+                            Some(format!("Waiting for: {}", blocker_names.join(", ")));
+                    } else {
+                        task.internal_status = InternalStatus::Ready;
+                        any_ready_tasks = true;
+                    }
+                }
 
-        // Add blockedBy dependencies: merge task blocked by all created plan tasks.
-        // These do NOT increment `dependencies_created` (which only counts proposal-to-proposal edges).
-        for task in &created_tasks {
-            app_state
-                .task_dependency_repo
-                .add_dependency(&created_merge_task.id, &task.id)
-                .await
-                .map_err(|e| AppError::Database(format!("Failed to add dependency: {}", e)))?;
-        }
+                conn.execute(
+                    "INSERT INTO tasks (id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, execution_plan_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha, metadata, merge_pipeline_active)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
+                    rusqlite::params![
+                        task.id.as_str(),
+                        task.project_id.as_str(),
+                        task.category.to_string(),
+                        task.title.clone(),
+                        task.description.clone(),
+                        task.priority,
+                        task.internal_status.as_str(),
+                        task.needs_review_point,
+                        task.source_proposal_id.as_ref().map(|id| id.as_str()),
+                        task.plan_artifact_id.as_ref().map(|id| id.as_str()),
+                        task.ideation_session_id.as_ref().map(|id| id.as_str()),
+                        task.execution_plan_id.as_ref().map(|id| id.as_str()),
+                        task.created_at.to_rfc3339(),
+                        task.updated_at.to_rfc3339(),
+                        task.started_at.map(|dt| dt.to_rfc3339()),
+                        task.completed_at.map(|dt| dt.to_rfc3339()),
+                        task.archived_at.map(|dt| dt.to_rfc3339()),
+                        task.blocked_reason.clone(),
+                        task.task_branch.clone(),
+                        task.worktree_path.clone(),
+                        task.merge_commit_sha.clone(),
+                        task.metadata.clone(),
+                        task.merge_pipeline_active.clone(),
+                    ],
+                )
+                .map_err(|e| AppError::Database(format!("Failed to create task: {}", e)))?;
 
-        // Set merge_task_id on the plan branch record
-        app_state
-            .plan_branch_repo
-            .set_merge_task_id(&branch_id, &created_merge_task.id)
-            .await
-            .map_err(|e| {
-                AppError::Database(format!("Failed to set merge task ID: {}", e))
-            })?;
-    }
+                // Insert task steps
+                if let Some(steps_json) = &proposal.steps {
+                    if let Ok(step_titles) =
+                        serde_json::from_str::<Vec<String>>(steps_json)
+                    {
+                        for (idx, title) in step_titles.into_iter().enumerate() {
+                            let step = TaskStep::new(
+                                task.id.clone(),
+                                title,
+                                idx as i32,
+                                "proposal".to_string(),
+                            );
+                            conn.execute(
+                                "INSERT INTO task_steps (id, task_id, title, description, status, sort_order, depends_on, created_by, completion_note, created_at, updated_at, started_at, completed_at, parent_step_id, scope_context)
+                                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                                rusqlite::params![
+                                    step.id.as_str(),
+                                    step.task_id.as_str(),
+                                    step.title,
+                                    step.description,
+                                    step.status.to_db_string(),
+                                    step.sort_order,
+                                    step.depends_on.as_ref().map(|id| id.as_str()),
+                                    step.created_by,
+                                    step.completion_note,
+                                    step.created_at.to_rfc3339(),
+                                    step.updated_at.to_rfc3339(),
+                                    step.started_at.map(|dt| dt.to_rfc3339()),
+                                    step.completed_at.map(|dt| dt.to_rfc3339()),
+                                    step.parent_step_id.as_ref().map(|id| id.as_str()),
+                                    step.scope_context,
+                                ],
+                            )
+                            .map_err(|e| AppError::Database(format!("Failed to create task step: {}", e)))?;
+                        }
+                    }
+                }
 
-    // ========================================================================
-    // PHASE 3: Link Tasks & Update Statuses
-    // ========================================================================
-    // Update proposal statuses and link to created tasks
-    for proposal in &proposals_to_apply {
-        if let Some(task_id) = proposal_to_task.get(&proposal.id) {
-            app_state
-                .task_proposal_repo
-                .set_created_task_id(&proposal.id, task_id)
-                .await
-                .map_err(|e| AppError::Database(e.to_string()))?;
-        }
-    }
-
-    // Auto-status: Set task status based on dependencies
-    // - Tasks with no blockers → Ready
-    // - Tasks with blockers → Blocked (with blocked_reason)
-    let mut any_ready_tasks = false;
-    if use_auto_status {
-        // Build a map of task_id -> task title for blocker names
-        let task_titles: HashMap<TaskId, String> = created_tasks
-            .iter()
-            .map(|t| (t.id.clone(), t.title.clone()))
-            .collect();
-
-        for task in &created_tasks {
-            let blockers = app_state
-                .task_dependency_repo
-                .get_blockers(&task.id)
-                .await
-                .map_err(|e| AppError::Database(e.to_string()))?;
-
-            // Fetch the task to update it
-            let mut task_to_update = app_state
-                .task_repo
-                .get_by_id(&task.id)
-                .await
-                .map_err(|e| AppError::Database(e.to_string()))?
-                .ok_or_else(|| {
-                    AppError::NotFound(format!("Task {} not found after creation", task.id))
-                })?;
-
-            if blockers.is_empty() {
-                // No blockers - set to Ready
-                task_to_update.internal_status = InternalStatus::Ready;
-                task_to_update.blocked_reason = None;
-                any_ready_tasks = true;
-            } else {
-                // Has blockers - set to Blocked with reason
-                let blocker_names: Vec<String> = blockers
-                    .iter()
-                    .filter_map(|blocker_id| task_titles.get(blocker_id))
-                    .cloned()
-                    .collect();
-                let blocked_reason = format!("Waiting for: {}", blocker_names.join(", "));
-
-                task_to_update.internal_status = InternalStatus::Blocked;
-                task_to_update.blocked_reason = Some(blocked_reason);
+                proposal_to_task
+                    .insert(proposal.id.as_str().to_string(), task.id.as_str().to_string());
+                created_tasks.push(task);
             }
 
-            app_state
-                .task_repo
-                .update(&task_to_update)
-                .await
-                .map_err(|e| AppError::Database(e.to_string()))?;
-        }
-    }
+            // ----------------------------------------------------------------
+            // (d) INSERT task_dependencies
+            // ----------------------------------------------------------------
+            let mut dependencies_created = 0usize;
+            let mut warnings: Vec<String> = Vec::new();
+            for proposal in &proposals_tx {
+                if let Some(deps) = proposal_deps_tx.get(proposal.id.as_str()) {
+                    for dep_proposal_id in deps {
+                        let task_id = proposal_to_task.get(proposal.id.as_str());
+                        let dep_task_id = proposal_to_task.get(dep_proposal_id.as_str());
+                        if let (Some(task_id), Some(dep_task_id)) = (task_id, dep_task_id) {
+                            let dep_row_id = uuid::Uuid::new_v4().to_string();
+                            conn.execute(
+                                "INSERT OR IGNORE INTO task_dependencies (id, task_id, depends_on_task_id) VALUES (?1, ?2, ?3)",
+                                rusqlite::params![
+                                    dep_row_id,
+                                    task_id.as_str(),
+                                    dep_task_id.as_str()
+                                ],
+                            )
+                            .map_err(|e| {
+                                AppError::Database(format!(
+                                    "Failed to create task dependency: {}",
+                                    e
+                                ))
+                            })?;
+                            dependencies_created += 1;
+                        } else {
+                            warnings.push(format!(
+                                "Dependency from {} to {} not preserved (not in selection)",
+                                proposal.id, dep_proposal_id
+                            ));
+                        }
+                    }
+                }
+            }
+
+            // ----------------------------------------------------------------
+            // (e) UPDATE proposals with created_task_id
+            // ----------------------------------------------------------------
+            for proposal in &proposals_tx {
+                if let Some(task_id) = proposal_to_task.get(proposal.id.as_str()) {
+                    conn.execute(
+                        "UPDATE task_proposals SET created_task_id = ?2, updated_at = ?3 WHERE id = ?1",
+                        rusqlite::params![
+                            proposal.id.as_str(),
+                            task_id.as_str(),
+                            now_str.as_str()
+                        ],
+                    )
+                    .map_err(|e| {
+                        AppError::Database(format!("Failed to link proposal to task: {}", e))
+                    })?;
+                }
+            }
+
+            // ----------------------------------------------------------------
+            // (f) INSERT merge task if feature branch
+            // ----------------------------------------------------------------
+            if let Some((ref branch_id, ref base_branch_name)) = pending_merge {
+                let plan_title = format!("Merge plan into {}", base_branch_name);
+                let mut merge_task = Task::new_with_category(
+                    ProjectId::from_string(project_id_str.clone()),
+                    plan_title,
+                    TaskCategory::PlanMerge,
+                );
+                merge_task.description = Some(format!(
+                    "Auto-created merge task: merges feature branch into {}",
+                    base_branch_name
+                ));
+                // Only set plan_artifact_id when real artifact exists (FK safety for tasks table)
+                merge_task.plan_artifact_id = plan_artifact_id_tx.clone();
+                merge_task.ideation_session_id =
+                    Some(IdeationSessionId::from_string(session_id_str.clone()));
+                merge_task.execution_plan_id = Some(execution_plan_id.clone());
+                merge_task.internal_status = InternalStatus::Blocked;
+                merge_task.blocked_reason =
+                    Some("Waiting for all plan tasks to complete".to_string());
+
+                conn.execute(
+                    "INSERT INTO tasks (id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, execution_plan_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha, metadata, merge_pipeline_active)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
+                    rusqlite::params![
+                        merge_task.id.as_str(),
+                        merge_task.project_id.as_str(),
+                        merge_task.category.to_string(),
+                        merge_task.title.clone(),
+                        merge_task.description.clone(),
+                        merge_task.priority,
+                        merge_task.internal_status.as_str(),
+                        merge_task.needs_review_point,
+                        merge_task.source_proposal_id.as_ref().map(|id| id.as_str()),
+                        merge_task.plan_artifact_id.as_ref().map(|id| id.as_str()),
+                        merge_task.ideation_session_id.as_ref().map(|id| id.as_str()),
+                        merge_task.execution_plan_id.as_ref().map(|id| id.as_str()),
+                        merge_task.created_at.to_rfc3339(),
+                        merge_task.updated_at.to_rfc3339(),
+                        merge_task.started_at.map(|dt| dt.to_rfc3339()),
+                        merge_task.completed_at.map(|dt| dt.to_rfc3339()),
+                        merge_task.archived_at.map(|dt| dt.to_rfc3339()),
+                        merge_task.blocked_reason.clone(),
+                        merge_task.task_branch.clone(),
+                        merge_task.worktree_path.clone(),
+                        merge_task.merge_commit_sha.clone(),
+                        merge_task.metadata.clone(),
+                        merge_task.merge_pipeline_active.clone(),
+                    ],
+                )
+                .map_err(|e| AppError::Database(format!("Failed to create merge task: {}", e)))?;
+
+                // Add blockedBy deps: merge task blocked by all plan tasks.
+                // These do NOT increment `dependencies_created` (plan-to-plan edges only).
+                for task in &created_tasks {
+                    let dep_id = uuid::Uuid::new_v4().to_string();
+                    conn.execute(
+                        "INSERT OR IGNORE INTO task_dependencies (id, task_id, depends_on_task_id) VALUES (?1, ?2, ?3)",
+                        rusqlite::params![dep_id, merge_task.id.as_str(), task.id.as_str()],
+                    )
+                    .map_err(|e| {
+                        AppError::Database(format!("Failed to add merge task dependency: {}", e))
+                    })?;
+                }
+
+                // Update plan_branch.merge_task_id
+                conn.execute(
+                    "UPDATE plan_branches SET merge_task_id = ?2 WHERE id = ?1",
+                    rusqlite::params![branch_id.as_str(), merge_task.id.as_str()],
+                )
+                .map_err(|e| {
+                    AppError::Database(format!("Failed to set merge task ID: {}", e))
+                })?;
+            }
+
+            Ok(TxOutput {
+                execution_plan_id,
+                created_tasks,
+                dependencies_created,
+                warnings,
+                any_ready_tasks,
+            })
+        })
+        .await?;
+
+    // ========================================================================
+    // POST-TRANSACTION: session status transition to Accepted
+    // ========================================================================
 
     // Check if all proposals in session are now applied
     let remaining = app_state
@@ -575,7 +698,8 @@ pub async fn apply_proposals_core(
 
     let proposal_titles: Vec<String> = proposals_to_apply.iter().map(|p| p.title.clone()).collect();
 
-    let tasks_created = created_tasks.len();
+    let tasks_created = tx_output.created_tasks.len();
+    let dependencies_created = tx_output.dependencies_created;
     let message = Some(format!(
         "Created {} task{} with {} proposal {}.",
         tasks_created,
@@ -589,19 +713,20 @@ pub async fn apply_proposals_core(
     ));
 
     Ok(ApplyProposalsResult {
-        created_task_ids: created_tasks
+        created_task_ids: tx_output
+            .created_tasks
             .into_iter()
             .map(|t| t.id.as_str().to_string())
             .collect(),
         dependencies_created,
         tasks_created,
         message,
-        warnings,
+        warnings: tx_output.warnings,
         session_converted,
-        execution_plan_id: Some(execution_plan_id.as_str().to_string()),
+        execution_plan_id: Some(tx_output.execution_plan_id.as_str().to_string()),
         project_id: session.project_id.as_str().to_string(),
         session_id: session_id.as_str().to_string(),
-        any_ready_tasks,
+        any_ready_tasks: tx_output.any_ready_tasks,
         is_user_title,
         proposal_titles,
     })

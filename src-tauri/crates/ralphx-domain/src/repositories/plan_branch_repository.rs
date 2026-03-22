@@ -19,6 +19,10 @@ pub trait PlanBranchRepository: Send + Sync {
     /// Create a new plan branch record
     async fn create(&self, branch: PlanBranch) -> AppResult<PlanBranch>;
 
+    /// Insert or update a plan branch record (upsert by session_id).
+    /// If a row with the same session_id already exists, all mutable fields are updated.
+    async fn create_or_update(&self, branch: PlanBranch) -> AppResult<PlanBranch>;
+
     /// Get a plan branch by its ID
     async fn get_by_id(&self, id: &PlanBranchId) -> AppResult<Option<PlanBranch>>;
 

@@ -1730,6 +1730,16 @@ async fn test_get_by_execution_plan_id_returns_none_when_absent() {
 // apply_proposals_core regression tests
 // ============================================================================
 
+/// State factory for apply_proposals_core tests.
+///
+/// Uses `AppState::new_sqlite_for_apply_test()` so that all repositories accessed
+/// by apply_proposals_core (both via async repo calls and via db.run_transaction)
+/// share a single in-memory SQLite connection — ensuring rows written inside the
+/// transaction are visible to subsequent repo reads in the same test.
+fn setup_apply_test_state() -> AppState {
+    AppState::new_sqlite_for_apply_test()
+}
+
 /// Helper: create a project and session with N proposals, return (project_id, session, proposal_ids)
 async fn setup_session_with_proposals(
     state: &AppState,
@@ -1778,7 +1788,7 @@ async fn setup_session_with_proposals(
 async fn test_apply_proposals_core_creates_tasks_with_ready_status() {
     use ralphx_lib::domain::entities::InternalStatus;
 
-    let state = setup_test_state();
+    let state = setup_apply_test_state();
     let (project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
 
     // Acknowledge dependencies (required by gate for multi-proposal sessions)
@@ -1827,7 +1837,7 @@ async fn test_apply_proposals_core_creates_tasks_with_ready_status() {
 
 #[tokio::test]
 async fn test_apply_proposals_core_session_converts_to_accepted() {
-    let state = setup_test_state();
+    let state = setup_apply_test_state();
     let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 1).await;
 
     let input = ApplyProposalsInput {
@@ -1856,7 +1866,7 @@ async fn test_apply_proposals_core_session_converts_to_accepted() {
 
 #[tokio::test]
 async fn test_apply_proposals_core_partial_apply_does_not_convert_session() {
-    let state = setup_test_state();
+    let state = setup_apply_test_state();
     let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
 
     // Only apply 1 of 2 proposals
@@ -1886,19 +1896,31 @@ async fn test_apply_proposals_core_partial_apply_does_not_convert_session() {
 
 #[tokio::test]
 async fn test_apply_proposals_core_idempotency_guard() {
-    use ralphx_lib::domain::entities::ExecutionPlan;
+    use ralphx_lib::domain::entities::{ExecutionPlan, Task};
 
-    let state = setup_test_state();
-    let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
+    let state = setup_apply_test_state();
+    let (project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
 
     // Pre-seed an active ExecutionPlan for this session to simulate a race condition
     // (two simultaneous accepts before either updates the session status).
+    // Also create a task linked to the plan so the orphan-supersede guard does NOT fire —
+    // the idempotency guard only activates when there are existing tasks or applied proposals.
     let existing_plan = ExecutionPlan::new(session.id.clone());
-    state
+    let created_plan = state
         .execution_plan_repo
         .create(existing_plan)
         .await
         .expect("Failed to create pre-existing execution plan");
+
+    // Create a real task tied to this plan so the orphan check sees it as non-orphan
+    let mut stub_task = Task::new(project_id.clone(), "stub task".to_string());
+    stub_task.ideation_session_id = Some(session.id.clone());
+    stub_task.execution_plan_id = Some(created_plan.id.clone());
+    state
+        .task_repo
+        .create(stub_task)
+        .await
+        .expect("Failed to create stub task for idempotency test");
 
     // Apply should hit the idempotency guard and return early
     let input = ApplyProposalsInput {
@@ -1930,24 +1952,19 @@ async fn test_apply_proposals_core_idempotency_guard() {
 
 #[tokio::test]
 async fn test_apply_proposals_core_repairs_stale_orphaned_execution_plan() {
-    use chrono::{Duration, Utc};
-
     use ralphx_lib::domain::entities::{ExecutionPlan, ExecutionPlanStatus, IdeationSessionStatus};
 
-    let state = setup_test_state();
+    let state = setup_apply_test_state();
     let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
 
-    let stale_after_secs =
-        ralphx_lib::infrastructure::agents::claude::verification_config()
-            .accept_stale_execution_plan_secs as i64;
-    let mut stale_plan = ExecutionPlan::new(session.id.clone());
-    stale_plan.created_at = Utc::now() - Duration::seconds(stale_after_secs + 1);
-    let stale_plan_id = stale_plan.id.clone();
+    // Orphan plan: 0 tasks, 0 applied proposals — superseded immediately regardless of age.
+    let orphan_plan = ExecutionPlan::new(session.id.clone());
+    let stale_plan_id = orphan_plan.id.clone();
     state
         .execution_plan_repo
-        .create(stale_plan)
+        .create(orphan_plan)
         .await
-        .expect("Failed to create stale execution plan");
+        .expect("Failed to create orphan execution plan");
 
     // Acknowledge dependencies (required by gate for multi-proposal sessions)
     state
@@ -1966,21 +1983,21 @@ async fn test_apply_proposals_core_repairs_stale_orphaned_execution_plan() {
 
     let result = apply_proposals_core(&state, input)
         .await
-        .expect("Retry should supersede stale execution plan and succeed");
+        .expect("Retry should supersede orphan execution plan and succeed");
 
     assert_eq!(result.created_task_ids.len(), 2, "Retry should create tasks");
     assert!(result.session_converted, "Retry should convert the session");
 
-    let stale_plan = state
+    let orphan_plan = state
         .execution_plan_repo
         .get_by_id(&stale_plan_id)
         .await
         .expect("repo error")
-        .expect("stale plan should still exist");
+        .expect("orphan plan should still exist");
     assert_eq!(
-        stale_plan.status,
+        orphan_plan.status,
         ExecutionPlanStatus::Superseded,
-        "stale execution plan should be superseded"
+        "orphan execution plan should be superseded"
     );
 
     let updated_session = state
@@ -1996,7 +2013,7 @@ async fn test_apply_proposals_core_repairs_stale_orphaned_execution_plan() {
 async fn test_apply_proposals_core_rejects_inactive_session() {
     use ralphx_lib::error::AppError;
 
-    let state = setup_test_state();
+    let state = setup_apply_test_state();
     let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 1).await;
 
     // Archive the session so it is no longer Active
@@ -2029,7 +2046,7 @@ async fn test_apply_proposals_core_rejects_inactive_session() {
 async fn test_apply_proposals_core_rejects_unknown_proposals() {
     use ralphx_lib::error::AppError;
 
-    let state = setup_test_state();
+    let state = setup_apply_test_state();
     let (_project_id, session, _) = setup_session_with_proposals(&state, 1).await;
 
     let input = ApplyProposalsInput {
@@ -2053,7 +2070,7 @@ async fn test_apply_proposals_core_rejects_unknown_proposals() {
 
 #[tokio::test]
 async fn test_apply_proposals_core_result_contains_context_fields() {
-    let state = setup_test_state();
+    let state = setup_apply_test_state();
     let (project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
 
     // Acknowledge dependencies (required by gate for multi-proposal sessions)
@@ -2087,7 +2104,7 @@ async fn test_apply_proposals_core_result_contains_context_fields() {
 async fn test_apply_proposals_core_preserves_dependencies() {
     use ralphx_lib::domain::entities::{InternalStatus, Priority, ProposalCategory, Project};
 
-    let state = setup_test_state();
+    let state = setup_apply_test_state();
 
     let project = Project::new("Dep Test".to_string(), "/tmp/dep".to_string());
     let project = state
@@ -2185,7 +2202,7 @@ async fn test_create_ideation_session_emits_session_created_event() {
 
     let app = create_mock_app();
     let handle = app.handle().clone();
-    let state = setup_test_state();
+    let state = setup_apply_test_state();
 
     let captured: Arc<Mutex<Option<serde_json::Value>>> = Arc::new(Mutex::new(None));
     let captured_clone = Arc::clone(&captured);
@@ -2270,7 +2287,7 @@ fn setup_git_repo_for_apply_test() -> tempfile::TempDir {
 async fn test_apply_proposals_core_branch_creation_failure_leaves_no_orphaned_execution_plan() {
     use ralphx_lib::domain::entities::{IdeationSession, Priority, Project, ProposalCategory, TaskProposal};
 
-    let state = setup_test_state();
+    let state = setup_apply_test_state();
     let dir = setup_git_repo_for_apply_test();
 
     // Create a project pointing to the real git repo.
@@ -2348,7 +2365,7 @@ async fn test_apply_proposals_core_branch_creation_failure_leaves_no_orphaned_ex
 async fn test_apply_proposals_core_tasks_created_count_excludes_merge_task() {
     use ralphx_lib::domain::entities::{IdeationSession, Priority, Project, ProposalCategory, TaskProposal};
 
-    let state = setup_test_state();
+    let state = setup_apply_test_state();
     let dir = setup_git_repo_for_apply_test();
 
     // Project pointing to a real git repo; "main" is a valid source branch.
@@ -2421,7 +2438,7 @@ async fn test_apply_proposals_core_tasks_created_count_excludes_merge_task() {
 /// the agent never acknowledged dependency ordering.
 #[tokio::test]
 async fn test_apply_proposals_core_gate_blocks_unacknowledged_session() {
-    let state = setup_test_state();
+    let state = setup_apply_test_state();
     let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
 
     // Intentionally do NOT call set_dependencies_acknowledged — simulates an agent that
@@ -2457,7 +2474,7 @@ async fn test_apply_proposals_core_gate_blocks_unacknowledged_session() {
 /// 0 proposal-to-proposal deps). Calling the tool proves the agent considered the dep graph.
 #[tokio::test]
 async fn test_apply_proposals_core_gate_passes_after_analyze_session_dependencies() {
-    let state = setup_test_state();
+    let state = setup_apply_test_state();
     let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
 
     // Simulate `analyze_session_dependencies` handler: it calls set_dependencies_acknowledged
@@ -2495,7 +2512,7 @@ async fn test_apply_proposals_core_gate_passes_after_analyze_session_dependencie
 async fn test_apply_proposals_core_gate_passes_with_deps_set_at_creation() {
     use ralphx_lib::domain::entities::{IdeationSession, Priority, Project, ProposalCategory, TaskProposal};
 
-    let state = setup_test_state();
+    let state = setup_apply_test_state();
 
     let project = Project::new("Dep At Creation Test".to_string(), "/tmp/test".to_string());
     let project = state
@@ -2568,4 +2585,394 @@ async fn test_apply_proposals_core_gate_passes_with_deps_set_at_creation() {
         "One proposal-to-proposal dependency should be created"
     );
     assert_eq!(result.created_task_ids.len(), 2, "Should create 2 tasks");
+}
+
+// ============================================================================
+// Finalize UPSERT, atomicity, and dedup guard tests
+// ============================================================================
+
+/// Proof: UPSERT handles a pre-existing abandoned plan_branch without a UNIQUE constraint error.
+///
+/// Scenario: A prior failed finalize attempt (or `enable_feature_branch`) left an abandoned
+/// `plan_branch` row with `session_id = X`. When `apply_proposals_core` runs next with
+/// `use_feature_branch=true`, the `ON CONFLICT(session_id) DO UPDATE` replaces the stale row
+/// instead of failing with a UNIQUE constraint error.
+#[tokio::test]
+async fn test_finalize_with_preexisting_abandoned_plan_branch() {
+    use ralphx_lib::domain::entities::{
+        ArtifactId, IdeationSession, IdeationSessionStatus, PlanBranch, Priority, Project,
+        ProposalCategory, TaskProposal,
+    };
+
+    let state = setup_apply_test_state();
+    let dir = setup_git_repo_for_apply_test();
+
+    let mut project = Project::new(
+        "UPSERT Test".to_string(),
+        dir.path().to_str().unwrap().to_string(),
+    );
+    project.base_branch = Some("main".to_string());
+    let project = state
+        .project_repo
+        .create(project)
+        .await
+        .expect("Failed to create project");
+
+    let session = IdeationSession::new(project.id.clone());
+    let session = state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .expect("Failed to create session");
+
+    let proposal = state
+        .task_proposal_repo
+        .create(TaskProposal::new(
+            session.id.clone(),
+            "Test Proposal",
+            ProposalCategory::Feature,
+            Priority::Medium,
+        ))
+        .await
+        .expect("Failed to create proposal");
+
+    // Pre-seed an abandoned plan_branch for this session (no execution_plan linked).
+    // This simulates a branch created via enable_feature_branch or an abandoned prior finalize.
+    // The old code (INSERT without UPSERT) would fail here with UNIQUE constraint on session_id.
+    let abandoned_branch = PlanBranch::new(
+        ArtifactId::from_string("old-artifact-id"),
+        session.id.clone(),
+        project.id.clone(),
+        "ralphx/test/plan-old".to_string(),
+        "main".to_string(),
+    );
+    let abandoned_branch = state
+        .plan_branch_repo
+        .create(abandoned_branch)
+        .await
+        .expect("Failed to pre-seed abandoned plan_branch");
+
+    // Verify the pre-seeded branch exists with no execution_plan
+    let pre_existing = state
+        .plan_branch_repo
+        .get_by_session_id(&session.id)
+        .await
+        .expect("repo error")
+        .expect("Pre-seeded plan_branch should exist");
+    assert_eq!(pre_existing.id, abandoned_branch.id);
+    assert!(
+        pre_existing.execution_plan_id.is_none(),
+        "Pre-seeded branch has no execution_plan"
+    );
+
+    // Call apply with feature branch — the UPSERT should update the existing row
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids: vec![proposal.id.as_str().to_string()],
+        target_column: "auto".to_string(),
+        use_feature_branch: Some(true),
+        base_branch_override: Some("feature/upsert-test".to_string()),
+    };
+
+    let result = apply_proposals_core(&state, input)
+        .await
+        .expect("apply_proposals_core should succeed via UPSERT (no UNIQUE constraint error)");
+
+    assert_eq!(result.created_task_ids.len(), 1, "Should create 1 task");
+    assert!(
+        result.execution_plan_id.is_some(),
+        "Should return execution_plan_id"
+    );
+    assert!(result.session_converted, "Session should be Accepted");
+
+    // Verify the plan_branch was UPSERTED: same session, now has new execution_plan_id
+    let upserted = state
+        .plan_branch_repo
+        .get_by_session_id(&session.id)
+        .await
+        .expect("repo error")
+        .expect("UPSERTED plan_branch should exist");
+
+    let expected_ep_id = result.execution_plan_id.as_deref().unwrap();
+    assert_eq!(
+        upserted.execution_plan_id.as_ref().map(|id| id.as_str()),
+        Some(expected_ep_id),
+        "UPSERTED plan_branch must have the new execution_plan_id"
+    );
+
+    // Session converted to Accepted
+    let updated = state
+        .ideation_session_repo
+        .get_by_id(&session.id)
+        .await
+        .expect("repo error")
+        .expect("session exists");
+    assert_eq!(updated.status, IdeationSessionStatus::Accepted);
+}
+
+/// Proof: orphan ExecutionPlan WITH an associated PlanBranch gets cleaned up before retry.
+///
+/// Scenario: A prior failed finalize attempt left both:
+///   - An orphan `execution_plan` row (active, 0 tasks)
+///   - An associated `plan_branch` row (linked via `execution_plan_id`)
+/// apply_proposals_core should detect the orphan plan (0 tasks), delete the orphan branch,
+/// supersede the orphan plan, and then create a new plan + tasks successfully.
+///
+/// This covers the branch-deletion code path in the dedup guard (lines ~120-141 of
+/// ideation_commands_apply.rs).
+#[tokio::test]
+async fn test_refinalize_after_orphan_plan_and_orphan_branch() {
+    use ralphx_lib::domain::entities::{
+        ArtifactId, ExecutionPlan, ExecutionPlanStatus, IdeationSession, IdeationSessionStatus,
+        PlanBranch, Priority, Project, ProposalCategory, TaskProposal,
+    };
+
+    let state = setup_apply_test_state();
+
+    let project = Project::new("Orphan Branch Test".to_string(), "/tmp/test".to_string());
+    let project = state
+        .project_repo
+        .create(project)
+        .await
+        .expect("Failed to create project");
+
+    let session = IdeationSession::new(project.id.clone());
+    let session = state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .expect("Failed to create session");
+
+    let proposal = state
+        .task_proposal_repo
+        .create(TaskProposal::new(
+            session.id.clone(),
+            "Test Proposal",
+            ProposalCategory::Feature,
+            Priority::Medium,
+        ))
+        .await
+        .expect("Failed to create proposal");
+
+    // Create orphan execution plan (no tasks — simulates a failed atomic finalize)
+    let orphan_plan = ExecutionPlan::new(session.id.clone());
+    let orphan_plan_id = orphan_plan.id.clone();
+    let orphan_plan = state
+        .execution_plan_repo
+        .create(orphan_plan)
+        .await
+        .expect("Failed to create orphan execution plan");
+
+    // Create an orphan plan_branch associated with the orphan execution_plan
+    let mut orphan_branch = PlanBranch::new(
+        ArtifactId::from_string("old-artifact"),
+        session.id.clone(),
+        project.id.clone(),
+        "ralphx/test/plan-orphan".to_string(),
+        "main".to_string(),
+    );
+    orphan_branch.execution_plan_id = Some(orphan_plan.id.clone());
+    let orphan_branch = state
+        .plan_branch_repo
+        .create(orphan_branch)
+        .await
+        .expect("Failed to create orphan plan_branch");
+
+    // Verify pre-conditions
+    let found = state
+        .plan_branch_repo
+        .get_by_id(&orphan_branch.id)
+        .await
+        .expect("repo error")
+        .expect("orphan branch should exist");
+    assert_eq!(found.execution_plan_id, Some(orphan_plan_id.clone()));
+
+    // Call apply — should supersede the orphan plan + delete the orphan branch
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids: vec![proposal.id.as_str().to_string()],
+        target_column: "auto".to_string(),
+        use_feature_branch: Some(false),
+        base_branch_override: None,
+    };
+
+    let result = apply_proposals_core(&state, input)
+        .await
+        .expect("apply should succeed after orphan plan+branch cleanup");
+
+    assert_eq!(result.created_task_ids.len(), 1, "Should create 1 task");
+    assert!(result.session_converted, "Session should be Accepted");
+
+    // Orphan plan must be superseded (not active)
+    let orphan_after = state
+        .execution_plan_repo
+        .get_by_id(&orphan_plan_id)
+        .await
+        .expect("repo error")
+        .expect("orphan plan should still exist in DB (superseded)");
+    assert_eq!(
+        orphan_after.status,
+        ExecutionPlanStatus::Superseded,
+        "Orphan execution_plan should be Superseded"
+    );
+
+    // Orphan branch must be deleted by the cleanup code
+    let orphan_branch_after = state
+        .plan_branch_repo
+        .get_by_id(&orphan_branch.id)
+        .await
+        .expect("repo error");
+    assert!(
+        orphan_branch_after.is_none(),
+        "Orphan plan_branch should be deleted during orphan cleanup"
+    );
+
+    // New execution plan was created (different ID from orphan)
+    let new_ep_id = result.execution_plan_id.as_deref().unwrap();
+    assert_ne!(
+        new_ep_id,
+        orphan_plan_id.as_str(),
+        "New execution plan must have a different ID from the orphan"
+    );
+
+    // Session is now Accepted
+    let updated = state
+        .ideation_session_repo
+        .get_by_id(&session.id)
+        .await
+        .expect("repo error")
+        .expect("session exists");
+    assert_eq!(updated.status, IdeationSessionStatus::Accepted);
+}
+
+/// Proof: the atomic transaction creates ExecutionPlan + PlanBranch + Tasks as a consistent unit.
+///
+/// After a successful apply_proposals_core, all three record types must exist and be linked
+/// by the same `execution_plan_id`. This verifies the SUCCESS side of the atomicity guarantee:
+/// no partial state (e.g., ExecutionPlan created but tasks missing) can occur.
+///
+/// The FAILURE side of atomicity (rollback leaves no orphans) is proven by:
+///   - `test_apply_proposals_core_branch_creation_failure_leaves_no_orphaned_execution_plan`
+///     (pre-transaction branch check fails → no ExecutionPlan row)
+///   - `test_finalize_with_preexisting_abandoned_plan_branch` (UPSERT succeeds where old
+///     INSERT would have left an orphan ExecutionPlan from a partial write sequence)
+#[tokio::test]
+async fn test_finalize_atomicity_all_records_consistent() {
+    use ralphx_lib::domain::entities::{
+        ExecutionPlanId, IdeationSession, Priority, Project, ProposalCategory, TaskProposal,
+    };
+
+    let state = setup_apply_test_state();
+    let dir = setup_git_repo_for_apply_test();
+
+    let mut project = Project::new(
+        "Atomicity Test".to_string(),
+        dir.path().to_str().unwrap().to_string(),
+    );
+    project.base_branch = Some("main".to_string());
+    let project = state
+        .project_repo
+        .create(project)
+        .await
+        .expect("Failed to create project");
+
+    let session = IdeationSession::new(project.id.clone());
+    let session = state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .expect("Failed to create session");
+
+    let p1 = state
+        .task_proposal_repo
+        .create(TaskProposal::new(
+            session.id.clone(),
+            "Proposal A",
+            ProposalCategory::Feature,
+            Priority::High,
+        ))
+        .await
+        .expect("Failed to create p1");
+
+    let p2 = state
+        .task_proposal_repo
+        .create(TaskProposal::new(
+            session.id.clone(),
+            "Proposal B",
+            ProposalCategory::Feature,
+            Priority::Medium,
+        ))
+        .await
+        .expect("Failed to create p2");
+
+    state
+        .ideation_session_repo
+        .set_dependencies_acknowledged(session.id.as_str())
+        .await
+        .expect("Failed to acknowledge deps");
+
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids: vec![
+            p1.id.as_str().to_string(),
+            p2.id.as_str().to_string(),
+        ],
+        target_column: "auto".to_string(),
+        use_feature_branch: Some(true),
+        base_branch_override: Some("feature/atomic-test".to_string()),
+    };
+
+    let result = apply_proposals_core(&state, input)
+        .await
+        .expect("apply_proposals_core should succeed");
+
+    let ep_id_str = result
+        .execution_plan_id
+        .as_deref()
+        .expect("execution_plan_id must be set");
+    let ep_id = ExecutionPlanId::from_string(ep_id_str.to_string());
+
+    // 1. ExecutionPlan exists and is linked to the session
+    let exec_plan = state
+        .execution_plan_repo
+        .get_by_id(&ep_id)
+        .await
+        .expect("repo error")
+        .expect("ExecutionPlan must exist after successful apply");
+    assert_eq!(exec_plan.session_id, session.id);
+
+    // 2. PlanBranch exists and is linked to the same ExecutionPlan
+    let branch = state
+        .plan_branch_repo
+        .get_by_execution_plan_id(&ep_id)
+        .await
+        .expect("repo error")
+        .expect("PlanBranch must exist for the ExecutionPlan");
+    assert_eq!(branch.session_id, session.id);
+    assert_eq!(
+        branch.execution_plan_id,
+        Some(ep_id.clone()),
+        "PlanBranch.execution_plan_id must match"
+    );
+
+    // 3. All tasks are linked to the same ExecutionPlan (atomic creation)
+    assert_eq!(
+        result.created_task_ids.len(),
+        2,
+        "Should create 2 plan tasks"
+    );
+    for task_id_str in &result.created_task_ids {
+        let task_id = ralphx_lib::domain::entities::TaskId::from_string(task_id_str.clone());
+        let task = state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .expect("repo error")
+            .expect("task must exist");
+        assert_eq!(
+            task.execution_plan_id,
+            Some(ep_id.clone()),
+            "Each task must be linked to the same ExecutionPlan as the PlanBranch"
+        );
+    }
 }

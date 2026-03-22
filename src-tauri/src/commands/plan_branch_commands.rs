@@ -229,7 +229,7 @@ pub async fn enable_feature_branch(
     plan_branch.base_branch_override = input.base_branch_override.clone();
     let created_branch = state
         .plan_branch_repo
-        .create(plan_branch)
+        .create_or_update(plan_branch)
         .await
         .map_err(|e| format!("Failed to create plan branch record: {}", e))?;
 

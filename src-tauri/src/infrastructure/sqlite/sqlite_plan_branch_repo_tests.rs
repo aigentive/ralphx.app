@@ -344,6 +344,76 @@ async fn test_clear_merge_task_id_when_already_null_returns_not_found() {
     assert!(result.is_ok());
 }
 
+// ==================== CREATE_OR_UPDATE TESTS ====================
+
+#[tokio::test]
+async fn test_create_or_update_inserts_when_no_conflict() {
+    let (_db, repo) = setup_repo();
+    let branch = create_test_branch();
+    let session_id = branch.session_id.clone();
+
+    let result = repo.create_or_update(branch).await.unwrap();
+    assert_eq!(result.session_id, session_id);
+
+    let retrieved = repo.get_by_session_id(&session_id).await.unwrap().unwrap();
+    assert_eq!(retrieved.id, result.id);
+}
+
+#[tokio::test]
+async fn test_create_or_update_conflict_returns_existing_id() {
+    let (_db, repo) = setup_repo();
+
+    // Insert original branch
+    let original = create_test_branch();
+    let original_id = original.id.clone();
+    let session_id = original.session_id.clone();
+    repo.create(original).await.unwrap();
+
+    // create_or_update with same session_id — ON CONFLICT fires, existing row's id is preserved
+    let updated = PlanBranch::new(
+        ArtifactId::from_string("art-updated"),
+        session_id.clone(),
+        ProjectId::from_string("proj-test-1".to_string()),
+        "ralphx/updated-branch".to_string(),
+        "main".to_string(),
+    );
+
+    let returned = repo.create_or_update(updated).await.unwrap();
+
+    // Returned id must match the original persisted row, not the new UUID
+    assert_eq!(returned.id, original_id, "create_or_update must return existing row id on conflict");
+    assert_eq!(returned.branch_name, "ralphx/updated-branch");
+}
+
+#[tokio::test]
+async fn test_create_or_update_conflict_set_merge_task_id_succeeds() {
+    let (_db, repo) = setup_repo();
+
+    // Insert original branch
+    let original = create_test_branch();
+    let session_id = original.session_id.clone();
+    repo.create(original).await.unwrap();
+
+    // Upsert with same session_id
+    let replacement = PlanBranch::new(
+        ArtifactId::from_string("art-updated-2"),
+        session_id.clone(),
+        ProjectId::from_string("proj-test-1".to_string()),
+        "ralphx/replacement-branch".to_string(),
+        "main".to_string(),
+    );
+    let returned = repo.create_or_update(replacement).await.unwrap();
+
+    // set_merge_task_id must succeed using the returned id (which is the existing row's id)
+    let merge_task_id = TaskId::from_string("mt-upsert".to_string());
+    let set_result = repo.set_merge_task_id(&returned.id, &merge_task_id).await;
+    assert!(set_result.is_ok(), "set_merge_task_id must succeed with returned branch id after conflict upsert");
+
+    // Verify it was actually persisted
+    let retrieved = repo.get_by_session_id(&session_id).await.unwrap().unwrap();
+    assert_eq!(retrieved.merge_task_id.as_ref().unwrap().as_str(), "mt-upsert");
+}
+
 // ==================== DELETE TESTS ====================
 
 #[tokio::test]

@@ -64,6 +64,53 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
             .await
     }
 
+    async fn create_or_update(&self, branch: PlanBranch) -> AppResult<PlanBranch> {
+        self.db
+            .run(move |conn| {
+                let session_id = branch.session_id.as_str().to_string();
+                conn.execute(
+                    "INSERT INTO plan_branches (id, plan_artifact_id, session_id, project_id, branch_name, source_branch, status, merge_task_id, created_at, merged_at, execution_plan_id, pr_eligible, base_branch_override)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                     ON CONFLICT(session_id) DO UPDATE SET
+                       plan_artifact_id=excluded.plan_artifact_id,
+                       project_id=excluded.project_id,
+                       branch_name=excluded.branch_name,
+                       source_branch=excluded.source_branch,
+                       status=excluded.status,
+                       merge_task_id=excluded.merge_task_id,
+                       execution_plan_id=excluded.execution_plan_id,
+                       pr_eligible=excluded.pr_eligible,
+                       base_branch_override=excluded.base_branch_override",
+                    rusqlite::params![
+                        branch.id.as_str(),
+                        branch.plan_artifact_id.as_str(),
+                        branch.session_id.as_str(),
+                        branch.project_id.as_str(),
+                        branch.branch_name,
+                        branch.source_branch,
+                        branch.status.to_db_string(),
+                        branch.merge_task_id.as_ref().map(|t| t.as_str().to_string()),
+                        branch.created_at.to_rfc3339(),
+                        branch.merged_at.map(|dt| dt.to_rfc3339()),
+                        branch.execution_plan_id.as_ref().map(|id| id.as_str().to_string()),
+                        branch.pr_eligible as i64,
+                        branch.base_branch_override,
+                    ],
+                )
+                .map_err(|e| AppError::Database(format!("Failed to upsert plan branch: {}", e)))?;
+                // Re-fetch by session_id so callers always receive the persisted row's id,
+                // even when ON CONFLICT fired and the existing row's id was preserved.
+                let mut stmt = conn
+                    .prepare("SELECT * FROM plan_branches WHERE session_id = ?1")
+                    .map_err(|e| AppError::Database(format!("Failed to prepare query: {}", e)))?;
+                stmt.query_row(rusqlite::params![session_id.as_str()], |row| {
+                    PlanBranch::from_row(row)
+                })
+                .map_err(|e| AppError::Database(format!("Failed to fetch upserted plan branch: {}", e)))
+            })
+            .await
+    }
+
     async fn get_by_id(&self, id: &PlanBranchId) -> AppResult<Option<PlanBranch>> {
         let id = id.as_str().to_string();
         self.db
