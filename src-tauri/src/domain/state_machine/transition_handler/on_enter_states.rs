@@ -1222,24 +1222,12 @@ impl<'a> super::TransitionHandler<'a> {
         }
     }
 
-    /// Execute on-enter dispatch for all state arms.
-    ///
-    /// Called by `on_enter` in side_effects.rs.
-    async fn enter_merging_state(&self) -> AppResult<()> {
-        // Phase 2 of merge workflow: Spawn merger agent for conflict resolution.
-        // Keep this on a separate boxed future so recovery paths do not overflow the
-        // default thread stack in debug/test builds.
-        let task_id = &self.machine.context.task_id;
-
-        // === PR-MODE GUARD (AD17) ===
-        // If this task is in PR mode (pr_eligible=true, pr_number IS NOT NULL),
-        // skip the worktree setup and merger agent spawn entirely.
-        // The PR poller handles merge detection; on_exit(Merging) decrements the slot.
+    async fn maybe_start_pr_mode_merge_poller(&self, task_id: &str) -> bool {
         if let (Some(ref plan_branch_repo), Some(ref project_repo)) = (
             &self.machine.context.services.plan_branch_repo,
             &self.machine.context.services.project_repo,
         ) {
-            let tid = TaskId::from_string(task_id.clone());
+            let tid = TaskId::from_string(task_id.to_string());
             let project_id = ProjectId::from_string(self.machine.context.project_id.clone());
             if let (Ok(Some(plan_branch)), Ok(Some(_project))) = (
                 plan_branch_repo.get_by_merge_task_id(&tid).await,
@@ -1247,14 +1235,11 @@ impl<'a> super::TransitionHandler<'a> {
             ) {
                 if let (true, Some(pr_number)) = (plan_branch.pr_eligible, plan_branch.pr_number) {
                     tracing::info!(
-                        task_id = task_id.as_str(),
+                        task_id = task_id,
                         pr_number = pr_number,
                         "on_enter(Merging): PR mode — skipping merger agent, starting poller"
                     );
 
-                    // PR-mode execution slot: increment running count.
-                    // Guard: only increment on first entry (re-entry from reconciler
-                    // should not double-increment if poller is already running).
                     let already_polling = self
                         .machine
                         .context
@@ -1265,24 +1250,23 @@ impl<'a> super::TransitionHandler<'a> {
                         .unwrap_or(false);
 
                     if !already_polling {
-                        if let Some(ref execution_state) = self.machine.context.services.execution_state
+                        if let Some(ref execution_state) =
+                            self.machine.context.services.execution_state
                         {
                             execution_state.increment_running();
                             tracing::debug!(
-                                task_id = task_id.as_str(),
+                                task_id = task_id,
                                 "PR-mode Merging: incremented execution slot"
                             );
                         }
                     }
 
-                    // Start the PR merge poller.
                     if let Some(ref registry) = self.machine.context.services.pr_poller_registry {
                         if let Ok(Some(project_for_poller)) =
                             project_repo.get_by_id(&project_id).await
                         {
                             let working_dir =
                                 std::path::PathBuf::from(&project_for_poller.working_directory);
-                            // source_branch = the base branch the plan branch was created from (e.g. "main")
                             let base_branch = plan_branch.source_branch.clone();
                             if let Some(ref ts) = self.machine.context.services.transition_service {
                                 registry.start_polling(
@@ -1294,13 +1278,13 @@ impl<'a> super::TransitionHandler<'a> {
                                     Arc::clone(ts),
                                 );
                                 tracing::info!(
-                                    task_id = task_id.as_str(),
+                                    task_id = task_id,
                                     pr_number = pr_number,
                                     "on_enter(Merging): started PR merge poller"
                                 );
                             } else {
                                 tracing::warn!(
-                                    task_id = task_id.as_str(),
+                                    task_id = task_id,
                                     pr_number = pr_number,
                                     "on_enter(Merging): PR mode but transition_service not wired — poller not started"
                                 );
@@ -1308,19 +1292,15 @@ impl<'a> super::TransitionHandler<'a> {
                         }
                     }
 
-                    return Ok(());
+                    return true;
                 }
             }
         }
-        // === END PR-MODE GUARD ===
 
-        // Clean up merge worktree before spawning merger agent.
-        // - Symlink removal: ALWAYS (symlinks cause false conflicts for the agent)
-        // - Git abort: only on recovery re-entry (stale rebase/merge from prior attempt)
-        // - Worktree creation: when missing (BranchFreshnessConflict path from
-        //   on_enter(Executing/ReExecuting/Reviewing) — the freshness path sets metadata
-        //   flags and returns BranchFreshnessConflict; task_transition_service transitions
-        //   to Merging and calls on_enter(Merging) without creating a merge worktree)
+        false
+    }
+
+    async fn prepare_merge_worktree_for_entry(&self, task_id: &str) {
         if let (Some(ref task_repo), Some(ref project_repo)) = (
             &self.machine.context.services.task_repo,
             &self.machine.context.services.project_repo,
@@ -1329,21 +1309,10 @@ impl<'a> super::TransitionHandler<'a> {
             if let Ok(Some(project)) = project_repo.get_by_id(&project_id).await {
                 let wt_path =
                     std::path::PathBuf::from(compute_merge_worktree_path(&project, task_id));
-
-                // --- Create merge worktree if missing (BranchFreshnessConflict path) ---
-                // The normal merge pipeline path (side_effects.rs) always creates the
-                // worktree before on_enter(Merging), so this block is a no-op on that
-                // path. It only runs when on_enter(Merging) is reached via
-                // BranchFreshnessConflict handling (mod.rs handle_transition or
-                // task_transition_service auto-transition), where no merge worktree was
-                // created.
-                //
-                // Guard: only attempt if the project working directory exists as a valid
-                // git repo. Tests use nonexistent paths intentionally; skipping worktree
-                // creation there preserves test behavior.
                 let repo_path = std::path::Path::new(&project.working_directory);
+
                 if !wt_path.exists() && repo_path.exists() {
-                    let tid = TaskId::from_string(task_id.clone());
+                    let tid = TaskId::from_string(task_id.to_string());
                     if let Ok(Some(task)) = task_repo.get_by_id(&tid).await {
                         let meta = task
                             .metadata
@@ -1357,32 +1326,22 @@ impl<'a> super::TransitionHandler<'a> {
                             .as_ref()
                             .and_then(|v| v.get("source_update_conflict")?.as_bool())
                             .unwrap_or(false);
-                        let meta_source_branch = meta.as_ref().and_then(|v| {
-                            v.get("source_branch")?.as_str().map(String::from)
-                        });
-                        let meta_target_branch = meta.as_ref().and_then(|v| {
-                            v.get("target_branch")?.as_str().map(String::from)
-                        });
+                        let meta_source_branch = meta
+                            .as_ref()
+                            .and_then(|v| v.get("source_branch")?.as_str().map(String::from));
+                        let meta_target_branch = meta
+                            .as_ref()
+                            .and_then(|v| v.get("target_branch")?.as_str().map(String::from));
 
-                        // Determine which branch to checkout in the merge worktree.
-                        // plan_update_conflict: checkout target (plan branch) so agent runs `git merge base_branch`
-                        // source_update_conflict: checkout source (task branch) so agent runs `git merge target_branch`
-                        // conflict_markers_detected (from Reviewing): checkout task branch so agent resolves markers
-                        // fallback: use task's task_branch (regular freshness-conflict path)
                         let checkout_branch: Option<String> = if is_plan_conflict {
                             meta_target_branch.or_else(|| project.base_branch.clone())
                         } else if is_source_conflict {
                             meta_source_branch.or_else(|| task.task_branch.clone())
                         } else {
-                            // conflict_markers_detected or generic freshness conflict:
-                            // use the task branch (the branch with conflict markers)
                             task.task_branch.clone()
                         };
 
                         if let Some(ref branch) = checkout_branch {
-                            // Pre-delete task worktree: git rejects two worktrees on the
-                            // same branch (source_update_conflict and conflict_markers
-                            // cases both check out the task branch).
                             let task_wt_str =
                                 super::merge_helpers::compute_task_worktree_path(&project, task_id);
                             let task_wt_path = std::path::PathBuf::from(&task_wt_str);
@@ -1393,8 +1352,6 @@ impl<'a> super::TransitionHandler<'a> {
                             )
                             .await;
 
-                            // Pre-delete plan-update worktree (plan_update_conflict case:
-                            // plan branch may still be checked out in plan-update worktree).
                             let plan_update_wt_str =
                                 super::merge_helpers::compute_plan_update_worktree_path(
                                     &project, task_id,
@@ -1408,9 +1365,10 @@ impl<'a> super::TransitionHandler<'a> {
                             )
                             .await;
 
-                            // Create the merge worktree with the appropriate branch.
                             match GitService::checkout_existing_branch_worktree(
-                                repo_path, &wt_path, branch,
+                                repo_path,
+                                &wt_path,
+                                branch,
                             )
                             .await
                             {
@@ -1423,9 +1381,6 @@ impl<'a> super::TransitionHandler<'a> {
                                         is_source_conflict = is_source_conflict,
                                         "on_enter(Merging): Created merge worktree for freshness-conflict path"
                                     );
-                                    // Persist worktree_path to DB so resolve_working_directory
-                                    // (called inside send_message) can find the merge worktree.
-                                    // Symlink removal runs in the wt_path.exists() block below.
                                     if let Ok(Some(mut fresh_task)) = task_repo.get_by_id(&tid).await
                                     {
                                         fresh_task.worktree_path =
@@ -1439,8 +1394,6 @@ impl<'a> super::TransitionHandler<'a> {
                                             );
                                             let _ =
                                                 GitService::delete_worktree(repo_path, &wt_path).await;
-                                            // Fall through: let the agent spawn attempt run;
-                                            // it will fail with a clear error and reconciler will retry.
                                         }
                                     }
                                 }
@@ -1451,9 +1404,6 @@ impl<'a> super::TransitionHandler<'a> {
                                         error = %e,
                                         "on_enter(Merging): Failed to create merge worktree on freshness path"
                                     );
-                                    // Fall through: let the agent spawn attempt proceed;
-                                    // if it fails, record_merger_spawn_failure will run
-                                    // in the spawn error handler below.
                                 }
                             }
                         } else {
@@ -1461,18 +1411,13 @@ impl<'a> super::TransitionHandler<'a> {
                                 task_id = task_id,
                                 "on_enter(Merging): No merge worktree and no branch to checkout from metadata"
                             );
-                            // Fall through: let the agent spawn attempt proceed.
                         }
                     }
                 }
-                // --- END: Create merge worktree if missing ---
 
                 if wt_path.exists() {
-                    // Abort stale rebase/merge from prior attempt (recovery or retry)
                     super::merge_helpers::clean_stale_git_state(&wt_path, task_id).await;
 
-                    // Always: remove worktree symlinks that cause false conflicts.
-                    // The merger agent's validation step re-creates them via worktree_setup.
                     for rel in &[
                         "node_modules",
                         "src-tauri/target",
@@ -1486,13 +1431,33 @@ impl<'a> super::TransitionHandler<'a> {
                                 "on_enter(Merging): Removing worktree symlink"
                             );
                             if let Err(e) = std::fs::remove_file(&sym) {
-                                tracing::warn!(task_id = task_id, path = %sym.display(), error = %e, "Failed to remove worktree symlink");
+                                tracing::warn!(
+                                    task_id = task_id,
+                                    path = %sym.display(),
+                                    error = %e,
+                                    "Failed to remove worktree symlink"
+                                );
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    /// Execute on-enter dispatch for all state arms.
+    ///
+    /// Called by `on_enter` in side_effects.rs.
+    async fn enter_merging_state(&self) -> AppResult<()> {
+        // Phase 2 of merge workflow: Spawn merger agent for conflict resolution.
+        // Keep this on a separate boxed future so recovery paths do not overflow the
+        // default thread stack in debug/test builds.
+        let task_id = &self.machine.context.task_id;
+
+        if self.maybe_start_pr_mode_merge_poller(task_id).await {
+            return Ok(());
+        }
+        self.prepare_merge_worktree_for_entry(task_id).await;
 
         let prompt_context = self.load_merge_prompt_context(task_id).await;
         let prompt = self.build_merge_prompt(task_id, &prompt_context);
