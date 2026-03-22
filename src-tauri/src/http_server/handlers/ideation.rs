@@ -2311,10 +2311,15 @@ pub async fn send_ideation_session_message_handler(
             .has_process(&ipr_key)
             .await
         {
+            let stream_json_message = super::format_interactive_stdin_message(
+                ChatContextType::Ideation,
+                &session_id,
+                &req.message,
+            );
             match state
                 .app_state
                 .interactive_process_registry
-                .write_message(&ipr_key, &req.message)
+                .write_message(&ipr_key, &stream_json_message)
                 .await
             {
                 Ok(()) => {

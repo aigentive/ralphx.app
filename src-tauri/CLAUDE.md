@@ -83,6 +83,7 @@ New pattern → add one-liner here. Pattern name + rule only.
 
 | Pattern | Rule |
 |---|---|
+| Rustfmt module roots | Never run `rustfmt` on `mod.rs` or other module-root files for a surgical change; rustfmt can recurse into child modules and create unrelated diffs |
 | ExecutionState Propagation | `Arc<ExecutionState>` → `TaskTransitionService::new()` + `AgenticClientSpawner::with_execution_state()` |
 | Agent MCP Tool Allowlist | Three-layer system — see `agent-mcp-tools.md`. Source of truth: `agent_config.rs` (`AGENT_CONFIGS`) |
 | Git Modes & Merge | Two modes (Local/Worktree), two-level branches (plan→task) — see task-git-branching.md |

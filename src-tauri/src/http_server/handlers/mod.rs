@@ -1,3 +1,7 @@
+use crate::application::chat_service::chat_service_context::build_initial_prompt;
+use crate::domain::entities::ChatContextType;
+use crate::infrastructure::agents::claude::format_stream_json_input;
+
 pub mod api_keys;
 pub mod external;
 pub mod external_auth;
@@ -44,3 +48,12 @@ pub use worker::*;
 // Re-export parent types and helpers for handlers to use
 pub use super::helpers::*;
 pub use super::types::*;
+
+pub(crate) fn format_interactive_stdin_message(
+    context_type: ChatContextType,
+    context_id: &str,
+    message: &str,
+) -> String {
+    let stdin_prompt = build_initial_prompt(context_type, context_id, message, &[], 0);
+    format_stream_json_input(&stdin_prompt)
+}

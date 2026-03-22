@@ -24,6 +24,7 @@ use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::project_scope::ProjectScope;
 use ralphx_lib::http_server::types::HttpServerState;
 use std::sync::Arc;
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 // ============================================================================
 // Setup helpers
@@ -2178,17 +2179,19 @@ async fn test_ideation_message_sent_when_interactive_process_registered() {
     // This verifies that when an interactive process is registered for the session,
     // the message is written directly to stdin and the response status is "sent".
     let state = setup_test_state().await;
-    let (_, session_id_str) = setup_session(&state, "proj-msg-sent", "Sent Session").await;
+    let (_, session_id_str) = setup_external_session(&state, "proj-msg-sent", "Sent Session").await;
+    let message = "hello from test";
 
     // Spawn a `cat` process to act as the interactive process (accepts stdin writes)
     let mut child = tokio::process::Command::new("cat")
         .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .kill_on_drop(true)
         .spawn()
         .expect("failed to spawn cat for test");
     let stdin = child.stdin.take().expect("no stdin on cat process");
+    let stdout = child.stdout.take().expect("no stdout on cat process");
 
     let ipr_key = InteractiveProcessKey::new("ideation", &session_id_str);
     state
@@ -2201,18 +2204,32 @@ async fn test_ideation_message_sent_when_interactive_process_registered() {
         State(state),
         unrestricted_scope(),
         Json(IdeationMessageRequest {
-            session_id: session_id_str,
-            message: "hello from test".to_string(),
+            session_id: session_id_str.clone(),
+            message: message.to_string(),
         }),
     )
     .await;
 
-    // Ensure child is kept alive until after the handler call
-    drop(child);
+    let mut written = String::new();
+    let mut reader = BufReader::new(stdout);
+    reader.read_line(&mut written).await.expect("read cat stdout");
+    let _ = child.kill().await;
 
     assert!(result.is_ok(), "expected Ok response, got: {:?}", result.err());
     let response = result.unwrap().0;
     assert_eq!(response.status, "sent");
+    let payload: serde_json::Value = serde_json::from_str(written.trim_end()).expect("valid JSON");
+    assert_eq!(payload["type"], "user");
+    assert_eq!(payload["message"]["role"], "user");
+    let content = payload["message"]["content"].as_str().expect("content string");
+    assert!(
+        content.contains(&format!("<context_id>{session_id_str}</context_id>")),
+        "content must include ideation context wrapper: {content}"
+    );
+    assert!(
+        content.contains(&format!("<user_message>{message}</user_message>")),
+        "content must include wrapped user message: {content}"
+    );
 }
 
 // ============================================================================

@@ -2664,10 +2664,15 @@ pub async fn ideation_message_http(
         .has_process(&ipr_key)
         .await
     {
+        let stream_json_message = super::format_interactive_stdin_message(
+            ChatContextType::Ideation,
+            &session_id_str,
+            &req.message,
+        );
         match state
             .app_state
             .interactive_process_registry
-            .write_message(&ipr_key, &req.message)
+            .write_message(&ipr_key, &stream_json_message)
             .await
         {
             Ok(()) => {

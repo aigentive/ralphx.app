@@ -19,6 +19,7 @@ use ralphx_lib::http_server::types::{
 };
 use ralphx_lib::http_server::types::HttpServerState;
 use std::sync::Arc;
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 fn unrestricted_scope() -> ProjectScope {
     ProjectScope(None)
@@ -2148,15 +2149,21 @@ async fn test_full_reverify_flow_new_gaps_replace_old() {
 
 /// Helper: spawn a `cat` process to get a live ChildStdin for IPR registration.
 /// Caller is responsible for killing the child after the test.
-async fn spawn_test_stdin_ideation() -> (tokio::process::Child, tokio::process::ChildStdin) {
+async fn spawn_test_stdin_ideation() -> (
+    tokio::process::Child,
+    tokio::process::ChildStdin,
+    tokio::process::ChildStdout,
+) {
     let mut child = tokio::process::Command::new("cat")
         .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
         .spawn()
         .expect("spawn cat for ideation IPR test");
     let stdin = child.stdin.take().expect("cat stdin handle");
-    (child, stdin)
+    let stdout = child.stdout.take().expect("cat stdout handle");
+    (child, stdin, stdout)
 }
 
 /// Helper: default no-op params for get_child_session_status_handler.
@@ -2508,9 +2515,10 @@ async fn test_send_ideation_session_message_interactive_session_key_sent() {
     let state = setup_test_state().await;
     let session_id = create_active_session(&state).await;
     let sid_str = session_id.as_str().to_string();
+    let message = "Hello agent";
 
     // Register a live stdin under "session" key
-    let (mut child, stdin) = spawn_test_stdin_ideation().await;
+    let (mut child, stdin, stdout) = spawn_test_stdin_ideation().await;
     let ipr_key = InteractiveProcessKey::new("session", &sid_str);
     state
         .app_state
@@ -2520,17 +2528,32 @@ async fn test_send_ideation_session_message_interactive_session_key_sent() {
 
     let result = send_ideation_session_message_handler(
         State(state),
-        Path(sid_str),
+        Path(sid_str.clone()),
         Json(SendSessionMessageRequest {
-            message: "Hello agent".to_string(),
+            message: message.to_string(),
         }),
     )
     .await;
 
+    let mut written = String::new();
+    let mut reader = BufReader::new(stdout);
+    reader.read_line(&mut written).await.expect("read cat stdout");
     let _ = child.kill().await;
 
     assert!(result.is_ok(), "expected Ok: {:?}", result.err());
     assert_eq!(result.unwrap().0.delivery_status, "sent");
+    let payload: serde_json::Value = serde_json::from_str(written.trim_end()).expect("valid JSON");
+    assert_eq!(payload["type"], "user");
+    assert_eq!(payload["message"]["role"], "user");
+    let content = payload["message"]["content"].as_str().expect("content string");
+    assert!(
+        content.contains(&format!("<context_id>{sid_str}</context_id>")),
+        "content must include ideation context wrapper: {content}"
+    );
+    assert!(
+        content.contains(&format!("<user_message>{message}</user_message>")),
+        "content must include wrapped user message: {content}"
+    );
 }
 
 /// Test 11: interactive process under "ideation" key → delivery_status = "sent"
@@ -2541,9 +2564,10 @@ async fn test_send_ideation_session_message_interactive_ideation_key_sent() {
     let state = setup_test_state().await;
     let session_id = create_active_session(&state).await;
     let sid_str = session_id.as_str().to_string();
+    let message = "Nudge from orchestrator";
 
     // Register a live stdin under "ideation" key (Tauri IPC spawn path)
-    let (mut child, stdin) = spawn_test_stdin_ideation().await;
+    let (mut child, stdin, stdout) = spawn_test_stdin_ideation().await;
     let ipr_key = InteractiveProcessKey::new("ideation", &sid_str);
     state
         .app_state
@@ -2553,17 +2577,32 @@ async fn test_send_ideation_session_message_interactive_ideation_key_sent() {
 
     let result = send_ideation_session_message_handler(
         State(state),
-        Path(sid_str),
+        Path(sid_str.clone()),
         Json(SendSessionMessageRequest {
-            message: "Nudge from orchestrator".to_string(),
+            message: message.to_string(),
         }),
     )
     .await;
 
+    let mut written = String::new();
+    let mut reader = BufReader::new(stdout);
+    reader.read_line(&mut written).await.expect("read cat stdout");
     let _ = child.kill().await;
 
     assert!(result.is_ok(), "expected Ok: {:?}", result.err());
     assert_eq!(result.unwrap().0.delivery_status, "sent");
+    let payload: serde_json::Value = serde_json::from_str(written.trim_end()).expect("valid JSON");
+    assert_eq!(payload["type"], "user");
+    assert_eq!(payload["message"]["role"], "user");
+    let content = payload["message"]["content"].as_str().expect("content string");
+    assert!(
+        content.contains(&format!("<context_id>{sid_str}</context_id>")),
+        "content must include ideation context wrapper: {content}"
+    );
+    assert!(
+        content.contains(&format!("<user_message>{message}</user_message>")),
+        "content must include wrapped user message: {content}"
+    );
 }
 
 /// Test 12: running agent under "session" RunningAgentKey (no interactive process) → "queued"
