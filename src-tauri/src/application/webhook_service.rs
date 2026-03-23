@@ -42,15 +42,9 @@ impl WebhookService {
         }
 
         // Determine effective project_ids:
-        // If no requested_project_ids and authorized list is non-empty → snapshot authorized list
-        // If no authorized restriction → use requested or empty (all projects)
-        let effective_project_ids = if requested_project_ids.is_empty()
-            && !authorized_project_ids.is_empty()
-        {
-            authorized_project_ids.to_vec()
-        } else {
-            requested_project_ids
-        };
+        // If no requested_project_ids → store '[]' (empty = match all projects)
+        // If explicit project_ids provided → use them (already validated against authorized scope above)
+        let effective_project_ids = requested_project_ids;
 
         let project_ids_json = serde_json::to_string(&effective_project_ids)
             .map_err(|e| AppError::Infrastructure(e.to_string()))?;

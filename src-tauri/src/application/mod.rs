@@ -100,6 +100,8 @@ mod app_state_shared_state_tests;
 #[cfg(test)]
 mod recovery_queue_tests;
 #[cfg(test)]
+mod webhook_service_tests;
+#[cfg(test)]
 mod prune_engine_tests;
 #[cfg(test)]
 mod session_export_service_tests;

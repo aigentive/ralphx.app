@@ -16,7 +16,7 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
-use tracing::{debug, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::domain::repositories::{WebhookRegistration, WebhookRegistrationRepository};
 use crate::domain::state_machine::services::WebhookPublisher as WebhookPublisherTrait;
@@ -85,15 +85,31 @@ impl WebhookPublisherTrait for WebhookPublisher {
         project_id: &str,
         payload: serde_json::Value,
     ) {
+        info!(event_type = %event_type, project_id, "WebhookPublisher::publish called");
+
         let webhooks = self.get_webhooks_for_project(project_id).await;
+        info!(project_id, count = webhooks.len(), "Loaded webhooks for project");
+
         let matching: Vec<_> = webhooks
             .into_iter()
             .filter(|w| webhook_matches_event(w, &event_type))
             .collect();
 
         if matching.is_empty() {
+            info!(
+                event_type = %event_type,
+                project_id,
+                "No matching webhooks — either no registrations for project or event type not subscribed"
+            );
             return;
         }
+
+        info!(
+            event_type = %event_type,
+            project_id,
+            count = matching.len(),
+            "Dispatching webhook deliveries"
+        );
 
         let event_type_str = event_type.to_string();
         let project_id = project_id.to_string();
@@ -107,7 +123,9 @@ impl WebhookPublisherTrait for WebhookPublisher {
             let payload_clone = payload.clone();
 
             tokio::spawn(async move {
-                deliver_with_retry(
+                use futures::FutureExt;
+                let webhook_id = webhook.id.clone();
+                let result = std::panic::AssertUnwindSafe(deliver_with_retry(
                     &repo,
                     &http_client,
                     &cache,
@@ -115,8 +133,20 @@ impl WebhookPublisherTrait for WebhookPublisher {
                     &event_str,
                     &proj_id,
                     payload_clone,
-                )
+                ))
+                .catch_unwind()
                 .await;
+                if let Err(panic_val) = result {
+                    let msg = if let Some(s) = panic_val.downcast_ref::<&str>() {
+                        s.to_string()
+                    } else if let Some(s) = panic_val.downcast_ref::<String>() {
+                        s.clone()
+                    } else {
+                        "unknown panic".to_string()
+                    };
+                    error!(webhook_id = %webhook_id, panic = %msg, "Webhook delivery panicked");
+                    track_failure(&repo, &cache, &webhook_id, &proj_id).await;
+                }
             });
         }
     }
@@ -172,7 +202,13 @@ async fn deliver_with_retry(
     };
 
     // Compute HMAC-SHA256 signature
-    let signature = compute_hmac_signature(&webhook.secret, &body_bytes);
+    let signature = match compute_hmac_signature(&webhook.secret, &body_bytes) {
+        Ok(sig) => sig,
+        Err(e) => {
+            error!(webhook_id = %webhook.id, error = %e, "Failed to compute HMAC signature — skipping delivery");
+            return;
+        }
+    };
 
     // Build headers
     let mut headers = HashMap::new();
@@ -201,7 +237,7 @@ async fn deliver_with_retry(
         {
             Ok(status) if status < 300 => {
                 // Success
-                debug!(webhook_id = %webhook.id, status, "Webhook delivered successfully");
+                info!(webhook_id = %webhook.id, status, "Webhook delivered successfully");
                 // Reset failure count on success (best effort)
                 let _ = repo.reset_failures(&webhook.id).await;
                 return;
@@ -271,18 +307,22 @@ async fn track_failure(
 
 /// Compute HMAC-SHA256 signature over data using the webhook secret as key.
 ///
-/// Returns lowercase hex string (64 chars).
+/// Returns lowercase hex string (64 chars) on success, or an error string if key init fails.
 /// The secret is used as-is (its ASCII bytes are the HMAC key).
-pub(crate) fn compute_hmac_signature(secret: &str, data: &[u8]) -> String {
-    let mut mac =
-        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC can take any key size");
+///
+/// # Errors
+/// Returns `Err` if the HMAC key cannot be initialized (should be unreachable in practice,
+/// as HMAC-SHA256 accepts any key size, but returning `Result` avoids panicking).
+pub(crate) fn compute_hmac_signature(secret: &str, data: &[u8]) -> Result<String, String> {
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|e| format!("HMAC key init failed: {e}"))?;
     mac.update(data);
     let result = mac.finalize().into_bytes();
     // Hex encode without external hex crate
     use std::fmt::Write as FmtWrite;
-    result.iter().fold(String::with_capacity(64), |mut s, b| {
+    Ok(result.iter().fold(String::with_capacity(64), |mut s, b| {
         let _ = write!(s, "{b:02x}");
         s
-    })
+    }))
 }
 
