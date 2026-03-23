@@ -119,9 +119,9 @@ impl WebhookRegistrationRepository for MemoryWebhookRegistrationRepository {
                     return false;
                 }
                 // project_ids is a JSON array like ["proj-1", "proj-2"]
-                // Parse and check if project_id is in the list
+                // Empty array '[]' means match all projects
                 serde_json::from_str::<Vec<String>>(&r.project_ids)
-                    .map(|ids| ids.contains(&project_id))
+                    .map(|ids| ids.is_empty() || ids.contains(&project_id))
                     .unwrap_or(false)
             })
             .cloned()

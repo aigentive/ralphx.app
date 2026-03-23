@@ -306,7 +306,7 @@ mod tests {
         let secret = "my-webhook-secret";
         let payload = b"hello world";
 
-        let signature = compute_hmac_signature(secret, payload);
+        let signature = compute_hmac_signature(secret, payload).expect("HMAC should not fail");
 
         // Must be exactly 64 lowercase hex chars (SHA256 output = 32 bytes = 64 hex chars)
         assert_eq!(signature.len(), 64, "HMAC-SHA256 hex must be 64 chars");
@@ -316,11 +316,12 @@ mod tests {
         );
 
         // Must be deterministic
-        let signature2 = compute_hmac_signature(secret, payload);
+        let signature2 = compute_hmac_signature(secret, payload).expect("HMAC should not fail");
         assert_eq!(signature, signature2, "HMAC signature must be deterministic");
 
         // Different secrets must produce different signatures
-        let other_sig = compute_hmac_signature("other-secret", payload);
+        let other_sig =
+            compute_hmac_signature("other-secret", payload).expect("HMAC should not fail");
         assert_ne!(
             signature, other_sig,
             "Different secrets must produce different HMAC signatures"
