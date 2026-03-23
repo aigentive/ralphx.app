@@ -63,7 +63,6 @@ export function useChatPanelContext({
   const queryClient = useQueryClient();
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const clearMessages = useChatStore((s) => s.clearMessages);
-  const setAgentRunning = useChatStore((s) => s.setAgentRunning);
   const setSending = useChatStore((s) => s.setSending);
 
   // Streaming tool calls - accumulated during agent execution
@@ -138,12 +137,11 @@ export function useChatPanelContext({
     storeContextKeyRef.current = storeContextKey;
   }, [storeContextKey]);
 
-  // Cleanup on unmount: clear isAgentRunning and isSending for the current context key
-  // This ensures the old session's store keys are cleared when the panel unmounts
-  // (e.g., when switching ideation sessions with key={session.id})
+  // Cleanup on unmount: clear isSending for the current context key
+  // agentStatus is intentionally NOT cleared here — it is owned by useGlobalAgentLifecycle
+  // and must survive unmount/remount cycles (e.g., PlanningView key={session.id} switches).
   useEffect(() => {
     return () => {
-      setAgentRunning(storeContextKeyRef.current, false);
       setSending(storeContextKeyRef.current, false);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -229,11 +227,10 @@ export function useChatPanelContext({
         clearMessages(prevContextKeyRef.current);
       }
 
-      // Clear agent running and sending state for the OLD store context key (defense-in-depth)
-      // This ensures the old session's store keys are cleared even without unmount
-      // (e.g., if IntegratedChatPanel is reused without a key prop in other contexts)
+      // Clear isSending for the OLD store context key on context switch.
+      // agentStatus is intentionally NOT cleared here — it is owned by useGlobalAgentLifecycle
+      // (agent:run_completed / agent:stopped events). Context switch must not override it.
       if (prevStoreContextKeyRef.current) {
-        setAgentRunning(prevStoreContextKeyRef.current, false);
         setSending(prevStoreContextKeyRef.current, false);
 
         // Read pending plan BEFORE clearing — used for toast notification below
@@ -271,7 +268,7 @@ export function useChatPanelContext({
       const newContextId = ideationSessionId || selectedTaskId || projectId;
       prevContextTypeRef.current = { type: newContextType, id: newContextId };
     }
-  }, [contextKey, storeContextKey, setActiveConversation, queryClient, clearMessages, setAgentRunning, setSending, ideationSessionId, selectedTaskId, projectId, isMergeMode, isExecutionMode, isReviewMode]);
+  }, [contextKey, storeContextKey, setActiveConversation, queryClient, clearMessages, setSending, ideationSessionId, selectedTaskId, projectId, isMergeMode, isExecutionMode, isReviewMode]);
 
   // Track previous override conversation ID to detect changes
   const prevOverrideConversationIdRef = useRef<string | undefined>(undefined);

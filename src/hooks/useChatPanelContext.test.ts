@@ -152,7 +152,7 @@ describe("useChatPanelContext", () => {
     createElement(QueryClientProvider, { client: queryClient }, children);
 
   describe("unmount cleanup", () => {
-    it("should clear isAgentRunning and isSending for current storeContextKey on unmount", async () => {
+    it("should clear isSending (but NOT agentStatus) for current storeContextKey on unmount", async () => {
       const { unmount } = renderHook(
         (props) => useChatPanelContext(props),
         {
@@ -172,15 +172,15 @@ describe("useChatPanelContext", () => {
       // Unmount the hook (simulates switching sessions with key={session.id})
       unmount();
 
-      // Should have cleared the storeContextKey for this session
-      // (mock getContextKey returns "session:session-1" for ideation view, mirroring the real registry storeKeyPrefix)
-      expect(mockStore.setAgentRunning).toHaveBeenCalledWith("session:session-1", false);
+      // agentStatus is owned by useGlobalAgentLifecycle — must NOT be cleared on unmount
+      expect(mockStore.setAgentRunning).not.toHaveBeenCalledWith("session:session-1", false);
+      // isSending is per-panel UI state — should still be cleared
       expect(mockStore.setSending).toHaveBeenCalledWith("session:session-1", false);
     });
   });
 
   describe("context switching", () => {
-    it("should clear agent running state for OLD storeContextKey on context switch", async () => {
+    it("should clear isSending (but NOT agentStatus) for OLD storeContextKey on context switch", async () => {
       const { rerender } = renderHook(
         (props) => useChatPanelContext(props),
         {
@@ -212,18 +212,15 @@ describe("useChatPanelContext", () => {
         isHistoryMode: false,
       });
 
-      // Should have cleared the OLD session's storeContextKey, not the new one
+      // agentStatus is owned by useGlobalAgentLifecycle — must NOT be cleared on context switch
       // (mock getContextKey returns "session:<id>" for ideation view, mirroring registry storeKeyPrefix)
       await waitFor(() => {
-        expect(mockStore.setAgentRunning).toHaveBeenCalledWith("session:session-1", false);
         expect(mockStore.setSending).toHaveBeenCalledWith("session:session-1", false);
       });
+      expect(mockStore.setAgentRunning).not.toHaveBeenCalledWith("session:session-1", false);
 
-      // Should NOT have cleared the NEW session's key
-      const newSessionCalls = mockStore.setAgentRunning.mock.calls.filter(
-        (call: [string, boolean]) => call[0] === "session:session-2"
-      );
-      expect(newSessionCalls.length).toBe(0);
+      // Should NOT have cleared the NEW session's key either
+      expect(mockStore.setAgentRunning).not.toHaveBeenCalledWith("session:session-2", false);
     });
 
     it("should clear messages for old context during context change", async () => {
