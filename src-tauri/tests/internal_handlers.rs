@@ -725,7 +725,6 @@ async fn test_all_foreign_finalize_transitions_session_to_accepted() {
         "Session in repo must be Accepted after all-foreign finalize"
     );
 }
-
 #[tokio::test]
 async fn test_migrate_then_finalize_target_session_accepted() {
     // Use SQLite-backed state so apply_proposals_core's db.run_transaction can see
