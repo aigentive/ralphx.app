@@ -29,6 +29,8 @@ const chatStoreMocks = vi.hoisted(() => ({
   lastAgentEventTimestamp: {} as Record<string, number>,
   updateLastAgentEvent: vi.fn(),
   isTeamActive: {} as Record<string, boolean>,
+  activeConversationIds: {} as Record<string, string | null>,
+  setActiveConversation: vi.fn(),
 }));
 
 vi.mock("@/stores/chatStore", () => ({
@@ -178,9 +180,11 @@ describe("useGlobalAgentLifecycle", () => {
     mockGetQueryData.mockReturnValue(undefined);
     chatStoreMocks.setAgentStatus.mockClear();
     chatStoreMocks.updateLastAgentEvent.mockClear();
+    chatStoreMocks.setActiveConversation.mockClear();
     chatStoreMocks.agentStatus = {};
     chatStoreMocks.lastAgentEventTimestamp = {};
     chatStoreMocks.isTeamActive = {};
+    chatStoreMocks.activeConversationIds = {};
     uiStoreMocks.clearActiveQuestion.mockClear();
     teamStoreMocks.clearPendingPlan.mockClear();
     vi.mocked(toast.error).mockClear();
@@ -239,6 +243,19 @@ describe("useGlobalAgentLifecycle", () => {
     });
 
     expect(chatStoreMocks.setAgentStatus).not.toHaveBeenCalled();
+  });
+
+  it("run_started populates activeConversationIds tracking for the context", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_started", mkRunStarted("ideation", "session-b"));
+    });
+
+    expect(chatStoreMocks.setActiveConversation).toHaveBeenCalledWith(
+      "session:session-b",
+      "conv-session-b"
+    );
   });
 
   // --------------------------------------------------------------------------
@@ -306,6 +323,36 @@ describe("useGlobalAgentLifecycle", () => {
     );
   });
 
+  it("run_completed: stale conversation_id is ignored — status stays unchanged", () => {
+    // Set active conversation to a different (newer) conversation
+    chatStoreMocks.activeConversationIds["task_execution:task-1"] = "conv-NEW";
+    renderHook(() => useGlobalAgentLifecycle());
+
+    // Fire run_completed with old conversation_id
+    act(() => {
+      fireEvent("agent:run_completed", {
+        ...mkRunCompleted("task_execution", "task-1"),
+        conversation_id: "conv-OLD",
+      });
+    });
+
+    expect(chatStoreMocks.setAgentStatus).not.toHaveBeenCalledWith(
+      "task_execution:task-1",
+      "idle"
+    );
+  });
+
+  it("run_completed: matching conversation_id clears status to idle", () => {
+    chatStoreMocks.activeConversationIds["task_execution:task-1"] = "conv-task-1";
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_completed", mkRunCompleted("task_execution", "task-1"));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith("task_execution:task-1", "idle");
+  });
+
   // --------------------------------------------------------------------------
   // turn_completed
   // --------------------------------------------------------------------------
@@ -352,6 +399,20 @@ describe("useGlobalAgentLifecycle", () => {
 
     act(() => {
       fireEvent("agent:turn_completed", mkTurnCompleted("ideation", "session-1", "teammate-carol"));
+    });
+
+    expect(chatStoreMocks.setAgentStatus).not.toHaveBeenCalled();
+  });
+
+  it("turn_completed: stale conversation_id is ignored — status not updated", () => {
+    chatStoreMocks.activeConversationIds["task_execution:task-1"] = "conv-NEW";
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:turn_completed", {
+        ...mkTurnCompleted("task_execution", "task-1"),
+        conversation_id: "conv-OLD",
+      });
     });
 
     expect(chatStoreMocks.setAgentStatus).not.toHaveBeenCalled();
@@ -679,5 +740,58 @@ describe("useGlobalAgentLifecycle", () => {
     });
 
     expect(chatStoreMocks.updateLastAgentEvent).toHaveBeenCalledWith("task_execution:task-1");
+  });
+
+  // --------------------------------------------------------------------------
+  // conversation_created tracking
+  // --------------------------------------------------------------------------
+
+  it("conversation_created populates activeConversationIds when no existing entry", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:conversation_created", {
+        conversation_id: "conv-new-123",
+        context_type: "ideation",
+        context_id: "session-x",
+      });
+    });
+
+    expect(chatStoreMocks.setActiveConversation).toHaveBeenCalledWith(
+      "session:session-x",
+      "conv-new-123"
+    );
+  });
+
+  it("conversation_created does NOT overwrite existing active conversation entry", () => {
+    chatStoreMocks.activeConversationIds["session:session-x"] = "conv-existing";
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:conversation_created", {
+        conversation_id: "conv-new-456",
+        context_type: "ideation",
+        context_id: "session-x",
+      });
+    });
+
+    expect(chatStoreMocks.setActiveConversation).not.toHaveBeenCalled();
+  });
+
+  it("conversation_created works for non-ideation contexts (task_execution)", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:conversation_created", {
+        conversation_id: "conv-exec-1",
+        context_type: "task_execution",
+        context_id: "task-abc",
+      });
+    });
+
+    expect(chatStoreMocks.setActiveConversation).toHaveBeenCalledWith(
+      "task_execution:task-abc",
+      "conv-exec-1"
+    );
   });
 });

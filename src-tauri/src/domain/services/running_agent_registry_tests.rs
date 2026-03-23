@@ -904,3 +904,84 @@ async fn test_kill_worktree_processes_async_escalates_to_sigkill() {
         pid
     );
 }
+
+// --- MemoryRunningAgentRegistry: list_by_context_type tests ---
+
+#[tokio::test]
+async fn test_memory_list_by_context_type_returns_only_matching() {
+    let registry = MemoryRunningAgentRegistry::new();
+
+    registry.set_running(RunningAgentKey::new("ideation", "s1")).await;
+    registry.set_running(RunningAgentKey::new("ideation", "s2")).await;
+    registry.set_running(RunningAgentKey::new("task_execution", "t1")).await;
+
+    let ideation = registry.list_by_context_type("ideation").await.unwrap();
+    assert_eq!(ideation.len(), 2);
+    for (key, _) in &ideation {
+        assert_eq!(key.context_type, "ideation");
+    }
+
+    let task_exec = registry.list_by_context_type("task_execution").await.unwrap();
+    assert_eq!(task_exec.len(), 1);
+    assert_eq!(task_exec[0].0.context_id, "t1");
+}
+
+#[tokio::test]
+async fn test_memory_list_by_context_type_returns_empty_when_no_match() {
+    let registry = MemoryRunningAgentRegistry::new();
+    registry.set_running(RunningAgentKey::new("task_execution", "t1")).await;
+
+    let result = registry.list_by_context_type("ideation").await.unwrap();
+    assert!(result.is_empty());
+}
+
+#[tokio::test]
+async fn test_memory_list_by_context_type_empty_registry() {
+    let registry = MemoryRunningAgentRegistry::new();
+    let result = registry.list_by_context_type("ideation").await.unwrap();
+    assert!(result.is_empty());
+}
+
+/// Rapid-restart dedup: two concurrent recovery attempts for the same ideation session_id.
+///
+/// Scenario: App restarts twice rapidly. Both recovery loops try to spawn an agent
+/// for the same ideation session. `try_register()` is the atomic guard that prevents
+/// the second spawn from proceeding — the first call succeeds and claims the slot,
+/// the second call returns `Err` with the existing placeholder info (pid=0).
+#[tokio::test]
+async fn test_rapid_restart_dedup_try_register_ideation() {
+    let registry = MemoryRunningAgentRegistry::new();
+    let session_id = "session-rapid-restart-test";
+    let key = RunningAgentKey::new("ideation", session_id);
+
+    // First recovery attempt claims the slot.
+    let r1 = registry
+        .try_register(key.clone(), "conv-ideation-1".to_string(), "run-1".to_string())
+        .await;
+    assert!(r1.is_ok(), "First recovery attempt should claim the slot");
+
+    // Placeholder is registered with pid=0 before the real agent process starts.
+    let placeholder = registry.get(&key).await;
+    assert!(placeholder.is_some());
+    assert_eq!(placeholder.unwrap().pid, 0);
+
+    // Second concurrent recovery attempt for the same session_id must be rejected.
+    let r2 = registry
+        .try_register(key.clone(), "conv-ideation-2".to_string(), "run-2".to_string())
+        .await;
+    assert!(
+        r2.is_err(),
+        "Second recovery attempt for the same ideation session_id must be rejected by try_register()"
+    );
+
+    // Confirm the existing placeholder's conversation_id is preserved (first wins).
+    let existing = r2.unwrap_err();
+    assert_eq!(
+        existing.conversation_id, "conv-ideation-1",
+        "First registration must be preserved; second attempt must not overwrite it"
+    );
+    assert_eq!(
+        existing.pid, 0,
+        "Slot is still the placeholder (no real process spawned yet)"
+    );
+}

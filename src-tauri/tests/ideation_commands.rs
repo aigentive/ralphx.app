@@ -2976,3 +2976,132 @@ async fn test_finalize_atomicity_all_records_consistent() {
         );
     }
 }
+
+// ============================================================================
+// apply_proposals_core — foreign proposal exclusion
+// ============================================================================
+
+/// Mixed local+foreign session: only local proposals get tasks, foreign are
+/// skipped, and the remaining count excludes foreign so the session transitions
+/// to Accepted.
+#[tokio::test]
+async fn test_apply_proposals_core_excludes_foreign_proposals() {
+    use ralphx_lib::domain::entities::{Project, ProposalCategory, Priority};
+
+    let state = setup_apply_test_state();
+
+    // Create project with a known working directory
+    let project = Project::new("Source Project".to_string(), "/tmp/local-project".to_string());
+    let project = state
+        .project_repo
+        .create(project)
+        .await
+        .expect("Failed to create project");
+
+    let session = IdeationSession::new(project.id.clone());
+    let session = state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .expect("Failed to create session");
+
+    // Create 2 local proposals (no target_project)
+    let mut local1 = TaskProposal::new(
+        session.id.clone(),
+        "Local Task 1".to_string(),
+        ProposalCategory::Feature,
+        Priority::Medium,
+    );
+    local1.target_project = None;
+    let local1 = state
+        .task_proposal_repo
+        .create(local1)
+        .await
+        .expect("Failed to create local proposal 1");
+
+    let mut local2 = TaskProposal::new(
+        session.id.clone(),
+        "Local Task 2".to_string(),
+        ProposalCategory::Feature,
+        Priority::Medium,
+    );
+    local2.target_project = None;
+    let local2 = state
+        .task_proposal_repo
+        .create(local2)
+        .await
+        .expect("Failed to create local proposal 2");
+
+    // Create 1 foreign proposal targeting a different project directory
+    let mut foreign1 = TaskProposal::new(
+        session.id.clone(),
+        "Foreign Task".to_string(),
+        ProposalCategory::Feature,
+        Priority::Medium,
+    );
+    foreign1.target_project = Some("/tmp/other-project".to_string());
+    let foreign1 = state
+        .task_proposal_repo
+        .create(foreign1)
+        .await
+        .expect("Failed to create foreign proposal");
+
+    // Pass all 3 proposal IDs (including foreign) — apply_proposals_core must filter
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids: vec![
+            local1.id.as_str().to_string(),
+            local2.id.as_str().to_string(),
+            foreign1.id.as_str().to_string(),
+        ],
+        target_column: "auto".to_string(),
+        use_feature_branch: Some(false),
+        base_branch_override: None,
+    };
+
+    // Acknowledge dependencies (required for multi-proposal sessions)
+    state
+        .ideation_session_repo
+        .set_dependencies_acknowledged(session.id.as_str())
+        .await
+        .expect("Failed to acknowledge dependencies");
+
+    let result = apply_proposals_core(&state, input)
+        .await
+        .expect("apply_proposals_core should succeed");
+
+    // Only the 2 local proposals should produce tasks
+    assert_eq!(
+        result.created_task_ids.len(),
+        2,
+        "Expected 2 tasks (one per local proposal); foreign proposal must be skipped"
+    );
+
+    // Session must transition to Accepted because remaining local proposals = 0
+    let session_id_typed = IdeationSessionId::from_string(session.id.as_str().to_string());
+    let updated_session = state
+        .ideation_session_repo
+        .get_by_id(&session_id_typed)
+        .await
+        .expect("repo error")
+        .expect("Session must exist");
+
+    assert_eq!(
+        updated_session.status,
+        IdeationSessionStatus::Accepted,
+        "Session must be Accepted: all local proposals applied, foreign excluded from remaining count"
+    );
+
+    // The foreign proposal must NOT have a created_task_id
+    let foreign_updated = state
+        .task_proposal_repo
+        .get_by_id(&foreign1.id)
+        .await
+        .expect("repo error")
+        .expect("Foreign proposal must still exist");
+
+    assert!(
+        foreign_updated.created_task_id.is_none(),
+        "Foreign proposal must not have a task created for it"
+    );
+}

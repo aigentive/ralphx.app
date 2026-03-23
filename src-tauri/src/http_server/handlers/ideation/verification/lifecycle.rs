@@ -1,5 +1,45 @@
 use super::*;
 
+/// Validate that a session is eligible for verification operations (stop, revert-and-skip).
+///
+/// Fetches the session by ID and enforces:
+/// 1. Session exists (404 if not found)
+/// 2. Session is not from an external origin (403 for external sessions)
+/// 3. Session is active (422 if not active)
+///
+/// Returns the fetched session on success so callers avoid a second DB read.
+pub(crate) async fn validate_verification_session(
+    session_id: &str,
+    session_id_obj: &crate::domain::entities::IdeationSessionId,
+    app_state: &AppState,
+) -> Result<crate::domain::entities::IdeationSession, JsonError> {
+    let session = app_state
+        .ideation_session_repo
+        .get_by_id(session_id_obj)
+        .await
+        .map_err(|e| {
+            error!("Failed to get session {}: {}", session_id, e);
+            json_error(StatusCode::INTERNAL_SERVER_ERROR, "Failed to get session")
+        })?
+        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
+
+    if session.origin == crate::domain::entities::ideation::SessionOrigin::External {
+        return Err(json_error(
+            StatusCode::FORBIDDEN,
+            "External sessions cannot perform this verification operation.",
+        ));
+    }
+
+    if !session.is_active() {
+        return Err(json_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Session is not active",
+        ));
+    }
+
+    Ok(session)
+}
+
 /// Stop any running verification child agents for a session.
 ///
 /// Called when verification is skipped or reverted to immediately release the write lock
@@ -203,33 +243,21 @@ pub async fn revert_and_skip(
     let session_id_obj =
         crate::domain::entities::IdeationSessionId::from_string(session_id.clone());
 
-    // Read session
-    let session = state
-        .app_state
-        .ideation_session_repo
-        .get_by_id(&session_id_obj)
-        .await
-        .map_err(|e| {
-            error!("Failed to get session {}: {}", session_id, e);
-            json_error(StatusCode::INTERNAL_SERVER_ERROR, "Failed to get session")
-        })?
-        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
-
-    // Guard: external sessions cannot skip plan verification
-    if session.origin == crate::domain::entities::ideation::SessionOrigin::External {
-        return Err(json_error(
-            StatusCode::FORBIDDEN,
-            "External sessions cannot skip plan verification. Run verification to completion (update_plan_verification with status 'reviewing').",
-        ));
-    }
-
-    // Session must be active
-    if !session.is_active() {
-        return Err(json_error(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "Session is not active",
-        ));
-    }
+    // Validate: fetch session, check not-external, check is-active (common guards)
+    let session =
+        validate_verification_session(&session_id, &session_id_obj, &state.app_state)
+            .await
+            .map_err(|e| {
+                // Rephrase the external-session error to be revert-and-skip specific
+                if e.0 == StatusCode::FORBIDDEN {
+                    json_error(
+                        StatusCode::FORBIDDEN,
+                        "External sessions cannot skip plan verification. Run verification to completion (update_plan_verification with status 'reviewing').",
+                    )
+                } else {
+                    e
+                }
+            })?;
 
     // Read the plan artifact version to restore
     let restore_artifact_id = ArtifactId::from_string(req.plan_version_to_restore.clone());

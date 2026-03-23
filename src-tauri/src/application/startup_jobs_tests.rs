@@ -2,9 +2,11 @@ use super::*;
 
 use std::sync::Arc;
 
+use crate::application::chat_service::MockChatService;
 use crate::application::{AppState, TaskTransitionService};
 use crate::commands::execution_commands::{ActiveProjectState, ExecutionState};
-use crate::domain::entities::{InternalStatus, Project, ProjectId, Task};
+use crate::domain::entities::{IdeationSession, InternalStatus, Project, ProjectId, Task};
+use crate::domain::entities::ideation::IdeationSessionStatus;
 
 // ======= Unit tests for should_auto_recover() =======
 
@@ -536,5 +538,203 @@ async fn test_no_recovery_archived_task_skipped() {
         updated.internal_status,
         InternalStatus::Escalated,
         "Archived task should remain Escalated"
+    );
+}
+
+// ======= Unit tests for recover_ideation_session() =======
+
+/// Helper: build a runner wired with a MockChatService.
+fn build_runner_with_chat_service(
+    app_state: &AppState,
+    chat_service: Arc<dyn ChatService>,
+) -> StartupJobRunner<tauri::Wry> {
+    let execution_state = Arc::new(ExecutionState::new());
+    let transition_service = Arc::new(TaskTransitionService::new(
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.task_dependency_repo),
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.chat_message_repo),
+        Arc::clone(&app_state.chat_attachment_repo),
+        Arc::clone(&app_state.chat_conversation_repo),
+        Arc::clone(&app_state.agent_run_repo),
+        Arc::clone(&app_state.ideation_session_repo),
+        Arc::clone(&app_state.activity_event_repo),
+        Arc::clone(&app_state.message_queue),
+        Arc::clone(&app_state.running_agent_registry),
+        Arc::clone(&execution_state),
+        None,
+        Arc::clone(&app_state.memory_event_repo),
+    ));
+    StartupJobRunner::new(
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.task_dependency_repo),
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.chat_conversation_repo),
+        Arc::clone(&app_state.chat_message_repo),
+        Arc::clone(&app_state.chat_attachment_repo),
+        Arc::clone(&app_state.ideation_session_repo),
+        Arc::clone(&app_state.activity_event_repo),
+        Arc::clone(&app_state.message_queue),
+        Arc::clone(&app_state.running_agent_registry),
+        Arc::clone(&app_state.memory_event_repo),
+        Arc::clone(&app_state.agent_run_repo),
+        transition_service,
+        execution_state,
+        Arc::new(ActiveProjectState::new()),
+        Arc::clone(&app_state.app_state_repo),
+        Arc::clone(&app_state.execution_settings_repo),
+        None,
+    )
+    .with_chat_service(chat_service)
+}
+
+/// Helper: create and persist an IdeationSession with the given status.
+async fn create_session(
+    app_state: &AppState,
+    project_id: &ProjectId,
+    status: IdeationSessionStatus,
+) -> IdeationSession {
+    let mut session = IdeationSession::new(project_id.clone());
+    session.status = status;
+    app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn test_recover_ideation_session_active_calls_send_message() {
+    let app_state = AppState::new_test();
+    let project = Project::new("Test Project".into(), "/tmp/test-project".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Create an active ideation session.
+    let session = create_session(&app_state, &project.id, IdeationSessionStatus::Active).await;
+    let session_id = session.id.as_str().to_string();
+
+    let mock = Arc::new(MockChatService::new());
+    let _runner = build_runner_with_chat_service(&app_state, Arc::clone(&mock) as Arc<dyn ChatService>);
+
+    // Call recover_ideation_session directly (tests the helper without spinning up the full runner).
+    let item = crate::application::recovery_queue::RecoveryItem {
+        context_type: "ideation".to_string(),
+        context_id: session_id.clone(),
+        conversation_id: "conv-1".to_string(),
+        priority: crate::application::recovery_queue::RecoveryPriority::Ideation,
+        started_at: chrono::Utc::now(),
+    };
+
+    let result = StartupJobRunner::<tauri::Wry>::recover_ideation_session(
+        item,
+        mock.as_ref(),
+        app_state.ideation_session_repo.as_ref(),
+        None,
+    )
+    .await;
+
+    assert!(result.is_ok(), "Recovery should succeed for active session");
+    assert_eq!(mock.call_count(), 1, "send_message should be called once");
+}
+
+#[tokio::test]
+async fn test_recover_ideation_session_skips_when_not_found() {
+    let app_state = AppState::new_test();
+
+    let mock = Arc::new(MockChatService::new());
+
+    let item = crate::application::recovery_queue::RecoveryItem {
+        context_type: "ideation".to_string(),
+        context_id: "nonexistent-session-id".to_string(),
+        conversation_id: "conv-x".to_string(),
+        priority: crate::application::recovery_queue::RecoveryPriority::Ideation,
+        started_at: chrono::Utc::now(),
+    };
+
+    let result = StartupJobRunner::<tauri::Wry>::recover_ideation_session(
+        item,
+        mock.as_ref(),
+        app_state.ideation_session_repo.as_ref(),
+        None,
+    )
+    .await;
+
+    // Should return Ok (intentional skip), not an error.
+    assert!(result.is_ok(), "Not-found session should be silently skipped");
+    assert_eq!(mock.call_count(), 0, "send_message should NOT be called");
+}
+
+#[tokio::test]
+async fn test_recover_ideation_session_skips_when_archived() {
+    let app_state = AppState::new_test();
+    let project = Project::new("Test Project".into(), "/tmp/test-project".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Create an archived (non-active) session.
+    let session = create_session(&app_state, &project.id, IdeationSessionStatus::Archived).await;
+
+    let mock = Arc::new(MockChatService::new());
+
+    let item = crate::application::recovery_queue::RecoveryItem {
+        context_type: "ideation".to_string(),
+        context_id: session.id.as_str().to_string(),
+        conversation_id: "conv-2".to_string(),
+        priority: crate::application::recovery_queue::RecoveryPriority::Ideation,
+        started_at: chrono::Utc::now(),
+    };
+
+    let result = StartupJobRunner::<tauri::Wry>::recover_ideation_session(
+        item,
+        mock.as_ref(),
+        app_state.ideation_session_repo.as_ref(),
+        None,
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "Archived session should be silently skipped, not an error"
+    );
+    assert_eq!(
+        mock.call_count(),
+        0,
+        "send_message should NOT be called for archived session"
+    );
+}
+
+#[tokio::test]
+async fn test_recover_ideation_session_skips_when_accepted() {
+    let app_state = AppState::new_test();
+    let project = Project::new("Test Project".into(), "/tmp/test-project".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let session = create_session(&app_state, &project.id, IdeationSessionStatus::Accepted).await;
+
+    let mock = Arc::new(MockChatService::new());
+
+    let item = crate::application::recovery_queue::RecoveryItem {
+        context_type: "ideation".to_string(),
+        context_id: session.id.as_str().to_string(),
+        conversation_id: "conv-3".to_string(),
+        priority: crate::application::recovery_queue::RecoveryPriority::Ideation,
+        started_at: chrono::Utc::now(),
+    };
+
+    let result = StartupJobRunner::<tauri::Wry>::recover_ideation_session(
+        item,
+        mock.as_ref(),
+        app_state.ideation_session_repo.as_ref(),
+        None,
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "Accepted session should be silently skipped, not an error"
+    );
+    assert_eq!(
+        mock.call_count(),
+        0,
+        "send_message should NOT be called for accepted session"
     );
 }

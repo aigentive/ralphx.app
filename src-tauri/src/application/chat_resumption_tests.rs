@@ -213,11 +213,12 @@ async fn test_is_handled_by_task_resumption_for_ideation() {
 
     let runner = build_runner(&app_state, &execution_state);
 
-    // Ideation should NOT be handled by task resumption
+    // Ideation IS handled by the dedicated recovery loop (Phase N+1 in StartupJobRunner).
+    // ChatResumptionRunner must unconditionally skip ideation to prevent double-spawn.
     let is_handled = runner.is_handled_by_task_resumption(&interrupted).await;
     assert!(
-        !is_handled,
-        "Ideation should NOT be handled by StartupJobRunner"
+        is_handled,
+        "Ideation should be handled by dedicated recovery loop, not ChatResumptionRunner"
     );
 }
 

@@ -222,6 +222,12 @@ export function PlanBrowser({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Keep a ref to editingTitle so confirm/keydown handlers don't close over stale state
+  const editingTitleRef = useRef(editingTitle);
+  useEffect(() => {
+    editingTitleRef.current = editingTitle;
+  }, [editingTitle]);
+
   useEffect(() => {
     if (editingPlanId && inputRef.current) {
       inputRef.current.focus();
@@ -229,9 +235,15 @@ export function PlanBrowser({
     }
   }, [editingPlanId]);
 
-  const handleStartRename = useCallback((plan: IdeationSessionWithProgress) => {
-    setEditingPlanId(plan.id);
-    setEditingTitle(plan.title || "");
+  // Stable callbacks — defined at component level with planId parameter
+
+  const handleSelect = useCallback((planId: string) => {
+    onSelectPlan(planId);
+  }, [onSelectPlan]);
+
+  const handleStartRename = useCallback((planId: string, currentTitle: string) => {
+    setEditingPlanId(planId);
+    setEditingTitle(currentTitle);
   }, []);
 
   const handleCancelRename = useCallback(() => {
@@ -240,7 +252,7 @@ export function PlanBrowser({
   }, []);
 
   const handleConfirmRename = useCallback(async (planId: string) => {
-    const trimmedTitle = editingTitle.trim();
+    const trimmedTitle = editingTitleRef.current.trim();
     if (trimmedTitle) {
       try {
         await ideationApi.sessions.updateTitle(planId, trimmedTitle);
@@ -250,12 +262,12 @@ export function PlanBrowser({
     }
     setEditingPlanId(null);
     setEditingTitle("");
-  }, [editingTitle]);
+  }, []); // Uses ref — no editingTitle dep
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent, planId: string) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      handleConfirmRename(planId);
+      void handleConfirmRename(planId);
     } else if (e.key === "Escape") {
       e.preventDefault();
       handleCancelRename();
@@ -266,6 +278,22 @@ export function PlanBrowser({
     setGroupOpen((prev) => ({ ...prev, [group]: open }));
   }, []);
 
+  const handleMenuOpenChange = useCallback((open: boolean, planId: string) => {
+    setOpenMenuId(open ? planId : null);
+  }, []);
+
+  const handleArchive = useCallback((planId: string) => {
+    onArchivePlan?.(planId);
+  }, [onArchivePlan]);
+
+  const handleReopen = useCallback((planId: string) => {
+    onReopenPlan?.(planId);
+  }, [onReopenPlan]);
+
+  const handleResetReaccept = useCallback((planId: string) => {
+    onResetReacceptPlan?.(planId);
+  }, [onResetReacceptPlan]);
+
   const renderPlanItem = useCallback((plan: IdeationSessionWithProgress, group: SessionGroup) => (
     <PlanItem
       key={plan.id}
@@ -273,33 +301,32 @@ export function PlanBrowser({
       isSelected={plan.id === currentPlanId}
       group={group}
       isEditing={editingPlanId === plan.id}
-      editingTitle={editingTitle}
+      editingTitle={plan.id === editingPlanId ? editingTitle : undefined}
       isMenuOpen={openMenuId === plan.id}
       inputRef={inputRef}
-      onSelect={() => onSelectPlan(plan.id)}
-      onStartRename={() => handleStartRename(plan)}
-      onCancelRename={handleCancelRename}
-      onConfirmRename={() => handleConfirmRename(plan.id)}
+      onSelect={handleSelect}
+      onStartRename={handleStartRename}
+      onConfirmRename={handleConfirmRename}
       onTitleChange={setEditingTitle}
-      onKeyDown={(e) => handleKeyDown(e, plan.id)}
-      onMenuOpenChange={(open) => setOpenMenuId(open ? plan.id : null)}
-      onArchive={() => onArchivePlan?.(plan.id)}
-      onReopen={() => onReopenPlan?.(plan.id)}
-      onResetReaccept={() => onResetReacceptPlan?.(plan.id)}
+      onKeyDown={handleKeyDown}
+      onMenuOpenChange={handleMenuOpenChange}
+      onArchive={handleArchive}
+      onReopen={handleReopen}
+      onResetReaccept={handleResetReaccept}
     />
   ), [
     currentPlanId,
     editingPlanId,
     editingTitle,
     openMenuId,
-    onSelectPlan,
+    handleSelect,
     handleStartRename,
-    handleCancelRename,
     handleConfirmRename,
     handleKeyDown,
-    onArchivePlan,
-    onReopenPlan,
-    onResetReacceptPlan,
+    handleMenuOpenChange,
+    handleArchive,
+    handleReopen,
+    handleResetReaccept,
   ]);
 
   const hasAnySessions = totalCount > 0;

@@ -19,6 +19,7 @@ use super::ideation_commands_types::{
 };
 use crate::commands::branch_helpers::ensure_base_branch_exists;
 use crate::commands::plan_branch_commands::slug_from_name;
+use super::is_local_proposal;
 
 // ============================================================================
 // Core Result Type
@@ -247,6 +248,30 @@ pub async fn apply_proposals_core(
             );
         }
     }
+
+    // ========================================================================
+    // FOREIGN PROPOSAL GUARD: filter out proposals targeting other projects
+    // ========================================================================
+    // Belt-and-suspenders: the HTTP path pre-filters, but the Tauri command
+    // (apply_proposals_to_kanban) passes all user-selected proposals unfiltered.
+    let project_dir = std::fs::canonicalize(&project.working_directory)
+        .unwrap_or_else(|_| std::path::PathBuf::from(&project.working_directory));
+
+    let proposals_to_apply: Vec<TaskProposal> = proposals_to_apply
+        .into_iter()
+        .filter(|p| {
+            if is_local_proposal(p, &project_dir) {
+                true
+            } else {
+                tracing::warn!(
+                    proposal_id = p.id.as_str(),
+                    target_project = ?p.target_project,
+                    "apply_proposals_core: skipping foreign proposal (belongs to different project)"
+                );
+                false
+            }
+        })
+        .collect();
 
     // ========================================================================
     // PRE-FETCH: Collect proposal deps (async) before entering the transaction
@@ -671,14 +696,16 @@ pub async fn apply_proposals_core(
     // POST-TRANSACTION: session status transition to Accepted
     // ========================================================================
 
-    // Check if all proposals in session are now applied
+    // Check if all LOCAL proposals in session are now applied.
+    // Foreign proposals (target_project pointing to another project) are intentionally
+    // excluded — they were migrated elsewhere and should not block session acceptance.
     let remaining = app_state
         .task_proposal_repo
         .get_by_session(&session_id)
         .await
         .map_err(|e| AppError::Database(e.to_string()))?
         .into_iter()
-        .filter(|p| p.created_task_id.is_none())
+        .filter(|p| is_local_proposal(p, &project_dir) && p.created_task_id.is_none())
         .count();
 
     let session_converted = remaining == 0;

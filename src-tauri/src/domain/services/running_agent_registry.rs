@@ -128,6 +128,18 @@ pub trait RunningAgentRegistry: Send + Sync {
     /// Get all running agents (for debugging/monitoring)
     async fn list_all(&self) -> Vec<(RunningAgentKey, RunningAgentInfo)>;
 
+    /// Get all running agents for a specific context type.
+    ///
+    /// Unlike `list_all()`, this method propagates row-parse errors rather than
+    /// silently dropping them, so callers can detect corrupted registry state.
+    ///
+    /// Used by `StartupJobRunner::run()` to snapshot ideation agents BEFORE
+    /// `stop_all()` clears the table on app restart.
+    async fn list_by_context_type(
+        &self,
+        context_type: &str,
+    ) -> Result<Vec<(RunningAgentKey, RunningAgentInfo)>, String>;
+
     /// Stop all running agents (for cleanup on shutdown/restart)
     async fn stop_all(&self) -> Vec<RunningAgentKey>;
 
@@ -170,6 +182,21 @@ pub trait RunningAgentRegistry: Send + Sync {
         worktree_path: Option<String>,
         cancellation_token: Option<CancellationToken>,
     ) -> Result<(), String>;
+
+    /// Remove a stale registry entry only if its process is no longer alive.
+    ///
+    /// Semantics (safe to call unconditionally — Proof Obligation 7):
+    /// - If no entry exists for `key`: returns `Ok(None)`.
+    /// - If entry exists and `is_process_alive(pid) == true`: returns `Ok(None)` (no-op).
+    /// - If entry exists and `is_process_alive(pid) == false`: deletes the row and
+    ///   returns `Ok(Some(info))` for audit logging.
+    ///
+    /// Used by `RecoveryQueueProcessor` before calling `send_message()` to unblock
+    /// Gate 2's `try_register()` (Constraint 3 of PDM-172).
+    async fn cleanup_stale_entry(
+        &self,
+        key: &RunningAgentKey,
+    ) -> Result<Option<RunningAgentInfo>, String>;
 }
 
 /// Check if a process with the given PID is still alive.
@@ -805,6 +832,19 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
         agents.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
     }
 
+    async fn list_by_context_type(
+        &self,
+        context_type: &str,
+    ) -> Result<Vec<(RunningAgentKey, RunningAgentInfo)>, String> {
+        let agents = self.agents.lock().await;
+        let results = agents
+            .iter()
+            .filter(|(k, _)| k.context_type == context_type)
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        Ok(results)
+    }
+
     async fn stop_all(&self) -> Vec<RunningAgentKey> {
         let keys: Vec<RunningAgentKey> = {
             let agents = self.agents.lock().await;
@@ -888,6 +928,36 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
             );
         }
         Ok(())
+    }
+
+    async fn cleanup_stale_entry(
+        &self,
+        key: &RunningAgentKey,
+    ) -> Result<Option<RunningAgentInfo>, String> {
+        let info = {
+            let agents = self.agents.lock().await;
+            agents.get(key).cloned()
+        };
+        let info = match info {
+            Some(i) => i,
+            None => return Ok(None),
+        };
+
+        // Only remove if the process is actually dead (Proof Obligation 7)
+        if self.process_ops.is_alive(info.pid) {
+            tracing::debug!(
+                pid = info.pid,
+                context_type = %key.context_type,
+                context_id = %key.context_id,
+                "cleanup_stale_entry: process is still alive, skipping"
+            );
+            return Ok(None);
+        }
+
+        // Process is dead — remove the entry
+        let mut agents = self.agents.lock().await;
+        let removed = agents.remove(key);
+        Ok(removed)
     }
 }
 

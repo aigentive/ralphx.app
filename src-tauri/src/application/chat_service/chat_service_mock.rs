@@ -36,6 +36,8 @@ pub struct MockChatService {
     running_agents: Mutex<HashMap<String, bool>>,
     /// Records each (context_type, context_id) pair passed to stop_agent.
     stop_agent_calls: Mutex<Vec<(ChatContextType, String)>>,
+    /// Records each message string passed to send_message (for content assertions in tests).
+    sent_messages: Mutex<Vec<String>>,
 }
 
 pub struct MockChatResponse {
@@ -56,6 +58,7 @@ impl MockChatService {
             already_running_after: Mutex::new(None),
             running_agents: Mutex::new(HashMap::new()),
             stop_agent_calls: Mutex::new(Vec::new()),
+            sent_messages: Mutex::new(Vec::new()),
         }
     }
 
@@ -70,12 +73,19 @@ impl MockChatService {
             already_running_after: Mutex::new(None),
             running_agents: Mutex::new(HashMap::new()),
             stop_agent_calls: Mutex::new(Vec::new()),
+            sent_messages: Mutex::new(Vec::new()),
         }
     }
 
     /// Returns a snapshot of all (context_type, context_id) pairs passed to stop_agent.
     pub async fn get_stop_agent_calls(&self) -> Vec<(ChatContextType, String)> {
         self.stop_agent_calls.lock().await.clone()
+    }
+
+    /// Returns a snapshot of all message strings passed to send_message.
+    /// Used in tests to assert on message content (e.g., recovery prompt format).
+    pub async fn get_sent_messages(&self) -> Vec<String> {
+        self.sent_messages.lock().await.clone()
     }
 
     /// Set the agent running state for a specific context.
@@ -132,9 +142,11 @@ impl ChatService for MockChatService {
         &self,
         context_type: ChatContextType,
         context_id: &str,
-        _message: &str,
+        message: &str,
         _options: SendMessageOptions,
     ) -> Result<SendResult, ChatServiceError> {
+        self.sent_messages.lock().await.push(message.to_string());
+
         let current = self
             .call_count
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)

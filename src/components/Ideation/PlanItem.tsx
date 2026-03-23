@@ -5,6 +5,7 @@
  * actions appropriate for each SessionGroup.
  */
 
+import { memo, useCallback } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -96,20 +97,19 @@ export interface PlanItemProps {
   isSelected: boolean;
   group: SessionGroup;
   isEditing: boolean;
-  editingTitle: string;
+  editingTitle?: string | undefined;
   isMenuOpen: boolean;
   inputRef: React.RefObject<HTMLInputElement | null>;
-  onSelect: () => void;
-  onStartRename: () => void;
-  onCancelRename: () => void;
-  onConfirmRename: () => void;
+  onSelect: (planId: string) => void;
+  onStartRename: (planId: string, currentTitle: string) => void;
+  onConfirmRename: (planId: string) => void;
   onTitleChange: (value: string) => void;
-  onKeyDown: (e: React.KeyboardEvent) => void;
-  onMenuOpenChange: (open: boolean) => void;
-  onArchive?: () => void;
-  onReopen?: () => void;
-  onResetReaccept?: () => void;
-  onNavigateToSource?: () => void;
+  onKeyDown: (e: React.KeyboardEvent, planId: string) => void;
+  onMenuOpenChange: (open: boolean, planId: string) => void;
+  onArchive?: (planId: string) => void;
+  onReopen?: (planId: string) => void;
+  onResetReaccept?: (planId: string) => void;
+  onNavigateToSource?: (planId: string) => void;
 }
 
 // ============================================================================
@@ -242,6 +242,8 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
 // Context Menu
 // ============================================================================
 
+const MENU_ITEM_CLASSES = "text-[13px] cursor-pointer gap-2.5 py-2";
+
 function ContextMenuItems({ group, onStartRename, onArchive, onReopen, onResetReaccept }: {
   group: SessionGroup;
   onStartRename: () => void;
@@ -249,76 +251,57 @@ function ContextMenuItems({ group, onStartRename, onArchive, onReopen, onResetRe
   onReopen?: () => void;
   onResetReaccept?: () => void;
 }) {
-  switch (group) {
-    case "drafts":
-      return (
-        <>
-          <DropdownMenuItem
-            onClick={(e) => { e.stopPropagation(); onStartRename(); }}
-            className="text-[13px] cursor-pointer gap-2.5 py-2"
-          >
-            <Pencil className="w-3.5 h-3.5" />
-            Rename
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={(e) => { e.stopPropagation(); onArchive?.(); }}
-            className="text-[13px] cursor-pointer gap-2.5 py-2"
-          >
-            <Archive className="w-3.5 h-3.5" />
-            Archive
-          </DropdownMenuItem>
-        </>
-      );
+  return (
+    <>
+      {/* Rename is available for all groups */}
+      <DropdownMenuItem
+        onClick={(e) => { e.stopPropagation(); onStartRename(); }}
+        className={MENU_ITEM_CLASSES}
+      >
+        <Pencil className="w-3.5 h-3.5" />
+        Rename
+      </DropdownMenuItem>
 
-    case "in-progress":
-    case "accepted":
-    case "done":
-      return (
+      {group === "drafts" && (
+        <DropdownMenuItem
+          onClick={(e) => { e.stopPropagation(); onArchive?.(); }}
+          className={MENU_ITEM_CLASSES}
+        >
+          <Archive className="w-3.5 h-3.5" />
+          Archive
+        </DropdownMenuItem>
+      )}
+
+      {(group === "in-progress" || group === "accepted" || group === "done") && (
         <>
-          <DropdownMenuItem
-            onClick={(e) => { e.stopPropagation(); onStartRename(); }}
-            className="text-[13px] cursor-pointer gap-2.5 py-2"
-          >
-            <Pencil className="w-3.5 h-3.5" />
-            Rename
-          </DropdownMenuItem>
           <DropdownMenuItem
             onClick={(e) => { e.stopPropagation(); onReopen?.(); }}
-            className="text-[13px] cursor-pointer gap-2.5 py-2"
+            className={MENU_ITEM_CLASSES}
           >
             <RotateCcw className="w-3.5 h-3.5" />
             Reopen
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={(e) => { e.stopPropagation(); onResetReaccept?.(); }}
-            className="text-[13px] cursor-pointer gap-2.5 py-2"
+            className={MENU_ITEM_CLASSES}
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Reset & Re-accept
           </DropdownMenuItem>
         </>
-      );
+      )}
 
-    case "archived":
-      return (
-        <>
-          <DropdownMenuItem
-            onClick={(e) => { e.stopPropagation(); onStartRename(); }}
-            className="text-[13px] cursor-pointer gap-2.5 py-2"
-          >
-            <Pencil className="w-3.5 h-3.5" />
-            Rename
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={(e) => { e.stopPropagation(); onReopen?.(); }}
-            className="text-[13px] cursor-pointer gap-2.5 py-2"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Reopen
-          </DropdownMenuItem>
-        </>
-      );
-  }
+      {group === "archived" && (
+        <DropdownMenuItem
+          onClick={(e) => { e.stopPropagation(); onReopen?.(); }}
+          className={MENU_ITEM_CLASSES}
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+          Reopen
+        </DropdownMenuItem>
+      )}
+    </>
+  );
 }
 
 // ============================================================================
@@ -327,7 +310,7 @@ function ContextMenuItems({ group, onStartRename, onArchive, onReopen, onResetRe
 
 const isMutedGroup = (group: SessionGroup) => group === "done" || group === "archived";
 
-export function PlanItem({
+export const PlanItem = memo(function PlanItem({
   plan,
   isSelected,
   group,
@@ -337,7 +320,6 @@ export function PlanItem({
   inputRef,
   onSelect,
   onStartRename,
-  onCancelRename: _onCancelRename,
   onConfirmRename,
   onTitleChange,
   onKeyDown,
@@ -352,8 +334,45 @@ export function PlanItem({
   const agentStatus = useChatStore(selectAgentStatus(storeKey));
   const isIdeationActive = agentStatus === "generating";
   const isIdeationWaiting = agentStatus === "waiting_for_input";
-  const activeVerificationChildId = useIdeationStore(state => state.activeVerificationChildId);
-  const isVerifying = isIdeationActive && !!(activeVerificationChildId[plan.id]);
+  const activeVerificationChildId = useIdeationStore(state => state.activeVerificationChildId[plan.id]);
+  const isVerifying = isIdeationActive && !!activeVerificationChildId;
+
+  // Internal stable handlers — bind planId so parent callbacks stay stable
+  const handleClick = useCallback(() => {
+    if (!isEditing) onSelect(plan.id);
+  }, [onSelect, plan.id, isEditing]);
+
+  const handleStartRename = useCallback(() => {
+    onStartRename(plan.id, plan.title ?? "");
+  }, [onStartRename, plan.id, plan.title]);
+
+  const handleConfirmRename = useCallback(() => {
+    onConfirmRename(plan.id);
+  }, [onConfirmRename, plan.id]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    onKeyDown(e, plan.id);
+  }, [onKeyDown, plan.id]);
+
+  const handleMenuOpenChange = useCallback((open: boolean) => {
+    onMenuOpenChange(open, plan.id);
+  }, [onMenuOpenChange, plan.id]);
+
+  const handleArchive = useCallback(() => {
+    onArchive?.(plan.id);
+  }, [onArchive, plan.id]);
+
+  const handleReopen = useCallback(() => {
+    onReopen?.(plan.id);
+  }, [onReopen, plan.id]);
+
+  const handleResetReaccept = useCallback(() => {
+    onResetReaccept?.(plan.id);
+  }, [onResetReaccept, plan.id]);
+
+  const handleNavigateToSource = useCallback(() => {
+    onNavigateToSource?.(plan.id);
+  }, [onNavigateToSource, plan.id]);
 
   return (
     <div
@@ -374,7 +393,7 @@ export function PlanItem({
           : "1px solid transparent",
         opacity: muted && !isSelected ? 0.7 : 1,
       }}
-      onClick={() => !isEditing && onSelect()}
+      onClick={handleClick}
       onMouseEnter={(e) => {
         if (!isSelected && !isMenuOpen) {
           e.currentTarget.style.background = "hsla(220 10% 100% / 0.04)";
@@ -417,10 +436,10 @@ export function PlanItem({
           {isEditing ? (
             <Input
               ref={inputRef}
-              value={editingTitle}
+              value={editingTitle ?? ""}
               onChange={(e) => onTitleChange(e.target.value)}
-              onKeyDown={onKeyDown}
-              onBlur={onConfirmRename}
+              onKeyDown={handleKeyDown}
+              onBlur={handleConfirmRename}
               className="h-6 text-[13px] px-2 py-0 rounded-md"
               style={{
                 background: "hsl(220 10% 12%)",
@@ -458,7 +477,7 @@ export function PlanItem({
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      onNavigateToSource?.();
+                      handleNavigateToSource();
                     }}
                     title="Navigate to source session"
                   >
@@ -481,7 +500,7 @@ export function PlanItem({
 
         {/* Context Menu */}
         {!isEditing && (
-          <DropdownMenu onOpenChange={onMenuOpenChange}>
+          <DropdownMenu onOpenChange={handleMenuOpenChange}>
             <DropdownMenuTrigger asChild>
               <button
                 className={cn(
@@ -518,10 +537,10 @@ export function PlanItem({
             >
               <ContextMenuItems
                 group={group}
-                onStartRename={onStartRename}
-                {...(onArchive != null && { onArchive })}
-                {...(onReopen != null && { onReopen })}
-                {...(onResetReaccept != null && { onResetReaccept })}
+                onStartRename={handleStartRename}
+                onArchive={handleArchive}
+                onReopen={handleReopen}
+                onResetReaccept={handleResetReaccept}
               />
             </DropdownMenuContent>
           </DropdownMenu>
@@ -529,4 +548,4 @@ export function PlanItem({
       </div>
     </div>
   );
-}
+});

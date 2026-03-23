@@ -1406,3 +1406,790 @@ async fn test_cold_boot_does_not_run_stall_detection() {
         "cold boot must not run stall detection — phase must remain 'planning'"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Recovery scanner tests (scan_for_recoverable_orphans + startup_scan)
+// ---------------------------------------------------------------------------
+
+use crate::application::chat_service::MockChatService;
+use crate::application::interactive_process_registry::InteractiveProcessRegistry;
+use crate::application::reconciliation::recovery_queue::{
+    create_recovery_queue, RecoveryQueueConfig,
+};
+use crate::domain::services::{MemoryRunningAgentRegistry, RunningAgentKey};
+
+/// Build a service with registry + queue for recovery scanner tests.
+/// Returns the service, registry, repo, and processor (keep alive to hold channel open).
+async fn make_service_with_recovery(
+    repo: Arc<MemoryIdeationSessionRepository>,
+) -> (
+    VerificationReconciliationService,
+    Arc<MemoryRunningAgentRegistry>,
+    crate::application::reconciliation::recovery_queue::RecoveryQueueProcessor,
+) {
+    let registry = Arc::new(MemoryRunningAgentRegistry::new());
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+    let mock_chat_service: Arc<dyn crate::application::chat_service::ChatService> =
+        Arc::new(MockChatService::new());
+    let (queue, processor) = create_recovery_queue(
+        registry.clone() as Arc<dyn crate::domain::services::RunningAgentRegistry>,
+        ipr,
+        repo.clone() as Arc<dyn IdeationSessionRepository>,
+        mock_chat_service,
+        None,
+        RecoveryQueueConfig::default(),
+    );
+    let svc = VerificationReconciliationService::new(
+        repo.clone() as Arc<dyn IdeationSessionRepository>,
+        default_config(),
+    )
+    .with_recovery_queue(Arc::new(queue))
+    .with_running_agent_registry(
+        registry.clone() as Arc<dyn crate::domain::services::RunningAgentRegistry>,
+    );
+    (svc, registry, processor)
+}
+
+/// Create a parent ideation session with verification_in_progress = true.
+fn make_parent_in_progress(project_id: ProjectId) -> IdeationSession {
+    let mut s = IdeationSession::new(project_id);
+    s.verification_in_progress = true;
+    s.verification_status = VerificationStatus::Reviewing;
+    s
+}
+
+/// Create a verification child session linked to a parent.
+fn make_verification_child(
+    project_id: ProjectId,
+    parent_id: &crate::domain::entities::IdeationSessionId,
+) -> IdeationSession {
+    let mut child = IdeationSession::new(project_id.clone());
+    child.session_purpose = crate::domain::entities::SessionPurpose::Verification;
+    child.parent_session_id = Some(parent_id.clone());
+    child
+}
+
+#[tokio::test]
+async fn test_scan_for_recoverable_orphans_submits_dead_verification_agent() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Create parent with in-progress verification
+    let parent = make_parent_in_progress(project_id.clone());
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    // Create verification child
+    let child = make_verification_child(project_id, &parent_id);
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let (svc, registry, _processor) = make_service_with_recovery(repo.clone()).await;
+
+    // Register child session in registry with pid=0 (dead)
+    registry
+        .set_running(RunningAgentKey {
+            context_type: "ideation".to_string(),
+            context_id: child_id.as_str().to_string(),
+        })
+        .await;
+
+    let claimed = svc.scan_for_recoverable_orphans().await;
+
+    assert!(
+        claimed.contains(parent_id.as_str()),
+        "parent_id should be claimed when dead verification agent is found: claimed={claimed:?}"
+    );
+    assert_eq!(claimed.len(), 1);
+}
+
+#[tokio::test]
+async fn test_scan_for_recoverable_orphans_skips_alive_process() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    let parent = make_parent_in_progress(project_id.clone());
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    let child = make_verification_child(project_id, &parent_id);
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let (svc, registry, _processor) = make_service_with_recovery(repo.clone()).await;
+
+    // Register with a real (alive) PID — current process is always alive
+    registry
+        .register(
+            RunningAgentKey {
+                context_type: "ideation".to_string(),
+                context_id: child_id.as_str().to_string(),
+            },
+            std::process::id(),
+            "test-conv".to_string(),
+            "test-run".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let claimed = svc.scan_for_recoverable_orphans().await;
+
+    assert!(
+        claimed.is_empty(),
+        "alive process should not be claimed for recovery"
+    );
+}
+
+#[tokio::test]
+async fn test_scan_for_recoverable_orphans_skips_non_verification_session() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Session is General purpose, not Verification
+    let mut session = IdeationSession::new(project_id);
+    session.session_purpose = crate::domain::entities::SessionPurpose::General;
+    let session_id = session.id.clone();
+    repo.create(session).await.unwrap();
+
+    let (svc, registry, _processor) = make_service_with_recovery(repo.clone()).await;
+
+    registry
+        .set_running(RunningAgentKey {
+            context_type: "ideation".to_string(),
+            context_id: session_id.as_str().to_string(),
+        })
+        .await;
+
+    let claimed = svc.scan_for_recoverable_orphans().await;
+    assert!(claimed.is_empty(), "General purpose session must not be claimed");
+}
+
+#[tokio::test]
+async fn test_scan_for_recoverable_orphans_skips_archived_child() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    let parent = make_parent_in_progress(project_id.clone());
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    // Child is Archived — should be skipped
+    let mut child = make_verification_child(project_id, &parent_id);
+    child.status = IdeationSessionStatus::Archived;
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let (svc, registry, _processor) = make_service_with_recovery(repo.clone()).await;
+
+    registry
+        .set_running(RunningAgentKey {
+            context_type: "ideation".to_string(),
+            context_id: child_id.as_str().to_string(),
+        })
+        .await;
+
+    let claimed = svc.scan_for_recoverable_orphans().await;
+    assert!(claimed.is_empty(), "Archived child must not be claimed");
+}
+
+#[tokio::test]
+async fn test_scan_for_recoverable_orphans_skips_imported_verified_parent() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    let mut parent = IdeationSession::new(project_id.clone());
+    parent.verification_in_progress = true;
+    parent.verification_status = VerificationStatus::ImportedVerified;
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    let child = make_verification_child(project_id, &parent_id);
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let (svc, registry, _processor) = make_service_with_recovery(repo.clone()).await;
+
+    registry
+        .set_running(RunningAgentKey {
+            context_type: "ideation".to_string(),
+            context_id: child_id.as_str().to_string(),
+        })
+        .await;
+
+    let claimed = svc.scan_for_recoverable_orphans().await;
+    assert!(
+        claimed.is_empty(),
+        "ImportedVerified parent must not be claimed for recovery"
+    );
+}
+
+#[tokio::test]
+async fn test_scan_for_recoverable_orphans_skips_parent_not_in_progress() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Parent has verification_in_progress = false — already resolved
+    let mut parent = IdeationSession::new(project_id.clone());
+    parent.verification_in_progress = false;
+    parent.verification_status = VerificationStatus::Verified;
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    let child = make_verification_child(project_id, &parent_id);
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let (svc, registry, _processor) = make_service_with_recovery(repo.clone()).await;
+
+    registry
+        .set_running(RunningAgentKey {
+            context_type: "ideation".to_string(),
+            context_id: child_id.as_str().to_string(),
+        })
+        .await;
+
+    let claimed = svc.scan_for_recoverable_orphans().await;
+    assert!(
+        claimed.is_empty(),
+        "Parent not in progress must not be claimed for recovery"
+    );
+}
+
+#[tokio::test]
+async fn test_scan_and_reset_excluding_skips_claimed_parent_ids() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    let parent = make_parent_in_progress(project_id);
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    let svc = make_service(repo.clone(), default_config());
+
+    // Build skip set containing the parent's ID
+    let mut skip_set = std::collections::HashSet::new();
+    skip_set.insert(parent_id.as_str().to_string());
+
+    let count = svc.scan_and_reset_excluding(true, &skip_set).await;
+
+    assert_eq!(count, 0, "claimed session must not be reset");
+
+    let after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert!(
+        after.verification_in_progress,
+        "claimed session must remain in_progress — recovery owns it"
+    );
+}
+
+#[tokio::test]
+async fn test_startup_scan_without_registry_resets_all_in_progress() {
+    // Backward compat: startup_scan without registry/queue falls through to full reset
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    let parent = make_parent_in_progress(project_id);
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    // Service without registry or queue (test/degraded mode)
+    let svc = make_service(repo.clone(), default_config());
+    svc.startup_scan().await;
+
+    let after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert!(
+        !after.verification_in_progress,
+        "Without registry, startup_scan should reset all in-progress sessions"
+    );
+}
+
+#[tokio::test]
+async fn test_startup_scan_claims_orphan_and_skips_reset() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    let parent = make_parent_in_progress(project_id.clone());
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    let child = make_verification_child(project_id, &parent_id);
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let (svc, registry, _processor) = make_service_with_recovery(repo.clone()).await;
+
+    registry
+        .set_running(RunningAgentKey {
+            context_type: "ideation".to_string(),
+            context_id: child_id.as_str().to_string(),
+        })
+        .await;
+
+    svc.startup_scan().await;
+
+    // The parent was claimed for recovery — must NOT be reset by startup_scan
+    let after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert!(
+        after.verification_in_progress,
+        "startup_scan must not reset a parent claimed by recovery scanner"
+    );
+}
+
+#[tokio::test]
+async fn test_scan_for_recoverable_orphans_no_registry_returns_empty() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    // Service with no registry
+    let svc = make_service(repo.clone(), default_config());
+    let claimed = svc.scan_for_recoverable_orphans().await;
+    assert!(claimed.is_empty(), "Without registry, no orphans can be found");
+}
+
+// ---------------------------------------------------------------------------
+// Integration tests: end-to-end verification recovery flow (PDM-172)
+//
+// These tests exercise the full pipeline:
+//   startup_scan() → scan_for_recoverable_orphans() → RecoveryQueue submit
+//   → RecoveryQueueProcessor → send_message (via MockChatService)
+//
+// Pattern: spawn processor, call startup_scan, drop service to close channel,
+// await processor task. Deterministic — no sleeps or timers needed.
+// ---------------------------------------------------------------------------
+
+use crate::application::chat_service::ChatService;
+use std::time::Duration as StdDuration;
+
+/// Build a service wired with RecoveryQueue + an accessible Arc<MockChatService>
+/// for integration tests that need to assert on send_message calls and message content.
+///
+/// Uses zero-delay config to avoid sleep overhead in tests.
+async fn make_service_with_tracking(
+    repo: Arc<MemoryIdeationSessionRepository>,
+) -> (
+    VerificationReconciliationService,
+    Arc<MemoryRunningAgentRegistry>,
+    crate::application::reconciliation::recovery_queue::RecoveryQueueProcessor,
+    Arc<MockChatService>,
+) {
+    let registry = Arc::new(MemoryRunningAgentRegistry::new());
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+    let chat_service = Arc::new(MockChatService::new());
+    let (queue, processor) = create_recovery_queue(
+        registry.clone() as Arc<dyn crate::domain::services::RunningAgentRegistry>,
+        ipr,
+        repo.clone() as Arc<dyn IdeationSessionRepository>,
+        chat_service.clone() as Arc<dyn ChatService>,
+        None,
+        RecoveryQueueConfig {
+            delay_between_spawns: StdDuration::from_millis(0),
+            ..RecoveryQueueConfig::default()
+        },
+    );
+    let svc = VerificationReconciliationService::new(
+        repo.clone() as Arc<dyn IdeationSessionRepository>,
+        default_config(),
+    )
+    .with_recovery_queue(Arc::new(queue))
+    .with_running_agent_registry(
+        registry.clone() as Arc<dyn crate::domain::services::RunningAgentRegistry>,
+    );
+    (svc, registry, processor, chat_service)
+}
+
+/// Build verification_metadata JSON with `n` rounds (so rounds.len() == n → current_round == n).
+fn make_verification_metadata_json(n_rounds: usize) -> String {
+    let rounds: Vec<serde_json::Value> = (0..n_rounds)
+        .map(|_| serde_json::json!({"fingerprints": [], "gap_score": 0}))
+        .collect();
+    serde_json::json!({
+        "v": 1,
+        "current_round": n_rounds,
+        "max_rounds": 5,
+        "rounds": rounds,
+        "current_gaps": [],
+        "convergence_reason": null,
+        "best_round_index": null,
+        "parse_failures": []
+    })
+    .to_string()
+}
+
+// ---------------------------------------------------------------------------
+// Test 1: Full recovery flow — round continuity + send_message called with prompt
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_full_recovery_flow_sends_recovery_prompt_with_correct_round() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Parent in-progress with verification_metadata containing 3 rounds (current_round == 3)
+    // and verification_generation == 2.
+    let mut parent = make_parent_in_progress(project_id.clone());
+    parent.verification_generation = 2;
+    parent.verification_metadata = Some(make_verification_metadata_json(3));
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    // Verification child linked to parent
+    let child = make_verification_child(project_id, &parent_id);
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let (svc, registry, processor, chat_service) =
+        make_service_with_tracking(repo.clone()).await;
+
+    // Register child with a dead pid (pid=0) to simulate stale running_agents row
+    registry
+        .set_running(RunningAgentKey {
+            context_type: "ideation".to_string(),
+            context_id: child_id.as_str().to_string(),
+        })
+        .await;
+
+    // Spawn processor BEFORE startup_scan (Constraint 9: receiver must be active)
+    let proc_task = tokio::spawn(processor.run());
+
+    svc.startup_scan().await;
+
+    // Drop service to close channel → processor exits after draining pending items
+    drop(svc);
+    proc_task.await.expect("processor task must not panic");
+
+    // Verify: send_message was called exactly once (agent was re-spawned)
+    assert_eq!(
+        chat_service.call_count(),
+        1,
+        "send_message must be called once for the orphaned verification agent"
+    );
+
+    // Verify: recovery prompt contains round 3 (round continuity — Proof Obligation 1)
+    let messages = chat_service.get_sent_messages().await;
+    assert_eq!(messages.len(), 1, "exactly one message must have been sent");
+    assert!(
+        messages[0].contains("Current round: 3"),
+        "recovery prompt must include current_round=3 derived from verification_metadata.rounds.len(); \
+         got: {:?}",
+        messages[0]
+    );
+    assert!(
+        messages[0].contains("generation: 2"),
+        "recovery prompt must include generation=2 (from verification_generation field); \
+         got: {:?}",
+        messages[0]
+    );
+    assert!(
+        messages[0].contains("<recovery_note>"),
+        "recovery prompt must contain <recovery_note> tag for plan-verifier Phase 0 RECOVER; \
+         got: {:?}",
+        messages[0]
+    );
+
+    // Verify: parent remains in_progress — startup_scan must not reset it (recovery claimed it)
+    let after_parent = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert!(
+        after_parent.verification_in_progress,
+        "parent must remain verification_in_progress=true — startup_scan must skip claimed sessions"
+    );
+    assert_eq!(
+        after_parent.verification_status,
+        VerificationStatus::Reviewing,
+        "parent verification_status must stay Reviewing during recovery (no premature reset)"
+    );
+
+    // Verify: child was not archived (recovery was successful — MockChatService returns Ok)
+    let after_child = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_eq!(
+        after_child.status,
+        IdeationSessionStatus::Active,
+        "child must remain Active after successful recovery spawn"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test 2: Fallback on failure — parent reset to Unverified, child archived
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_recovery_fallback_on_send_message_failure() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    let mut parent = make_parent_in_progress(project_id.clone());
+    parent.verification_generation = 1;
+    parent.verification_metadata = Some(make_verification_metadata_json(2));
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    let child = make_verification_child(project_id, &parent_id);
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let (svc, registry, processor, chat_service) =
+        make_service_with_tracking(repo.clone()).await;
+
+    // Make send_message fail — simulates recovery spawn failure
+    chat_service.set_available(false).await;
+
+    registry
+        .set_running(RunningAgentKey {
+            context_type: "ideation".to_string(),
+            context_id: child_id.as_str().to_string(),
+        })
+        .await;
+
+    let proc_task = tokio::spawn(processor.run());
+    svc.startup_scan().await;
+    drop(svc);
+    proc_task.await.expect("processor task must not panic");
+
+    // Fallback: parent must be reset to Unverified (matches current cold-boot behavior)
+    let after_parent = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert_eq!(
+        after_parent.verification_status,
+        VerificationStatus::Unverified,
+        "parent must be reset to Unverified when recovery spawn fails"
+    );
+    assert!(
+        !after_parent.verification_in_progress,
+        "parent verification_in_progress must be cleared after recovery failure"
+    );
+
+    // Fallback: child must be archived (unrecoverable — spawn failed)
+    let after_child = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_eq!(
+        after_child.status,
+        IdeationSessionStatus::Archived,
+        "child must be archived when recovery spawn fails (Proof Obligation 3)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test 3: Double-spawn prevention via processor cleanup_stale_entry
+//
+// After the processor runs and cleans the stale running_agents row,
+// a second startup_scan finds no orphan → submits nothing → call_count stays at 1.
+// This models the "no thundering herd on rapid restart" guarantee.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_double_spawn_prevention_processor_cleans_stale_entry() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    let mut parent = make_parent_in_progress(project_id.clone());
+    parent.verification_metadata = Some(make_verification_metadata_json(1));
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    let child = make_verification_child(project_id, &parent_id);
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let (svc, registry, processor, chat_service) =
+        make_service_with_tracking(repo.clone()).await;
+
+    registry
+        .set_running(RunningAgentKey {
+            context_type: "ideation".to_string(),
+            context_id: child_id.as_str().to_string(),
+        })
+        .await;
+
+    // First startup_scan: discovers orphan, submits item to queue
+    let proc_task = tokio::spawn(processor.run());
+    svc.startup_scan().await;
+    drop(svc);
+    proc_task.await.expect("processor task must not panic on first pass");
+
+    // After first pass: stale running_agents row was cleaned by cleanup_stale_entry
+    // in the processor. A second startup_scan must find no orphan.
+    // Build a fresh service (no queue/registry changes — registry entry was cleaned).
+    let registry2 = Arc::new(MemoryRunningAgentRegistry::new());
+    let ipr2 = Arc::new(InteractiveProcessRegistry::new());
+    let (queue2, processor2) = create_recovery_queue(
+        registry2.clone() as Arc<dyn crate::domain::services::RunningAgentRegistry>,
+        ipr2,
+        repo.clone() as Arc<dyn IdeationSessionRepository>,
+        chat_service.clone() as Arc<dyn ChatService>,
+        None,
+        RecoveryQueueConfig {
+            delay_between_spawns: StdDuration::from_millis(0),
+            ..RecoveryQueueConfig::default()
+        },
+    );
+    // Use the ORIGINAL registry (with entry already cleaned) for the second scan
+    let svc2 = VerificationReconciliationService::new(
+        repo.clone() as Arc<dyn IdeationSessionRepository>,
+        default_config(),
+    )
+    .with_recovery_queue(Arc::new(queue2))
+    .with_running_agent_registry(
+        registry.clone() as Arc<dyn crate::domain::services::RunningAgentRegistry>,
+    );
+
+    let proc_task2 = tokio::spawn(processor2.run());
+    svc2.startup_scan().await;
+    drop(svc2);
+    proc_task2.await.expect("processor task must not panic on second pass");
+
+    // Second pass found no orphan (entry cleaned) — only 1 send_message call total
+    assert_eq!(
+        chat_service.call_count(),
+        1,
+        "send_message must be called exactly once across both startup_scans — \
+         double-spawn prevented by cleanup_stale_entry removing the registry entry after first recovery"
+    );
+
+    // Suppress unused warning for registry2
+    drop(registry2);
+}
+
+// ---------------------------------------------------------------------------
+// Test 4: Parent archived edge case — no recovery attempted, child falls through to reset
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_recovery_skips_orphan_when_parent_not_in_progress() {
+    // Edge case: verification child is orphaned, but its parent has
+    // verification_in_progress=false (parent already resolved). This scenario
+    // arises when the parent was separately reset after the child's agent died.
+    // Recovery must be skipped — child falls through to the reset pass.
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Parent with verification already resolved (not in progress)
+    let mut parent = IdeationSession::new(project_id.clone());
+    parent.verification_in_progress = false;
+    parent.verification_status = VerificationStatus::Unverified;
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    // Child still "running" (stale entry) with this resolved parent
+    let child = make_verification_child(project_id, &parent_id);
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let (svc, registry, processor, chat_service) =
+        make_service_with_tracking(repo.clone()).await;
+
+    registry
+        .set_running(RunningAgentKey {
+            context_type: "ideation".to_string(),
+            context_id: child_id.as_str().to_string(),
+        })
+        .await;
+
+    let proc_task = tokio::spawn(processor.run());
+    svc.startup_scan().await;
+    drop(svc);
+    proc_task.await.expect("processor task must not panic");
+
+    // No recovery attempted — parent was not in_progress
+    assert_eq!(
+        chat_service.call_count(),
+        0,
+        "send_message must NOT be called when parent is not verification_in_progress"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test 5: Mixed recovery — IdeationAgent (priority=10) + VerificationAgent (priority=5)
+//
+// Both kinds are submitted to the same queue. Priority ordering ensures the
+// IdeationAgent item is processed first (higher priority). The VerificationAgent
+// item is processed second and triggers send_message. IdeationAgent processing
+// is currently a no-op placeholder (PDM-171), so only one send_message call expected.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_mixed_recovery_verification_agent_spawned_after_ideation_placeholder() {
+    use crate::application::reconciliation::recovery_queue::{
+        RecoveryItem, RecoveryKind, RecoveryMetadata,
+    };
+    use crate::domain::entities::ChatContextType;
+
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    let mut parent = make_parent_in_progress(project_id.clone());
+    parent.verification_metadata = Some(make_verification_metadata_json(2));
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    let child = make_verification_child(project_id, &parent_id);
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let registry = Arc::new(MemoryRunningAgentRegistry::new());
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+    let chat_service = Arc::new(MockChatService::new());
+    let (queue, processor) = create_recovery_queue(
+        registry.clone() as Arc<dyn crate::domain::services::RunningAgentRegistry>,
+        ipr,
+        repo.clone() as Arc<dyn IdeationSessionRepository>,
+        chat_service.clone() as Arc<dyn ChatService>,
+        None,
+        RecoveryQueueConfig {
+            delay_between_spawns: StdDuration::from_millis(0),
+            ..RecoveryQueueConfig::default()
+        },
+    );
+
+    // Manually submit an IdeationAgent item at higher priority (simulates PDM-171 orphan)
+    let ideation_item = RecoveryItem {
+        context_type: ChatContextType::Ideation,
+        context_id: "orphaned-ideation-session".to_string(),
+        recovery_kind: RecoveryKind::IdeationAgent,
+        priority: 10, // higher — processed first
+        parent_session_id: None,
+        metadata: RecoveryMetadata::default(),
+    };
+    queue.submit(ideation_item).expect("ideation item submit must succeed");
+
+    // Also submit a VerificationAgent item at lower priority
+    let verification_item = RecoveryItem {
+        context_type: ChatContextType::Ideation,
+        context_id: child_id.as_str().to_string(),
+        recovery_kind: RecoveryKind::VerificationAgent,
+        priority: 5, // lower — processed second
+        parent_session_id: Some(parent_id.as_str().to_string()),
+        metadata: RecoveryMetadata {
+            current_round: Some(2),
+            verification_generation: Some(0),
+            conversation_id: Some("test-conv-id".to_string()),
+            plan_artifact_id: None,
+        },
+    };
+    queue.submit(verification_item).expect("verification item submit must succeed");
+
+    // Wrap queue in Arc for service (not actually needed for scanning — we submitted manually)
+    let svc = VerificationReconciliationService::new(
+        repo.clone() as Arc<dyn IdeationSessionRepository>,
+        default_config(),
+    )
+    .with_recovery_queue(Arc::new(queue))
+    .with_running_agent_registry(
+        registry.clone() as Arc<dyn crate::domain::services::RunningAgentRegistry>,
+    );
+
+    let proc_task = tokio::spawn(processor.run());
+    drop(svc); // close channel immediately — both items already in buffer
+    proc_task.await.expect("processor task must not panic");
+
+    // IdeationAgent is a no-op placeholder — only VerificationAgent triggers send_message
+    assert_eq!(
+        chat_service.call_count(),
+        1,
+        "only the VerificationAgent item should trigger send_message; \
+         IdeationAgent is a PDM-171 placeholder"
+    );
+
+    // Verify the recovery prompt was for round 2 (from the VerificationAgent item metadata)
+    let messages = chat_service.get_sent_messages().await;
+    assert_eq!(messages.len(), 1, "exactly one recovery message expected");
+    assert!(
+        messages[0].contains("Current round: 2"),
+        "VerificationAgent recovery prompt must include round from item metadata; got: {:?}",
+        messages[0]
+    );
+}

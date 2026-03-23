@@ -482,6 +482,102 @@ async fn test_stop_completes_without_blocking_lsof_scan() {
     assert!(!registry.is_running(&key).await);
 }
 
+// --- list_by_context_type tests ---
+
+#[tokio::test]
+async fn test_list_by_context_type_returns_only_matching() {
+    let db = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(db.shared_conn());
+
+    registry
+        .register(
+            RunningAgentKey::new("ideation", "s1"),
+            100,
+            "c1".to_string(),
+            "r1".to_string(),
+            None,
+            None,
+        )
+        .await;
+    registry
+        .register(
+            RunningAgentKey::new("ideation", "s2"),
+            200,
+            "c2".to_string(),
+            "r2".to_string(),
+            None,
+            None,
+        )
+        .await;
+    registry
+        .register(
+            RunningAgentKey::new("task_execution", "t1"),
+            300,
+            "c3".to_string(),
+            "r3".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let ideation = registry.list_by_context_type("ideation").await.unwrap();
+    assert_eq!(ideation.len(), 2);
+    for (key, _) in &ideation {
+        assert_eq!(key.context_type, "ideation");
+    }
+
+    let task_exec = registry.list_by_context_type("task_execution").await.unwrap();
+    assert_eq!(task_exec.len(), 1);
+    assert_eq!(task_exec[0].0.context_id, "t1");
+}
+
+#[tokio::test]
+async fn test_list_by_context_type_returns_empty_when_no_match() {
+    let db = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(db.shared_conn());
+
+    registry
+        .register(
+            RunningAgentKey::new("task_execution", "t1"),
+            100,
+            "c1".to_string(),
+            "r1".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let result = registry.list_by_context_type("ideation").await.unwrap();
+    assert!(result.is_empty());
+}
+
+#[tokio::test]
+async fn test_list_by_context_type_returns_full_info() {
+    let db = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(db.shared_conn());
+
+    registry
+        .register(
+            RunningAgentKey::new("ideation", "session-abc"),
+            54321,
+            "conv-xyz".to_string(),
+            "run-abc".to_string(),
+            Some("/tmp/worktree".to_string()),
+            None,
+        )
+        .await;
+
+    let result = registry.list_by_context_type("ideation").await.unwrap();
+    assert_eq!(result.len(), 1);
+    let (key, info) = &result[0];
+    assert_eq!(key.context_type, "ideation");
+    assert_eq!(key.context_id, "session-abc");
+    assert_eq!(info.pid, 54321);
+    assert_eq!(info.conversation_id, "conv-xyz");
+    assert_eq!(info.agent_run_id, "run-abc");
+    assert_eq!(info.worktree_path.as_deref(), Some("/tmp/worktree"));
+}
+
 #[tokio::test]
 async fn test_try_register_blocks_concurrent_claim() {
     let db = setup_conn();

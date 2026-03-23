@@ -19,13 +19,16 @@
 
 use super::helpers::*;
 use crate::application::AppState;
+use crate::application::chat_service::freshness_routing::{
+    FreshnessRouteResult, freshness_return_route,
+};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, Project, ProjectId, Task};
 use crate::domain::services::{MemoryRunningAgentRegistry, MessageQueue};
+use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::transition_handler::merge_helpers::{
     compute_task_worktree_path, is_merge_worktree_path, restore_task_worktree,
 };
-use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::{State, TransitionHandler};
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -71,7 +74,10 @@ async fn re_review_worktree_restore() {
     // However, to keep the worktree under the temp dir (for reliable cleanup), we
     // set worktree_parent_directory explicitly to repo_path.
     let project_id = ProjectId::from_string("proj-wt-restore-1".to_string());
-    let mut project = Project::new("wt-restore-project".to_string(), repo_path.to_string_lossy().to_string());
+    let mut project = Project::new(
+        "wt-restore-project".to_string(),
+        repo_path.to_string_lossy().to_string(),
+    );
     project.id = project_id.clone();
     project.base_branch = Some("main".to_string());
     // Place worktrees under the temp dir so they are auto-cleaned on drop.
@@ -126,7 +132,12 @@ async fn re_review_worktree_restore() {
 
     // Cleanup: remove the git worktree that was created so the TempDir can be removed cleanly.
     let _ = std::process::Command::new("git")
-        .args(["worktree", "remove", "--force", returned_path.to_str().unwrap()])
+        .args([
+            "worktree",
+            "remove",
+            "--force",
+            returned_path.to_str().unwrap(),
+        ])
         .current_dir(repo_path)
         .output();
 }
@@ -270,6 +281,110 @@ async fn merging_to_pending_review_worktree_path_reset() {
     }
     // If None: ReviewWorktreeMissing was hit (branch/worktree absent) and the caller set it to None.
     // Both None and a non-merge path are acceptable postconditions for L1.
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test 3: Freshness return to execution restores stale merge-prefixed worktree_path
+//
+// Covers the execution-origin path:
+//   Merging + plan_update_conflict + freshness_origin_state="executing"
+//   → freshness_return_route() → Ready
+//
+// Regression: without this repair, the task could return to Ready with
+// worktree_path still pointing at merge-{id}, and the next Executing spawn would
+// fail with "context points to merge worktree".
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn freshness_return_to_ready_restores_merge_prefixed_worktree_path() {
+    let git_repo = setup_real_git_repo();
+    let path = git_repo.path();
+
+    let app_state = AppState::new_test();
+
+    let mut project = Project::new(
+        "wt-restore-execution-origin-project".to_string(),
+        path.to_string_lossy().to_string(),
+    );
+    project.base_branch = Some("main".to_string());
+    project.worktree_parent_directory = Some(path.to_string_lossy().to_string());
+    let project_id = project.id.clone();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(
+        project_id.clone(),
+        "Execution-origin worktree restore test".to_string(),
+    );
+    let task_id = task.id.clone();
+    let task_id_str = task_id.as_str().to_string();
+    task.internal_status = InternalStatus::Merging;
+    task.task_branch = Some(git_repo.task_branch.clone());
+    task.worktree_path = Some(format!("/nonexistent/merge-{}", task_id_str));
+    task.metadata = Some(
+        serde_json::json!({
+            "plan_update_conflict": true,
+            "branch_freshness_conflict": true,
+            "freshness_origin_state": "executing",
+            "freshness_conflict_count": 1,
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task).await.unwrap();
+
+    let service = build_transition_service(&app_state);
+    let current_task = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task must exist");
+
+    let result = freshness_return_route(
+        &current_task,
+        Arc::clone(&app_state.task_repo),
+        &service,
+        &project,
+        None,
+    )
+    .await
+    .expect("freshness return to execution must succeed");
+
+    match result {
+        FreshnessRouteResult::FreshnessRouted(state) => assert_eq!(state, "executing"),
+        FreshnessRouteResult::NormalMerge => panic!("Expected FreshnessRouted"),
+    }
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task must exist after routing");
+    assert_eq!(updated.internal_status, InternalStatus::Ready);
+
+    let restored_wt = updated
+        .worktree_path
+        .as_deref()
+        .expect("execution-origin routing should restore task worktree_path");
+    assert!(
+        !is_merge_worktree_path(restored_wt),
+        "Execution-origin routing must not leave a merge-prefixed worktree_path. Got: {}",
+        restored_wt
+    );
+    assert!(
+        restored_wt.contains(&format!("task-{}", task_id_str)),
+        "Restored execution worktree_path should reference task-{{id}}. Got: {}",
+        restored_wt
+    );
+    assert!(
+        std::path::Path::new(restored_wt).exists(),
+        "Restored execution worktree should exist on disk. Path: {}",
+        restored_wt
+    );
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

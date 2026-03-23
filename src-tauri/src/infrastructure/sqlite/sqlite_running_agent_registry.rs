@@ -14,6 +14,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use super::DbConnection;
+use crate::AppError;
 use crate::domain::services::{
     is_process_alive, kill_process, RunningAgentInfo, RunningAgentKey, RunningAgentRegistry,
 };
@@ -33,6 +34,37 @@ impl SqliteRunningAgentRegistry {
             tokens: Arc::new(Mutex::new(HashMap::new())),
         }
     }
+}
+
+/// Parse a `RunningAgentInfo` from a SELECT row with column order:
+///   0: pid, 1: conversation_id, 2: agent_run_id, 3: started_at, 4: worktree_path, 5: last_active_at
+///
+/// Extracts the 4× duplicated parsing logic from `unregister`, `get`, `try_register`,
+/// and `cleanup_stale_entry` into one authoritative location.
+fn parse_running_agent_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RunningAgentInfo> {
+    let pid: u32 = row.get(0)?;
+    let conversation_id: String = row.get(1)?;
+    let agent_run_id: String = row.get(2)?;
+    let started_at_str: String = row.get(3)?;
+    let worktree_path: Option<String> = row.get(4)?;
+    let last_active_at_str: Option<String> = row.get(5)?;
+    let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .unwrap_or_else(|_| chrono::Utc::now());
+    let last_active_at = last_active_at_str.and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(&s)
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .ok()
+    });
+    Ok(RunningAgentInfo {
+        pid,
+        conversation_id,
+        agent_run_id,
+        started_at,
+        worktree_path,
+        cancellation_token: None, // Populated from in-memory token map by caller
+        last_active_at,
+    })
 }
 
 #[async_trait]
@@ -138,31 +170,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                 let info = match conn.query_row(
                     "SELECT pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at FROM running_agents WHERE context_type = ?1 AND context_id = ?2 AND agent_run_id = ?3",
                     rusqlite::params![&ctx_type, &ctx_id, &run_id],
-                    |row| {
-                        let pid: u32 = row.get(0)?;
-                        let conversation_id: String = row.get(1)?;
-                        let agent_run_id: String = row.get(2)?;
-                        let started_at_str: String = row.get(3)?;
-                        let worktree_path: Option<String> = row.get(4)?;
-                        let last_active_at_str: Option<String> = row.get(5)?;
-                        let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
-                            .map(|dt| dt.with_timezone(&chrono::Utc))
-                            .unwrap_or_else(|_| chrono::Utc::now());
-                        let last_active_at = last_active_at_str.and_then(|s| {
-                            chrono::DateTime::parse_from_rfc3339(&s)
-                                .map(|dt| dt.with_timezone(&chrono::Utc))
-                                .ok()
-                        });
-                        Ok(RunningAgentInfo {
-                            pid,
-                            conversation_id,
-                            agent_run_id,
-                            started_at,
-                            worktree_path,
-                            cancellation_token: None, // Populated below from in-memory map
-                            last_active_at,
-                        })
-                    },
+                    parse_running_agent_row,
                 ) {
                     Ok(info) => info,
                     Err(_) => return Ok(None),
@@ -219,31 +227,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                     .query_row(
                         "SELECT pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
                         rusqlite::params![ctx_type, ctx_id],
-                        |row| {
-                            let pid: u32 = row.get(0)?;
-                            let conversation_id: String = row.get(1)?;
-                            let agent_run_id: String = row.get(2)?;
-                            let started_at_str: String = row.get(3)?;
-                            let worktree_path: Option<String> = row.get(4)?;
-                            let last_active_at_str: Option<String> = row.get(5)?;
-                            let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
-                                .map(|dt| dt.with_timezone(&chrono::Utc))
-                                .unwrap_or_else(|_| chrono::Utc::now());
-                            let last_active_at = last_active_at_str.and_then(|s| {
-                                chrono::DateTime::parse_from_rfc3339(&s)
-                                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                                    .ok()
-                            });
-                            Ok(RunningAgentInfo {
-                                pid,
-                                conversation_id,
-                                agent_run_id,
-                                started_at,
-                                worktree_path,
-                                cancellation_token: None,
-                                last_active_at,
-                            })
-                        },
+                        parse_running_agent_row,
                     )
                     .ok())
             })
@@ -399,6 +383,75 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
         results
     }
 
+    async fn list_by_context_type(
+        &self,
+        context_type: &str,
+    ) -> Result<Vec<(RunningAgentKey, RunningAgentInfo)>, String> {
+        let ctx_type = context_type.to_string();
+
+        let mut results = self
+            .db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT context_type, context_id, pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at FROM running_agents WHERE context_type = ?1",
+                )?;
+
+                let mut results = Vec::new();
+                let mut rows = stmt.query(rusqlite::params![ctx_type])?;
+
+                while let Some(row) = rows.next()? {
+                    let context_type: String = row.get(0)?;
+                    let context_id: String = row.get(1)?;
+                    let pid: u32 = row.get(2)?;
+                    let conversation_id: String = row.get(3)?;
+                    let agent_run_id: String = row.get(4)?;
+                    let started_at_str: String = row.get(5)?;
+                    let worktree_path: Option<String> = row.get(6)?;
+                    let last_active_at_str: Option<String> = row.get(7)?;
+
+                    let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
+                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                        .map_err(|e| AppError::Database(format!(
+                            "Failed to parse started_at '{}': {}", started_at_str, e
+                        )))?;
+                    let last_active_at = last_active_at_str
+                        .map(|s| {
+                            chrono::DateTime::parse_from_rfc3339(&s)
+                                .map(|dt| dt.with_timezone(&chrono::Utc))
+                                .map_err(|e| AppError::Database(format!(
+                                    "Failed to parse last_active_at '{}': {}", s, e
+                                )))
+                        })
+                        .transpose()?;
+
+                    results.push((
+                        RunningAgentKey { context_type, context_id },
+                        RunningAgentInfo {
+                            pid,
+                            conversation_id,
+                            agent_run_id,
+                            started_at,
+                            worktree_path,
+                            cancellation_token: None,
+                            last_active_at,
+                        },
+                    ));
+                }
+
+                Ok(results)
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Attach cancellation tokens from in-memory map
+        let tokens = self.tokens.lock().await;
+        for (key, info) in &mut results {
+            info.cancellation_token = tokens.get(key).cloned();
+        }
+
+        Ok(results)
+    }
+
     async fn stop_all(&self) -> Vec<RunningAgentKey> {
         // Cancel all tokens first
         {
@@ -467,32 +520,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                     .query_row(
                         "SELECT pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
                         rusqlite::params![&ctx_type, &ctx_id],
-                        |row| {
-                            let pid: u32 = row.get(0)?;
-                            let conv_id: String = row.get(1)?;
-                            let run_id: String = row.get(2)?;
-                            let started_at_str: String = row.get(3)?;
-                            let worktree_path: Option<String> = row.get(4)?;
-                            let last_active_at_str: Option<String> = row.get(5)?;
-                            let started_at =
-                                chrono::DateTime::parse_from_rfc3339(&started_at_str)
-                                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                                    .unwrap_or_else(|_| chrono::Utc::now());
-                            let last_active_at = last_active_at_str.and_then(|s| {
-                                chrono::DateTime::parse_from_rfc3339(&s)
-                                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                                    .ok()
-                            });
-                            Ok(RunningAgentInfo {
-                                pid,
-                                conversation_id: conv_id,
-                                agent_run_id: run_id,
-                                started_at,
-                                worktree_path,
-                                cancellation_token: None,
-                                last_active_at,
-                            })
-                        },
+                        parse_running_agent_row,
                     )
                     .ok();
 
@@ -606,6 +634,75 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
         }
 
         db_result
+    }
+
+    async fn cleanup_stale_entry(
+        &self,
+        key: &RunningAgentKey,
+    ) -> Result<Option<RunningAgentInfo>, String> {
+        // Read the current entry (if any)
+        let info = self.get(key).await;
+        let info = match info {
+            Some(i) => i,
+            None => return Ok(None),
+        };
+
+        // Only remove if the process is actually dead (Proof Obligation 7):
+        // never deletes a live agent's row.
+        if is_process_alive(info.pid) {
+            tracing::debug!(
+                pid = info.pid,
+                context_type = %key.context_type,
+                context_id = %key.context_id,
+                "cleanup_stale_entry: process is still alive, skipping"
+            );
+            return Ok(None);
+        }
+
+        // Process is dead — delete the row unconditionally (no agent_run_id guard,
+        // because stale cleanup is intentionally scoped to dead processes only).
+        let ctx_type = key.context_type.clone();
+        let ctx_id = key.context_id.clone();
+        let ctx_type_log = key.context_type.clone();
+        let ctx_id_log = key.context_id.clone();
+        let delete_result = self
+            .db
+            .run(move |conn| {
+                conn.execute(
+                    "DELETE FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
+                    rusqlite::params![ctx_type, ctx_id],
+                )?;
+                Ok(())
+            })
+            .await;
+
+        if let Err(e) = delete_result {
+            tracing::error!(
+                context_type = %ctx_type_log,
+                context_id = %ctx_id_log,
+                error = %e,
+                "cleanup_stale_entry: DELETE failed"
+            );
+            return Err(e.to_string());
+        }
+
+        // Remove the in-memory cancellation token (already cancelled since process is dead)
+        let token = {
+            let mut tokens = self.tokens.lock().await;
+            tokens.remove(key)
+        };
+
+        tracing::info!(
+            context_type = %key.context_type,
+            context_id = %key.context_id,
+            pid = info.pid,
+            "cleanup_stale_entry: removed stale entry for dead process"
+        );
+
+        Ok(Some(RunningAgentInfo {
+            cancellation_token: token,
+            ..info
+        }))
     }
 }
 

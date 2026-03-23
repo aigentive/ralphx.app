@@ -68,8 +68,20 @@ export function useGlobalAgentLifecycle() {
     function guardedTermination(
       storeKey: string,
       eventContextId: string,
-      contextType: string
+      contextType: string,
+      conversationId: string
     ) {
+      // Stale conversation check (matches useAgentEvents.ts:101-107).
+      // Fail-open when activeConvId is null/undefined — prevents stuck generating
+      // for sessions never visited by a per-panel hook.
+      const activeConvId = useChatStore.getState().activeConversationIds[storeKey];
+      if (activeConvId != null && conversationId !== activeConvId) {
+        logger.warn(
+          `[GlobalAgentLifecycle] Ignoring stale termination: conv=${conversationId} != active=${activeConvId} for key=${storeKey}`
+        );
+        return;
+      }
+
       const parsed = parseStoreKey(storeKey);
       if (parsed?.contextType === "ideation") {
         const activeChildId =
@@ -119,6 +131,9 @@ export function useGlobalAgentLifecycle() {
         }
 
         useChatStore.getState().setAgentStatus(eventContextKey, "generating");
+        // Track the active conversation for this context so the stale guard can function
+        // for ALL sessions, not just those with mounted per-panel hooks.
+        useChatStore.getState().setActiveConversation(eventContextKey, payload.conversation_id);
       })
     );
 
@@ -140,7 +155,7 @@ export function useGlobalAgentLifecycle() {
         // Final heartbeat before transitioning to idle
         useChatStore.getState().updateLastAgentEvent(eventContextKey);
 
-        guardedTermination(eventContextKey, eventContextId, context_type);
+        guardedTermination(eventContextKey, eventContextId, context_type, payload.conversation_id);
         handleChildTerminationReverseLink(eventContextId);
       })
     );
@@ -162,6 +177,17 @@ export function useGlobalAgentLifecycle() {
 
         // Heartbeat: agent alive between turns
         useChatStore.getState().updateLastAgentEvent(eventContextKey);
+
+        // Stale conversation check MUST run before verification child guard.
+        // A stale turn_completed from an old conversation must not trigger the
+        // re-assert generating path for a session that should be idle.
+        const activeConvIdForTurn = useChatStore.getState().activeConversationIds[eventContextKey];
+        if (activeConvIdForTurn != null && payload.conversation_id !== activeConvIdForTurn) {
+          logger.warn(
+            `[GlobalAgentLifecycle] Ignoring stale turn_completed: conv=${payload.conversation_id} != active=${activeConvIdForTurn} for key=${eventContextKey}`
+          );
+          return;
+        }
 
         // Guard: if parent ideation session has active verification child, maintain
         // generating instead of transitioning to waiting_for_input
@@ -195,7 +221,7 @@ export function useGlobalAgentLifecycle() {
 
         const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
 
-        guardedTermination(eventContextKey, eventContextId, context_type);
+        guardedTermination(eventContextKey, eventContextId, context_type, payload.conversation_id);
         handleChildTerminationReverseLink(eventContextId);
       })
     );
@@ -215,7 +241,7 @@ export function useGlobalAgentLifecycle() {
 
         const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
 
-        guardedTermination(eventContextKey, eventContextId, context_type);
+        guardedTermination(eventContextKey, eventContextId, context_type, payload.conversation_id);
         handleChildTerminationReverseLink(eventContextId);
 
         // Error toast for execution contexts with deterministic id for deduplication.
@@ -235,6 +261,25 @@ export function useGlobalAgentLifecycle() {
             id: `error:${eventContextKey}`,
             duration: 8000,
           });
+        }
+      })
+    );
+
+    // agent:conversation_created → track new conversations for the stale guard
+    // Only sets activeConversationIds when no entry exists — avoids poisoning the guard
+    // if conversation_created fires but run_started never follows (e.g., spawn failure).
+    // NOTE: AgentConversationCreatedPayload does not include teammate_name (it's only emitted
+    // for primary agent conversations), so no teammate filter is needed here.
+    unsubscribes.push(
+      bus.subscribe<{
+        conversation_id: string;
+        context_type: string;
+        context_id: string;
+      }>("agent:conversation_created", (payload) => {
+        const key = buildStoreKey(payload.context_type as ContextType, payload.context_id);
+        const existing = useChatStore.getState().activeConversationIds[key];
+        if (existing == null) {
+          useChatStore.getState().setActiveConversation(key, payload.conversation_id);
         }
       })
     );

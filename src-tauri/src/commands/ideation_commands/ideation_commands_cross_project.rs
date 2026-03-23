@@ -346,6 +346,7 @@ pub async fn migrate_proposals_impl(
         cloned.migrated_from_proposal_id = Some(proposal.id.as_str().to_string());
         // Reset fields that shouldn't carry over
         cloned.created_task_id = None;
+        cloned.target_project = None;
         cloned.created_at = now;
         cloned.updated_at = now;
         new_proposals.push(cloned);
