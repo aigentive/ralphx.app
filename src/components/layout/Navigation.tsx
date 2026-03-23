@@ -22,36 +22,71 @@ import { cn } from "@/lib/utils";
 import { useTeamStore, selectHasAnyActiveTeam, selectTotalTeammateCount } from "@/stores/teamStore";
 import { useProjectStore } from "@/stores/projectStore";
 import { useProjectStats } from "@/hooks/useProjectStats";
+import { useFeatureFlags } from "@/hooks/useFeatureFlags";
+import type { FeatureFlags } from "@/types/feature-flags";
 import type { ViewType } from "@/types/chat";
 
-// Navigation items configuration
-// Order reflects workflow: plan ideas → visualize dependencies → execute tasks
-const NAV_ITEMS: {
+interface NavItemConfig {
   view: ViewType;
   label: string;
   icon: React.ElementType;
   shortcut: string;
-}[] = [
-  { view: "ideation", label: "Ideation", icon: Lightbulb, shortcut: "⌘1" },
-  { view: "graph", label: "Graph", icon: Network, shortcut: "⌘2" },
-  { view: "kanban", label: "Kanban", icon: LayoutGrid, shortcut: "⌘3" },
-  { view: "extensibility", label: "Extensibility", icon: Puzzle, shortcut: "⌘4" },
-  { view: "activity", label: "Activity", icon: Activity, shortcut: "⌘5" },
+  visible: (flags: FeatureFlags, taskCount: number) => boolean;
+}
+
+// Unified nav items with visibility predicates.
+// Order reflects workflow: plan ideas → visualize dependencies → execute tasks
+const ALL_NAV_ITEMS: NavItemConfig[] = [
+  {
+    view: "ideation",
+    label: "Ideation",
+    icon: Lightbulb,
+    shortcut: "⌘1",
+    visible: () => true,
+  },
+  {
+    view: "graph",
+    label: "Graph",
+    icon: Network,
+    shortcut: "⌘2",
+    visible: () => true,
+  },
+  {
+    view: "kanban",
+    label: "Kanban",
+    icon: LayoutGrid,
+    shortcut: "⌘3",
+    visible: () => true,
+  },
+  {
+    view: "extensibility",
+    label: "Extensibility",
+    icon: Puzzle,
+    shortcut: "⌘4",
+    visible: (flags) => flags.extensibilityPage,
+  },
+  {
+    view: "activity",
+    label: "Activity",
+    icon: Activity,
+    shortcut: "⌘5",
+    visible: (flags) => flags.activityPage,
+  },
+  {
+    view: "insights",
+    label: "Insights",
+    icon: TrendingUp,
+    shortcut: "⌘6",
+    visible: (_flags, taskCount) => taskCount >= 10,
+  },
+  {
+    view: "settings",
+    label: "Settings",
+    icon: SlidersHorizontal,
+    shortcut: "⌘7",
+    visible: () => true,
+  },
 ];
-
-const INSIGHTS_NAV_ITEM = {
-  view: "insights" as ViewType,
-  label: "Insights",
-  icon: TrendingUp,
-  shortcut: "⌘6",
-};
-
-const SETTINGS_NAV_ITEM = {
-  view: "settings" as ViewType,
-  label: "Settings",
-  icon: SlidersHorizontal,
-  shortcut: "⌘7",
-};
 
 interface NavigationProps {
   currentView: ViewType;
@@ -116,7 +151,10 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
   const teammateCount = useTeamStore(selectTotalTeammateCount);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const { data: stats } = useProjectStats(activeProjectId ?? undefined);
-  const showInsights = (stats?.taskCount ?? 0) >= 10;
+  const { data: featureFlags } = useFeatureFlags();
+
+  const taskCount = stats?.taskCount ?? 0;
+  const visibleItems = ALL_NAV_ITEMS.filter((item) => item.visible(featureFlags, taskCount));
 
   return (
     <nav
@@ -125,7 +163,7 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
       aria-label="Main views"
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
     >
-      {NAV_ITEMS.map(({ view, label, icon, shortcut }) => (
+      {visibleItems.map(({ view, label, icon, shortcut }) => (
         <NavItem
           key={view}
           view={view}
@@ -136,26 +174,6 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
           onViewChange={onViewChange}
         />
       ))}
-      {showInsights && (
-        <NavItem
-          key={INSIGHTS_NAV_ITEM.view}
-          view={INSIGHTS_NAV_ITEM.view}
-          label={INSIGHTS_NAV_ITEM.label}
-          icon={INSIGHTS_NAV_ITEM.icon}
-          shortcut={INSIGHTS_NAV_ITEM.shortcut}
-          currentView={currentView}
-          onViewChange={onViewChange}
-        />
-      )}
-      <NavItem
-        key={SETTINGS_NAV_ITEM.view}
-        view={SETTINGS_NAV_ITEM.view}
-        label={SETTINGS_NAV_ITEM.label}
-        icon={SETTINGS_NAV_ITEM.icon}
-        shortcut={SETTINGS_NAV_ITEM.shortcut}
-        currentView={currentView}
-        onViewChange={onViewChange}
-      />
 
       {/* Team active indicator */}
       {hasActiveTeam && (

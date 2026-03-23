@@ -9,6 +9,10 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import { enableMapSet } from "immer";
+import { invoke } from "@tauri-apps/api/core";
+import { featureFlagsSchema } from "@/types/feature-flags";
+import type { FeatureFlags } from "@/types/feature-flags";
+import { isViewEnabled } from "@/hooks/useFeatureFlags";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 import type { ExecutionStatusResponse } from "@/lib/tauri";
 import type { RecoveryPromptEvent } from "@/types/events";
@@ -147,6 +151,15 @@ function saveSessionByProject(map: Record<string, string | null>): void {
 }
 
 // ============================================================================
+// Feature Flags (cached for synchronous guard use in Zustand actions)
+// ============================================================================
+
+const ALL_ENABLED_FLAGS: FeatureFlags = {
+  activityPage: true,
+  extensibilityPage: true,
+};
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -264,6 +277,8 @@ interface UiState {
   viewByProject: Record<string, ViewType>;
   /** Per-project last ideation session ID (persisted to localStorage) */
   sessionByProject: Record<string, string | null>;
+  /** Cached UI feature flags (fetched once at startup, defaults to all-enabled) */
+  featureFlags: FeatureFlags;
 }
 
 // ============================================================================
@@ -384,6 +399,8 @@ interface UiActions {
   switchToProject: (oldProjectId: string | null, newProjectId: string) => void;
   /** Remove stale per-project route entries for a deleted project */
   cleanupProjectRoute: (projectId: string) => void;
+  /** Update cached feature flags (called once on startup after Tauri command resolves) */
+  setFeatureFlags: (flags: FeatureFlags) => void;
 }
 
 // ============================================================================
@@ -433,6 +450,7 @@ export const useUiStore = create<UiState & UiActions>()(
     collapsedColumns: loadCollapsedColumns(),
     viewByProject: loadViewByProject(),
     sessionByProject: loadSessionByProject(),
+    featureFlags: ALL_ENABLED_FLAGS,
 
     // Actions
     toggleSidebar: () =>
@@ -472,10 +490,11 @@ export const useUiStore = create<UiState & UiActions>()(
 
     setCurrentView: (view) =>
       set((state) => {
+        const safeView = isViewEnabled(view, state.featureFlags) ? view : "kanban";
         const projectId = useProjectStore.getState().activeProjectId;
-        state.currentView = view;
+        state.currentView = safeView;
         if (projectId) {
-          state.viewByProject[projectId] = view;
+          state.viewByProject[projectId] = safeView;
           saveViewByProject(state.viewByProject);
         }
       }),
@@ -780,6 +799,10 @@ export const useUiStore = create<UiState & UiActions>()(
         if (restoredView === "task_detail" || restoredView === "team") {
           restoredView = "kanban";
         }
+        // Feature flag guard: redirect disabled views to kanban
+        if (!isViewEnabled(restoredView, state.featureFlags)) {
+          restoredView = "kanban";
+        }
 
         // Persist updated maps
         saveViewByProject(state.viewByProject);
@@ -805,6 +828,11 @@ export const useUiStore = create<UiState & UiActions>()(
         saveViewByProject(state.viewByProject);
         saveSessionByProject(state.sessionByProject);
       }),
+
+    setFeatureFlags: (flags) =>
+      set((state) => {
+        state.featureFlags = flags;
+      }),
   }))
 );
 
@@ -812,3 +840,18 @@ export const useUiStore = create<UiState & UiActions>()(
 if (typeof window !== "undefined" && !window.__TAURI_INTERNALS__) {
   window.__uiStore = useUiStore;
 }
+
+// One-time feature flag initialization on module load.
+// Zustand stores cannot use React hooks, so flags are fetched via invoke directly.
+// Defaults to ALL_ENABLED until the async fetch resolves (prevents startup flash).
+// Errors are silently ignored — all-enabled defaults remain active.
+void invoke<unknown>("get_ui_feature_flags")
+  .then((raw) => {
+    const result = featureFlagsSchema.safeParse(raw);
+    if (result.success) {
+      useUiStore.getState().setFeatureFlags(result.data);
+    }
+  })
+  .catch(() => {
+    // Keep all-enabled defaults on error
+  });

@@ -17,6 +17,8 @@ pub struct AllRuntimeConfig {
     /// Seconds of inactivity before an agent is considered "likely_waiting" vs "likely_generating".
     /// Used by get_child_session_status to derive estimated_status. Default: 10.
     pub child_session_activity_threshold_secs: Option<u64>,
+    /// UI feature flags (page visibility). Defaults to all enabled.
+    pub ui_feature_flags: super::ui_config::UiFeatureFlagsConfig,
 }
 
 /// Configuration for the plan verification feature.
@@ -506,6 +508,15 @@ pub fn apply_env_overrides(cfg: &mut AllRuntimeConfig) {
     apply_env_overrides_with(cfg, &|name| std::env::var(name).ok());
 }
 
+/// Test-only entry point: apply env overrides using a custom lookup function.
+#[cfg(test)]
+pub(crate) fn apply_env_overrides_with_lookup(
+    cfg: &mut AllRuntimeConfig,
+    lookup: &dyn Fn(&str) -> Option<String>,
+) {
+    apply_env_overrides_with(cfg, lookup);
+}
+
 fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) -> Option<String>) {
     macro_rules! env_u64 {
         ($field:expr, $key:expr) => {
@@ -774,6 +785,15 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
         if let Ok(n) = v.parse::<u64>() {
             cfg.child_session_activity_threshold_secs = Some(n);
         }
+    }
+
+    // UI feature flags
+    if let Some(v) = lookup("RALPHX_UI_ACTIVITY_PAGE") {
+        cfg.ui_feature_flags.activity_page = matches!(v.to_lowercase().as_str(), "true" | "1");
+    }
+    if let Some(v) = lookup("RALPHX_UI_EXTENSIBILITY_PAGE") {
+        cfg.ui_feature_flags.extensibility_page =
+            matches!(v.to_lowercase().as_str(), "true" | "1");
     }
 }
 

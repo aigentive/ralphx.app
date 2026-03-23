@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useUiStore } from "./uiStore";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
+import type { FeatureFlags } from "@/types/feature-flags";
+
+const ALL_ENABLED: FeatureFlags = { activityPage: true, extensibilityPage: true };
 
 // ============================================================================
 // Mocks for per-project route persistence (cross-store reads)
@@ -51,6 +54,7 @@ describe("uiStore", () => {
       taskHistoryState: null,
       boardSearchQuery: null,
       activityFilter: { taskId: null, sessionId: null },
+      featureFlags: ALL_ENABLED,
     });
     // Clear localStorage to prevent cross-test contamination
     localStorage.clear();
@@ -834,6 +838,144 @@ describe("uiStore", () => {
       expect(useUiStore.getState().viewByProject[PROJECT_B]).toBe("ideation");
       // A's entry is still "graph"
       expect(useUiStore.getState().viewByProject[PROJECT_A]).toBe("graph");
+    });
+  });
+
+  // ============================================================================
+  // Feature Flag Guards
+  // ============================================================================
+
+  describe("feature flag guards", () => {
+    describe("setCurrentView", () => {
+      it("redirects to kanban when activity page is disabled", () => {
+        useUiStore.setState({
+          featureFlags: { activityPage: false, extensibilityPage: true },
+        });
+
+        useUiStore.getState().setCurrentView("activity");
+
+        expect(useUiStore.getState().currentView).toBe("kanban");
+      });
+
+      it("redirects to kanban when extensibility page is disabled", () => {
+        useUiStore.setState({
+          featureFlags: { activityPage: true, extensibilityPage: false },
+        });
+
+        useUiStore.getState().setCurrentView("extensibility");
+
+        expect(useUiStore.getState().currentView).toBe("kanban");
+      });
+
+      it("allows activity when activity page is enabled", () => {
+        useUiStore.setState({ featureFlags: ALL_ENABLED });
+
+        useUiStore.getState().setCurrentView("activity");
+
+        expect(useUiStore.getState().currentView).toBe("activity");
+      });
+
+      it("allows extensibility when extensibility page is enabled", () => {
+        useUiStore.setState({ featureFlags: ALL_ENABLED });
+
+        useUiStore.getState().setCurrentView("extensibility");
+
+        expect(useUiStore.getState().currentView).toBe("extensibility");
+      });
+
+      it("always allows kanban (not a feature-flagged view)", () => {
+        useUiStore.setState({
+          featureFlags: { activityPage: false, extensibilityPage: false },
+          currentView: "activity",
+        });
+
+        useUiStore.getState().setCurrentView("kanban");
+
+        expect(useUiStore.getState().currentView).toBe("kanban");
+      });
+
+      it("always allows graph (not a feature-flagged view)", () => {
+        useUiStore.setState({
+          featureFlags: { activityPage: false, extensibilityPage: false },
+        });
+
+        useUiStore.getState().setCurrentView("graph");
+
+        expect(useUiStore.getState().currentView).toBe("graph");
+      });
+
+      it("does not persist disabled view to viewByProject", () => {
+        mockProjectGetState.mockReturnValue({ activeProjectId: "proj-a" });
+        useUiStore.setState({
+          featureFlags: { activityPage: false, extensibilityPage: true },
+          viewByProject: {},
+        });
+
+        useUiStore.getState().setCurrentView("activity");
+
+        // viewByProject should store kanban (the redirected view), not activity
+        expect(useUiStore.getState().viewByProject["proj-a"]).toBe("kanban");
+      });
+    });
+
+    describe("switchToProject", () => {
+      const PROJECT_A = "proj-a";
+      const PROJECT_B = "proj-b";
+
+      it("redirects to kanban when restoring a disabled activity view", () => {
+        useUiStore.setState({
+          featureFlags: { activityPage: false, extensibilityPage: true },
+          viewByProject: { [PROJECT_B]: "activity" },
+        });
+
+        useUiStore.getState().switchToProject(PROJECT_A, PROJECT_B);
+
+        expect(useUiStore.getState().currentView).toBe("kanban");
+      });
+
+      it("redirects to kanban when restoring a disabled extensibility view", () => {
+        useUiStore.setState({
+          featureFlags: { activityPage: true, extensibilityPage: false },
+          viewByProject: { [PROJECT_B]: "extensibility" },
+        });
+
+        useUiStore.getState().switchToProject(PROJECT_A, PROJECT_B);
+
+        expect(useUiStore.getState().currentView).toBe("kanban");
+      });
+
+      it("restores activity when activity is enabled", () => {
+        useUiStore.setState({
+          featureFlags: ALL_ENABLED,
+          viewByProject: { [PROJECT_B]: "activity" },
+        });
+
+        useUiStore.getState().switchToProject(PROJECT_A, PROJECT_B);
+
+        expect(useUiStore.getState().currentView).toBe("activity");
+      });
+
+      it("redirects on initial load (null oldProjectId) with disabled persisted view", () => {
+        useUiStore.setState({
+          featureFlags: { activityPage: false, extensibilityPage: true },
+          viewByProject: { [PROJECT_B]: "activity" },
+        });
+
+        useUiStore.getState().switchToProject(null, PROJECT_B);
+
+        expect(useUiStore.getState().currentView).toBe("kanban");
+      });
+
+      it("both flags disabled — persisted activity falls back to kanban", () => {
+        useUiStore.setState({
+          featureFlags: { activityPage: false, extensibilityPage: false },
+          viewByProject: { [PROJECT_B]: "activity" },
+        });
+
+        useUiStore.getState().switchToProject(PROJECT_A, PROJECT_B);
+
+        expect(useUiStore.getState().currentView).toBe("kanban");
+      });
     });
   });
 });

@@ -5,6 +5,12 @@
 import { useEffect, useRef } from "react";
 import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import type { ViewType } from "@/types/chat";
+import type { FeatureFlags } from "@/types/feature-flags";
+
+const ALL_ENABLED_FLAGS: FeatureFlags = {
+  activityPage: true,
+  extensibilityPage: true,
+};
 
 interface UseAppKeyboardShortcutsProps {
   currentView: ViewType;
@@ -19,6 +25,7 @@ interface UseAppKeyboardShortcutsProps {
   closeWelcomeOverlay?: () => void;
   welcomeOverlayReturnView?: ViewType | null;
   openPlanQuickSwitcher?: () => void;
+  featureFlags?: FeatureFlags;
 }
 
 export function useAppKeyboardShortcuts({
@@ -34,6 +41,7 @@ export function useAppKeyboardShortcuts({
   closeWelcomeOverlay,
   welcomeOverlayReturnView,
   openPlanQuickSwitcher,
+  featureFlags = ALL_ENABLED_FLAGS,
 }: UseAppKeyboardShortcutsProps) {
   // Keyboard shortcuts for view switching (Cmd+1-5 for main views, Cmd+K for chat)
   useEffect(() => {
@@ -64,10 +72,12 @@ export function useAppKeyboardShortcuts({
             setCurrentView("kanban");
             break;
           case "4":
+            if (!featureFlags.extensibilityPage) break;
             e.preventDefault();
             setCurrentView("extensibility");
             break;
           case "5":
+            if (!featureFlags.activityPage) break;
             e.preventDefault();
             setCurrentView("activity");
             break;
@@ -202,7 +212,7 @@ export function useAppKeyboardShortcuts({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setCurrentView, toggleChatVisible, toggleReviewsPanel, toggleGraphRightPanel, currentView, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView, openPlanQuickSwitcher]);
+  }, [setCurrentView, toggleChatVisible, toggleReviewsPanel, toggleGraphRightPanel, currentView, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView, openPlanQuickSwitcher, featureFlags]);
 
   // Global shortcut for Cmd+, (registered at OS level to bypass DevTools interception)
   const setCurrentViewRef = useRef(setCurrentView);

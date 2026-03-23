@@ -1299,6 +1299,8 @@ pub fn run() {
             commands::api_key_commands::update_api_key_permissions,
             commands::api_key_commands::get_api_key_audit_log,
             commands::diagnostic_commands::get_agent_health,
+            // UI feature flag commands
+            commands::ui_commands::get_ui_feature_flags,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

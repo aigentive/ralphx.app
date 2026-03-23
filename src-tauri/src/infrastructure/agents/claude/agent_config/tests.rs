@@ -1350,3 +1350,101 @@ fn test_preapproved_tools_always_contains_permission_request() {
         );
     }
 }
+
+// ── UI Feature Flags Config tests ─────────────────────────────────────────────
+
+#[test]
+fn test_ui_feature_flags_default_all_enabled() {
+    let flags = UiFeatureFlagsConfig::default();
+    assert!(flags.activity_page, "activity_page should default to true");
+    assert!(flags.extensibility_page, "extensibility_page should default to true");
+}
+
+#[test]
+fn test_ui_config_default_no_feature_flags() {
+    let ui = UiConfig::default();
+    assert!(ui.feature_flags.is_none(), "UiConfig::default() should have no feature_flags");
+}
+
+#[test]
+fn test_yaml_parsing_with_ui_section() {
+    let yaml = r#"
+ui:
+  feature_flags:
+    activity_page: false
+    extensibility_page: true
+"#;
+    let cfg = parse_config_no_env_overrides(yaml).expect("should parse yaml with ui section");
+    assert!(!cfg.runtime.ui_feature_flags.activity_page, "activity_page should be false from yaml");
+    assert!(cfg.runtime.ui_feature_flags.extensibility_page, "extensibility_page should be true");
+}
+
+#[test]
+fn test_yaml_parsing_without_ui_section_backward_compat() {
+    // YAML without ui section: defaults to all flags enabled
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  permission_prompt_tool: permission_request
+agents: []
+"#;
+    let cfg = parse_config_no_env_overrides(yaml).expect("should parse yaml without ui section");
+    assert!(cfg.runtime.ui_feature_flags.activity_page, "should default to true when ui section absent");
+    assert!(cfg.runtime.ui_feature_flags.extensibility_page, "should default to true when ui section absent");
+}
+
+#[test]
+fn test_env_override_activity_page_false() {
+    let mut cfg = runtime_config::AllRuntimeConfig {
+        stream: runtime_config::StreamTimeoutsConfig::default(),
+        reconciliation: runtime_config::ReconciliationConfig::default(),
+        git: runtime_config::GitRuntimeConfig::default(),
+        scheduler: runtime_config::SchedulerConfig::default(),
+        supervisor: runtime_config::SupervisorRuntimeConfig::default(),
+        limits: runtime_config::LimitsConfig::default(),
+        verification: runtime_config::VerificationConfig::default(),
+        external_mcp: runtime_config::ExternalMcpConfig::default(),
+        child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
+    };
+    // Start with activity_page enabled (default), apply "false" override
+    runtime_config::apply_env_overrides_with_lookup(&mut cfg, &|name| match name {
+        "RALPHX_UI_ACTIVITY_PAGE" => Some("false".to_string()),
+        _ => None,
+    });
+    assert!(!cfg.ui_feature_flags.activity_page, "env override false should disable activity_page");
+    assert!(cfg.ui_feature_flags.extensibility_page, "extensibility_page untouched");
+}
+
+#[test]
+fn test_env_override_true_value_enables_flag() {
+    let mut cfg = runtime_config::AllRuntimeConfig {
+        stream: runtime_config::StreamTimeoutsConfig::default(),
+        reconciliation: runtime_config::ReconciliationConfig::default(),
+        git: runtime_config::GitRuntimeConfig::default(),
+        scheduler: runtime_config::SchedulerConfig::default(),
+        supervisor: runtime_config::SupervisorRuntimeConfig::default(),
+        limits: runtime_config::LimitsConfig::default(),
+        verification: runtime_config::VerificationConfig::default(),
+        external_mcp: runtime_config::ExternalMcpConfig::default(),
+        child_session_activity_threshold_secs: None,
+        ui_feature_flags: UiFeatureFlagsConfig { activity_page: false, extensibility_page: false },
+    };
+    runtime_config::apply_env_overrides_with_lookup(&mut cfg, &|name| match name {
+        "RALPHX_UI_ACTIVITY_PAGE" => Some("true".to_string()),
+        "RALPHX_UI_EXTENSIBILITY_PAGE" => Some("1".to_string()),
+        _ => None,
+    });
+    assert!(cfg.ui_feature_flags.activity_page, "env 'true' should enable activity_page");
+    assert!(cfg.ui_feature_flags.extensibility_page, "env '1' should enable extensibility_page");
+}
+
+#[test]
+fn test_ui_feature_flags_config_accessor_returns_defaults() {
+    // The accessor is backed by OnceLock — just verify it returns a valid struct
+    let flags = ui_feature_flags_config();
+    // Both fields should be bool (any value — loaded from yaml)
+    let _ = flags.activity_page;
+    let _ = flags.extensibility_page;
+}

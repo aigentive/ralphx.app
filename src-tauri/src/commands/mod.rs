@@ -37,6 +37,7 @@ pub mod task_step_commands_types;
 pub mod team_commands;
 pub mod test_data_commands;
 pub mod unified_chat_commands;
+pub mod ui_commands;
 pub mod workflow_commands;
 
 // Re-export commands for registration
@@ -170,6 +171,8 @@ pub use plan_branch_commands::{
     get_project_plan_branches, update_project_feature_branch_setting, EnableFeatureBranchInput,
     PlanBranchResponse,
 };
+// UI feature flag commands
+pub use ui_commands::{get_ui_feature_flags, UiFeatureFlagsResponse};
 // Plan commands (Active plan management)
 pub use plan_commands::{
     clear_active_plan, get_active_plan, list_plan_selector_candidates, set_active_plan,

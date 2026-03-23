@@ -1,10 +1,11 @@
 /**
- * Navigation component tests — team pill visibility + teammate count
+ * Navigation component tests — team pill visibility + teammate count + feature flags
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { Navigation } from "./Navigation";
+import type { FeatureFlags } from "@/types/feature-flags";
 
 // Dynamic mock state
 let mockState = {
@@ -22,9 +23,23 @@ vi.mock("@/stores/teamStore", () => ({
     ),
 }));
 
+// Mock useProjectStore — Navigation reads activeProjectId from it
+vi.mock("@/stores/projectStore", () => ({
+  useProjectStore: vi.fn((selector: (s: { activeProjectId: string | null }) => unknown) =>
+    selector({ activeProjectId: "proj-1" })
+  ),
+}));
+
 // Mock useProjectStats — avoids needing QueryClientProvider in Navigation tests
 vi.mock("@/hooks/useProjectStats", () => ({
   useProjectStats: vi.fn(() => ({ data: undefined, isLoading: false, isError: false })),
+}));
+
+// Feature flags mock — default all enabled
+let mockFeatureFlags: FeatureFlags = { activityPage: true, extensibilityPage: true };
+
+vi.mock("@/hooks/useFeatureFlags", () => ({
+  useFeatureFlags: vi.fn(() => ({ data: mockFeatureFlags })),
 }));
 
 // Mock tooltip components to avoid portal issues
@@ -42,6 +57,7 @@ describe("Navigation", () => {
 
   beforeEach(() => {
     mockState = { activeTeams: {} };
+    mockFeatureFlags = { activityPage: true, extensibilityPage: true };
   });
 
   it("renders all nav items", () => {
@@ -86,5 +102,64 @@ describe("Navigation", () => {
     // No teammate count element should exist
     const nav = screen.getByRole("navigation");
     expect(nav.querySelector(".rounded-full")).toBeNull();
+  });
+});
+
+describe("Navigation — feature flag filtering", () => {
+  const defaultProps = {
+    currentView: "kanban" as const,
+    onViewChange: vi.fn(),
+  };
+
+  beforeEach(() => {
+    mockState = { activeTeams: {} };
+    mockFeatureFlags = { activityPage: true, extensibilityPage: true };
+  });
+
+  it("renders activity and extensibility nav items when flags are enabled", () => {
+    mockFeatureFlags = { activityPage: true, extensibilityPage: true };
+
+    render(<Navigation {...defaultProps} />);
+
+    expect(screen.getByTestId("nav-activity")).toBeInTheDocument();
+    expect(screen.getByTestId("nav-extensibility")).toBeInTheDocument();
+  });
+
+  it("hides activity nav item when activityPage flag is false", () => {
+    mockFeatureFlags = { activityPage: false, extensibilityPage: true };
+
+    render(<Navigation {...defaultProps} />);
+
+    expect(screen.queryByTestId("nav-activity")).toBeNull();
+    expect(screen.getByTestId("nav-extensibility")).toBeInTheDocument();
+  });
+
+  it("hides extensibility nav item when extensibilityPage flag is false", () => {
+    mockFeatureFlags = { activityPage: true, extensibilityPage: false };
+
+    render(<Navigation {...defaultProps} />);
+
+    expect(screen.getByTestId("nav-activity")).toBeInTheDocument();
+    expect(screen.queryByTestId("nav-extensibility")).toBeNull();
+  });
+
+  it("hides both activity and extensibility when both flags are false", () => {
+    mockFeatureFlags = { activityPage: false, extensibilityPage: false };
+
+    render(<Navigation {...defaultProps} />);
+
+    expect(screen.queryByTestId("nav-activity")).toBeNull();
+    expect(screen.queryByTestId("nav-extensibility")).toBeNull();
+  });
+
+  it("always renders core nav items regardless of flags", () => {
+    mockFeatureFlags = { activityPage: false, extensibilityPage: false };
+
+    render(<Navigation {...defaultProps} />);
+
+    expect(screen.getByTestId("nav-ideation")).toBeInTheDocument();
+    expect(screen.getByTestId("nav-graph")).toBeInTheDocument();
+    expect(screen.getByTestId("nav-kanban")).toBeInTheDocument();
+    expect(screen.getByTestId("nav-settings")).toBeInTheDocument();
   });
 });

@@ -12,6 +12,7 @@ fn test_all_defaults_are_sensible() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
     assert_eq!(cfg.stream.merge_line_read_secs, 600);
     assert_eq!(cfg.stream.completion_grace_secs, 30);
@@ -55,6 +56,7 @@ fn test_merge_speed_env_overrides() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -87,6 +89,7 @@ fn test_env_overrides_apply() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -125,6 +128,7 @@ fn test_backward_compat_merger_timeout_env() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     // Old key only
@@ -147,6 +151,7 @@ fn test_new_key_takes_precedence_over_old() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     // Both keys set — new one should win (applied second)
@@ -170,6 +175,7 @@ fn test_invalid_env_values_ignored() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -195,6 +201,7 @@ fn test_validation_deadline_env_override() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -248,6 +255,7 @@ fn test_branch_freshness_timeout_env_override() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -304,6 +312,7 @@ fn test_execution_failed_max_retries_env_override() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -328,6 +337,7 @@ fn test_execution_failed_retry_base_secs_env_override() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -350,6 +360,7 @@ fn test_execution_failed_retry_max_secs_env_override() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -374,6 +385,7 @@ fn test_execution_failed_all_three_env_overrides_applied_together() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -413,6 +425,7 @@ fn test_circuit_breaker_env_overrides() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -437,6 +450,7 @@ fn test_execution_failed_invalid_env_values_keep_defaults() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -477,6 +491,7 @@ fn test_external_mcp_env_overrides_enabled_true() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -498,6 +513,7 @@ fn test_external_mcp_env_overrides_enabled_one() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -519,6 +535,7 @@ fn test_external_mcp_env_overrides_enabled_false() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig { enabled: true, ..ExternalMcpConfig::default() },
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -540,6 +557,7 @@ fn test_external_mcp_env_overrides_port_and_host() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -563,6 +581,7 @@ fn test_external_mcp_env_override_node_path() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -584,6 +603,7 @@ fn test_external_mcp_env_override_human_wait_timeout() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -605,6 +625,7 @@ fn test_external_mcp_invalid_port_env_keeps_default() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -726,6 +747,7 @@ fn test_git_isolation_env_overrides() {
         verification: VerificationConfig::default(),
         external_mcp: ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {

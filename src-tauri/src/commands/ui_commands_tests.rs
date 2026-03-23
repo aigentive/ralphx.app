@@ -1,0 +1,25 @@
+use super::*;
+
+#[test]
+fn test_ui_feature_flags_response_serializes_to_camel_case() {
+    let response = get_ui_feature_flags();
+    let json = serde_json::to_string(&response).unwrap();
+    // Verify camelCase field names (serde rename_all = "camelCase")
+    assert!(
+        json.contains("\"activityPage\":"),
+        "Expected camelCase 'activityPage' in JSON: {json}"
+    );
+    assert!(
+        json.contains("\"extensibilityPage\":"),
+        "Expected camelCase 'extensibilityPage' in JSON: {json}"
+    );
+    // Verify snake_case is NOT present
+    assert!(
+        !json.contains("\"activity_page\":"),
+        "Unexpected snake_case 'activity_page' in JSON: {json}"
+    );
+    assert!(
+        !json.contains("\"extensibility_page\":"),
+        "Unexpected snake_case 'extensibility_page' in JSON: {json}"
+    );
+}

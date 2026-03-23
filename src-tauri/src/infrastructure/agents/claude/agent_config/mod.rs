@@ -1,5 +1,7 @@
 pub mod runtime_config;
 pub mod team_config;
+mod ui_config;
+pub use ui_config::{UiConfig, UiFeatureFlagsConfig};
 
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -182,6 +184,8 @@ struct RalphxConfig {
     ideation: runtime_config::IdeationConfigWrapper,
     #[serde(default)]
     external_mcp: ExternalMcpConfig,
+    #[serde(default)]
+    ui: Option<UiConfig>,
 }
 
 const EMBEDDED_CONFIG: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../ralphx.yaml"));
@@ -459,6 +463,11 @@ fn parse_config_with_lookup(
             .unwrap_or_else(|| "medium".to_string()),
     };
 
+    let ui_feature_flags = parsed
+        .ui
+        .as_ref()
+        .and_then(|u| u.feature_flags.clone())
+        .unwrap_or_default();
     let mut runtime = AllRuntimeConfig {
         stream: parsed.timeouts.stream,
         reconciliation: parsed.reconciliation,
@@ -469,6 +478,7 @@ fn parse_config_with_lookup(
         verification: parsed.ideation.verification,
         external_mcp: parsed.external_mcp,
         child_session_activity_threshold_secs: parsed.ideation.child_session_activity_threshold_secs,
+        ui_feature_flags,
     };
     if runtime.external_mcp.max_external_ideation_sessions != 1 {
         tracing::warn!(
@@ -753,6 +763,7 @@ fn load_config() -> LoadedConfig {
             verification: VerificationConfig::default(),
             external_mcp: ExternalMcpConfig::default(),
             child_session_activity_threshold_secs: None,
+            ui_feature_flags: UiFeatureFlagsConfig::default(),
         };
         runtime_config::apply_env_overrides(&mut runtime);
         LoadedConfig {
@@ -871,6 +882,13 @@ pub fn verification_config() -> &'static VerificationConfig {
         .get_or_init(load_config)
         .runtime
         .verification
+}
+
+pub fn ui_feature_flags_config() -> &'static UiFeatureFlagsConfig {
+    &LOADED_CONFIG_CELL
+        .get_or_init(load_config)
+        .runtime
+        .ui_feature_flags
 }
 
 #[allow(dead_code)]

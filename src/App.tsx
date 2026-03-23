@@ -55,6 +55,7 @@ import {
 import { useProposalMutations } from "@/hooks/useProposals";
 import { useApplyProposals } from "@/hooks/useApplyProposals";
 import { useAppKeyboardShortcuts } from "@/hooks/useAppKeyboardShortcuts";
+import { useFeatureFlags, isViewEnabled } from "@/hooks/useFeatureFlags";
 import { useNavCompactBreakpoint } from "@/hooks";
 import { extractErrorMessage } from "@/lib/errors";
 import { api, getGitBranches, getGitDefaultBranch } from "@/lib/tauri";
@@ -109,6 +110,33 @@ function getTestPage(): React.ReactElement | null {
   return null;
 }
 
+function FeatureDisabledPlaceholder({
+  view,
+  yamlKey,
+  envVar,
+}: {
+  view: string;
+  yamlKey: string;
+  envVar: string;
+}) {
+  return (
+    <div
+      className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center"
+      data-testid={`feature-disabled-${view}`}
+    >
+      <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+        {view} page is disabled (dev mode)
+      </p>
+      <div className="text-xs font-mono rounded p-3 text-left" style={{ background: "var(--bg-surface)", color: "var(--text-secondary)" }}>
+        <p className="mb-2 font-sans" style={{ color: "var(--text-muted)" }}>Enable via ralphx.yaml:</p>
+        <pre>{`ui:\n  feature_flags:\n    ${yamlKey}: true`}</pre>
+        <p className="mt-3 mb-1 font-sans" style={{ color: "var(--text-muted)" }}>Or via env var:</p>
+        <pre>{`${envVar}=true`}</pre>
+      </div>
+    </div>
+  );
+}
+
 function AppContent() {
   // Check for test page first (must happen before any hooks for ESLint compliance)
   const testPage = useMemo(() => getTestPage(), []);
@@ -134,6 +162,15 @@ function AppContent() {
   const enterBattleMode = useUiStore((s) => s.enterBattleMode);
   const exitBattleMode = useUiStore((s) => s.exitBattleMode);
   const { isNavCompact } = useNavCompactBreakpoint();
+  const { data: featureFlags } = useFeatureFlags();
+
+  // Redirect to kanban in production when the current view is disabled via feature flags
+  useEffect(() => {
+    if (!import.meta.env.DEV && !isViewEnabled(currentView, featureFlags)) {
+      setCurrentView("kanban");
+    }
+  }, [currentView, featureFlags, setCurrentView]);
+
   // Welcome screen overlay state
   const showWelcomeOverlay = useUiStore((s) => s.showWelcomeOverlay);
   const welcomeOverlayReturnView = useUiStore((s) => s.welcomeOverlayReturnView);
@@ -711,6 +748,7 @@ function AppContent() {
     closeWelcomeOverlay,
     welcomeOverlayReturnView,
     openPlanQuickSwitcher: handleOpenPlanQuickSwitcher,
+    featureFlags,
   });
 
   // Global click handler to close quick switcher when clicking outside
@@ -1059,13 +1097,25 @@ function AppContent() {
                   }
                 />
               )}
-              {currentView === "extensibility" && <ExtensibilityView />}
+              {currentView === "extensibility" && (
+                isViewEnabled("extensibility", featureFlags)
+                  ? <ExtensibilityView />
+                  : import.meta.env.DEV
+                    ? <FeatureDisabledPlaceholder view="extensibility" yamlKey="extensibility_page" envVar="RALPHX_UI_EXTENSIBILITY_PAGE" />
+                    : null
+              )}
               {currentView === "activity" && (
-                <ActivityView
-                  showHeader
-                  {...(activityFilter.taskId && { taskId: activityFilter.taskId })}
-                  {...(activityFilter.sessionId && { sessionId: activityFilter.sessionId })}
-                />
+                isViewEnabled("activity", featureFlags)
+                  ? (
+                    <ActivityView
+                      showHeader
+                      {...(activityFilter.taskId && { taskId: activityFilter.taskId })}
+                      {...(activityFilter.sessionId && { sessionId: activityFilter.sessionId })}
+                    />
+                  )
+                  : import.meta.env.DEV
+                    ? <FeatureDisabledPlaceholder view="activity" yamlKey="activity_page" envVar="RALPHX_UI_ACTIVITY_PAGE" />
+                    : null
               )}
               {currentView === "insights" && <InsightsView />}
               {currentView === "settings" && (
