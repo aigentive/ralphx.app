@@ -1,6 +1,9 @@
 use super::*;
 use crate::domain::state_machine::TransitionHandler;
 use crate::domain::state_machine::transition_handler::merge_validation;
+use crate::domain::state_machine::transition_handler::{
+    is_merge_worktree_path, restore_task_worktree,
+};
 
 impl<'a> TransitionHandler<'a> {
     /// Check that the task's plan branch is still Active.
@@ -31,7 +34,10 @@ impl<'a> TransitionHandler<'a> {
             None => return Ok(()),
         };
 
-        if let Ok(Some(branch)) = plan_branch_repo.get_by_execution_plan_id(exec_plan_id).await {
+        if let Ok(Some(branch)) = plan_branch_repo
+            .get_by_execution_plan_id(exec_plan_id)
+            .await
+        {
             if !matches!(branch.status, PlanBranchStatus::Active) {
                 return Err(AppError::ExecutionBlocked(format!(
                     "Plan branch '{}' is {} — cannot execute task on inactive branch",
@@ -82,17 +88,16 @@ impl<'a> TransitionHandler<'a> {
                             exec_cwd = %exec_cwd.display(),
                             "Execution directory does not exist, skipping pre-execution setup"
                         );
-                    } else if let Some(setup_result) =
-                        merge_validation::run_pre_execution_setup(
-                            &project,
-                            &task,
-                            &exec_cwd,
-                            task_id_str,
-                            self.machine.context.services.app_handle.as_ref(),
-                            context,
-                            &tokio_util::sync::CancellationToken::new(),
-                        )
-                        .await
+                    } else if let Some(setup_result) = merge_validation::run_pre_execution_setup(
+                        &project,
+                        &task,
+                        &exec_cwd,
+                        task_id_str,
+                        self.machine.context.services.app_handle.as_ref(),
+                        context,
+                        &tokio_util::sync::CancellationToken::new(),
+                    )
+                    .await
                     {
                         if let Ok(Some(task_updated)) = task_repo.get_by_id(&task_id).await {
                             let log_json = serde_json::to_value(&setup_result.log)
@@ -127,9 +132,10 @@ impl<'a> TransitionHandler<'a> {
                                         task_id = task_id_str,
                                         "Pre-execution setup failed (install command failed). Blocking execution."
                                     );
-                                    return Err(AppError::ExecutionBlocked(
-                                        format!("Pre-execution setup failed: install command(s) failed. Check {} in task metadata for details.", metadata_key)
-                                    ));
+                                    return Err(AppError::ExecutionBlocked(format!(
+                                        "Pre-execution setup failed: install command(s) failed. Check {} in task metadata for details.",
+                                        metadata_key
+                                    )));
                                 }
                                 MergeValidationMode::Warn => {
                                     tracing::warn!(
@@ -232,7 +238,8 @@ impl<'a> TransitionHandler<'a> {
                 .await;
                 let config = reconciliation_config();
                 let app_handle = self.machine.context.services.app_handle.as_ref();
-                let activity_event_repo = self.machine.context.services.activity_event_repo.as_ref();
+                let activity_event_repo =
+                    self.machine.context.services.activity_event_repo.as_ref();
                 let freshness_result = freshness::ensure_branches_fresh(
                     repo_path,
                     &task,
@@ -275,6 +282,50 @@ impl<'a> TransitionHandler<'a> {
                 let pr_creation_guard_ref = &self.machine.context.services.pr_creation_guard;
                 let github_service_ref = &self.machine.context.services.github_service;
 
+                if task
+                    .worktree_path
+                    .as_deref()
+                    .map(is_merge_worktree_path)
+                    .unwrap_or(false)
+                {
+                    let stale_path = task.worktree_path.clone().unwrap_or_default();
+                    match restore_task_worktree(&mut task, &project, repo_path).await {
+                        Ok(restored) => {
+                            task.touch();
+                            tracing::info!(
+                                task_id = task_id_str,
+                                restored_path = %restored.display(),
+                                stale_path,
+                                "Restored stale merge worktree on execution entry"
+                            );
+                            if let Err(e) = task_repo.update(&task).await {
+                                tracing::error!(
+                                    task_id = task_id_str,
+                                    error = %e,
+                                    "Failed to persist restored execution worktree_path"
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                task_id = task_id_str,
+                                error = %e,
+                                stale_path,
+                                "Failed to restore stale merge worktree on execution entry — clearing worktree_path for recreation"
+                            );
+                            task.worktree_path = None;
+                            task.touch();
+                            if let Err(update_err) = task_repo.update(&task).await {
+                                tracing::error!(
+                                    task_id = task_id_str,
+                                    error = %update_err,
+                                    "Failed to clear stale execution worktree_path"
+                                );
+                            }
+                        }
+                    }
+                }
+
                 let mut branch_self_healed = false;
                 if let Some(ref branch) = task.task_branch.clone() {
                     let branch_exists = GitService::branch_exists(repo_path, branch)
@@ -292,7 +343,8 @@ impl<'a> TransitionHandler<'a> {
                                 let _ = GitService::delete_worktree(repo_path, &stored).await;
                             }
                         }
-                        let expected_wt_path_str = compute_task_worktree_path(&project, task_id_str);
+                        let expected_wt_path_str =
+                            compute_task_worktree_path(&project, task_id_str);
                         let expected_wt_path = std::path::PathBuf::from(&expected_wt_path_str);
                         if expected_wt_path.exists() {
                             let _ = GitService::delete_worktree(repo_path, &expected_wt_path).await;
@@ -322,7 +374,8 @@ impl<'a> TransitionHandler<'a> {
                         {
                             Ok((new_branch, new_worktree)) => {
                                 task.task_branch = Some(new_branch.clone());
-                                task.worktree_path = Some(new_worktree.to_string_lossy().to_string());
+                                task.worktree_path =
+                                    Some(new_worktree.to_string_lossy().to_string());
                                 task.touch();
                                 tracing::info!(
                                     task_id = task_id_str,
@@ -379,7 +432,8 @@ impl<'a> TransitionHandler<'a> {
 
                     if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await {
                         if let Some(ref branch) = task.task_branch.clone() {
-                            let expected_wt_path = compute_task_worktree_path(&project, task_id_str);
+                            let expected_wt_path =
+                                compute_task_worktree_path(&project, task_id_str);
                             let expected_wt_buf = std::path::PathBuf::from(&expected_wt_path);
                             let stored_path_exists = task
                                 .worktree_path
@@ -394,8 +448,7 @@ impl<'a> TransitionHandler<'a> {
                                 if !branch_exists {
                                     return Err(AppError::ExecutionBlocked(format!(
                                         "{}: branch '{}' no longer exists (deleted during prior merge cleanup). Task needs manual recovery or reset to Ready.",
-                                        GIT_ISOLATION_ERROR_PREFIX,
-                                        branch
+                                        GIT_ISOLATION_ERROR_PREFIX, branch
                                     )));
                                 }
                                 tracing::info!(
@@ -424,8 +477,7 @@ impl<'a> TransitionHandler<'a> {
                                     Err(e) => {
                                         return Err(AppError::ExecutionBlocked(format!(
                                             "{}: could not re-create missing worktree for task with existing branch: {}",
-                                            GIT_ISOLATION_ERROR_PREFIX,
-                                            e
+                                            GIT_ISOLATION_ERROR_PREFIX, e
                                         )));
                                     }
                                 }

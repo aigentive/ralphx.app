@@ -6,7 +6,7 @@
 // task merge), the task should be routed back to its origin state instead of
 // completing the merge and potentially losing the task's work.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::Runtime;
 
@@ -17,6 +17,9 @@ use crate::application::interactive_process_registry::{
 use crate::application::task_transition_service::TaskTransitionService;
 use crate::domain::entities::{InternalStatus, Project, Task};
 use crate::domain::repositories::TaskRepository;
+use crate::domain::state_machine::transition_handler::{
+    is_merge_worktree_path, restore_task_worktree,
+};
 use crate::error::{AppError, AppResult};
 
 /// Outcome returned by [`freshness_return_route`].
@@ -98,7 +101,10 @@ pub(crate) async fn freshness_return_route<R: Runtime>(
 
     let (target_status, origin_state_name) = match origin_state_opt.as_deref() {
         Some("executing") | Some("re_executing") => {
-            let name = origin_state_opt.as_deref().unwrap_or("executing").to_owned();
+            let name = origin_state_opt
+                .as_deref()
+                .unwrap_or("executing")
+                .to_owned();
             tracing::info!(
                 task_id = %task.id,
                 origin = %name,
@@ -174,6 +180,41 @@ pub(crate) async fn freshness_return_route<R: Runtime>(
         obj.remove("plan_update_conflict");
         obj.remove("branch_freshness_conflict");
         obj.remove("freshness_backoff_until");
+    }
+
+    if matches!(target_status, InternalStatus::Ready)
+        && fresh_task
+            .worktree_path
+            .as_deref()
+            .map(is_merge_worktree_path)
+            .unwrap_or(false)
+    {
+        let stale_path = fresh_task.worktree_path.clone().unwrap_or_default();
+        match restore_task_worktree(
+            &mut fresh_task,
+            project,
+            Path::new(&project.working_directory),
+        )
+        .await
+        {
+            Ok(restored) => {
+                tracing::info!(
+                    task_id = %task.id,
+                    restored_path = %restored.display(),
+                    stale_path,
+                    "freshness_return_route: restored stale merge worktree before execution return"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    task_id = %task.id,
+                    error = %e,
+                    stale_path,
+                    "freshness_return_route: failed to restore stale merge worktree before execution return — clearing worktree_path for execution self-heal"
+                );
+                fresh_task.worktree_path = None;
+            }
+        }
     }
 
     // -----------------------------------------------------------------------
