@@ -1,3 +1,4 @@
+import type React from "react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -36,12 +37,10 @@ const defaultProps: PlanItemProps = {
   isSelected: false,
   group: "drafts",
   isEditing: false,
-  editingTitle: "",
   isMenuOpen: false,
   inputRef: { current: null },
   onSelect: vi.fn(),
   onStartRename: vi.fn(),
-  onCancelRename: vi.fn(),
   onConfirmRename: vi.fn(),
   onTitleChange: vi.fn(),
   onKeyDown: vi.fn(),
@@ -71,11 +70,12 @@ describe("PlanItem", () => {
     expect(screen.getByText("Untitled Plan")).toBeInTheDocument();
   });
 
-  it("calls onSelect when clicked", async () => {
+  it("calls onSelect with planId when clicked", async () => {
     const onSelect = vi.fn();
     renderItem({ onSelect });
     await userEvent.click(screen.getByTestId("plan-item-session-1"));
     expect(onSelect).toHaveBeenCalledOnce();
+    expect(onSelect).toHaveBeenCalledWith("session-1");
   });
 
   describe("metadata line per group", () => {
@@ -169,7 +169,7 @@ describe("PlanItem", () => {
       expect(screen.queryByTestId("import-badge")).not.toBeInTheDocument();
     });
 
-    it("calls onNavigateToSource when import badge is clicked", async () => {
+    it("calls onNavigateToSource with planId when import badge is clicked", async () => {
       const onNavigateToSource = vi.fn();
       const onSelect = vi.fn();
       renderItem({
@@ -179,6 +179,7 @@ describe("PlanItem", () => {
       });
       await userEvent.click(screen.getByTestId("import-badge"));
       expect(onNavigateToSource).toHaveBeenCalledOnce();
+      expect(onNavigateToSource).toHaveBeenCalledWith("session-1");
       // Should NOT trigger onSelect (stopPropagation)
       expect(onSelect).not.toHaveBeenCalled();
     });
@@ -361,6 +362,69 @@ describe("PlanItem", () => {
       expect(screen.getByText("Reopen")).toBeInTheDocument();
       expect(screen.queryByText("Delete")).not.toBeInTheDocument();
       expect(screen.queryByText("Reset & Re-accept")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("React.memo optimization", () => {
+    it("PlanItem is exported as a React.memo component", () => {
+      // React.memo() returns an object with a .type property pointing to the inner function
+      // Regular function components are typeof "function", memo-wrapped are typeof "object"
+      expect(typeof PlanItem).toBe("object");
+      expect((PlanItem as Record<string, unknown>).type).toBeDefined();
+    });
+
+    it("re-renders when isSelected changes (visual confirmation)", () => {
+      const { rerender, getByTestId } = render(<PlanItem {...defaultProps} isSelected={false} />);
+      const item = getByTestId("plan-item-session-1");
+      // Not selected: transparent background
+      expect(item.style.background).toBe("transparent");
+
+      rerender(<PlanItem {...defaultProps} isSelected={true} />);
+      // Selected: non-transparent background (jsdom normalizes hsla to rgba)
+      expect(item.style.background).not.toBe("transparent");
+      expect(item.style.background).not.toBe("");
+    });
+
+    it("does not visually change item B when only item A's isSelected changes", () => {
+      const planA = createSession({ id: "session-A", title: "Session A" });
+      const planB = createSession({ id: "session-B", title: "Session B" });
+
+      const stableProps = {
+        group: "drafts" as SessionGroup,
+        isEditing: false,
+        isMenuOpen: false,
+        inputRef: { current: null } as React.RefObject<HTMLInputElement | null>,
+        onSelect: vi.fn(),
+        onStartRename: vi.fn(),
+        onConfirmRename: vi.fn(),
+        onTitleChange: vi.fn(),
+        onKeyDown: vi.fn(),
+        onMenuOpenChange: vi.fn(),
+      };
+
+      const { rerender, getByTestId } = render(
+        <>
+          <PlanItem {...stableProps} plan={planA} isSelected={false} />
+          <PlanItem {...stableProps} plan={planB} isSelected={false} />
+        </>
+      );
+
+      const itemB = getByTestId("plan-item-session-B");
+      const initialBBackground = itemB.style.background;
+
+      // Change only A's isSelected
+      rerender(
+        <>
+          <PlanItem {...stableProps} plan={planA} isSelected={true} />
+          <PlanItem {...stableProps} plan={planB} isSelected={false} />
+        </>
+      );
+
+      // B's visual state is unchanged
+      expect(itemB.style.background).toBe(initialBBackground);
+      // A changed to selected state (non-transparent)
+      expect(getByTestId("plan-item-session-A").style.background).not.toBe("transparent");
+      expect(getByTestId("plan-item-session-A").style.background).not.toBe("");
     });
   });
 });
