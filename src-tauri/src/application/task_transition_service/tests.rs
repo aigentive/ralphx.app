@@ -151,6 +151,22 @@ fn build_test_service(app_state: &AppState) -> TaskTransitionService<tauri::Wry>
     )
 }
 
+fn init_git_repo(path: &std::path::Path) {
+    let run = |args: &[&str]| {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(path)
+            .output()
+            .expect("git command failed");
+    };
+    run(&["init", "-b", "main"]);
+    run(&["config", "user.email", "test@test.com"]);
+    run(&["config", "user.name", "Test"]);
+    std::fs::write(path.join("README.md"), "# test").expect("write README");
+    run(&["add", "."]);
+    run(&["commit", "-m", "initial"]);
+}
+
 #[tokio::test]
 async fn test_transition_task_with_metadata_update_persists_atomically() {
     let app_state = AppState::new_test();
@@ -1654,6 +1670,96 @@ async fn test_freshness_conflict_at_cap_during_review_routes_to_failed() {
         "History must record Reviewing → Failed for cap-exceeded case"
     );
     assert_eq!(history[0].trigger, "system");
+}
+
+/// Regression: a review-origin freshness conflict must not immediately re-enter the
+/// PendingReview -> Reviewing auto-transition loop within the same transition call.
+///
+/// Before the fix, transition_task(PendingReview) on a task with conflict markers in the
+/// review worktree would churn Reviewing <-> PendingReview repeatedly until the retry cap
+/// or scheduler interference. The task must now park in PendingReview and wait for recovery.
+#[tokio::test]
+async fn test_review_origin_freshness_conflict_parks_in_pending_review_without_loop() {
+    let app_state = AppState::new_test();
+    let service = build_test_service(&app_state);
+
+    let project_temp = tempfile::TempDir::new().unwrap();
+    init_git_repo(project_temp.path());
+
+    let worktree_temp = tempfile::TempDir::new().unwrap();
+    init_git_repo(worktree_temp.path());
+    let conflict_file = worktree_temp.path().join("conflict.rs");
+    std::fs::write(&conflict_file, "fn clean() {}").unwrap();
+    std::process::Command::new("git")
+        .args(["add", "conflict.rs"])
+        .current_dir(worktree_temp.path())
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["commit", "-m", "add conflict.rs"])
+        .current_dir(worktree_temp.path())
+        .output()
+        .unwrap();
+    std::fs::write(
+        &conflict_file,
+        "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> theirs\n",
+    )
+    .unwrap();
+
+    let mut project = Project::new(
+        "Test Project".to_string(),
+        project_temp.path().to_string_lossy().to_string(),
+    );
+    project.base_branch = Some("main".to_string());
+    project.worktree_parent_directory = Some(
+        project_temp
+            .path()
+            .join("worktrees")
+            .to_string_lossy()
+            .to_string(),
+    );
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Loop regression task".to_string());
+    task.internal_status = InternalStatus::QaPassed;
+    task.task_branch = Some("main".to_string());
+    task.worktree_path = Some(worktree_temp.path().to_string_lossy().to_string());
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    let result = service
+        .transition_task(&task_id, InternalStatus::PendingReview)
+        .await;
+    assert!(result.is_ok(), "transition_task should succeed: {:?}", result);
+
+    let stored = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task must exist");
+    assert_eq!(
+        stored.internal_status,
+        InternalStatus::PendingReview,
+        "Task must park in PendingReview after review-origin freshness conflict"
+    );
+
+    let history = app_state.task_repo.get_status_history(&task_id).await.unwrap();
+    assert_eq!(
+        history.len(),
+        3,
+        "Expected exactly QaPassed->PendingReview, PendingReview->Reviewing, Reviewing->PendingReview"
+    );
+    assert_eq!(history[0].from, InternalStatus::QaPassed);
+    assert_eq!(history[0].to, InternalStatus::PendingReview);
+    assert_eq!(history[1].from, InternalStatus::PendingReview);
+    assert_eq!(history[1].to, InternalStatus::Reviewing);
+    assert_eq!(history[2].from, InternalStatus::Reviewing);
+    assert_eq!(history[2].to, InternalStatus::PendingReview);
+    assert!(
+        history.iter().all(|entry| entry.to != InternalStatus::Failed),
+        "Task must not churn into Failed while handling a single review-origin freshness conflict"
+    );
 }
 
 /// Test: successful review after prior freshness conflict — stale routing metadata cleared.

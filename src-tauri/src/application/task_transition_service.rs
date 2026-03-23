@@ -1581,10 +1581,11 @@ impl<R: Runtime> TaskTransitionService<R> {
                         }
 
                         if reviewing_origin {
-                            // Re-enter auto-transition loop: current_state is still PendingReview
-                            // (unchanged since we didn't reach `current_state = auto_state`).
-                            // Next iteration: check_auto_transition(PendingReview) → Reviewing.
-                            continue;
+                            tracing::info!(
+                                task_id = task_id.as_str(),
+                                "Parked task in PendingReview after review-origin freshness conflict; skipping immediate re-entry to Reviewing"
+                            );
+                            break;
                         } else {
                             // Spawn merger agent (existing behavior for execution-phase conflicts)
                             let merging_state = State::Merging;
