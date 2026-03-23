@@ -19,17 +19,21 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tracing::{debug, info};
 
+use crate::application::chat_service::{ChatService, SendMessageOptions};
 use crate::application::git_service::GitService;
-
+use crate::application::recovery_queue::{RecoveryItem, RecoveryPriority, RecoveryQueue};
 use crate::application::ReconciliationRunner;
 use crate::commands::execution_commands::{
     ActiveProjectState, ExecutionState, AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES,
 };
-use crate::domain::entities::{InternalStatus, ReviewNote, ReviewOutcome, ReviewerType};
+use crate::domain::entities::ideation::IdeationSessionStatus;
+use crate::domain::entities::{
+    ChatContextType, IdeationSessionId, InternalStatus, ReviewNote, ReviewOutcome, ReviewerType,
+};
 use crate::domain::repositories::{
     AgentRunRepository, AppStateRepository, ChatConversationRepository,
-    ExecutionSettingsRepository, ProjectRepository, ReviewRepository, TaskDependencyRepository,
-    TaskRepository,
+    ExecutionSettingsRepository, IdeationSessionRepository, ProjectRepository, ReviewRepository,
+    TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::state_machine::services::TaskScheduler;
 
@@ -115,6 +119,11 @@ pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
     app_handle: Option<AppHandle<R>>,
     /// Optional review repository for adding audit-trail ReviewNotes on crash recovery
     review_repo: Option<Arc<dyn ReviewRepository>>,
+    /// Optional chat service for Phase N+1 ideation recovery.
+    /// When provided, orphaned ideation sessions are re-spawned via send_message().
+    chat_service: Option<Arc<dyn ChatService>>,
+    /// Ideation session repository for validating sessions before recovery.
+    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
 }
 
 impl<R: Runtime> StartupJobRunner<R> {
@@ -175,6 +184,8 @@ impl<R: Runtime> StartupJobRunner<R> {
             task_scheduler: None,
             app_handle: None,
             review_repo: None,
+            chat_service: None,
+            ideation_session_repo,
         }
     }
 
@@ -197,6 +208,15 @@ impl<R: Runtime> StartupJobRunner<R> {
     /// Set the review repository for crash recovery audit notes (builder pattern).
     pub fn with_review_repo(mut self, review_repo: Arc<dyn ReviewRepository>) -> Self {
         self.review_repo = Some(review_repo);
+        self
+    }
+
+    /// Set the chat service for Phase N+1 ideation recovery (builder pattern).
+    ///
+    /// When set, orphaned ideation sessions captured in Phase 0 are re-spawned
+    /// via `ChatService::send_message()` after all other startup phases complete.
+    pub fn with_chat_service(mut self, chat_service: Arc<dyn ChatService>) -> Self {
+        self.chat_service = Some(chat_service);
         self
     }
 
@@ -224,6 +244,39 @@ impl<R: Runtime> StartupJobRunner<R> {
         if mcp_killed > 0 {
             info!(count = mcp_killed, "Killed orphaned MCP server processes");
         }
+
+        // Phase 0: Snapshot ideation agents BEFORE stop_all() clears the table.
+        // This captures orphaned ideation session PIDs for Phase N+1 recovery.
+        // Must be called before stop_all() — after that, the table is empty.
+        let ideation_snapshot = match self
+            .running_agent_registry
+            .list_by_context_type("ideation")
+            .await
+        {
+            Ok(entries) => {
+                if !entries.is_empty() {
+                    info!(
+                        count = entries.len(),
+                        "Phase 0: Captured ideation agent snapshot for recovery"
+                    );
+                }
+                entries
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "Phase 0: Failed to snapshot ideation agents — recovery will be skipped"
+                );
+                Vec::new()
+            }
+        };
+        // Phase N+1: Ideation recovery — fire-and-forget tokio::spawn.
+        // Runs after all existing phases so it doesn't interfere with task/review/merge recovery.
+        // Triggered at the end of run(); the spawn is set up here early to capture the snapshot.
+        let phase_n1_snapshot = ideation_snapshot;
+        let phase_n1_chat_service = self.chat_service.clone();
+        let phase_n1_session_repo = Arc::clone(&self.ideation_session_repo);
+        let phase_n1_app_handle = self.app_handle.clone();
 
         // Phase 105: Kill orphaned agent OS processes from previous session.
         // The SQLite-backed registry persists PIDs across restarts, so we can
@@ -623,6 +676,139 @@ impl<R: Runtime> StartupJobRunner<R> {
                 info!("Boot recovery: invoking try_retry_main_merges for deferred main-branch merges (running_count == 0)");
                 scheduler.try_retry_main_merges().await;
             }
+        }
+
+        // Phase N+1: Ideation agent recovery — fire-and-forget.
+        // Processes the snapshot captured in Phase 0, after all other startup phases complete.
+        // Does NOT block startup; app becomes responsive before recovery finishes.
+        if !phase_n1_snapshot.is_empty() {
+            if let Some(chat_service) = phase_n1_chat_service {
+                let mut recovery_queue =
+                    RecoveryQueue::new(std::time::Duration::from_secs(2));
+                for (key, info) in phase_n1_snapshot {
+                    let item = RecoveryItem {
+                        context_type: key.context_type,
+                        context_id: key.context_id,
+                        conversation_id: info.conversation_id,
+                        priority: RecoveryPriority::Ideation,
+                        started_at: info.started_at,
+                    };
+                    recovery_queue.enqueue(item);
+                }
+                let queue_len = recovery_queue.len();
+                info!(count = queue_len, "Phase N+1: Starting ideation recovery");
+
+                tokio::spawn(async move {
+                    let summary = recovery_queue
+                        .process(|item| {
+                            let chat_service = Arc::clone(&chat_service);
+                            let session_repo = Arc::clone(&phase_n1_session_repo);
+                            let app_handle = phase_n1_app_handle.clone();
+                            async move {
+                                Self::recover_ideation_session(
+                                    item,
+                                    chat_service.as_ref(),
+                                    session_repo.as_ref(),
+                                    app_handle.as_ref(),
+                                )
+                                .await
+                            }
+                        })
+                        .await;
+                    info!(
+                        recovered = summary.recovered,
+                        total = queue_len,
+                        skipped = summary.skipped,
+                        failed = summary.failed,
+                        "Phase N+1: Ideation recovery complete: recovered {}/{} sessions ({} skipped, {} failed)",
+                        summary.recovered,
+                        queue_len,
+                        summary.skipped,
+                        summary.failed,
+                    );
+                });
+            } else {
+                info!("Phase N+1: No chat service configured, skipping ideation recovery");
+            }
+        }
+    }
+
+    /// Phase N+1: Recover a single orphaned ideation session.
+    ///
+    /// 1. Validates the session exists and is still `Active` (skips otherwise).
+    /// 2. Calls `ChatService::send_message()` with a synthetic restart prompt.
+    ///    `send_message()` finds the existing conversation, loads message history,
+    ///    and spawns a fresh agent with history replayed (NOT `--resume`).
+    /// 3. Emits `agent:session_recovered` event after each successful spawn.
+    ///
+    /// Returns `Ok(())` for intentional skips (session gone/inactive) as well as
+    /// successful recoveries — only unexpected errors are returned as `Err`.
+    async fn recover_ideation_session(
+        item: crate::application::recovery_queue::RecoveryItem,
+        chat_service: &dyn ChatService,
+        session_repo: &dyn IdeationSessionRepository,
+        app_handle: Option<&AppHandle<R>>,
+    ) -> Result<(), String> {
+        let session_id = IdeationSessionId::from_string(item.context_id.clone());
+
+        // Validate session: must exist and be Active.
+        match session_repo.get_by_id(&session_id).await {
+            Ok(Some(session)) if session.status == IdeationSessionStatus::Active => {
+                // Active — proceed with recovery.
+            }
+            Ok(Some(session)) => {
+                info!(
+                    session_id = %item.context_id,
+                    status = %session.status,
+                    "Phase N+1: Skipping recovery — session is not active"
+                );
+                return Ok(());
+            }
+            Ok(None) => {
+                info!(
+                    session_id = %item.context_id,
+                    "Phase N+1: Skipping recovery — session not found"
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                return Err(format!(
+                    "Failed to validate session {}: {}",
+                    item.context_id, e
+                ));
+            }
+        }
+
+        // Send recovery message. send_message() finds the existing conversation,
+        // loads message history, and spawns a fresh agent with history replayed.
+        match chat_service
+            .send_message(
+                ChatContextType::Ideation,
+                &item.context_id,
+                "[System] App restarted. Assess the current session state and continue where you left off.",
+                SendMessageOptions {
+                    metadata: None,
+                    created_at: None,
+                    is_external_mcp: false,
+                },
+            )
+            .await
+        {
+            Ok(_) => {
+                info!(
+                    session_id = %item.context_id,
+                    conversation_id = %item.conversation_id,
+                    "Phase N+1: Recovered ideation session"
+                );
+                if let Some(handle) = app_handle {
+                    let _ = handle.emit("agent:session_recovered", &item.context_id);
+                }
+                Ok(())
+            }
+            Err(e) => Err(format!(
+                "send_message failed for session {}: {}",
+                item.context_id, e
+            )),
         }
     }
 

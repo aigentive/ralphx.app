@@ -733,6 +733,13 @@ impl RunningAgentRegistry for AlwaysErrStopRegistry {
             )
             .await
     }
+
+    async fn list_by_context_type(
+        &self,
+        context_type: &str,
+    ) -> Result<Vec<(RunningAgentKey, RunningAgentInfo)>, String> {
+        self.0.list_by_context_type(context_type).await
+    }
 }
 
 /// Test 1: "ideation" key cleanup.

@@ -251,8 +251,12 @@ impl<R: Runtime> ChatResumptionRunner<R> {
                     }
                 }
             }
+            // Ideation is handled by the dedicated recovery loop (Phase N+1 in StartupJobRunner),
+            // which provides stagger, priority ordering, and 24-hour cutoff that this runner lacks.
+            // ChatResumptionRunner must unconditionally skip ideation to prevent double-spawn.
+            ChatContextType::Ideation => true,
             // Other context types are not handled by StartupJobRunner
-            ChatContextType::Task | ChatContextType::Ideation | ChatContextType::Project => false,
+            ChatContextType::Task | ChatContextType::Project => false,
         }
     }
 

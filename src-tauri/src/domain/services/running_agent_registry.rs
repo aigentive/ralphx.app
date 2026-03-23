@@ -128,6 +128,18 @@ pub trait RunningAgentRegistry: Send + Sync {
     /// Get all running agents (for debugging/monitoring)
     async fn list_all(&self) -> Vec<(RunningAgentKey, RunningAgentInfo)>;
 
+    /// Get all running agents for a specific context type.
+    ///
+    /// Unlike `list_all()`, this method propagates row-parse errors rather than
+    /// silently dropping them, so callers can detect corrupted registry state.
+    ///
+    /// Used by `StartupJobRunner::run()` to snapshot ideation agents BEFORE
+    /// `stop_all()` clears the table on app restart.
+    async fn list_by_context_type(
+        &self,
+        context_type: &str,
+    ) -> Result<Vec<(RunningAgentKey, RunningAgentInfo)>, String>;
+
     /// Stop all running agents (for cleanup on shutdown/restart)
     async fn stop_all(&self) -> Vec<RunningAgentKey>;
 
@@ -803,6 +815,19 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
     async fn list_all(&self) -> Vec<(RunningAgentKey, RunningAgentInfo)> {
         let agents = self.agents.lock().await;
         agents.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+    }
+
+    async fn list_by_context_type(
+        &self,
+        context_type: &str,
+    ) -> Result<Vec<(RunningAgentKey, RunningAgentInfo)>, String> {
+        let agents = self.agents.lock().await;
+        let results = agents
+            .iter()
+            .filter(|(k, _)| k.context_type == context_type)
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        Ok(results)
     }
 
     async fn stop_all(&self) -> Vec<RunningAgentKey> {

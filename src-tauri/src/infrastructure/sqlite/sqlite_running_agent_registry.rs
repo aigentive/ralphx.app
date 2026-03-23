@@ -14,6 +14,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use super::DbConnection;
+use crate::AppError;
 use crate::domain::services::{
     is_process_alive, kill_process, RunningAgentInfo, RunningAgentKey, RunningAgentRegistry,
 };
@@ -397,6 +398,75 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
         }
 
         results
+    }
+
+    async fn list_by_context_type(
+        &self,
+        context_type: &str,
+    ) -> Result<Vec<(RunningAgentKey, RunningAgentInfo)>, String> {
+        let ctx_type = context_type.to_string();
+
+        let mut results = self
+            .db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT context_type, context_id, pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at FROM running_agents WHERE context_type = ?1",
+                )?;
+
+                let mut results = Vec::new();
+                let mut rows = stmt.query(rusqlite::params![ctx_type])?;
+
+                while let Some(row) = rows.next()? {
+                    let context_type: String = row.get(0)?;
+                    let context_id: String = row.get(1)?;
+                    let pid: u32 = row.get(2)?;
+                    let conversation_id: String = row.get(3)?;
+                    let agent_run_id: String = row.get(4)?;
+                    let started_at_str: String = row.get(5)?;
+                    let worktree_path: Option<String> = row.get(6)?;
+                    let last_active_at_str: Option<String> = row.get(7)?;
+
+                    let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
+                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                        .map_err(|e| AppError::Database(format!(
+                            "Failed to parse started_at '{}': {}", started_at_str, e
+                        )))?;
+                    let last_active_at = last_active_at_str
+                        .map(|s| {
+                            chrono::DateTime::parse_from_rfc3339(&s)
+                                .map(|dt| dt.with_timezone(&chrono::Utc))
+                                .map_err(|e| AppError::Database(format!(
+                                    "Failed to parse last_active_at '{}': {}", s, e
+                                )))
+                        })
+                        .transpose()?;
+
+                    results.push((
+                        RunningAgentKey { context_type, context_id },
+                        RunningAgentInfo {
+                            pid,
+                            conversation_id,
+                            agent_run_id,
+                            started_at,
+                            worktree_path,
+                            cancellation_token: None,
+                            last_active_at,
+                        },
+                    ));
+                }
+
+                Ok(results)
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Attach cancellation tokens from in-memory map
+        let tokens = self.tokens.lock().await;
+        for (key, info) in &mut results {
+            info.cancellation_token = tokens.get(key).cloned();
+        }
+
+        Ok(results)
     }
 
     async fn stop_all(&self) -> Vec<RunningAgentKey> {

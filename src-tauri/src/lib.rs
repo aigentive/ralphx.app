@@ -51,8 +51,8 @@ use crate::utils::redacting_writer::RedactingMakeWriter;
 use crate::infrastructure::{ExternalMcpHandle, ExternalMcpSupervisor};
 
 use application::{
-    ChatResumptionRunner, EventCleanupService, ReconciliationRunner, StartupJobRunner,
-    TaskSchedulerService, TaskTransitionService,
+    ChatResumptionRunner, ClaudeChatService, EventCleanupService, ReconciliationRunner,
+    StartupJobRunner, TaskSchedulerService, TaskTransitionService,
 };
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -580,6 +580,29 @@ pub fn run() {
                     Arc::clone(&transition_service),
                 ).await;
 
+                // Create chat service for Phase N+1 ideation recovery.
+                // Must be constructed BEFORE StartupJobRunner::new() consumes the repos.
+                let recovery_chat_service_app_handle = startup_runner_app_handle.clone();
+                let recovery_chat_service: Arc<dyn application::ChatService> = Arc::new(
+                    ClaudeChatService::new(
+                        Arc::clone(&startup_chat_message_repo),
+                        Arc::clone(&startup_chat_attachment_repo),
+                        Arc::clone(&startup_conversation_repo),
+                        Arc::clone(&startup_agent_run_repo),
+                        Arc::clone(&startup_project_repo),
+                        Arc::clone(&startup_task_repo),
+                        Arc::clone(&startup_task_dependency_repo),
+                        Arc::clone(&startup_ideation_session_repo),
+                        Arc::clone(&startup_activity_event_repo),
+                        Arc::clone(&startup_message_queue),
+                        Arc::clone(&startup_running_agent_registry),
+                        Arc::clone(&startup_memory_event_repo),
+                    )
+                    .with_execution_state(Arc::clone(&startup_execution_state))
+                    .with_app_handle(recovery_chat_service_app_handle)
+                    .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry)),
+                );
+
                 let runner = StartupJobRunner::new(
                     startup_task_repo,
                     startup_runner_task_dep_repo,
@@ -602,7 +625,8 @@ pub fn run() {
                 )
                 .with_task_scheduler(Arc::clone(&task_scheduler))
                 .with_app_handle(startup_runner_app_handle)
-                .with_review_repo(Arc::clone(&startup_review_repo));
+                .with_review_repo(Arc::clone(&startup_review_repo))
+                .with_chat_service(recovery_chat_service);
 
                 runner.run().await;
 
