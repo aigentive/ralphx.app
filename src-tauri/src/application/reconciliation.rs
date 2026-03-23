@@ -15,6 +15,7 @@ pub(crate) mod events;
 pub(crate) mod handlers;
 pub(crate) mod metadata;
 pub(crate) mod policy;
+pub mod recovery_queue;
 pub mod verification_reconciliation;
 
 use std::collections::HashSet;

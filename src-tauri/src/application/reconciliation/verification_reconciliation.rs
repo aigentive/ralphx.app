@@ -12,17 +12,23 @@
 // NOT via `reset_verification()` which guards on `in_progress=false` and is only for
 // conditional resets triggered by plan artifact updates.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use chrono::Utc;
 use tauri::{AppHandle, Runtime};
 
+use crate::application::reconciliation::recovery_queue::{
+    RecoveryItem, RecoveryKind, RecoveryMetadata, RecoveryQueue,
+};
 use crate::domain::entities::{
-    IdeationSessionId, IdeationSessionStatus, SessionPurpose, VerificationMetadata,
-    VerificationStatus,
+    ChatContextType, IdeationSession, IdeationSessionId, IdeationSessionStatus, SessionPurpose,
+    VerificationMetadata, VerificationStatus,
 };
 use crate::domain::repositories::IdeationSessionRepository;
-use crate::domain::services::emit_verification_status_changed;
+use crate::domain::services::{
+    emit_verification_status_changed, is_process_alive, RunningAgentRegistry,
+};
 
 /// Configuration for the verification reconciliation service.
 #[derive(Debug, Clone, Copy)]
@@ -57,6 +63,13 @@ pub struct VerificationReconciliationService {
     /// AppHandle for emitting UI events after reconciliation resets.
     /// `None` in tests (no Tauri runtime available).
     app_handle: Option<tauri::AppHandle>,
+    /// Shared recovery queue for submitting orphaned verification agent recovery items.
+    /// Set via `with_recovery_queue()`. Phase 2 (startup_scan) submits items here.
+    /// `None` degrades gracefully to the existing reset-only behavior.
+    recovery_queue: Option<Arc<RecoveryQueue>>,
+    /// Running agent registry for checking orphaned agent PIDs during startup_scan.
+    /// Set via `with_running_agent_registry()`. `None` = no recovery attempted.
+    running_agent_registry: Option<Arc<dyn RunningAgentRegistry>>,
 }
 
 impl VerificationReconciliationService {
@@ -68,12 +81,29 @@ impl VerificationReconciliationService {
             ideation_session_repo,
             config,
             app_handle: None,
+            recovery_queue: None,
+            running_agent_registry: None,
         }
     }
 
     /// Attach an AppHandle so the service can emit UI events after resetting stuck sessions.
     pub fn with_app_handle(mut self, app_handle: tauri::AppHandle) -> Self {
         self.app_handle = Some(app_handle);
+        self
+    }
+
+    /// Attach the shared RecoveryQueue for submitting orphaned verification agent recovery items.
+    ///
+    /// When set, `startup_scan()` (Phase 2) will attempt recovery before falling through
+    /// to the existing reset behavior. Without this, `startup_scan()` resets unconditionally.
+    pub fn with_recovery_queue(mut self, queue: Arc<RecoveryQueue>) -> Self {
+        self.recovery_queue = Some(queue);
+        self
+    }
+
+    /// Attach the RunningAgentRegistry for checking orphaned agent PIDs during startup_scan.
+    pub fn with_running_agent_registry(mut self, registry: Arc<dyn RunningAgentRegistry>) -> Self {
+        self.running_agent_registry = Some(registry);
         self
     }
 
@@ -89,6 +119,18 @@ impl VerificationReconciliationService {
     ///
     /// Returns the number of sessions reset.
     pub async fn scan_and_reset(&self, cold_boot: bool) -> u32 {
+        self.scan_and_reset_excluding(cold_boot, &HashSet::new()).await
+    }
+
+    /// Internal variant of `scan_and_reset` that skips parent session IDs in `skip_parent_ids`.
+    ///
+    /// Used by `startup_scan` to avoid resetting sessions already claimed for recovery.
+    /// `scan_and_reset` delegates here with an empty skip set.
+    async fn scan_and_reset_excluding(
+        &self,
+        cold_boot: bool,
+        skip_parent_ids: &HashSet<String>,
+    ) -> u32 {
         let manual_stale_before = Utc::now()
             - chrono::Duration::seconds(self.config.stale_after_secs as i64);
 
@@ -127,6 +169,15 @@ impl VerificationReconciliationService {
 
         let mut reset_count = 0u32;
         for session in &sessions {
+            // Skip sessions whose verification child was claimed for recovery by startup_scan.
+            if skip_parent_ids.contains(session.id.as_str()) {
+                tracing::info!(
+                    session_id = %session.id.as_str(),
+                    "Startup: skipping reset — verification agent recovery in progress"
+                );
+                continue;
+            }
+
             // Never reset ImportedVerified sessions — their pre-verified status must be preserved.
             if session.verification_status == VerificationStatus::ImportedVerified {
                 tracing::debug!(
@@ -230,6 +281,158 @@ impl VerificationReconciliationService {
         reset_count
     }
 
+    /// Scan running_agents for dead verification agent PIDs and submit recoverable orphans
+    /// to the RecoveryQueue. Returns the set of parent session IDs that were claimed.
+    ///
+    /// Only runs when both `running_agent_registry` and `recovery_queue` are set.
+    /// Gracefully returns an empty set if either is absent (degraded / test mode).
+    ///
+    /// Recovery submission criteria:
+    /// - context_type == "ideation" AND pid is not alive
+    /// - Session exists in DB, purpose == Verification, not Archived
+    /// - Parent session exists, is not ImportedVerified, has verification_in_progress = true
+    async fn scan_for_recoverable_orphans(&self) -> HashSet<String> {
+        let mut claimed_parent_ids = HashSet::new();
+
+        let registry = match self.running_agent_registry.as_ref() {
+            Some(r) => r,
+            None => return claimed_parent_ids,
+        };
+        let queue = match self.recovery_queue.as_ref() {
+            Some(q) => q,
+            None => return claimed_parent_ids,
+        };
+
+        let all_agents = registry.list_all().await;
+        let ideation_context_type = ChatContextType::Ideation.to_string();
+
+        for (key, info) in &all_agents {
+            // Only interested in ideation context entries
+            if key.context_type != ideation_context_type {
+                continue;
+            }
+            // Only interested in dead processes
+            if is_process_alive(info.pid) {
+                continue;
+            }
+
+            let session_id = IdeationSessionId::from_string(key.context_id.clone());
+
+            // Fetch the session to check if it is a verification child
+            let session = match self.ideation_session_repo.get_by_id(&session_id).await {
+                Ok(Some(s)) => s,
+                Ok(None) => {
+                    tracing::debug!(
+                        context_id = %key.context_id,
+                        "scan_for_recoverable_orphans: session not found in DB — skipping"
+                    );
+                    continue;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        context_id = %key.context_id,
+                        error = %e,
+                        "scan_for_recoverable_orphans: DB error fetching session — skipping"
+                    );
+                    continue;
+                }
+            };
+
+            // Only process non-archived verification child sessions
+            if session.session_purpose != SessionPurpose::Verification {
+                continue;
+            }
+            if session.status == IdeationSessionStatus::Archived {
+                continue;
+            }
+
+            let parent_id = match session.parent_session_id.as_ref() {
+                Some(id) => id.clone(),
+                None => {
+                    tracing::warn!(
+                        context_id = %key.context_id,
+                        "scan_for_recoverable_orphans: verification session has no parent — skipping"
+                    );
+                    continue;
+                }
+            };
+
+            // Resolve parent (3-guard check: not found, ImportedVerified, not in progress)
+            let parent = match resolve_verification_parent(
+                &parent_id,
+                &self.ideation_session_repo,
+                "scan_for_recoverable_orphans",
+            )
+            .await
+            {
+                ResolvedParent::Ready(p) => *p,
+                ResolvedParent::NotFound | ResolvedParent::ImportedVerified | ResolvedParent::AlreadyResolved => {
+                    continue;
+                }
+            };
+
+            // Extract recovery metadata from parent's verification_metadata
+            let parsed_meta: Option<VerificationMetadata> = parent
+                .verification_metadata
+                .as_ref()
+                .and_then(|s| serde_json::from_str(s).ok());
+
+            let current_round = parsed_meta.as_ref().map(|m| m.rounds.len() as u32);
+            let verification_generation = if parent.verification_generation >= 0 {
+                Some(parent.verification_generation as u32)
+            } else {
+                None
+            };
+            let plan_artifact_id = parent
+                .plan_artifact_id
+                .as_ref()
+                .map(|id| id.as_str().to_string());
+
+            let recovery_item = RecoveryItem {
+                context_type: ChatContextType::Ideation,
+                context_id: key.context_id.clone(),
+                recovery_kind: RecoveryKind::VerificationAgent,
+                // Verification children get lower priority (5) than parent ideation agents (10)
+                priority: 5,
+                parent_session_id: Some(parent_id.as_str().to_string()),
+                metadata: RecoveryMetadata {
+                    current_round,
+                    verification_generation,
+                    conversation_id: Some(info.conversation_id.clone()),
+                    plan_artifact_id,
+                },
+            };
+
+            match queue.submit(recovery_item) {
+                Ok(()) => {
+                    tracing::info!(
+                        context_id = %key.context_id,
+                        parent_id = %parent_id.as_str(),
+                        pid = info.pid,
+                        "scan_for_recoverable_orphans: submitted verification agent recovery item"
+                    );
+                    claimed_parent_ids.insert(parent_id.as_str().to_string());
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        context_id = %key.context_id,
+                        error = %e,
+                        "scan_for_recoverable_orphans: failed to submit recovery item — falling through to reset"
+                    );
+                }
+            }
+        }
+
+        if !claimed_parent_ids.is_empty() {
+            tracing::info!(
+                count = claimed_parent_ids.len(),
+                "scan_for_recoverable_orphans: claimed verification sessions for recovery"
+            );
+        }
+
+        claimed_parent_ids
+    }
+
     /// Archive all orphaned verification child sessions linked to `parent_id`.
     async fn archive_orphaned_children(&self, parent_id: &IdeationSessionId) {
         match self
@@ -286,12 +489,20 @@ impl VerificationReconciliationService {
 
     /// Startup scan — run once at boot before the periodic loop begins.
     ///
-    /// Uses `scan_and_reset(cold_boot: true)` which resets ALL in-progress sessions
+    /// When `recovery_queue` and `running_agent_registry` are set (production):
+    ///   1. Scans running_agents for dead verification agent PIDs.
+    ///   2. Submits recoverable orphans to the RecoveryQueue for re-spawn.
+    ///   3. Resets remaining stuck sessions (those not claimed by recovery).
+    ///
+    /// Without registry/queue set (tests or degraded mode): falls through to
+    /// `scan_and_reset(cold_boot: true)` which resets ALL in-progress sessions
     /// unconditionally (no TTL filter), since all agent processes are dead on restart.
+    ///
     /// Also archives all stale external sessions (cold boot — all agent processes are dead).
     pub async fn startup_scan(&self) {
         tracing::info!("Running verification startup scan (cold boot)...");
-        let count = self.scan_and_reset(true).await;
+        let recovery_claimed = self.scan_for_recoverable_orphans().await;
+        let count = self.scan_and_reset_excluding(true, &recovery_claimed).await;
         if count > 0 {
             tracing::info!(count, "Startup: reset orphaned verification in_progress states");
         }
@@ -438,6 +649,74 @@ impl VerificationReconciliationService {
 // run_completed reconciliation hooks
 // ---------------------------------------------------------------------------
 
+/// Outcome of resolving a verification parent session.
+///
+/// Used by `resolve_verification_parent()` to communicate why a parent was not usable,
+/// without losing semantic distinction between the different guard outcomes.
+enum ResolvedParent {
+    /// Parent found and eligible: not ImportedVerified, verification_in_progress = true.
+    Ready(Box<IdeationSession>),
+    /// Parent not found in DB (or DB error).
+    NotFound,
+    /// Parent found but verification_in_progress = false — already resolved, no action needed.
+    AlreadyResolved,
+    /// Parent found but is ImportedVerified — status must never be overwritten.
+    ImportedVerified,
+}
+
+/// Fetch a parent session and apply the standard 3-guard checks.
+///
+/// Guards applied in order:
+/// 1. DB lookup failure / not found → `ResolvedParent::NotFound`
+/// 2. `verification_status == ImportedVerified` → `ResolvedParent::ImportedVerified`
+/// 3. `!verification_in_progress` → `ResolvedParent::AlreadyResolved`
+///
+/// On success returns `ResolvedParent::Ready(parent)`.
+async fn resolve_verification_parent(
+    parent_id: &IdeationSessionId,
+    repo: &Arc<dyn IdeationSessionRepository>,
+    caller: &str,
+) -> ResolvedParent {
+    match repo.get_by_id(parent_id).await {
+        Ok(Some(parent)) => {
+            if parent.verification_status == VerificationStatus::ImportedVerified {
+                tracing::warn!(
+                    parent_id = %parent_id.as_str(),
+                    caller,
+                    "resolve_verification_parent: parent is ImportedVerified — skip"
+                );
+                ResolvedParent::ImportedVerified
+            } else if !parent.verification_in_progress {
+                tracing::debug!(
+                    parent_id = %parent_id.as_str(),
+                    caller,
+                    "resolve_verification_parent: verification not in progress — skip"
+                );
+                ResolvedParent::AlreadyResolved
+            } else {
+                ResolvedParent::Ready(Box::new(parent))
+            }
+        }
+        Ok(None) => {
+            tracing::warn!(
+                parent_id = %parent_id.as_str(),
+                caller,
+                "resolve_verification_parent: parent session not found"
+            );
+            ResolvedParent::NotFound
+        }
+        Err(e) => {
+            tracing::warn!(
+                parent_id = %parent_id.as_str(),
+                error = %e,
+                caller,
+                "resolve_verification_parent: DB error fetching parent"
+            );
+            ResolvedParent::NotFound
+        }
+    }
+}
+
 /// Reconcile verification state when a verification child agent's run completes successfully.
 ///
 /// Called from `handle_stream_success` when the completed session has
@@ -455,46 +734,26 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
     repo: &Arc<dyn IdeationSessionRepository>,
     app_handle: Option<&AppHandle<R>>,
 ) {
-    // Fetch parent session
-    let parent = match repo.get_by_id(parent_id).await {
-        Ok(Some(p)) => p,
-        Ok(None) => {
-            tracing::warn!(
+    // Resolve parent (fetch + 3-guard check)
+    let parent = match resolve_verification_parent(
+        parent_id,
+        repo,
+        "reconcile_verification_on_child_complete",
+    )
+    .await
+    {
+        ResolvedParent::Ready(p) => p,
+        ResolvedParent::NotFound | ResolvedParent::ImportedVerified => return,
+        ResolvedParent::AlreadyResolved => {
+            tracing::debug!(
                 parent_id = %parent_id.as_str(),
                 child_id = %child_id.as_str(),
-                "reconcile_verification_on_child_complete: parent session not found"
+                "reconcile_verification_on_child_complete: verification not in progress — archiving child only"
             );
-            return;
-        }
-        Err(e) => {
-            tracing::warn!(
-                parent_id = %parent_id.as_str(),
-                error = %e,
-                "reconcile_verification_on_child_complete: failed to fetch parent session"
-            );
+            archive_verification_session(repo, child_id).await;
             return;
         }
     };
-
-    // ImportedVerified guard — never overwrite pre-verified status
-    if parent.verification_status == VerificationStatus::ImportedVerified {
-        tracing::warn!(
-            parent_id = %parent_id.as_str(),
-            "Skipping reconciliation for ImportedVerified parent — status must not be overwritten"
-        );
-        return;
-    }
-
-    // No-op if verification is already resolved
-    if !parent.verification_in_progress {
-        tracing::debug!(
-            parent_id = %parent_id.as_str(),
-            child_id = %child_id.as_str(),
-            "reconcile_verification_on_child_complete: verification not in progress — archiving child only"
-        );
-        archive_verification_session(repo, child_id).await;
-        return;
-    }
 
     // Parse verification_metadata from parent
     let parsed_meta: Option<VerificationMetadata> = parent
@@ -654,41 +913,25 @@ pub async fn reset_verification_on_child_error<R: Runtime>(
         }
     };
 
-    // Fetch parent session
-    let parent = match repo.get_by_id(&parent_id).await {
-        Ok(Some(p)) => p,
-        Ok(None) => {
-            tracing::warn!(
-                parent_id = %parent_id.as_str(),
-                "reset_verification_on_child_error: parent session not found"
-            );
+    // Resolve parent (fetch + 3-guard check)
+    let parent = match resolve_verification_parent(
+        &parent_id,
+        repo,
+        "reset_verification_on_child_error",
+    )
+    .await
+    {
+        ResolvedParent::Ready(p) => p,
+        ResolvedParent::NotFound => {
             archive_verification_session(repo, child_id).await;
             return;
         }
-        Err(e) => {
-            tracing::warn!(
-                parent_id = %parent_id.as_str(),
-                error = %e,
-                "reset_verification_on_child_error: failed to fetch parent session"
-            );
+        ResolvedParent::ImportedVerified => return,
+        ResolvedParent::AlreadyResolved => {
+            archive_verification_session(repo, child_id).await;
             return;
         }
     };
-
-    // ImportedVerified guard — never overwrite pre-verified status
-    if parent.verification_status == VerificationStatus::ImportedVerified {
-        tracing::warn!(
-            parent_id = %parent_id.as_str(),
-            "Skipping error-reset for ImportedVerified parent — status must not be overwritten"
-        );
-        return;
-    }
-
-    // No-op if verification already resolved; still archive the child
-    if !parent.verification_in_progress {
-        archive_verification_session(repo, child_id).await;
-        return;
-    }
 
     // Build minimal metadata JSON with the error convergence_reason
     let error_metadata_json = serde_json::to_string(&serde_json::json!({

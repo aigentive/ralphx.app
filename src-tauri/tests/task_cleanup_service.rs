@@ -734,6 +734,13 @@ impl RunningAgentRegistry for AlwaysErrStopRegistry {
             .await
     }
 
+    async fn cleanup_stale_entry(
+        &self,
+        _key: &RunningAgentKey,
+    ) -> Result<Option<RunningAgentInfo>, String> {
+        Ok(None)
+    }
+
     async fn list_by_context_type(
         &self,
         context_type: &str,

@@ -182,6 +182,21 @@ pub trait RunningAgentRegistry: Send + Sync {
         worktree_path: Option<String>,
         cancellation_token: Option<CancellationToken>,
     ) -> Result<(), String>;
+
+    /// Remove a stale registry entry only if its process is no longer alive.
+    ///
+    /// Semantics (safe to call unconditionally — Proof Obligation 7):
+    /// - If no entry exists for `key`: returns `Ok(None)`.
+    /// - If entry exists and `is_process_alive(pid) == true`: returns `Ok(None)` (no-op).
+    /// - If entry exists and `is_process_alive(pid) == false`: deletes the row and
+    ///   returns `Ok(Some(info))` for audit logging.
+    ///
+    /// Used by `RecoveryQueueProcessor` before calling `send_message()` to unblock
+    /// Gate 2's `try_register()` (Constraint 3 of PDM-172).
+    async fn cleanup_stale_entry(
+        &self,
+        key: &RunningAgentKey,
+    ) -> Result<Option<RunningAgentInfo>, String>;
 }
 
 /// Check if a process with the given PID is still alive.
@@ -913,6 +928,36 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
             );
         }
         Ok(())
+    }
+
+    async fn cleanup_stale_entry(
+        &self,
+        key: &RunningAgentKey,
+    ) -> Result<Option<RunningAgentInfo>, String> {
+        let info = {
+            let agents = self.agents.lock().await;
+            agents.get(key).cloned()
+        };
+        let info = match info {
+            Some(i) => i,
+            None => return Ok(None),
+        };
+
+        // Only remove if the process is actually dead (Proof Obligation 7)
+        if self.process_ops.is_alive(info.pid) {
+            tracing::debug!(
+                pid = info.pid,
+                context_type = %key.context_type,
+                context_id = %key.context_id,
+                "cleanup_stale_entry: process is still alive, skipping"
+            );
+            return Ok(None);
+        }
+
+        // Process is dead — remove the entry
+        let mut agents = self.agents.lock().await;
+        let removed = agents.remove(key);
+        Ok(removed)
     }
 }
 

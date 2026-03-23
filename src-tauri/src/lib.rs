@@ -531,6 +531,23 @@ pub fn run() {
                 let verification_recon_app_handle = startup_app_handle.clone();
                 // Clone for external MCP startup (after HTTP server ready, at end of startup_jobs)
                 let external_mcp_app_handle = startup_app_handle.clone();
+                // Clone for recovery queue processor's chat service and event emission
+                let recovery_cs_app_handle = startup_app_handle.clone();
+                // Pre-clone repos for recovery queue processor's ClaudeChatService
+                // (must happen before StartupJobRunner moves some of these originals)
+                let recovery_cs_chat_message_repo = Arc::clone(&startup_chat_message_repo);
+                let recovery_cs_chat_attachment_repo = Arc::clone(&startup_chat_attachment_repo);
+                let recovery_cs_conversation_repo = Arc::clone(&startup_conversation_repo);
+                let recovery_cs_agent_run_repo = Arc::clone(&startup_agent_run_repo);
+                let recovery_cs_project_repo = Arc::clone(&startup_project_repo);
+                let recovery_cs_task_repo = Arc::clone(&startup_task_repo);
+                let recovery_cs_task_dep_repo = Arc::clone(&startup_task_dependency_repo);
+                let recovery_cs_ideation_repo = Arc::clone(&startup_ideation_session_repo);
+                let recovery_cs_activity_repo = Arc::clone(&startup_activity_event_repo);
+                let recovery_cs_message_queue = Arc::clone(&startup_message_queue);
+                let recovery_cs_running_reg = Arc::clone(&startup_running_agent_registry);
+                let recovery_cs_memory_event_repo = Arc::clone(&startup_memory_event_repo);
+                let recovery_cs_ipr = Arc::clone(&startup_interactive_process_registry);
 
                 // Clone task_dependency_repo for StartupJobRunner (before TaskTransitionService consumes it)
                 let startup_runner_task_dep_repo = Arc::clone(&startup_task_dependency_repo);
@@ -768,9 +785,54 @@ pub fn run() {
                 // Spawn verification reconciliation service: resets stuck in_progress sessions.
                 // Startup scan runs immediately; periodic scan runs every reconciliation_interval_secs.
                 {
+                    use application::reconciliation::recovery_queue::{
+                        create_recovery_queue, RecoveryQueueConfig,
+                    };
                     use application::reconciliation::verification_reconciliation::{
                         VerificationReconciliationConfig, VerificationReconciliationService,
                     };
+
+                    // PDM-172 Phase 1: Construct shared RecoveryQueue infrastructure.
+                    // Spawn ordering (NON-NEGOTIABLE — Constraint 9):
+                    //   1. Construct queue + processor
+                    //   2. Spawn processor task (receiver must be ready before items are submitted)
+                    //   3. Call startup_scan() which may submit recovery items
+                    let recovery_config = RecoveryQueueConfig::default();
+                    // Construct a ClaudeChatService for the recovery queue processor.
+                    // Uses pre-cloned repos (cloned before StartupJobRunner consumed some originals).
+                    let recovery_chat_service: std::sync::Arc<dyn application::chat_service::ChatService> =
+                        std::sync::Arc::new(
+                            application::chat_service::ClaudeChatService::<tauri::Wry>::new(
+                                recovery_cs_chat_message_repo,
+                                recovery_cs_chat_attachment_repo,
+                                recovery_cs_conversation_repo,
+                                recovery_cs_agent_run_repo,
+                                recovery_cs_project_repo,
+                                recovery_cs_task_repo,
+                                recovery_cs_task_dep_repo,
+                                recovery_cs_ideation_repo,
+                                recovery_cs_activity_repo,
+                                recovery_cs_message_queue,
+                                recovery_cs_running_reg,
+                                recovery_cs_memory_event_repo,
+                            )
+                            .with_execution_state(Arc::clone(&startup_execution_state))
+                            .with_app_handle(recovery_cs_app_handle.clone())
+                            .with_interactive_process_registry(recovery_cs_ipr),
+                        );
+                    let (recovery_queue, recovery_processor) = create_recovery_queue(
+                        Arc::clone(&startup_running_agent_registry),
+                        Arc::clone(&startup_interactive_process_registry),
+                        Arc::clone(&startup_ideation_session_repo),
+                        recovery_chat_service,
+                        Some(recovery_cs_app_handle),
+                        recovery_config,
+                    );
+                    let recovery_queue = Arc::new(recovery_queue);
+                    tauri::async_runtime::spawn(async move {
+                        recovery_processor.run().await;
+                    });
+
                     let vcfg = infrastructure::agents::claude::verification_config();
                     let ext_cfg = infrastructure::agents::claude::external_mcp_config();
                     let verification_config = VerificationReconciliationConfig {
@@ -780,10 +842,15 @@ pub fn run() {
                         external_session_stale_secs: ext_cfg.external_session_stale_secs,
                     };
                     let verification_session_repo = Arc::clone(&startup_ideation_session_repo);
-                    let svc = Arc::new(VerificationReconciliationService::new(
-                        verification_session_repo,
-                        verification_config,
-                    ).with_app_handle(verification_recon_app_handle));
+                    let svc = Arc::new(
+                        VerificationReconciliationService::new(
+                            verification_session_repo,
+                            verification_config,
+                        )
+                        .with_app_handle(verification_recon_app_handle)
+                        .with_recovery_queue(Arc::clone(&recovery_queue))
+                        .with_running_agent_registry(Arc::clone(&startup_running_agent_registry)),
+                    );
                     svc.startup_scan().await;
                     tauri::async_runtime::spawn(async move { svc.run_periodic().await });
                 }
