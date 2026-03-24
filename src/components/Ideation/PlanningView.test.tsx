@@ -7,6 +7,7 @@ import { PlanningView } from "./PlanningView";
 import type { IdeationSession, TaskProposal } from "@/types/ideation";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
+import { ideationApi } from "@/api/ideation";
 
 const mockToastError = vi.fn();
 vi.mock("sonner", () => ({
@@ -15,6 +16,14 @@ vi.mock("sonner", () => ({
     success: vi.fn(),
     info: vi.fn(),
     warning: vi.fn(),
+  },
+}));
+
+vi.mock("@/api/ideation", () => ({
+  ideationApi: {
+    sessions: {
+      getChildren: vi.fn().mockResolvedValue([]),
+    },
   },
 }));
 
@@ -840,6 +849,118 @@ describe("PlanningView", () => {
 
       // Restore original
       useIdeationStore.setState({ setLastVerificationChildId: originalFn });
+    });
+  });
+
+  describe("eager verification child pre-population", () => {
+    const mockGetChildren = ideationApi.sessions.getChildren as ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      mockGetChildren.mockResolvedValue([]);
+      useIdeationStore.setState({
+        lastVerificationChildId: {},
+        activeVerificationChildId: {},
+        activeIdeationTab: {},
+      });
+    });
+
+    it("pre-populates lastVerificationChildId when eager query returns children", async () => {
+      mockGetChildren.mockResolvedValue([
+        { id: "child-abc", createdAt: "2026-01-24T01:00:00Z" },
+        { id: "child-older", createdAt: "2026-01-24T00:00:00Z" },
+      ]);
+
+      const originalFn = useIdeationStore.getState().setLastVerificationChildId;
+      const spy = vi.fn(originalFn);
+      useIdeationStore.setState({ setLastVerificationChildId: spy });
+
+      await act(async () => {
+        render(
+          <PlanningView
+            {...defaultProps}
+            session={{ ...mockSession, verificationStatus: "verified" }}
+          />
+        );
+      });
+
+      await vi.waitFor(() => {
+        expect(spy).toHaveBeenCalledWith("session-1", "child-abc");
+      });
+
+      // Restore original
+      useIdeationStore.setState({ setLastVerificationChildId: originalFn });
+    });
+
+    it("no-ops when eager query returns empty array", async () => {
+      mockGetChildren.mockResolvedValue([]);
+
+      const originalFn = useIdeationStore.getState().setLastVerificationChildId;
+      const spy = vi.fn();
+      useIdeationStore.setState({ setLastVerificationChildId: spy });
+
+      await act(async () => {
+        render(
+          <PlanningView
+            {...defaultProps}
+            session={{ ...mockSession, verificationStatus: "verified" }}
+          />
+        );
+      });
+
+      // Allow query to settle
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(spy).not.toHaveBeenCalledWith("session-1", expect.any(String));
+
+      useIdeationStore.setState({ setLastVerificationChildId: originalFn });
+    });
+
+    it("does not overwrite lastVerificationChildId already populated by event", async () => {
+      mockGetChildren.mockResolvedValue([
+        { id: "child-from-query", createdAt: "2026-01-24T01:00:00Z" },
+      ]);
+
+      // Pre-populate store as if event-driven path already ran
+      useIdeationStore.setState({
+        lastVerificationChildId: { "session-1": "child-from-event" },
+      });
+
+      const originalFn = useIdeationStore.getState().setLastVerificationChildId;
+      const spy = vi.fn();
+      useIdeationStore.setState({ setLastVerificationChildId: spy });
+
+      await act(async () => {
+        render(
+          <PlanningView
+            {...defaultProps}
+            session={{ ...mockSession, verificationStatus: "verified" }}
+          />
+        );
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Should not overwrite the event-driven value
+      expect(spy).not.toHaveBeenCalledWith("session-1", "child-from-query");
+
+      useIdeationStore.setState({ setLastVerificationChildId: originalFn });
+    });
+
+    it("does not call getChildren when sessionPurpose is verification", async () => {
+      mockGetChildren.mockClear();
+
+      await act(async () => {
+        render(
+          <PlanningView
+            {...defaultProps}
+            session={{ ...mockSession, sessionPurpose: "verification" }}
+          />
+        );
+      });
+
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(mockGetChildren).not.toHaveBeenCalled();
     });
   });
 });

@@ -324,6 +324,30 @@ export function PlanningView({
     (s) => s.lastVerificationChildId[session?.id ?? ''] ?? null
   );
 
+  // Eagerly fetch verification child sessions so lastVerificationChildId is populated
+  // before the user clicks the Verification tab (eliminates cold-start flash of parent chat)
+  const { data: verificationChildren } = useQuery({
+    queryKey: ["childSessions", session?.id, "verification"],
+    queryFn: () => ideationApi.sessions.getChildren(session!.id, "verification"),
+    enabled: !!session?.id && session?.sessionPurpose !== "verification",
+    staleTime: 30_000,
+  });
+
+  // Pre-populate lastVerificationChildId from eager query result.
+  // Only sets if store field is null (avoids overwriting event-driven updates).
+  useEffect(() => {
+    if (!session?.id || !verificationChildren?.length) return;
+    if (lastVerificationChildId) return;
+
+    const sorted = [...verificationChildren].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    const latestId = sorted[0]?.id;
+    if (latestId) {
+      setLastVerificationChildId(session.id, latestId);
+    }
+  }, [session?.id, verificationChildren, lastVerificationChildId, setLastVerificationChildId]);
+
   // Reset to plan tab when switching sessions
   const prevSessionIdRef = useRef<string | null>(null);
   useEffect(() => {
