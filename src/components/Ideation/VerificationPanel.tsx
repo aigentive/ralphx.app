@@ -273,6 +273,12 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   const setActiveVerificationChildId = useIdeationStore(
     (s) => s.setActiveVerificationChildId
   );
+  const lastVerificationChildId = useIdeationStore(
+    (s) => s.lastVerificationChildId[session.id] ?? null
+  );
+  const setLastVerificationChildId = useIdeationStore(
+    (s) => s.setLastVerificationChildId
+  );
 
   const verificationStatus = session.verificationStatus ?? "unverified";
   const hasPlan = !!session.planArtifactId;
@@ -336,17 +342,25 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
     );
   }, [verificationData, verificationStatus, session.id, queryClient]);
 
-  // Auto-update activeVerificationChildId when a new verification run appears
+  // Auto-update verification child IDs when a new verification run appears.
+  // lastVerificationChildId tracks the display reference (persists after agent terminates).
+  // activeVerificationChildId is only set on first mount (when both are null) to avoid
+  // fighting the termination null-clear from guardedTermination/watchdog guards.
   useEffect(() => {
     if (childSessions.length === 0) return;
     const sorted = [...childSessions].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
     const latestId = sorted[0]?.id;
-    if (latestId && latestId !== activeVerificationChildId) {
+    if (!latestId) return;
+    if (latestId !== lastVerificationChildId) {
+      setLastVerificationChildId(session.id, latestId);
+    }
+    // Only set activeVerificationChildId on first mount (both null) — prevents re-asserting after termination
+    if (activeVerificationChildId === null && lastVerificationChildId === null) {
       setActiveVerificationChildId(session.id, latestId);
     }
-  }, [childSessions, activeVerificationChildId, session.id, setActiveVerificationChildId]);
+  }, [childSessions, activeVerificationChildId, lastVerificationChildId, session.id, setActiveVerificationChildId, setLastVerificationChildId]);
 
   // Refresh nowMs every 30s while in-progress (stale detection clock)
   useEffect(() => {
@@ -366,8 +380,10 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
     .reverse(); // newest first in dropdown
 
   const handleRunSelect = useCallback((runId: string) => {
-    setActiveVerificationChildId(session.id, runId);
-  }, [session.id, setActiveVerificationChildId]);
+    // Only update display reference — do NOT set activeVerificationChildId for historical runs
+    // (prevents mount-then-unmount flicker from reverse-link cleanup)
+    setLastVerificationChildId(session.id, runId);
+  }, [session.id, setLastVerificationChildId]);
 
   // ── Action handlers ──────────────────────────────────────────────────────
 
@@ -564,7 +580,7 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
         <div className="flex items-center justify-between gap-3">
           <VerificationRunPicker
             runs={runEntries}
-            activeRunId={activeVerificationChildId}
+            activeRunId={lastVerificationChildId ?? activeVerificationChildId}
             currentStatus={verificationStatus}
             {...(verificationData?.currentRound !== undefined && {
               currentRound: verificationData.currentRound,

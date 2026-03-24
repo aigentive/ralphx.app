@@ -797,5 +797,49 @@ describe("PlanningView", () => {
       await user.click(screen.getByTestId("tab-verification"));
       expect(screen.getByTestId("verification-tab-content")).toBeInTheDocument();
     });
+
+    it("renders IntegratedChatPanel for verification child when lastVerificationChildId is set and activeVerificationChildId is null", () => {
+      // Set lastVerificationChildId (persisted after agent terminates) with no active child
+      useIdeationStore.setState({
+        lastVerificationChildId: { "session-1": "child-session-99" },
+        activeVerificationChildId: { "session-1": null },
+        activeIdeationTab: { "session-1": "verification" },
+      });
+
+      render(
+        <PlanningView
+          {...defaultProps}
+          session={{ ...mockSession, verificationStatus: "verified" }}
+        />
+      );
+
+      // Verification child panel mounts because lastVerificationChildId is set
+      const panels = screen.getAllByTestId("integrated-chat-panel");
+      // Both parent and child panels should be mounted
+      expect(panels.length).toBe(2);
+      // Child panel header contains "Verification" text (may appear in tab + panel header)
+      expect(screen.getAllByText("Verification").length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("clears lastVerificationChildId alongside activeVerificationChildId on session switch", () => {
+      const originalFn = useIdeationStore.getState().setLastVerificationChildId;
+      const spySetLastVerificationChildId = vi.fn(originalFn);
+      useIdeationStore.setState({ setLastVerificationChildId: spySetLastVerificationChildId });
+
+      const { rerender } = render(<PlanningView {...defaultProps} />);
+
+      // Switch to a different session — triggers cleanup effect
+      const sessionTwo = { ...mockSession, id: "session-2" };
+      rerender(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <PlanningView {...defaultProps} session={sessionTwo} />
+        </QueryClientProvider>
+      );
+
+      expect(spySetLastVerificationChildId).toHaveBeenCalledWith("session-2", null);
+
+      // Restore original
+      useIdeationStore.setState({ setLastVerificationChildId: originalFn });
+    });
   });
 });

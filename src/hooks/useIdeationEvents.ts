@@ -98,6 +98,7 @@ export function useIdeationEvents() {
   const updateSession = useIdeationStore((s) => s.updateSession);
   const setVerificationNotification = useIdeationStore((s) => s.setVerificationNotification);
   const setActiveVerificationChildId = useIdeationStore((s) => s.setActiveVerificationChildId);
+  const setLastVerificationChildId = useIdeationStore((s) => s.setLastVerificationChildId);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -247,6 +248,7 @@ export function useIdeationEvents() {
         if (parsed.data.purpose === 'verification') {
           setVerificationNotification(parsed.data.parentSessionId, parsed.data.sessionId);
           setActiveVerificationChildId(parsed.data.parentSessionId, parsed.data.sessionId);
+          setLastVerificationChildId(parsed.data.parentSessionId, parsed.data.sessionId);
           // Synthetic "generating" status on parent while verification child is running
           const parentKey = buildStoreKey('ideation', parsed.data.parentSessionId);
           useChatStore.getState().setAgentStatus(parentKey, 'generating');
@@ -265,5 +267,5 @@ export function useIdeationEvents() {
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, updateSession, setVerificationNotification, setActiveVerificationChildId, queryClient]);
+  }, [bus, updateSession, setVerificationNotification, setActiveVerificationChildId, setLastVerificationChildId, queryClient]);
 }

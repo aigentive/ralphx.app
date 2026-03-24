@@ -1471,6 +1471,39 @@ describe("useAgentEvents", () => {
         useIdeationStore.getState().setActiveVerificationChildId("some-session", null);
       });
     });
+
+    it("child run_completed clears activeVerificationChildId but lastVerificationChildId retains child ID", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useIdeationStore.getState().setActiveVerificationChildId("parent-session", "child-session-id");
+        useIdeationStore.getState().setLastVerificationChildId("parent-session", "child-session-id");
+      });
+
+      expect(useIdeationStore.getState().activeVerificationChildId["parent-session"]).toBe("child-session-id");
+      expect(useIdeationStore.getState().lastVerificationChildId["parent-session"]).toBe("child-session-id");
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_completed", {
+          context_type: "ideation",
+          context_id: "child-session-id",
+          conversation_id: "conv-1",
+          status: "completed",
+        });
+      });
+
+      // activeVerificationChildId is cleared on child termination
+      expect(useIdeationStore.getState().activeVerificationChildId["parent-session"]).toBeNull();
+      // lastVerificationChildId persists — display-only reference for the Verification tab
+      expect(useIdeationStore.getState().lastVerificationChildId["parent-session"]).toBe("child-session-id");
+
+      // Cleanup
+      act(() => {
+        useIdeationStore.getState().setLastVerificationChildId("parent-session", null);
+      });
+    });
   });
 
   describe("agent:task_started / agent:task_completed", () => {

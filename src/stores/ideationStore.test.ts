@@ -4,6 +4,7 @@ import {
   selectActiveSession,
   selectSessionsByProject,
   selectSessionsByStatus,
+  selectLastVerificationChildId,
 } from "./ideationStore";
 import type { IdeationSession } from "@/types/ideation";
 
@@ -330,6 +331,61 @@ describe("ideationStore", () => {
       expect(state.error).toBeNull();
     });
   });
+
+  describe("lastVerificationChildId", () => {
+    it("initializes as empty record", () => {
+      const state = useIdeationStore.getState();
+      expect(state.lastVerificationChildId).toEqual({});
+    });
+
+    it("setLastVerificationChildId stores child ID for session", () => {
+      useIdeationStore.getState().setLastVerificationChildId("session-1", "child-abc");
+
+      const state = useIdeationStore.getState();
+      expect(state.lastVerificationChildId["session-1"]).toBe("child-abc");
+    });
+
+    it("setLastVerificationChildId can be set to null", () => {
+      useIdeationStore.setState({ lastVerificationChildId: { "session-1": "child-abc" } });
+
+      useIdeationStore.getState().setLastVerificationChildId("session-1", null);
+
+      const state = useIdeationStore.getState();
+      expect(state.lastVerificationChildId["session-1"]).toBeNull();
+    });
+
+    it("persists after activeVerificationChildId is cleared", () => {
+      useIdeationStore.getState().setActiveVerificationChildId("session-1", "child-abc");
+      useIdeationStore.getState().setLastVerificationChildId("session-1", "child-abc");
+
+      // Simulate agent termination — clear active liveness field
+      useIdeationStore.getState().setActiveVerificationChildId("session-1", null);
+
+      const state = useIdeationStore.getState();
+      expect(state.activeVerificationChildId["session-1"]).toBeNull();
+      expect(state.lastVerificationChildId["session-1"]).toBe("child-abc");
+    });
+
+    it("clearSessionTabState removes lastVerificationChildId for session", () => {
+      useIdeationStore.setState({ lastVerificationChildId: { "session-1": "child-abc" } });
+
+      useIdeationStore.getState().clearSessionTabState("session-1");
+
+      const state = useIdeationStore.getState();
+      expect(state.lastVerificationChildId["session-1"]).toBeUndefined();
+    });
+
+    it("clearSessionTabState does not affect other sessions", () => {
+      useIdeationStore.setState({
+        lastVerificationChildId: { "session-1": "child-abc", "session-2": "child-xyz" },
+      });
+
+      useIdeationStore.getState().clearSessionTabState("session-1");
+
+      const state = useIdeationStore.getState();
+      expect(state.lastVerificationChildId["session-2"]).toBe("child-xyz");
+    });
+  });
 });
 
 describe("selectors", () => {
@@ -411,6 +467,34 @@ describe("selectors", () => {
       const result = selector(useIdeationStore.getState());
 
       expect(result).toHaveLength(0);
+    });
+  });
+
+  describe("selectLastVerificationChildId", () => {
+    beforeEach(() => {
+      useIdeationStore.setState({ lastVerificationChildId: {} });
+    });
+
+    it("returns child ID when set", () => {
+      useIdeationStore.setState({ lastVerificationChildId: { "session-1": "child-abc" } });
+
+      const result = selectLastVerificationChildId("session-1")(useIdeationStore.getState());
+
+      expect(result).toBe("child-abc");
+    });
+
+    it("returns null when not set for session", () => {
+      const result = selectLastVerificationChildId("session-1")(useIdeationStore.getState());
+
+      expect(result).toBeNull();
+    });
+
+    it("returns null when explicitly set to null", () => {
+      useIdeationStore.setState({ lastVerificationChildId: { "session-1": null } });
+
+      const result = selectLastVerificationChildId("session-1")(useIdeationStore.getState());
+
+      expect(result).toBeNull();
     });
   });
 

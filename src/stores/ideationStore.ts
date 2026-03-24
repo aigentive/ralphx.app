@@ -52,6 +52,8 @@ interface IdeationState {
   activeIdeationTab: Record<string, 'plan' | 'verification' | 'proposals' | 'research'>;
   /** Active verification child session ID per parent session (keyed by parent sessionId) */
   activeVerificationChildId: Record<string, string | null>;
+  /** Last known verification child session ID per parent session — display-only reference, persists after agent terminates (keyed by parent sessionId) */
+  lastVerificationChildId: Record<string, string | null>;
   /** Pending verification notifications: parentSessionId → childSessionId */
   verificationNotifications: Record<string, string>;
 }
@@ -93,6 +95,8 @@ interface IdeationActions {
   setActiveIdeationTab: (sessionId: string, tab: 'plan' | 'verification' | 'proposals' | 'research') => void;
   /** Set the active verification child session ID for a parent session */
   setActiveVerificationChildId: (sessionId: string, childId: string | null) => void;
+  /** Set the last known verification child session ID for display purposes (persists after agent terminates) */
+  setLastVerificationChildId: (sessionId: string, childId: string | null) => void;
   /** Clear all tab-related state for a session (call on session unmount/archive) */
   clearSessionTabState: (sessionId: string) => void;
   /** Set a pending verification notification (parentSessionId → childSessionId) */
@@ -117,6 +121,7 @@ export const useIdeationStore = create<IdeationState & IdeationActions>()(
     error: null,
     activeIdeationTab: {},
     activeVerificationChildId: {},
+    lastVerificationChildId: {},
     verificationNotifications: {},
 
     // Actions
@@ -277,6 +282,7 @@ export const useIdeationStore = create<IdeationState & IdeationActions>()(
           if (firstKey && firstKey !== sessionId) {
             delete state.activeIdeationTab[firstKey];
             delete state.activeVerificationChildId[firstKey];
+            delete state.lastVerificationChildId[firstKey];
           }
         }
       }),
@@ -286,10 +292,16 @@ export const useIdeationStore = create<IdeationState & IdeationActions>()(
         state.activeVerificationChildId[sessionId] = childId;
       }),
 
+    setLastVerificationChildId: (sessionId, childId) =>
+      set((state) => {
+        state.lastVerificationChildId[sessionId] = childId;
+      }),
+
     clearSessionTabState: (sessionId) =>
       set((state) => {
         delete state.activeIdeationTab[sessionId];
         delete state.activeVerificationChildId[sessionId];
+        delete state.lastVerificationChildId[sessionId];
         delete state.verificationNotifications[sessionId];
       }),
 
@@ -339,10 +351,22 @@ export const selectSessionsByStatus =
     Object.values(state.sessions).filter((s) => s.status === status);
 
 /**
+ * Select the last known verification child session ID for a given parent session.
+ * Display-only reference — persists after agent terminates. Never used for guard/watchdog decisions.
+ * @param sessionId - The parent session ID
+ * @returns Selector function returning the last verification child ID, or null
+ */
+export const selectLastVerificationChildId =
+  (sessionId: string) =>
+  (state: IdeationState & IdeationActions): string | null =>
+    state.lastVerificationChildId[sessionId] ?? null;
+
+/**
  * Select the effective chat session ID for a given parent session.
  * Returns the verification child ID when verification tab is active, otherwise returns the parent session ID.
  * @param sessionId - The parent session ID
  * @returns Selector function returning the effective session ID for chat
+ * @deprecated unused. Use lastVerificationChildId directly for verification chat routing.
  */
 export const selectChatSessionId =
   (sessionId: string) =>

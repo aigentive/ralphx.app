@@ -21,6 +21,7 @@ const chatStoreMocks = vi.hoisted(() => ({
 const ideationStoreMocks = vi.hoisted(() => ({
   setVerificationNotification: vi.fn(),
   setActiveVerificationChildId: vi.fn(),
+  setLastVerificationChildId: vi.fn(),
 }));
 
 // ============================================================================
@@ -69,6 +70,7 @@ vi.mock("@/stores/ideationStore", () => ({
       updateSession: vi.fn(),
       setVerificationNotification: ideationStoreMocks.setVerificationNotification,
       setActiveVerificationChildId: ideationStoreMocks.setActiveVerificationChildId,
+      setLastVerificationChildId: ideationStoreMocks.setLastVerificationChildId,
     }),
 }));
 
@@ -205,6 +207,7 @@ describe("useIdeationEvents — parent synthetic status during verification", ()
     chatStoreMocks.updateLastAgentEvent.mockClear();
     ideationStoreMocks.setVerificationNotification.mockClear();
     ideationStoreMocks.setActiveVerificationChildId.mockClear();
+    ideationStoreMocks.setLastVerificationChildId.mockClear();
   });
 
   it("(3) ideation:child_session_created with purpose=verification sets parent agentStatus to 'generating'", () => {
@@ -226,6 +229,10 @@ describe("useIdeationEvents — parent synthetic status during verification", ()
     expect(chatStoreMocks.updateLastAgentEvent).toHaveBeenCalledWith(
       "session:parent-session-456"
     );
+    expect(ideationStoreMocks.setLastVerificationChildId).toHaveBeenCalledWith(
+      "parent-session-456",
+      "child-session-123"
+    );
   });
 
   it("(4) non-verification child session does NOT set parent agentStatus", () => {
@@ -242,5 +249,6 @@ describe("useIdeationEvents — parent synthetic status during verification", ()
 
     expect(chatStoreMocks.setAgentStatus).not.toHaveBeenCalled();
     expect(chatStoreMocks.updateLastAgentEvent).not.toHaveBeenCalled();
+    expect(ideationStoreMocks.setLastVerificationChildId).not.toHaveBeenCalled();
   });
 });
