@@ -34,6 +34,7 @@ export const IDEATION_SPECIALIST_UX = "ideation-specialist-ux";
 export const IDEATION_SPECIALIST_CODE_QUALITY = "ideation-specialist-code-quality";
 export const IDEATION_SPECIALIST_PROMPT_QUALITY =
   "ideation-specialist-prompt-quality";
+export const IDEATION_SPECIALIST_INTENT = "ideation-specialist-intent";
 export const IDEATION_CRITIC = "ideation-critic";
 export const IDEATION_ADVOCATE = "ideation-advocate";
 export const WORKER_TEAM_LEAD = "ralphx-worker-team";

@@ -95,6 +95,8 @@ fn test_all_agent_names_are_known() {
         SHORT_IDEATION_CRITIC,
         // Prompt quality specialist added in recent commits
         "ideation-specialist-prompt-quality",
+        // Intent alignment specialist added in recent commits
+        "ideation-specialist-intent",
     ]);
 
     for agent in agent_configs() {

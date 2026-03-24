@@ -11,7 +11,9 @@ tools:
   - "Task(ralphx:ideation-specialist-ux)"
   - "Task(ralphx:ideation-specialist-code-quality)"
   - "Task(ralphx:ideation-specialist-prompt-quality)"
+  - "Task(ralphx:ideation-specialist-intent)"
   - "mcp__ralphx__get_session_plan"
+  - "mcp__ralphx__get_session_messages"
   - "mcp__ralphx__get_team_artifacts"
   - "mcp__ralphx__get_artifact"
   - "mcp__ralphx__get_parent_session_context"
@@ -84,37 +86,57 @@ Call `mcp__ralphx__get_session_plan(session_id: <YOUR_OWN_SESSION_ID>)` to read 
 
 ## Step 0.5 — Pre-Round Enrichment (MANDATORY — runs ONCE before the round loop)
 
-This step dispatches the code quality specialist to analyze existing code paths referenced in the plan and integrates its findings into the plan before Round 1 begins. Critics then see the enriched plan from the start.
+This step dispatches pre-round enrichment specialists to analyze the plan before Round 1 begins. Critics then see the enriched plan from the start. Two specialists run here:
+- **Code quality** (conditional): runs only when Affected Files contains existing files to modify
+- **Intent alignment** (unconditional): runs for EVERY plan regardless of Affected Files
 
 ### 0.5a — Signal Check
 
-1. Parse the plan's `## Affected Files` section. If the section does not exist → skip enrichment entirely (proceed to Round Loop).
+**Intent specialist (unconditional):** Always dispatched in Step 0.5b — no signal check required. Every plan has a user intent to validate.
+
+**Code quality specialist (conditional — Affected Files gate):**
+1. Parse the plan's `## Affected Files` section. If the section does not exist → code quality specialist will NOT be dispatched (intent specialist still runs unconditionally).
 2. For each file entry, strip markdown formatting (bold `**`, italic `*`, backticks) before matching.
 3. Check for modification verbs: `MODIFY`, `UPDATE`, `CHANGE` (case-insensitive). Skip entries with `NEW`, `CREATE`, `ADD`.
 4. Exclude documentation files (`.md`, `.txt`, `.rst`) and config-only files (`.yaml`, `.yml`, `.json`, `.toml` — exception: `Cargo.toml` IS included).
-5. If ≥1 qualifying file remains → proceed to Step 0.5b. Otherwise → skip enrichment, proceed to Round Loop.
+5. If ≥1 qualifying file remains → code quality specialist WILL be dispatched in Step 0.5b alongside intent specialist. Otherwise → code quality specialist skipped, but intent specialist still runs.
+
+**Summary:** Step 0.5b always dispatches at least the intent specialist. Code quality specialist is additionally dispatched when Affected Files gate passes.
 
 ### 0.5b — Dispatch (sequential — enrichment must complete before Round 1)
 
 Record `enrichment_dispatch_time` = current ISO timestamp (before dispatch).
 
-Dispatch the code quality specialist as a single Task (NOT parallel with critics — this is sequential by design):
+Dispatch enrichment specialists. The intent specialist is ALWAYS dispatched. The code quality specialist is ONLY dispatched if the signal check in Step 0.5a passed. Dispatch all applicable specialists in ONE response (parallel):
 
+**Always dispatch (intent specialist):**
+```
+Task(subagent_type: "ralphx:ideation-specialist-intent", prompt: "SESSION_ID: <parent_session_id>\nAnalyze intent alignment. Read the plan via get_session_plan(session_id: <the SESSION_ID value above>). Read original user messages via get_session_messages(session_id: <the SESSION_ID value above>). Perform 4-axis comparison (substitution, narrowing, broadening, assumption injection). If misalignment detected, create IntentAlignment: TeamResearch artifact using session_id: <parent_session_id> — this is the PARENT IDEATION SESSION ID, not your own session. If intent is aligned, return text: 'Intent aligned — no artifact created'.")
+```
+
+**Additionally dispatch when code quality gate passed (from Step 0.5a):**
 ```
 Task(subagent_type: "ralphx:ideation-specialist-code-quality", prompt: "SESSION_ID: <parent_session_id>\nAnalyze the code paths referenced in the plan's Affected Files section. Read the plan via get_session_plan(session_id: <the SESSION_ID value above>) — this returns the current (pre-enrichment) plan version via inheritance. For each file marked as MODIFY/UPDATE/CHANGE, read the actual source code and identify quality improvement opportunities (complexity, DRY violations, extract opportunities, naming, dead code, error handling). Create your TeamResearch artifact using session_id: <parent_session_id> — this is the PARENT IDEATION SESSION ID, not your own session. Title the artifact with prefix 'CodeQuality: ' followed by a brief description.")
 ```
 
-Wait for the Task to return before proceeding.
+❌ Do NOT emit the code quality Task if the Affected Files gate did not pass — intent specialist runs alone in that case.
+
+Wait for ALL dispatched Tasks to return before proceeding.
 
 ### 0.5c — Artifact Collection
 
 1. Call `mcp__ralphx__get_team_artifacts(session_id: <parent_session_id>)`.
-2. Filter artifacts **client-side**: keep only artifacts where `created_at >= (enrichment_dispatch_time minus 5 seconds)` AND title starts with `"CodeQuality"` (case-sensitive prefix match, tolerant of colon/space variations).
-3. If no matching artifact found → log "Code quality specialist returned no artifact — proceeding to round loop." Skip Step 0.5d.
-4. For the matching artifact (latest by `created_at`): call `mcp__ralphx__get_artifact(artifact_id: <id>)` to retrieve full content.
+2. Filter artifacts **client-side**: keep only artifacts where `created_at >= (enrichment_dispatch_time minus 5 seconds)` AND title starts with `"CodeQuality"` OR `"IntentAlignment"` (case-sensitive prefix match, tolerant of colon/space variations).
+3. **Intent specialist result handling:**
+   - If the intent specialist Task returned text containing `"Intent aligned"` → log "Intent aligned — no misalignment artifact created." Skip intent integration in Step 0.5d.
+   - If no `IntentAlignment:`-prefixed artifact found AND intent Task did not return alignment text → log "Intent specialist returned no result — proceeding without intent check." Skip intent integration in Step 0.5d.
+   - If `IntentAlignment:`-prefixed artifact found → retrieve its full content for integration in Step 0.5d.
+4. **Code quality result handling:** If no `CodeQuality`-prefixed artifact found → log "Code quality specialist returned no artifact — proceeding to round loop." Skip code quality integration in Step 0.5d.
+5. For each matching artifact (latest by `created_at` per prefix type): call `mcp__ralphx__get_artifact(artifact_id: <id>)` to retrieve full content.
 
 ### 0.5d — Plan Integration
 
+**Code quality integration** (only if `CodeQuality:` artifact was collected):
 1. Determine insertion point using this priority:
    - Search for `## Constraints` header → insert `## Code Quality Improvements` section immediately BEFORE it.
    - If `## Constraints` not found, search for `## Architecture` header → insert immediately AFTER the Architecture section's content (before the next `##` header).
@@ -130,7 +152,21 @@ Wait for the Task to return before proceeding.
 3. If `edit_plan_artifact` fails (anchor not found for any fallback): use `mcp__ralphx__update_plan_artifact` with the full plan content, appending `## Code Quality Improvements` at the end.
 4. Content: structured list of improvement opportunities from the artifact, grouped by priority (High → Medium → Low).
 
-❌ **CRITICAL:** Enrichment failure is **non-blocking** — if the specialist Task errors, returns nothing, or artifact collection fails, log the failure and proceed to the Round Loop. Do NOT abort verification.
+**Intent alignment integration** (CONDITIONAL — only if `IntentAlignment:` artifact was collected, i.e., misalignment was detected):
+1. Determine insertion point: place `## Intent Alignment Warning` BEFORE `## Architecture` if that section exists; otherwise place it after `## Overview`. If neither exists, insert at the beginning of the plan body (after `## Goal` if present, otherwise as the first section).
+2. Use `mcp__ralphx__edit_plan_artifact` with:
+   - `old_text`: the target anchor header (e.g., `## Architecture`)
+   - `new_text`: the warning section FOLLOWED BY the original header. Example:
+     ```
+     old_text: "## Architecture"
+     new_text: "## Intent Alignment Warning\n\n{structured misalignment table from artifact}\n\n## Architecture"
+     ```
+   **CRITICAL:** Preserve the original anchor header in `new_text`.
+3. If `edit_plan_artifact` fails: use `mcp__ralphx__update_plan_artifact` appending `## Intent Alignment Warning` at the end.
+4. Content: the misalignment table from the artifact (user quote, plan goal, per-axis status, misalignment details).
+5. ❌ Do NOT inject `## Intent Alignment Warning` when intent is aligned — only inject when a misalignment artifact exists.
+
+❌ **CRITICAL:** Enrichment failure is **non-blocking** — if any specialist Task errors, returns nothing, or artifact collection fails, log the failure and proceed to the Round Loop. Do NOT abort verification.
 
 ---
 
@@ -180,6 +216,7 @@ Before dispatching critics, determine which specialists to spawn for this round.
 |--------|------------|---------------|
 | `.tsx`/`.ts` in `src/`, React/UI keywords (modal, toast, sidebar, tab, form, button, dialog, dropdown, component, screen, page, view) | `ideation-specialist-ux` | Affected Files + Architecture sections (per-round parallel dispatch) |
 | ≥1 existing file with MODIFY/UPDATE/CHANGE verb (excluding `.md`/`.txt`/`.rst` docs and `.yaml`/`.yml`/`.json`/`.toml` config, exception: `Cargo.toml` included) | `ideation-specialist-code-quality` | Affected Files section (**pre-round enrichment only** — Step 0.5, not here) |
+| Unconditional — every plan | `ideation-specialist-intent` | N/A (**pre-round enrichment only** — Step 0.5, not here) |
 | `.md` file whose path contains `agents/` or `prompts/` as a path component (not substring match), OR Changes description contains keywords: `agent prompt`, `system prompt`, `frontmatter`, `specialist`. Exclude: `plan-verifier.md`, `plan-critic-*.md`. Includes NEW files (unlike code quality). | `ideation-specialist-prompt-quality` | Affected Files + Architecture sections (per-round parallel dispatch) |
 | *(future: auth, tokens, encryption, RBAC)* | *(security specialist)* | — |
 | *(future: DB queries, caching, batch processing)* | *(performance specialist)* | — |
@@ -260,6 +297,8 @@ Check the response for a generation conflict error (HTTP 409). If generation mis
 > **Note:** `update_plan_artifact` and `edit_plan_artifact` take `artifact_id` (not `session_id`). There is no `session_id` parameter on these tools — use `caller_session_id` instead to bypass the write lock.
 
 #### F1. Critic gap revisions
+
+**CONSTRAINT (NON-NEGOTIABLE):** The `## Goal` section MUST NOT be modified during any plan revision. It contains the user's original words and the orchestrator's interpretation — this is the intent anchor used by the intent alignment specialist. Editing it would invalidate the pre-round enrichment check. ❌ Never touch `## Goal` content, even to "improve" its phrasing or fix grammar.
 
 If any gap has severity "critical" or "high":
 1. Analyze each critical/high gap and determine the minimal plan revision needed.

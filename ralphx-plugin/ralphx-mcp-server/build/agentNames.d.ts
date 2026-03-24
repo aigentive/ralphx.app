@@ -32,6 +32,7 @@ export declare const IDEATION_SPECIALIST_INFRA = "ideation-specialist-infra";
 export declare const IDEATION_SPECIALIST_UX = "ideation-specialist-ux";
 export declare const IDEATION_SPECIALIST_CODE_QUALITY = "ideation-specialist-code-quality";
 export declare const IDEATION_SPECIALIST_PROMPT_QUALITY = "ideation-specialist-prompt-quality";
+export declare const IDEATION_SPECIALIST_INTENT = "ideation-specialist-intent";
 export declare const IDEATION_CRITIC = "ideation-critic";
 export declare const IDEATION_ADVOCATE = "ideation-advocate";
 export declare const WORKER_TEAM_LEAD = "ralphx-worker-team";

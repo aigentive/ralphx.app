@@ -493,7 +493,7 @@ agents:
         finalize_proposals,
         migrate_proposals,
       ]
-    preapproved_cli_tools: [Task(Explore), Task(Plan), "Task(ralphx:ideation-specialist-ux)"]
+    preapproved_cli_tools: [Task(Explore), Task(Plan), "Task(ralphx:ideation-specialist-ux)", "Task(ralphx:ideation-specialist-intent)"]
 
   - name: orchestrator-ideation-readonly
     system_prompt_file: ralphx-plugin/agents/orchestrator-ideation-readonly.md
@@ -873,8 +873,10 @@ agents:
         search_memories,
         get_memory,
         get_memories_for_paths,
+        # intent specialist needs session message history
+        get_session_messages,
       ]
-    preapproved_cli_tools: [Read, Grep, Glob, Bash, "Task(ralphx:plan-critic-layer1)", "Task(ralphx:plan-critic-layer2)", "Task(ralphx:ideation-specialist-ux)", "Task(ralphx:ideation-specialist-code-quality)", "Task(ralphx:ideation-specialist-prompt-quality)"]
+    preapproved_cli_tools: [Read, Grep, Glob, Bash, "Task(ralphx:plan-critic-layer1)", "Task(ralphx:plan-critic-layer2)", "Task(ralphx:ideation-specialist-ux)", "Task(ralphx:ideation-specialist-code-quality)", "Task(ralphx:ideation-specialist-prompt-quality)", "Task(ralphx:ideation-specialist-intent)"]
 
   # --- Team lead variants (extends base agents) ---
 
@@ -1085,6 +1087,29 @@ agents:
         search_memories,
         get_memory,
         get_memories_for_paths,
+      ]
+    preapproved_cli_tools: []
+
+  - name: ideation-specialist-intent
+    system_prompt_file: ralphx-plugin/agents/ideation-specialist-intent.md
+    model: opus
+    tools: { extends: base_tools }
+    mcp_tools: [
+        # Team artifact tools
+        create_team_artifact,
+        get_team_artifacts,
+        # Plan read tools
+        get_session_plan,
+        get_artifact,
+        list_session_proposals,
+        get_proposal,
+        get_parent_session_context,
+        # Memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+        # Session message history (intent alignment needs original user messages)
+        get_session_messages,
       ]
     preapproved_cli_tools: []
 

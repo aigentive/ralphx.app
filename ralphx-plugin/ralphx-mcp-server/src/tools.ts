@@ -42,6 +42,7 @@ import {
   IDEATION_SPECIALIST_UX,
   IDEATION_SPECIALIST_CODE_QUALITY,
   IDEATION_SPECIALIST_PROMPT_QUALITY,
+  IDEATION_SPECIALIST_INTENT,
   IDEATION_CRITIC,
   IDEATION_ADVOCATE,
 } from "./agentNames.js";
@@ -1831,6 +1832,9 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
       [IDEATION_SPECIALIST_UX]: IDEATION_SPECIALIST_TOOLS,
       [IDEATION_SPECIALIST_CODE_QUALITY]: IDEATION_SPECIALIST_TOOLS,
       [IDEATION_SPECIALIST_PROMPT_QUALITY]: IDEATION_SPECIALIST_TOOLS,
+      // Intent specialist gets an independent entry: same tools + get_session_messages
+      // (NOT added to shared IDEATION_SPECIALIST_TOOLS — least privilege for other agents)
+      [IDEATION_SPECIALIST_INTENT]: [...IDEATION_SPECIALIST_TOOLS, "get_session_messages"],
       [IDEATION_CRITIC]: IDEATION_SPECIALIST_TOOLS,
       [IDEATION_ADVOCATE]: IDEATION_SPECIALIST_TOOLS,
     };
@@ -1931,6 +1935,8 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "search_memories",
     "get_memory",
     "get_memories_for_paths",
+    // Intent specialist needs session message history (inherited via parent MCP connection)
+    "get_session_messages",
   ],
   // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
   debug: ALL_TOOLS.map((t) => t.name),

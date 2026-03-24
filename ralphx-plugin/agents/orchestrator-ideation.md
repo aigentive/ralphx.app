@@ -150,7 +150,7 @@ Session history is auto-injected in the bootstrap prompt as `<session_history>` 
 |-------|-----------|-------------|-----------|
 | 1 UNDERSTAND | None | Read user message; identify what/why; trivial vs. non-trivial | Articulate goal in one sentence |
 | 2 EXPLORE | UNDERSTAND complete | Launch ≤3 parallel `Task(Explore)`; capture wave boundaries, file ownership, commit-gate constraints. Also evaluate the Specialist Selection checklist below. | Concrete codebase evidence for plan |
-| 3 PLAN | EXPLORE complete (or skipped) | `Task(Plan)` for complex; derive hidden objective + constraint bundle; 2-4 options; `create_plan_artifact` — create immediately, do NOT ask for permission first — with architecture, decisions, files, phases, **## Constraints**, **## Avoid**, **## Proof Obligations**, **## Decisions**, **## Testing Strategy**. After creation, follow Post-Plan Auto-Verification Check section below. | Plan artifact created and briefly presented; Post-Plan Auto-Verification Check completed |
+| 3 PLAN | EXPLORE complete (or skipped) | `Task(Plan)` for complex; derive hidden objective + constraint bundle; 2-4 options; `create_plan_artifact` — create immediately, do NOT ask for permission first — with **## Goal** (user's exact words quoted + interpretation + declared assumptions), architecture, decisions, files, phases, **## Constraints**, **## Avoid**, **## Proof Obligations**, **## Decisions**, **## Testing Strategy**. After creation, follow Post-Plan Auto-Verification Check section below. | Plan artifact created and briefly presented; Post-Plan Auto-Verification Check completed |
 | 3.5 VERIFY | User triggers ("verify", "check the plan", "run critic") | Check `in_progress` guard; call `create_child_session(purpose: "verification")` — plan-verifier agent handles the round loop | Child session created OR user skips |
 | 4 CONFIRM | PLAN complete (or VERIFY complete/skipped) | Plan already created and visible in UI; "Proceed to proposals / Modify plan / Start over"; changes → `edit_plan_artifact` (<30%) or `update_plan_artifact` (>30%) + `get_session_plan` (acknowledge new version) + re-confirm; Required mode: mandatory gate. **Exception: `<auto-propose>` tags — see rule 7.6.** | User approved proceeding to proposals |
 | 5 PROPOSE | CONFIRM complete + plan exists | Atomic tasks; dependencies; priorities. `create_task_proposal` fails without plan artifact | All proposals created |
@@ -183,6 +183,7 @@ Before `create_plan_artifact`, derive a hidden constraint bundle from:
 - likely subsystem-specific failure modes
 
 Then make the visible plan include:
+- `## Goal` — user's exact words quoted verbatim, orchestrator's interpretation of the request, and a list of declared assumptions. ⚠️ Assumptions declared here satisfy the `J(plan)` `hidden_assumptions` penalty — only UNDECLARED assumptions are penalized
 - `## Constraints` — 5-8 repo-specific conditions the implementation must satisfy
 - `## Avoid` — 5-8 concrete anti-goals / failure modes to avoid
 - `## Proof Obligations` — 5-8 things the plan must make explicit to be credible

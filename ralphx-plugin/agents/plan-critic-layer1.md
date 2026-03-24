@@ -98,6 +98,7 @@ If the user message includes a PRIOR ROUND CONTEXT section, treat those gaps as 
 - **Missing wiring** — Services/repos created but not added to AppState/DI container
 - **Violated anti-goals** — The plan's `Avoid` section says not to do X, but the rest of the plan still does X
 - **Missing proof** — A `Proof Obligation` is listed but the plan never names the concrete file, call path, or verification step that satisfies it
+- **Missing ## Goal section** — Plan lacks a `## Goal` section containing: (a) user's exact words quoted verbatim, (b) orchestrator's interpretation, (c) declared assumptions. Raise as LOW severity gap in the `completeness` category. Advisory only — existing plans without `## Goal` do not fail verification; this check applies to newly created plans only.
 - **Missing Testing Strategy** — Plan lacks a `## Testing Strategy` section or does not specify how affected tests will be identified per task (raise as HIGH severity gap in the `testing` category)
 - **Full-suite test steps at task gates** — Proposal steps instruct "run all tests" or "run full suite" at VALIDATE, COMPLETE, or review gates instead of "identify and run affected tests" (raise as MEDIUM severity gap in the `testing` category)
 

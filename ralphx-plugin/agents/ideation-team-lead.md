@@ -291,7 +291,7 @@ TaskCreate: { "subject": "Research frontend auth patterns", "description": "..."
    ```
 5. **Create master plan artifact**:
    ```
-   create_plan_artifact(session_id, title: "{feature name}", content: "{architecture + key decisions + affected files + phases + Constraints + Avoid + Proof Obligations + Testing Strategy}")
+   create_plan_artifact(session_id, title: "{feature name}", content: "{## Goal (user's exact words quoted + interpretation + declared assumptions) + architecture + key decisions + affected files + phases + Constraints + Avoid + Proof Obligations + Testing Strategy}")
    ```
    Create the plan artifact immediately after synthesis — do NOT ask the user for approval before calling `create_plan_artifact`. After creation, call `get_plan_verification(session_id)` to check if auto-verification triggered.
 
