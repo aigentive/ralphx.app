@@ -23,7 +23,7 @@ use crate::commands::ExecutionState;
 use crate::domain::entities::ChatConversation;
 use crate::domain::entities::{AgentRunId, ChatContextType, ChatConversationId, InternalStatus, TaskId};
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
+    ActivityEventRepository, AgentRunRepository, ArtifactRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
     TaskDependencyRepository, TaskProposalRepository, TaskRepository, TaskStepRepository,
@@ -35,6 +35,7 @@ use tokio_util::sync::CancellationToken;
 pub(super) struct BackgroundRunRepos {
     pub chat_message_repo: Arc<dyn ChatMessageRepository>,
     pub chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    pub artifact_repo: Arc<dyn ArtifactRepository>,
     pub conversation_repo: Arc<dyn ChatConversationRepository>,
     pub agent_run_repo: Arc<dyn AgentRunRepository>,
     pub task_repo: Arc<dyn TaskRepository>,
@@ -180,6 +181,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
         let BackgroundRunRepos {
             chat_message_repo,
             chat_attachment_repo,
+            artifact_repo,
             conversation_repo,
             agent_run_repo,
             task_repo,
@@ -769,6 +771,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                         &message_queue,
                         &chat_message_repo,
                         &chat_attachment_repo,
+                        &artifact_repo,
                         &activity_event_repo,
                         &task_repo,
                         &ideation_session_repo,
@@ -889,6 +892,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     &working_directory,
                     &chat_message_repo,
                     &chat_attachment_repo,
+                    &artifact_repo,
                     &conversation_repo,
                     &agent_run_repo,
                     &task_repo,

@@ -17,7 +17,8 @@ use super::has_meaningful_output;
 use crate::application::question_state::QuestionState;
 use crate::domain::entities::{ChatContextType, ChatConversationId, InternalStatus, TaskId};
 use crate::domain::repositories::{
-    ActivityEventRepository, ChatMessageRepository, IdeationSessionRepository, TaskRepository,
+    ActivityEventRepository, ArtifactRepository, ChatMessageRepository,
+    IdeationSessionRepository, TaskRepository,
 };
 use crate::domain::services::MessageQueue;
 use crate::utils::secret_redactor::redact;
@@ -38,6 +39,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
     message_queue: &Arc<MessageQueue>,
     chat_message_repo: &Arc<dyn ChatMessageRepository>,
     chat_attachment_repo: &Arc<dyn crate::domain::repositories::ChatAttachmentRepository>,
+    artifact_repo: &Arc<dyn ArtifactRepository>,
     activity_event_repo: &Arc<dyn ActivityEventRepository>,
     task_repo: &Arc<dyn TaskRepository>,
     ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
@@ -257,6 +259,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 project_id,
                 team_mode,
                 Arc::clone(chat_attachment_repo),
+                Arc::clone(artifact_repo),
                 Arc::clone(ideation_session_repo),
                 Arc::clone(task_repo),
                 &[], // queue resume path — session history not injected here

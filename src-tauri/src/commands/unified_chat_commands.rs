@@ -168,6 +168,7 @@ fn create_chat_service(
     let mut service = ClaudeChatService::new(
         state.chat_message_repo.clone(),
         state.chat_attachment_repo.clone(),
+        state.artifact_repo.clone(),
         state.chat_conversation_repo.clone(),
         state.agent_run_repo.clone(),
         state.project_repo.clone(),

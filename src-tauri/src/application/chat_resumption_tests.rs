@@ -21,6 +21,7 @@ fn build_runner(
         Arc::clone(&app_state.task_dependency_repo),
         Arc::clone(&app_state.chat_message_repo),
         Arc::clone(&app_state.chat_attachment_repo),
+        Arc::clone(&app_state.artifact_repo),
         Arc::clone(&app_state.project_repo),
         Arc::clone(&app_state.ideation_session_repo),
         Arc::clone(&app_state.activity_event_repo),

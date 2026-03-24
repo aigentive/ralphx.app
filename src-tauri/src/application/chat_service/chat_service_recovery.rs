@@ -14,8 +14,8 @@ use super::chat_service_streaming::process_stream_background;
 use super::streaming_state_cache::StreamingStateCache;
 use crate::domain::entities::{ChatContextType, ChatConversation, ChatConversationId};
 use crate::domain::repositories::{
-    ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
-    IdeationSessionRepository, TaskProposalRepository,
+    ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
+    ChatMessageRepository, IdeationSessionRepository, TaskProposalRepository,
 };
 use crate::domain::entities::VerificationStatus;
 use crate::domain::services::emit_verification_status_changed;
@@ -58,6 +58,7 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
     chat_message_repo: Arc<dyn ChatMessageRepository>,
     conversation_repo: Arc<dyn ChatConversationRepository>,
     chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    artifact_repo: Arc<dyn ArtifactRepository>,
     ideation_session_repo: Option<Arc<dyn IdeationSessionRepository>>,
     task_proposal_repo: Option<Arc<dyn TaskProposalRepository>>,
     old_session_id: &str,
@@ -130,6 +131,7 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
         _resolved_project_id.as_deref(),
         team_mode,
         chat_attachment_repo,
+        artifact_repo,
         &[], // recovery path already builds its own bootstrap_prompt with history
         0,   // total_available: not needed here — session_messages is empty
     )

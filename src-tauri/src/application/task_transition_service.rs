@@ -692,6 +692,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             let mut service = ClaudeChatService::new(
                 Arc::clone(&chat_message_repo),
                 Arc::clone(&chat_attachment_repo),
+                Arc::new(crate::infrastructure::memory::MemoryArtifactRepository::new()),
                 Arc::clone(&conversation_repo),
                 Arc::clone(&agent_run_repo),
                 Arc::clone(&project_repo),

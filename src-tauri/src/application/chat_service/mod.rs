@@ -37,7 +37,7 @@ use crate::domain::entities::{
 };
 use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
+    ActivityEventRepository, AgentRunRepository, ArtifactRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
     StateHistoryMetadata, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
@@ -297,6 +297,7 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     default_working_directory: PathBuf,
     chat_message_repo: Arc<dyn ChatMessageRepository>,
     chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    artifact_repo: Arc<dyn ArtifactRepository>,
     conversation_repo: Arc<dyn ChatConversationRepository>,
     agent_run_repo: Arc<dyn AgentRunRepository>,
     project_repo: Arc<dyn ProjectRepository>,
@@ -333,6 +334,7 @@ impl<R: Runtime> ClaudeChatService<R> {
     pub fn new(
         chat_message_repo: Arc<dyn ChatMessageRepository>,
         chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+        artifact_repo: Arc<dyn ArtifactRepository>,
         conversation_repo: Arc<dyn ChatConversationRepository>,
         agent_run_repo: Arc<dyn AgentRunRepository>,
         project_repo: Arc<dyn ProjectRepository>,
@@ -361,6 +363,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             default_working_directory,
             chat_message_repo,
             chat_attachment_repo,
+            artifact_repo,
             conversation_repo,
             agent_run_repo,
             project_repo,
@@ -529,6 +532,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             project_id,
             self.team_mode.load(Ordering::Relaxed),
             Arc::clone(&self.chat_attachment_repo),
+            Arc::clone(&self.artifact_repo),
             session_messages,
             total_available,
         )
@@ -558,6 +562,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             project_id,
             self.team_mode.load(Ordering::Relaxed),
             Arc::clone(&self.chat_attachment_repo),
+            Arc::clone(&self.artifact_repo),
             session_messages,
             total_available,
             is_external_mcp,
@@ -1182,6 +1187,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             repos: chat_service_send_background::BackgroundRunRepos {
                 chat_message_repo: Arc::clone(&self.chat_message_repo),
                 chat_attachment_repo: Arc::clone(&self.chat_attachment_repo),
+                artifact_repo: Arc::clone(&self.artifact_repo),
                 conversation_repo: Arc::clone(&self.conversation_repo),
                 agent_run_repo: Arc::clone(&self.agent_run_repo),
                 task_repo: Arc::clone(&self.task_repo),

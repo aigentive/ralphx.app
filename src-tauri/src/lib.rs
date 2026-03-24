@@ -436,6 +436,7 @@ pub fn run() {
             let startup_step_repo = Arc::clone(&app_state.task_step_repo);
             let startup_chat_message_repo = Arc::clone(&app_state.chat_message_repo);
             let startup_chat_attachment_repo = Arc::clone(&app_state.chat_attachment_repo);
+            let startup_artifact_repo = Arc::clone(&app_state.artifact_repo);
             let startup_conversation_repo = Arc::clone(&app_state.chat_conversation_repo);
             let startup_agent_run_repo = Arc::clone(&app_state.agent_run_repo);
             let startup_ideation_session_repo = Arc::clone(&app_state.ideation_session_repo);
@@ -498,6 +499,7 @@ pub fn run() {
                 let chat_resumption_project_repo = Arc::clone(&startup_project_repo);
                 let chat_resumption_chat_message_repo = Arc::clone(&startup_chat_message_repo);
                 let chat_resumption_chat_attachment_repo = Arc::clone(&startup_chat_attachment_repo);
+                let chat_resumption_artifact_repo = Arc::clone(&startup_artifact_repo);
                 let chat_resumption_conversation_repo = Arc::clone(&startup_conversation_repo);
                 let chat_resumption_ideation_session_repo = Arc::clone(&startup_ideation_session_repo);
                 let chat_resumption_activity_event_repo = Arc::clone(&startup_activity_event_repo);
@@ -537,6 +539,7 @@ pub fn run() {
                 // (must happen before StartupJobRunner moves some of these originals)
                 let recovery_cs_chat_message_repo = Arc::clone(&startup_chat_message_repo);
                 let recovery_cs_chat_attachment_repo = Arc::clone(&startup_chat_attachment_repo);
+                let recovery_cs_artifact_repo = Arc::clone(&startup_artifact_repo);
                 let recovery_cs_conversation_repo = Arc::clone(&startup_conversation_repo);
                 let recovery_cs_agent_run_repo = Arc::clone(&startup_agent_run_repo);
                 let recovery_cs_project_repo = Arc::clone(&startup_project_repo);
@@ -604,6 +607,7 @@ pub fn run() {
                     ClaudeChatService::new(
                         Arc::clone(&startup_chat_message_repo),
                         Arc::clone(&startup_chat_attachment_repo),
+                        Arc::clone(&startup_artifact_repo),
                         Arc::clone(&startup_conversation_repo),
                         Arc::clone(&startup_agent_run_repo),
                         Arc::clone(&startup_project_repo),
@@ -693,6 +697,7 @@ pub fn run() {
                     chat_resumption_task_dependency_repo,
                     chat_resumption_chat_message_repo,
                     chat_resumption_chat_attachment_repo,
+                    chat_resumption_artifact_repo,
                     chat_resumption_project_repo,
                     chat_resumption_ideation_session_repo,
                     chat_resumption_activity_event_repo,
@@ -805,6 +810,7 @@ pub fn run() {
                             application::chat_service::ClaudeChatService::<tauri::Wry>::new(
                                 recovery_cs_chat_message_repo,
                                 recovery_cs_chat_attachment_repo,
+                                recovery_cs_artifact_repo,
                                 recovery_cs_conversation_repo,
                                 recovery_cs_agent_run_repo,
                                 recovery_cs_project_repo,

@@ -24,7 +24,7 @@ use crate::domain::entities::{
     TaskStepStatus,
 };
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
+    ActivityEventRepository, AgentRunRepository, ArtifactRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
     TaskDependencyRepository, TaskProposalRepository, TaskRepository, TaskStepRepository,
@@ -587,6 +587,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     working_directory: &Path,
     chat_message_repo: &Arc<dyn ChatMessageRepository>,
     chat_attachment_repo: &Arc<dyn ChatAttachmentRepository>,
+    artifact_repo: &Arc<dyn ArtifactRepository>,
     conversation_repo: &Arc<dyn ChatConversationRepository>,
     agent_run_repo: &Arc<dyn AgentRunRepository>,
     task_repo: &Arc<dyn TaskRepository>,
@@ -797,6 +798,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     Arc::clone(chat_message_repo),
                     Arc::clone(conversation_repo),
                     Arc::clone(chat_attachment_repo),
+                    Arc::clone(artifact_repo),
                     Some(Arc::clone(ideation_session_repo)),
                     task_proposal_repo.clone(),
                     &session_id,
@@ -838,6 +840,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             resolved_project_id.as_deref(),
                             team_mode,
                             Arc::clone(chat_attachment_repo),
+                            Arc::clone(artifact_repo),
                             &[], // retry path — no session history injection needed
                             0,   // total_available: not needed here — session_messages is empty
                         )
@@ -862,6 +865,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                         repos: BackgroundRunRepos {
                                             chat_message_repo: Arc::clone(chat_message_repo),
                                             chat_attachment_repo: Arc::clone(chat_attachment_repo),
+                                            artifact_repo: Arc::clone(artifact_repo),
                                             conversation_repo: Arc::clone(conversation_repo),
                                             agent_run_repo: Arc::clone(agent_run_repo),
                                             task_repo: Arc::clone(task_repo),
