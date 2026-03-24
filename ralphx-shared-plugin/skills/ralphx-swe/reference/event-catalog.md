@@ -2,7 +2,7 @@
 
 # RalphX Event Catalog
 
-All pipeline events emitted by RalphX. Events arrive via webhook (`POST`) or polling (`v1_get_recent_events`). Each event has a discriminated `event_type` field. All events include `project_id` and `timestamp` (ISO 8601 UTC).
+All pipeline events emitted by RalphX. Events arrive passively via automated infrastructure — each event has a discriminated `event_type` field. All events include `project_id` and `timestamp` (ISO 8601 UTC).
 
 States referenced below → see `state-machine.md`.
 
@@ -18,7 +18,7 @@ A new task entered the backlog.
 | `task_id` | string | ID of the new task |
 | `title` | string | Human-readable task title |
 
-**Agent reaction:** Index the task. Optionally call `v1_list_tasks` to fetch full details and dependencies.
+**Agent reaction:** Index the task. Optionally call `v1_batch_task_status` to fetch full details and dependencies.
 
 ---
 
@@ -49,7 +49,7 @@ An individual execution step within a task finished.
 | `step_id` | string | Step identifier |
 | `step_title` | string | Human-readable step name |
 
-**Agent reaction:** Track execution progress. If monitoring task completion, count completed steps against total steps from `v1_list_tasks`.
+**Agent reaction:** Track execution progress. If monitoring task completion, count completed steps against total steps from `v1_batch_task_status`.
 
 ---
 
@@ -204,7 +204,7 @@ The orchestrator finalized proposals in the session. Tasks are ready to be creat
 | `session_id` | string | — |
 | `proposal_count` | number | Number of finalized proposals |
 
-**Agent reaction:** Call `v1_list_tasks` or inspect session proposals to enumerate the new tasks. If auto-propose is enabled, expect `ideation:auto_propose_sent` or `ideation:auto_propose_failed`.
+**Agent reaction:** Call `v1_batch_task_status` or inspect session proposals to enumerate the new tasks. If auto-propose is enabled, expect `ideation:auto_propose_sent` or `ideation:auto_propose_failed`.
 
 ---
 
@@ -234,14 +234,14 @@ Auto-propose pipeline failed to create tasks.
 ## System Events
 
 ### `system:webhook_unhealthy`
-A registered webhook failed ≥10 consecutive delivery attempts and was deactivated.
+The webhook endpoint recorded ≥10 consecutive delivery failures and was deactivated.
 
 | Field | Type | Notes |
 |-------|------|-------|
 | `webhook_id` | string | Deactivated webhook ID |
 | `failure_count` | number | Total consecutive failures |
 
-**Agent reaction (CRITICAL):** Switch to polling fallback (`v1_get_recent_events`) immediately. Investigate webhook endpoint availability. Re-register the same URL via `v1_register_webhook` to reactivate (idempotent — resets failure count, preserves secret).
+**Agent reaction:** System handles recovery automatically — no agent action required.
 
 ---
 
@@ -281,4 +281,4 @@ An API key is approaching its rate limit threshold.
 | `system:webhook_unhealthy` | System | `webhook_id`, `failure_count` | — |
 | `system:rate_limit_warning` | System | `api_key_id` | — |
 
-**CRITICAL events requiring immediate human attention:** `review:escalated`, `merge:conflict`, `system:webhook_unhealthy`
+**CRITICAL events requiring immediate human attention:** `review:escalated`, `merge:conflict`

@@ -70,12 +70,13 @@ Pass a section name to load specific content:
 
 | Argument | Loads |
 |----------|-------|
-| `quick-start` | Bootstrap (4 startup steps) + Quick Decision Guide |
+| `quick-start` | Bootstrap (2 startup steps) + Quick Decision Guide |
 | `state-machine` | Full 24-state pipeline reference |
-| `decisions` | 7 ASCII decision trees for common scenarios |
+| `decisions` | 6 ASCII decision trees for common scenarios |
 | `events` | All 20 event types and recommended reactions |
-| `recovery` | 5 step-by-step failure recovery procedures |
+| `recovery` | 4 step-by-step failure recovery procedures |
 | `dos-donts` | Full Do's and Don'ts table |
+| `cross-project` | Cross-project orchestration reference |
 
 ### Verify the skill is loaded
 
@@ -100,19 +101,20 @@ skills/ralphx-swe/
 ├── SKILL.md                    # Core judgment + bootstrap + dispatch
 └── reference/
     ├── state-machine.md        # All 24 pipeline states + transition table
-    ├── decision-trees.md       # 7 ASCII decision trees for common scenarios
+    ├── decision-trees.md       # 6 ASCII decision trees for common scenarios
     ├── event-catalog.md        # 20 event types with recommended reactions
-    └── failure-playbooks.md    # 5 step-by-step recovery procedures
+    ├── failure-playbooks.md    # 4 step-by-step recovery procedures
+    └── cross-project.md        # Cross-project orchestration reference
 ```
 
 ### SKILL.md
 
 The main skill file (~180 lines). Contains:
-- **Bootstrap** — 4 startup steps every session: register webhook, backfill events, check attention items, load tool guide
-- **Core Principles** — observe before act, webhook-first, annotate before intervene, human merge gate (NON-NEGOTIABLE)
-- **Do's and Don'ts** — 13 situations with correct and incorrect actions
-- **Quick Decision Guide** — 10 most common `if X then Y` decision points with exact tool calls
-- **Reference Navigation** — table pointing to the 4 reference files
+- **Bootstrap** — 2 startup steps every session: check attention items, load tool guide
+- **Core Principles** — observe before act, event-driven (passive), annotate before intervene, human merge gate (NON-NEGOTIABLE)
+- **Do's and Don'ts** — situations with correct and incorrect actions
+- **Quick Decision Guide** — 9 most common `if X then Y` decision points with exact tool calls
+- **Reference Navigation** — table pointing to the 5 reference files
 - **Section Dispatch** — argument-based routing to reference files
 
 ### reference/state-machine.md
@@ -121,7 +123,7 @@ All 24 pipeline states grouped by category (Idle, Active, Transient, Waiting, Su
 
 ### reference/decision-trees.md
 
-7 ASCII decision trees covering: escalated reviews, merge conflicts, blocked tasks, failed tasks, ideation verification not converging, webhook going unhealthy, and capacity exhaustion. Each tree uses real `v1_*` tool calls.
+6 ASCII decision trees covering: escalated reviews, merge conflicts, blocked tasks, failed tasks, ideation verification not converging, and capacity exhaustion. Each tree uses real `v1_*` tool calls.
 
 ### reference/event-catalog.md
 
@@ -129,7 +131,11 @@ All 20 event types from the `RalphXEvent` discriminated union, grouped by catego
 
 ### reference/failure-playbooks.md
 
-5 recovery procedures with step-by-step `v1_*` tool calls: `accept_plan_and_schedule` saga failure, webhook deactivation (HMAC secret preservation), task stuck in blocked, rate limit 429, and ideation agent unexpectedly idle.
+4 recovery procedures with step-by-step `v1_*` tool calls: `accept_plan_and_schedule` saga failure, task stuck in blocked, rate limit 429, and ideation agent unexpectedly idle.
+
+### reference/cross-project.md
+
+Cross-project orchestration reference: what cross-project orchestration is and what it means for your external agent — how tasks appear across multiple projects, how events arrive from each project, and what (if anything) agents should do.
 
 ## Contributing / Syncing
 
@@ -141,6 +147,7 @@ Reference files are derived from source material in the RalphX repo. When source
 | `reference/event-catalog.md` | `ralphx-plugin/ralphx-external-mcp/src/tools/events.ts` |
 | `reference/decision-trees.md` | Cross-references states + events; verify tool names against external MCP tool list |
 | `reference/failure-playbooks.md` | Verify tool names + parameters against external MCP tool list |
+| `reference/cross-project.md` | `docs/features/active-plan.md` + cross-project orchestration flow |
 
 Each reference file has a `<!-- Source: path | Last synced: date -->` comment at the top for tracking.
 

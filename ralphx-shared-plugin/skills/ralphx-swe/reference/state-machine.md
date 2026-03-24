@@ -41,7 +41,7 @@ Full reference for all 24 task states visible via `v1_batch_task_status` and `ta
 | `approved` | `pending_merge` | Human approval triggers merge workflow immediately |
 | `pending_merge` | `merged` (fast path) or `merging` | Programmatic merge attempted first; conflict → `merging` |
 
-**Rule:** You will rarely observe transient states — they vanish in milliseconds. If `v1_batch_task_status` returns one, re-poll in 1-2s for the settled state.
+**Rule:** You will rarely observe transient states — they vanish in milliseconds. If `v1_batch_task_status` returns one, check status again shortly for the settled state.
 
 ### Waiting — Human Action Required (5 states)
 
@@ -49,7 +49,7 @@ Full reference for all 24 task states visible via `v1_batch_task_status` and `ta
 |-------|---------|----------------|
 | `review_passed` | AI review complete, passed — awaiting human approval | `v1_approve_review` or `v1_request_changes` |
 | `escalated` | AI review needs human decision | `v1_resolve_escalation` — only if human explicitly delegated; otherwise alert human |
-| `qa_failed` | QA tests failed | Human decides: fix (`v1_request_changes`) or skip QA (`v1_skip_qa`) |
+| `qa_failed` | QA tests failed | Human decides: fix (`v1_request_changes`) or manually skip QA via app UI |
 | `merge_incomplete` | Merger agent errored mid-merge | Human investigates; `v1_get_task_detail` for context |
 | `merge_conflict` | Merge conflicts could not be resolved | Human must resolve; do NOT retry automatically |
 
@@ -167,11 +167,6 @@ reviewing → (branch stale) → merging → merged → pending_review  (re-queu
 
 ## What External Agents Can Observe
 
-`v1_batch_task_status` returns the current `status` string for up to 50 tasks. All 24 states are valid return values. Subscribe to `task:status_changed` events via `v1_subscribe_events` or poll via `v1_get_recent_events` for real-time transitions.
-
-**Polling guidance:**
-- Transient states (`pending_review`, `qa_passed`, `revision_needed`, `approved`, `pending_merge`) — re-poll in 1-2s
-- Active states (`executing`, `reviewing`, etc.) — poll every 30-60s or use webhook events
-- Waiting states — no need to poll; wait for `task:status_changed` event
+`v1_batch_task_status` returns the current `status` string for up to 50 tasks. All 24 states are valid return values. Events arrive passively via automated infrastructure — listen for `task:status_changed` events for real-time transitions.
 
 **Human gate (NON-NEGOTIABLE):** `review_passed` and `escalated` require a human to call `v1_approve_review`, `v1_request_changes`, or `v1_resolve_escalation`. Autonomous agents MUST NOT auto-approve without explicit human delegation.

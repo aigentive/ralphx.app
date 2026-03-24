@@ -1,6 +1,6 @@
 # Failure Playbooks
 
-Step-by-step recovery for the 5 most common failure modes. Each playbook uses real `v1_` tool calls with valid parameters.
+Step-by-step recovery for the 4 most common failure modes. Each playbook uses real `v1_` tool calls with valid parameters.
 
 ---
 
@@ -42,45 +42,7 @@ const { events } = await mcp.call('v1_get_recent_events', {
 
 ---
 
-## Playbook 2 — Webhook Unhealthy (`system:webhook_unhealthy`)
-
-**Symptom:** Receive `system:webhook_unhealthy` event, or events stop arriving and `v1_get_webhook_health` shows `active: false`.
-
-**Root cause:** 10 consecutive delivery failures deactivate the webhook automatically.
-
-**Recovery:**
-
-```typescript
-// 1. Confirm webhook is deactivated
-const health = await mcp.call('v1_get_webhook_health');
-const broken = health.webhooks.filter(w => !w.active);
-// broken[0] → { id: 'wh-ghi789', failure_count: 10, active: false }
-
-// 2. Re-register the SAME URL — idempotent, reactivates without new secret
-const reg = await mcp.call('v1_register_webhook', {
-  url: 'http://127.0.0.1:18789/hooks/ralphx',  // same URL as before
-  // event_types omitted → receive all events
-});
-// Returns existing webhook_id, resets failure_count to 0, active: true
-// Secret is NOT regenerated — keep using original secret for HMAC verification
-
-// 3. Backfill missed events using cursor
-const { events, next_cursor } = await mcp.call('v1_get_recent_events', {
-  project_id: 'proj-xyz',
-  cursor: lastSeenCursor,   // cursor stored before outage
-  limit: 100,
-});
-for (const event of events) {
-  await dispatcher.dispatch(event);
-  lastSeenCursor = event.id;
-}
-```
-
-**Key:** Re-registering the same URL never creates a duplicate — it returns the existing `webhook_id` with a reset failure count.
-
----
-
-## Playbook 3 — Task Stuck in Blocked State
+## Playbook 2 — Task Stuck in Blocked State
 
 **Symptom:** `task:status_changed` event shows `new_status: "Blocked"`, or `v1_get_task_detail` returns `status: "Blocked"`.
 
@@ -121,7 +83,7 @@ for (const blocker of tasks) {
 
 ---
 
-## Playbook 4 — Rate Limit (HTTP 429)
+## Playbook 3 — Rate Limit (HTTP 429)
 
 **Symptom:** MCP tool call returns `{ "error": "backend_error", "status": 429 }`.
 
@@ -161,7 +123,7 @@ const detail = await callWithBackoff('v1_get_task_detail', { task_id: 'task-abc1
 
 ---
 
-## Playbook 5 — Ideation Agent Idle / Not Responding
+## Playbook 4 — Ideation Agent Idle / Not Responding
 
 **Symptom:** No `ideation:plan_created` or `ideation:auto_propose_sent` event after several minutes; `v1_get_ideation_status` shows agent state is not `generating`.
 
@@ -193,8 +155,7 @@ if (status.proposal_count > 0) {
   }
 }
 
-// 4. Poll for response (webhooks preferred — fall back to polling)
-// Wait for ideation:plan_created or ideation:verified event
+// 4. Wait for ideation:plan_created or ideation:verified event
 // If no response after 5 minutes, send another v1_send_ideation_message nudge
 ```
 

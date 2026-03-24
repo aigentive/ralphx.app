@@ -8,7 +8,7 @@ ASCII decision trees for common agent decision points. States → `state-machine
 
 ## 1. Review Escalated
 
-Trigger: `review:escalated` webhook or `v1_batch_task_status` returns `escalated`
+Trigger: `review:escalated` event or `v1_batch_task_status` returns `escalated`
 
 ```
 review:escalated received
@@ -34,7 +34,7 @@ review:escalated received
 
 ## 2. Merge Conflict
 
-Trigger: `merge:conflict` webhook or task enters `merge_conflict` state
+Trigger: `merge:conflict` event or task enters `merge_conflict` state
 
 ```
 merge:conflict received
@@ -73,7 +73,7 @@ task enters blocked state
 │    │         Blocking task in failed | cancelled | stopped?
 │    │           ├─ YES → Alert human: dependency must be fixed or retried first
 │    │           │         v1_create_task_note(task_id, "Blocked on <dep_id> which is <status>")
-│    │           └─ NO  → Wait; poll blocking task every 60s
+│    │           └─ NO  → Wait for `task:status_changed` event on blocking task IDs
 │    │                     state resolves when dependency reaches merged
 │    │
 │    └─ NO (human-input block)
@@ -121,13 +121,13 @@ Trigger: `v1_get_plan_verification` returns non-`Verified` status beyond expecte
 ```
 v1_trigger_plan_verification(session_id) called
 │
-├─ Poll v1_get_plan_verification(session_id) every 30s
+├─ Check v1_get_plan_verification(session_id) when needed before proceeding
 │    ↓
 │  status?
 │    ├─ "Verified"   → v1_accept_plan_and_schedule(session_id)
 │    │                  webhook fires: ideation:proposals_ready
 │    │
-│    ├─ "InProgress" → Continue polling (up to 10 min total)
+│    ├─ "InProgress" → Continue checking (up to 10 min total)
 │    │
 │    ├─ "Failed"     → v1_get_plan(session_id) — inspect gap list
 │    │                  v1_send_ideation_message(session_id, "Verification failed: <gaps>")
@@ -145,37 +145,7 @@ v1_trigger_plan_verification(session_id) called
 
 ---
 
-## 6. Webhook Unhealthy
-
-Trigger: `system:webhook_unhealthy` event (≥10 consecutive delivery failures → webhook deactivated)
-
-```
-system:webhook_unhealthy received
-│   (webhook_id deactivated; failure_count ≥ 10)
-│
-├─ Immediately switch to polling fallback
-│    → v1_get_recent_events(project_id, cursor: lastSeenCursor, limit: 100)
-│    → Process missed events in order; advance cursor after each
-│
-├─ v1_get_webhook_health(webhook_id)
-│    → Confirm deactivated; note failure_count
-│    ↓
-│  Webhook endpoint reachable?
-│    ├─ YES → v1_register_webhook(url: GATEWAY_URL)
-│    │         [idempotent — resets failure count, preserves secret]
-│    │         webhook reactivated → resume event-driven mode
-│    │         stop polling fallback
-│    │
-│    └─ NO  → Continue polling v1_get_recent_events indefinitely
-│              Alert ops: webhook endpoint unreachable
-│              Fix endpoint → then v1_register_webhook to reactivate
-```
-
-**Rule:** Never drop events during outage. Cursor-based polling guarantees no gaps.
-
----
-
-## 7. Capacity Exhausted
+## 6. Capacity Exhausted
 
 Trigger: `v1_get_execution_capacity` returns `available: 0`; tasks queue in `ready`
 
@@ -196,11 +166,11 @@ v1_get_execution_capacity(project_id)
 │    │                     Alert human if still stuck after 2× SLA threshold
 │    │
 │    └─ NO (capacity legitimately full — normal operations)
-│          → Wait; poll v1_get_execution_capacity every 60s
+│          → Wait for `task:status_changed` events indicating terminal states
+│               (merged | failed | cancelled | stopped) — capacity recalculates automatically
 │          → ❌ DO NOT call v1_resume_scheduling — not a capacity unblock mechanism
 │               ↓
-│            Slot opens (task reaches merged | failed | cancelled | stopped)
-│            → Ready tasks auto-start — no agent action needed
+│            Slot opens → Ready tasks auto-start — no agent action needed
 ```
 
 **Rule:** Capacity is managed by RalphX scheduler. Agents observe; they do not force-start tasks.
