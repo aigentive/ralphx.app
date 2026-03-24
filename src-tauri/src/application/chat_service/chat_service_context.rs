@@ -1384,7 +1384,7 @@ mod tests {
         let expected_artifact_id = session_history_artifact_id(&msg);
 
         let history =
-            format_session_history_with_artifacts(&[msg.clone()], 1, artifact_repo.clone())
+            format_session_history_with_artifacts(std::slice::from_ref(&msg), 1, artifact_repo.clone())
                 .await
                 .expect("history formatting should succeed");
 
@@ -1419,7 +1419,7 @@ mod tests {
             ChatContextType::Ideation,
             session_id.as_str(),
             "continue",
-            &[msg.clone()],
+            std::slice::from_ref(&msg),
             1,
             artifact_repo,
         )

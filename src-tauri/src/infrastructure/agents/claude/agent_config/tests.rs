@@ -1360,6 +1360,7 @@ fn test_ui_feature_flags_default_all_enabled() {
     let flags = UiFeatureFlagsConfig::default();
     assert!(flags.activity_page, "activity_page should default to true");
     assert!(flags.extensibility_page, "extensibility_page should default to true");
+    assert!(flags.battle_mode, "battle_mode should default to true");
 }
 
 #[test]
@@ -1394,6 +1395,7 @@ agents: []
     let cfg = parse_config_no_env_overrides(yaml).expect("should parse yaml without ui section");
     assert!(cfg.runtime.ui_feature_flags.activity_page, "should default to true when ui section absent");
     assert!(cfg.runtime.ui_feature_flags.extensibility_page, "should default to true when ui section absent");
+    assert!(cfg.runtime.ui_feature_flags.battle_mode, "should default to true when ui section absent");
 }
 
 #[test]
@@ -1431,7 +1433,11 @@ fn test_env_override_true_value_enables_flag() {
         verification: runtime_config::VerificationConfig::default(),
         external_mcp: runtime_config::ExternalMcpConfig::default(),
         child_session_activity_threshold_secs: None,
-        ui_feature_flags: UiFeatureFlagsConfig { activity_page: false, extensibility_page: false },
+        ui_feature_flags: UiFeatureFlagsConfig {
+            activity_page: false,
+            extensibility_page: false,
+            battle_mode: false,
+        },
     };
     runtime_config::apply_env_overrides_with_lookup(&mut cfg, &|name| match name {
         "RALPHX_UI_ACTIVITY_PAGE" => Some("true".to_string()),
@@ -1443,10 +1449,43 @@ fn test_env_override_true_value_enables_flag() {
 }
 
 #[test]
+fn test_env_override_battle_mode() {
+    let mut cfg = runtime_config::AllRuntimeConfig {
+        stream: runtime_config::StreamTimeoutsConfig::default(),
+        reconciliation: runtime_config::ReconciliationConfig::default(),
+        git: runtime_config::GitRuntimeConfig::default(),
+        scheduler: runtime_config::SchedulerConfig::default(),
+        supervisor: runtime_config::SupervisorRuntimeConfig::default(),
+        limits: runtime_config::LimitsConfig::default(),
+        verification: runtime_config::VerificationConfig::default(),
+        external_mcp: runtime_config::ExternalMcpConfig::default(),
+        child_session_activity_threshold_secs: None,
+        ui_feature_flags: Default::default(), // battle_mode defaults to true
+    };
+    // Override battle_mode to false
+    runtime_config::apply_env_overrides_with_lookup(&mut cfg, &|name| match name {
+        "RALPHX_UI_BATTLE_MODE" => Some("false".to_string()),
+        _ => None,
+    });
+    assert!(!cfg.ui_feature_flags.battle_mode, "env 'false' should disable battle_mode");
+    assert!(cfg.ui_feature_flags.activity_page, "activity_page untouched");
+    assert!(cfg.ui_feature_flags.extensibility_page, "extensibility_page untouched");
+
+    // Override battle_mode to true via "1"
+    cfg.ui_feature_flags.battle_mode = false;
+    runtime_config::apply_env_overrides_with_lookup(&mut cfg, &|name| match name {
+        "RALPHX_UI_BATTLE_MODE" => Some("1".to_string()),
+        _ => None,
+    });
+    assert!(cfg.ui_feature_flags.battle_mode, "env '1' should enable battle_mode");
+}
+
+#[test]
 fn test_ui_feature_flags_config_accessor_returns_defaults() {
     // The accessor is backed by OnceLock — just verify it returns a valid struct
     let flags = ui_feature_flags_config();
-    // Both fields should be bool (any value — loaded from yaml)
+    // All fields should be bool (any value — loaded from yaml)
     let _ = flags.activity_page;
     let _ = flags.extensibility_page;
+    let _ = flags.battle_mode;
 }

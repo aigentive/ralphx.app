@@ -10,6 +10,7 @@ import type { FeatureFlags } from "@/types/feature-flags";
 const ALL_ENABLED_FLAGS: FeatureFlags = {
   activityPage: true,
   extensibilityPage: true,
+  battleMode: true,
 };
 
 interface UseAppKeyboardShortcutsProps {
@@ -25,6 +26,7 @@ interface UseAppKeyboardShortcutsProps {
   closeWelcomeOverlay?: () => void;
   welcomeOverlayReturnView?: ViewType | null;
   openPlanQuickSwitcher?: () => void;
+  onBattleModeToggle?: () => void;
   featureFlags?: FeatureFlags;
 }
 
@@ -41,6 +43,7 @@ export function useAppKeyboardShortcuts({
   closeWelcomeOverlay,
   welcomeOverlayReturnView,
   openPlanQuickSwitcher,
+  onBattleModeToggle,
   featureFlags = ALL_ENABLED_FLAGS,
 }: UseAppKeyboardShortcutsProps) {
   // Keyboard shortcuts for view switching (Cmd+1-5 for main views, Cmd+K for chat)
@@ -206,13 +209,33 @@ export function useAppKeyboardShortcuts({
             openPlanQuickSwitcher();
             break;
           }
+          case "b":
+          case "B": {
+            // Cmd+Shift+B: Toggle Battle Mode (graph view only, feature flag gated)
+            if (!e.shiftKey || !onBattleModeToggle) {
+              return;
+            }
+            if (currentView !== "graph" || !featureFlags.battleMode) {
+              return;
+            }
+            const activeEl = document.activeElement;
+            if (
+              activeEl instanceof HTMLInputElement ||
+              activeEl instanceof HTMLTextAreaElement
+            ) {
+              return;
+            }
+            e.preventDefault();
+            onBattleModeToggle();
+            break;
+          }
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setCurrentView, toggleChatVisible, toggleReviewsPanel, toggleGraphRightPanel, currentView, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView, openPlanQuickSwitcher, featureFlags]);
+  }, [setCurrentView, toggleChatVisible, toggleReviewsPanel, toggleGraphRightPanel, currentView, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView, openPlanQuickSwitcher, onBattleModeToggle, featureFlags]);
 
   // Global shortcut for Cmd+, (registered at OS level to bypass DevTools interception)
   const setCurrentViewRef = useRef(setCurrentView);

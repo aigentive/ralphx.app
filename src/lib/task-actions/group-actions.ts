@@ -4,7 +4,7 @@
  * and Graph uncategorized containers.
  */
 
-import { Ban, PauseCircle, Play, Archive } from "lucide-react";
+import { Ban, PauseCircle, Play, Archive, Trash2 } from "lucide-react";
 import type { ConfirmConfig } from "./types";
 
 /** Which kind of task group this is */
@@ -38,6 +38,7 @@ export const GROUP_ACTIONS: {
   pauseAll: GroupAction;
   resumeAll: GroupAction;
   archiveAll: GroupAction;
+  removeAll: GroupAction;
 } = {
   cancelAll: {
     id: "cancelAll",
@@ -78,6 +79,17 @@ export const GROUP_ACTIONS: {
       title: `Archive all ${groupLabel}?`,
       description: `This will archive ${taskCount} task${taskCount === 1 ? "" : "s"}.`,
       variant: "default",
+    }),
+  },
+  removeAll: {
+    id: "removeAll",
+    label: "Remove all",
+    icon: Trash2,
+    variant: "destructive",
+    confirmConfig: (groupLabel: string, taskCount: number) => ({
+      title: `Remove all ${groupLabel}?`,
+      description: `This will remove ${taskCount} task${taskCount === 1 ? "" : "s"}.`,
+      variant: "destructive",
     }),
   },
 } as const;

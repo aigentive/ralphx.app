@@ -60,7 +60,7 @@ const defaultProps = {
   highlightedIds: new Set<string>(),
   criticalPathIds: new Set<string>(),
   onEdit: vi.fn(),
-  onRemove: vi.fn(),
+  onDelete: vi.fn(),
 };
 
 // ============================================================================
@@ -370,12 +370,12 @@ describe("TieredProposalList", () => {
       expect(onEdit).toHaveBeenCalledWith("p1");
     });
 
-    it("calls onRemove when remove button is clicked", async () => {
-      const onRemove = vi.fn();
+    it("calls onDelete when remove button is clicked", async () => {
+      const onDelete = vi.fn();
       const proposals = [createProposal({ id: "p1" })];
 
       render(
-        <TieredProposalList {...defaultProps} proposals={proposals} onRemove={onRemove} />
+        <TieredProposalList {...defaultProps} proposals={proposals} onDelete={onDelete} />
       );
 
       // Find button by its icon (Trash2) - it's the second action button
@@ -386,7 +386,7 @@ describe("TieredProposalList", () => {
       expect(removeButton).toBeDefined();
       removeButton!.click();
 
-      expect(onRemove).toHaveBeenCalledWith("p1");
+      expect(onDelete).toHaveBeenCalledWith("p1");
     });
   });
 

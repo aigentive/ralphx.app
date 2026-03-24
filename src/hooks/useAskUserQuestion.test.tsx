@@ -35,7 +35,7 @@ vi.mock("sonner", () => ({
 }));
 
 // Mock Tauri invoke for answering questions
-const mockInvoke = vi.fn();
+const { mockInvoke } = vi.hoisted(() => ({ mockInvoke: vi.fn().mockResolvedValue(null) }));
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
 }));

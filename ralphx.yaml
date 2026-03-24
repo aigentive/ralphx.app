@@ -95,11 +95,12 @@ file_logging: true
 
 # ── UI feature flags ───────────────────────────────────────────────────────
 # Controls which UI pages are visible in the app.
-# Env overrides: RALPHX_UI_ACTIVITY_PAGE=true|false, RALPHX_UI_EXTENSIBILITY_PAGE=true|false
+# Env overrides: RALPHX_UI_ACTIVITY_PAGE=true|false, RALPHX_UI_EXTENSIBILITY_PAGE=true|false, RALPHX_UI_BATTLE_MODE=true|false
 ui:
   feature_flags:
     activity_page: false
     extensibility_page: false
+    battle_mode: false
 
 # ── Runtime timeouts & limits ──────────────────────────────────────────────
 # All fields required — no Rust serde defaults. Missing keys cause a deserialization error.

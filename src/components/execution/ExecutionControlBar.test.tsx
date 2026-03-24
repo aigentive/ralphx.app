@@ -63,54 +63,6 @@ describe("ExecutionControlBar", () => {
       expect(screen.getByTestId("queued-count")).toHaveTextContent(/(Queued|Q): 5/);
     });
 
-    it("renders battle mode button only when enabled", () => {
-      const { rerender } = render(
-        <ExecutionControlBar
-          runningCount={1}
-          maxConcurrent={10}
-          queuedCount={3}
-          isPaused={false}
-          onPauseToggle={vi.fn()}
-          onStop={vi.fn()}
-        />
-      );
-
-      expect(screen.queryByTestId("battle-mode-toggle-button")).not.toBeInTheDocument();
-
-      rerender(
-        <ExecutionControlBar
-          runningCount={1}
-          maxConcurrent={10}
-          queuedCount={3}
-          isPaused={false}
-          onPauseToggle={vi.fn()}
-          onStop={vi.fn()}
-          showBattleModeToggle
-          onBattleModeToggle={vi.fn()}
-        />
-      );
-
-      expect(screen.getByTestId("battle-mode-toggle-button")).toBeInTheDocument();
-    });
-
-    it("calls battle mode toggle when clicked", () => {
-      const onBattleModeToggle = vi.fn();
-      render(
-        <ExecutionControlBar
-          runningCount={1}
-          maxConcurrent={10}
-          queuedCount={3}
-          isPaused={false}
-          onPauseToggle={vi.fn()}
-          onStop={vi.fn()}
-          showBattleModeToggle
-          onBattleModeToggle={onBattleModeToggle}
-        />
-      );
-
-      fireEvent.click(screen.getByTestId("battle-mode-toggle-button"));
-      expect(onBattleModeToggle).toHaveBeenCalledOnce();
-    });
   });
 
   describe("pause button", () => {

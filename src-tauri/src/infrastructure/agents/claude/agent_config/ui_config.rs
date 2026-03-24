@@ -19,6 +19,8 @@ pub struct UiFeatureFlagsConfig {
     pub activity_page: bool,
     /// Show or hide the Extensibility page. Default: true.
     pub extensibility_page: bool,
+    /// Enable or disable Battle Mode. Default: true (backward compat; disabled via ralphx.yaml).
+    pub battle_mode: bool,
 }
 
 impl Default for UiFeatureFlagsConfig {
@@ -26,6 +28,7 @@ impl Default for UiFeatureFlagsConfig {
         Self {
             activity_page: true,
             extensibility_page: true,
+            battle_mode: true,
         }
     }
 }

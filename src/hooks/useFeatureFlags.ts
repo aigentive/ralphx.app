@@ -16,6 +16,7 @@ export const FEATURE_FLAGS_QUERY_KEY = ["featureFlags"] as const;
 const ALL_ENABLED: FeatureFlags = {
   activityPage: true,
   extensibilityPage: true,
+  battleMode: true,
 };
 
 export function useFeatureFlags() {

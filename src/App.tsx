@@ -748,6 +748,7 @@ function AppContent() {
     closeWelcomeOverlay,
     welcomeOverlayReturnView,
     openPlanQuickSwitcher: handleOpenPlanQuickSwitcher,
+    onBattleModeToggle: handleBattleModeToggle,
     featureFlags,
   });
 
@@ -1012,7 +1013,6 @@ function AppContent() {
                       isLoading={isExecutionLoading}
                       onPauseToggle={handlePauseToggle}
                       onStop={handleStop}
-                      showBattleModeToggle={false}
                       runningProcesses={runningProcessesData?.processes ?? []}
                       ideationSessions={runningProcessesData?.ideationSessions ?? []}
                       onPauseProcess={handlePauseProcess}
@@ -1046,9 +1046,6 @@ function AppContent() {
                       isLoading={isExecutionLoading}
                       onPauseToggle={handlePauseToggle}
                       onStop={handleStop}
-                      battleModeActive={battleModeActive}
-                      onBattleModeToggle={handleBattleModeToggle}
-                      showBattleModeToggle
                       runningProcesses={runningProcessesData?.processes ?? []}
                       ideationSessions={runningProcessesData?.ideationSessions ?? []}
                       onPauseProcess={handlePauseProcess}
@@ -1087,7 +1084,6 @@ function AppContent() {
                       isLoading={isExecutionLoading}
                       onPauseToggle={handlePauseToggle}
                       onStop={handleStop}
-                      showBattleModeToggle={false}
                       runningProcesses={runningProcessesData?.processes ?? []}
                       ideationSessions={runningProcessesData?.ideationSessions ?? []}
                       onPauseProcess={handlePauseProcess}

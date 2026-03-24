@@ -157,6 +157,7 @@ function saveSessionByProject(map: Record<string, string | null>): void {
 const ALL_ENABLED_FLAGS: FeatureFlags = {
   activityPage: true,
   extensibilityPage: true,
+  battleMode: true,
 };
 
 // ============================================================================

@@ -3,7 +3,7 @@ import { useUiStore } from "./uiStore";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 import type { FeatureFlags } from "@/types/feature-flags";
 
-const ALL_ENABLED: FeatureFlags = { activityPage: true, extensibilityPage: true };
+const ALL_ENABLED: FeatureFlags = { activityPage: true, extensibilityPage: true, battleMode: true };
 
 // ============================================================================
 // Mocks for per-project route persistence (cross-store reads)
@@ -859,7 +859,7 @@ describe("uiStore", () => {
 
       it("redirects to kanban when extensibility page is disabled", () => {
         useUiStore.setState({
-          featureFlags: { activityPage: true, extensibilityPage: false },
+          featureFlags: { activityPage: true, extensibilityPage: false, battleMode: true },
         });
 
         useUiStore.getState().setCurrentView("extensibility");
@@ -935,7 +935,7 @@ describe("uiStore", () => {
 
       it("redirects to kanban when restoring a disabled extensibility view", () => {
         useUiStore.setState({
-          featureFlags: { activityPage: true, extensibilityPage: false },
+          featureFlags: { activityPage: true, extensibilityPage: false, battleMode: true },
           viewByProject: { [PROJECT_B]: "extensibility" },
         });
 

@@ -15,7 +15,7 @@ The Graph View visualizes your project's tasks and their dependencies as an inte
 | Why are nodes tiny? | Compact mode is on. Groups with 8+ tasks auto-compact. Toggle Standard/Compact in the left filter panel. |
 | What does the orange glowing line mean? | It's on the **critical path** — the longest dependency chain that determines overall completion time. |
 | How do I see task details? | Click a node to open the detail panel on the right. Double-click to open the full overlay. |
-| How do I activate Battle Mode? | Press **B** from the graph, or use the command palette. |
+| How do I activate Battle Mode? | Press **⌘⇧B** while in Graph View (requires `battle_mode` feature flag enabled in `ralphx.yaml`). |
 
 ---
 
@@ -301,8 +301,9 @@ Battle Mode is an alternate visualization of task execution — a pixel-art spac
 
 ### How to Activate
 
-- Press **B** while the Graph View is focused
-- Or use the command palette
+- Press **⌘⇧B** (CMD+SHIFT+B) while the Graph View is focused
+
+> **Feature flag required:** Battle Mode is disabled by default. To enable it, set `battle_mode: true` under `ui.feature_flags` in `ralphx.yaml` and restart the app. When the flag is disabled, the shortcut is a no-op.
 
 ### Controls in Battle Mode
 
@@ -348,7 +349,7 @@ When a task is selected and an agent is active, the right panel shows live agent
 | `Space` | Select focused node |
 | `Escape` | Deselect / close detail panel |
 | `Delete` / `Backspace` | Delete selected task or plan group (with confirmation) |
-| `B` | Toggle Battle Mode |
+| `⌘⇧B` | Toggle Battle Mode (requires `battle_mode` feature flag) |
 | `+` / `-` | Zoom in / out |
 | `0` | Fit view (show all nodes) |
 

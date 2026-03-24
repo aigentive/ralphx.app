@@ -26,10 +26,10 @@ function createWrapper() {
 // ============================================================================
 
 describe("isViewEnabled", () => {
-  const allEnabled: FeatureFlags = { activityPage: true, extensibilityPage: true };
-  const activityDisabled: FeatureFlags = { activityPage: false, extensibilityPage: true };
-  const extensibilityDisabled: FeatureFlags = { activityPage: true, extensibilityPage: false };
-  const allDisabled: FeatureFlags = { activityPage: false, extensibilityPage: false };
+  const allEnabled: FeatureFlags = { activityPage: true, extensibilityPage: true, battleMode: true };
+  const activityDisabled: FeatureFlags = { activityPage: false, extensibilityPage: true, battleMode: true };
+  const extensibilityDisabled: FeatureFlags = { activityPage: true, extensibilityPage: false, battleMode: true };
+  const allDisabled: FeatureFlags = { activityPage: false, extensibilityPage: false, battleMode: true };
 
   it("returns true for kanban regardless of flags", () => {
     expect(isViewEnabled("kanban", allDisabled)).toBe(true);
@@ -83,6 +83,7 @@ describe("useFeatureFlags", () => {
     expect(result.current.data).toEqual({
       activityPage: true,
       extensibilityPage: true,
+      battleMode: true,
     });
   });
 
@@ -96,7 +97,7 @@ describe("useFeatureFlags", () => {
 
     await waitFor(() => expect(result.current.isPlaceholderData).toBe(false));
 
-    expect(result.current.data).toEqual({ activityPage: false, extensibilityPage: true });
+    expect(result.current.data).toEqual({ activityPage: false, extensibilityPage: true, battleMode: true });
     expect(invoke).toHaveBeenCalledWith("get_ui_feature_flags");
   });
 
@@ -118,6 +119,7 @@ describe("useFeatureFlags", () => {
     expect(result.current.data).toEqual({
       activityPage: true,
       extensibilityPage: true,
+      battleMode: true,
     });
   });
 });

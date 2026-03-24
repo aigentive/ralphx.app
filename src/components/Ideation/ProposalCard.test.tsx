@@ -32,7 +32,7 @@ describe("ProposalCard", () => {
   const defaultProps = {
     proposal: createMockProposal(),
     onEdit: vi.fn(),
-    onRemove: vi.fn(),
+    onDelete: vi.fn(),
   };
 
   beforeEach(() => {
@@ -121,13 +121,13 @@ describe("ProposalCard", () => {
   it("calls edit and remove actions", async () => {
     const user = userEvent.setup();
     const onEdit = vi.fn();
-    const onRemove = vi.fn();
+    const onDelete = vi.fn();
 
     render(
       <ProposalCard
         {...defaultProps}
         onEdit={onEdit}
-        onRemove={onRemove}
+        onDelete={onDelete}
       />
     );
 
@@ -138,7 +138,7 @@ describe("ProposalCard", () => {
     await user.click(buttons[1]);
 
     expect(onEdit).toHaveBeenCalledWith("proposal-1");
-    expect(onRemove).toHaveBeenCalledWith("proposal-1");
+    expect(onDelete).toHaveBeenCalledWith("proposal-1");
   });
 
   it("hides edit/remove actions in read-only mode", () => {
@@ -197,18 +197,18 @@ describe("ProposalCard", () => {
   it("does not call onViewDetail when delete button is clicked (stopPropagation)", async () => {
     const user = userEvent.setup();
     const onViewDetail = vi.fn();
-    const onRemove = vi.fn();
+    const onDelete = vi.fn();
     render(
       <ProposalCard
         {...defaultProps}
-        onRemove={onRemove}
+        onDelete={onDelete}
         onViewDetail={onViewDetail}
       />
     );
     const card = screen.getByTestId("proposal-card-proposal-1");
     const buttons = within(card).getAllByRole("button");
     await user.click(buttons[1]);
-    expect(onRemove).toHaveBeenCalledWith("proposal-1");
+    expect(onDelete).toHaveBeenCalledWith("proposal-1");
     expect(onViewDetail).not.toHaveBeenCalled();
   });
 

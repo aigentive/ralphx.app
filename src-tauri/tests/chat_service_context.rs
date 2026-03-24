@@ -767,6 +767,7 @@ async fn test_build_command_with_team_mode_true() {
 
     // Should not panic with team_mode=true
     // The function will error in test env, but we're just testing the signature works
+    let artifact_repo = Arc::new(MemoryArtifactRepository::new());
     let _result = build_command(
         &cli_path,
         &plugin_dir,
@@ -777,6 +778,7 @@ async fn test_build_command_with_team_mode_true() {
         None,
         true, // team_mode=true
         chat_attachment_repo,
+        artifact_repo,
         &[],
         0,
     )
@@ -798,6 +800,7 @@ async fn test_build_command_with_team_mode_false() {
     let chat_attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
 
     // Should not panic with team_mode=false
+    let artifact_repo = Arc::new(MemoryArtifactRepository::new());
     let _result = build_command(
         &cli_path,
         &plugin_dir,
@@ -808,6 +811,7 @@ async fn test_build_command_with_team_mode_false() {
         None,
         false, // team_mode=false
         chat_attachment_repo,
+        artifact_repo,
         &[],
         0,
     )
@@ -872,6 +876,7 @@ async fn test_build_resume_command_with_team_mode() {
     let working_dir = std::path::PathBuf::from("/tmp");
 
     let chat_attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
+    let artifact_repo = Arc::new(MemoryArtifactRepository::new());
     let ideation_repo = Arc::new(MockIdeationRepo::empty());
     let task_repo = Arc::new(MockTaskRepo);
 
@@ -887,6 +892,7 @@ async fn test_build_resume_command_with_team_mode() {
         None,
         true, // team_mode=true
         chat_attachment_repo.clone(),
+        artifact_repo.clone(),
         ideation_repo.clone(),
         task_repo.clone(),
         &[],
@@ -906,6 +912,7 @@ async fn test_build_resume_command_with_team_mode() {
         None,
         false, // team_mode=false
         chat_attachment_repo,
+        artifact_repo,
         ideation_repo,
         task_repo,
         &[],
