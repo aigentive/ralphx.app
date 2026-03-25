@@ -53,6 +53,7 @@ export function transformExecutionSettings(
 ): ExecutionSettingsResponse {
   return {
     maxConcurrentTasks: raw.max_concurrent_tasks,
+    projectIdeationMax: raw.project_ideation_max,
     autoCommit: raw.auto_commit,
     pauseOnFailure: raw.pause_on_failure,
   };
@@ -63,9 +64,15 @@ export function transformExecutionSettings(
  */
 export function transformExecutionSettingsInput(
   input: UpdateExecutionSettingsInput
-): { max_concurrent_tasks: number; auto_commit: boolean; pause_on_failure: boolean } {
+): {
+  max_concurrent_tasks: number;
+  project_ideation_max: number;
+  auto_commit: boolean;
+  pause_on_failure: boolean;
+} {
   return {
     max_concurrent_tasks: input.maxConcurrentTasks,
+    project_ideation_max: input.projectIdeationMax,
     auto_commit: input.autoCommit,
     pause_on_failure: input.pauseOnFailure,
   };
@@ -80,6 +87,8 @@ export function transformGlobalExecutionSettings(
 ): GlobalExecutionSettingsResponse {
   return {
     globalMaxConcurrent: raw.global_max_concurrent,
+    globalIdeationMax: raw.global_ideation_max,
+    allowIdeationBorrowIdleExecution: raw.allow_ideation_borrow_idle_execution,
   };
 }
 
@@ -89,8 +98,14 @@ export function transformGlobalExecutionSettings(
  */
 export function transformGlobalExecutionSettingsInput(
   input: UpdateGlobalExecutionSettingsInput
-): { global_max_concurrent: number } {
+): {
+  global_max_concurrent: number;
+  global_ideation_max: number;
+  allow_ideation_borrow_idle_execution: boolean;
+} {
   return {
     global_max_concurrent: input.globalMaxConcurrent,
+    global_ideation_max: input.globalIdeationMax,
+    allow_ideation_borrow_idle_execution: input.allowIdeationBorrowIdleExecution,
   };
 }

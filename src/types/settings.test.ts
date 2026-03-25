@@ -23,6 +23,7 @@ describe("ExecutionSettingsSchema", () => {
   it("parses valid execution settings", () => {
     const data = {
       max_concurrent_tasks: 4,
+      project_ideation_max: 3,
       auto_commit: false,
       commit_message_prefix: "fix: ",
       pause_on_failure: false,
@@ -30,6 +31,7 @@ describe("ExecutionSettingsSchema", () => {
     };
     const result = ExecutionSettingsSchema.parse(data);
     expect(result.max_concurrent_tasks).toBe(4);
+    expect(result.project_ideation_max).toBe(3);
     expect(result.auto_commit).toBe(false);
     expect(result.commit_message_prefix).toBe("fix: ");
   });
@@ -43,6 +45,11 @@ describe("ExecutionSettingsSchema", () => {
     expect(() => ExecutionSettingsSchema.parse({ max_concurrent_tasks: 0 })).toThrow();
     expect(() => ExecutionSettingsSchema.parse({ max_concurrent_tasks: 11 })).toThrow();
     expect(ExecutionSettingsSchema.parse({ max_concurrent_tasks: 5 }).max_concurrent_tasks).toBe(5);
+  });
+
+  it("allows disabling project ideation with a zero cap", () => {
+    const result = ExecutionSettingsSchema.parse({ project_ideation_max: 0 });
+    expect(result.project_ideation_max).toBe(0);
   });
 });
 

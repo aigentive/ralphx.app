@@ -312,19 +312,27 @@ const commandHandlers: Record<
     // Transform to snake_case as backend would return
     return {
       max_concurrent_tasks: settings.maxConcurrentTasks,
+      project_ideation_max: settings.projectIdeationMax,
       auto_commit: settings.autoCommit,
       pause_on_failure: settings.pauseOnFailure,
     };
   },
   update_execution_settings: async (args) => {
-    const input = args.input as { max_concurrent_tasks: number; auto_commit: boolean; pause_on_failure: boolean };
+    const input = args.input as {
+      max_concurrent_tasks: number;
+      project_ideation_max: number;
+      auto_commit: boolean;
+      pause_on_failure: boolean;
+    };
     const settings = await mockExecutionApi.updateSettings({
       maxConcurrentTasks: input.max_concurrent_tasks,
+      projectIdeationMax: input.project_ideation_max,
       autoCommit: input.auto_commit,
       pauseOnFailure: input.pause_on_failure,
     }, args.projectId as string | undefined);
     return {
       max_concurrent_tasks: settings.maxConcurrentTasks,
+      project_ideation_max: settings.projectIdeationMax,
       auto_commit: settings.autoCommit,
       pause_on_failure: settings.pauseOnFailure,
     };
@@ -337,15 +345,25 @@ const commandHandlers: Record<
     // Transform to snake_case as backend would return
     return {
       global_max_concurrent: settings.globalMaxConcurrent,
+      global_ideation_max: settings.globalIdeationMax,
+      allow_ideation_borrow_idle_execution: settings.allowIdeationBorrowIdleExecution,
     };
   },
   update_global_execution_settings: async (args) => {
-    const input = args.input as { global_max_concurrent: number };
+    const input = args.input as {
+      global_max_concurrent: number;
+      global_ideation_max: number;
+      allow_ideation_borrow_idle_execution: boolean;
+    };
     const settings = await mockExecutionApi.updateGlobalSettings({
       globalMaxConcurrent: input.global_max_concurrent,
+      globalIdeationMax: input.global_ideation_max,
+      allowIdeationBorrowIdleExecution: input.allow_ideation_borrow_idle_execution,
     });
     return {
       global_max_concurrent: settings.globalMaxConcurrent,
+      global_ideation_max: settings.globalIdeationMax,
+      allow_ideation_borrow_idle_execution: settings.allowIdeationBorrowIdleExecution,
     };
   },
 

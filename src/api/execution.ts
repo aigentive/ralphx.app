@@ -149,6 +149,7 @@ export const executionApi = {
       const defaults = DEFAULT_PROJECT_SETTINGS.execution;
       return transformExecutionSettings({
         max_concurrent_tasks: defaults.max_concurrent_tasks,
+        project_ideation_max: defaults.project_ideation_max,
         auto_commit: defaults.auto_commit,
         pause_on_failure: defaults.pause_on_failure,
       });

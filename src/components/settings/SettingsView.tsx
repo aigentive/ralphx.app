@@ -76,6 +76,18 @@ function ExecutionSection({
         disabled={disabled}
         onChange={(value) => onChange({ max_concurrent_tasks: value })}
       />
+      <NumberSettingRow
+        id="project-ideation-max"
+        label="Project Ideation Cap"
+        description="Maximum concurrent ideation and verification sessions for this project (0-10)"
+        value={settings.project_ideation_max}
+        min={0}
+        max={10}
+        step={1}
+        unit=""
+        disabled={disabled}
+        onChange={(value) => onChange({ project_ideation_max: value })}
+      />
       <ToggleSettingRow
         id="auto-commit"
         label="Auto Commit"
@@ -306,8 +318,11 @@ function GlobalExecutionSection() {
       } catch (err) {
         console.error("Failed to load global execution settings:", err);
         setError(err instanceof Error ? err.message : "Failed to load global settings");
-        // Default to 20 if load fails
-        setGlobalSettings({ globalMaxConcurrent: 20 });
+        setGlobalSettings({
+          globalMaxConcurrent: 20,
+          globalIdeationMax: 4,
+          allowIdeationBorrowIdleExecution: false,
+        });
       } finally {
         setIsLoading(false);
       }
@@ -324,21 +339,17 @@ function GlobalExecutionSection() {
     };
   }, []);
 
-  const handleGlobalMaxChange = useCallback((value: number) => {
-    // Update local state immediately
-    setGlobalSettings({ globalMaxConcurrent: value });
+  const scheduleSave = useCallback((nextSettings: GlobalExecutionSettingsResponse) => {
     setError(null);
 
-    // Clear any pending save
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
 
-    // Debounce the API call (300ms)
     saveTimeoutRef.current = setTimeout(async () => {
       try {
         setIsSaving(true);
-        await executionApi.updateGlobalSettings({ globalMaxConcurrent: value });
+        await executionApi.updateGlobalSettings(nextSettings);
       } catch (err) {
         console.error("Failed to save global execution settings:", err);
         setError(err instanceof Error ? err.message : "Failed to save global settings");
@@ -347,6 +358,45 @@ function GlobalExecutionSection() {
       }
     }, 300);
   }, []);
+
+  const handleGlobalMaxChange = useCallback((value: number) => {
+    setGlobalSettings((prev) => {
+      const nextSettings = {
+        globalMaxConcurrent: value,
+        globalIdeationMax: prev?.globalIdeationMax ?? 4,
+        allowIdeationBorrowIdleExecution:
+          prev?.allowIdeationBorrowIdleExecution ?? false,
+      };
+      scheduleSave(nextSettings);
+      return nextSettings;
+    });
+  }, [scheduleSave]);
+
+  const handleGlobalIdeationMaxChange = useCallback((value: number) => {
+    setGlobalSettings((prev) => {
+      const nextSettings = {
+        globalMaxConcurrent: prev?.globalMaxConcurrent ?? 20,
+        globalIdeationMax: value,
+        allowIdeationBorrowIdleExecution:
+          prev?.allowIdeationBorrowIdleExecution ?? false,
+      };
+      scheduleSave(nextSettings);
+      return nextSettings;
+    });
+  }, [scheduleSave]);
+
+  const handleBorrowToggle = useCallback(() => {
+    setGlobalSettings((prev) => {
+      const nextSettings = {
+        globalMaxConcurrent: prev?.globalMaxConcurrent ?? 20,
+        globalIdeationMax: prev?.globalIdeationMax ?? 4,
+        allowIdeationBorrowIdleExecution:
+          !(prev?.allowIdeationBorrowIdleExecution ?? false),
+      };
+      scheduleSave(nextSettings);
+      return nextSettings;
+    });
+  }, [scheduleSave]);
 
   if (isLoading) {
     return (
@@ -384,6 +434,26 @@ function GlobalExecutionSection() {
         unit=""
         disabled={isSaving}
         onChange={handleGlobalMaxChange}
+      />
+      <NumberSettingRow
+        id="global-ideation-max"
+        label="Global Ideation Cap"
+        description="Maximum concurrent ideation and verification sessions across all projects (1-50)"
+        value={globalSettings?.globalIdeationMax ?? 4}
+        min={1}
+        max={50}
+        step={1}
+        unit=""
+        disabled={isSaving}
+        onChange={handleGlobalIdeationMaxChange}
+      />
+      <ToggleSettingRow
+        id="allow-ideation-borrow-idle-execution"
+        label="Allow Ideation Borrowing"
+        description="Let ideation use idle execution capacity when no runnable execution work is waiting"
+        checked={globalSettings?.allowIdeationBorrowIdleExecution ?? false}
+        disabled={isSaving}
+        onChange={handleBorrowToggle}
       />
     </SectionCard>
   );

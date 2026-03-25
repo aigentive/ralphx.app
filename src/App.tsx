@@ -416,6 +416,7 @@ function AppContent() {
           execution: {
             ...DEFAULT_PROJECT_SETTINGS.execution,
             max_concurrent_tasks: response.maxConcurrentTasks,
+            project_ideation_max: response.projectIdeationMax,
             auto_commit: response.autoCommit,
             pause_on_failure: response.pauseOnFailure,
           },
@@ -450,6 +451,7 @@ function AppContent() {
         // Phase 82: Pass currentProjectId for per-project settings
         await executionApi.updateSettings({
           maxConcurrentTasks: newSettings.execution.max_concurrent_tasks,
+          projectIdeationMax: newSettings.execution.project_ideation_max,
           autoCommit: newSettings.execution.auto_commit,
           pauseOnFailure: newSettings.execution.pause_on_failure,
         }, currentProjectId || undefined);

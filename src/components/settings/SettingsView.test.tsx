@@ -96,6 +96,7 @@ describe("SettingsView", () => {
     it("renders all execution settings", () => {
       render(<SettingsView />);
       expect(screen.getByText("Max Concurrent Tasks")).toBeInTheDocument();
+      expect(screen.getByText("Project Ideation Cap")).toBeInTheDocument();
       expect(screen.getByText("Auto Commit")).toBeInTheDocument();
       expect(screen.getByText("Pause on Failure")).toBeInTheDocument();
       expect(screen.getByText("Review Before Destructive")).toBeInTheDocument();
@@ -105,6 +106,12 @@ describe("SettingsView", () => {
       render(<SettingsView />);
       const input = screen.getByTestId("max-concurrent-tasks");
       expect(input).toHaveValue(DEFAULT_PROJECT_SETTINGS.execution.max_concurrent_tasks);
+    });
+
+    it("displays default project ideation cap value", () => {
+      render(<SettingsView />);
+      const input = screen.getByTestId("project-ideation-max");
+      expect(input).toHaveValue(DEFAULT_PROJECT_SETTINGS.execution.project_ideation_max);
     });
 
     it("toggles auto commit setting", async () => {
@@ -133,6 +140,18 @@ describe("SettingsView", () => {
       expect(onChange).toHaveBeenCalledTimes(1);
       const calledWith = onChange.mock.calls[0][0];
       expect(calledWith.execution.max_concurrent_tasks).toBe(5);
+    });
+
+    it("updates project ideation cap", () => {
+      const onChange = vi.fn();
+      render(<SettingsView onSettingsChange={onChange} />);
+
+      const input = screen.getByTestId("project-ideation-max");
+      fireEvent.change(input, { target: { value: "4" } });
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      const calledWith = onChange.mock.calls[0][0];
+      expect(calledWith.execution.project_ideation_max).toBe(4);
     });
   });
 
@@ -391,6 +410,27 @@ describe("SettingsView", () => {
       // The label is inside a div with border-l-2 class
       const indentedContainer = autoFixRow?.querySelector(".border-l-2");
       expect(indentedContainer || autoFixRow?.className.includes("border-l")).toBeTruthy();
+    });
+  });
+
+  describe("Global Execution Section", () => {
+    it("renders all global execution settings", async () => {
+      render(<SettingsView />);
+
+      expect(await screen.findByText("Global Max Concurrent")).toBeInTheDocument();
+      expect(screen.getByText("Global Ideation Cap")).toBeInTheDocument();
+      expect(screen.getByText("Allow Ideation Borrowing")).toBeInTheDocument();
+    });
+
+    it("displays default global execution values", async () => {
+      render(<SettingsView />);
+
+      expect(await screen.findByTestId("global-max-concurrent")).toHaveValue(20);
+      expect(screen.getByTestId("global-ideation-max")).toHaveValue(4);
+      expect(screen.getByTestId("allow-ideation-borrow-idle-execution")).toHaveAttribute(
+        "data-state",
+        "unchecked"
+      );
     });
   });
 });

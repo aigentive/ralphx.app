@@ -30,6 +30,7 @@ export const ExecutionCommandResponseSchema = z.object({
  */
 export const ExecutionSettingsResponseSchema = z.object({
   max_concurrent_tasks: z.number().int().positive(),
+  project_ideation_max: z.number().int().nonnegative(),
   auto_commit: z.boolean(),
   pause_on_failure: z.boolean(),
 });
@@ -39,6 +40,7 @@ export const ExecutionSettingsResponseSchema = z.object({
  */
 export const UpdateExecutionSettingsInputSchema = z.object({
   max_concurrent_tasks: z.number().int().positive(),
+  project_ideation_max: z.number().int().nonnegative(),
   auto_commit: z.boolean(),
   pause_on_failure: z.boolean(),
 });
@@ -48,6 +50,8 @@ export const UpdateExecutionSettingsInputSchema = z.object({
  */
 export const GlobalExecutionSettingsResponseSchema = z.object({
   global_max_concurrent: z.number().int().positive(),
+  global_ideation_max: z.number().int().positive(),
+  allow_ideation_borrow_idle_execution: z.boolean(),
 });
 
 /**
@@ -55,4 +59,6 @@ export const GlobalExecutionSettingsResponseSchema = z.object({
  */
 export const UpdateGlobalExecutionSettingsInputSchema = z.object({
   global_max_concurrent: z.number().int().positive(),
+  global_ideation_max: z.number().int().positive(),
+  allow_ideation_borrow_idle_execution: z.boolean(),
 });

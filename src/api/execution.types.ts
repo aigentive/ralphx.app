@@ -27,6 +27,7 @@ export interface ExecutionCommandResponse {
  */
 export interface ExecutionSettingsResponse {
   maxConcurrentTasks: number;
+  projectIdeationMax: number;
   autoCommit: boolean;
   pauseOnFailure: boolean;
 }
@@ -36,6 +37,7 @@ export interface ExecutionSettingsResponse {
  */
 export interface UpdateExecutionSettingsInput {
   maxConcurrentTasks: number;
+  projectIdeationMax: number;
   autoCommit: boolean;
   pauseOnFailure: boolean;
 }
@@ -45,6 +47,8 @@ export interface UpdateExecutionSettingsInput {
  */
 export interface GlobalExecutionSettingsResponse {
   globalMaxConcurrent: number;
+  globalIdeationMax: number;
+  allowIdeationBorrowIdleExecution: boolean;
 }
 
 /**
@@ -52,4 +56,6 @@ export interface GlobalExecutionSettingsResponse {
  */
 export interface UpdateGlobalExecutionSettingsInput {
   globalMaxConcurrent: number;
+  globalIdeationMax: number;
+  allowIdeationBorrowIdleExecution: boolean;
 }

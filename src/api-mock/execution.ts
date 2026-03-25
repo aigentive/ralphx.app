@@ -29,10 +29,13 @@ let mockExecutionState: ExecutionStatusResponse = {
 
 let mockGlobalSettings: GlobalExecutionSettingsResponse = {
   globalMaxConcurrent: 20,
+  globalIdeationMax: 4,
+  allowIdeationBorrowIdleExecution: false,
 };
 
 let mockExecutionSettings: ExecutionSettingsResponse = {
   maxConcurrentTasks: 3,
+  projectIdeationMax: 2,
   autoCommit: false,
   pauseOnFailure: true,
 };
