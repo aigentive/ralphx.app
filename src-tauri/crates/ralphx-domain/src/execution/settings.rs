@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 pub struct ExecutionSettings {
     /// Maximum number of concurrent tasks that can execute simultaneously (per-project)
     pub max_concurrent_tasks: u32,
+    /// Maximum number of ideation/verification sessions this project may run concurrently.
+    pub project_ideation_max: u32,
     /// Whether to auto-commit changes after successful task completion
     pub auto_commit: bool,
     /// Whether to pause execution when a task fails
@@ -16,6 +18,7 @@ impl Default for ExecutionSettings {
     fn default() -> Self {
         Self {
             max_concurrent_tasks: 10,
+            project_ideation_max: 2,
             auto_commit: true,
             pause_on_failure: true,
         }
@@ -29,12 +32,18 @@ pub struct GlobalExecutionSettings {
     /// Maximum total concurrent tasks across ALL projects (hard cap)
     /// Default: 20, UI max: 50
     pub global_max_concurrent: u32,
+    /// Maximum number of ideation/verification sessions allowed globally.
+    pub global_ideation_max: u32,
+    /// When true, ideation may borrow idle execution capacity if no runnable execution work waits.
+    pub allow_ideation_borrow_idle_execution: bool,
 }
 
 impl Default for GlobalExecutionSettings {
     fn default() -> Self {
         Self {
             global_max_concurrent: 20,
+            global_ideation_max: 4,
+            allow_ideation_borrow_idle_execution: false,
         }
     }
 }
@@ -47,6 +56,8 @@ impl GlobalExecutionSettings {
     pub fn validate(&self) -> Self {
         Self {
             global_max_concurrent: self.global_max_concurrent.clamp(1, Self::MAX_ALLOWED),
+            global_ideation_max: self.global_ideation_max.clamp(1, Self::MAX_ALLOWED),
+            allow_ideation_borrow_idle_execution: self.allow_ideation_borrow_idle_execution,
         }
     }
 }

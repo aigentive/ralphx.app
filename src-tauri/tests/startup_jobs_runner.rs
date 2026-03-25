@@ -1589,6 +1589,7 @@ async fn test_startup_loads_persisted_project_quota() {
     // Set project-specific execution settings with max_concurrent = 3
     let settings = ExecutionSettings {
         max_concurrent_tasks: 3,
+        project_ideation_max: 2,
         auto_commit: false,
         pause_on_failure: false,
     };
@@ -1644,6 +1645,7 @@ async fn test_startup_quota_sync_before_resumption() {
     // Set project-specific execution settings with max_concurrent = 2
     let settings = ExecutionSettings {
         max_concurrent_tasks: 2,
+        project_ideation_max: 1,
         auto_commit: false,
         pause_on_failure: false,
     };

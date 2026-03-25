@@ -45,15 +45,17 @@ impl ExecutionSettingsRepository for SqliteExecutionSettingsRepository {
             .run(move |conn| {
                 if let Some(ref pid) = project_id_str {
                     let mut stmt = conn.prepare(
-                        "SELECT max_concurrent_tasks, auto_commit, pause_on_failure
+                        "SELECT max_concurrent_tasks, project_ideation_max, auto_commit, pause_on_failure
                          FROM execution_settings WHERE project_id = ?1",
                     )?;
                     let result = stmt.query_row([pid.as_str()], |row| {
                         let max_concurrent_tasks: i64 = row.get(0)?;
-                        let auto_commit: i64 = row.get(1)?;
-                        let pause_on_failure: i64 = row.get(2)?;
+                        let project_ideation_max: i64 = row.get(1)?;
+                        let auto_commit: i64 = row.get(2)?;
+                        let pause_on_failure: i64 = row.get(3)?;
                         Ok(ExecutionSettings {
                             max_concurrent_tasks: max_concurrent_tasks as u32,
+                            project_ideation_max: project_ideation_max as u32,
                             auto_commit: auto_commit != 0,
                             pause_on_failure: pause_on_failure != 0,
                         })
@@ -67,15 +69,17 @@ impl ExecutionSettingsRepository for SqliteExecutionSettingsRepository {
 
                 // Get global defaults (id=1, project_id IS NULL)
                 let mut stmt = conn.prepare(
-                    "SELECT max_concurrent_tasks, auto_commit, pause_on_failure
+                    "SELECT max_concurrent_tasks, project_ideation_max, auto_commit, pause_on_failure
                      FROM execution_settings WHERE id = 1 AND project_id IS NULL",
                 )?;
                 let result = stmt.query_row([], |row| {
                     let max_concurrent_tasks: i64 = row.get(0)?;
-                    let auto_commit: i64 = row.get(1)?;
-                    let pause_on_failure: i64 = row.get(2)?;
+                    let project_ideation_max: i64 = row.get(1)?;
+                    let auto_commit: i64 = row.get(2)?;
+                    let pause_on_failure: i64 = row.get(3)?;
                     Ok(ExecutionSettings {
                         max_concurrent_tasks: max_concurrent_tasks as u32,
+                        project_ideation_max: project_ideation_max as u32,
                         auto_commit: auto_commit != 0,
                         pause_on_failure: pause_on_failure != 0,
                     })
@@ -106,12 +110,14 @@ impl ExecutionSettingsRepository for SqliteExecutionSettingsRepository {
                     let rows_updated = conn.execute(
                         "UPDATE execution_settings
                          SET max_concurrent_tasks = ?1,
-                             auto_commit = ?2,
-                             pause_on_failure = ?3,
+                             project_ideation_max = ?2,
+                             auto_commit = ?3,
+                             pause_on_failure = ?4,
                              updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
-                         WHERE project_id = ?4",
+                         WHERE project_id = ?5",
                         rusqlite::params![
                             settings.max_concurrent_tasks as i64,
+                            settings.project_ideation_max as i64,
                             settings.auto_commit as i64,
                             settings.pause_on_failure as i64,
                             pid.as_str(),
@@ -120,10 +126,11 @@ impl ExecutionSettingsRepository for SqliteExecutionSettingsRepository {
 
                     if rows_updated == 0 {
                         conn.execute(
-                            "INSERT INTO execution_settings (max_concurrent_tasks, auto_commit, pause_on_failure, updated_at, project_id)
-                             VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), ?4)",
+                            "INSERT INTO execution_settings (max_concurrent_tasks, project_ideation_max, auto_commit, pause_on_failure, updated_at, project_id)
+                             VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), ?5)",
                             rusqlite::params![
                                 settings.max_concurrent_tasks as i64,
+                                settings.project_ideation_max as i64,
                                 settings.auto_commit as i64,
                                 settings.pause_on_failure as i64,
                                 pid.as_str(),
@@ -134,12 +141,14 @@ impl ExecutionSettingsRepository for SqliteExecutionSettingsRepository {
                     conn.execute(
                         "UPDATE execution_settings
                          SET max_concurrent_tasks = ?1,
-                             auto_commit = ?2,
-                             pause_on_failure = ?3,
+                             project_ideation_max = ?2,
+                             auto_commit = ?3,
+                             pause_on_failure = ?4,
                              updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
                          WHERE id = 1 AND project_id IS NULL",
                         rusqlite::params![
                             settings.max_concurrent_tasks as i64,
+                            settings.project_ideation_max as i64,
                             settings.auto_commit as i64,
                             settings.pause_on_failure as i64,
                         ],
@@ -179,12 +188,18 @@ impl GlobalExecutionSettingsRepository for SqliteGlobalExecutionSettingsReposito
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT global_max_concurrent FROM global_execution_settings WHERE id = 1",
+                    "SELECT global_max_concurrent, global_ideation_max, allow_ideation_borrow_idle_execution
+                     FROM global_execution_settings WHERE id = 1",
                 )?;
                 let result = stmt.query_row([], |row| {
                     let global_max_concurrent: i64 = row.get(0)?;
+                    let global_ideation_max: i64 = row.get(1)?;
+                    let allow_ideation_borrow_idle_execution: i64 = row.get(2)?;
                     Ok(GlobalExecutionSettings {
                         global_max_concurrent: global_max_concurrent as u32,
+                        global_ideation_max: global_ideation_max as u32,
+                        allow_ideation_borrow_idle_execution: allow_ideation_borrow_idle_execution
+                            != 0,
                     })
                 });
                 match result {
@@ -203,21 +218,33 @@ impl GlobalExecutionSettingsRepository for SqliteGlobalExecutionSettingsReposito
         &self,
         settings: &GlobalExecutionSettings,
     ) -> Result<GlobalExecutionSettings, Box<dyn std::error::Error>> {
-        let clamped_max = settings
-            .global_max_concurrent
-            .min(GLOBAL_MAX_CONCURRENT_LIMIT);
+        let validated = GlobalExecutionSettings {
+            global_max_concurrent: settings
+                .global_max_concurrent
+                .min(GLOBAL_MAX_CONCURRENT_LIMIT),
+            global_ideation_max: settings
+                .global_ideation_max
+                .min(GLOBAL_MAX_CONCURRENT_LIMIT),
+            allow_ideation_borrow_idle_execution: settings
+                .allow_ideation_borrow_idle_execution,
+        }
+        .validate();
         self.db
             .run(move |conn| {
                 conn.execute(
                     "UPDATE global_execution_settings
                      SET global_max_concurrent = ?1,
+                         global_ideation_max = ?2,
+                         allow_ideation_borrow_idle_execution = ?3,
                          updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
                      WHERE id = 1",
-                    rusqlite::params![clamped_max as i64],
+                    rusqlite::params![
+                        validated.global_max_concurrent as i64,
+                        validated.global_ideation_max as i64,
+                        validated.allow_ideation_borrow_idle_execution as i64,
+                    ],
                 )?;
-                Ok(GlobalExecutionSettings {
-                    global_max_concurrent: clamped_max,
-                })
+                Ok(validated)
             })
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)

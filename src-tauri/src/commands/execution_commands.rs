@@ -536,6 +536,8 @@ pub struct ExecutionCommandResponse {
 pub struct ExecutionSettingsResponse {
     /// Maximum number of concurrent tasks
     pub max_concurrent_tasks: u32,
+    /// Maximum number of concurrent ideation sessions for this project
+    pub project_ideation_max: u32,
     /// Whether to auto-commit changes after successful task completion
     pub auto_commit: bool,
     /// Whether to pause execution when a task fails
@@ -546,6 +548,7 @@ impl From<ExecutionSettings> for ExecutionSettingsResponse {
     fn from(settings: ExecutionSettings) -> Self {
         Self {
             max_concurrent_tasks: settings.max_concurrent_tasks,
+            project_ideation_max: settings.project_ideation_max,
             auto_commit: settings.auto_commit,
             pause_on_failure: settings.pause_on_failure,
         }
@@ -557,6 +560,8 @@ impl From<ExecutionSettings> for ExecutionSettingsResponse {
 pub struct UpdateExecutionSettingsInput {
     /// Maximum number of concurrent tasks
     pub max_concurrent_tasks: u32,
+    /// Maximum number of concurrent ideation sessions for this project
+    pub project_ideation_max: u32,
     /// Whether to auto-commit changes after successful task completion
     pub auto_commit: bool,
     /// Whether to pause execution when a task fails
@@ -569,12 +574,18 @@ pub struct UpdateExecutionSettingsInput {
 pub struct GlobalExecutionSettingsResponse {
     /// Maximum total concurrent tasks across ALL projects
     pub global_max_concurrent: u32,
+    /// Maximum total concurrent ideation sessions across all projects
+    pub global_ideation_max: u32,
+    /// Whether ideation may borrow idle execution capacity
+    pub allow_ideation_borrow_idle_execution: bool,
 }
 
 impl From<crate::domain::execution::GlobalExecutionSettings> for GlobalExecutionSettingsResponse {
     fn from(settings: crate::domain::execution::GlobalExecutionSettings) -> Self {
         Self {
             global_max_concurrent: settings.global_max_concurrent,
+            global_ideation_max: settings.global_ideation_max,
+            allow_ideation_borrow_idle_execution: settings.allow_ideation_borrow_idle_execution,
         }
     }
 }
@@ -584,6 +595,10 @@ impl From<crate::domain::execution::GlobalExecutionSettings> for GlobalExecution
 pub struct UpdateGlobalExecutionSettingsInput {
     /// Maximum total concurrent tasks across ALL projects (max: 50)
     pub global_max_concurrent: u32,
+    /// Maximum total concurrent ideation sessions across ALL projects (max: 50)
+    pub global_ideation_max: u32,
+    /// Whether ideation may borrow idle execution capacity
+    pub allow_ideation_borrow_idle_execution: bool,
 }
 
 // ========================================
@@ -1804,6 +1819,7 @@ pub async fn update_execution_settings(
     // Build domain settings from input
     let settings = ExecutionSettings {
         max_concurrent_tasks: input.max_concurrent_tasks,
+        project_ideation_max: input.project_ideation_max,
         auto_commit: input.auto_commit,
         pause_on_failure: input.pause_on_failure,
     };
@@ -1855,6 +1871,7 @@ pub async fn update_execution_settings(
             serde_json::json!({
                 "project_id": project_id.as_ref().map(|p| p.as_str()),
                 "max_concurrent_tasks": updated.max_concurrent_tasks,
+                "project_ideation_max": updated.project_ideation_max,
                 "auto_commit": updated.auto_commit,
                 "pause_on_failure": updated.pause_on_failure,
                 "timestamp": chrono::Utc::now().to_rfc3339(),
@@ -1991,6 +2008,8 @@ pub async fn update_global_execution_settings(
 
     let settings = GlobalExecutionSettings {
         global_max_concurrent: input.global_max_concurrent,
+        global_ideation_max: input.global_ideation_max,
+        allow_ideation_borrow_idle_execution: input.allow_ideation_borrow_idle_execution,
     };
 
     let updated = app_state
@@ -2001,6 +2020,10 @@ pub async fn update_global_execution_settings(
 
     // Sync in-memory global cap
     execution_state.set_global_max_concurrent(updated.global_max_concurrent);
+    execution_state.set_global_ideation_max(updated.global_ideation_max);
+    execution_state.set_allow_ideation_borrow_idle_execution(
+        updated.allow_ideation_borrow_idle_execution,
+    );
 
     // If global capacity increased, trigger scheduler to pick up waiting tasks
     if updated.global_max_concurrent > old_global_max {
@@ -2039,6 +2062,8 @@ pub async fn update_global_execution_settings(
             "settings:global_execution:updated",
             serde_json::json!({
                 "global_max_concurrent": updated.global_max_concurrent,
+                "global_ideation_max": updated.global_ideation_max,
+                "allow_ideation_borrow_idle_execution": updated.allow_ideation_borrow_idle_execution,
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             }),
         );
@@ -2997,6 +3022,7 @@ mod tests {
     fn test_execution_settings_response_serialization() {
         let response = ExecutionSettingsResponse {
             max_concurrent_tasks: 4,
+            project_ideation_max: 2,
             auto_commit: true,
             pause_on_failure: false,
         };
@@ -3005,6 +3031,7 @@ mod tests {
 
         // Verify snake_case serialization
         assert!(json.contains("\"max_concurrent_tasks\":4"));
+        assert!(json.contains("\"project_ideation_max\":2"));
         assert!(json.contains("\"auto_commit\":true"));
         assert!(json.contains("\"pause_on_failure\":false"));
     }
@@ -3013,6 +3040,7 @@ mod tests {
     fn test_execution_settings_response_from_domain() {
         let settings = ExecutionSettings {
             max_concurrent_tasks: 3,
+            project_ideation_max: 1,
             auto_commit: false,
             pause_on_failure: true,
         };
@@ -3020,20 +3048,64 @@ mod tests {
         let response = ExecutionSettingsResponse::from(settings);
 
         assert_eq!(response.max_concurrent_tasks, 3);
+        assert_eq!(response.project_ideation_max, 1);
         assert!(!response.auto_commit);
         assert!(response.pause_on_failure);
     }
 
     #[test]
     fn test_update_execution_settings_input_deserialization() {
-        let json = r#"{"max_concurrent_tasks":5,"auto_commit":false,"pause_on_failure":true}"#;
+        let json = r#"{"max_concurrent_tasks":5,"project_ideation_max":2,"auto_commit":false,"pause_on_failure":true}"#;
 
         let input: UpdateExecutionSettingsInput =
             serde_json::from_str(json).expect("Failed to deserialize input");
 
         assert_eq!(input.max_concurrent_tasks, 5);
+        assert_eq!(input.project_ideation_max, 2);
         assert!(!input.auto_commit);
         assert!(input.pause_on_failure);
+    }
+
+    #[test]
+    fn test_global_execution_settings_response_serialization() {
+        let response = GlobalExecutionSettingsResponse {
+            global_max_concurrent: 20,
+            global_ideation_max: 4,
+            allow_ideation_borrow_idle_execution: true,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+
+        assert!(json.contains("\"global_max_concurrent\":20"));
+        assert!(json.contains("\"global_ideation_max\":4"));
+        assert!(json.contains("\"allow_ideation_borrow_idle_execution\":true"));
+    }
+
+    #[test]
+    fn test_global_execution_settings_response_from_domain() {
+        let settings = crate::domain::execution::GlobalExecutionSettings {
+            global_max_concurrent: 18,
+            global_ideation_max: 3,
+            allow_ideation_borrow_idle_execution: false,
+        };
+
+        let response = GlobalExecutionSettingsResponse::from(settings);
+
+        assert_eq!(response.global_max_concurrent, 18);
+        assert_eq!(response.global_ideation_max, 3);
+        assert!(!response.allow_ideation_borrow_idle_execution);
+    }
+
+    #[test]
+    fn test_update_global_execution_settings_input_deserialization() {
+        let json = r#"{"global_max_concurrent":22,"global_ideation_max":5,"allow_ideation_borrow_idle_execution":true}"#;
+
+        let input: UpdateGlobalExecutionSettingsInput =
+            serde_json::from_str(json).expect("Failed to deserialize global input");
+
+        assert_eq!(input.global_max_concurrent, 22);
+        assert_eq!(input.global_ideation_max, 5);
+        assert!(input.allow_ideation_borrow_idle_execution);
     }
 
     // ========================================
@@ -3064,11 +3136,13 @@ mod tests {
         // Set different quotas for each project
         let settings1 = ExecutionSettings {
             max_concurrent_tasks: 5,
+            project_ideation_max: 2,
             auto_commit: true,
             pause_on_failure: true,
         };
         let settings2 = ExecutionSettings {
             max_concurrent_tasks: 10,
+            project_ideation_max: 2,
             auto_commit: true,
             pause_on_failure: true,
         };
@@ -3119,6 +3193,7 @@ mod tests {
 
         let settings = ExecutionSettings {
             max_concurrent_tasks: 7,
+            project_ideation_max: 2,
             auto_commit: true,
             pause_on_failure: true,
         };
@@ -3174,6 +3249,7 @@ mod tests {
 
         let settings = ExecutionSettings {
             max_concurrent_tasks: 15,
+            project_ideation_max: 2,
             auto_commit: true,
             pause_on_failure: true,
         };
@@ -3215,6 +3291,7 @@ mod tests {
 
         let settings = ExecutionSettings {
             max_concurrent_tasks: 8,
+            project_ideation_max: 2,
             auto_commit: true,
             pause_on_failure: true,
         };
@@ -3263,11 +3340,13 @@ mod tests {
 
         let settings1 = ExecutionSettings {
             max_concurrent_tasks: 3,
+            project_ideation_max: 1,
             auto_commit: true,
             pause_on_failure: true,
         };
         let settings2 = ExecutionSettings {
             max_concurrent_tasks: 12,
+            project_ideation_max: 2,
             auto_commit: true,
             pause_on_failure: true,
         };
@@ -4224,6 +4303,7 @@ mod tests {
 
         // Default values
         assert_eq!(settings.max_concurrent_tasks, 10);
+        assert_eq!(settings.project_ideation_max, 2);
         assert!(settings.auto_commit);
         assert!(settings.pause_on_failure);
     }
@@ -4234,6 +4314,7 @@ mod tests {
 
         let new_settings = ExecutionSettings {
             max_concurrent_tasks: 5,
+            project_ideation_max: 2,
             auto_commit: false,
             pause_on_failure: false,
         };
@@ -4245,6 +4326,7 @@ mod tests {
             .expect("Failed to update execution settings");
 
         assert_eq!(updated.max_concurrent_tasks, 5);
+        assert_eq!(updated.project_ideation_max, 2);
         assert!(!updated.auto_commit);
         assert!(!updated.pause_on_failure);
 
@@ -4256,6 +4338,7 @@ mod tests {
             .expect("Failed to get execution settings");
 
         assert_eq!(retrieved.max_concurrent_tasks, 5);
+        assert_eq!(retrieved.project_ideation_max, 2);
         assert!(!retrieved.auto_commit);
         assert!(!retrieved.pause_on_failure);
     }
@@ -4271,6 +4354,7 @@ mod tests {
         // Update settings
         let new_settings = ExecutionSettings {
             max_concurrent_tasks: 8,
+            project_ideation_max: 2,
             auto_commit: true,
             pause_on_failure: true,
         };
@@ -4685,6 +4769,7 @@ mod tests {
         // Set project-specific max_concurrent_tasks = 8
         let settings = ExecutionSettings {
             max_concurrent_tasks: 8,
+            project_ideation_max: 2,
             auto_commit: false,
             pause_on_failure: false,
         };
@@ -4729,6 +4814,7 @@ mod tests {
 
         let settings = ExecutionSettings {
             max_concurrent_tasks: 10,
+            project_ideation_max: 2,
             auto_commit: false,
             pause_on_failure: false,
         };
@@ -4776,6 +4862,7 @@ mod tests {
 
         let settings = ExecutionSettings {
             max_concurrent_tasks: 7,
+            project_ideation_max: 2,
             auto_commit: false,
             pause_on_failure: false,
         };
@@ -4859,6 +4946,7 @@ mod tests {
 
         let settings = ExecutionSettings {
             max_concurrent_tasks: 6,
+            project_ideation_max: 2,
             auto_commit: false,
             pause_on_failure: false,
         };
@@ -4903,6 +4991,7 @@ mod tests {
 
         let settings1 = ExecutionSettings {
             max_concurrent_tasks: 5,
+            project_ideation_max: 2,
             auto_commit: false,
             pause_on_failure: false,
         };
@@ -4921,6 +5010,7 @@ mod tests {
 
         let settings2 = ExecutionSettings {
             max_concurrent_tasks: 12,
+            project_ideation_max: 2,
             auto_commit: true,
             pause_on_failure: true,
         };

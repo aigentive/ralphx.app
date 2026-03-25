@@ -317,9 +317,15 @@ pub fn run() {
                 match init_global_settings_repo.get_settings().await {
                     Ok(global_settings) => {
                         init_execution_state.set_global_max_concurrent(global_settings.global_max_concurrent);
+                        init_execution_state.set_global_ideation_max(global_settings.global_ideation_max);
+                        init_execution_state.set_allow_ideation_borrow_idle_execution(
+                            global_settings.allow_ideation_borrow_idle_execution,
+                        );
                         info!(
-                            "Initialized global execution settings from database: global_max_concurrent={}",
-                            global_settings.global_max_concurrent
+                            "Initialized global execution settings from database: global_max_concurrent={} global_ideation_max={} allow_ideation_borrow_idle_execution={}",
+                            global_settings.global_max_concurrent,
+                            global_settings.global_ideation_max,
+                            global_settings.allow_ideation_borrow_idle_execution
                         );
                     }
                     Err(e) => {

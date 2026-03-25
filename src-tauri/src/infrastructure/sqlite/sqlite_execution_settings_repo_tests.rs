@@ -9,6 +9,7 @@ async fn test_get_default_global_settings() {
     // Get global defaults (project_id = None)
     let settings = repo.get_settings(None).await.unwrap();
     assert_eq!(settings.max_concurrent_tasks, 10);
+    assert_eq!(settings.project_ideation_max, 2);
     assert!(settings.auto_commit);
     assert!(settings.pause_on_failure);
 }
@@ -20,6 +21,7 @@ async fn test_update_global_settings() {
 
     let new_settings = ExecutionSettings {
         max_concurrent_tasks: 4,
+        project_ideation_max: 3,
         auto_commit: false,
         pause_on_failure: false,
     };
@@ -27,12 +29,14 @@ async fn test_update_global_settings() {
     // Update global defaults
     let updated = repo.update_settings(None, &new_settings).await.unwrap();
     assert_eq!(updated.max_concurrent_tasks, 4);
+    assert_eq!(updated.project_ideation_max, 3);
     assert!(!updated.auto_commit);
     assert!(!updated.pause_on_failure);
 
     // Verify persistence
     let retrieved = repo.get_settings(None).await.unwrap();
     assert_eq!(retrieved.max_concurrent_tasks, 4);
+    assert_eq!(retrieved.project_ideation_max, 3);
     assert!(!retrieved.auto_commit);
     assert!(!retrieved.pause_on_failure);
 }
@@ -47,10 +51,12 @@ async fn test_per_project_settings() {
     // Initially, get_settings for a project should return global defaults
     let settings = repo.get_settings(Some(&project_id)).await.unwrap();
     assert_eq!(settings.max_concurrent_tasks, 10); // global default
+    assert_eq!(settings.project_ideation_max, 2);
 
     // Create project-specific settings
     let project_settings = ExecutionSettings {
         max_concurrent_tasks: 5,
+        project_ideation_max: 1,
         auto_commit: false,
         pause_on_failure: true,
     };
@@ -62,12 +68,14 @@ async fn test_per_project_settings() {
     // Now get_settings should return project-specific values
     let retrieved = repo.get_settings(Some(&project_id)).await.unwrap();
     assert_eq!(retrieved.max_concurrent_tasks, 5);
+    assert_eq!(retrieved.project_ideation_max, 1);
     assert!(!retrieved.auto_commit);
     assert!(retrieved.pause_on_failure);
 
     // Global settings should remain unchanged
     let global = repo.get_settings(None).await.unwrap();
     assert_eq!(global.max_concurrent_tasks, 10);
+    assert_eq!(global.project_ideation_max, 2);
 }
 
 #[tokio::test]
@@ -78,17 +86,25 @@ async fn test_global_execution_settings() {
     // Get default global settings
     let settings = repo.get_settings().await.unwrap();
     assert_eq!(settings.global_max_concurrent, 20);
+    assert_eq!(settings.global_ideation_max, 4);
+    assert!(!settings.allow_ideation_borrow_idle_execution);
 
     // Update global settings
     let new_settings = GlobalExecutionSettings {
         global_max_concurrent: 30,
+        global_ideation_max: 6,
+        allow_ideation_borrow_idle_execution: true,
     };
     let updated = repo.update_settings(&new_settings).await.unwrap();
     assert_eq!(updated.global_max_concurrent, 30);
+    assert_eq!(updated.global_ideation_max, 6);
+    assert!(updated.allow_ideation_borrow_idle_execution);
 
     // Verify persistence
     let retrieved = repo.get_settings().await.unwrap();
     assert_eq!(retrieved.global_max_concurrent, 30);
+    assert_eq!(retrieved.global_ideation_max, 6);
+    assert!(retrieved.allow_ideation_borrow_idle_execution);
 }
 
 #[tokio::test]
@@ -99,15 +115,20 @@ async fn test_global_max_concurrent_capped_at_50() {
     // Try to set above max
     let new_settings = GlobalExecutionSettings {
         global_max_concurrent: 100,
+        global_ideation_max: 100,
+        allow_ideation_borrow_idle_execution: false,
     };
     let updated = repo.update_settings(&new_settings).await.unwrap();
 
     // Should be clamped to 50
     assert_eq!(updated.global_max_concurrent, 50);
+    assert_eq!(updated.global_ideation_max, 50);
 
     // Verify persistence
     let retrieved = repo.get_settings().await.unwrap();
     assert_eq!(retrieved.global_max_concurrent, 50);
+    assert_eq!(retrieved.global_ideation_max, 50);
+    assert!(!retrieved.allow_ideation_borrow_idle_execution);
 }
 
 #[tokio::test]
@@ -137,6 +158,8 @@ async fn test_global_execution_settings_are_not_per_project() {
     repo_a
         .update_settings(&GlobalExecutionSettings {
             global_max_concurrent: 25,
+            global_ideation_max: 5,
+            allow_ideation_borrow_idle_execution: true,
         })
         .await
         .unwrap();
@@ -144,6 +167,8 @@ async fn test_global_execution_settings_are_not_per_project() {
     // repo_b (same underlying storage) should see the same value
     let settings_b = repo_b.get_settings().await.unwrap();
     assert_eq!(settings_b.global_max_concurrent, 25);
+    assert_eq!(settings_b.global_ideation_max, 5);
+    assert!(settings_b.allow_ideation_borrow_idle_execution);
 }
 
 #[tokio::test]
@@ -159,6 +184,7 @@ async fn test_project_settings_do_not_bleed_across_projects() {
         Some(&project_x),
         &ExecutionSettings {
             max_concurrent_tasks: 3,
+            project_ideation_max: 1,
             auto_commit: false,
             pause_on_failure: false,
         },
@@ -170,6 +196,7 @@ async fn test_project_settings_do_not_bleed_across_projects() {
         Some(&project_y),
         &ExecutionSettings {
             max_concurrent_tasks: 7,
+            project_ideation_max: 2,
             auto_commit: true,
             pause_on_failure: true,
         },
@@ -182,6 +209,8 @@ async fn test_project_settings_do_not_bleed_across_projects() {
 
     assert_eq!(x_settings.max_concurrent_tasks, 3);
     assert_eq!(y_settings.max_concurrent_tasks, 7);
+    assert_eq!(x_settings.project_ideation_max, 1);
+    assert_eq!(y_settings.project_ideation_max, 2);
     assert!(!x_settings.auto_commit);
     assert!(y_settings.auto_commit);
 }

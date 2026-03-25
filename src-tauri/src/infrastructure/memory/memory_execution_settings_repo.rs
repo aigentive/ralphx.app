@@ -125,13 +125,20 @@ impl GlobalExecutionSettingsRepository for MemoryGlobalExecutionSettingsReposito
         &self,
         new_settings: &GlobalExecutionSettings,
     ) -> Result<GlobalExecutionSettings, Box<dyn std::error::Error>> {
-        // Enforce max limit of 50
-        let clamped_max = new_settings
-            .global_max_concurrent
-            .min(GLOBAL_MAX_CONCURRENT_LIMIT);
+        let validated = GlobalExecutionSettings {
+            global_max_concurrent: new_settings
+                .global_max_concurrent
+                .min(GLOBAL_MAX_CONCURRENT_LIMIT),
+            global_ideation_max: new_settings
+                .global_ideation_max
+                .min(GLOBAL_MAX_CONCURRENT_LIMIT),
+            allow_ideation_borrow_idle_execution: new_settings
+                .allow_ideation_borrow_idle_execution,
+        }
+        .validate();
 
         let mut settings = self.settings.write().await;
-        settings.global_max_concurrent = clamped_max;
+        *settings = validated;
         Ok(settings.clone())
     }
 }

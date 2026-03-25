@@ -108,6 +108,7 @@ mod v79_external_session_reliability;
 mod v80_dependencies_acknowledged;
 mod v81_external_session_reliability_backfill;
 mod v20260325120000_app_state_execution_halt_mode;
+mod v20260325131500_execution_ideation_allocation_settings;
 
 #[cfg(test)]
 mod tests;
@@ -225,9 +226,11 @@ mod v76_session_origin_tests;
 mod v81_external_session_reliability_backfill_tests;
 #[cfg(test)]
 mod v20260325120000_app_state_execution_halt_mode_tests;
+#[cfg(test)]
+mod v20260325131500_execution_ideation_allocation_settings_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i64 = 20260325120000;
+pub const SCHEMA_VERSION: i64 = 20260325131500;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -651,6 +654,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 20260325120000,
         name: "app_state_execution_halt_mode",
         migrate: v20260325120000_app_state_execution_halt_mode::migrate,
+    },
+    Migration {
+        version: 20260325131500,
+        name: "execution_ideation_allocation_settings",
+        migrate: v20260325131500_execution_ideation_allocation_settings::migrate,
     },
 ];
 
