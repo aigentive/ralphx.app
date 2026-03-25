@@ -40,7 +40,7 @@ When working in `src-tauri/`, also follow:
 
 | Priority | Area | Next Step |
 |---|---|---|
-| P0 | Global orchestration semantics | TDD global `pause`/`stop` across execution + ideation + verification-child ideation; `pause` preserves resumability, `stop` requires manual restart and must suppress startup recovery |
+| P0 | Global orchestration semantics | Persisted halt barrier landed for startup recovery (`pause`/`stop` now survive restart and suppress task/ideation auto-recovery); next make runtime queue + resume semantics fully match it |
 | P0 | Concurrency admission control | M1 landed: ideation/verification now honor a global ideation admission gate before spawn; next extend admission control across the remaining slot-consuming contexts |
 | P0 | Pipeline allocation | Global ideation cap + borrow toggle landed in `ExecutionState`; next add persisted per-project ideation allocation and runnable-execution-aware borrowing |
 | P1 | Queue + recovery alignment | Make ideation queues and startup recovery obey pause/stop barriers; stopped work must not auto-resume, paused work may resume within limits |
@@ -54,8 +54,8 @@ When working in `src-tauri/`, also follow:
 | Milestone | Tests First | Implementation Files |
 |---|---|---|
 | M1 Admission gate | Done: global ideation admission gate in shared chat service, verification-child counts-as-ideation tests, execution-not-starved tests, borrow-policy tests; next extend to per-project allocation + non-ideation slot consumers | `src-tauri/src/application/chat_service/mod.rs`, `src-tauri/src/commands/execution_commands.rs`, targeted tests in `src-tauri/tests/` |
-| M2 Global pause/stop semantics | Add failing tests that execution-bar `pause`/`stop` halt active work and prevent new starts across execution + ideation + verification children; `resume` revives paused work only | `src-tauri/src/commands/execution_commands.rs`, `src-tauri/src/application/startup_jobs.rs`, `src-tauri/src/application/chat_resumption.rs`, ideation runtime/external handlers, queue/recovery modules |
-| M3 Queue + startup recovery | Add failing tests that paused ideation recovers, stopped ideation does not, paused queues stay pending, stopped queues do not relaunch | `src-tauri/src/application/startup_jobs.rs`, `src-tauri/src/application/chat_service/chat_service_queue.rs`, `src-tauri/src/application/chat_service/chat_service_send_background.rs`, `src-tauri/src/application/recovery_queue.rs` |
+| M2 Global pause/stop semantics | Landed: persisted `ExecutionHaltMode` in `app_state`, startup task recovery suppression, startup ideation recovery suppression, command-side halt-mode persistence; next wire runtime queue/launch behavior and stop-vs-resume UX to the same barrier | `src-tauri/src/commands/execution_commands.rs`, `src-tauri/src/application/startup_jobs.rs`, app-state repos/migrations/tests |
+| M3 Queue + startup recovery | Add failing tests that paused ideation/queued sends recover, stopped ideation/queued sends do not relaunch, and runtime global `pause`/`stop` prevent new launches everywhere until explicitly allowed | `src-tauri/src/application/startup_jobs.rs`, `src-tauri/src/application/chat_service/chat_service_queue.rs`, `src-tauri/src/application/chat_service/chat_service_send_background.rs`, `src-tauri/src/application/recovery_queue.rs`, ideation runtime/external handlers |
 | M4 DB/settings backend | Add failing repo/command tests for `global_ideation_max`, `project_ideation_max`, `allow_ideation_borrow_idle_execution`, YAML-seeded defaults | execution settings repos/commands, migrations, `src-tauri/ralphx.yaml`, API contracts |
 | M5 Settings UI | Add failing UI tests for global/project ideation allocation controls and stop-vs-pause UX around resume availability | `src/components/settings/SettingsView.tsx`, `src/api/execution.ts`, related schemas/transforms/tests |
 

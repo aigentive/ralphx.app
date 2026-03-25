@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::domain::entities::app_state::AppSettings;
+use crate::domain::entities::app_state::{AppSettings, ExecutionHaltMode};
 use crate::domain::entities::ProjectId;
 use crate::domain::repositories::AppStateRepository;
 
@@ -33,6 +33,7 @@ impl MemoryAppStateRepository {
         Self {
             settings: Arc::new(RwLock::new(AppSettings {
                 active_project_id: Some(project_id),
+                ..AppSettings::default()
             })),
         }
     }
@@ -51,6 +52,15 @@ impl AppStateRepository for MemoryAppStateRepository {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut settings = self.settings.write().await;
         settings.active_project_id = project_id.cloned();
+        Ok(())
+    }
+
+    async fn set_execution_halt_mode(
+        &self,
+        halt_mode: ExecutionHaltMode,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut settings = self.settings.write().await;
+        settings.execution_halt_mode = halt_mode;
         Ok(())
     }
 }

@@ -5,6 +5,7 @@ use ralphx_lib::commands::execution_commands::{
 };
 use ralphx_lib::commands::{ActiveProjectState, ExecutionState};
 use ralphx_lib::domain::entities::{
+    app_state::ExecutionHaltMode,
     ChatContextType, InternalStatus, Project, ProjectId, Task, TaskCategory,
 };
 use ralphx_lib::domain::execution::ExecutionSettings;
@@ -124,6 +125,47 @@ async fn test_resumption_skipped_when_paused() {
         convs.len(),
         0,
         "No conversations should be created when paused"
+    );
+}
+
+#[tokio::test]
+async fn test_resumption_skipped_when_persisted_pause_barrier_is_set() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo
+        .set_execution_halt_mode(ExecutionHaltMode::Paused)
+        .await
+        .unwrap();
+
+    runner.run().await;
+
+    assert!(
+        execution_state.is_paused(),
+        "Persisted pause barrier should set runtime execution state to paused"
+    );
+    assert_eq!(execution_state.running_count(), 0);
+
+    let convs = app_state
+        .chat_conversation_repo
+        .get_by_context(ChatContextType::TaskExecution, task.id.as_str())
+        .await
+        .unwrap();
+    assert_eq!(
+        convs.len(),
+        0,
+        "No conversations should be created when persisted pause barrier is set"
     );
 }
 

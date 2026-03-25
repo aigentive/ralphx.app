@@ -6,6 +6,7 @@ async fn test_get_default_app_state() {
 
     let settings = repo.get().await.unwrap();
     assert!(settings.active_project_id.is_none());
+    assert_eq!(settings.execution_halt_mode, ExecutionHaltMode::Running);
 }
 
 #[tokio::test]
@@ -45,4 +46,29 @@ async fn test_with_active_project() {
         settings.active_project_id,
         Some(ProjectId::from_string("proj-456".to_string()))
     );
+    assert_eq!(settings.execution_halt_mode, ExecutionHaltMode::Running);
+}
+
+#[tokio::test]
+async fn test_set_execution_halt_mode_paused() {
+    let repo = MemoryAppStateRepository::new();
+
+    repo.set_execution_halt_mode(ExecutionHaltMode::Paused)
+        .await
+        .unwrap();
+
+    let settings = repo.get().await.unwrap();
+    assert_eq!(settings.execution_halt_mode, ExecutionHaltMode::Paused);
+}
+
+#[tokio::test]
+async fn test_set_execution_halt_mode_stopped() {
+    let repo = MemoryAppStateRepository::new();
+
+    repo.set_execution_halt_mode(ExecutionHaltMode::Stopped)
+        .await
+        .unwrap();
+
+    let settings = repo.get().await.unwrap();
+    assert_eq!(settings.execution_halt_mode, ExecutionHaltMode::Stopped);
 }

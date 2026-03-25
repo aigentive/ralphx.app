@@ -28,6 +28,7 @@ use crate::commands::execution_commands::{
 };
 use crate::domain::entities::ideation::IdeationSessionStatus;
 use crate::domain::entities::{
+    app_state::ExecutionHaltMode,
     ChatContextType, IdeationSessionId, InternalStatus, ReviewNote, ReviewOutcome, ReviewerType,
 };
 use crate::domain::repositories::{
@@ -316,26 +317,17 @@ impl<R: Runtime> StartupJobRunner<R> {
         // before app shutdown.
         self.reconcile_dependency_violations().await;
 
-        // Check if execution is paused - skip resumption if so
-        if self.execution_state.is_paused() {
-            info!("Execution paused, skipping task resumption");
-            return;
-        }
-        debug!("Execution NOT paused, continuing...");
-
-        // Phase 90: Read active project from DB (persisted from last session)
+        // Phase 90+: Read persisted app state (active project + halt mode) from DB.
         // No waiting needed — DB has the value from the previous session.
-        debug!("Reading active project from DB...");
-        let active_project_id = {
-            let db_result = self.app_state_repo.get().await;
-            match db_result {
-                Ok(settings) => settings.active_project_id,
-                Err(e) => {
-                    tracing::warn!(error = %e, "Failed to read app_state from DB");
-                    None
-                }
+        debug!("Reading persisted app_state from DB...");
+        let app_settings = match self.app_state_repo.get().await {
+            Ok(settings) => settings,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to read app_state from DB");
+                Default::default()
             }
         };
+        let active_project_id = app_settings.active_project_id.clone();
         if let Some(ref pid) = active_project_id {
             // Set in-memory state from DB value so other commands can use it immediately
             self.active_project_state.set(Some(pid.clone())).await;
@@ -363,6 +355,28 @@ impl<R: Runtime> StartupJobRunner<R> {
                 }
             }
         }
+
+        match app_settings.execution_halt_mode {
+            ExecutionHaltMode::Running => {}
+            ExecutionHaltMode::Paused => {
+                self.execution_state.pause();
+                info!("Persisted pause barrier detected, skipping startup recovery");
+                return;
+            }
+            ExecutionHaltMode::Stopped => {
+                self.execution_state.pause();
+                info!("Persisted stop barrier detected, skipping startup recovery");
+                return;
+            }
+        }
+
+        // Check if execution is paused - skip resumption if so
+        if self.execution_state.is_paused() {
+            info!("Execution paused, skipping task resumption");
+            return;
+        }
+        debug!("Execution NOT paused, continuing...");
+
         if active_project_id.is_none() {
             info!("No active project in DB, skipping task resumption");
             // Still try to schedule Ready tasks if scheduler is set

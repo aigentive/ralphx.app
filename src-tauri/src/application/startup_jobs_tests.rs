@@ -5,8 +5,10 @@ use std::sync::Arc;
 use crate::application::chat_service::MockChatService;
 use crate::application::{AppState, TaskTransitionService};
 use crate::commands::execution_commands::{ActiveProjectState, ExecutionState};
+use crate::domain::entities::app_state::ExecutionHaltMode;
 use crate::domain::entities::{IdeationSession, InternalStatus, Project, ProjectId, Task};
 use crate::domain::entities::ideation::IdeationSessionStatus;
+use crate::domain::services::RunningAgentKey;
 
 // ======= Unit tests for should_auto_recover() =======
 
@@ -736,5 +738,44 @@ async fn test_recover_ideation_session_skips_when_accepted() {
         mock.call_count(),
         0,
         "send_message should NOT be called for accepted session"
+    );
+}
+
+#[tokio::test]
+async fn test_run_skips_ideation_recovery_when_persisted_stop_barrier_is_set() {
+    let app_state = AppState::new_test();
+    let project = Project::new("Test Project".into(), "/tmp/test-project".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let session = create_session(&app_state, &project.id, IdeationSessionStatus::Active).await;
+
+    app_state
+        .running_agent_registry
+        .register(
+            RunningAgentKey::new("ideation", session.id.as_str()),
+            123,
+            "conv-stopped".to_string(),
+            "run-stopped".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    app_state
+        .app_state_repo
+        .set_execution_halt_mode(ExecutionHaltMode::Stopped)
+        .await
+        .unwrap();
+
+    let mock = Arc::new(MockChatService::new());
+    let runner =
+        build_runner_with_chat_service(&app_state, Arc::clone(&mock) as Arc<dyn ChatService>);
+
+    runner.run().await;
+
+    assert_eq!(
+        mock.call_count(),
+        0,
+        "Persisted stop barrier must suppress Phase N+1 ideation recovery"
     );
 }

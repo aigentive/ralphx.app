@@ -107,6 +107,7 @@ mod v78_webhook_registrations;
 mod v79_external_session_reliability;
 mod v80_dependencies_acknowledged;
 mod v81_external_session_reliability_backfill;
+mod v20260325120000_app_state_execution_halt_mode;
 
 #[cfg(test)]
 mod tests;
@@ -222,9 +223,11 @@ mod v73_proposal_migrated_from_tests;
 mod v76_session_origin_tests;
 #[cfg(test)]
 mod v81_external_session_reliability_backfill_tests;
+#[cfg(test)]
+mod v20260325120000_app_state_execution_halt_mode_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i64 = 81;
+pub const SCHEMA_VERSION: i64 = 20260325120000;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -643,6 +646,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 81,
         name: "external_session_reliability_backfill",
         migrate: v81_external_session_reliability_backfill::migrate,
+    },
+    Migration {
+        version: 20260325120000,
+        name: "app_state_execution_halt_mode",
+        migrate: v20260325120000_app_state_execution_halt_mode::migrate,
     },
 ];
 

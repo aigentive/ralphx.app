@@ -8,6 +8,7 @@ async fn test_get_default_app_state() {
 
     let settings = repo.get().await.unwrap();
     assert!(settings.active_project_id.is_none());
+    assert_eq!(settings.execution_halt_mode, ExecutionHaltMode::Running);
 }
 
 #[tokio::test]
@@ -50,6 +51,7 @@ async fn test_shared_connection() {
 
     let settings = repo.get().await.unwrap();
     assert!(settings.active_project_id.is_none());
+    assert_eq!(settings.execution_halt_mode, ExecutionHaltMode::Running);
 }
 
 #[tokio::test]
@@ -81,4 +83,30 @@ async fn test_set_active_project_overwrites_previous_value() {
         after_b.active_project_id,
         Some(ProjectId::from_string("proj-a".to_string()))
     );
+}
+
+#[tokio::test]
+async fn test_set_and_get_execution_halt_mode_paused() {
+    let db = SqliteTestDb::new("sqlite_app_state_repo_tests-set-paused");
+    let repo = SqliteAppStateRepository::from_shared(db.shared_conn());
+
+    repo.set_execution_halt_mode(ExecutionHaltMode::Paused)
+        .await
+        .unwrap();
+
+    let settings = repo.get().await.unwrap();
+    assert_eq!(settings.execution_halt_mode, ExecutionHaltMode::Paused);
+}
+
+#[tokio::test]
+async fn test_set_and_get_execution_halt_mode_stopped() {
+    let db = SqliteTestDb::new("sqlite_app_state_repo_tests-set-stopped");
+    let repo = SqliteAppStateRepository::from_shared(db.shared_conn());
+
+    repo.set_execution_halt_mode(ExecutionHaltMode::Stopped)
+        .await
+        .unwrap();
+
+    let settings = repo.get().await.unwrap();
+    assert_eq!(settings.execution_halt_mode, ExecutionHaltMode::Stopped);
 }

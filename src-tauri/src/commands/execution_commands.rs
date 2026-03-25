@@ -16,8 +16,8 @@ use crate::application::{
     AppState, ReconciliationRunner, TaskSchedulerService, TaskTransitionService,
 };
 use crate::domain::entities::{
-    task_step::StepProgressSummary, types::IdeationSessionId, ChatContextType, InternalStatus,
-    ProjectId, Task, TaskId,
+    app_state::ExecutionHaltMode, task_step::StepProgressSummary, types::IdeationSessionId,
+    ChatContextType, InternalStatus, ProjectId, Task, TaskId,
 };
 use crate::domain::execution::ExecutionSettings;
 use crate::domain::state_machine::services::TaskScheduler;
@@ -655,6 +655,17 @@ async fn sync_project_quota(
     })
 }
 
+async fn persist_execution_halt_mode(
+    app_state: &AppState,
+    halt_mode: ExecutionHaltMode,
+) -> Result<(), String> {
+    app_state
+        .app_state_repo
+        .set_execution_halt_mode(halt_mode)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Get current execution status
 /// Phase 82: Optional project_id for per-project scoping.
 /// If project_id is None, falls back to active project or aggregates across all projects.
@@ -837,6 +848,7 @@ pub async fn pause_execution(
 
     // First pause to prevent new tasks from starting
     execution_state.pause();
+    persist_execution_halt_mode(&app_state, ExecutionHaltMode::Paused).await?;
 
     // Kill all running agent processes immediately via registry
     // This ensures agents are terminated even if transition fails
@@ -985,6 +997,7 @@ pub async fn resume_execution(
         &app_state,
     )
     .await?;
+    persist_execution_halt_mode(&app_state, ExecutionHaltMode::Running).await?;
 
     // Build transition service for proper state machine transitions
     let transition_service = TaskTransitionService::new(
@@ -1244,6 +1257,7 @@ pub async fn stop_execution(
 
     // First pause to prevent new tasks from starting
     execution_state.pause();
+    persist_execution_halt_mode(&app_state, ExecutionHaltMode::Stopped).await?;
 
     // Kill all running agent processes immediately via registry
     // This ensures agents are terminated even if transition fails
@@ -4422,6 +4436,45 @@ mod tests {
         assert_eq!(max_concurrent, 7);
         assert_eq!(execution_state.max_concurrent(), 7);
         assert_eq!(resolved_project_id, Some(project.id));
+    }
+
+    #[tokio::test]
+    async fn test_persist_execution_halt_mode_paused() {
+        let app_state = AppState::new_test();
+
+        persist_execution_halt_mode(&app_state, ExecutionHaltMode::Paused)
+            .await
+            .unwrap();
+
+        let settings = app_state.app_state_repo.get().await.unwrap();
+        assert_eq!(settings.execution_halt_mode, ExecutionHaltMode::Paused);
+    }
+
+    #[tokio::test]
+    async fn test_persist_execution_halt_mode_stopped() {
+        let app_state = AppState::new_test();
+
+        persist_execution_halt_mode(&app_state, ExecutionHaltMode::Stopped)
+            .await
+            .unwrap();
+
+        let settings = app_state.app_state_repo.get().await.unwrap();
+        assert_eq!(settings.execution_halt_mode, ExecutionHaltMode::Stopped);
+    }
+
+    #[tokio::test]
+    async fn test_persist_execution_halt_mode_running() {
+        let app_state = AppState::new_test();
+
+        persist_execution_halt_mode(&app_state, ExecutionHaltMode::Stopped)
+            .await
+            .unwrap();
+        persist_execution_halt_mode(&app_state, ExecutionHaltMode::Running)
+            .await
+            .unwrap();
+
+        let settings = app_state.app_state_repo.get().await.unwrap();
+        assert_eq!(settings.execution_halt_mode, ExecutionHaltMode::Running);
     }
 
     #[tokio::test]
