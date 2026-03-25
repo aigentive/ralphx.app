@@ -42,7 +42,7 @@ When working in `src-tauri/`, also follow:
 |---|---|---|
 | P0 | Global orchestration semantics | Send-time halt barrier now covers all slot-consuming contexts; next finish explicit stop-vs-pause UX/resume behavior and confirm whether any non-ideation queued restart paths still need special handling |
 | P0 | Concurrency admission control | M1 landed: ideation/verification now honor a global ideation admission gate before spawn; next extend admission control across the remaining slot-consuming contexts |
-| P0 | Pipeline allocation | Global ideation cap + borrow toggle now persist end-to-end in repos/commands/migrations; next wire per-project ideation enforcement and runnable-execution-aware borrowing |
+| P0 | Pipeline allocation | Ideation spawn/resume now respect global cap, project ideation cap, project total cap, and borrowing only when execution is not waiting; next extend pipeline-aware admission beyond ideation and verify stop-vs-pause UX still matches the new allocation model |
 | P1 | Queue + recovery alignment | Landed: pause queues all slot-consuming sends, paused ideation relaunches on resume, and stop clears queued slot-consuming work; next document the final UX contract and verify no extra task/review/merge relaunch seam is needed |
 | P1 | Settings surface | YAML-seeded defaults plus UI/API controls now cover global/project ideation caps + borrow toggle; next validate final stop-vs-pause UX wording and then return to per-project ideation enforcement/borrowing behavior |
 | P2 | Transition handler support layer | After concurrency semantics stabilize, resume splitting `merge_validation`, `merge_coordination`, and remaining `side_effects` hot spots |

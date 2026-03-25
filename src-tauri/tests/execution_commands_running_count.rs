@@ -410,7 +410,7 @@ fn test_can_start_ideation_blocks_at_global_ideation_cap() {
     state.increment_running();
 
     assert!(
-        !state.can_start_ideation(2, false),
+        !state.can_start_ideation(2, 0, 2, 5, 2, false, false),
         "ideation must stop at the ideation cap even when total capacity remains"
     );
 }
@@ -429,7 +429,7 @@ fn test_execution_capacity_remains_when_ideation_cap_is_full() {
         "execution capacity should still remain when only the ideation cap is full"
     );
     assert!(
-        !state.can_start_ideation(2, false),
+        !state.can_start_ideation(2, 0, 2, 5, 2, false, false),
         "ideation must not consume the remaining execution-reserved capacity"
     );
 }
@@ -445,12 +445,61 @@ fn test_can_start_ideation_borrowing_requires_no_waiting_execution() {
     state.increment_running();
 
     assert!(
-        !state.can_start_ideation(2, true),
+        !state.can_start_ideation(2, 0, 2, 5, 2, true, false),
         "borrowing must stay blocked while runnable execution work is waiting"
     );
     assert!(
-        state.can_start_ideation(2, false),
+        state.can_start_ideation(2, 0, 2, 5, 2, false, false),
         "ideation may borrow idle execution capacity only when execution is not waiting"
+    );
+}
+
+#[test]
+fn test_can_start_ideation_blocks_at_project_ideation_cap_without_borrow() {
+    let state = ExecutionState::with_max_concurrent(5);
+    state.set_global_max_concurrent(5);
+    state.set_global_ideation_max(4);
+
+    state.increment_running();
+
+    assert!(
+        !state.can_start_ideation(1, 1, 1, 5, 1, false, false),
+        "project ideation cap must block additional ideation in the same project"
+    );
+}
+
+#[test]
+fn test_can_start_ideation_blocks_when_project_total_cap_is_full() {
+    let state = ExecutionState::with_max_concurrent(5);
+    state.set_global_max_concurrent(8);
+    state.set_global_ideation_max(4);
+
+    state.increment_running();
+    state.increment_running();
+    state.increment_running();
+
+    assert!(
+        !state.can_start_ideation(1, 1, 3, 3, 2, false, false),
+        "project total cap must block ideation even when global capacity remains"
+    );
+}
+
+#[test]
+fn test_can_start_ideation_borrowing_requires_no_waiting_execution_in_project() {
+    let state = ExecutionState::with_max_concurrent(5);
+    state.set_global_max_concurrent(5);
+    state.set_global_ideation_max(4);
+    state.set_allow_ideation_borrow_idle_execution(true);
+
+    state.increment_running();
+
+    assert!(
+        !state.can_start_ideation(1, 1, 1, 5, 1, false, true),
+        "project borrowing must stay blocked while that project's execution work is waiting"
+    );
+    assert!(
+        state.can_start_ideation(1, 1, 1, 5, 1, false, false),
+        "project ideation may borrow only when project execution is not waiting"
     );
 }
 

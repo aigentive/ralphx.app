@@ -35,6 +35,7 @@ fn build_chat_service(state: &HttpServerState) -> ClaudeChatService<tauri::Wry> 
         Arc::clone(&app.memory_event_repo),
     )
     .with_execution_state(Arc::clone(&state.execution_state))
+    .with_execution_settings_repo(Arc::clone(&app.execution_settings_repo))
     .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo))
     .with_task_proposal_repo(Arc::clone(&app.task_proposal_repo))
     .with_interactive_process_registry(Arc::clone(&app.interactive_process_registry))

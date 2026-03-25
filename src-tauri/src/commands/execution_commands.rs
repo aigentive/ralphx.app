@@ -352,7 +352,12 @@ impl ExecutionState {
     pub fn can_start_ideation(
         &self,
         running_global_ideation: u32,
+        running_project_ideation: u32,
+        running_project_total: u32,
+        project_max_concurrent: u32,
+        project_ideation_max: u32,
         runnable_execution_waiting: bool,
+        project_execution_waiting: bool,
     ) -> bool {
         if self.is_paused() {
             return false;
@@ -366,11 +371,29 @@ impl ExecutionState {
             return false;
         }
 
-        if running_global_ideation < self.global_ideation_max() {
+        if running_project_total >= project_max_concurrent {
+            return false;
+        }
+
+        let global_allows = if running_global_ideation < self.global_ideation_max() {
+            true
+        } else {
+            self.allow_ideation_borrow_idle_execution() && !runnable_execution_waiting
+        };
+
+        if !global_allows {
+            return false;
+        }
+
+        if project_ideation_max == 0 {
+            return false;
+        }
+
+        if running_project_ideation < project_ideation_max {
             return true;
         }
 
-        self.allow_ideation_borrow_idle_execution() && !runnable_execution_waiting
+        self.allow_ideation_borrow_idle_execution() && !project_execution_waiting
     }
 
     /// Try to mark a task as having an auto-complete in flight.
@@ -703,6 +726,10 @@ fn session_is_team_mode(team_mode: Option<&str>) -> bool {
     team_mode.is_some_and(|mode| mode != "solo")
 }
 
+fn is_ideation_registry_context(context_type: &str) -> bool {
+    context_type == "ideation" || context_type == "session"
+}
+
 async fn queue_key_matches_project(
     key: &QueueKey,
     project_filter: Option<&ProjectId>,
@@ -759,14 +786,163 @@ async fn clear_slot_consuming_queues(
     Ok(cleared)
 }
 
-async fn count_active_ideation_slots(app_state: &AppState) -> u32 {
-    app_state
-        .running_agent_registry
-        .list_all()
-        .await
-        .into_iter()
-        .filter(|(key, _)| key.context_type == ChatContextType::Ideation.to_string())
-        .count() as u32
+async fn count_active_ideation_slots(
+    app_state: &AppState,
+    execution_state: &Arc<ExecutionState>,
+    project_filter: Option<&ProjectId>,
+) -> Result<u32, String> {
+    let registry_entries = app_state.running_agent_registry.list_all().await;
+    let mut count = 0u32;
+
+    for (key, info) in registry_entries {
+        if info.pid == 0 || !is_ideation_registry_context(&key.context_type) {
+            continue;
+        }
+
+        let session_id = IdeationSessionId::from_string(key.context_id.clone());
+        let Some(session) = app_state
+            .ideation_session_repo
+            .get_by_id(&session_id)
+            .await
+            .map_err(|e| e.to_string())?
+        else {
+            continue;
+        };
+
+        if project_filter.is_some_and(|project_id| session.project_id != *project_id) {
+            continue;
+        }
+
+        let slot_key = format!("{}/{}", key.context_type, key.context_id);
+        if execution_state.is_interactive_idle(&slot_key) {
+            continue;
+        }
+
+        count += 1;
+    }
+
+    Ok(count)
+}
+
+async fn count_active_slot_consuming_contexts_for_project(
+    app_state: &AppState,
+    execution_state: &Arc<ExecutionState>,
+    project_id: &ProjectId,
+) -> Result<u32, String> {
+    let registry_entries = app_state.running_agent_registry.list_all().await;
+    let mut count = 0u32;
+
+    for (key, info) in registry_entries {
+        if is_ideation_registry_context(&key.context_type) {
+            if info.pid == 0 {
+                continue;
+            }
+
+            let session_id = IdeationSessionId::from_string(key.context_id.clone());
+            let Some(session) = app_state
+                .ideation_session_repo
+                .get_by_id(&session_id)
+                .await
+                .map_err(|e| e.to_string())?
+            else {
+                continue;
+            };
+
+            if session.project_id != *project_id {
+                continue;
+            }
+
+            let slot_key = format!("{}/{}", key.context_type, key.context_id);
+            if execution_state.is_interactive_idle(&slot_key) {
+                continue;
+            }
+
+            count += 1;
+            continue;
+        }
+
+        let context_type = match key.context_type.parse::<ChatContextType>() {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+
+        if !uses_execution_slot(context_type) {
+            continue;
+        }
+
+        let task_id = TaskId::from_string(key.context_id);
+        let Some(task) = app_state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .map_err(|e| e.to_string())?
+        else {
+            continue;
+        };
+
+        if task.project_id != *project_id
+            || !context_matches_running_status_for_gc(context_type, task.internal_status)
+        {
+            continue;
+        }
+
+        count += 1;
+    }
+
+    Ok(count)
+}
+
+async fn has_runnable_execution_waiting(
+    app_state: &AppState,
+    project_filter: Option<&ProjectId>,
+) -> Result<bool, String> {
+    if let Some(project_id) = project_filter {
+        let tasks = app_state
+            .task_repo
+            .get_by_project(project_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        if tasks.iter().any(|task| task.internal_status == InternalStatus::Ready) {
+            return Ok(true);
+        }
+    } else {
+        let projects = app_state.project_repo.get_all().await.map_err(|e| e.to_string())?;
+        for project in projects {
+            let tasks = app_state
+                .task_repo
+                .get_by_project(&project.id)
+                .await
+                .map_err(|e| e.to_string())?;
+            if tasks.iter().any(|task| task.internal_status == InternalStatus::Ready) {
+                return Ok(true);
+            }
+        }
+    }
+
+    for key in app_state.message_queue.list_keys() {
+        if !matches!(
+            key.context_type,
+            ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge
+        ) {
+            continue;
+        }
+
+        let task_id = TaskId::from_string(key.context_id.clone());
+        let Some(task) = app_state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .map_err(|e| e.to_string())?
+        else {
+            continue;
+        };
+
+        if project_filter.is_none_or(|project_id| task.project_id == *project_id) {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
 }
 
 async fn resume_paused_ideation_queues_with_chat_service<F>(
@@ -804,8 +980,38 @@ where
             continue;
         }
 
-        let running_global_ideation = count_active_ideation_slots(app_state).await;
-        if !execution_state.can_start_ideation(running_global_ideation, false) {
+        let project_settings = app_state
+            .execution_settings_repo
+            .get_settings(Some(&session.project_id))
+            .await
+            .map_err(|e| e.to_string())?;
+        let running_global_ideation =
+            count_active_ideation_slots(app_state, execution_state, None).await?;
+        let running_project_ideation = count_active_ideation_slots(
+            app_state,
+            execution_state,
+            Some(&session.project_id),
+        )
+        .await?;
+        let running_project_total = count_active_slot_consuming_contexts_for_project(
+            app_state,
+            execution_state,
+            &session.project_id,
+        )
+        .await?;
+        let global_execution_waiting =
+            has_runnable_execution_waiting(app_state, None).await?;
+        let project_execution_waiting =
+            has_runnable_execution_waiting(app_state, Some(&session.project_id)).await?;
+        if !execution_state.can_start_ideation(
+            running_global_ideation,
+            running_project_ideation,
+            running_project_total,
+            project_settings.max_concurrent_tasks,
+            project_settings.project_ideation_max,
+            global_execution_waiting,
+            project_execution_waiting,
+        ) {
             break;
         }
 
@@ -1418,6 +1624,7 @@ pub async fn resume_execution(
                 )
                 .with_app_handle(handle.clone())
                 .with_execution_state(Arc::clone(&execution_state_arc))
+                .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
                 .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
                 .with_task_proposal_repo(Arc::clone(&app_state.task_proposal_repo))
                 .with_task_step_repo(Arc::clone(&app_state.task_step_repo))
@@ -2702,6 +2909,7 @@ mod tests {
     use super::*;
     use crate::application::chat_service::{ChatService, MockChatService};
     use crate::domain::entities::{GitMode, IdeationSession};
+    use crate::domain::services::RunningAgentKey;
     use std::sync::Arc;
 
     // ========================================
@@ -3864,6 +4072,150 @@ mod tests {
         assert_eq!(
             mock.get_sent_messages().await,
             vec!["first queued".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resume_respects_project_ideation_cap_for_same_project() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+        let project = Project::new("Project Cap".to_string(), "/test/project-cap".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        app_state
+            .execution_settings_repo
+            .update_settings(
+                Some(&project.id),
+                &ExecutionSettings {
+                    max_concurrent_tasks: 5,
+                    project_ideation_max: 1,
+                    auto_commit: true,
+                    pause_on_failure: true,
+                },
+            )
+            .await
+            .unwrap();
+
+        let occupied = app_state
+            .ideation_session_repo
+            .create(IdeationSession::new(project.id.clone()))
+            .await
+            .unwrap();
+        let queued = app_state
+            .ideation_session_repo
+            .create(IdeationSession::new(project.id.clone()))
+            .await
+            .unwrap();
+
+        app_state.message_queue.queue(
+            ChatContextType::Ideation,
+            queued.id.as_str(),
+            "blocked by project cap".to_string(),
+        );
+
+        app_state
+            .running_agent_registry
+            .register(
+                RunningAgentKey::new("ideation", occupied.id.as_str()),
+                22222,
+                "occupied-conv".to_string(),
+                "occupied-run".to_string(),
+                None,
+                None,
+            )
+            .await;
+
+        let mock = Arc::new(MockChatService::new());
+        let resumed = resume_paused_ideation_queues_with_chat_service(
+            Some(&project.id),
+            &app_state,
+            &execution_state,
+            |_| Arc::clone(&mock) as Arc<dyn ChatService>,
+        )
+        .await
+        .expect("resume paused ideation queue with project cap");
+
+        assert_eq!(resumed, 0);
+        assert_eq!(mock.call_count(), 0);
+        assert_eq!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Ideation, queued.id.as_str())
+                .len(),
+            1,
+            "project-capped session must stay queued on resume"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resume_borrowing_stays_blocked_when_ready_execution_waits() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+        let project = Project::new("Borrow Block".to_string(), "/test/borrow-block".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        execution_state.set_global_max_concurrent(5);
+        execution_state.set_global_ideation_max(1);
+        execution_state.set_allow_ideation_borrow_idle_execution(true);
+
+        let occupied = app_state
+            .ideation_session_repo
+            .create(IdeationSession::new(project.id.clone()))
+            .await
+            .unwrap();
+        let queued = app_state
+            .ideation_session_repo
+            .create(IdeationSession::new(project.id.clone()))
+            .await
+            .unwrap();
+
+        let ready_task = Task::new(project.id.clone(), "Ready execution".to_string());
+        app_state
+            .task_repo
+            .create(Task {
+                internal_status: InternalStatus::Ready,
+                ..ready_task
+            })
+            .await
+            .unwrap();
+
+        app_state.message_queue.queue(
+            ChatContextType::Ideation,
+            queued.id.as_str(),
+            "blocked by ready execution".to_string(),
+        );
+
+        app_state
+            .running_agent_registry
+            .register(
+                RunningAgentKey::new("ideation", occupied.id.as_str()),
+                11111,
+                "occupied-conv".to_string(),
+                "occupied-run".to_string(),
+                None,
+                None,
+            )
+            .await;
+
+        let mock = Arc::new(MockChatService::new());
+        let resumed = resume_paused_ideation_queues_with_chat_service(
+            Some(&project.id),
+            &app_state,
+            &execution_state,
+            |_| Arc::clone(&mock) as Arc<dyn ChatService>,
+        )
+        .await
+        .expect("resume paused ideation queue with ready execution");
+
+        assert_eq!(resumed, 0);
+        assert_eq!(mock.call_count(), 0);
+        assert_eq!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Ideation, queued.id.as_str())
+                .len(),
+            1,
+            "borrowing must stay blocked while ready execution work exists"
         );
     }
 

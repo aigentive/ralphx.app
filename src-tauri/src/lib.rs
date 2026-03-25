@@ -627,6 +627,7 @@ pub fn run() {
                         Arc::clone(&startup_memory_event_repo),
                     )
                     .with_execution_state(Arc::clone(&startup_execution_state))
+                    .with_execution_settings_repo(Arc::clone(&startup_execution_settings_repo))
                     .with_app_handle(recovery_chat_service_app_handle)
                     .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry)),
                 );

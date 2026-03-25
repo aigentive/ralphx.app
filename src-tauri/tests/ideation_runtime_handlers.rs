@@ -6,9 +6,11 @@ use axum::{
 use ralphx_lib::application::chat_service::{ChatService, ChatServiceError, ClaudeChatService, SendMessageOptions};
 use ralphx_lib::application::{AppState, InteractiveProcessKey, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::execution::ExecutionSettings;
 use ralphx_lib::domain::entities::ideation::{SessionPurpose, VerificationStatus};
 use ralphx_lib::domain::entities::{
-    ChatContextType, ChatMessage, IdeationSessionBuilder, IdeationSessionId, ProjectId,
+    ChatContextType, ChatMessage, IdeationSessionBuilder, IdeationSessionId, InternalStatus,
+    Project, ProjectId, Task,
 };
 use ralphx_lib::domain::services::RunningAgentKey;
 use ralphx_lib::http_server::handlers::*;
@@ -69,6 +71,16 @@ async fn create_active_session(state: &HttpServerState) -> IdeationSessionId {
     id
 }
 
+async fn create_active_session_in_project(
+    state: &HttpServerState,
+    project_id: ProjectId,
+) -> IdeationSessionId {
+    let session = IdeationSessionBuilder::new().project_id(project_id).build();
+    let id = session.id.clone();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+    id
+}
+
 async fn create_active_session_with_purpose(
     state: &HttpServerState,
     purpose: SessionPurpose,
@@ -100,6 +112,7 @@ fn build_ideation_chat_service(state: &HttpServerState) -> ClaudeChatService<tau
         Arc::clone(&app.memory_event_repo),
     )
     .with_execution_state(Arc::clone(&state.execution_state))
+    .with_execution_settings_repo(Arc::clone(&app.execution_settings_repo))
     .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo))
     .with_task_proposal_repo(Arc::clone(&app.task_proposal_repo))
     .with_interactive_process_registry(Arc::clone(&app.interactive_process_registry))
@@ -629,6 +642,112 @@ async fn test_verification_child_session_counts_against_ideation_cap() {
         .await;
 
     let err = result.expect_err("verification child must count against ideation capacity");
+    assert!(
+        matches!(err, ChatServiceError::SpawnFailed(ref msg) if msg.contains("ideation capacity reached")),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn test_project_ideation_cap_blocks_same_project_spawn() {
+    let state = setup_test_state().await;
+    let project = Project::new("Project Cap".to_string(), "/tmp/project-cap".to_string());
+    state.app_state.project_repo.create(project.clone()).await.unwrap();
+
+    state
+        .app_state
+        .execution_settings_repo
+        .update_settings(
+            Some(&project.id),
+            &ExecutionSettings {
+                max_concurrent_tasks: 5,
+                project_ideation_max: 1,
+                auto_commit: true,
+                pause_on_failure: true,
+            },
+        )
+        .await
+        .unwrap();
+
+    let occupied_session_id = create_active_session_in_project(&state, project.id.clone()).await;
+    let target_session_id = create_active_session_in_project(&state, project.id.clone()).await;
+
+    state.execution_state.set_global_max_concurrent(5);
+    state.execution_state.set_global_ideation_max(5);
+
+    state
+        .app_state
+        .running_agent_registry
+        .register(
+            RunningAgentKey::new("ideation", occupied_session_id.as_str()),
+            44444,
+            "project-cap-conv".to_string(),
+            "project-cap-run".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let chat_service = build_ideation_chat_service(&state);
+    let result = chat_service
+        .send_message(
+            ChatContextType::Ideation,
+            target_session_id.as_str(),
+            "Start same-project ideation",
+            SendMessageOptions::default(),
+        )
+        .await;
+
+    let err = result.expect_err("project ideation cap must block same-project spawn");
+    assert!(
+        matches!(err, ChatServiceError::SpawnFailed(ref msg) if msg.contains("project ideation capacity reached")),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn test_borrowing_stays_blocked_when_ready_execution_waits() {
+    let state = setup_test_state().await;
+    let project = Project::new("Borrow Block".to_string(), "/tmp/borrow-block".to_string());
+    state.app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let occupied_session_id = create_active_session_in_project(&state, project.id.clone()).await;
+    let target_session_id = create_active_session_in_project(&state, project.id.clone()).await;
+
+    let mut ready_task = Task::new(project.id.clone(), "Ready execution".to_string());
+    ready_task.internal_status = InternalStatus::Ready;
+    state.app_state.task_repo.create(ready_task).await.unwrap();
+
+    state.execution_state.set_global_max_concurrent(5);
+    state.execution_state.set_global_ideation_max(1);
+    state
+        .execution_state
+        .set_allow_ideation_borrow_idle_execution(true);
+
+    state
+        .app_state
+        .running_agent_registry
+        .register(
+            RunningAgentKey::new("ideation", occupied_session_id.as_str()),
+            33333,
+            "borrow-block-conv".to_string(),
+            "borrow-block-run".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let chat_service = build_ideation_chat_service(&state);
+    let result = chat_service
+        .send_message(
+            ChatContextType::Ideation,
+            target_session_id.as_str(),
+            "Start ideation while execution waits",
+            SendMessageOptions::default(),
+        )
+        .await;
+
+    let err = result.expect_err("ready execution work must block ideation borrowing");
     assert!(
         matches!(err, ChatServiceError::SpawnFailed(ref msg) if msg.contains("ideation capacity reached")),
         "unexpected error: {err}"

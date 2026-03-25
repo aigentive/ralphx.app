@@ -33,12 +33,13 @@ use crate::application::interactive_process_registry::{
 use crate::application::question_state::QuestionState;
 use crate::domain::entities::{
     AgentRun, ChatContextType, ChatConversation, ChatConversationId, ChatMessageId,
-    IdeationSessionId, TaskId,
+    IdeationSessionId, InternalStatus, ProjectId, TaskId,
 };
 use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ArtifactRepository, ChatAttachmentRepository,
-    ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
+    ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
+    IdeationSessionRepository,
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
     StateHistoryMetadata, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
     TaskStepRepository,
@@ -314,6 +315,7 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     project_repo: Arc<dyn ProjectRepository>,
     task_repo: Arc<dyn TaskRepository>,
     task_dependency_repo: Arc<dyn TaskDependencyRepository>,
+    execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     activity_event_repo: Arc<dyn ActivityEventRepository>,
     message_queue: Arc<MessageQueue>,
@@ -380,6 +382,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             project_repo,
             task_repo,
             task_dependency_repo,
+            execution_settings_repo: None,
             ideation_session_repo,
             activity_event_repo,
             message_queue,
@@ -402,6 +405,14 @@ impl<R: Runtime> ClaudeChatService<R> {
 
     pub fn with_execution_state(mut self, state: Arc<crate::commands::ExecutionState>) -> Self {
         self.execution_state = Some(state);
+        self
+    }
+
+    pub fn with_execution_settings_repo(
+        mut self,
+        repo: Arc<dyn ExecutionSettingsRepository>,
+    ) -> Self {
+        self.execution_settings_repo = Some(repo);
         self
     }
 
@@ -537,6 +548,165 @@ impl<R: Runtime> ClaudeChatService<R> {
         }
 
         Ok(count)
+    }
+
+    async fn count_active_ideation_slots_for_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> Result<u32, ChatServiceError> {
+        let registry_entries = self.running_agent_registry.list_all().await;
+        let mut count = 0u32;
+
+        for (key, info) in registry_entries {
+            if info.pid == 0 || !is_ideation_registry_context(&key.context_type) {
+                continue;
+            }
+
+            let session_id = IdeationSessionId::from_string(key.context_id.clone());
+            let session = match self.ideation_session_repo.get_by_id(&session_id).await {
+                Ok(Some(session)) => session,
+                Ok(None) => continue,
+                Err(e) => return Err(ChatServiceError::RepositoryError(e.to_string())),
+            };
+
+            if session.project_id != *project_id {
+                continue;
+            }
+
+            if let Some(ref exec) = self.execution_state {
+                let slot_key = format!("{}/{}", key.context_type, key.context_id);
+                if exec.is_interactive_idle(&slot_key) {
+                    continue;
+                }
+            }
+
+            count += 1;
+        }
+
+        Ok(count)
+    }
+
+    async fn count_active_slot_consuming_contexts_for_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> Result<u32, ChatServiceError> {
+        let registry_entries = self.running_agent_registry.list_all().await;
+        let mut count = 0u32;
+
+        for (key, info) in registry_entries {
+            if is_ideation_registry_context(&key.context_type) {
+                if info.pid == 0 {
+                    continue;
+                }
+
+                let session_id = IdeationSessionId::from_string(key.context_id.clone());
+                let session = match self.ideation_session_repo.get_by_id(&session_id).await {
+                    Ok(Some(session)) => session,
+                    Ok(None) => continue,
+                    Err(e) => return Err(ChatServiceError::RepositoryError(e.to_string())),
+                };
+
+                if session.project_id != *project_id {
+                    continue;
+                }
+
+                if let Some(ref exec) = self.execution_state {
+                    let slot_key = format!("{}/{}", key.context_type, key.context_id);
+                    if exec.is_interactive_idle(&slot_key) {
+                        continue;
+                    }
+                }
+
+                count += 1;
+                continue;
+            }
+
+            let context_type = match key.context_type.parse::<ChatContextType>() {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+
+            if !uses_execution_slot(context_type) {
+                continue;
+            }
+
+            let task_id = TaskId::from_string(key.context_id.clone());
+            let task = match self.task_repo.get_by_id(&task_id).await {
+                Ok(Some(task)) => task,
+                Ok(None) => continue,
+                Err(e) => return Err(ChatServiceError::RepositoryError(e.to_string())),
+            };
+
+            if task.project_id != *project_id
+                || !crate::commands::execution_commands::context_matches_running_status_for_gc(
+                    context_type,
+                    task.internal_status,
+                )
+            {
+                continue;
+            }
+
+            count += 1;
+        }
+
+        Ok(count)
+    }
+
+    async fn has_runnable_execution_waiting(
+        &self,
+        project_filter: Option<&ProjectId>,
+    ) -> Result<bool, ChatServiceError> {
+        if let Some(project_id) = project_filter {
+            let tasks = self
+                .task_repo
+                .get_by_project(project_id)
+                .await
+                .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?;
+            if tasks.iter().any(|task| task.internal_status == InternalStatus::Ready) {
+                return Ok(true);
+            }
+        } else {
+            let projects = self
+                .project_repo
+                .get_all()
+                .await
+                .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?;
+            for project in projects {
+                let tasks = self
+                    .task_repo
+                    .get_by_project(&project.id)
+                    .await
+                    .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?;
+                if tasks.iter().any(|task| task.internal_status == InternalStatus::Ready) {
+                    return Ok(true);
+                }
+            }
+        }
+
+        for key in self.message_queue.list_keys() {
+            if !matches!(
+                key.context_type,
+                ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge
+            ) {
+                continue;
+            }
+
+            let task_id = TaskId::from_string(key.context_id.clone());
+            let Some(task) = self
+                .task_repo
+                .get_by_id(&task_id)
+                .await
+                .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?
+            else {
+                continue;
+            };
+
+            if project_filter.is_none_or(|project_id| task.project_id == *project_id) {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
     }
 
     pub fn with_app_handle(mut self, app_handle: AppHandle<R>) -> Self {
@@ -961,17 +1131,104 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 
         if context_type == ChatContextType::Ideation {
             if let Some(ref exec) = self.execution_state {
+                let session_id = IdeationSessionId::from_string(context_id.to_string());
+                let session = match self.ideation_session_repo.get_by_id(&session_id).await {
+                    Ok(Some(session)) => session,
+                    Ok(None) => {
+                        cleanup_and_err!(ChatServiceError::RepositoryError(format!(
+                            "Ideation session not found: {}",
+                            context_id
+                        )));
+                    }
+                    Err(e) => cleanup_and_err!(ChatServiceError::RepositoryError(e.to_string())),
+                };
+
+                let project_settings = if let Some(repo) = self.execution_settings_repo.as_ref() {
+                    let project_settings_result = repo
+                        .get_settings(Some(&session.project_id))
+                        .await
+                        .map_err(|e| e.to_string());
+                    match project_settings_result {
+                        Ok(settings) => settings,
+                        Err(error) => cleanup_and_err!(ChatServiceError::RepositoryError(error)),
+                    }
+                } else {
+                    crate::domain::execution::ExecutionSettings::default()
+                };
+
                 let running_global_ideation = match self.count_active_ideation_slots().await {
                     Ok(count) => count,
                     Err(e) => cleanup_and_err!(e),
                 };
+                let running_project_ideation =
+                    match self.count_active_ideation_slots_for_project(&session.project_id).await {
+                        Ok(count) => count,
+                        Err(e) => cleanup_and_err!(e),
+                    };
+                let running_project_total = match self
+                    .count_active_slot_consuming_contexts_for_project(&session.project_id)
+                    .await
+                {
+                    Ok(count) => count,
+                    Err(e) => cleanup_and_err!(e),
+                };
+                let global_execution_waiting = match self.has_runnable_execution_waiting(None).await
+                {
+                    Ok(waiting) => waiting,
+                    Err(e) => cleanup_and_err!(e),
+                };
+                let project_execution_waiting = match self
+                    .has_runnable_execution_waiting(Some(&session.project_id))
+                    .await
+                {
+                    Ok(waiting) => waiting,
+                    Err(e) => cleanup_and_err!(e),
+                };
 
-                if !exec.can_start_ideation(running_global_ideation, false) {
-                    cleanup_and_err!(ChatServiceError::SpawnFailed(format!(
-                        "ideation capacity reached ({}/{} active ideation slots)",
-                        running_global_ideation,
-                        exec.global_ideation_max()
-                    )));
+                if !exec.can_start_ideation(
+                    running_global_ideation,
+                    running_project_ideation,
+                    running_project_total,
+                    project_settings.max_concurrent_tasks,
+                    project_settings.project_ideation_max,
+                    global_execution_waiting,
+                    project_execution_waiting,
+                ) {
+                    let project_borrow_available = exec.allow_ideation_borrow_idle_execution()
+                        && !project_execution_waiting;
+                    let global_borrow_available = exec.allow_ideation_borrow_idle_execution()
+                        && !global_execution_waiting;
+
+                    let message = if running_project_total >= project_settings.max_concurrent_tasks {
+                        format!(
+                            "project execution capacity reached ({}/{} active slots)",
+                            running_project_total, project_settings.max_concurrent_tasks
+                        )
+                    } else if project_settings.project_ideation_max == 0
+                        || (running_project_ideation >= project_settings.project_ideation_max
+                            && !project_borrow_available)
+                    {
+                        format!(
+                            "project ideation capacity reached ({}/{} active ideation slots in project)",
+                            running_project_ideation, project_settings.project_ideation_max
+                        )
+                    } else if running_global_ideation >= exec.global_ideation_max()
+                        && !global_borrow_available
+                    {
+                        format!(
+                            "ideation capacity reached ({}/{} active ideation slots)",
+                            running_global_ideation,
+                            exec.global_ideation_max()
+                        )
+                    } else {
+                        format!(
+                            "ideation capacity reached ({}/{} active ideation slots)",
+                            running_global_ideation,
+                            exec.global_ideation_max()
+                        )
+                    };
+
+                    cleanup_and_err!(ChatServiceError::SpawnFailed(message));
                 }
             }
         }
