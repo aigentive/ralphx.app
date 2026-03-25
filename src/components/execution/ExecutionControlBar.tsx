@@ -88,7 +88,12 @@ const STATUS_COLORS = {
 } as const;
 const POPOVER_ALIGN_TO_SEPARATOR_DOT = -20;
 
-function getStatusColor(running: number, paused: boolean): string {
+function getStatusColor(
+  running: number,
+  paused: boolean,
+  haltMode: ExecutionHaltMode
+): string {
+  if (haltMode === "stopped") return STATUS_COLORS.stop;
   if (paused) return STATUS_COLORS.paused;
   if (running > 0) return STATUS_COLORS.running;
   return STATUS_COLORS.idle;
@@ -128,7 +133,7 @@ export function ExecutionControlBar({
   const canStop = runningCount > 0 && !isLoading;
   const isStopped = haltMode === "stopped";
   const canPauseToggle = !isLoading && !isStopped;
-  const statusColor = getStatusColor(runningCount, isPaused);
+  const statusColor = getStatusColor(runningCount, isPaused, haltMode);
   const statusState = isStopped ? "stopped" : getStatusState(runningCount, isPaused);
   const isRunning = runningCount > 0 && !isPaused;
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
@@ -451,7 +456,7 @@ export function ExecutionControlBar({
                 size="default"
                 onClick={onStop}
                 disabled={!canStop}
-                aria-label="Stop all running tasks"
+                aria-label={isStopped ? "Execution already stopped" : "Stop all running tasks"}
                 aria-disabled={!canStop}
                 className="gap-2 h-9 px-4 transition-all duration-150 active:scale-[0.96] rounded-lg text-[13px]"
                 style={{
@@ -468,7 +473,9 @@ export function ExecutionControlBar({
             </TooltipTrigger>
             <TooltipContent side="top">
               <p>
-                {canStop
+                {isStopped
+                  ? "Execution was already stopped. Restart tasks manually."
+                  : canStop
                   ? "Stop all running tasks (manual restart required) ⌘⇧S"
                   : "No tasks currently running"}
               </p>

@@ -191,6 +191,24 @@ describe("ExecutionControlBar", () => {
       expect(screen.getByTestId("stop-button")).toBeDisabled();
     });
 
+    it("uses stopped aria label after a global stop", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={10}
+          queuedCount={0}
+          isPaused={true}
+          haltMode="stopped"
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      expect(screen.getByTestId("stop-button")).toHaveAttribute(
+        "aria-label",
+        "Execution already stopped"
+      );
+    });
+
     it("enables stop button when there are running tasks", () => {
       render(
         <ExecutionControlBar
@@ -383,6 +401,22 @@ describe("ExecutionControlBar", () => {
       );
       const indicator = screen.getByTestId("status-indicator");
       expect(indicator).toHaveStyle({ backgroundColor: "hsl(45 90% 55%)" });
+    });
+
+    it("shows stopped color when execution is globally stopped", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={10}
+          queuedCount={0}
+          isPaused={true}
+          haltMode="stopped"
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      const indicator = screen.getByTestId("status-indicator");
+      expect(indicator).toHaveStyle({ backgroundColor: "hsl(0 70% 55%)" });
     });
 
     it("shows muted color when idle with no queued", () => {

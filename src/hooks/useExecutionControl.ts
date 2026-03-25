@@ -3,8 +3,8 @@
  *
  * Provides hooks for:
  * - useExecutionStatus: Query execution status (running/queued counts, pause state)
- * - usePauseExecution: Toggle pause/resume execution
- * - useStopExecution: Stop all running tasks
+ * - usePauseExecution: Toggle pause/resume execution for resumable work
+ * - useStopExecution: Stop all running tasks and require manual restart
  *
  * Phase 82: All hooks now accept optional projectId for per-project scoping
  */
