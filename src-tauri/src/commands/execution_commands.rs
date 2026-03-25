@@ -1017,11 +1017,26 @@ where
     F: Fn(bool) -> Arc<dyn ChatService>,
 {
     let mut resumed = 0u32;
-
+    let mut ideation_keys = Vec::new();
     for key in app_state.message_queue.list_keys() {
         if key.context_type != ChatContextType::Ideation {
             continue;
         }
+
+        let session_id = IdeationSessionId::from_string(key.context_id.clone());
+        let project_sort_key = app_state
+            .ideation_session_repo
+            .get_by_id(&session_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .map(|session| session.project_id.as_str().to_string())
+            .unwrap_or_default();
+
+        ideation_keys.push((project_sort_key, key.context_id.clone(), key));
+    }
+    ideation_keys.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+
+    for (_, _, key) in ideation_keys {
         if !queue_key_matches_project(&key, project_filter, app_state).await? {
             continue;
         }
@@ -1074,7 +1089,19 @@ where
             global_execution_waiting,
             project_execution_waiting,
         ) {
-            break;
+            let global_ideation_allows =
+                if running_global_ideation < execution_state.global_ideation_max() {
+                    true
+                } else {
+                    execution_state.allow_ideation_borrow_idle_execution()
+                        && !global_execution_waiting
+                };
+
+            if !execution_state.can_start_any_execution_context() || !global_ideation_allows {
+                break;
+            }
+
+            continue;
         }
 
         let Some(queued) = app_state.message_queue.pop_with_key(&key) else {
@@ -4350,6 +4377,123 @@ mod tests {
                 .len(),
             1,
             "project-capped session must stay queued on resume"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resume_skips_project_capped_ideation_queue_and_relaunches_other_project() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+
+        let first_project = Project::new("First Project".to_string(), "/test/first".to_string());
+        let second_project =
+            Project::new("Second Project".to_string(), "/test/second".to_string());
+        app_state
+            .project_repo
+            .create(first_project.clone())
+            .await
+            .unwrap();
+        app_state
+            .project_repo
+            .create(second_project.clone())
+            .await
+            .unwrap();
+
+        let (blocked_project, runnable_project) = if first_project.id.as_str()
+            <= second_project.id.as_str()
+        {
+            (first_project, second_project)
+        } else {
+            (second_project, first_project)
+        };
+
+        app_state
+            .execution_settings_repo
+            .update_settings(
+                Some(&blocked_project.id),
+                &ExecutionSettings {
+                    max_concurrent_tasks: 5,
+                    project_ideation_max: 1,
+                    auto_commit: true,
+                    pause_on_failure: true,
+                },
+            )
+            .await
+            .unwrap();
+
+        execution_state.set_global_max_concurrent(5);
+        execution_state.set_global_ideation_max(5);
+
+        let occupied = app_state
+            .ideation_session_repo
+            .create(IdeationSession::new(blocked_project.id.clone()))
+            .await
+            .unwrap();
+        let blocked_queued = app_state
+            .ideation_session_repo
+            .create(IdeationSession::new(blocked_project.id.clone()))
+            .await
+            .unwrap();
+        let runnable_queued = app_state
+            .ideation_session_repo
+            .create(IdeationSession::new(runnable_project.id.clone()))
+            .await
+            .unwrap();
+
+        app_state.message_queue.queue(
+            ChatContextType::Ideation,
+            blocked_queued.id.as_str(),
+            "blocked project queued".to_string(),
+        );
+        app_state.message_queue.queue(
+            ChatContextType::Ideation,
+            runnable_queued.id.as_str(),
+            "runnable project queued".to_string(),
+        );
+
+        app_state
+            .running_agent_registry
+            .register(
+                RunningAgentKey::new("ideation", occupied.id.as_str()),
+                23232,
+                "occupied-conv".to_string(),
+                "occupied-run".to_string(),
+                None,
+                None,
+            )
+            .await;
+
+        let mock = Arc::new(MockChatService::new());
+        let resumed = resume_paused_ideation_queues_with_chat_service(
+            None,
+            &app_state,
+            &execution_state,
+            |_| Arc::clone(&mock) as Arc<dyn ChatService>,
+        )
+        .await
+        .expect("resume queued ideation across projects");
+
+        assert_eq!(resumed, 1);
+        assert_eq!(mock.call_count(), 1);
+        assert_eq!(
+            mock.get_sent_messages().await,
+            vec!["runnable project queued".to_string()]
+        );
+        assert_eq!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Ideation, blocked_queued.id.as_str())
+                .len(),
+            1,
+            "blocked project's queue must remain pending"
+        );
+        assert_eq!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Ideation, runnable_queued.id.as_str())
+                .len(),
+            0,
+            "other project should still relaunch in the same resume pass"
         );
     }
 
