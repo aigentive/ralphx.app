@@ -131,12 +131,11 @@ pub fn uses_execution_slot(context_type: ChatContextType) -> bool {
     )
 }
 
-fn ideation_launches_paused(
+fn slot_consuming_launches_paused(
     context_type: ChatContextType,
     execution_state: Option<&Arc<crate::commands::ExecutionState>>,
 ) -> bool {
-    context_type == ChatContextType::Ideation
-        && execution_state.is_some_and(|exec| exec.is_paused())
+    uses_execution_slot(context_type) && execution_state.is_some_and(|exec| exec.is_paused())
 }
 
 fn is_ideation_registry_context(context_type: &str) -> bool {
@@ -697,10 +696,11 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             "chat_service.send_message start"
         );
 
-        // Runtime halt barrier for ideation: do not start new ideation work while the
-        // global execution state is paused/stopped. Preserve the message in queue so it
-        // can be resumed later instead of failing the user-facing send.
-        if ideation_launches_paused(context_type, self.execution_state.as_ref()) {
+        // Runtime halt barrier for all slot-consuming contexts: do not start new
+        // task/review/merge/ideation work while the global execution state is
+        // paused/stopped. Preserve the message in queue so it can be resumed later
+        // instead of failing the user-facing send.
+        if slot_consuming_launches_paused(context_type, self.execution_state.as_ref()) {
             let (conversation, is_new_conversation) = self
                 .get_or_create_conversation(context_type, context_id)
                 .await?;
@@ -710,7 +710,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 %context_type,
                 context_id,
                 queued_message_id = %queued.id,
-                "chat_service.send_message: execution paused, queued ideation message instead of spawning"
+                "chat_service.send_message: execution paused, queued slot-consuming message instead of spawning"
             );
             return Ok(SendResult {
                 conversation_id: conversation.id.as_str().to_string(),

@@ -90,6 +90,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --test transition_handler_concur
 cargo test --manifest-path src-tauri/Cargo.toml --test transition_handler_freshness_integration
 cargo test --manifest-path src-tauri/Cargo.toml --test startup_jobs_runner
 cargo test --manifest-path src-tauri/Cargo.toml --test chat_service_streaming
+cargo test --manifest-path src-tauri/Cargo.toml --test chat_service_pause_flows
 cargo test --manifest-path src-tauri/Cargo.toml --test review_service
 cargo test --manifest-path src-tauri/Cargo.toml --test apply_service
 cargo test --manifest-path src-tauri/Cargo.toml --test ideation_service
