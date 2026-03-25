@@ -25,6 +25,7 @@ export function transformExecutionStatus(
 ): ExecutionStatusResponse {
   return {
     isPaused: raw.is_paused,
+    haltMode: raw.halt_mode,
     runningCount: raw.running_count,
     maxConcurrent: raw.max_concurrent,
     globalMaxConcurrent: raw.global_max_concurrent,

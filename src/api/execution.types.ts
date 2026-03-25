@@ -1,11 +1,14 @@
 // Frontend types for execution API (camelCase)
 
+export type ExecutionHaltMode = "running" | "paused" | "stopped";
+
 /**
  * Execution status response - frontend representation (camelCase)
  * Phase 82: Added globalMaxConcurrent for cross-project cap
  */
 export interface ExecutionStatusResponse {
   isPaused: boolean;
+  haltMode: ExecutionHaltMode;
   runningCount: number;
   maxConcurrent: number;
   globalMaxConcurrent: number;

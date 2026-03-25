@@ -88,12 +88,30 @@ describe("ExecutionControlBar", () => {
           maxConcurrent={10}
           queuedCount={3}
           isPaused={true}
+          haltMode="paused"
           onPauseToggle={vi.fn()}
           onStop={vi.fn()}
         />
       );
       const pauseBtn = screen.getByTestId("pause-toggle-button");
       expect(pauseBtn).toHaveTextContent("Resume");
+    });
+
+    it("renders disabled stopped button after stop", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={10}
+          queuedCount={0}
+          isPaused={true}
+          haltMode="stopped"
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      const pauseBtn = screen.getByTestId("pause-toggle-button");
+      expect(pauseBtn).toHaveTextContent("Stopped");
+      expect(pauseBtn).toBeDisabled();
     });
 
     it("calls onPauseToggle when clicked", () => {

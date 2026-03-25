@@ -28,6 +28,7 @@ import type {
 
 // Re-export types for convenience
 export type {
+  ExecutionHaltMode,
   ExecutionStatusResponse,
   ExecutionCommandResponse,
   ExecutionSettingsResponse,

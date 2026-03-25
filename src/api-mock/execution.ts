@@ -20,6 +20,7 @@ import type {
 
 let mockExecutionState: ExecutionStatusResponse = {
   isPaused: false,
+  haltMode: "running",
   runningCount: 0,
   maxConcurrent: 3,
   globalMaxConcurrent: 20,
@@ -54,7 +55,12 @@ export const mockExecutionApi = {
 
   // Phase 82: Added optional projectId parameter
   pause: async (_projectId?: string): Promise<ExecutionCommandResponse> => {
-    mockExecutionState = { ...mockExecutionState, isPaused: true, canStartTask: false };
+    mockExecutionState = {
+      ...mockExecutionState,
+      isPaused: true,
+      haltMode: "paused",
+      canStartTask: false,
+    };
     return {
       success: true,
       status: { ...mockExecutionState },
@@ -63,7 +69,12 @@ export const mockExecutionApi = {
 
   // Phase 82: Added optional projectId parameter
   resume: async (_projectId?: string): Promise<ExecutionCommandResponse> => {
-    mockExecutionState = { ...mockExecutionState, isPaused: false, canStartTask: true };
+    mockExecutionState = {
+      ...mockExecutionState,
+      isPaused: false,
+      haltMode: "running",
+      canStartTask: true,
+    };
     return {
       success: true,
       status: { ...mockExecutionState },
@@ -74,6 +85,7 @@ export const mockExecutionApi = {
   stop: async (_projectId?: string): Promise<ExecutionCommandResponse> => {
     mockExecutionState = {
       isPaused: true,
+      haltMode: "stopped",
       runningCount: 0,
       maxConcurrent: 3,
       globalMaxConcurrent: 20,

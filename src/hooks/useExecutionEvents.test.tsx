@@ -41,6 +41,7 @@ function TestEventBusProvider({ children }: { children: ReactNode }) {
 // Event payload types
 interface ExecutionStatusEvent {
   isPaused: boolean;
+  haltMode?: "running" | "paused" | "stopped";
   runningCount: number;
   maxConcurrent: number;
   reason: string;
@@ -66,6 +67,7 @@ describe("useExecutionEvents", () => {
     useUiStore.setState({
       executionStatus: {
         isPaused: false,
+        haltMode: "running",
         runningCount: 0,
         maxConcurrent: 10,
         queuedCount: 0,
@@ -89,6 +91,7 @@ describe("useExecutionEvents", () => {
       await act(async () => {
         testEventBus.emit<ExecutionStatusEvent>("execution:status_changed", {
           isPaused: true,
+          haltMode: "paused",
           runningCount: 1,
           maxConcurrent: 10,
           reason: "paused",
@@ -98,6 +101,7 @@ describe("useExecutionEvents", () => {
 
       const state = useUiStore.getState().executionStatus;
       expect(state.isPaused).toBe(true);
+      expect(state.haltMode).toBe("paused");
     });
 
     it("updates store runningCount on status_changed event", async () => {
@@ -106,6 +110,7 @@ describe("useExecutionEvents", () => {
       await act(async () => {
         testEventBus.emit<ExecutionStatusEvent>("execution:status_changed", {
           isPaused: false,
+          haltMode: "running",
           runningCount: 2,
           maxConcurrent: 3,
           reason: "task_started",
@@ -123,6 +128,7 @@ describe("useExecutionEvents", () => {
       await act(async () => {
         testEventBus.emit<ExecutionStatusEvent>("execution:status_changed", {
           isPaused: false,
+          haltMode: "running",
           runningCount: 0,
           maxConcurrent: 5,
           reason: "config_changed",
@@ -140,6 +146,7 @@ describe("useExecutionEvents", () => {
       await act(async () => {
         testEventBus.emit<ExecutionStatusEvent>("execution:status_changed", {
           isPaused: false,
+          haltMode: "running",
           runningCount: 1,
           maxConcurrent: 10,
           reason: "task_started",
@@ -157,6 +164,7 @@ describe("useExecutionEvents", () => {
       await act(async () => {
         testEventBus.emit<ExecutionStatusEvent>("execution:status_changed", {
           isPaused: true,
+          haltMode: "paused",
           runningCount: 0,
           maxConcurrent: 10,
           reason: "paused",
@@ -174,6 +182,7 @@ describe("useExecutionEvents", () => {
       await act(async () => {
         testEventBus.emit<ExecutionStatusEvent>("execution:status_changed", {
           isPaused: false,
+          haltMode: "running",
           runningCount: 10,
           maxConcurrent: 10,
           reason: "task_started",
@@ -199,6 +208,7 @@ describe("useExecutionEvents", () => {
       await act(async () => {
         testEventBus.emit<ExecutionStatusEvent>("execution:status_changed", {
           isPaused: false,
+          haltMode: "running",
           runningCount: 1,
           maxConcurrent: 10,
           reason: "task_started",
@@ -208,6 +218,32 @@ describe("useExecutionEvents", () => {
 
       const state = useUiStore.getState().executionStatus;
       expect(state.queuedCount).toBe(5);
+    });
+
+    it("preserves stopped halt mode when a generic status event omits it", async () => {
+      useUiStore.setState({
+        executionStatus: {
+          ...useUiStore.getState().executionStatus,
+          isPaused: true,
+          haltMode: "stopped",
+        },
+      });
+
+      renderHook(() => useExecutionEvents(), { wrapper });
+
+      await act(async () => {
+        testEventBus.emit<ExecutionStatusEvent>("execution:status_changed", {
+          isPaused: true,
+          runningCount: 0,
+          maxConcurrent: 10,
+          reason: "runtime_registry_gc",
+          timestamp: new Date().toISOString(),
+        });
+      });
+
+      const state = useUiStore.getState().executionStatus;
+      expect(state.haltMode).toBe("stopped");
+      expect(state.isPaused).toBe(true);
     });
   });
 
@@ -224,6 +260,7 @@ describe("useExecutionEvents", () => {
       useUiStore.setState({
         executionStatus: {
           isPaused: false,
+          haltMode: "running",
           runningCount: 1,
           maxConcurrent: 10,
           queuedCount: 0,

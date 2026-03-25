@@ -59,6 +59,7 @@ export function useExecutionStatus(projectId?: string) {
     ...query,
     // Convenience accessors
     isPaused: query.data?.isPaused ?? false,
+    haltMode: query.data?.haltMode ?? "running",
     runningCount: query.data?.runningCount ?? 0,
     queuedCount: query.data?.queuedCount ?? 0,
     maxConcurrent: query.data?.maxConcurrent ?? 10,

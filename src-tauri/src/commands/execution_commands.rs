@@ -528,6 +528,8 @@ impl Default for ExecutionState {
 pub struct ExecutionStatusResponse {
     /// Whether execution is paused
     pub is_paused: bool,
+    /// Current halt mode for the global execution bar
+    pub halt_mode: String,
     /// Number of currently running tasks
     pub running_count: u32,
     /// Maximum concurrent tasks allowed (per-project)
@@ -705,6 +707,23 @@ async fn persist_execution_halt_mode(
         .app_state_repo
         .set_execution_halt_mode(halt_mode)
         .await
+        .map_err(|e| e.to_string())
+}
+
+fn execution_halt_mode_str(halt_mode: ExecutionHaltMode) -> &'static str {
+    match halt_mode {
+        ExecutionHaltMode::Running => "running",
+        ExecutionHaltMode::Paused => "paused",
+        ExecutionHaltMode::Stopped => "stopped",
+    }
+}
+
+async fn load_execution_halt_mode(app_state: &AppState) -> Result<ExecutionHaltMode, String> {
+    app_state
+        .app_state_repo
+        .get()
+        .await
+        .map(|settings| settings.execution_halt_mode)
         .map_err(|e| e.to_string())
 }
 
@@ -1173,10 +1192,12 @@ pub async fn get_execution_status(
 
     let max_concurrent = execution_state.max_concurrent();
     let global_max = execution_state.global_max_concurrent();
+    let halt_mode = load_execution_halt_mode(&app_state).await?;
 
     let blocked_until = execution_state.provider_blocked_until_epoch();
     Ok(ExecutionStatusResponse {
         is_paused: execution_state.is_paused(),
+        halt_mode: execution_halt_mode_str(halt_mode).to_string(),
         running_count,
         max_concurrent,
         global_max_concurrent: global_max,
@@ -1325,6 +1346,7 @@ pub async fn pause_execution(
             "execution:status_changed",
             serde_json::json!({
                 "isPaused": execution_state.is_paused(),
+                "haltMode": "paused",
                 "runningCount": execution_state.running_count(),
                 "maxConcurrent": execution_state.max_concurrent(),
                 "reason": "paused",
@@ -1557,6 +1579,7 @@ pub async fn resume_execution(
             "execution:status_changed",
             serde_json::json!({
                 "isPaused": execution_state.is_paused(),
+                "haltMode": "running",
                 "runningCount": execution_state.running_count(),
                 "maxConcurrent": execution_state.max_concurrent(),
                 "reason": "resumed",
@@ -1778,6 +1801,7 @@ pub async fn stop_execution(
             "execution:status_changed",
             serde_json::json!({
                 "isPaused": execution_state.is_paused(),
+                "haltMode": "stopped",
                 "runningCount": execution_state.running_count(),
                 "maxConcurrent": execution_state.max_concurrent(),
                 "reason": "stopped",
@@ -3182,6 +3206,7 @@ mod tests {
     fn test_execution_status_response_serialization() {
         let response = ExecutionStatusResponse {
             is_paused: true,
+            halt_mode: "paused".to_string(),
             running_count: 1,
             max_concurrent: 2,
             global_max_concurrent: 20,
@@ -3195,6 +3220,7 @@ mod tests {
 
         // Verify snake_case serialization (Rust default, frontend transform handles conversion)
         assert!(json.contains("\"is_paused\":true"));
+        assert!(json.contains("\"halt_mode\":\"paused\""));
         assert!(json.contains("\"running_count\":1"));
         assert!(json.contains("\"max_concurrent\":2"));
         assert!(json.contains("\"global_max_concurrent\":20"));
@@ -3208,6 +3234,7 @@ mod tests {
             success: true,
             status: ExecutionStatusResponse {
                 is_paused: false,
+                halt_mode: "running".to_string(),
                 running_count: 0,
                 max_concurrent: 2,
                 global_max_concurrent: 20,
@@ -3224,6 +3251,7 @@ mod tests {
         assert!(json.contains("\"success\":true"));
         assert!(json.contains("\"status\":"));
         assert!(json.contains("\"is_paused\":false"));
+        assert!(json.contains("\"halt_mode\":\"running\""));
     }
 
     #[test]
@@ -5280,6 +5308,17 @@ mod tests {
 
         let settings = app_state.app_state_repo.get().await.unwrap();
         assert_eq!(settings.execution_halt_mode, ExecutionHaltMode::Running);
+    }
+
+    #[tokio::test]
+    async fn test_load_execution_halt_mode_reads_persisted_stop_state() {
+        let app_state = AppState::new_test();
+        persist_execution_halt_mode(&app_state, ExecutionHaltMode::Stopped)
+            .await
+            .unwrap();
+
+        let halt_mode = load_execution_halt_mode(&app_state).await.unwrap();
+        assert_eq!(halt_mode, ExecutionHaltMode::Stopped);
     }
 
     #[tokio::test]

@@ -9,6 +9,7 @@ import { z } from "zod";
  */
 export const ExecutionStatusResponseSchema = z.object({
   is_paused: z.boolean(),
+  halt_mode: z.enum(["running", "paused", "stopped"]),
   running_count: z.number().int().nonnegative(),
   max_concurrent: z.number().int().nonnegative(),
   global_max_concurrent: z.number().int().nonnegative(),

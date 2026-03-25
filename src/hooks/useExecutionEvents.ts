@@ -28,6 +28,7 @@ import type { InternalStatus } from "@/types/status";
  */
 interface ExecutionStatusEvent {
   isPaused: boolean;
+  haltMode?: "running" | "paused" | "stopped";
   runningCount: number;
   maxConcurrent: number;
   globalMaxConcurrent?: number;
@@ -91,7 +92,7 @@ export function useExecutionEvents() {
     // Listen for execution:status_changed events
     unsubscribes.push(
       bus.subscribe<ExecutionStatusEvent>("execution:status_changed", (payload) => {
-        const { isPaused, runningCount, maxConcurrent, globalMaxConcurrent, projectId } = payload;
+        const { isPaused, haltMode, runningCount, maxConcurrent, globalMaxConcurrent, projectId } = payload;
 
         // Phase 82: Only update if event is for the active project (or unscoped)
         const activeProjectId = useProjectStore.getState().activeProjectId;
@@ -102,6 +103,7 @@ export function useExecutionEvents() {
 
         setExecutionStatus({
           isPaused,
+          haltMode: haltMode ?? useUiStore.getState().executionStatus.haltMode,
           runningCount,
           maxConcurrent,
           globalMaxConcurrent: globalMaxConcurrent ?? useUiStore.getState().executionStatus.globalMaxConcurrent,

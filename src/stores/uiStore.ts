@@ -425,6 +425,7 @@ export const useUiStore = create<UiState & UiActions>()(
     recoveryPromptSurface: null,
     executionStatus: {
       isPaused: false,
+      haltMode: "running",
       runningCount: 0,
       maxConcurrent: 10,
       globalMaxConcurrent: 20,
@@ -593,6 +594,7 @@ export const useUiStore = create<UiState & UiActions>()(
     setExecutionPaused: (isPaused) =>
       set((state) => {
         state.executionStatus.isPaused = isPaused;
+        state.executionStatus.haltMode = isPaused ? "paused" : "running";
       }),
 
     setExecutionRunningCount: (count) =>

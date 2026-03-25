@@ -29,6 +29,7 @@ import { PausedTasksPopover } from "./PausedTasksPopover";
 import { InfoTooltip } from "./InfoTooltip";
 import { getStatusIconConfig } from "@/types/status-icons";
 import type { Task } from "@/types/task";
+import type { ExecutionHaltMode } from "@/api/execution";
 
 interface ExecutionControlBarProps {
   /** The project ID */
@@ -51,6 +52,8 @@ interface ExecutionControlBarProps {
   mergePipelineData: MergePipelineResponse | null;
   /** Whether execution is paused */
   isPaused: boolean;
+  /** Current halt mode for global execution controls */
+  haltMode?: ExecutionHaltMode;
   /** Whether a control action is in progress */
   isLoading?: boolean;
   /** Name of the currently executing task (optional) */
@@ -111,6 +114,7 @@ export function ExecutionControlBar({
   hasAttentionMerges,
   mergePipelineData,
   isPaused,
+  haltMode = isPaused ? "paused" : "running",
   isLoading = false,
   currentTaskName,
   onPauseToggle,
@@ -122,8 +126,10 @@ export function ExecutionControlBar({
   onOpenSettings = () => {},
 }: ExecutionControlBarProps) {
   const canStop = runningCount > 0 && !isLoading;
+  const isStopped = haltMode === "stopped";
+  const canPauseToggle = !isLoading && !isStopped;
   const statusColor = getStatusColor(runningCount, isPaused);
-  const statusState = getStatusState(runningCount, isPaused);
+  const statusState = isStopped ? "stopped" : getStatusState(runningCount, isPaused);
   const isRunning = runningCount > 0 && !isPaused;
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
 
@@ -391,32 +397,45 @@ export function ExecutionControlBar({
                 variant="ghost"
                 size="default"
                 onClick={onPauseToggle}
-                disabled={isLoading}
-                aria-label={isPaused ? "Resume execution" : "Pause execution"}
-                aria-pressed={isPaused}
+                disabled={!canPauseToggle}
+                aria-label={isStopped ? "Execution stopped" : isPaused ? "Resume execution" : "Pause execution"}
+                aria-pressed={isPaused && !isStopped}
                 className="gap-2 h-9 px-4 transition-all duration-150 active:scale-[0.96] rounded-lg text-[13px]"
                 style={{
                   /* macOS Tahoe: flat button styling */
-                  backgroundColor: isPaused ? "hsla(45 90% 55% / 0.15)" : "hsl(220 10% 18%)",
-                  color: isPaused ? STATUS_COLORS.paused : "hsl(220 10% 90%)",
+                  backgroundColor: isStopped
+                    ? "hsl(220 10% 18%)"
+                    : isPaused
+                      ? "hsla(45 90% 55% / 0.15)"
+                      : "hsl(220 10% 18%)",
+                  color: isStopped
+                    ? "hsl(220 10% 45%)"
+                    : isPaused
+                      ? STATUS_COLORS.paused
+                      : "hsl(220 10% 90%)",
                   border: "none",
+                  opacity: canPauseToggle ? 1 : 0.5,
                 }}
               >
                 {isLoading ? (
                   <Loader2 className="w-[18px] h-[18px] animate-spin" />
+                ) : isStopped ? (
+                  <Square className="w-[18px] h-[18px]" />
                 ) : isPaused ? (
                   <Play className="w-[18px] h-[18px]" />
                 ) : (
                   <Pause className="w-[18px] h-[18px]" />
                 )}
                 <span className="hidden sm:inline">
-                  {isPaused ? "Resume" : "Pause"}
+                  {isStopped ? "Stopped" : isPaused ? "Resume" : "Pause"}
                 </span>
               </Button>
             </TooltipTrigger>
             <TooltipContent side="top">
               <p>
-                {isPaused
+                {isStopped
+                  ? "Execution was stopped. Restart tasks manually."
+                  : isPaused
                   ? "Resume paused tasks and queue ⌘P"
                   : "Pause execution (running tasks will pause) ⌘P"}
               </p>

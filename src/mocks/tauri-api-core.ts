@@ -258,6 +258,7 @@ const commandHandlers: Record<
     // Transform to snake_case as backend would return
     return {
       is_paused: status.isPaused,
+      halt_mode: status.haltMode,
       running_count: status.runningCount,
       max_concurrent: status.maxConcurrent,
       global_max_concurrent: status.globalMaxConcurrent,
@@ -271,6 +272,7 @@ const commandHandlers: Record<
       success: response.success,
       status: {
         is_paused: response.status.isPaused,
+        halt_mode: response.status.haltMode,
         running_count: response.status.runningCount,
         max_concurrent: response.status.maxConcurrent,
         global_max_concurrent: response.status.globalMaxConcurrent,
@@ -285,6 +287,7 @@ const commandHandlers: Record<
       success: response.success,
       status: {
         is_paused: response.status.isPaused,
+        halt_mode: response.status.haltMode,
         running_count: response.status.runningCount,
         max_concurrent: response.status.maxConcurrent,
         global_max_concurrent: response.status.globalMaxConcurrent,
@@ -299,6 +302,7 @@ const commandHandlers: Record<
       success: response.success,
       status: {
         is_paused: response.status.isPaused,
+        halt_mode: response.status.haltMode,
         running_count: response.status.runningCount,
         max_concurrent: response.status.maxConcurrent,
         global_max_concurrent: response.status.globalMaxConcurrent,

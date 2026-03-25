@@ -497,6 +497,10 @@ function AppContent() {
 
   // Phase 82: Pass currentProjectId to execution API calls for per-project scoping
   const handlePauseToggle = async () => {
+    if (executionStatus.haltMode === "stopped") {
+      toast.error("Execution was stopped. Restart tasks manually.");
+      return;
+    }
     setIsExecutionLoading(true);
     try {
       const response = executionStatus.isPaused
@@ -1012,6 +1016,7 @@ function AppContent() {
                       hasAttentionMerges={hasAttentionMerges}
                       mergePipelineData={mergePipelineData ?? null}
                       isPaused={executionStatus.isPaused}
+                      haltMode={executionStatus.haltMode}
                       isLoading={isExecutionLoading}
                       onPauseToggle={handlePauseToggle}
                       onStop={handleStop}
@@ -1045,6 +1050,7 @@ function AppContent() {
                       hasAttentionMerges={hasAttentionMerges}
                       mergePipelineData={mergePipelineData ?? null}
                       isPaused={executionStatus.isPaused}
+                      haltMode={executionStatus.haltMode}
                       isLoading={isExecutionLoading}
                       onPauseToggle={handlePauseToggle}
                       onStop={handleStop}
@@ -1083,6 +1089,7 @@ function AppContent() {
                       hasAttentionMerges={hasAttentionMerges}
                       mergePipelineData={mergePipelineData ?? null}
                       isPaused={executionStatus.isPaused}
+                      haltMode={executionStatus.haltMode}
                       isLoading={isExecutionLoading}
                       onPauseToggle={handlePauseToggle}
                       onStop={handleStop}
