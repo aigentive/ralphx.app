@@ -397,6 +397,64 @@ fn test_uses_execution_slot_includes_ideation() {
 }
 
 // =========================================================================
+// Ideation admission policy
+// =========================================================================
+
+#[test]
+fn test_can_start_ideation_blocks_at_global_ideation_cap() {
+    let state = ExecutionState::with_max_concurrent(5);
+    state.set_global_max_concurrent(5);
+    state.set_global_ideation_max(2);
+
+    state.increment_running();
+    state.increment_running();
+
+    assert!(
+        !state.can_start_ideation(2, false),
+        "ideation must stop at the ideation cap even when total capacity remains"
+    );
+}
+
+#[test]
+fn test_execution_capacity_remains_when_ideation_cap_is_full() {
+    let state = ExecutionState::with_max_concurrent(5);
+    state.set_global_max_concurrent(5);
+    state.set_global_ideation_max(2);
+
+    state.increment_running();
+    state.increment_running();
+
+    assert!(
+        state.can_start_task(),
+        "execution capacity should still remain when only the ideation cap is full"
+    );
+    assert!(
+        !state.can_start_ideation(2, false),
+        "ideation must not consume the remaining execution-reserved capacity"
+    );
+}
+
+#[test]
+fn test_can_start_ideation_borrowing_requires_no_waiting_execution() {
+    let state = ExecutionState::with_max_concurrent(5);
+    state.set_global_max_concurrent(5);
+    state.set_global_ideation_max(2);
+    state.set_allow_ideation_borrow_idle_execution(true);
+
+    state.increment_running();
+    state.increment_running();
+
+    assert!(
+        !state.can_start_ideation(2, true),
+        "borrowing must stay blocked while runnable execution work is waiting"
+    );
+    assert!(
+        state.can_start_ideation(2, false),
+        "ideation may borrow idle execution capacity only when execution is not waiting"
+    );
+}
+
+// =========================================================================
 // Phase: idle ideation sessions must not inflate global_running_count
 // =========================================================================
 

@@ -41,8 +41,8 @@ When working in `src-tauri/`, also follow:
 | Priority | Area | Next Step |
 |---|---|---|
 | P0 | Global orchestration semantics | TDD global `pause`/`stop` across execution + ideation + verification-child ideation; `pause` preserves resumability, `stop` requires manual restart and must suppress startup recovery |
-| P0 | Concurrency admission control | Add one shared admission gate for all slot-consuming contexts; ideation/verification must honor max concurrent before spawn instead of only incrementing counters |
-| P0 | Pipeline allocation | Introduce pipeline-aware caps inside existing global/project caps: global ideation max, project ideation max, optional borrowing from idle execution capacity |
+| P0 | Concurrency admission control | M1 landed: ideation/verification now honor a global ideation admission gate before spawn; next extend admission control across the remaining slot-consuming contexts |
+| P0 | Pipeline allocation | Global ideation cap + borrow toggle landed in `ExecutionState`; next add persisted per-project ideation allocation and runnable-execution-aware borrowing |
 | P1 | Queue + recovery alignment | Make ideation queues and startup recovery obey pause/stop barriers; stopped work must not auto-resume, paused work may resume within limits |
 | P1 | Settings surface | Store live allocation settings in DB/UI; keep `ralphx.yaml` as defaults/advanced guardrails only |
 | P2 | Transition handler support layer | After concurrency semantics stabilize, resume splitting `merge_validation`, `merge_coordination`, and remaining `side_effects` hot spots |
@@ -53,7 +53,7 @@ When working in `src-tauri/`, also follow:
 
 | Milestone | Tests First | Implementation Files |
 |---|---|---|
-| M1 Admission gate | Add failing tests for ideation cap, verification-child counts-as-ideation, execution-not-starved, borrowing only when no runnable execution demand | `src-tauri/src/application/chat_service/mod.rs`, `src-tauri/src/commands/execution_commands.rs`, `src-tauri/src/infrastructure/agents/spawner.rs`, `src-tauri/src/application/task_scheduler_service.rs`, targeted tests in `src-tauri/tests/` + affected lib suites |
+| M1 Admission gate | Done: global ideation admission gate in shared chat service, verification-child counts-as-ideation tests, execution-not-starved tests, borrow-policy tests; next extend to per-project allocation + non-ideation slot consumers | `src-tauri/src/application/chat_service/mod.rs`, `src-tauri/src/commands/execution_commands.rs`, targeted tests in `src-tauri/tests/` |
 | M2 Global pause/stop semantics | Add failing tests that execution-bar `pause`/`stop` halt active work and prevent new starts across execution + ideation + verification children; `resume` revives paused work only | `src-tauri/src/commands/execution_commands.rs`, `src-tauri/src/application/startup_jobs.rs`, `src-tauri/src/application/chat_resumption.rs`, ideation runtime/external handlers, queue/recovery modules |
 | M3 Queue + startup recovery | Add failing tests that paused ideation recovers, stopped ideation does not, paused queues stay pending, stopped queues do not relaunch | `src-tauri/src/application/startup_jobs.rs`, `src-tauri/src/application/chat_service/chat_service_queue.rs`, `src-tauri/src/application/chat_service/chat_service_send_background.rs`, `src-tauri/src/application/recovery_queue.rs` |
 | M4 DB/settings backend | Add failing repo/command tests for `global_ideation_max`, `project_ideation_max`, `allow_ideation_borrow_idle_execution`, YAML-seeded defaults | execution settings repos/commands, migrations, `src-tauri/ralphx.yaml`, API contracts |

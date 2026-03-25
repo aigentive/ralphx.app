@@ -118,6 +118,13 @@ pub struct ExecutionState {
     /// Global maximum concurrent tasks across ALL projects (Phase 82)
     /// Default 20, hard cap 50. Enforced alongside per-project max.
     global_max_concurrent: AtomicU32,
+    /// Global maximum concurrent ideation sessions allowed to actively generate.
+    /// This is a pipeline cap inside the global hard cap so ideation cannot consume
+    /// all slots and starve task/review/merge execution.
+    global_ideation_max: AtomicU32,
+    /// When true, ideation may exceed `global_ideation_max` only if there is still
+    /// total capacity available and no runnable execution work is waiting.
+    allow_ideation_borrow_idle_execution: AtomicBool,
     /// Provider rate limit backpressure: epoch seconds until which all spawns are blocked.
     /// 0 = no active rate limit. When any agent detects a provider rate limit,
     /// this is set to the retry_after timestamp so ALL subsequent spawns are gated.
@@ -151,6 +158,8 @@ impl ExecutionState {
             running_count: AtomicU32::new(0),
             max_concurrent: AtomicU32::new(2),
             global_max_concurrent: AtomicU32::new(20),
+            global_ideation_max: AtomicU32::new(4),
+            allow_ideation_borrow_idle_execution: AtomicBool::new(false),
             rate_limited_until: AtomicU64::new(0),
             auto_completes_in_flight: std::sync::Mutex::new(HashSet::new()),
             scheduling_in_flight: std::sync::Mutex::new(HashSet::new()),
@@ -166,6 +175,8 @@ impl ExecutionState {
             running_count: AtomicU32::new(0),
             max_concurrent: AtomicU32::new(max),
             global_max_concurrent: AtomicU32::new(20),
+            global_ideation_max: AtomicU32::new(4),
+            allow_ideation_borrow_idle_execution: AtomicBool::new(false),
             rate_limited_until: AtomicU64::new(0),
             auto_completes_in_flight: std::sync::Mutex::new(HashSet::new()),
             scheduling_in_flight: std::sync::Mutex::new(HashSet::new()),
@@ -259,6 +270,34 @@ impl ExecutionState {
     pub fn set_global_max_concurrent(&self, max: u32) {
         let clamped = max.clamp(1, 50);
         self.global_max_concurrent.store(clamped, Ordering::SeqCst);
+        let ideation_cap = self.global_ideation_max();
+        if ideation_cap > clamped {
+            self.global_ideation_max.store(clamped, Ordering::SeqCst);
+        }
+    }
+
+    /// Get global max concurrent ideation sessions.
+    pub fn global_ideation_max(&self) -> u32 {
+        self.global_ideation_max.load(Ordering::SeqCst)
+    }
+
+    /// Set global max concurrent ideation sessions.
+    /// Clamped to [1, global_max_concurrent].
+    pub fn set_global_ideation_max(&self, max: u32) {
+        let clamped = max.clamp(1, self.global_max_concurrent());
+        self.global_ideation_max.store(clamped, Ordering::SeqCst);
+    }
+
+    /// Check whether ideation may borrow idle execution capacity.
+    pub fn allow_ideation_borrow_idle_execution(&self) -> bool {
+        self.allow_ideation_borrow_idle_execution
+            .load(Ordering::SeqCst)
+    }
+
+    /// Enable or disable ideation borrowing of idle execution capacity.
+    pub fn set_allow_ideation_borrow_idle_execution(&self, allow: bool) {
+        self.allow_ideation_borrow_idle_execution
+            .store(allow, Ordering::SeqCst);
     }
 
     /// Check if the provider rate limit is currently active (blocking all spawns)
@@ -299,6 +338,35 @@ impl ExecutionState {
         }
         let running = self.running_count();
         running < self.max_concurrent() && running < self.global_max_concurrent()
+    }
+
+    /// Check if we can start a new ideation session without starving execution.
+    ///
+    /// This uses the global hard cap plus a global ideation sub-cap. Per-project
+    /// ideation allocation lands in a later milestone once those settings are
+    /// persisted and threaded into all ideation entry points.
+    pub fn can_start_ideation(
+        &self,
+        running_global_ideation: u32,
+        runnable_execution_waiting: bool,
+    ) -> bool {
+        if self.is_paused() {
+            return false;
+        }
+        if self.is_provider_blocked() {
+            return false;
+        }
+
+        let running = self.running_count();
+        if running >= self.global_max_concurrent() {
+            return false;
+        }
+
+        if running_global_ideation < self.global_ideation_max() {
+            return true;
+        }
+
+        self.allow_ideation_borrow_idle_execution() && !runnable_execution_waiting
     }
 
     /// Try to mark a task as having an auto-complete in flight.

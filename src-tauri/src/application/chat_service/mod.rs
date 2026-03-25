@@ -131,6 +131,10 @@ pub fn uses_execution_slot(context_type: ChatContextType) -> bool {
     )
 }
 
+fn is_ideation_registry_context(context_type: &str) -> bool {
+    context_type == "ideation" || context_type == "session"
+}
+
 /// Shared event payload context used by background and streaming modules.
 #[derive(Debug, Clone)]
 pub(crate) struct EventContextPayload {
@@ -468,6 +472,37 @@ impl<R: Runtime> ClaudeChatService<R> {
     /// Returns a clone of the current InteractiveProcessRegistry Arc.
     fn ipr(&self) -> Arc<InteractiveProcessRegistry> {
         Arc::clone(&*self.interactive_process_registry.lock().unwrap())
+    }
+
+    async fn count_active_ideation_slots(&self) -> Result<u32, ChatServiceError> {
+        let registry_entries = self.running_agent_registry.list_all().await;
+        let mut count = 0u32;
+
+        for (key, info) in registry_entries {
+            if info.pid == 0 || !is_ideation_registry_context(&key.context_type) {
+                continue;
+            }
+
+            if key.context_type == "session" {
+                let session_id = IdeationSessionId::from_string(key.context_id.clone());
+                match self.ideation_session_repo.get_by_id(&session_id).await {
+                    Ok(Some(_)) => {}
+                    Ok(None) => continue,
+                    Err(e) => return Err(ChatServiceError::RepositoryError(e.to_string())),
+                }
+            }
+
+            if let Some(ref exec) = self.execution_state {
+                let slot_key = format!("{}/{}", key.context_type, key.context_id);
+                if exec.is_interactive_idle(&slot_key) {
+                    continue;
+                }
+            }
+
+            count += 1;
+        }
+
+        Ok(count)
     }
 
     pub fn with_app_handle(mut self, app_handle: AppHandle<R>) -> Self {
@@ -880,6 +915,23 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 }
                 return Err($err);
             }};
+        }
+
+        if context_type == ChatContextType::Ideation {
+            if let Some(ref exec) = self.execution_state {
+                let running_global_ideation = match self.count_active_ideation_slots().await {
+                    Ok(count) => count,
+                    Err(e) => cleanup_and_err!(e),
+                };
+
+                if !exec.can_start_ideation(running_global_ideation, false) {
+                    cleanup_and_err!(ChatServiceError::SpawnFailed(format!(
+                        "ideation capacity reached ({}/{} active ideation slots)",
+                        running_global_ideation,
+                        exec.global_ideation_max()
+                    )));
+                }
+            }
         }
 
         let conversation_id = conversation.id;
