@@ -191,6 +191,7 @@ pub async fn complete_review(
             Arc::clone(&state.app_state.memory_event_repo),
             state.app_state.app_handle.as_ref().cloned(),
         )
+        .with_execution_settings_repo(Arc::clone(&state.app_state.execution_settings_repo))
         .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&state.app_state.interactive_process_registry)),
     );
@@ -609,6 +610,7 @@ pub async fn approve_task(
             Arc::clone(&state.app_state.memory_event_repo),
             state.app_state.app_handle.as_ref().cloned(),
         )
+        .with_execution_settings_repo(Arc::clone(&state.app_state.execution_settings_repo))
         .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(
             &state.app_state.interactive_process_registry,

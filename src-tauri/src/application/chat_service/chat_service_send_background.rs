@@ -24,7 +24,8 @@ use crate::domain::entities::ChatConversation;
 use crate::domain::entities::{AgentRunId, ChatContextType, ChatConversationId, InternalStatus, TaskId};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ArtifactRepository, ChatAttachmentRepository,
-    ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
+    ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
+    IdeationSessionRepository,
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
     TaskDependencyRepository, TaskProposalRepository, TaskRepository, TaskStepRepository,
 };
@@ -42,6 +43,7 @@ pub(super) struct BackgroundRunRepos {
     pub task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     pub project_repo: Arc<dyn ProjectRepository>,
     pub ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    pub execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
     pub task_proposal_repo: Option<Arc<dyn TaskProposalRepository>>,
     pub activity_event_repo: Arc<dyn ActivityEventRepository>,
     pub memory_event_repo: Arc<dyn MemoryEventRepository>,
@@ -188,6 +190,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             task_dependency_repo,
             project_repo,
             ideation_session_repo,
+            execution_settings_repo,
             task_proposal_repo,
             activity_event_repo,
             memory_event_repo,
@@ -581,6 +584,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     &memory_event_repo,
                     &plan_branch_repo,
                     &task_step_repo,
+                    &execution_settings_repo,
                     &app_handle,
                     &interactive_process_registry,
                     &review_repo,
@@ -908,6 +912,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     &execution_state,
                     &question_state,
                     &plan_branch_repo,
+                    &execution_settings_repo,
                     &app_handle,
                     agent_name.as_deref(),
                     team_mode,

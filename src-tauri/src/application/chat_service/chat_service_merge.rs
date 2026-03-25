@@ -19,8 +19,8 @@ use crate::domain::entities::{InternalStatus, Project, Task, TaskId};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
-    MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
-    TaskRepository,
+    ExecutionSettingsRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
+    TaskDependencyRepository, TaskRepository,
 };
 use crate::application::InteractiveProcessRegistry;
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
@@ -77,6 +77,7 @@ pub(crate) struct MergeAutoCompleteContext<'a, R: Runtime> {
     pub running_agent_registry: &'a Arc<dyn RunningAgentRegistry>,
     pub memory_event_repo: &'a Arc<dyn MemoryEventRepository>,
     pub execution_state: &'a Arc<ExecutionState>,
+    pub execution_settings_repo: Option<&'a Arc<dyn ExecutionSettingsRepository>>,
     pub plan_branch_repo: &'a Option<Arc<dyn PlanBranchRepository>>,
     pub app_handle: Option<&'a AppHandle<R>>,
     pub interactive_process_registry: &'a Option<Arc<InteractiveProcessRegistry>>,
@@ -129,6 +130,11 @@ impl<'a, R: Runtime> MergeAutoCompleteContext<'a, R> {
             Arc::clone(self.memory_event_repo),
             self.app_handle.cloned(),
         );
+        let scheduler = if let Some(repo) = self.execution_settings_repo {
+            scheduler.with_execution_settings_repo(Arc::clone(repo))
+        } else {
+            scheduler
+        };
         let scheduler = if let Some(ref repo) = self.plan_branch_repo {
             scheduler.with_plan_branch_repo(Arc::clone(repo))
         } else {

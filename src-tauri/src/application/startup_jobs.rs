@@ -23,13 +23,16 @@ use crate::application::chat_service::{ChatService, SendMessageOptions};
 use crate::application::git_service::GitService;
 use crate::application::recovery_queue::{RecoveryItem, RecoveryPriority, RecoveryQueue};
 use crate::application::ReconciliationRunner;
+use crate::application::chat_service::uses_execution_slot;
 use crate::commands::execution_commands::{
-    ActiveProjectState, ExecutionState, AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES,
+    context_matches_running_status_for_gc, ActiveProjectState, ExecutionState,
+    AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES,
 };
 use crate::domain::entities::ideation::IdeationSessionStatus;
 use crate::domain::entities::{
     app_state::ExecutionHaltMode,
-    ChatContextType, IdeationSessionId, InternalStatus, ReviewNote, ReviewOutcome, ReviewerType,
+    ChatContextType, IdeationSessionId, InternalStatus, ProjectId, ReviewNote, ReviewOutcome,
+    ReviewerType,
 };
 use crate::domain::repositories::{
     AgentRunRepository, AppStateRepository, ChatConversationRepository,
@@ -188,6 +191,100 @@ impl<R: Runtime> StartupJobRunner<R> {
             chat_service: None,
             ideation_session_repo,
         }
+    }
+
+    async fn count_active_slot_consuming_contexts_for_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> Option<u32> {
+        let registry_entries = self.running_agent_registry.list_all().await;
+        let mut count = 0u32;
+
+        for (key, info) in registry_entries {
+            if info.pid == 0 {
+                continue;
+            }
+
+            if key.context_type == "ideation" || key.context_type == "session" {
+                let session_id = IdeationSessionId::from_string(key.context_id.clone());
+                let session = match self.ideation_session_repo.get_by_id(&session_id).await {
+                    Ok(Some(session)) => session,
+                    Ok(None) => continue,
+                    Err(error) => {
+                        tracing::warn!(
+                            project_id = project_id.as_str(),
+                            error = %error,
+                            "Failed to load ideation session while checking startup project capacity"
+                        );
+                        return None;
+                    }
+                };
+
+                if session.project_id != *project_id {
+                    continue;
+                }
+
+                count += 1;
+                continue;
+            }
+
+            let context_type = match key.context_type.parse::<ChatContextType>() {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+
+            if !uses_execution_slot(context_type) {
+                continue;
+            }
+
+            let task_id = crate::domain::entities::TaskId::from_string(key.context_id.clone());
+            let task = match self.task_repo.get_by_id(&task_id).await {
+                Ok(Some(task)) => task,
+                Ok(None) => continue,
+                Err(error) => {
+                    tracing::warn!(
+                        project_id = project_id.as_str(),
+                        error = %error,
+                        "Failed to load task while checking startup project capacity"
+                    );
+                    return None;
+                }
+            };
+
+            if task.project_id != *project_id
+                || !context_matches_running_status_for_gc(context_type, task.internal_status)
+            {
+                continue;
+            }
+
+            count += 1;
+        }
+
+        Some(count)
+    }
+
+    async fn project_has_execution_capacity(&self, project_id: &ProjectId) -> bool {
+        let settings = match self.execution_settings_repo.get_settings(Some(project_id)).await {
+            Ok(settings) => settings,
+            Err(error) => {
+                tracing::warn!(
+                    project_id = project_id.as_str(),
+                    error = %error,
+                    "Failed to load execution settings while checking startup project capacity"
+                );
+                return true;
+            }
+        };
+
+        let Some(running_project_total) = self
+            .count_active_slot_consuming_contexts_for_project(project_id)
+            .await
+        else {
+            return true;
+        };
+
+        self.execution_state
+            .can_start_execution_context(running_project_total, settings.max_concurrent_tasks)
     }
 
     /// Set the task scheduler for auto-starting Ready tasks (builder pattern).
@@ -496,13 +593,22 @@ impl<R: Runtime> StartupJobRunner<R> {
                         continue;
                     }
 
-                    if !self.execution_state.can_start_task() {
+                    if !self.execution_state.can_start_any_execution_context() {
                         info!(
-                            max_concurrent = self.execution_state.max_concurrent(),
+                            global_max_concurrent = self.execution_state.global_max_concurrent(),
                             running_count = self.execution_state.running_count(),
-                            "Phase 1: Max concurrent reached, stopping merge-first recovery"
+                            "Phase 1: Global execution capacity reached, stopping merge-first recovery"
                         );
                         break 'merge_recovery;
+                    }
+
+                    if !self.project_has_execution_capacity(&task.project_id).await {
+                        info!(
+                            task_id = task.id.as_str(),
+                            project_id = task.project_id.as_str(),
+                            "Phase 1: skipping merge task because project execution capacity is full"
+                        );
+                        continue;
                     }
 
                     info!(
@@ -573,14 +679,23 @@ impl<R: Runtime> StartupJobRunner<R> {
                     }
 
                     // Check if we can start another task
-                    if !self.execution_state.can_start_task() {
+                    if !self.execution_state.can_start_any_execution_context() {
                         info!(
-                            max_concurrent = self.execution_state.max_concurrent(),
+                            global_max_concurrent = self.execution_state.global_max_concurrent(),
                             running_count = self.execution_state.running_count(),
-                            "Max concurrent reached, stopping resumption"
+                            "Global execution capacity reached, stopping resumption"
                         );
                         info!(count = resumed, "Task resumption complete (partial)");
                         return;
+                    }
+
+                    if !self.project_has_execution_capacity(&task.project_id).await {
+                        info!(
+                            task_id = task.id.as_str(),
+                            project_id = task.project_id.as_str(),
+                            "Skipping task resumption because project execution capacity is full"
+                        );
+                        continue;
                     }
 
                     info!(
@@ -649,13 +764,22 @@ impl<R: Runtime> StartupJobRunner<R> {
                     }
 
                     // Check max_concurrent before triggering (auto-transitions may spawn agents)
-                    if !self.execution_state.can_start_task() {
+                    if !self.execution_state.can_start_any_execution_context() {
                         info!(
-                            max_concurrent = self.execution_state.max_concurrent(),
+                            global_max_concurrent = self.execution_state.global_max_concurrent(),
                             running_count = self.execution_state.running_count(),
-                            "Max concurrent reached, stopping auto-transition recovery"
+                            "Global execution capacity reached, stopping auto-transition recovery"
                         );
                         return;
+                    }
+
+                    if !self.project_has_execution_capacity(&task.project_id).await {
+                        info!(
+                            task_id = task.id.as_str(),
+                            project_id = task.project_id.as_str(),
+                            "Skipping auto-transition recovery because project execution capacity is full"
+                        );
+                        continue;
                     }
 
                     info!(

@@ -1611,6 +1611,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 task_dependency_repo: Arc::clone(&self.task_dependency_repo),
                 project_repo: Arc::clone(&self.project_repo),
                 ideation_session_repo: Arc::clone(&self.ideation_session_repo),
+                execution_settings_repo: self.execution_settings_repo.clone(),
                 activity_event_repo: Arc::clone(&self.activity_event_repo),
                 memory_event_repo: Arc::clone(&self.memory_event_repo),
                 message_queue: Arc::clone(&self.message_queue),

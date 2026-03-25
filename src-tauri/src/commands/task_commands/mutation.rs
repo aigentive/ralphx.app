@@ -291,6 +291,7 @@ pub async fn move_task(
             Arc::clone(&state.memory_event_repo),
             Some(app.clone()),
         )
+        .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
         .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
     );
@@ -666,6 +667,7 @@ pub async fn block_task(
             Arc::clone(&state.memory_event_repo),
             Some(app.clone()),
         )
+        .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
         .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
     );
@@ -816,6 +818,7 @@ pub async fn unblock_task(
             Arc::clone(&state.memory_event_repo),
             Some(app.clone()),
         )
+        .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
         .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
     );
@@ -1401,6 +1404,7 @@ pub async fn resume_task(
             Arc::clone(&state.memory_event_repo),
             Some(app.clone()),
         )
+        .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
         .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
     );
@@ -1678,6 +1682,7 @@ pub async fn resume_tasks_in_group(
             Arc::clone(&state.memory_event_repo),
             Some(app.clone()),
         )
+        .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
         .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
     );

@@ -2162,6 +2162,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     running_agent_registry: &self.running_agent_registry,
                     memory_event_repo: &self.memory_event_repo,
                     execution_state: &self.execution_state,
+                    execution_settings_repo: None,
                     plan_branch_repo: &self.plan_branch_repo,
                     app_handle: self.app_handle.as_ref(),
                     interactive_process_registry: &None,

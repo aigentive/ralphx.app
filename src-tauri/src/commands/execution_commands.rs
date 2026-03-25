@@ -346,6 +346,18 @@ impl ExecutionState {
         running < self.max_concurrent() && running < self.global_max_concurrent()
     }
 
+    /// Check if any new execution-side context may start from the global perspective.
+    /// This ignores per-project limits; callers that know the project must apply those separately.
+    pub fn can_start_any_execution_context(&self) -> bool {
+        if self.is_paused() {
+            return false;
+        }
+        if self.is_provider_blocked() {
+            return false;
+        }
+        self.running_count() < self.global_max_concurrent()
+    }
+
     /// Check if we can start a new execution-side slot consumer (task/review/merge)
     /// for a specific project without violating the global or per-project caps.
     pub fn can_start_execution_context(
@@ -1725,6 +1737,7 @@ pub async fn resume_execution(
             Arc::clone(&app_state.memory_event_repo),
             app_state.app_handle.clone(),
         )
+        .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
         .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
     );
@@ -2152,6 +2165,7 @@ pub async fn set_max_concurrent(
                 Arc::clone(&app_state.memory_event_repo),
                 app_state.app_handle.clone(),
             )
+            .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
             .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
             .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
         );
@@ -2247,6 +2261,7 @@ pub async fn update_execution_settings(
                     Arc::clone(&app_state.memory_event_repo),
                     app_state.app_handle.clone(),
                 )
+                .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
                 .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
                 .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
             );
@@ -2440,6 +2455,7 @@ pub async fn update_global_execution_settings(
                 Arc::clone(&app_state.memory_event_repo),
                 app_state.app_handle.clone(),
             )
+            .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
             .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
             .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
         );

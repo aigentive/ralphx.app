@@ -6,10 +6,12 @@ use ralphx_lib::commands::execution_commands::{
 use ralphx_lib::commands::{ActiveProjectState, ExecutionState};
 use ralphx_lib::domain::entities::{
     app_state::ExecutionHaltMode,
-    ChatContextType, InternalStatus, Project, ProjectId, Task, TaskCategory,
+    ChatContextType, IdeationSessionBuilder, InternalStatus, Project, ProjectId, Task,
+    TaskCategory,
 };
 use ralphx_lib::domain::execution::ExecutionSettings;
 use ralphx_lib::domain::repositories::AppStateRepository;
+use ralphx_lib::domain::services::RunningAgentKey;
 use ralphx_lib::domain::state_machine::mocks::MockTaskScheduler;
 use ralphx_lib::domain::state_machine::TaskScheduler;
 use std::sync::Arc;
@@ -280,6 +282,69 @@ async fn test_resumption_respects_max_concurrent() {
     // With our mock setup, running_count stays at 0 because the spawner doesn't have
     // execution_state. In production, the spawner would increment_running() on each spawn.
     // The test verifies that run() completes without panic when max_concurrent is reached.
+}
+
+#[tokio::test]
+async fn test_resumption_skips_project_when_ideation_already_uses_only_slot() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Capacity Project".to_string(), "/test/capacity".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    app_state
+        .execution_settings_repo
+        .update_settings(
+            Some(&project.id),
+            &ExecutionSettings {
+                max_concurrent_tasks: 1,
+                project_ideation_max: 1,
+                auto_commit: true,
+                pause_on_failure: true,
+            },
+        )
+        .await
+        .unwrap();
+
+    let session = IdeationSessionBuilder::new()
+        .project_id(project.id.clone())
+        .build();
+    let session_id = session.id.clone();
+    app_state.ideation_session_repo.create(session).await.unwrap();
+    app_state
+        .running_agent_registry
+        .register(
+            RunningAgentKey::new("ideation", session_id.as_str()),
+            56565,
+            "ideation-conv".to_string(),
+            "ideation-run".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
+
+    runner.run().await;
+
+    let convs = app_state
+        .chat_conversation_repo
+        .get_by_context(ChatContextType::TaskExecution, task_id.as_str())
+        .await
+        .unwrap();
+    assert_eq!(
+        convs.len(),
+        0,
+        "startup recovery must not resume task execution when ideation already consumes the project's only slot"
+    );
 }
 
 #[tokio::test]

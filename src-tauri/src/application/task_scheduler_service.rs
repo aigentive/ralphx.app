@@ -21,18 +21,20 @@ use tokio::sync::{Mutex as TokioMutex, RwLock};
 use crate::infrastructure::agents::claude::scheduler_config;
 
 use crate::commands::ExecutionState;
+use crate::application::chat_service::uses_execution_slot;
+use crate::commands::execution_commands::context_matches_running_status_for_gc;
 use crate::domain::entities::{
     task_metadata::{
         MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
         MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
     },
-    InternalStatus, ProjectId, Task, TaskCategory,
+    ChatContextType, IdeationSessionId, InternalStatus, ProjectId, Task, TaskCategory,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
-    ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
-    MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
-    TaskRepository,
+    ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
+    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
+    TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::TaskScheduler;
@@ -67,6 +69,8 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     /// Optional shared AppState InteractiveProcessRegistry for stdin message delivery.
     interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
+    /// Optional per-project execution settings repository for project-aware admission checks.
+    execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
     /// Self-reference for propagating scheduler through build_transition_service().
     /// Set after Arc-wrapping via set_self_ref(). Uses Mutex since it's written once at init.
     self_ref: Mutex<Option<Arc<dyn TaskScheduler>>>,
@@ -121,6 +125,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
             app_handle,
             plan_branch_repo: None,
             interactive_process_registry: None,
+            execution_settings_repo: None,
             self_ref: Mutex::new(None),
             active_project_id: RwLock::new(None),
             scheduling_lock: TokioMutex::new(()),
@@ -140,6 +145,14 @@ impl<R: Runtime> TaskSchedulerService<R> {
         ipr: Arc<InteractiveProcessRegistry>,
     ) -> Self {
         self.interactive_process_registry = Some(ipr);
+        self
+    }
+
+    pub fn with_execution_settings_repo(
+        mut self,
+        repo: Arc<dyn ExecutionSettingsRepository>,
+    ) -> Self {
+        self.execution_settings_repo = Some(repo);
         self
     }
 
@@ -252,11 +265,123 @@ impl<R: Runtime> TaskSchedulerService<R> {
                 }
             }
 
+            if !self.project_has_execution_capacity(&task.project_id).await {
+                tracing::debug!(
+                    task_id = task.id.as_str(),
+                    project_id = task.project_id.as_str(),
+                    "Skipping task: project execution capacity reached"
+                );
+                continue;
+            }
+
             // This task is schedulable
             return Some(task);
         }
 
         None
+    }
+
+    async fn count_active_slot_consuming_contexts_for_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> Option<u32> {
+        let registry_entries = self.running_agent_registry.list_all().await;
+        let mut count = 0u32;
+
+        for (key, info) in registry_entries {
+            if info.pid == 0 {
+                continue;
+            }
+
+            if key.context_type == "ideation" || key.context_type == "session" {
+                let session_id = IdeationSessionId::from_string(key.context_id.clone());
+                let session = match self.ideation_session_repo.get_by_id(&session_id).await {
+                    Ok(Some(session)) => session,
+                    Ok(None) => continue,
+                    Err(error) => {
+                        tracing::warn!(
+                            project_id = project_id.as_str(),
+                            error = %error,
+                            "Failed to load ideation session while checking project capacity"
+                        );
+                        return None;
+                    }
+                };
+
+                if session.project_id != *project_id {
+                    continue;
+                }
+
+                let slot_key = format!("{}/{}", key.context_type, key.context_id);
+                if self.execution_state.is_interactive_idle(&slot_key) {
+                    continue;
+                }
+
+                count += 1;
+                continue;
+            }
+
+            let context_type = match key.context_type.parse::<ChatContextType>() {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+
+            if !uses_execution_slot(context_type) {
+                continue;
+            }
+
+            let task_id = crate::domain::entities::TaskId::from_string(key.context_id.clone());
+            let task = match self.task_repo.get_by_id(&task_id).await {
+                Ok(Some(task)) => task,
+                Ok(None) => continue,
+                Err(error) => {
+                    tracing::warn!(
+                        project_id = project_id.as_str(),
+                        error = %error,
+                        "Failed to load task while checking project capacity"
+                    );
+                    return None;
+                }
+            };
+
+            if task.project_id != *project_id
+                || !context_matches_running_status_for_gc(context_type, task.internal_status)
+            {
+                continue;
+            }
+
+            count += 1;
+        }
+
+        Some(count)
+    }
+
+    async fn project_has_execution_capacity(&self, project_id: &ProjectId) -> bool {
+        let Some(repo) = self.execution_settings_repo.as_ref() else {
+            return true;
+        };
+
+        let settings = match repo.get_settings(Some(project_id)).await {
+            Ok(settings) => settings,
+            Err(error) => {
+                tracing::warn!(
+                    project_id = project_id.as_str(),
+                    error = %error,
+                    "Failed to load execution settings while checking project capacity"
+                );
+                return true;
+            }
+        };
+
+        let Some(running_project_total) = self
+            .count_active_slot_consuming_contexts_for_project(project_id)
+            .await
+        else {
+            return true;
+        };
+
+        self.execution_state
+            .can_start_execution_context(running_project_total, settings.max_concurrent_tasks)
     }
 
     #[doc(hidden)]
@@ -488,12 +613,12 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
 
         loop {
             // Check capacity on each iteration
-            if !self.execution_state.can_start_task() {
+            if !self.execution_state.can_start_any_execution_context() {
                 tracing::debug!(
                     is_paused = self.execution_state.is_paused(),
                     running_count = self.execution_state.running_count(),
-                    max_concurrent = self.execution_state.max_concurrent(),
-                    "Cannot schedule more: at capacity or paused"
+                    global_max_concurrent = self.execution_state.global_max_concurrent(),
+                    "Cannot schedule more: at global capacity or paused"
                 );
                 break;
             }

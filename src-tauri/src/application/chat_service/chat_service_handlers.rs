@@ -25,7 +25,8 @@ use crate::domain::entities::{
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ArtifactRepository, ChatAttachmentRepository,
-    ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
+    ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
+    IdeationSessionRepository,
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
     TaskDependencyRepository, TaskProposalRepository, TaskRepository, TaskStepRepository,
 };
@@ -140,6 +141,7 @@ pub(super) async fn handle_stream_success<R: Runtime>(
     memory_event_repo: &Arc<dyn MemoryEventRepository>,
     plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
     task_step_repo: &Option<Arc<dyn TaskStepRepository>>,
+    execution_settings_repo: &Option<Arc<dyn ExecutionSettingsRepository>>,
     app_handle: &Option<AppHandle<R>>,
     interactive_process_registry: &Option<Arc<InteractiveProcessRegistry>>,
     review_repo: &Option<Arc<dyn ReviewRepository>>,
@@ -179,6 +181,10 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         Arc::clone(memory_event_repo),
                         app_handle.clone(),
                     );
+                    if let Some(ref repo) = execution_settings_repo {
+                        scheduler_svc =
+                            scheduler_svc.with_execution_settings_repo(Arc::clone(repo));
+                    }
                     if let Some(ref repo) = plan_branch_repo {
                         scheduler_svc = scheduler_svc.with_plan_branch_repo(Arc::clone(repo));
                     }
@@ -492,6 +498,7 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                 running_agent_registry,
                 memory_event_repo,
                 execution_state: exec_state,
+                execution_settings_repo: execution_settings_repo.as_ref(),
                 plan_branch_repo,
                 app_handle: app_handle.as_ref(),
                 interactive_process_registry,
@@ -602,6 +609,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     execution_state: &Option<Arc<ExecutionState>>,
     question_state: &Option<Arc<QuestionState>>,
     plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
+    execution_settings_repo: &Option<Arc<dyn ExecutionSettingsRepository>>,
     app_handle: &Option<AppHandle<R>>,
     agent_name: Option<&str>,
     team_mode: bool,
@@ -659,6 +667,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 memory_event_repo,
                 plan_branch_repo,
                 task_step_repo,
+                execution_settings_repo,
                 app_handle,
                 interactive_process_registry,
                 review_repo,
@@ -874,6 +883,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                             ideation_session_repo: Arc::clone(
                                                 ideation_session_repo,
                                             ),
+                                            execution_settings_repo:
+                                                execution_settings_repo.clone(),
                                             task_proposal_repo: task_proposal_repo.clone(),
                                             activity_event_repo: Arc::clone(activity_event_repo),
                                             memory_event_repo: Arc::clone(memory_event_repo),
@@ -1442,6 +1453,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     running_agent_registry,
                     memory_event_repo,
                     execution_state: exec_state,
+                    execution_settings_repo: execution_settings_repo.as_ref(),
                     plan_branch_repo,
                     app_handle: app_handle.as_ref(),
                     interactive_process_registry,

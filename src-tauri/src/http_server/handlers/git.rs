@@ -945,6 +945,9 @@ fn build_transition_service(state: &HttpServerState) -> TaskTransitionService<ta
             std::sync::Arc::clone(&state.app_state.memory_event_repo),
             state.app_state.app_handle.as_ref().cloned(),
         )
+        .with_execution_settings_repo(std::sync::Arc::clone(
+            &state.app_state.execution_settings_repo,
+        ))
         .with_plan_branch_repo(std::sync::Arc::clone(&state.app_state.plan_branch_repo))
         .with_interactive_process_registry(std::sync::Arc::clone(
             &state.app_state.interactive_process_registry,

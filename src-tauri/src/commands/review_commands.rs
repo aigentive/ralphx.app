@@ -450,6 +450,7 @@ pub async fn approve_task_for_review(
             Arc::clone(&state.memory_event_repo),
             Some(app.clone()),
         )
+        .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
         .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
     );

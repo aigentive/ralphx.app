@@ -4,6 +4,8 @@ use ralphx_lib::domain::entities::{
     ArtifactId, ExecutionPlanId, GitMode, IdeationSession, IdeationSessionId, InternalStatus,
     PlanBranch, PlanBranchStatus, Project, ProjectId, Task,
 };
+use ralphx_lib::domain::execution::ExecutionSettings;
+use ralphx_lib::domain::services::RunningAgentKey;
 use ralphx_lib::domain::state_machine::services::TaskScheduler;
 use ralphx_lib::domain::state_machine::transition_handler::DEFERRED_MERGE_TIMEOUT_SECONDS;
 use ralphx_lib::infrastructure::agents::claude::scheduler_config;
@@ -37,6 +39,7 @@ fn build_scheduler(
         Arc::clone(&app_state.memory_event_repo),
         None,
     )
+    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
 }
 
 #[tokio::test]
@@ -77,8 +80,8 @@ async fn test_no_schedule_when_paused() {
 async fn test_no_schedule_when_at_capacity() {
     let (execution_state, app_state) = setup_test_state().await;
 
-    // Set max concurrent to 1 and fill the slot
-    execution_state.set_max_concurrent(1);
+    // Set global concurrent to 1 and fill the slot
+    execution_state.set_global_max_concurrent(1);
     execution_state.increment_running();
 
     // Create a project with a Ready task
@@ -337,6 +340,70 @@ async fn test_worktree_mode_allows_parallel_tasks() {
         "Worktree mode should allow parallel task execution"
     );
     assert_eq!(found.unwrap().id, ready_task.id);
+}
+
+#[tokio::test]
+async fn test_scheduler_skips_project_at_capacity_and_picks_other_project() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_global_max_concurrent(10);
+
+    let mut project_a = Project::new("Project A".to_string(), "/test/a".to_string());
+    project_a.git_mode = GitMode::Worktree;
+    app_state.project_repo.create(project_a.clone()).await.unwrap();
+
+    let project_b = Project::new("Project B".to_string(), "/test/b".to_string());
+    app_state.project_repo.create(project_b.clone()).await.unwrap();
+
+    app_state
+        .execution_settings_repo
+        .update_settings(
+            Some(&project_a.id),
+            &ExecutionSettings {
+                max_concurrent_tasks: 1,
+                project_ideation_max: 1,
+                auto_commit: true,
+                pause_on_failure: true,
+            },
+        )
+        .await
+        .unwrap();
+
+    let mut occupied_task = Task::new(project_a.id.clone(), "Occupied Task".to_string());
+    occupied_task.internal_status = InternalStatus::Executing;
+    let occupied_task = app_state.task_repo.create(occupied_task).await.unwrap();
+    app_state
+        .running_agent_registry
+        .register(
+            RunningAgentKey::new("task_execution", occupied_task.id.as_str()),
+            45454,
+            "occupied-conv".to_string(),
+            "occupied-run".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let mut blocked_ready = Task::new(project_a.id.clone(), "Blocked Ready".to_string());
+    blocked_ready.internal_status = InternalStatus::Ready;
+    let blocked_ready = app_state.task_repo.create(blocked_ready).await.unwrap();
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+
+    let mut runnable_ready = Task::new(project_b.id.clone(), "Runnable Ready".to_string());
+    runnable_ready.internal_status = InternalStatus::Ready;
+    let runnable_ready = app_state.task_repo.create(runnable_ready).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    let found = scheduler
+        .find_oldest_schedulable_task_for_test()
+        .await
+        .expect("scheduler should find a task in the unconstrained project");
+
+    assert_eq!(
+        found.id, runnable_ready.id,
+        "scheduler must skip the older task in the saturated project"
+    );
+    assert_ne!(found.id, blocked_ready.id);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
