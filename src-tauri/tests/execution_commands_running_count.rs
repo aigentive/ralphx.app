@@ -435,6 +435,34 @@ fn test_execution_capacity_remains_when_ideation_cap_is_full() {
 }
 
 #[test]
+fn test_can_start_execution_context_blocks_when_project_total_cap_is_full() {
+    let state = ExecutionState::with_max_concurrent(5);
+    state.set_global_max_concurrent(8);
+
+    state.increment_running();
+    state.increment_running();
+
+    assert!(
+        !state.can_start_execution_context(2, 2),
+        "execution-side contexts must stop at the project total cap"
+    );
+}
+
+#[test]
+fn test_can_start_execution_context_allows_when_only_ideation_cap_is_full() {
+    let state = ExecutionState::with_max_concurrent(5);
+    state.set_global_max_concurrent(5);
+    state.set_global_ideation_max(1);
+
+    state.increment_running();
+
+    assert!(
+        state.can_start_execution_context(1, 5),
+        "execution-side contexts must still use reserved capacity when ideation is capped"
+    );
+}
+
+#[test]
 fn test_can_start_ideation_borrowing_requires_no_waiting_execution() {
     let state = ExecutionState::with_max_concurrent(5);
     state.set_global_max_concurrent(5);

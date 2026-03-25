@@ -346,6 +346,28 @@ impl ExecutionState {
         running < self.max_concurrent() && running < self.global_max_concurrent()
     }
 
+    /// Check if we can start a new execution-side slot consumer (task/review/merge)
+    /// for a specific project without violating the global or per-project caps.
+    pub fn can_start_execution_context(
+        &self,
+        running_project_total: u32,
+        project_max_concurrent: u32,
+    ) -> bool {
+        if self.is_paused() {
+            return false;
+        }
+        if self.is_provider_blocked() {
+            return false;
+        }
+
+        let running = self.running_count();
+        if running >= self.global_max_concurrent() {
+            return false;
+        }
+
+        running_project_total < project_max_concurrent
+    }
+
     /// Check if we can start a new ideation session without starving execution.
     ///
     /// This uses the global hard cap plus a global ideation sub-cap. Per-project
@@ -861,11 +883,11 @@ async fn count_active_slot_consuming_contexts_for_project(
     let mut count = 0u32;
 
     for (key, info) in registry_entries {
-        if is_ideation_registry_context(&key.context_type) {
-            if info.pid == 0 {
-                continue;
-            }
+        if info.pid == 0 {
+            continue;
+        }
 
+        if is_ideation_registry_context(&key.context_type) {
             let session_id = IdeationSessionId::from_string(key.context_id.clone());
             let Some(session) = app_state
                 .ideation_session_repo
