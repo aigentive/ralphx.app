@@ -4529,6 +4529,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_resume_relaunches_queued_merge_message_for_active_task() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+        let project = Project::new("Resume Merge Queue".to_string(), "/test/merge-queue".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        let task = app_state
+            .task_repo
+            .create(Task {
+                internal_status: InternalStatus::Merging,
+                ..Task::new(project.id.clone(), "Queued merge prompt".to_string())
+            })
+            .await
+            .unwrap();
+
+        app_state.message_queue.queue(
+            ChatContextType::Merge,
+            task.id.as_str(),
+            "continue merge".to_string(),
+        );
+
+        let mock = Arc::new(MockChatService::new());
+        let resumed = resume_paused_slot_consuming_queues_with_chat_service(
+            None,
+            &app_state,
+            &execution_state,
+            || Arc::clone(&mock) as Arc<dyn ChatService>,
+        )
+        .await
+        .expect("resume paused merge queue");
+
+        assert_eq!(resumed, 1);
+        assert_eq!(mock.call_count(), 1);
+        assert_eq!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Merge, task.id.as_str())
+                .len(),
+            0,
+            "active merge queue should be drained when resume relaunches the prompt"
+        );
+        assert_eq!(
+            mock.get_sent_messages().await,
+            vec!["continue merge".to_string()]
+        );
+    }
+
+    #[tokio::test]
     async fn test_pause_resets_running_count() {
         // Setup: Create tasks in agent-active states and simulate running count
         let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
