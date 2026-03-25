@@ -2,6 +2,10 @@ use super::session_changed_after_resume;
 use crate::application::interactive_process_registry::{
     InteractiveProcessKey, InteractiveProcessRegistry,
 };
+use crate::application::AppState;
+use crate::commands::ExecutionState;
+use crate::domain::entities::{ChatContextType, ChatConversationId};
+use std::sync::Arc;
 
 #[test]
 fn session_changed_returns_true_when_ids_differ() {
@@ -80,6 +84,59 @@ fn run_completed_emitted_when_queue_had_items_but_none_processed() {
 
     // run_completed is always emitted — not gated on total_processed > 0.
     // The unconditional emission path is the fix (tested at call site in production code).
+}
+
+#[tokio::test]
+async fn queue_processing_leaves_messages_pending_when_execution_paused() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    execution_state.pause();
+
+    app_state.message_queue.queue(
+        ChatContextType::Ideation,
+        "session-paused",
+        "Queued while paused".to_string(),
+    );
+
+    let conversation_id = ChatConversationId::new();
+    let cwd = std::env::current_dir().expect("current_dir");
+
+    let processed = super::super::chat_service_queue::process_queued_messages::<tauri::Wry>(
+        ChatContextType::Ideation,
+        "session-paused",
+        conversation_id,
+        "session-cli",
+        &app_state.message_queue,
+        &app_state.chat_message_repo,
+        &app_state.chat_attachment_repo,
+        &app_state.artifact_repo,
+        &app_state.activity_event_repo,
+        &app_state.task_repo,
+        &app_state.ideation_session_repo,
+        &cwd,
+        &cwd,
+        &cwd,
+        None,
+        Some(Arc::clone(&execution_state)),
+        None,
+        None,
+        false,
+        tokio_util::sync::CancellationToken::new(),
+        None,
+        None,
+        super::StreamingStateCache::new(),
+    )
+    .await;
+
+    assert_eq!(processed, 0, "paused queue processing must not launch messages");
+    assert_eq!(
+        app_state
+            .message_queue
+            .get_queued(ChatContextType::Ideation, "session-paused")
+            .len(),
+        1,
+        "paused queue processing must leave the queued message pending"
+    );
 }
 
 /// Verifies that session swap recovery enqueues rehydration at front of queue,

@@ -779,6 +779,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                         &plugin_dir,
                         &working_directory,
                         question_state.clone(),
+                        execution_state.clone(),
                         app_handle.clone(),
                         resolved_project_id.as_deref(),
                         team_mode,

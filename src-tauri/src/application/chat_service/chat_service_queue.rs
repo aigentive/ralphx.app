@@ -15,6 +15,7 @@ use super::chat_service_types::{
 };
 use super::has_meaningful_output;
 use crate::application::question_state::QuestionState;
+use crate::commands::ExecutionState;
 use crate::domain::entities::{ChatContextType, ChatConversationId, InternalStatus, TaskId};
 use crate::domain::repositories::{
     ActivityEventRepository, ArtifactRepository, ChatMessageRepository,
@@ -23,6 +24,13 @@ use crate::domain::repositories::{
 use crate::domain::services::MessageQueue;
 use crate::utils::secret_redactor::redact;
 use tokio_util::sync::CancellationToken;
+
+pub(super) fn queue_processing_blocked_by_pause(
+    context_type: ChatContextType,
+    execution_state: Option<&Arc<ExecutionState>>,
+) -> bool {
+    super::uses_execution_slot(context_type) && execution_state.is_some_and(|exec| exec.is_paused())
+}
 
 /// Process all queued messages for a context with retry loop.
 ///
@@ -47,6 +55,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
     plugin_dir: &Path,
     working_directory: &Path,
     question_state: Option<Arc<QuestionState>>,
+    execution_state: Option<Arc<ExecutionState>>,
     app_handle: Option<AppHandle<R>>,
     project_id: Option<&str>,
     team_mode: bool,
@@ -59,6 +68,16 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
 
     // Outer loop: keep processing until queue is stable-empty
     loop {
+        if queue_processing_blocked_by_pause(context_type, execution_state.as_ref()) {
+            tracing::info!(
+                %context_type,
+                context_id,
+                pending = message_queue.get_queued(context_type, context_id).len(),
+                "[QUEUE] Execution paused, leaving queued messages pending"
+            );
+            break;
+        }
+
         // Check cancellation before each iteration
         if cancellation_token.is_cancelled() {
             tracing::info!(
@@ -103,6 +122,20 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
 
         // Inner loop: process all currently queued messages
         while let Some(queued_msg) = message_queue.pop(context_type, context_id) {
+            if queue_processing_blocked_by_pause(context_type, execution_state.as_ref()) {
+                message_queue.queue_front_existing(
+                    context_type,
+                    context_id,
+                    queued_msg,
+                );
+                tracing::info!(
+                    %context_type,
+                    context_id,
+                    "[QUEUE] Execution paused after dequeue, restored message to queue front"
+                );
+                break;
+            }
+
             if cancellation_token.is_cancelled() {
                 tracing::info!("[QUEUE] Cancellation requested mid-queue, stopping");
                 break;

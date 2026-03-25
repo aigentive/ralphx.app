@@ -131,6 +131,14 @@ pub fn uses_execution_slot(context_type: ChatContextType) -> bool {
     )
 }
 
+fn ideation_launches_paused(
+    context_type: ChatContextType,
+    execution_state: Option<&Arc<crate::commands::ExecutionState>>,
+) -> bool {
+    context_type == ChatContextType::Ideation
+        && execution_state.is_some_and(|exec| exec.is_paused())
+}
+
 fn is_ideation_registry_context(context_type: &str) -> bool {
     context_type == "ideation" || context_type == "session"
 }
@@ -398,6 +406,33 @@ impl<R: Runtime> ClaudeChatService<R> {
         self
     }
 
+    fn enqueue_pending_send(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+        message: &str,
+        options: &SendMessageOptions,
+    ) -> QueuedMessage {
+        let queued = self.message_queue.queue_with_overrides(
+            context_type,
+            context_id,
+            message.to_string(),
+            options.metadata.clone(),
+            options.created_at.map(|ts| ts.to_rfc3339()),
+        );
+        self.emit_event(
+            "agent:message_queued",
+            AgentMessageQueuedPayload {
+                message_id: queued.id.clone(),
+                content: queued.content.clone(),
+                context_type: context_type.to_string(),
+                context_id: context_id.to_string(),
+                created_at: queued.created_at.clone(),
+            },
+        );
+        queued
+    }
+
     pub fn with_question_state(mut self, state: Arc<QuestionState>) -> Self {
         self.question_state = Some(state);
         self
@@ -662,6 +697,30 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             "chat_service.send_message start"
         );
 
+        // Runtime halt barrier for ideation: do not start new ideation work while the
+        // global execution state is paused/stopped. Preserve the message in queue so it
+        // can be resumed later instead of failing the user-facing send.
+        if ideation_launches_paused(context_type, self.execution_state.as_ref()) {
+            let (conversation, is_new_conversation) = self
+                .get_or_create_conversation(context_type, context_id)
+                .await?;
+            let queued =
+                self.enqueue_pending_send(context_type, context_id, message, &options);
+            tracing::info!(
+                %context_type,
+                context_id,
+                queued_message_id = %queued.id,
+                "chat_service.send_message: execution paused, queued ideation message instead of spawning"
+            );
+            return Ok(SendResult {
+                conversation_id: conversation.id.as_str().to_string(),
+                agent_run_id: String::new(),
+                is_new_conversation,
+                was_queued: true,
+                queued_message_id: Some(queued.id),
+            });
+        }
+
         // 1. Interactive fast-path (Gate 1): if an interactive process is already
         //    running for this context, write the message directly to its stdin.
         //    IMPORTANT: Do this BEFORE get_or_create_conversation() because for
@@ -861,25 +920,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 existing_run_id = %existing.agent_run_id,
                 "[GATE_TRACE] Gate 2 blocked — agent already running, queuing message"
             );
-            let queued = self
-                .message_queue
-                .queue_with_overrides(
-                    context_type,
-                    context_id,
-                    message.to_string(),
-                    options.metadata.clone(),
-                    options.created_at.map(|ts| ts.to_rfc3339()),
-                );
-            self.emit_event(
-                "agent:message_queued",
-                AgentMessageQueuedPayload {
-                    message_id: queued.id.clone(),
-                    content: queued.content.clone(),
-                    context_type: context_type.to_string(),
-                    context_id: context_id.to_string(),
-                    created_at: queued.created_at.clone(),
-                },
-            );
+            let queued =
+                self.enqueue_pending_send(context_type, context_id, message, &options);
             return Ok(SendResult {
                 conversation_id: existing.conversation_id.clone(),
                 agent_run_id: existing.agent_run_id.clone(),

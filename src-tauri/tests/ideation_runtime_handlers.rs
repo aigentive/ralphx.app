@@ -636,6 +636,45 @@ async fn test_verification_child_session_counts_against_ideation_cap() {
 }
 
 #[tokio::test]
+async fn test_chat_service_queues_new_ideation_message_when_execution_paused() {
+    let state = setup_test_state().await;
+    let session_id = create_active_session(&state).await;
+
+    state.execution_state.pause();
+
+    let chat_service = build_ideation_chat_service(&state);
+    let result = chat_service
+        .send_message(
+            ChatContextType::Ideation,
+            session_id.as_str(),
+            "Queue during pause",
+            SendMessageOptions::default(),
+        )
+        .await
+        .expect("paused ideation send should queue instead of failing");
+
+    assert!(
+        result.was_queued,
+        "paused ideation send must be queued rather than spawned"
+    );
+    assert_eq!(
+        state
+            .app_state
+            .message_queue
+            .get_queued(ChatContextType::Ideation, session_id.as_str())
+            .len(),
+        1,
+        "queued message must remain pending while paused"
+    );
+
+    let key = RunningAgentKey::new("ideation", session_id.as_str());
+    assert!(
+        !state.app_state.running_agent_registry.is_running(&key).await,
+        "paused ideation send must not register a running agent"
+    );
+}
+
+#[tokio::test]
 async fn test_send_ideation_session_message_agent_idle_spawn_path_entered() {
     let state = setup_test_state().await;
 

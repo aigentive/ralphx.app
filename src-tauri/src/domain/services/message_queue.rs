@@ -139,6 +139,21 @@ impl MessageQueue {
         message
     }
 
+    /// Re-insert an existing queued message at the front of the queue.
+    ///
+    /// Used when queue processing has already popped a message but a runtime
+    /// barrier (for example global pause/stop) prevents launching it right now.
+    pub fn queue_front_existing(
+        &self,
+        context_type: ChatContextType,
+        context_id: impl Into<String>,
+        message: QueuedMessage,
+    ) {
+        let key = QueueKey::new(context_type, context_id);
+        let mut queues = self.queues.lock().unwrap();
+        queues.entry(key).or_default().insert(0, message);
+    }
+
     /// Queue a message using a QueueKey
     pub fn queue_with_key(&self, key: QueueKey, content: String) -> QueuedMessage {
         let message = QueuedMessage::new(content);
