@@ -46,6 +46,7 @@ function createWrapper() {
 
 const mockStatus: ExecutionStatusResponse = {
   isPaused: false,
+  haltMode: "running",
   runningCount: 0,
   maxConcurrent: 10,
   queuedCount: 0,
@@ -73,6 +74,7 @@ describe("useExecutionStatus", () => {
     useUiStore.setState({
       executionStatus: {
         isPaused: false,
+        haltMode: "running",
         runningCount: 0,
         maxConcurrent: 10,
         queuedCount: 0,
@@ -103,6 +105,7 @@ describe("useExecutionStatus", () => {
   it("updates uiStore on successful fetch", async () => {
     const pausedStatus: ExecutionStatusResponse = {
       isPaused: true,
+      haltMode: "paused",
       runningCount: 1,
       maxConcurrent: 10,
       queuedCount: 3,
@@ -230,7 +233,7 @@ describe("usePauseExecution", () => {
   it("calls pause API when toggling from running to paused", async () => {
     vi.mocked(api.execution.pause).mockResolvedValue({
       success: true,
-      status: { ...mockStatus, isPaused: true },
+      status: { ...mockStatus, isPaused: true, haltMode: "paused" },
     });
 
     const { result } = renderHook(() => usePauseExecution(), {
@@ -246,7 +249,7 @@ describe("usePauseExecution", () => {
 
   it("calls resume API when toggling from paused to running", async () => {
     useUiStore.setState({
-      executionStatus: { ...mockStatus, isPaused: true },
+      executionStatus: { ...mockStatus, isPaused: true, haltMode: "paused" },
     });
 
     vi.mocked(api.execution.resume).mockResolvedValue({
@@ -267,6 +270,7 @@ describe("usePauseExecution", () => {
 
   it("updates uiStore after pause", async () => {
     const pausedStatus = { ...mockStatus, isPaused: true };
+    pausedStatus.haltMode = "paused";
     vi.mocked(api.execution.pause).mockResolvedValue({
       success: true,
       status: pausedStatus,
@@ -287,7 +291,7 @@ describe("usePauseExecution", () => {
 
   it("updates uiStore after resume", async () => {
     useUiStore.setState({
-      executionStatus: { ...mockStatus, isPaused: true },
+      executionStatus: { ...mockStatus, isPaused: true, haltMode: "paused" },
     });
 
     vi.mocked(api.execution.resume).mockResolvedValue({
@@ -332,7 +336,7 @@ describe("usePauseExecution", () => {
     await act(async () => {
       resolvePromise!({
         success: true,
-        status: { ...mockStatus, isPaused: true },
+        status: { ...mockStatus, isPaused: true, haltMode: "paused" },
       });
     });
 
@@ -371,6 +375,23 @@ describe("usePauseExecution", () => {
 
     expect(typeof result.current.pause).toBe("function");
     expect(typeof result.current.resume).toBe("function");
+  });
+
+  it("does not resume when halt mode is stopped", async () => {
+    useUiStore.setState({
+      executionStatus: { ...mockStatus, isPaused: true, haltMode: "stopped" },
+    });
+
+    const { result } = renderHook(() => usePauseExecution(), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      result.current.toggle();
+    });
+
+    expect(api.execution.resume).not.toHaveBeenCalled();
+    expect(result.current.canPauseToggle).toBe(false);
   });
 });
 

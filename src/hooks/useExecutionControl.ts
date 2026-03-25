@@ -114,6 +114,9 @@ export function usePauseExecution(projectId?: string) {
   });
 
   const toggle = () => {
+    if (executionStatus.haltMode === "stopped") {
+      return;
+    }
     if (executionStatus.isPaused) {
       resumeMutation.mutate();
     } else {
@@ -123,11 +126,20 @@ export function usePauseExecution(projectId?: string) {
 
   return {
     toggle,
-    pause: () => pauseMutation.mutate(),
-    resume: () => resumeMutation.mutate(),
+    pause: () => {
+      if (executionStatus.haltMode !== "stopped") {
+        pauseMutation.mutate();
+      }
+    },
+    resume: () => {
+      if (executionStatus.haltMode !== "stopped") {
+        resumeMutation.mutate();
+      }
+    },
     isPending: pauseMutation.isPending || resumeMutation.isPending,
     isError: pauseMutation.isError || resumeMutation.isError,
     error: pauseMutation.error || resumeMutation.error,
+    canPauseToggle: executionStatus.haltMode !== "stopped",
   };
 }
 

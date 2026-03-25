@@ -40,7 +40,7 @@ When working in `src-tauri/`, also follow:
 
 | Priority | Area | Next Step |
 |---|---|---|
-| P0 | Global orchestration semantics | Execution status/UI now carry explicit halt mode so `stop` no longer masquerades as resumable `pause`; next finish the remaining stop-vs-pause UX rules and confirm whether any non-ideation queued restart paths still need special handling |
+| P0 | Global orchestration semantics | Execution status/UI + `resume_execution` now preserve the stopped barrier instead of treating it like pause; next finish the remaining stop-vs-pause UX rules and confirm whether any non-ideation queued restart paths still need special handling |
 | P0 | Concurrency admission control | M1 landed: ideation/verification now honor a global ideation admission gate before spawn; next extend admission control across the remaining slot-consuming contexts |
 | P0 | Pipeline allocation | Ideation spawn/resume now respect global cap, project ideation cap, project total cap, and borrowing only when execution is not waiting; next extend pipeline-aware admission beyond ideation and verify stop-vs-pause UX still matches the new allocation model |
 | P1 | Queue + recovery alignment | Landed: pause queues all slot-consuming sends, paused ideation relaunches on resume, and stop clears queued slot-consuming work; next document the final UX contract and verify no extra task/review/merge relaunch seam is needed |

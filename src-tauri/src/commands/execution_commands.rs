@@ -62,6 +62,8 @@ pub const AUTO_TRANSITION_STATES: &[InternalStatus] = &[
     InternalStatus::PendingMerge,   // attempt_programmatic_merge() (→ Merged or → Merging)
 ];
 
+const RESUME_AFTER_STOP_ERROR: &str = "Execution was stopped. Restart tasks manually.";
+
 // ========================================
 // Phase 82: Active Project State
 // ========================================
@@ -725,6 +727,13 @@ async fn load_execution_halt_mode(app_state: &AppState) -> Result<ExecutionHaltM
         .await
         .map(|settings| settings.execution_halt_mode)
         .map_err(|e| e.to_string())
+}
+
+async fn ensure_resume_allowed(app_state: &AppState) -> Result<(), String> {
+    if load_execution_halt_mode(app_state).await? == ExecutionHaltMode::Stopped {
+        return Err(RESUME_AFTER_STOP_ERROR.to_string());
+    }
+    Ok(())
 }
 
 fn queued_message_to_send_options(message: &crate::domain::services::QueuedMessage) -> SendMessageOptions {
@@ -1395,6 +1404,8 @@ pub async fn resume_execution(
     execution_state: State<'_, Arc<ExecutionState>>,
     app_state: State<'_, AppState>,
 ) -> Result<ExecutionCommandResponse, String> {
+    ensure_resume_allowed(&app_state).await?;
+
     // Sync runtime quota with persisted project settings before can_start_task() loops
     let project_id = project_id.map(|id| ProjectId::from_string(id));
     let (effective_project_id, _max_concurrent) = sync_quota_from_project(
@@ -5319,6 +5330,27 @@ mod tests {
 
         let halt_mode = load_execution_halt_mode(&app_state).await.unwrap();
         assert_eq!(halt_mode, ExecutionHaltMode::Stopped);
+    }
+
+    #[tokio::test]
+    async fn test_ensure_resume_allowed_rejects_stopped_halt_mode() {
+        let app_state = AppState::new_test();
+        persist_execution_halt_mode(&app_state, ExecutionHaltMode::Stopped)
+            .await
+            .unwrap();
+
+        let error = ensure_resume_allowed(&app_state).await.unwrap_err();
+        assert_eq!(error, RESUME_AFTER_STOP_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_ensure_resume_allowed_accepts_paused_halt_mode() {
+        let app_state = AppState::new_test();
+        persist_execution_halt_mode(&app_state, ExecutionHaltMode::Paused)
+            .await
+            .unwrap();
+
+        ensure_resume_allowed(&app_state).await.unwrap();
     }
 
     #[tokio::test]
