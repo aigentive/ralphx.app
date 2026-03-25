@@ -170,7 +170,8 @@ impl<R: Runtime> StartupJobRunner<R> {
             Arc::clone(&transition_service),
             Arc::clone(&execution_state),
             None,
-        );
+        )
+        .with_execution_settings_repo(Arc::clone(&execution_settings_repo));
 
         Self {
             task_repo,

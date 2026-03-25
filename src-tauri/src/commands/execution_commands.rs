@@ -2100,6 +2100,7 @@ pub async fn recover_task_execution(
         Arc::clone(&execution_state),
         Some(app),
     )
+    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
     .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
     .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
 

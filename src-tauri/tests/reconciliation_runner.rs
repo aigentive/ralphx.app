@@ -51,6 +51,7 @@ fn build_reconciler(
         Arc::clone(execution_state),
         None,
     )
+    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
 }
 
 #[test]
@@ -1784,6 +1785,86 @@ async fn reconcile_paused_provider_error_new_format_future_retry_stays_paused() 
     assert!(
         !reconciled,
         "Should not resume when retry_after is in the future"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(updated.internal_status, InternalStatus::Paused);
+}
+
+#[tokio::test]
+async fn reconcile_paused_provider_error_respects_project_execution_capacity() {
+    use ralphx_lib::application::chat_service::{PauseReason, ProviderErrorCategory};
+    use ralphx_lib::domain::services::RunningAgentKey;
+    use ralphx_lib::domain::execution::ExecutionSettings;
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Capacity Project".to_string(), "/test/capacity".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+    app_state
+        .execution_settings_repo
+        .update_settings(
+            Some(&project.id),
+            &ExecutionSettings {
+                max_concurrent_tasks: 1,
+                project_ideation_max: 1,
+                auto_commit: true,
+                pause_on_failure: true,
+            },
+        )
+        .await
+        .unwrap();
+
+    let occupied = app_state
+        .task_repo
+        .create(Task {
+            internal_status: InternalStatus::Executing,
+            ..Task::new(project.id.clone(), "Occupied execution".to_string())
+        })
+        .await
+        .unwrap();
+    app_state
+        .running_agent_registry
+        .register(
+            RunningAgentKey::new("task_execution", occupied.id.as_str()),
+            48484,
+            "occupied-conv".to_string(),
+            "occupied-run".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let reason = PauseReason::ProviderError {
+        category: ProviderErrorCategory::RateLimit,
+        message: "Usage limit reached".to_string(),
+        retry_after: Some("2020-01-01T00:00:00+00:00".to_string()),
+        previous_status: "executing".to_string(),
+        paused_at: "2020-01-01T00:00:00+00:00".to_string(),
+        auto_resumable: true,
+        resume_attempts: 0,
+    };
+
+    let mut task = Task::new(project.id.clone(), "Blocked auto-resume".to_string());
+    task.internal_status = InternalStatus::Paused;
+    task.metadata = Some(reason.write_to_task_metadata(None));
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let reconciled = reconciler.reconcile_paused_provider_error(&task).await;
+    assert!(
+        !reconciled,
+        "provider-error auto-resume must stay paused when the project is already at execution capacity"
     );
 
     let updated = app_state
@@ -4419,6 +4500,7 @@ fn build_reconciler_with_ipr(
         Arc::clone(execution_state),
         None,
     )
+    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
     .with_interactive_process_registry(ipr)
 }
 

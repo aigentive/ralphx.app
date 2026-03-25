@@ -9,11 +9,13 @@ use tracing::{error, info, warn};
 use crate::application::chat_service::{MergeAutoCompleteContext, reconcile_merge_auto_complete};
 use crate::application::interactive_process_registry::InteractiveProcessKey;
 use crate::application::GitService;
+use crate::commands::execution_commands::context_matches_running_status_for_gc;
 use crate::domain::entities::{
     task_metadata::StopRetryingReason, ActivityEvent, ActivityEventType, AgentRunStatus,
     ChatContextType, ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
     ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource,
-    ExecutionRecoveryState, InternalStatus, ReviewNote, ReviewOutcome, ReviewerType, Task, TaskId,
+    ExecutionRecoveryState, InternalStatus, ProjectId, ReviewNote, ReviewOutcome, ReviewerType,
+    Task, TaskId,
 };
 use crate::domain::services::RunningAgentKey;
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
@@ -29,6 +31,79 @@ use super::super::ReconciliationRunner;
 const MAX_AUTO_RECOVERIES: u32 = 2;
 
 impl<R: Runtime> ReconciliationRunner<R> {
+    async fn project_has_execution_capacity(&self, project_id: &ProjectId) -> bool {
+        let Some(settings_repo) = &self.execution_settings_repo else {
+            return true;
+        };
+
+        let settings = match settings_repo.get_settings(Some(project_id)).await {
+            Ok(settings) => settings,
+            Err(error) => {
+                warn!(
+                    project_id = project_id.as_str(),
+                    error = %error,
+                    "Failed to load execution settings while checking reconciliation project capacity"
+                );
+                return false;
+            }
+        };
+
+        let registry_entries = self.running_agent_registry.list_all().await;
+        let mut running_project_total = 0u32;
+
+        for (key, info) in registry_entries {
+            if info.pid == 0 {
+                continue;
+            }
+
+            if key.context_type == "ideation" || key.context_type == "session" {
+                let session_id =
+                    crate::domain::entities::IdeationSessionId::from_string(key.context_id.clone());
+                let Ok(Some(session)) = self.ideation_session_repo.get_by_id(&session_id).await else {
+                    continue;
+                };
+
+                if session.project_id != *project_id {
+                    continue;
+                }
+
+                let slot_key = format!("{}/{}", key.context_type, key.context_id);
+                if self.execution_state.is_interactive_idle(&slot_key) {
+                    continue;
+                }
+
+                running_project_total += 1;
+                continue;
+            }
+
+            let Ok(context_type) = key.context_type.parse::<ChatContextType>() else {
+                continue;
+            };
+            if !matches!(
+                context_type,
+                ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge
+            ) {
+                continue;
+            }
+
+            let task_id = TaskId::from_string(key.context_id);
+            let Ok(Some(task)) = self.task_repo.get_by_id(&task_id).await else {
+                continue;
+            };
+
+            if task.project_id != *project_id
+                || !context_matches_running_status_for_gc(context_type, task.internal_status)
+            {
+                continue;
+            }
+
+            running_project_total += 1;
+        }
+
+        self.execution_state
+            .can_start_execution_context(running_project_total, settings.max_concurrent_tasks)
+    }
+
     /// Check if an IPR entry for a context is backed by a live process.
     ///
     /// The IPR (InteractiveProcessRegistry) stores `ChildStdin` handles keyed by
@@ -991,10 +1066,18 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
 
         // GAP B6: Concurrency guard — skip if at max_concurrent capacity
-        if !self.execution_state.can_start_task() {
+        if !self.execution_state.can_start_any_execution_context() {
             tracing::debug!(
                 task_id = task.id.as_str(),
                 "Skipping failed execution reconciliation: at max concurrency — will try next cycle"
+            );
+            return false;
+        }
+        if !self.project_has_execution_capacity(&task.project_id).await {
+            tracing::debug!(
+                task_id = task.id.as_str(),
+                project_id = task.project_id.as_str(),
+                "Skipping failed execution reconciliation: project execution capacity is full"
             );
             return false;
         }
@@ -1570,8 +1653,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
 
         // Can we start a task right now?
-        if !self.execution_state.can_start_task() {
+        if !self.execution_state.can_start_any_execution_context() {
             return false; // At max concurrency — retry on next reconciliation cycle
+        }
+        if !self.project_has_execution_capacity(&task.project_id).await {
+            return false;
         }
 
         // Increment resume attempts
@@ -1700,7 +1786,10 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
-        if !self.execution_state.can_start_task() {
+        if !self.execution_state.can_start_any_execution_context() {
+            return false;
+        }
+        if !self.project_has_execution_capacity(&task.project_id).await {
             return false;
         }
 

@@ -30,7 +30,7 @@ use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
-    TaskDependencyRepository, TaskRepository,
+    TaskDependencyRepository, TaskRepository, ExecutionSettingsRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 
@@ -55,6 +55,7 @@ pub struct ReconciliationRunner<R: Runtime = tauri::Wry> {
     pub(crate) agent_run_repo: Arc<dyn AgentRunRepository>,
     pub(crate) transition_service: Arc<TaskTransitionService<R>>,
     pub(crate) execution_state: Arc<ExecutionState>,
+    pub(crate) execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
     pub(crate) plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     pub(crate) interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
     pub(crate) review_repo: Option<Arc<dyn ReviewRepository>>,
@@ -99,6 +100,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             agent_run_repo,
             transition_service,
             execution_state,
+            execution_settings_repo: None,
             plan_branch_repo: None,
             interactive_process_registry: None,
             review_repo: None,
@@ -116,6 +118,14 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
     pub fn with_plan_branch_repo(mut self, repo: Arc<dyn PlanBranchRepository>) -> Self {
         self.plan_branch_repo = Some(repo);
+        self
+    }
+
+    pub fn with_execution_settings_repo(
+        mut self,
+        repo: Arc<dyn ExecutionSettingsRepository>,
+    ) -> Self {
+        self.execution_settings_repo = Some(repo);
         self
     }
 

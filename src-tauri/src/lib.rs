@@ -649,7 +649,7 @@ pub fn run() {
                     Arc::clone(&startup_execution_state),
                     Arc::clone(&startup_active_project_state),
                     startup_app_state_repo,
-                    startup_execution_settings_repo,
+                    Arc::clone(&startup_execution_settings_repo),
                     Some(Arc::clone(&startup_plan_branch_repo)),
                 )
                 .with_task_scheduler(Arc::clone(&task_scheduler))
@@ -768,6 +768,7 @@ pub fn run() {
                     Arc::clone(&startup_execution_state),
                     Some(reconcile_app_handle),
                 )
+                .with_execution_settings_repo(Arc::clone(&startup_execution_settings_repo))
                 .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
                 .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry))
                 .with_review_repo(reconcile_review_repo);
