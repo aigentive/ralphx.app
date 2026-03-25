@@ -51,8 +51,9 @@ use crate::utils::redacting_writer::RedactingMakeWriter;
 use crate::infrastructure::{ExternalMcpHandle, ExternalMcpSupervisor};
 
 use application::{
-    ChatResumptionRunner, ClaudeChatService, EventCleanupService, ReconciliationRunner,
-    StartupJobRunner, TaskSchedulerService, TaskTransitionService,
+    load_or_seed_execution_settings_defaults, ChatResumptionRunner, ClaudeChatService,
+    EventCleanupService, ReconciliationRunner, StartupJobRunner, TaskSchedulerService,
+    TaskTransitionService,
 };
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -295,42 +296,42 @@ pub fn run() {
             // This must happen before HTTP server starts to ensure consistent configuration
             let init_settings_repo = Arc::clone(&app_state.execution_settings_repo);
             let init_global_settings_repo = Arc::clone(&app_state.global_execution_settings_repo);
+            let execution_defaults =
+                infrastructure::agents::claude::execution_defaults_config().clone();
             tauri::async_runtime::block_on(async move {
-                // Load per-project default settings (project_id = None)
-                match init_settings_repo.get_settings(None).await {
-                    Ok(settings) => {
-                        init_execution_state.set_max_concurrent(settings.max_concurrent_tasks);
-                        info!(
-                            "Initialized execution settings from database: max_concurrent={}",
-                            settings.max_concurrent_tasks
-                        );
-                    }
-                    Err(e) => {
-                        warn!(
-                            "Failed to load execution settings from database, using defaults: {}",
-                            e
-                        );
-                    }
-                }
-
-                // Phase 82: Load global execution settings (global_max_concurrent cap)
-                match init_global_settings_repo.get_settings().await {
-                    Ok(global_settings) => {
-                        init_execution_state.set_global_max_concurrent(global_settings.global_max_concurrent);
-                        init_execution_state.set_global_ideation_max(global_settings.global_ideation_max);
+                match load_or_seed_execution_settings_defaults(
+                    init_settings_repo,
+                    init_global_settings_repo,
+                    &execution_defaults.project,
+                    &execution_defaults.global,
+                )
+                .await
+                {
+                    Ok(result) => {
+                        init_execution_state
+                            .set_max_concurrent(result.project_defaults.max_concurrent_tasks);
+                        init_execution_state
+                            .set_global_max_concurrent(result.global_defaults.global_max_concurrent);
+                        init_execution_state
+                            .set_global_ideation_max(result.global_defaults.global_ideation_max);
                         init_execution_state.set_allow_ideation_borrow_idle_execution(
-                            global_settings.allow_ideation_borrow_idle_execution,
+                            result.global_defaults.allow_ideation_borrow_idle_execution,
                         );
                         info!(
-                            "Initialized global execution settings from database: global_max_concurrent={} global_ideation_max={} allow_ideation_borrow_idle_execution={}",
-                            global_settings.global_max_concurrent,
-                            global_settings.global_ideation_max,
-                            global_settings.allow_ideation_borrow_idle_execution
+                            seeded_project_defaults = result.seeded_project_defaults,
+                            seeded_global_defaults = result.seeded_global_defaults,
+                            max_concurrent = result.project_defaults.max_concurrent_tasks,
+                            project_ideation_max = result.project_defaults.project_ideation_max,
+                            global_max_concurrent = result.global_defaults.global_max_concurrent,
+                            global_ideation_max = result.global_defaults.global_ideation_max,
+                            allow_ideation_borrow_idle_execution =
+                                result.global_defaults.allow_ideation_borrow_idle_execution,
+                            "Initialized execution settings from DB/YAML defaults"
                         );
                     }
                     Err(e) => {
                         warn!(
-                            "Failed to load global execution settings from database, using defaults: {}",
+                            "Failed to load/seed execution settings from database, using defaults: {}",
                             e
                         );
                     }

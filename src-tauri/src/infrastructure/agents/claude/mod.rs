@@ -14,15 +14,16 @@ pub use agent_config::team_config::{
     TeamConstraints, TeamConstraintsConfig, TeamMode, TeammateSpawnRequest,
 };
 pub use agent_config::{
-    agent_configs, claude_runtime_config, defer_merge_enabled, external_mcp_config,
-    file_logging_enabled, get_agent_config, get_allowed_tools, get_effective_settings,
-    get_preapproved_tools, git_runtime_config, ideation_activity_threshold_secs, limits_config,
-    process_mapping, reconciliation_config, resolve_file_logging_early, scheduler_config,
-    stream_timeouts, supervisor_runtime_config, team_constraints_config,
-    ui_feature_flags_config, validate_external_mcp_config, verification_config, AgentConfig,
-    AllRuntimeConfig, ExternalMcpConfig, GitRuntimeConfig, LimitsConfig, ReconciliationConfig,
-    SchedulerConfig, StreamTimeoutsConfig, SupervisorRuntimeConfig, UiFeatureFlagsConfig,
-    VerificationConfig,
+    agent_configs, claude_runtime_config, defer_merge_enabled, execution_defaults_config,
+    external_mcp_config, file_logging_enabled, get_agent_config, get_allowed_tools,
+    get_effective_settings, get_preapproved_tools, git_runtime_config,
+    ideation_activity_threshold_secs, limits_config, process_mapping, reconciliation_config,
+    resolve_file_logging_early, scheduler_config, stream_timeouts,
+    supervisor_runtime_config, team_constraints_config, ui_feature_flags_config,
+    validate_external_mcp_config, verification_config, AgentConfig, AllRuntimeConfig,
+    ExecutionDefaultsConfig, ExternalMcpConfig, GitRuntimeConfig, LimitsConfig,
+    ReconciliationConfig, SchedulerConfig, StreamTimeoutsConfig, SupervisorRuntimeConfig,
+    UiFeatureFlagsConfig, VerificationConfig,
 };
 pub use claude_code_client::kill_all_tracked_processes;
 pub use claude_code_client::ClaudeCodeClient;

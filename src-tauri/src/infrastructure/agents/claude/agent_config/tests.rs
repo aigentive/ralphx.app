@@ -236,6 +236,44 @@ agents:
 }
 
 #[test]
+fn test_execution_defaults_parse_custom_values() {
+    let yaml = r#"
+execution_defaults:
+  project:
+    max_concurrent_tasks: 14
+    project_ideation_max: 3
+    auto_commit: false
+    pause_on_failure: false
+  global:
+    global_max_concurrent: 28
+    global_ideation_max: 5
+    allow_ideation_borrow_idle_execution: true
+"#;
+    let parsed = parse_config_no_env_overrides(yaml).expect("config should parse");
+
+    assert_eq!(parsed.execution_defaults.project.max_concurrent_tasks, 14);
+    assert_eq!(parsed.execution_defaults.project.project_ideation_max, 3);
+    assert!(!parsed.execution_defaults.project.auto_commit);
+    assert!(!parsed.execution_defaults.project.pause_on_failure);
+    assert_eq!(parsed.execution_defaults.global.global_max_concurrent, 28);
+    assert_eq!(parsed.execution_defaults.global.global_ideation_max, 5);
+    assert!(parsed
+        .execution_defaults
+        .global
+        .allow_ideation_borrow_idle_execution);
+}
+
+#[test]
+fn test_execution_defaults_fallback_when_section_missing() {
+    let parsed = parse_config_no_env_overrides("").expect("config should parse");
+
+    assert_eq!(
+        parsed.execution_defaults,
+        ExecutionDefaultsConfig::default()
+    );
+}
+
+#[test]
 fn test_settings_profile_resolves_prefixed_env_overrides() {
     let mut settings = serde_json::json!({
         "env": {

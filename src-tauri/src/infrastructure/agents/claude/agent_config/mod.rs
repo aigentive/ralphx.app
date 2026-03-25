@@ -3,6 +3,7 @@ pub mod team_config;
 mod ui_config;
 pub use ui_config::{UiConfig, UiFeatureFlagsConfig};
 
+use crate::domain::execution::{ExecutionSettings, GlobalExecutionSettings};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -75,6 +76,23 @@ pub struct ClaudeRuntimeConfig {
     pub settings: Option<serde_json::Value>,
     /// Global default effort level for all agents (e.g. "medium"). Validated at parse time.
     pub default_effort: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ExecutionDefaultsConfig {
+    #[serde(default)]
+    pub project: ExecutionSettings,
+    #[serde(default)]
+    pub global: GlobalExecutionSettings,
+}
+
+impl Default for ExecutionDefaultsConfig {
+    fn default() -> Self {
+        Self {
+            project: ExecutionSettings::default(),
+            global: GlobalExecutionSettings::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -186,6 +204,8 @@ struct RalphxConfig {
     external_mcp: ExternalMcpConfig,
     #[serde(default)]
     ui: Option<UiConfig>,
+    #[serde(default)]
+    execution_defaults: ExecutionDefaultsConfig,
 }
 
 const EMBEDDED_CONFIG: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../ralphx.yaml"));
@@ -206,6 +226,7 @@ struct LoadedConfig {
     defer_merge_enabled: bool,
     file_logging: bool,
     runtime: AllRuntimeConfig,
+    execution_defaults: ExecutionDefaultsConfig,
 }
 
 static LOADED_CONFIG_CELL: OnceLock<LoadedConfig> = OnceLock::new();
@@ -497,6 +518,7 @@ fn parse_config_with_lookup(
         defer_merge_enabled: parsed.defer_merge_enabled,
         file_logging: parsed.file_logging,
         runtime,
+        execution_defaults: parsed.execution_defaults,
     })
 }
 
@@ -783,6 +805,7 @@ fn load_config() -> LoadedConfig {
             defer_merge_enabled: true,
             file_logging: true,
             runtime,
+            execution_defaults: ExecutionDefaultsConfig::default(),
         }
     })
 }
@@ -842,6 +865,10 @@ pub fn file_logging_enabled() -> bool {
     LOADED_CONFIG_CELL
         .get_or_init(load_config)
         .file_logging
+}
+
+pub fn execution_defaults_config() -> &'static ExecutionDefaultsConfig {
+    &LOADED_CONFIG_CELL.get_or_init(load_config).execution_defaults
 }
 
 pub fn stream_timeouts() -> &'static StreamTimeoutsConfig {

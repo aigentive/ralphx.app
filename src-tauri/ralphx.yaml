@@ -101,6 +101,21 @@ ui:
     activity_page: false
     extensibility_page: false
 
+# ── Execution defaults ────────────────────────────────────────────────────
+# Seed values for the persisted execution settings tables.
+# These apply only while the stored rows are still pristine/default.
+# After the first seed, UI/DB-managed values become the source of truth.
+execution_defaults:
+  project:
+    max_concurrent_tasks: 10
+    project_ideation_max: 2
+    auto_commit: true
+    pause_on_failure: true
+  global:
+    global_max_concurrent: 20
+    global_ideation_max: 4
+    allow_ideation_borrow_idle_execution: false
+
 # ── Runtime timeouts & limits ──────────────────────────────────────────────
 # All fields required — no Rust serde defaults. Missing keys cause a deserialization error.
 # All values can be overridden by env: RALPHX_<SECTION>_<FIELD> (e.g. RALPHX_STREAM_MERGE_LINE_READ_SECS)
