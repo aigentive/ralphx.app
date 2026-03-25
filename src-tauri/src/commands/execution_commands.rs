@@ -1079,6 +1079,91 @@ where
     Ok(resumed)
 }
 
+async fn resume_paused_slot_consuming_queues_with_chat_service<F>(
+    project_filter: Option<&ProjectId>,
+    app_state: &AppState,
+    execution_state: &Arc<ExecutionState>,
+    build_chat_service: F,
+) -> Result<u32, String>
+where
+    F: Fn() -> Arc<dyn ChatService>,
+{
+    let mut resumed = 0u32;
+
+    for key in app_state.message_queue.list_keys() {
+        if !matches!(
+            key.context_type,
+            ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge
+        ) {
+            continue;
+        }
+
+        let task_id = TaskId::from_string(key.context_id.clone());
+        let Some(task) = app_state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .map_err(|e| e.to_string())?
+        else {
+            continue;
+        };
+
+        if project_filter.is_some_and(|project_id| task.project_id != *project_id) {
+            continue;
+        }
+
+        if !context_matches_running_status_for_gc(key.context_type, task.internal_status) {
+            continue;
+        }
+
+        let slot_key = format!("{}/{}", key.context_type, key.context_id);
+        if execution_state.is_interactive_idle(&slot_key) {
+            continue;
+        }
+
+        let Some(queued) = app_state.message_queue.pop_with_key(&key) else {
+            continue;
+        };
+
+        let chat_service = build_chat_service();
+        let send_result = chat_service
+            .send_message(
+                key.context_type,
+                &key.context_id,
+                &queued.content,
+                SendMessageOptions {
+                    metadata: queued.metadata_override.clone(),
+                    created_at: queued
+                        .created_at_override
+                        .as_deref()
+                        .and_then(|ts| chrono::DateTime::parse_from_rfc3339(ts).ok())
+                        .map(|ts| ts.with_timezone(&chrono::Utc)),
+                    ..Default::default()
+                },
+            )
+            .await;
+
+        match send_result {
+            Ok(_) => resumed += 1,
+            Err(error) => {
+                tracing::warn!(
+                    context_type = %key.context_type,
+                    context_id = key.context_id,
+                    error = %error,
+                    "Failed to relaunch paused slot-consuming queued message"
+                );
+                app_state.message_queue.queue_front_existing(
+                    key.context_type,
+                    &key.context_id,
+                    queued,
+                );
+            }
+        }
+    }
+
+    Ok(resumed)
+}
+
 /// Get current execution status
 /// Phase 82: Optional project_id for per-project scoping.
 /// If project_id is None, falls back to active project or aggregates across all projects.
@@ -1677,6 +1762,50 @@ pub async fn resume_execution(
         .await
         {
             tracing::warn!(error = %error, "Failed to relaunch paused ideation queues on resume");
+        }
+
+        if let Err(error) = resume_paused_slot_consuming_queues_with_chat_service(
+            effective_project_id.as_ref(),
+            &app_state,
+            &execution_state_arc,
+            || {
+                Arc::new(
+                    ClaudeChatService::new(
+                        Arc::clone(&app_state.chat_message_repo),
+                        Arc::clone(&app_state.chat_attachment_repo),
+                        Arc::clone(&app_state.artifact_repo),
+                        Arc::clone(&app_state.chat_conversation_repo),
+                        Arc::clone(&app_state.agent_run_repo),
+                        Arc::clone(&app_state.project_repo),
+                        Arc::clone(&app_state.task_repo),
+                        Arc::clone(&app_state.task_dependency_repo),
+                        Arc::clone(&app_state.ideation_session_repo),
+                        Arc::clone(&app_state.activity_event_repo),
+                        Arc::clone(&app_state.message_queue),
+                        Arc::clone(&app_state.running_agent_registry),
+                        Arc::clone(&app_state.memory_event_repo),
+                    )
+                    .with_app_handle(handle.clone())
+                    .with_execution_state(Arc::clone(&execution_state_arc))
+                    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
+                    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
+                    .with_task_proposal_repo(Arc::clone(&app_state.task_proposal_repo))
+                    .with_task_step_repo(Arc::clone(&app_state.task_step_repo))
+                    .with_streaming_state_cache(app_state.streaming_state_cache.clone())
+                    .with_interactive_process_registry(Arc::clone(
+                        &app_state.interactive_process_registry,
+                    ))
+                    .with_review_repo(Arc::clone(&app_state.review_repo))
+                    .with_team_service(Arc::clone(&team_service)),
+                ) as Arc<dyn ChatService>
+            },
+        )
+        .await
+        {
+            tracing::warn!(
+                error = %error,
+                "Failed to relaunch paused task/review/merge queues on resume"
+            );
         }
     }
 
@@ -4255,6 +4384,147 @@ mod tests {
                 .len(),
             1,
             "borrowing must stay blocked while ready execution work exists"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resume_relaunches_queued_task_execution_message_for_active_task() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+        let project = Project::new("Resume Task Queue".to_string(), "/test/task-queue".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        let task = app_state
+            .task_repo
+            .create(Task {
+                internal_status: InternalStatus::Executing,
+                ..Task::new(project.id.clone(), "Queued worker prompt".to_string())
+            })
+            .await
+            .unwrap();
+
+        app_state.message_queue.queue(
+            ChatContextType::TaskExecution,
+            task.id.as_str(),
+            "continue execution".to_string(),
+        );
+
+        let mock = Arc::new(MockChatService::new());
+        let resumed = resume_paused_slot_consuming_queues_with_chat_service(
+            None,
+            &app_state,
+            &execution_state,
+            || Arc::clone(&mock) as Arc<dyn ChatService>,
+        )
+        .await
+        .expect("resume paused task queue");
+
+        assert_eq!(resumed, 1);
+        assert_eq!(mock.call_count(), 1);
+        assert_eq!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::TaskExecution, task.id.as_str())
+                .len(),
+            0,
+            "active task queue should be drained when resume relaunches the prompt"
+        );
+        assert_eq!(
+            mock.get_sent_messages().await,
+            vec!["continue execution".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resume_leaves_queued_task_execution_message_pending_for_paused_task() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+        let project =
+            Project::new("Resume Pending Queue".to_string(), "/test/pending-queue".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        let task = app_state
+            .task_repo
+            .create(Task {
+                internal_status: InternalStatus::Paused,
+                ..Task::new(project.id.clone(), "Paused worker prompt".to_string())
+            })
+            .await
+            .unwrap();
+
+        app_state.message_queue.queue(
+            ChatContextType::TaskExecution,
+            task.id.as_str(),
+            "wait until restored".to_string(),
+        );
+
+        let mock = Arc::new(MockChatService::new());
+        let resumed = resume_paused_slot_consuming_queues_with_chat_service(
+            None,
+            &app_state,
+            &execution_state,
+            || Arc::clone(&mock) as Arc<dyn ChatService>,
+        )
+        .await
+        .expect("resume paused queue for paused task");
+
+        assert_eq!(resumed, 0);
+        assert_eq!(mock.call_count(), 0);
+        assert_eq!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::TaskExecution, task.id.as_str())
+                .len(),
+            1,
+            "paused task queue must stay pending until the task is active again"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resume_relaunches_queued_review_message_for_active_task() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+        let project = Project::new("Resume Review Queue".to_string(), "/test/review-queue".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        let task = app_state
+            .task_repo
+            .create(Task {
+                internal_status: InternalStatus::Reviewing,
+                ..Task::new(project.id.clone(), "Queued review prompt".to_string())
+            })
+            .await
+            .unwrap();
+
+        app_state.message_queue.queue(
+            ChatContextType::Review,
+            task.id.as_str(),
+            "continue review".to_string(),
+        );
+
+        let mock = Arc::new(MockChatService::new());
+        let resumed = resume_paused_slot_consuming_queues_with_chat_service(
+            None,
+            &app_state,
+            &execution_state,
+            || Arc::clone(&mock) as Arc<dyn ChatService>,
+        )
+        .await
+        .expect("resume paused review queue");
+
+        assert_eq!(resumed, 1);
+        assert_eq!(mock.call_count(), 1);
+        assert_eq!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Review, task.id.as_str())
+                .len(),
+            0,
+            "active review queue should be drained when resume relaunches the prompt"
+        );
+        assert_eq!(
+            mock.get_sent_messages().await,
+            vec!["continue review".to_string()]
         );
     }
 
