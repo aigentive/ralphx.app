@@ -954,6 +954,25 @@ async fn count_active_slot_consuming_contexts_for_project(
     Ok(count)
 }
 
+#[doc(hidden)]
+pub async fn project_has_execution_capacity_for_state(
+    app_state: &AppState,
+    execution_state: &Arc<ExecutionState>,
+    project_id: &ProjectId,
+) -> Result<bool, String> {
+    let settings = app_state
+        .execution_settings_repo
+        .get_settings(Some(project_id))
+        .await
+        .map_err(|e| e.to_string())?;
+    let running_project_total =
+        count_active_slot_consuming_contexts_for_project(app_state, execution_state, project_id)
+            .await?;
+
+    Ok(execution_state
+        .can_start_execution_context(running_project_total, settings.max_concurrent_tasks))
+}
+
 async fn has_runnable_execution_waiting(
     app_state: &AppState,
     project_filter: Option<&ProjectId>,
@@ -4755,6 +4774,58 @@ mod tests {
         assert_eq!(
             mock.get_sent_messages().await,
             vec!["continue merge".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_project_has_execution_capacity_for_state_ignores_other_projects() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+
+        let project_a = Project::new("Project A".to_string(), "/test/project-a".to_string());
+        let project_b = Project::new("Project B".to_string(), "/test/project-b".to_string());
+        app_state.project_repo.create(project_a.clone()).await.unwrap();
+        app_state.project_repo.create(project_b.clone()).await.unwrap();
+
+        app_state
+            .execution_settings_repo
+            .update_settings(
+                Some(&project_a.id),
+                &ExecutionSettings {
+                    max_concurrent_tasks: 1,
+                    project_ideation_max: 1,
+                    auto_commit: true,
+                    pause_on_failure: true,
+                },
+            )
+            .await
+            .unwrap();
+
+        let other_project_task = app_state
+            .task_repo
+            .create(Task {
+                internal_status: InternalStatus::Executing,
+                ..Task::new(project_b.id.clone(), "Other project running".to_string())
+            })
+            .await
+            .unwrap();
+        app_state
+            .running_agent_registry
+            .register(
+                RunningAgentKey::new("task_execution", other_project_task.id.as_str()),
+                34343,
+                "other-project-conv".to_string(),
+                "other-project-run".to_string(),
+                None,
+                None,
+            )
+            .await;
+
+        assert!(
+            project_has_execution_capacity_for_state(&app_state, &execution_state, &project_a.id)
+                .await
+                .expect("project capacity check"),
+            "activity in another project must not consume this project's execution quota"
         );
     }
 

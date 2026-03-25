@@ -6,6 +6,7 @@ use super::types::{
     InjectTaskResponse, TaskResponse, UnblockTaskResponse, UpdateTaskInput,
 };
 use crate::application::AppState;
+use crate::commands::execution_commands::project_has_execution_capacity_for_state;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     ExecutionRecoveryMetadata, ExecutionRecoveryState, InternalStatus, ProjectId, Task,
@@ -1381,9 +1382,13 @@ pub async fn resume_task(
             get_restore_status_from_history(&state, &task_id).await?
         };
 
-    // Check if execution can accept another task
-    if !execution_state.can_start_task() {
+    if !execution_state.can_start_any_execution_context() {
         return Err("Cannot resume: max concurrent task limit reached".to_string());
+    }
+    if !project_has_execution_capacity_for_state(&state, &execution_state, &task.project_id)
+        .await?
+    {
+        return Err("Cannot resume: project execution capacity reached".to_string());
     }
 
     // Build transition service
@@ -1711,8 +1716,18 @@ pub async fn resume_tasks_in_group(
     let mut resumed_count = 0;
 
     for task in paused_tasks {
-        if !execution_state.can_start_task() {
+        if !execution_state.can_start_any_execution_context() {
             tracing::warn!(task_id = %task.id, "Skipping resume: max concurrent task limit reached");
+            continue;
+        }
+        if !project_has_execution_capacity_for_state(&state, &execution_state, &task.project_id)
+            .await?
+        {
+            tracing::warn!(
+                task_id = %task.id,
+                project_id = %task.project_id,
+                "Skipping resume: project execution capacity reached"
+            );
             continue;
         }
 
