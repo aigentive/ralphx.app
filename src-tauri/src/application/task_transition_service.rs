@@ -26,8 +26,9 @@ use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, ExternalEventsRepository,
-    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
-    TaskDependencyRepository, TaskRepository, TaskStepRepository,
+    ExecutionSettingsRepository, IdeationSessionRepository, MemoryEventRepository,
+    PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
+    TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::{
@@ -594,6 +595,7 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     /// Ideation session repository for fetching live session titles.
     /// Passed to TaskServices so TransitionHandler can build descriptive plan merge commit messages.
     ideation_session_repo: Option<Arc<dyn IdeationSessionRepository>>,
+    execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
 
     /// Activity event repository for emitting merge pipeline audit events.
     /// Cloned before being passed to ClaudeChatService so the transition handler also has access.
@@ -627,6 +629,9 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     /// Shared across all TaskServices instances so pre_merge_cleanup can cancel
     /// a running validation when a new merge attempt starts for the same task.
     validation_tokens: Arc<dashmap::DashMap<String, tokio_util::sync::CancellationToken>>,
+
+    /// Running agent registry for rebuilding the internal spawner with runtime admission context.
+    running_agent_registry: Arc<dyn RunningAgentRegistry>,
 
     /// External events repository for dual-emit of state changes.
     /// When set, every status change is also written to the external_events DB table
@@ -701,7 +706,7 @@ impl<R: Runtime> TaskTransitionService<R> {
                 Arc::clone(&ideation_session_repo),
                 activity_event_repo,
                 message_queue,
-                running_agent_registry,
+                Arc::clone(&running_agent_registry),
                 memory_event_repo,
             )
             .with_execution_state(Arc::clone(&execution_state));
@@ -744,6 +749,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             plan_branch_repo: None,
             step_repo: None,
             ideation_session_repo: Some(ideation_session_repo),
+            execution_settings_repo: None,
             activity_event_repo: activity_event_repo_for_services,
             team_mode: None,
             interactive_process_registry: None,
@@ -751,6 +757,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
             external_events_repo: None,
             validation_tokens: Arc::new(dashmap::DashMap::new()),
+            running_agent_registry,
             pr_poller_registry: None,
             github_service: None,
             webhook_publisher: None,
@@ -792,6 +799,29 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// Set the task step repository (builder pattern).
     pub fn with_step_repo(mut self, repo: Arc<dyn TaskStepRepository>) -> Self {
         self.step_repo = Some(repo);
+        self
+    }
+
+    /// Inject execution settings so the internal task-agent spawner can honor project caps.
+    pub fn with_execution_settings_repo(
+        mut self,
+        repo: Arc<dyn ExecutionSettingsRepository>,
+    ) -> Self {
+        let agent_client = Arc::new(ClaudeCodeClient::new());
+        let spawner = AgenticClientSpawner::new(agent_client)
+            .with_repos(Arc::clone(&self.task_repo), Arc::clone(&self.project_repo))
+            .with_execution_state(Arc::clone(&self.execution_state))
+            .with_runtime_admission_context(
+                Arc::clone(&repo),
+                Arc::clone(
+                    self.ideation_session_repo
+                        .as_ref()
+                        .expect("ideation_session_repo set in new"),
+                ),
+                Arc::clone(&self.running_agent_registry),
+            );
+        self.agent_spawner = Arc::new(spawner);
+        self.execution_settings_repo = Some(repo);
         self
     }
 

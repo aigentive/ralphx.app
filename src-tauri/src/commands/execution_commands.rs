@@ -1453,6 +1453,7 @@ pub async fn pause_execution(
         app_state.app_handle.clone(),
         Arc::clone(&app_state.memory_event_repo),
     )
+    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
     .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
     .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
 
@@ -1599,6 +1600,7 @@ pub async fn resume_execution(
         app_state.app_handle.clone(),
         Arc::clone(&app_state.memory_event_repo),
     )
+    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
     .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
     .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
 
@@ -1967,6 +1969,7 @@ pub async fn stop_execution(
         app_state.app_handle.clone(),
         Arc::clone(&app_state.memory_event_repo),
     )
+    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
     .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
     .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
 
@@ -2079,6 +2082,7 @@ pub async fn recover_task_execution(
             app_state.app_handle.clone(),
             Arc::clone(&app_state.memory_event_repo),
         )
+        .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
         .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
     );
@@ -2140,6 +2144,7 @@ pub async fn resolve_recovery_prompt(
             app_state.app_handle.clone(),
             Arc::clone(&app_state.memory_event_repo),
         )
+        .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
         .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
     );
@@ -3020,6 +3025,7 @@ pub async fn restart_task(
         state.app_handle.clone(),
         Arc::clone(&state.memory_event_repo),
     )
+    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
     .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
 

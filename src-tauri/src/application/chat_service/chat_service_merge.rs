@@ -101,6 +101,11 @@ impl<'a, R: Runtime> MergeAutoCompleteContext<'a, R> {
             self.app_handle.cloned(),
             Arc::clone(self.memory_event_repo),
         );
+        let service = if let Some(repo) = self.execution_settings_repo {
+            service.with_execution_settings_repo(Arc::clone(repo))
+        } else {
+            service
+        };
         let service = if let Some(ref repo) = self.plan_branch_repo {
             service.with_plan_branch_repo(Arc::clone(repo))
         } else {

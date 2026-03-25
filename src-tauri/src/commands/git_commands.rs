@@ -508,6 +508,7 @@ async fn execute_merge_retry_background(
         app_handle_opt,
         Arc::clone(&memory_event_repo),
     )
+    .with_execution_settings_repo(Arc::clone(&execution_settings_repo))
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&plan_branch_repo))
     .with_interactive_process_registry(Arc::clone(&interactive_process_registry));
@@ -759,6 +760,7 @@ fn create_transition_service(
         state.app_handle.clone(),
         Arc::clone(&state.memory_event_repo),
     )
+    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
     .with_pr_poller_registry(Arc::clone(&state.pr_poller_registry))

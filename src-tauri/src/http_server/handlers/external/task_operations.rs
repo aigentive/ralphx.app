@@ -73,6 +73,9 @@ pub async fn external_task_transition_http(
         state.app_state.app_handle.clone(),
         std::sync::Arc::clone(&state.app_state.memory_event_repo),
     )
+    .with_execution_settings_repo(std::sync::Arc::clone(
+        &state.app_state.execution_settings_repo,
+    ))
     .with_plan_branch_repo(std::sync::Arc::clone(&state.app_state.plan_branch_repo))
     .with_interactive_process_registry(std::sync::Arc::clone(
         &state.app_state.interactive_process_registry,
@@ -501,6 +504,9 @@ pub async fn review_action_http(
         state.app_state.app_handle.clone(),
         std::sync::Arc::clone(&state.app_state.memory_event_repo),
     )
+    .with_execution_settings_repo(std::sync::Arc::clone(
+        &state.app_state.execution_settings_repo,
+    ))
     .with_plan_branch_repo(std::sync::Arc::clone(&state.app_state.plan_branch_repo))
     .with_interactive_process_registry(std::sync::Arc::clone(
         &state.app_state.interactive_process_registry,

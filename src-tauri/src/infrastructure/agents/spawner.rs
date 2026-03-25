@@ -10,10 +10,15 @@ use tracing::{info, warn};
 
 use tauri::{AppHandle, Emitter, Wry};
 
+use crate::application::chat_service::uses_execution_slot;
+use crate::commands::execution_commands::context_matches_running_status_for_gc;
 use crate::commands::ExecutionState;
 use crate::domain::agents::{AgentConfig, AgentHandle, AgentRole, AgenticClient};
-use crate::domain::entities::TaskId;
-use crate::domain::repositories::{ProjectRepository, TaskRepository};
+use crate::domain::entities::{ChatContextType, IdeationSessionId, TaskId};
+use crate::domain::repositories::{
+    ExecutionSettingsRepository, IdeationSessionRepository, ProjectRepository, TaskRepository,
+};
+use crate::domain::services::RunningAgentRegistry;
 use crate::domain::state_machine::AgentSpawner;
 use crate::domain::supervisor::{ErrorInfo, SupervisorEvent, ToolCallInfo};
 use crate::infrastructure::supervisor::EventBus;
@@ -31,6 +36,12 @@ pub struct AgenticClientSpawner {
     task_repo: Option<Arc<dyn TaskRepository>>,
     /// Project repository for per-task CWD resolution
     project_repo: Option<Arc<dyn ProjectRepository>>,
+    /// Execution settings repo for project-aware spawn gating
+    execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+    /// Ideation session repo for ideation-aware project slot counting
+    ideation_session_repo: Option<Arc<dyn IdeationSessionRepository>>,
+    /// Running registry for project-aware slot counting
+    running_agent_registry: Option<Arc<dyn RunningAgentRegistry>>,
     /// Event bus for supervisor events (optional)
     event_bus: Option<Arc<EventBus>>,
     /// Tracks active agent handles by task_id for wait/stop operations
@@ -53,6 +64,9 @@ impl AgenticClientSpawner {
             working_directory,
             task_repo: None,
             project_repo: None,
+            execution_settings_repo: None,
+            ideation_session_repo: None,
+            running_agent_registry: None,
             event_bus: None,
             handles: Arc::new(Mutex::new(HashMap::new())),
             execution_state: None,
@@ -74,6 +88,19 @@ impl AgenticClientSpawner {
     ) -> Self {
         self.task_repo = Some(task_repo);
         self.project_repo = Some(project_repo);
+        self
+    }
+
+    /// Attach runtime allocation context for project-aware spawn gating.
+    pub fn with_runtime_admission_context(
+        mut self,
+        execution_settings_repo: Arc<dyn ExecutionSettingsRepository>,
+        ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+        running_agent_registry: Arc<dyn RunningAgentRegistry>,
+    ) -> Self {
+        self.execution_settings_repo = Some(execution_settings_repo);
+        self.ideation_session_repo = Some(ideation_session_repo);
+        self.running_agent_registry = Some(running_agent_registry);
         self
     }
 
@@ -150,6 +177,85 @@ impl AgenticClientSpawner {
         None
     }
 
+    async fn project_has_execution_capacity(
+        &self,
+        task_id: &str,
+        execution_state: &ExecutionState,
+    ) -> Option<bool> {
+        let (Some(task_repo), Some(execution_settings_repo), Some(running_agent_registry)) = (
+            &self.task_repo,
+            &self.execution_settings_repo,
+            &self.running_agent_registry,
+        ) else {
+            return None;
+        };
+
+        let task_id_typed = TaskId(task_id.to_string());
+        let Ok(Some(task)) = task_repo.get_by_id(&task_id_typed).await else {
+            return None;
+        };
+
+        let Ok(settings) = execution_settings_repo.get_settings(Some(&task.project_id)).await else {
+            return None;
+        };
+
+        let registry_entries = running_agent_registry.list_all().await;
+        let mut running_project_total = 0u32;
+
+        for (key, info) in registry_entries {
+            if info.pid == 0 {
+                continue;
+            }
+
+            if key.context_type == "ideation" || key.context_type == "session" {
+                let Some(ideation_session_repo) = &self.ideation_session_repo else {
+                    continue;
+                };
+                let session_id = IdeationSessionId::from_string(key.context_id.clone());
+                let Ok(Some(session)) = ideation_session_repo.get_by_id(&session_id).await else {
+                    continue;
+                };
+
+                if session.project_id != task.project_id {
+                    continue;
+                }
+
+                let slot_key = format!("{}/{}", key.context_type, key.context_id);
+                if execution_state.is_interactive_idle(&slot_key) {
+                    continue;
+                }
+
+                running_project_total += 1;
+                continue;
+            }
+
+            let Ok(context_type) = key.context_type.parse::<ChatContextType>() else {
+                continue;
+            };
+            if !uses_execution_slot(context_type) {
+                continue;
+            }
+
+            let related_task_id = TaskId::from_string(key.context_id);
+            let Ok(Some(related_task)) = task_repo.get_by_id(&related_task_id).await else {
+                continue;
+            };
+
+            if related_task.project_id != task.project_id
+                || !context_matches_running_status_for_gc(context_type, related_task.internal_status)
+            {
+                continue;
+            }
+
+            running_project_total += 1;
+        }
+
+        Some(
+            execution_state
+                .can_start_execution_context(running_project_total, settings.max_concurrent_tasks),
+        )
+    }
+
     /// Resolve the working directory for a given task.
     /// Uses task's worktree_path, falls back to spawner default.
     async fn resolve_working_directory(&self, task_id: &str) -> PathBuf {
@@ -198,11 +304,18 @@ impl AgentSpawner for AgenticClientSpawner {
 
         // Check execution state before spawning
         if let Some(ref exec) = self.execution_state {
-            if !exec.can_start_task() {
+            let global_allowed = exec.can_start_any_execution_context();
+            let project_allowed = self
+                .project_has_execution_capacity(task_id, exec)
+                .await
+                .unwrap_or(true);
+            if !global_allowed || !project_allowed {
                 let reason = if exec.is_paused() {
                     "execution_paused"
                 } else if exec.is_provider_blocked() {
                     "provider_rate_limited"
+                } else if !project_allowed {
+                    "project_max_concurrent_reached"
                 } else {
                     "max_concurrent_reached"
                 };

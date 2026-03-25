@@ -572,6 +572,7 @@ pub async fn report_conflict(
         state.app_state.app_handle.as_ref().cloned(),
         Arc::clone(&state.app_state.memory_event_repo),
     )
+    .with_execution_settings_repo(Arc::clone(&state.app_state.execution_settings_repo))
     .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
     .with_interactive_process_registry(Arc::clone(&state.app_state.interactive_process_registry));
 
@@ -686,6 +687,7 @@ pub async fn report_incomplete(
         state.app_state.app_handle.as_ref().cloned(),
         Arc::clone(&state.app_state.memory_event_repo),
     )
+    .with_execution_settings_repo(Arc::clone(&state.app_state.execution_settings_repo))
     .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
     .with_interactive_process_registry(Arc::clone(&state.app_state.interactive_process_registry));
 
@@ -973,6 +975,9 @@ fn build_transition_service(state: &HttpServerState) -> TaskTransitionService<ta
         state.app_state.app_handle.as_ref().cloned(),
         std::sync::Arc::clone(&state.app_state.memory_event_repo),
     )
+    .with_execution_settings_repo(std::sync::Arc::clone(
+        &state.app_state.execution_settings_repo,
+    ))
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(std::sync::Arc::clone(&state.app_state.plan_branch_repo))
     .with_interactive_process_registry(std::sync::Arc::clone(

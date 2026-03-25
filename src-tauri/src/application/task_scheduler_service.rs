@@ -544,6 +544,9 @@ impl<R: Runtime> TaskSchedulerService<R> {
             self.app_handle.clone(),
             Arc::clone(&self.memory_event_repo),
         );
+        if let Some(ref repo) = self.execution_settings_repo {
+            service = service.with_execution_settings_repo(Arc::clone(repo));
+        }
         if let Some(ref repo) = self.plan_branch_repo {
             service = service.with_plan_branch_repo(Arc::clone(repo));
         }

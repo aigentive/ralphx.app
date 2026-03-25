@@ -213,6 +213,11 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         Arc::clone(memory_event_repo),
                     )
                     .with_task_scheduler(task_scheduler);
+                    let transition_service = if let Some(ref repo) = execution_settings_repo {
+                        transition_service.with_execution_settings_repo(Arc::clone(repo))
+                    } else {
+                        transition_service
+                    };
                     let transition_service = if let Some(ref repo) = plan_branch_repo {
                         transition_service.with_plan_branch_repo(Arc::clone(repo))
                     } else {
@@ -410,6 +415,11 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         app_handle.clone(),
                         Arc::clone(memory_event_repo),
                     );
+                    let transition_service = if let Some(ref repo) = execution_settings_repo {
+                        transition_service.with_execution_settings_repo(Arc::clone(repo))
+                    } else {
+                        transition_service
+                    };
                     let transition_service = if let Some(ref repo) = plan_branch_repo {
                         transition_service.with_plan_branch_repo(Arc::clone(repo))
                     } else {
@@ -1214,6 +1224,11 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         app_handle.clone(),
                         Arc::clone(memory_event_repo),
                     );
+                    let transition_service = if let Some(ref repo) = execution_settings_repo {
+                        transition_service.with_execution_settings_repo(Arc::clone(repo))
+                    } else {
+                        transition_service
+                    };
                     let transition_service = if let Some(ref repo) = plan_branch_repo {
                         transition_service.with_plan_branch_repo(Arc::clone(repo))
                     } else {
@@ -1576,6 +1591,11 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         app_handle.clone(),
                         Arc::clone(memory_event_repo),
                     );
+                    let transition_service = if let Some(ref repo) = execution_settings_repo {
+                        transition_service.with_execution_settings_repo(Arc::clone(repo))
+                    } else {
+                        transition_service
+                    };
                     let transition_service = if let Some(ref repo) = plan_branch_repo {
                         transition_service.with_plan_branch_repo(Arc::clone(repo))
                     } else {

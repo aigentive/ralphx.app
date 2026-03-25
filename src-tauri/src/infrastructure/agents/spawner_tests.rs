@@ -1,10 +1,16 @@
 use super::*;
 use crate::commands::ExecutionState;
+use crate::domain::execution::ExecutionSettings;
 use crate::domain::entities::{GitMode, Project, ProjectId, Task, TaskId};
 use crate::domain::repositories::{
     ProjectRepository, StateHistoryMetadata, StatusTransition, TaskRepository,
 };
+use crate::domain::services::{MemoryRunningAgentRegistry, RunningAgentRegistry, RunningAgentKey};
 use crate::error::AppResult;
+use crate::infrastructure::memory::{
+    MemoryExecutionSettingsRepository, MemoryIdeationSessionRepository, MemoryProjectRepository,
+    MemoryTaskRepository,
+};
 use crate::infrastructure::MockAgenticClient;
 
 // ==================== Mock Repos for CWD Tests ====================
@@ -421,6 +427,7 @@ async fn test_spawn_blocked_when_paused() {
 async fn test_spawn_blocked_at_max_concurrent() {
     let mock = Arc::new(MockAgenticClient::new());
     let exec_state = Arc::new(ExecutionState::with_max_concurrent(2));
+    exec_state.set_global_max_concurrent(2);
 
     // Fill up to max concurrent
     exec_state.increment_running();
@@ -437,6 +444,149 @@ async fn test_spawn_blocked_at_max_concurrent() {
 
     // Running count should still be 2 (not incremented)
     assert_eq!(exec_state.running_count(), 2);
+}
+
+#[tokio::test]
+async fn test_spawn_blocked_when_same_project_capacity_reached() {
+    let mock = Arc::new(MockAgenticClient::new());
+    let exec_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let settings_repo = Arc::new(MemoryExecutionSettingsRepository::new());
+    let ideation_session_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let running_agent_registry = Arc::new(MemoryRunningAgentRegistry::new());
+
+    let project_id = ProjectId::from_string("project-a".to_string());
+    let mut project = Project::new("Project A".to_string(), "/tmp/project-a".to_string());
+    project.id = project_id.clone();
+    project_repo.create(project).await.unwrap();
+
+    settings_repo
+        .update_settings(
+            Some(&project_id),
+            &ExecutionSettings {
+                max_concurrent_tasks: 1,
+                ..ExecutionSettings::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    let mut running_task = Task::new(project_id.clone(), "Running task".to_string());
+    running_task.id = TaskId::from_string("task-running".to_string());
+    running_task.internal_status = crate::domain::entities::InternalStatus::Executing;
+    running_task.worktree_path = Some("/tmp/task-running".to_string());
+    task_repo.create(running_task.clone()).await.unwrap();
+
+    let mut candidate_task = Task::new(project_id.clone(), "Candidate task".to_string());
+    candidate_task.id = TaskId::from_string("task-candidate".to_string());
+    candidate_task.worktree_path = Some("/tmp/task-candidate".to_string());
+    task_repo.create(candidate_task).await.unwrap();
+
+    running_agent_registry
+        .register(
+            RunningAgentKey::new("task_execution", running_task.id.as_str()),
+            4242,
+            "conv-running".to_string(),
+            "run-running".to_string(),
+            Some("/tmp/task-running".to_string()),
+            None,
+        )
+        .await;
+
+    let spawner = AgenticClientSpawner::new(mock.clone())
+        .with_repos(task_repo, project_repo)
+        .with_execution_state(exec_state)
+        .with_runtime_admission_context(
+            settings_repo,
+            ideation_session_repo,
+            running_agent_registry,
+        )
+        .with_working_dir("/tmp");
+
+    spawner.spawn("worker", "task-candidate").await;
+
+    let calls = mock.get_spawn_calls().await;
+    assert_eq!(calls.len(), 0, "Should not spawn when same-project capacity is full");
+}
+
+#[tokio::test]
+async fn test_spawn_ignores_other_project_capacity_usage() {
+    let mock = Arc::new(MockAgenticClient::new());
+    let exec_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let settings_repo = Arc::new(MemoryExecutionSettingsRepository::new());
+    let ideation_session_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let running_agent_registry = Arc::new(MemoryRunningAgentRegistry::new());
+
+    let project_a_id = ProjectId::from_string("project-a".to_string());
+    let mut project_a = Project::new("Project A".to_string(), "/tmp/project-a".to_string());
+    project_a.id = project_a_id.clone();
+    project_repo.create(project_a).await.unwrap();
+
+    let project_b_id = ProjectId::from_string("project-b".to_string());
+    let mut project_b = Project::new("Project B".to_string(), "/tmp/project-b".to_string());
+    project_b.id = project_b_id.clone();
+    project_repo.create(project_b).await.unwrap();
+
+    settings_repo
+        .update_settings(
+            Some(&project_a_id),
+            &ExecutionSettings {
+                max_concurrent_tasks: 1,
+                ..ExecutionSettings::default()
+            },
+        )
+        .await
+        .unwrap();
+    settings_repo
+        .update_settings(
+            Some(&project_b_id),
+            &ExecutionSettings {
+                max_concurrent_tasks: 1,
+                ..ExecutionSettings::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    let mut other_project_running = Task::new(project_b_id.clone(), "Busy elsewhere".to_string());
+    other_project_running.id = TaskId::from_string("task-other-project".to_string());
+    other_project_running.internal_status = crate::domain::entities::InternalStatus::Executing;
+    other_project_running.worktree_path = Some("/tmp/task-other-project".to_string());
+    task_repo.create(other_project_running.clone()).await.unwrap();
+
+    let mut candidate_task = Task::new(project_a_id.clone(), "Candidate task".to_string());
+    candidate_task.id = TaskId::from_string("task-candidate".to_string());
+    candidate_task.worktree_path = Some("/tmp/task-candidate".to_string());
+    task_repo.create(candidate_task).await.unwrap();
+
+    running_agent_registry
+        .register(
+            RunningAgentKey::new("task_execution", other_project_running.id.as_str()),
+            5252,
+            "conv-other".to_string(),
+            "run-other".to_string(),
+            Some("/tmp/task-other-project".to_string()),
+            None,
+        )
+        .await;
+
+    let spawner = AgenticClientSpawner::new(mock.clone())
+        .with_repos(task_repo, project_repo)
+        .with_execution_state(exec_state)
+        .with_runtime_admission_context(
+            settings_repo,
+            ideation_session_repo,
+            running_agent_registry,
+        )
+        .with_working_dir("/tmp");
+
+    spawner.spawn("worker", "task-candidate").await;
+
+    let calls = mock.get_spawn_calls().await;
+    assert_eq!(calls.len(), 1, "Should still spawn when only another project is busy");
 }
 
 #[tokio::test]

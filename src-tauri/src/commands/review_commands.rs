@@ -474,6 +474,7 @@ pub async fn approve_task_for_review(
         Some(app.clone()),
         Arc::clone(&state.memory_event_repo),
     )
+    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
     .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
@@ -562,6 +563,7 @@ pub async fn request_task_changes_for_review(
         Some(app.clone()),
         Arc::clone(&state.memory_event_repo),
     )
+    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
     .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
 
@@ -658,6 +660,7 @@ pub async fn re_review_task_from_escalated(
         Some(app.clone()),
         Arc::clone(&state.memory_event_repo),
     )
+    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
     .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
 
