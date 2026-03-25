@@ -10,15 +10,19 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use tokio::sync::RwLock;
 
-use crate::application::chat_service::uses_execution_slot;
+use crate::application::chat_service::{
+    uses_execution_slot, ChatService, ClaudeChatService, SendMessageOptions,
+};
 use crate::application::reconciliation::UserRecoveryAction;
+use crate::application::team_state_tracker::TeamStateTracker;
 use crate::application::{
     AppState, ReconciliationRunner, TaskSchedulerService, TaskTransitionService,
 };
 use crate::domain::entities::{
     app_state::ExecutionHaltMode, task_step::StepProgressSummary, types::IdeationSessionId,
-    ChatContextType, InternalStatus, ProjectId, Task, TaskId,
+    ChatContextType, IdeationSessionStatus, InternalStatus, ProjectId, Task, TaskId,
 };
+use crate::domain::services::QueueKey;
 use crate::domain::execution::ExecutionSettings;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::transition_handler::get_trigger_origin;
@@ -666,6 +670,166 @@ async fn persist_execution_halt_mode(
         .map_err(|e| e.to_string())
 }
 
+fn queued_message_to_send_options(message: &crate::domain::services::QueuedMessage) -> SendMessageOptions {
+    let created_at = message
+        .created_at_override
+        .as_deref()
+        .and_then(|ts| chrono::DateTime::parse_from_rfc3339(ts).ok())
+        .map(|ts| ts.with_timezone(&chrono::Utc));
+
+    SendMessageOptions {
+        metadata: message.metadata_override.clone(),
+        created_at,
+        ..Default::default()
+    }
+}
+
+fn session_is_team_mode(team_mode: Option<&str>) -> bool {
+    team_mode.is_some_and(|mode| mode != "solo")
+}
+
+async fn queue_key_matches_project(
+    key: &QueueKey,
+    project_filter: Option<&ProjectId>,
+    app_state: &AppState,
+) -> Result<bool, String> {
+    let Some(project_id) = project_filter else {
+        return Ok(true);
+    };
+
+    match key.context_type {
+        ChatContextType::Ideation => {
+            let session_id = IdeationSessionId::from_string(key.context_id.clone());
+            let Some(session) = app_state
+                .ideation_session_repo
+                .get_by_id(&session_id)
+                .await
+                .map_err(|e| e.to_string())?
+            else {
+                return Ok(false);
+            };
+            Ok(session.project_id == *project_id)
+        }
+        ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => {
+            let task_id = TaskId::from_string(key.context_id.clone());
+            let Some(task) = app_state
+                .task_repo
+                .get_by_id(&task_id)
+                .await
+                .map_err(|e| e.to_string())?
+            else {
+                return Ok(false);
+            };
+            Ok(task.project_id == *project_id)
+        }
+        _ => Ok(false),
+    }
+}
+
+async fn clear_slot_consuming_queues(
+    project_filter: Option<&ProjectId>,
+    app_state: &AppState,
+) -> Result<u32, String> {
+    let mut cleared = 0u32;
+    for key in app_state.message_queue.list_keys() {
+        if !uses_execution_slot(key.context_type) {
+            continue;
+        }
+        if !queue_key_matches_project(&key, project_filter, app_state).await? {
+            continue;
+        }
+        app_state.message_queue.clear_with_key(&key);
+        cleared += 1;
+    }
+    Ok(cleared)
+}
+
+async fn count_active_ideation_slots(app_state: &AppState) -> u32 {
+    app_state
+        .running_agent_registry
+        .list_all()
+        .await
+        .into_iter()
+        .filter(|(key, _)| key.context_type == ChatContextType::Ideation.to_string())
+        .count() as u32
+}
+
+async fn resume_paused_ideation_queues_with_chat_service<F>(
+    project_filter: Option<&ProjectId>,
+    app_state: &AppState,
+    execution_state: &Arc<ExecutionState>,
+    build_chat_service: F,
+) -> Result<u32, String>
+where
+    F: Fn(bool) -> Arc<dyn ChatService>,
+{
+    let mut resumed = 0u32;
+
+    for key in app_state.message_queue.list_keys() {
+        if key.context_type != ChatContextType::Ideation {
+            continue;
+        }
+        if !queue_key_matches_project(&key, project_filter, app_state).await? {
+            continue;
+        }
+
+        let session_id = IdeationSessionId::from_string(key.context_id.clone());
+        let Some(session) = app_state
+            .ideation_session_repo
+            .get_by_id(&session_id)
+            .await
+            .map_err(|e| e.to_string())?
+        else {
+            app_state.message_queue.clear_with_key(&key);
+            continue;
+        };
+
+        if session.status != IdeationSessionStatus::Active {
+            app_state.message_queue.clear_with_key(&key);
+            continue;
+        }
+
+        let running_global_ideation = count_active_ideation_slots(app_state).await;
+        if !execution_state.can_start_ideation(running_global_ideation, false) {
+            break;
+        }
+
+        let Some(queued) = app_state.message_queue.pop_with_key(&key) else {
+            continue;
+        };
+
+        let send_result = build_chat_service(session_is_team_mode(session.team_mode.as_deref()))
+            .send_message(
+                ChatContextType::Ideation,
+                session.id.as_str(),
+                &queued.content,
+                queued_message_to_send_options(&queued),
+            )
+            .await;
+
+        match send_result {
+            Ok(_) => {
+                resumed += 1;
+            }
+            Err(error) => {
+                app_state.message_queue.queue_front_existing(
+                    ChatContextType::Ideation,
+                    session.id.as_str(),
+                    queued,
+                );
+                tracing::warn!(
+                    session_id = session.id.as_str(),
+                    error = %error,
+                    "Failed to relaunch paused ideation queue item on resume"
+                );
+                break;
+            }
+        }
+    }
+
+    Ok(resumed)
+}
+
 /// Get current execution status
 /// Phase 82: Optional project_id for per-project scoping.
 /// If project_id is None, falls back to active project or aggregates across all projects.
@@ -1209,6 +1373,57 @@ pub async fn resume_execution(
         .await;
     scheduler.try_schedule_ready_tasks().await;
 
+    if let Some(ref handle) = app_state.app_handle {
+        let execution_state_arc = Arc::clone(execution_state.inner());
+        let team_service = std::sync::Arc::new(crate::application::TeamService::new_with_repos(
+            std::sync::Arc::new(TeamStateTracker::new()),
+            handle.clone(),
+            Arc::clone(&app_state.team_session_repo),
+            Arc::clone(&app_state.team_message_repo),
+        ));
+        if let Err(error) = resume_paused_ideation_queues_with_chat_service(
+            effective_project_id.as_ref(),
+            &app_state,
+            &execution_state_arc,
+            |is_team_mode| {
+                let mut service = ClaudeChatService::new(
+                    Arc::clone(&app_state.chat_message_repo),
+                    Arc::clone(&app_state.chat_attachment_repo),
+                    Arc::clone(&app_state.artifact_repo),
+                    Arc::clone(&app_state.chat_conversation_repo),
+                    Arc::clone(&app_state.agent_run_repo),
+                    Arc::clone(&app_state.project_repo),
+                    Arc::clone(&app_state.task_repo),
+                    Arc::clone(&app_state.task_dependency_repo),
+                    Arc::clone(&app_state.ideation_session_repo),
+                    Arc::clone(&app_state.activity_event_repo),
+                    Arc::clone(&app_state.message_queue),
+                    Arc::clone(&app_state.running_agent_registry),
+                    Arc::clone(&app_state.memory_event_repo),
+                )
+                .with_app_handle(handle.clone())
+                .with_execution_state(Arc::clone(&execution_state_arc))
+                .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
+                .with_task_proposal_repo(Arc::clone(&app_state.task_proposal_repo))
+                .with_task_step_repo(Arc::clone(&app_state.task_step_repo))
+                .with_streaming_state_cache(app_state.streaming_state_cache.clone())
+                .with_interactive_process_registry(Arc::clone(
+                    &app_state.interactive_process_registry,
+                ))
+                .with_review_repo(Arc::clone(&app_state.review_repo))
+                .with_team_service(Arc::clone(&team_service));
+                if is_team_mode {
+                    service = service.with_team_mode(true);
+                }
+                Arc::new(service) as Arc<dyn ChatService>
+            },
+        )
+        .await
+        {
+            tracing::warn!(error = %error, "Failed to relaunch paused ideation queues on resume");
+        }
+    }
+
     // Get current status
     let status = get_execution_status(
         effective_project_id.map(|p| p.as_str().to_string()),
@@ -1264,6 +1479,10 @@ pub async fn stop_execution(
     app_state.running_agent_registry.stop_all().await;
     // Also clear all interactive process entries — their stdin pipes are now dead
     app_state.interactive_process_registry.clear().await;
+    if let Err(error) = clear_slot_consuming_queues(effective_project_id.as_ref(), &app_state).await
+    {
+        tracing::warn!(error = %error, "Failed to clear queued slot work during stop");
+    }
 
     // Build transition service for proper state machine transitions
     let transition_service = TaskTransitionService::new(
@@ -2456,7 +2675,8 @@ async fn validate_resume(task: &Task, state: &AppState) -> ResumeValidationResul
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::entities::GitMode;
+    use crate::application::chat_service::{ChatService, MockChatService};
+    use crate::domain::entities::{GitMode, IdeationSession};
     use std::sync::Arc;
 
     // ========================================
@@ -3331,6 +3551,100 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_stop_clears_queued_slot_consuming_messages() {
+        let app_state = AppState::new_test();
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        let session = app_state
+            .ideation_session_repo
+            .create(IdeationSession::new(project.id.clone()))
+            .await
+            .unwrap();
+
+        let task = app_state
+            .task_repo
+            .create(Task::new(project.id.clone(), "Task".to_string()))
+            .await
+            .unwrap();
+
+        app_state.message_queue.queue(
+            ChatContextType::Ideation,
+            session.id.as_str(),
+            "queued ideation".to_string(),
+        );
+        app_state.message_queue.queue(
+            ChatContextType::TaskExecution,
+            task.id.as_str(),
+            "queued execution".to_string(),
+        );
+        app_state.message_queue.queue(
+            ChatContextType::Review,
+            task.id.as_str(),
+            "queued review".to_string(),
+        );
+        app_state.message_queue.queue(
+            ChatContextType::Merge,
+            task.id.as_str(),
+            "queued merge".to_string(),
+        );
+        app_state.message_queue.queue(
+            ChatContextType::Task,
+            task.id.as_str(),
+            "keep task".to_string(),
+        );
+        app_state.message_queue.queue(
+            ChatContextType::Project,
+            project.id.as_str(),
+            "keep project".to_string(),
+        );
+
+        let cleared = clear_slot_consuming_queues(None, &app_state)
+            .await
+            .expect("clear queued slot work");
+
+        assert_eq!(cleared, 4);
+        assert!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Ideation, session.id.as_str())
+                .is_empty()
+        );
+        assert!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::TaskExecution, task.id.as_str())
+                .is_empty()
+        );
+        assert!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Review, task.id.as_str())
+                .is_empty()
+        );
+        assert!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Merge, task.id.as_str())
+                .is_empty()
+        );
+        assert_eq!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Task, task.id.as_str())
+                .len(),
+            1
+        );
+        assert_eq!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Project, project.id.as_str())
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
     async fn test_pause_transitions_agent_active_tasks_to_paused() {
         // Setup: Create tasks in various agent-active states
         let execution_state = Arc::new(ExecutionState::new());
@@ -3420,6 +3734,58 @@ mod tests {
         assert_eq!(ready_count, 1);
         // Execution should be paused
         assert!(execution_state.is_paused());
+    }
+
+    #[tokio::test]
+    async fn test_resume_relaunches_one_queued_message_for_active_ideation_session() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+        let project = Project::new("Resume Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        let session = app_state
+            .ideation_session_repo
+            .create(IdeationSession::new(project.id.clone()))
+            .await
+            .unwrap();
+
+        app_state.message_queue.queue_with_overrides(
+            ChatContextType::Ideation,
+            session.id.as_str(),
+            "first queued".to_string(),
+            Some(r#"{"source":"pause"}"#.to_string()),
+            Some("2026-03-25T10:00:00Z".to_string()),
+        );
+        app_state.message_queue.queue(
+            ChatContextType::Ideation,
+            session.id.as_str(),
+            "second queued".to_string(),
+        );
+
+        let mock = Arc::new(MockChatService::new());
+        let resumed = resume_paused_ideation_queues_with_chat_service(
+            None,
+            &app_state,
+            &execution_state,
+            |_| Arc::clone(&mock) as Arc<dyn ChatService>,
+        )
+        .await
+        .expect("resume paused ideation queue");
+
+        assert_eq!(resumed, 1);
+        assert_eq!(mock.call_count(), 1);
+        assert_eq!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Ideation, session.id.as_str())
+                .len(),
+            1,
+            "resume should relaunch only the front queued message for the session"
+        );
+        assert_eq!(
+            mock.get_sent_messages().await,
+            vec!["first queued".to_string()]
+        );
     }
 
     #[tokio::test]

@@ -241,6 +241,21 @@ impl MessageQueue {
         queues.get(key).cloned().unwrap_or_default()
     }
 
+    /// List all queue keys that currently have one or more queued messages.
+    pub fn list_keys(&self) -> Vec<QueueKey> {
+        let queues = self.queues.lock().unwrap();
+        queues
+            .iter()
+            .filter_map(|(key, queue)| {
+                if queue.is_empty() {
+                    None
+                } else {
+                    Some(key.clone())
+                }
+            })
+            .collect()
+    }
+
     /// Clear all queued messages for a context
     pub fn clear(&self, context_type: ChatContextType, context_id: &str) {
         let key = QueueKey::new(context_type, context_id.to_string());

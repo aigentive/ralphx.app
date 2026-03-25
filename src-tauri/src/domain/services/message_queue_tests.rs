@@ -73,6 +73,22 @@ fn test_clear() {
 }
 
 #[test]
+fn test_list_keys_only_returns_non_empty_queues() {
+    let queue = MessageQueue::new();
+
+    queue.queue(ChatContextType::Ideation, "sess-1", "First".to_string());
+    queue.queue(ChatContextType::TaskExecution, "task-1", "Second".to_string());
+    queue.clear(ChatContextType::TaskExecution, "task-1");
+
+    let mut keys = queue.list_keys();
+    keys.sort_by(|a, b| a.context_id.cmp(&b.context_id));
+
+    assert_eq!(keys.len(), 1);
+    assert_eq!(keys[0].context_type, ChatContextType::Ideation);
+    assert_eq!(keys[0].context_id, "sess-1");
+}
+
+#[test]
 fn test_delete() {
     let queue = MessageQueue::new();
 
