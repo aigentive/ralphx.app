@@ -2,6 +2,7 @@
 
 use super::helpers;
 use super::v24_memory_framework;
+use crate::infrastructure::sqlite::migrations::SCHEMA_VERSION;
 use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
 
 #[test]
@@ -399,8 +400,8 @@ fn test_v24_fresh_db_creation() {
         .unwrap();
 
     assert_eq!(
-        version, 81,
-        "Schema version should be 81 after fresh install"
+        version, SCHEMA_VERSION,
+        "Schema version should match the latest registered migration after fresh install"
     );
 
     // Verify all memory tables exist
