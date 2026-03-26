@@ -197,10 +197,26 @@ pub async fn finalize_proposals(
                     0
                 }
             };
+            let queued_message_count = match crate::commands::task_commands::helpers::count_slot_consuming_queued_messages_for_project(
+                &state.app_state,
+                &project_id,
+            )
+            .await
+            {
+                Ok(count) => count,
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to count queued agent messages for queue_changed event: {}",
+                        e
+                    );
+                    0
+                }
+            };
             if let Err(e) = app_handle.emit(
                 "execution:queue_changed",
                 serde_json::json!({
                     "queuedCount": queued_count,
+                    "queuedMessageCount": queued_message_count,
                     "projectId": response.project_id,
                     "timestamp": chrono::Utc::now().to_rfc3339(),
                 }),
