@@ -1169,6 +1169,7 @@ where
     F: Fn() -> Arc<dyn ChatService>,
 {
     let mut resumed = 0u32;
+    let mut slot_keys = Vec::new();
 
     for key in app_state.message_queue.list_keys() {
         if !matches!(
@@ -1178,6 +1179,26 @@ where
             continue;
         }
 
+        let task_id = TaskId::from_string(key.context_id.clone());
+        let project_sort_key = app_state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .map(|task| task.project_id.as_str().to_string())
+            .unwrap_or_default();
+
+        slot_keys.push((
+            project_sort_key,
+            key.context_type.to_string(),
+            key.context_id.clone(),
+            key,
+        ));
+    }
+
+    slot_keys.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
+
+    for (_, _, _, key) in slot_keys {
         let task_id = TaskId::from_string(key.context_id.clone());
         let Some(task) = app_state
             .task_repo
@@ -1198,6 +1219,12 @@ where
 
         let slot_key = format!("{}/{}", key.context_type, key.context_id);
         if execution_state.is_interactive_idle(&slot_key) {
+            continue;
+        }
+
+        if !project_has_execution_capacity_for_state(app_state, execution_state, &task.project_id)
+            .await?
+        {
             continue;
         }
 
@@ -4781,6 +4808,209 @@ mod tests {
         assert_eq!(
             mock.get_sent_messages().await,
             vec!["continue merge".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resume_respects_project_capacity_for_same_project_slot_queue() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+        let project = Project::new("Blocked Slot Project".to_string(), "/test/blocked-slot".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        app_state
+            .execution_settings_repo
+            .update_settings(
+                Some(&project.id),
+                &ExecutionSettings {
+                    max_concurrent_tasks: 1,
+                    project_ideation_max: 1,
+                    auto_commit: true,
+                    pause_on_failure: true,
+                },
+            )
+            .await
+            .unwrap();
+
+        let occupied = app_state
+            .task_repo
+            .create(Task {
+                internal_status: InternalStatus::Executing,
+                ..Task::new(project.id.clone(), "Occupied slot".to_string())
+            })
+            .await
+            .unwrap();
+        let queued = app_state
+            .task_repo
+            .create(Task {
+                internal_status: InternalStatus::Reviewing,
+                ..Task::new(project.id.clone(), "Queued review".to_string())
+            })
+            .await
+            .unwrap();
+
+        app_state.message_queue.queue(
+            ChatContextType::Review,
+            queued.id.as_str(),
+            "blocked review queue".to_string(),
+        );
+
+        app_state
+            .running_agent_registry
+            .register(
+                RunningAgentKey::new("task_execution", occupied.id.as_str()),
+                31337,
+                "occupied-conv".to_string(),
+                "occupied-run".to_string(),
+                None,
+                None,
+            )
+            .await;
+        execution_state.set_running_count(1);
+
+        let mock = Arc::new(MockChatService::new());
+        let resumed = resume_paused_slot_consuming_queues_with_chat_service(
+            Some(&project.id),
+            &app_state,
+            &execution_state,
+            || Arc::clone(&mock) as Arc<dyn ChatService>,
+        )
+        .await
+        .expect("resume blocked slot-consuming queue");
+
+        assert_eq!(resumed, 0);
+        assert_eq!(mock.call_count(), 0);
+        assert_eq!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Review, queued.id.as_str())
+                .len(),
+            1,
+            "project-capped slot-consuming work must stay queued on resume"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resume_skips_project_capped_slot_queue_and_relaunches_other_project() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+
+        let first_project = Project::new("Blocked First".to_string(), "/test/blocked-first".to_string());
+        let second_project =
+            Project::new("Runnable Second".to_string(), "/test/runnable-second".to_string());
+        app_state
+            .project_repo
+            .create(first_project.clone())
+            .await
+            .unwrap();
+        app_state
+            .project_repo
+            .create(second_project.clone())
+            .await
+            .unwrap();
+
+        let (blocked_project, runnable_project) = if first_project.id.as_str()
+            <= second_project.id.as_str()
+        {
+            (first_project, second_project)
+        } else {
+            (second_project, first_project)
+        };
+
+        app_state
+            .execution_settings_repo
+            .update_settings(
+                Some(&blocked_project.id),
+                &ExecutionSettings {
+                    max_concurrent_tasks: 1,
+                    project_ideation_max: 1,
+                    auto_commit: true,
+                    pause_on_failure: true,
+                },
+            )
+            .await
+            .unwrap();
+
+        let occupied = app_state
+            .task_repo
+            .create(Task {
+                internal_status: InternalStatus::Executing,
+                ..Task::new(blocked_project.id.clone(), "Blocked project occupied".to_string())
+            })
+            .await
+            .unwrap();
+        let blocked_queued = app_state
+            .task_repo
+            .create(Task {
+                internal_status: InternalStatus::Reviewing,
+                ..Task::new(blocked_project.id.clone(), "Blocked project review".to_string())
+            })
+            .await
+            .unwrap();
+        let runnable_queued = app_state
+            .task_repo
+            .create(Task {
+                internal_status: InternalStatus::Merging,
+                ..Task::new(runnable_project.id.clone(), "Runnable project merge".to_string())
+            })
+            .await
+            .unwrap();
+
+        app_state.message_queue.queue(
+            ChatContextType::Review,
+            blocked_queued.id.as_str(),
+            "blocked project review queue".to_string(),
+        );
+        app_state.message_queue.queue(
+            ChatContextType::Merge,
+            runnable_queued.id.as_str(),
+            "runnable project merge queue".to_string(),
+        );
+
+        app_state
+            .running_agent_registry
+            .register(
+                RunningAgentKey::new("task_execution", occupied.id.as_str()),
+                41414,
+                "occupied-conv".to_string(),
+                "occupied-run".to_string(),
+                None,
+                None,
+            )
+            .await;
+        execution_state.set_running_count(1);
+
+        let mock = Arc::new(MockChatService::new());
+        let resumed = resume_paused_slot_consuming_queues_with_chat_service(
+            None,
+            &app_state,
+            &execution_state,
+            || Arc::clone(&mock) as Arc<dyn ChatService>,
+        )
+        .await
+        .expect("resume queued slot-consuming work across projects");
+
+        assert_eq!(resumed, 1);
+        assert_eq!(mock.call_count(), 1);
+        assert_eq!(
+            mock.get_sent_messages().await,
+            vec!["runnable project merge queue".to_string()]
+        );
+        assert_eq!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Review, blocked_queued.id.as_str())
+                .len(),
+            1,
+            "blocked project's slot-consuming queue must remain pending"
+        );
+        assert_eq!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Merge, runnable_queued.id.as_str())
+                .len(),
+            0,
+            "other project should still relaunch in the same resume pass"
         );
     }
 
