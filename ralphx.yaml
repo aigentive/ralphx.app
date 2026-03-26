@@ -601,7 +601,7 @@ agents:
   - name: ralphx-worker
     system_prompt_file: ralphx-plugin/agents/worker.md
     model: sonnet
-    permission_mode: bypassPermissions
+    permission_mode: acceptEdits
     tools: { extends: base_tools, include: [Write, Edit, Task, LSP] }
     mcp_tools: [
         # step management tools
@@ -651,7 +651,7 @@ agents:
   - name: ralphx-coder
     system_prompt_file: ralphx-plugin/agents/coder.md
     model: sonnet
-    permission_mode: bypassPermissions
+    permission_mode: acceptEdits
     tools: { extends: base_tools, include: [Write, Edit, Task, LSP] }
     mcp_tools: [
         # step management tools
@@ -731,6 +731,7 @@ agents:
   - name: ralphx-qa-executor
     system_prompt_file: ralphx-plugin/agents/qa-executor.md
     model: sonnet
+    permission_mode: acceptEdits
     tools: { extends: base_tools, include: [Write, Edit, Task] }
     mcp_tools: []
     preapproved_cli_tools: [Write, Edit, Bash, Task(Explore), Task(Plan)]
@@ -777,7 +778,7 @@ agents:
   - name: ralphx-merger
     system_prompt_file: ralphx-plugin/agents/merger.md
     model: opus
-    permission_mode: bypassPermissions
+    permission_mode: acceptEdits
     tools: { extends: base_tools, include: [Edit, Task] }
     mcp_tools: [
         # merge tools
@@ -797,6 +798,7 @@ agents:
   - name: memory-maintainer
     system_prompt_file: ralphx-plugin/agents/memory-maintainer.md
     model: sonnet
+    permission_mode: acceptEdits
     tools: { extends: base_tools, include: [Write, Edit] }
     mcp_tools: [
         # memory read tools
@@ -817,6 +819,7 @@ agents:
   - name: memory-capture
     system_prompt_file: ralphx-plugin/agents/memory-capture.md
     model: sonnet
+    permission_mode: acceptEdits
     tools: { extends: base_tools, include: [Write, Edit] }
     mcp_tools: [
         # memory read tools

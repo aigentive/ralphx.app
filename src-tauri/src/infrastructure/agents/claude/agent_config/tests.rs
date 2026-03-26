@@ -1330,32 +1330,32 @@ agents:
 // ── Permission mode tests ────────────────────────────────────────
 
 #[test]
-fn test_permission_mode_worker_is_bypass_permissions() {
+fn test_permission_mode_worker_is_accept_edits() {
     let config = get_agent_config("ralphx-worker").expect("ralphx-worker should exist");
     assert_eq!(
         config.permission_mode.as_deref(),
-        Some("bypassPermissions"),
-        "ralphx-worker should have bypassPermissions permission mode"
+        Some("acceptEdits"),
+        "ralphx-worker should have acceptEdits permission mode"
     );
 }
 
 #[test]
-fn test_permission_mode_coder_is_bypass_permissions() {
+fn test_permission_mode_coder_is_accept_edits() {
     let config = get_agent_config("ralphx-coder").expect("ralphx-coder should exist");
     assert_eq!(
         config.permission_mode.as_deref(),
-        Some("bypassPermissions"),
-        "ralphx-coder should have bypassPermissions permission mode"
+        Some("acceptEdits"),
+        "ralphx-coder should have acceptEdits permission mode"
     );
 }
 
 #[test]
-fn test_permission_mode_merger_is_bypass_permissions() {
+fn test_permission_mode_merger_is_accept_edits() {
     let config = get_agent_config("ralphx-merger").expect("ralphx-merger should exist");
     assert_eq!(
         config.permission_mode.as_deref(),
-        Some("bypassPermissions"),
-        "ralphx-merger should have bypassPermissions permission mode"
+        Some("acceptEdits"),
+        "ralphx-merger should have acceptEdits permission mode"
     );
 }
 
@@ -1366,6 +1366,37 @@ fn test_permission_mode_worker_team_inherits_accept_edits() {
         config.permission_mode.as_deref(),
         Some("acceptEdits"),
         "ralphx-worker-team should have acceptEdits (inherited or explicit)"
+    );
+}
+
+#[test]
+fn test_permission_mode_qa_executor_is_accept_edits() {
+    let config = get_agent_config("ralphx-qa-executor").expect("ralphx-qa-executor should exist");
+    assert_eq!(
+        config.permission_mode.as_deref(),
+        Some("acceptEdits"),
+        "ralphx-qa-executor should have acceptEdits permission mode"
+    );
+}
+
+#[test]
+fn test_permission_mode_memory_maintainer_is_accept_edits() {
+    let config =
+        get_agent_config("memory-maintainer").expect("memory-maintainer should exist");
+    assert_eq!(
+        config.permission_mode.as_deref(),
+        Some("acceptEdits"),
+        "memory-maintainer should have acceptEdits permission mode"
+    );
+}
+
+#[test]
+fn test_permission_mode_memory_capture_is_accept_edits() {
+    let config = get_agent_config("memory-capture").expect("memory-capture should exist");
+    assert_eq!(
+        config.permission_mode.as_deref(),
+        Some("acceptEdits"),
+        "memory-capture should have acceptEdits permission mode"
     );
 }
 
