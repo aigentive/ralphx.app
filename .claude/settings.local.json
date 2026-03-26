@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(sqlite3:*)",
-      "Write(/Users/admin/ralphx-worktrees/**)",
-      "Edit(/Users/admin/ralphx-worktrees/**)"
-    ]
-  }
-}
