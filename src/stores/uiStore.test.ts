@@ -44,9 +44,12 @@ describe("uiStore", () => {
       battleModePanelRestoreState: null,
       executionStatus: {
         isPaused: false,
+        haltMode: "running",
         runningCount: 0,
         maxConcurrent: 10,
+        globalMaxConcurrent: 20,
         queuedCount: 0,
+        queuedMessageCount: 0,
         canStartTask: true,
       },
       viewByProject: {},
@@ -379,9 +382,12 @@ describe("uiStore", () => {
       const state = useUiStore.getState();
       expect(state.executionStatus).toEqual({
         isPaused: false,
+        haltMode: "running",
         runningCount: 0,
         maxConcurrent: 10,
+        globalMaxConcurrent: 20,
         queuedCount: 0,
+        queuedMessageCount: 0,
         canStartTask: true,
       });
     });
@@ -389,9 +395,12 @@ describe("uiStore", () => {
     it("updates execution status", () => {
       useUiStore.getState().setExecutionStatus({
         isPaused: true,
+        haltMode: "paused",
         runningCount: 1,
         maxConcurrent: 10,
+        globalMaxConcurrent: 20,
         queuedCount: 3,
+        queuedMessageCount: 2,
         canStartTask: false,
       });
 
@@ -399,6 +408,7 @@ describe("uiStore", () => {
       expect(state.executionStatus.isPaused).toBe(true);
       expect(state.executionStatus.runningCount).toBe(1);
       expect(state.executionStatus.queuedCount).toBe(3);
+      expect(state.executionStatus.queuedMessageCount).toBe(2);
       expect(state.executionStatus.canStartTask).toBe(false);
     });
 
@@ -429,9 +439,12 @@ describe("uiStore", () => {
     it("partial update preserves other fields", () => {
       useUiStore.getState().setExecutionStatus({
         isPaused: true,
+        haltMode: "paused",
         runningCount: 1,
         maxConcurrent: 4,
+        globalMaxConcurrent: 20,
         queuedCount: 10,
+        queuedMessageCount: 4,
         canStartTask: false,
       });
 
@@ -441,6 +454,7 @@ describe("uiStore", () => {
       expect(state.executionStatus.isPaused).toBe(false);
       expect(state.executionStatus.runningCount).toBe(1);
       expect(state.executionStatus.queuedCount).toBe(10);
+      expect(state.executionStatus.queuedMessageCount).toBe(4);
     });
   });
 

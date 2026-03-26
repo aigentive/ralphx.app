@@ -62,6 +62,7 @@ export function useExecutionStatus(projectId?: string) {
     haltMode: query.data?.haltMode ?? "running",
     runningCount: query.data?.runningCount ?? 0,
     queuedCount: query.data?.queuedCount ?? 0,
+    queuedMessageCount: query.data?.queuedMessageCount ?? 0,
     maxConcurrent: query.data?.maxConcurrent ?? 10,
     globalMaxConcurrent: query.data?.globalMaxConcurrent ?? 20,
     canStartTask: query.data?.canStartTask ?? true,

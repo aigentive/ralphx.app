@@ -32,6 +32,7 @@ interface ExecutionStatusEvent {
   runningCount: number;
   maxConcurrent: number;
   globalMaxConcurrent?: number;
+  queuedMessageCount?: number;
   projectId?: string;
   reason: string;
   timestamp: string;
@@ -43,6 +44,7 @@ interface ExecutionStatusEvent {
  */
 interface ExecutionQueueEvent {
   queuedCount: number;
+  queuedMessageCount?: number;
   projectId?: string;
   timestamp: string;
 }
@@ -92,7 +94,15 @@ export function useExecutionEvents() {
     // Listen for execution:status_changed events
     unsubscribes.push(
       bus.subscribe<ExecutionStatusEvent>("execution:status_changed", (payload) => {
-        const { isPaused, haltMode, runningCount, maxConcurrent, globalMaxConcurrent, projectId } = payload;
+        const {
+          isPaused,
+          haltMode,
+          runningCount,
+          maxConcurrent,
+          globalMaxConcurrent,
+          queuedMessageCount,
+          projectId,
+        } = payload;
 
         // Phase 82: Only update if event is for the active project (or unscoped)
         const activeProjectId = useProjectStore.getState().activeProjectId;
@@ -109,6 +119,8 @@ export function useExecutionEvents() {
           globalMaxConcurrent: globalMaxConcurrent ?? useUiStore.getState().executionStatus.globalMaxConcurrent,
           // Preserve current queuedCount - will be updated by queue_changed event
           queuedCount: useUiStore.getState().executionStatus.queuedCount,
+          queuedMessageCount:
+            queuedMessageCount ?? useUiStore.getState().executionStatus.queuedMessageCount ?? 0,
           canStartTask: !isPaused && runningCount < maxConcurrent,
         });
       })
@@ -117,7 +129,7 @@ export function useExecutionEvents() {
     // Listen for execution:queue_changed events
     unsubscribes.push(
       bus.subscribe<ExecutionQueueEvent>("execution:queue_changed", (payload) => {
-        const { queuedCount, projectId } = payload;
+        const { queuedCount, queuedMessageCount, projectId } = payload;
 
         // Phase 82: Only update if event is for the active project (or unscoped)
         const activeProjectId = useProjectStore.getState().activeProjectId;
@@ -126,7 +138,7 @@ export function useExecutionEvents() {
           return;
         }
 
-        setExecutionQueuedCount(queuedCount);
+        setExecutionQueuedCount(queuedCount, queuedMessageCount);
       })
     );
 

@@ -30,6 +30,7 @@ export function transformExecutionStatus(
     maxConcurrent: raw.max_concurrent,
     globalMaxConcurrent: raw.global_max_concurrent,
     queuedCount: raw.queued_count,
+    queuedMessageCount: raw.queued_message_count,
     canStartTask: raw.can_start_task,
   };
 }

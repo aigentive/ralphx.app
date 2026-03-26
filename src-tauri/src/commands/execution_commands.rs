@@ -574,6 +574,8 @@ pub struct ExecutionStatusResponse {
     pub global_max_concurrent: u32,
     /// Number of tasks queued (ready to execute)
     pub queued_count: u32,
+    /// Number of queued agent messages held by pause/capacity barriers
+    pub queued_message_count: u32,
     /// Whether new tasks can be started
     pub can_start_task: bool,
     /// Whether a provider rate limit is currently blocking all spawns
@@ -846,6 +848,23 @@ async fn clear_slot_consuming_queues(
         cleared += 1;
     }
     Ok(cleared)
+}
+
+async fn count_slot_consuming_queued_messages(
+    project_filter: Option<&ProjectId>,
+    app_state: &AppState,
+) -> Result<u32, String> {
+    let mut count = 0u32;
+    for key in app_state.message_queue.list_keys() {
+        if !uses_execution_slot(key.context_type) {
+            continue;
+        }
+        if !queue_key_matches_project(&key, project_filter, app_state).await? {
+            continue;
+        }
+        count += app_state.message_queue.get_queued_with_key(&key).len() as u32;
+    }
+    Ok(count)
 }
 
 async fn count_active_ideation_slots(
@@ -1328,6 +1347,9 @@ pub async fn get_execution_status(
         }
     }
 
+    let queued_message_count =
+        count_slot_consuming_queued_messages(effective_project_id.as_ref(), &app_state).await?;
+
     // Runtime GC pass to prune stale rows on every status poll.
     prune_stale_execution_registry_entries(&app_state, &execution_state).await;
 
@@ -1403,6 +1425,7 @@ pub async fn get_execution_status(
         max_concurrent,
         global_max_concurrent: global_max,
         queued_count,
+        queued_message_count,
         can_start_task: !execution_state.is_paused()
             && !execution_state.is_provider_blocked()
             && running_count < max_concurrent
@@ -3469,6 +3492,7 @@ mod tests {
             max_concurrent: 2,
             global_max_concurrent: 20,
             queued_count: 5,
+            queued_message_count: 2,
             can_start_task: false,
             provider_blocked: false,
             provider_blocked_until: None,
@@ -3483,6 +3507,7 @@ mod tests {
         assert!(json.contains("\"max_concurrent\":2"));
         assert!(json.contains("\"global_max_concurrent\":20"));
         assert!(json.contains("\"queued_count\":5"));
+        assert!(json.contains("\"queued_message_count\":2"));
         assert!(json.contains("\"can_start_task\":false"));
     }
 
@@ -3497,6 +3522,7 @@ mod tests {
                 max_concurrent: 2,
                 global_max_concurrent: 20,
                 queued_count: 3,
+                queued_message_count: 1,
                 can_start_task: true,
                 provider_blocked: false,
                 provider_blocked_until: None,
@@ -3968,6 +3994,64 @@ mod tests {
         assert_eq!(queued_count, 2);
         assert!(!execution_state.is_paused());
         assert_eq!(execution_state.running_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_count_slot_consuming_queued_messages_counts_all_pending_messages() {
+        let (_execution_state, app_state) = setup_test_state().await;
+        let project = app_state.project_repo.get_all().await.unwrap().remove(0);
+
+        let review_task = app_state
+            .task_repo
+            .create(Task {
+                internal_status: InternalStatus::Reviewing,
+                ..Task::new(project.id.clone(), "Queued review task".to_string())
+            })
+            .await
+            .unwrap();
+
+        let merge_task = app_state
+            .task_repo
+            .create(Task {
+                internal_status: InternalStatus::Merging,
+                ..Task::new(project.id.clone(), "Queued merge task".to_string())
+            })
+            .await
+            .unwrap();
+
+        let session = app_state
+            .ideation_session_repo
+            .create(IdeationSession::new(project.id.clone()))
+            .await
+            .unwrap();
+
+        app_state.message_queue.queue(
+            ChatContextType::Review,
+            review_task.id.as_str(),
+            "review message one".to_string(),
+        );
+        app_state.message_queue.queue(
+            ChatContextType::Review,
+            review_task.id.as_str(),
+            "review message two".to_string(),
+        );
+        app_state.message_queue.queue(
+            ChatContextType::Merge,
+            merge_task.id.as_str(),
+            "merge message".to_string(),
+        );
+        app_state.message_queue.queue(
+            ChatContextType::Ideation,
+            session.id.as_str(),
+            "ideation message".to_string(),
+        );
+
+        let queued_message_count =
+            count_slot_consuming_queued_messages(Some(&project.id), &app_state)
+                .await
+                .expect("count queued messages");
+
+        assert_eq!(queued_message_count, 4);
     }
 
     #[tokio::test]

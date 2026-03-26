@@ -1010,6 +1010,7 @@ function AppContent() {
                       runningCount={executionStatus.runningCount}
                       maxConcurrent={executionStatus.maxConcurrent}
                       queuedCount={executionStatus.queuedCount}
+                      queuedMessageCount={executionStatus.queuedMessageCount ?? 0}
                       pausedCount={pausedCount}
                       pausedTasks={pausedTasks}
                       mergingCount={mergingCount}
@@ -1044,6 +1045,7 @@ function AppContent() {
                       runningCount={executionStatus.runningCount}
                       maxConcurrent={executionStatus.maxConcurrent}
                       queuedCount={executionStatus.queuedCount}
+                      queuedMessageCount={executionStatus.queuedMessageCount ?? 0}
                       pausedCount={pausedCount}
                       pausedTasks={pausedTasks}
                       mergingCount={mergingCount}
@@ -1083,6 +1085,7 @@ function AppContent() {
                       runningCount={executionStatus.runningCount}
                       maxConcurrent={executionStatus.maxConcurrent}
                       queuedCount={executionStatus.queuedCount}
+                      queuedMessageCount={executionStatus.queuedMessageCount ?? 0}
                       pausedCount={pausedCount}
                       pausedTasks={pausedTasks}
                       mergingCount={mergingCount}

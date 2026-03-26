@@ -40,6 +40,8 @@ interface ExecutionControlBarProps {
   maxConcurrent: number;
   /** Number of queued (planned) tasks */
   queuedCount: number;
+  /** Number of queued agent messages held by pause/capacity barriers */
+  queuedMessageCount?: number;
   /** Number of tasks paused due to provider errors */
   pausedCount?: number;
   /** Tasks paused due to provider errors (for popover) */
@@ -113,6 +115,7 @@ export function ExecutionControlBar({
   runningCount,
   maxConcurrent,
   queuedCount,
+  queuedMessageCount = 0,
   pausedCount = 0,
   pausedTasks = [],
   mergingCount,
@@ -195,7 +198,7 @@ export function ExecutionControlBar({
         {/* Status Section (Left) */}
         <div
           className="flex items-center gap-4"
-          aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued, ${pausedCount} paused, ${mergingCount} merging`}
+          aria-label={`${runningCount} tasks running out of ${maxConcurrent}, ${queuedCount} queued tasks, ${queuedMessageCount} queued messages, ${pausedCount} paused, ${mergingCount} merging`}
         >
           {/* Animated Status Indicator (anchor for all popovers) */}
           <div
@@ -296,6 +299,18 @@ export function ExecutionControlBar({
                       Blocked tasks are NOT counted here.
                     </p>
                   </div>
+                  {queuedMessageCount > 0 && (
+                    <div>
+                      <strong className="block mb-1" style={{ color: "hsl(220 10% 95%)" }}>
+                        Pending Agent Messages
+                      </strong>
+                      <p style={{ color: "hsl(220 10% 75%)" }}>
+                        {queuedMessageCount} prompt{queuedMessageCount === 1 ? "" : "s"} currently held by
+                        pause/capacity barriers. They relaunch automatically on resume or when
+                        capacity opens.
+                      </p>
+                    </div>
+                  )}
                 </div>
               }
             />

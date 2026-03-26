@@ -14,6 +14,7 @@ export const ExecutionStatusResponseSchema = z.object({
   max_concurrent: z.number().int().nonnegative(),
   global_max_concurrent: z.number().int().nonnegative(),
   queued_count: z.number().int().nonnegative(),
+  queued_message_count: z.number().int().nonnegative(),
   can_start_task: z.boolean(),
 });
 

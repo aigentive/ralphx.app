@@ -13,6 +13,7 @@ export interface ExecutionStatusResponse {
   maxConcurrent: number;
   globalMaxConcurrent: number;
   queuedCount: number;
+  queuedMessageCount?: number;
   canStartTask: boolean;
 }
 

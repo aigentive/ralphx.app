@@ -336,7 +336,7 @@ interface UiActions {
   /** Set running count */
   setExecutionRunningCount: (count: number) => void;
   /** Set queued count */
-  setExecutionQueuedCount: (count: number) => void;
+  setExecutionQueuedCount: (count: number, queuedMessageCount?: number) => void;
   /** Set whether to show archived tasks */
   setShowArchived: (show: boolean) => void;
   /** Set whether to show merge tasks */
@@ -430,6 +430,7 @@ export const useUiStore = create<UiState & UiActions>()(
       maxConcurrent: 10,
       globalMaxConcurrent: 20,
       queuedCount: 0,
+      queuedMessageCount: 0,
       canStartTask: true,
     },
     showArchived: false,
@@ -602,9 +603,12 @@ export const useUiStore = create<UiState & UiActions>()(
         state.executionStatus.runningCount = count;
       }),
 
-    setExecutionQueuedCount: (count) =>
+    setExecutionQueuedCount: (count, queuedMessageCount) =>
       set((state) => {
         state.executionStatus.queuedCount = count;
+        if (queuedMessageCount !== undefined) {
+          state.executionStatus.queuedMessageCount = queuedMessageCount;
+        }
       }),
 
     setShowArchived: (show) =>

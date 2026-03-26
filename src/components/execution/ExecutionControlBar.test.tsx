@@ -63,6 +63,21 @@ describe("ExecutionControlBar", () => {
       expect(screen.getByTestId("queued-count")).toHaveTextContent(/(Queued|Q): 5/);
     });
 
+    it("includes queued agent messages in the status region label", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={2}
+          maxConcurrent={10}
+          queuedCount={5}
+          queuedMessageCount={3}
+          isPaused={false}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      expect(screen.getByLabelText(/3 queued messages/)).toBeInTheDocument();
+    });
+
   });
 
   describe("pause button", () => {
