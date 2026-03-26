@@ -78,6 +78,38 @@ describe("ExecutionControlBar", () => {
       expect(screen.getByLabelText(/3 queued messages/)).toBeInTheDocument();
     });
 
+    it("shows an inline queued-message warning badge when pressure exists", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={1}
+          maxConcurrent={10}
+          queuedCount={2}
+          queuedMessageCount={4}
+          isPaused={false}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+
+      expect(screen.getByTestId("queued-message-count")).toHaveTextContent(/Msg[s]?:\s*4/);
+    });
+
+    it("hides the queued-message warning badge when no messages are held", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={1}
+          maxConcurrent={10}
+          queuedCount={2}
+          queuedMessageCount={0}
+          isPaused={false}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+
+      expect(screen.queryByTestId("queued-message-count")).not.toBeInTheDocument();
+    });
+
   });
 
   describe("pause button", () => {

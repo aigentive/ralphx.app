@@ -10,7 +10,7 @@
  * - Narrow (<800px): Counts only "2/3", "5", "1"
  */
 
-import { Pause, Play, Square, Loader2 } from "lucide-react";
+import { AlertTriangle, Pause, Play, Square, Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -164,6 +164,8 @@ export function ExecutionControlBar({
   // Label formatting based on breakpoint
   const runningLabel = breakpoint === "wide" ? "Running: " : breakpoint === "medium" ? "R: " : "";
   const queuedLabel = breakpoint === "wide" ? "Queued: " : breakpoint === "medium" ? "Q: " : "";
+  const queuedMessageLabel =
+    breakpoint === "wide" ? "Msgs: " : breakpoint === "medium" ? "Msg: " : "";
   const pausedLabel = breakpoint === "wide" ? "Paused: " : breakpoint === "medium" ? "P: " : "";
   const mergingLabel = breakpoint === "wide" ? "Merging: " : breakpoint === "medium" ? "M: " : "";
 
@@ -315,6 +317,29 @@ export function ExecutionControlBar({
               }
             />
           </div>
+
+          {queuedMessageCount > 0 && (
+            <>
+              <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
+              <div
+                data-testid="queued-message-count"
+                className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px]"
+                style={{
+                  color: "hsl(35 95% 68%)",
+                  backgroundColor: "hsla(35 95% 55% / 0.14)",
+                  border: "1px solid hsla(35 95% 65% / 0.22)",
+                }}
+                aria-label={`${queuedMessageCount} queued agent messages held by pause or capacity barriers`}
+                title="Queued agent messages held by pause/capacity barriers"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+                <span>
+                  {queuedMessageLabel}
+                  {queuedMessageCount}
+                </span>
+              </div>
+            </>
+          )}
 
           {/* Paused Count (Clickable Popover) - only visible when > 0 */}
           {pausedCount > 0 && (
