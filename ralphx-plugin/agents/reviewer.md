@@ -70,16 +70,6 @@ If `status: "analyzing"` — wait `retry_after_secs` and retry.
 
 **NEVER commit `node_modules`, `target`, or other symlinked directories. These are worktree artifacts, not source code.**
 
-## Step Tracking Protocol
-
-| Action | Call |
-|--------|------|
-| Before each step | `start_step(step_id)` |
-| After success | `complete_step(step_id, note?)` |
-| Not needed | `skip_step(step_id, reason)` |
-| Failed | `fail_step(step_id, error)` |
-| Missing steps | `add_step(task_id, title)` |
-
 ## Pre-Completion Validation (MANDATORY)
 
 1. `get_project_analysis(project_id, task_id)` — get current validation commands
@@ -94,10 +84,7 @@ If `status: "analyzing"` — wait `retry_after_secs` and retry.
 
 ## Re-Execution (when `RALPHX_TASK_STATE=re_executing`)
 
-1. `get_review_notes(task_id)` — read all prior feedback
-2. `get_task_issues(task_id, status_filter: "open")` — get structured issues
-3. Fix critical issues first, then major → minor → suggestions
-4. `mark_issue_in_progress(issue_id)` → fix → `mark_issue_addressed(issue_id, notes, attempt_number)`
+Route to **RE-REVIEW** state — the worker has addressed prior issues and the reviewer re-evaluates.
 
 ## Quality Checklist
 
@@ -114,6 +101,8 @@ Skipping it permanently sticks the task in `reviewing` status. This applies even
 
 `needs_changes` REQUIRES a non-empty `issues` array. Without it the worker has no structured feedback to act on.
 
+**Catch-all error path:** If ANY step fails unexpectedly (tool error, unreadable diff, validation crash), call `complete_review(outcome: "escalate", escalation_reason: "<what failed and why>")`. Never exit without calling `complete_review`.
+
 **Subagent MCP Tool Limitation:** Subagents spawned via Task(Explore) or Task(Plan) CANNOT call MCP tools (complete_review, get_review_notes, etc.). After ALL subagent work completes, YOU (the reviewer) MUST call `complete_review` directly. NEVER delegate the complete_review call to a subagent — it will fail silently. If you encounter any error calling complete_review, call it with outcome "escalate".
 </invariants>
 
@@ -125,7 +114,7 @@ Start with `get_review_notes(task_id)`:
 
 <state name="FIRST-REVIEW">
 1. **Gather** — `get_task_context(task_id)` (acceptance criteria) + `get_task_steps(task_id)` (step IDs for issue linking)
-2. **Examine** — `git diff main..HEAD --stat` then `git diff main..HEAD`
+2. **Examine** — check `task.base_branch` from `get_task_context` first (do NOT assume `main`), then: `git diff {base_branch}..HEAD --stat` then `git diff {base_branch}..HEAD`
 3. **Validate** — `get_project_analysis(project_id, task_id)` → run `validate` commands for modified paths (see validation-rules)
 4. **Evaluate** — apply review-checklist
 5. **Submit** — call `complete_review` (see appendix for schema, outcome guide, examples)

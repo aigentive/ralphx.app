@@ -51,6 +51,8 @@ pub const SHORT_IDEATION_SPECIALIST_UX: &str = "ideation-specialist-ux";
 pub const SHORT_IDEATION_SPECIALIST_CODE_QUALITY: &str = "ideation-specialist-code-quality";
 pub const SHORT_IDEATION_ADVOCATE: &str = "ideation-advocate";
 pub const SHORT_IDEATION_CRITIC: &str = "ideation-critic";
+pub const SHORT_IDEATION_SPECIALIST_PIPELINE_SAFETY: &str = "ideation-specialist-pipeline-safety";
+pub const SHORT_IDEATION_SPECIALIST_STATE_MACHINE: &str = "ideation-specialist-state-machine";
 
 // ── ChatService team agents (team_mode=true → resolve_agent_with_team_mode) ──
 

@@ -171,7 +171,7 @@ After adding a tool, verify MCP server stderr shows:
 
 **Key differences between `ralphx-worker` and `ralphx-coder`:** Worker has `get_sub_steps` and `execution_complete`; coder does not.
 
-**Note:** `edit_plan_artifact` is explicitly included in `orchestrator-ideation`, `ideation-team-lead`, and `plan-verifier`. `orchestrator-ideation-readonly` intentionally does NOT have it. `dependency-suggester` is referenced in `agent-type-map.md` but is NOT defined in `ralphx.yaml`.
+**Note:** `edit_plan_artifact` is explicitly included in `orchestrator-ideation`, `ideation-team-lead`, and `plan-verifier`. `orchestrator-ideation-readonly` intentionally does NOT have it.
 
 ## Example: Adding `get_merge_target` to `ralphx-merger`
 

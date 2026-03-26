@@ -877,7 +877,7 @@ agents:
         # intent specialist needs session message history
         get_session_messages,
       ]
-    preapproved_cli_tools: [Read, Grep, Glob, Bash, "Task(ralphx:plan-critic-layer1)", "Task(ralphx:plan-critic-layer2)", "Task(ralphx:ideation-specialist-ux)", "Task(ralphx:ideation-specialist-code-quality)", "Task(ralphx:ideation-specialist-prompt-quality)", "Task(ralphx:ideation-specialist-intent)"]
+    preapproved_cli_tools: [Read, Grep, Glob, Bash, "Task(ralphx:plan-critic-layer1)", "Task(ralphx:plan-critic-layer2)", "Task(ralphx:ideation-specialist-ux)", "Task(ralphx:ideation-specialist-code-quality)", "Task(ralphx:ideation-specialist-prompt-quality)", "Task(ralphx:ideation-specialist-intent)", "Task(ralphx:ideation-specialist-pipeline-safety)", "Task(ralphx:ideation-specialist-state-machine)"]
 
   # --- Team lead variants (extends base agents) ---
 
@@ -1114,6 +1114,27 @@ agents:
       ]
     preapproved_cli_tools: []
 
+  - name: ideation-specialist-state-machine
+    system_prompt_file: ralphx-plugin/agents/ideation-specialist-state-machine.md
+    model: opus
+    tools: { extends: base_tools }
+    mcp_tools: [
+        # Team artifact tools
+        create_team_artifact,
+        get_team_artifacts,
+        # Plan read tools
+        get_session_plan,
+        get_artifact,
+        list_session_proposals,
+        get_proposal,
+        get_parent_session_context,
+        # Memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+      ]
+    preapproved_cli_tools: []
+
   - name: ideation-advocate
     system_prompt_file: ralphx-plugin/agents/ideation-advocate.md
     model: opus
@@ -1137,6 +1158,27 @@ agents:
 
   - name: ideation-critic
     system_prompt_file: ralphx-plugin/agents/ideation-critic.md
+    model: opus
+    tools: { extends: base_tools }
+    mcp_tools: [
+        # Team artifact tools
+        create_team_artifact,
+        get_team_artifacts,
+        # Plan read tools
+        get_session_plan,
+        get_artifact,
+        list_session_proposals,
+        get_proposal,
+        get_parent_session_context,
+        # Memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+      ]
+    preapproved_cli_tools: []
+
+  - name: ideation-specialist-pipeline-safety
+    system_prompt_file: ralphx-plugin/agents/ideation-specialist-pipeline-safety.md
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [

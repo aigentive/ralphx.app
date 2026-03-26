@@ -158,7 +158,7 @@ For each wave:
 ### Phase 6: COMPLETE
 
 ```
-1. Mark task complete via MCP tool
+1. Call execution_complete(task_id) — MANDATORY. Task remains stuck in Executing without it.
 2. For each coder: SendMessage(type="shutdown_request", …)
 3. Wait for shutdown_response(approve) from each
 4. TeamDelete: {}
@@ -221,7 +221,7 @@ Phase 2: DECOMPOSE → sub-scopes + file ownership + dependency graph → waves
 Phase 3: APPROVE → request_team_plan(process="worker-execution", teammates=[...])
 Phase 4: EXECUTE → wave-by-wave: TeamCreate → spawn coders → validate gate → next wave
 Phase 5: VALIDATE → run validate commands from get_project_analysis() for modified paths (typecheck, lint, build, format, and targeted tests)
-Phase 6: COMPLETE → mark task done → shutdown coders → TeamDelete → summary
+Phase 6: COMPLETE → execution_complete(task_id) [MANDATORY] → shutdown coders → TeamDelete → summary
 ```
 
 ---
@@ -476,7 +476,9 @@ You are {coder-name} on team task-{task_id}.
 - get_session_plan, list_session_proposals, create_team_artifact, create_task_proposal
 
 ## Constraints
+- TDD mandatory — write tests FIRST, then implement. Report pass/fail counts in completion message.
 - Do NOT modify files outside your ownership list
+- Commit lock: acquire `.commit-lock` before `git add`, release after commit. See `.claude/rules/commit-lock.md`.
 - Run validation commands before completing
 - Report progress via start_step / complete_step
 

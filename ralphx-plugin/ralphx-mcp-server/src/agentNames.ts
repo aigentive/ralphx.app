@@ -35,6 +35,10 @@ export const IDEATION_SPECIALIST_CODE_QUALITY = "ideation-specialist-code-qualit
 export const IDEATION_SPECIALIST_PROMPT_QUALITY =
   "ideation-specialist-prompt-quality";
 export const IDEATION_SPECIALIST_INTENT = "ideation-specialist-intent";
+export const IDEATION_SPECIALIST_PIPELINE_SAFETY =
+  "ideation-specialist-pipeline-safety";
+export const IDEATION_SPECIALIST_STATE_MACHINE =
+  "ideation-specialist-state-machine";
 export const IDEATION_CRITIC = "ideation-critic";
 export const IDEATION_ADVOCATE = "ideation-advocate";
 export const WORKER_TEAM_LEAD = "ralphx-worker-team";

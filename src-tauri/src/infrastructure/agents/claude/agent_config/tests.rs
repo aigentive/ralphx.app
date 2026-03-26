@@ -97,6 +97,10 @@ fn test_all_agent_names_are_known() {
         "ideation-specialist-prompt-quality",
         // Intent alignment specialist added in recent commits
         "ideation-specialist-intent",
+        // Pipeline safety specialist added in synthetic-data hardening session
+        "ideation-specialist-pipeline-safety",
+        // State machine safety specialist added in synthetic-data hardening session
+        "ideation-specialist-state-machine",
     ]);
 
     for agent in agent_configs() {
@@ -1288,32 +1292,32 @@ agents:
 // ── Permission mode tests ────────────────────────────────────────
 
 #[test]
-fn test_permission_mode_worker_is_accept_edits() {
+fn test_permission_mode_worker_is_bypass_permissions() {
     let config = get_agent_config("ralphx-worker").expect("ralphx-worker should exist");
     assert_eq!(
         config.permission_mode.as_deref(),
-        Some("acceptEdits"),
-        "ralphx-worker should have acceptEdits permission mode"
+        Some("bypassPermissions"),
+        "ralphx-worker should have bypassPermissions permission mode"
     );
 }
 
 #[test]
-fn test_permission_mode_coder_is_accept_edits() {
+fn test_permission_mode_coder_is_bypass_permissions() {
     let config = get_agent_config("ralphx-coder").expect("ralphx-coder should exist");
     assert_eq!(
         config.permission_mode.as_deref(),
-        Some("acceptEdits"),
-        "ralphx-coder should have acceptEdits permission mode"
+        Some("bypassPermissions"),
+        "ralphx-coder should have bypassPermissions permission mode"
     );
 }
 
 #[test]
-fn test_permission_mode_merger_is_accept_edits() {
+fn test_permission_mode_merger_is_bypass_permissions() {
     let config = get_agent_config("ralphx-merger").expect("ralphx-merger should exist");
     assert_eq!(
         config.permission_mode.as_deref(),
-        Some("acceptEdits"),
-        "ralphx-merger should have acceptEdits permission mode"
+        Some("bypassPermissions"),
+        "ralphx-merger should have bypassPermissions permission mode"
     );
 }
 

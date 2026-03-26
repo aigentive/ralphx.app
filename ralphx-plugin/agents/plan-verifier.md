@@ -12,6 +12,8 @@ tools:
   - "Task(ralphx:ideation-specialist-code-quality)"
   - "Task(ralphx:ideation-specialist-prompt-quality)"
   - "Task(ralphx:ideation-specialist-intent)"
+  - "Task(ralphx:ideation-specialist-pipeline-safety)"
+  - "Task(ralphx:ideation-specialist-state-machine)"
   - "mcp__ralphx__get_session_plan"
   - "mcp__ralphx__get_session_messages"
   - "mcp__ralphx__get_team_artifacts"
@@ -218,6 +220,8 @@ Before dispatching critics, determine which specialists to spawn for this round.
 | ≥1 existing file with MODIFY/UPDATE/CHANGE verb (excluding `.md`/`.txt`/`.rst` docs and `.yaml`/`.yml`/`.json`/`.toml` config, exception: `Cargo.toml` included) | `ideation-specialist-code-quality` | Affected Files section (**pre-round enrichment only** — Step 0.5, not here) |
 | Unconditional — every plan | `ideation-specialist-intent` | N/A (**pre-round enrichment only** — Step 0.5, not here) |
 | `.md` file whose path contains `agents/` or `prompts/` as a path component (not substring match), OR Changes description contains keywords: `agent prompt`, `system prompt`, `frontmatter`, `specialist`. Exclude: `plan-verifier.md`, `plan-critic-*.md`. Includes NEW files (unlike code quality). | `ideation-specialist-prompt-quality` | Affected Files + Architecture sections (per-round parallel dispatch) |
+| Affected Files contains ANY of: `side_effects.rs`, `task_transition_service.rs`, `on_enter_states.rs`, `chat_service_merge.rs`, `chat_service_streaming.rs` (filename match, not full path) | `ideation-specialist-pipeline-safety` | Affected Files section (per-round parallel dispatch) |
+| `task_transition_service.rs` OR `on_enter_states.rs` in Affected Files, OR change description contains: `pipeline stage`, `new state`, `auto-transition`, `state transition`, `on_enter` | `ideation-specialist-state-machine` | Affected Files + Architecture sections (per-round parallel dispatch) |
 | *(future: auth, tokens, encryption, RBAC)* | *(security specialist)* | — |
 | *(future: DB queries, caching, batch processing)* | *(performance specialist)* | — |
 
@@ -234,6 +238,10 @@ Task(subagent_type: "ralphx:plan-critic-layer2", prompt: "SESSION_ID: <parent_se
 Task(subagent_type: "ralphx:ideation-specialist-ux", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nAnalyze the plan from a UI/UX perspective. Read the plan via get_session_plan. Create your TeamResearch artifact using session_id: <parent_session_id> — this is the PARENT IDEATION SESSION ID, not your own session. Title the artifact with prefix 'UX: ' followed by the feature name.")
 [If prompt quality specialist selected]:
 Task(subagent_type: "ralphx:ideation-specialist-prompt-quality", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nAnalyze the plan for prompt engineering quality issues in the agent prompt files it references or creates. Read the plan via get_session_plan(session_id: <parent_session_id>). For each agent prompt file listed in the plan's Affected Files section, read the actual file (if it exists) and evaluate for context engineering anti-patterns: token waste, misscoped information, tool-prompt misalignment, bloated sections, and structural issues. Create your TeamResearch artifact using session_id: <parent_session_id> — this is the PARENT IDEATION SESSION ID, not your own session. Title the artifact with prefix 'PromptQuality: ' followed by a brief description.")
+[If pipeline safety specialist selected]:
+Task(subagent_type: "ralphx:ideation-specialist-pipeline-safety", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nEvaluate the plan for pipeline safety risks. Read the plan via get_session_plan(session_id: <parent_session_id>). Cross-reference proposed changes against the 5 synthetic failure archetypes (merge worktree lifecycle, auto-transition churn, SQLite concurrent access, agent status desync, incomplete event coverage). Read the actual source files listed in Affected Files to verify whether archetype guards are present. Create your TeamResearch artifact using session_id: <parent_session_id> — this is the PARENT IDEATION SESSION ID, not your own session. Title the artifact with prefix 'PipelineSafety: ' followed by a brief description.")
+[If state machine specialist selected]:
+Task(subagent_type: "ralphx:ideation-specialist-state-machine", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nEvaluate the plan for state machine safety risks. Read the plan via get_session_plan(session_id: <parent_session_id>). Check proposed state transitions: verify on_enter handlers exist for all new states, concurrency guards are present, reconciler handling is correct, rollback paths are defined, and single-fire guards are in place for all auto-transitions. Read the actual source files listed in Affected Files to verify whether guards are present. Create your TeamResearch artifact using session_id: <parent_session_id> — this is the PARENT IDEATION SESSION ID, not your own session. Title the artifact with prefix 'StateMachine: ' followed by a brief description.")
 ```
 
 ❌ Do NOT dispatch critics one at a time across multiple responses — that is sequential and wastes time.
@@ -330,6 +338,28 @@ If PromptQuality-prefixed artifact (title starts with `"PromptQuality:"`) was co
 5. ❌ Do NOT add a standalone plan section for prompt quality findings — they are integrated as gaps only.
 
 If no PromptQuality artifact collected: log "Prompt quality specialist returned no artifact — proceeding with critic results only." Do not block plan revision.
+
+**F2c. Pipeline safety specialist:**
+
+If PipelineSafety-prefixed artifact (title starts with `"PipelineSafety:"`) was collected in step B:
+1. Extract all pipeline safety findings from the artifact's Risk Matrix section. Each critical/high finding is treated as a gap-type finding.
+2. Classify each finding by severity (use the specialist's severity ratings).
+3. Append pipeline safety gaps to the **merged gap list** (the same list used for convergence in step G). This ensures they count toward blocking penalty mass and convergence checks.
+4. If critical/high pipeline safety gaps exist, revise the plan's `## Architecture` or `## Proof Obligations` sections to explicitly require the missing guards (e.g., "Must add cleanup on timeout exit path in worktree create", "Must add single-fire guard on auto-transition").
+5. ❌ Do NOT add a standalone `## Pipeline Safety` plan section — integrate findings as gaps and proof obligations only.
+
+If no PipelineSafety artifact collected: log "Pipeline safety specialist returned no artifact — proceeding with critic results only." Do not block plan revision.
+
+**F2d. State machine safety specialist:**
+
+If StateMachine-prefixed artifact (title starts with `"StateMachine:"`) was collected in step B:
+1. Extract all state machine safety findings from the artifact. Each critical/high finding is treated as a gap-type finding.
+2. Classify each finding by severity (use the specialist's severity ratings).
+3. Append state machine safety gaps to the **merged gap list** (the same list used for convergence in step G). This ensures they count toward blocking penalty mass and convergence checks.
+4. If critical/high state machine safety gaps exist, revise the plan's `## Architecture` or `## Proof Obligations` sections to explicitly require the missing guards (e.g., "Must add single-fire guard on auto-transition to Executing", "Must add on_enter handler for new pipeline state", "Must add concurrency guard before state transition").
+5. ❌ Do NOT add a standalone `## State Machine Safety` plan section — integrate findings as gaps and proof obligations only.
+
+If no StateMachine artifact collected: log "State machine safety specialist returned no artifact — proceeding with critic results only." Do not block plan revision.
 
 ### G. Check convergence
 

@@ -142,8 +142,16 @@ Background subagents (`run_in_background: true`) CANNOT use MCP tools — coders
 **Summary:** (1) Multiple Task calls in ONE response = parallel ✅ (2) One Task call per response = sequential ❌ (3) Coders MUST run foreground (MCP constraint) (4) Background = research only
 </reference>
 
-**BLOCKED_BY = STOP (load-bearing rule #5)**: If `get_task_context` returns non-empty `blocked_by`,
+**BLOCKED_BY = STOP (load-bearing rule #2)**: If `get_task_context` returns non-empty `blocked_by`,
 STOP immediately. Do not proceed. Report: "Task is blocked by: [task names]".
+
+**STUCK-LOOP ESCALATION (load-bearing rule #5)**: Never retry indefinitely on the same failure.
+
+| Scenario | Action |
+|----------|--------|
+| Validation (clippy/tests/build) fails 3+ consecutive times on same error | `fail_step(step_id, error)` and STOP — do not keep retrying |
+| Worktree creation fails with 'invalid reference' | `fail_step(step_id, error)` — do NOT retry git infrastructure errors |
+| Blocked by DB/MCP infrastructure error | Retry ONCE after 30s, then `fail_step(step_id, error)` if still blocked |
 </invariants>
 
 <entry-dispatch>
@@ -153,7 +161,7 @@ Check `RALPHX_TASK_STATE` environment variable:
 </entry-dispatch>
 
 <state name="RE-EXECUTE">
-**MANDATORY before writing any code** (load-bearing rule #8):
+**MANDATORY before writing any code** (load-bearing rule #3):
 
 1. `get_task_context(task_id)` — understand the task
 2. `get_review_notes(task_id)` — read ALL prior feedback
@@ -211,7 +219,7 @@ For each wave, emit ALL coder Task calls in ONE response (parallel dispatch):
 5. Run wave gate validation before starting next wave: always run typecheck + lint; for tests, identify and run only affected test files/modules (same approach as VALIDATE step 2). Fall back to full test suite only if no targeted tests identified.
 6. `complete_step(step_id)` after all sub-steps complete
 
-**NO `run_in_background`** (load-bearing rule #4) — coders need MCP tools; background breaks them.
+**NO `run_in_background`** (load-bearing rule #4) — coders need MCP tools; background breaks them. See stuck-loop rule #5 if validation keeps failing.
 </phase>
 
 <phase name="VALIDATE">
@@ -227,7 +235,6 @@ Before marking work complete:
 4. Validation fails on YOUR changes → fix before completing
 5. Validation fails on pre-existing code → note but do not block
 
-> **Pre-L1 transition:** For tasks created before L1 deployment (no test identification instructions), workers attempt targeted identification anyway when code changes span ≤5 files; otherwise fall back to running all validate commands including tests.
 </phase>
 
 <phase name="COMPLETE">

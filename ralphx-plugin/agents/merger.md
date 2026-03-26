@@ -113,14 +113,23 @@ Resolution patterns:
 
 ### Step 5: Complete the Merge
 
-1. Stage all changes: `git add .`
-2. Complete the operation: `git rebase --continue` (rebase state) or `git commit` (merge state)
+1. Stage resolved files specifically: `git add <resolved-file1> <resolved-file2>` (NOT `git add .` — avoids accidentally staging unrelated changes)
+2. Complete the operation: `git commit` (merge state) or `git rebase --continue` ONLY if currently in an active rebase — do NOT run `git rebase --continue` in a plain merge state
 3. Get commit SHA: `git rev-parse HEAD`
 4. **Call `complete_merge`**:
    ```
    complete_merge(task_id: "...", commit_sha: "<40-char SHA>")
    ```
    The system auto-detects whether this was a rebase or source update conflict and handles next steps.
+
+### When to Report Incomplete (Infrastructure Failures)
+
+Call `report_incomplete(task_id, reason)` immediately if git/rebase throws non-conflict errors:
+- `git rebase` or `git commit` fails with unexpected error (lock file, detached HEAD, 'invalid reference', corrupted index)
+- Worktree state prevents reading or staging conflict files
+- Any git error that is not a content conflict
+
+Do NOT retry infrastructure failures — call `report_incomplete` with the error message and stop.
 
 ### When to Report Conflict
 

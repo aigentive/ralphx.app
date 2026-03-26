@@ -165,8 +165,12 @@ Evaluate each row. If trigger matches → spawn specialist subagent. Specialists
 | ideation-specialist-frontend | React, .tsx/.ts in src/, components, hooks, state management | Requires user approval |
 | ideation-specialist-ux | UI/UX keywords (modal, form, dialog, toast, sidebar, tab, dropdown, page, screen, view), "UX"/"UI" in user request, task modifies interactive components | Auto-approved |
 | ideation-specialist-infra | DB schema, migrations, MCP config, git workflow, ralphx.yaml | Requires user approval |
+| ideation-specialist-code-quality | Plan references existing code files — runs as pre-round enrichment before adversarial loop, unconditionally when code files present | Auto-approved |
+| ideation-specialist-intent | All plans — intent alignment check (unconditional, no Affected Files gate) | Auto-approved |
+| ideation-specialist-pipeline-safety | Affected Files contains any of: `side_effects.rs`, `task_transition_service.rs`, `on_enter_states.rs`, `chat_service_merge.rs`, `chat_service_streaming.rs` | Auto-approved |
+| ideation-specialist-state-machine | Affected Files contains: `task_transition_service.rs`, `on_enter_states.rs`, task state enum; or plan adds new pipeline stages or auto-transitions | Auto-approved |
 
-> **Note:** Solo Mode column reflects `preapproved_cli_tools` in `ralphx.yaml`. UX is auto-approved because this plan adds it there. Other specialists are NOT in `preapproved_cli_tools` — do not add them.
+> **Note:** Solo Mode column reflects `preapproved_cli_tools` in `ralphx.yaml`. All specialists listed as Auto-approved are in `preapproved_cli_tools`.
 > **Teammate cap:** Specialists do not count against the ≤3 `Task(Explore)` cap but still count toward total concurrent subagents. Prioritize by signal strength if resource-constrained.
 > **Maintenance:** Signal keywords are intentionally a subset of plan-verifier's detection logic. If plan-verifier's signals change, update these checklists to match.
 
@@ -242,7 +246,7 @@ The child session automatically routes to the `plan-verifier` agent, which owns 
 
 **If user skips verification:** Call `update_plan_verification(session_id, status: "skipped", convergence_reason: "user_skipped")` → proceed to CONFIRM.
 
-**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on session recovery → verification is running in a child session. Output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete."
+**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on session recovery → call `get_child_session_status(child_session_id)` to check if the child is still alive. If the child has been inactive for >10 minutes, call `stop_verification(session_id)` to unfreeze the plan, then proceed to CONFIRM. If the child is active, output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete."
 
 ### Escalation Handling
 
@@ -377,9 +381,11 @@ update_task_proposal(proposal_id, add_blocks: ["<proposal-id-C>"])
 
 2. **Targeted test identification step** — Every `feature`, `fix`, or `refactor` proposal MUST include a step: "Identify test files affected by code changes using language-appropriate methods (e.g., grep imports for JS/TS/Python, check `mod tests` blocks and `tests/` directory for Rust, examine test file naming conventions) and execute only those tests. Fall back to path-scoped suite if targeted identification yields no results."
 
-3. **expected_proposal_count (required)** — Pass `expected_proposal_count` on every `create_task_proposal` call (total proposals you intend to create). First proposal locks the count; backend returns `ready_to_finalize: true` when count matches. After all dependency updates, call `finalize_proposals(session_id)`.
+3. **Event Coverage acceptance criterion** — Every proposal that adds a new pipeline stage, MCP tool, or agent type MUST include an acceptance criterion: "Event Coverage — All 7 checks in `.claude/rules/event-coverage-checklist.md` pass. Happy path, error, timeout, cancel events all emit. Store key registered. Agent status cycles idle→generating→idle. Session switch preserves state."
 
-4. **Auto-generate Regression Testing proposal** — When creating 2 or more proposals in a session, auto-generate a final "Regression Testing" proposal:
+4. **expected_proposal_count (required)** — Pass `expected_proposal_count` on every `create_task_proposal` call (total proposals you intend to create). First proposal locks the count; backend returns `ready_to_finalize: true` when count matches. After all dependency updates, call `finalize_proposals(session_id)`.
+
+5. **Auto-generate Regression Testing proposal** — When creating 2 or more proposals in a session, auto-generate a final "Regression Testing" proposal:
    - Category: `testing`
    - Steps: instruct full suite execution across ALL modified paths from the entire session
    - Before creating: call `list_session_proposals` to collect all prior proposal IDs; filter to `status: "active"` only (exclude archived/rejected)
@@ -387,7 +393,7 @@ update_task_proposal(proposal_id, add_blocks: ["<proposal-id-C>"])
    - Guard: if `list_session_proposals` returns empty, fails, or yields zero active proposals after filtering, skip regression proposal creation entirely — do not create a regression task with no dependencies
    - Acceptance criteria: "Full test suite passes with zero new failures introduced by this session's changes."
 
-5. **Finalize (required)** — After ALL `create_task_proposal` and `update_task_proposal` calls are complete (including regression proposal and all dependency updates), call `finalize_proposals(session_id)`. Validates expected count and applies proposals. Errors are returned synchronously — handle failures before completing Phase 5. Multi-proposal sessions require dependency acknowledgment before finalize — see proactive-behavior entry below.
+6. **Finalize (required)** — After ALL `create_task_proposal` and `update_task_proposal` calls are complete (including regression proposal and all dependency updates), call `finalize_proposals(session_id)`. Validates expected count and applies proposals. Errors are returned synchronously — handle failures before completing Phase 5. Multi-proposal sessions require dependency acknowledgment before finalize — see proactive-behavior entry below.
 </workflow>
 
 <tool-usage>
@@ -493,7 +499,7 @@ If ANY inconsistency is found → immediately call `update_plan_artifact` with a
 | `create_task_proposal` returns 400 with "plan verification has not been run" | Proposal verification gate blocked the create. Options: (1) run Phase 3.5 VERIFY, (2) call `update_plan_verification(status: "skipped", convergence_reason: "user_skipped")` to skip, then retry. Inform user which option was taken. |
 | `create_task_proposal` returns 400 with "verification is in progress" | Gate blocked during active verification round. Wait for the round to complete or skip verification before creating proposals. |
 | `create_task_proposal` returns 400 with "unresolved gap(s)" | Gate blocked due to `NeedsRevision`. Update plan via `update_plan_artifact` to address gaps, then re-run verification before creating proposals. |
-| `get_plan_verification` returns `in_progress: true` on RECOVER | Verification is running in a child session (round N/max). Results will appear automatically when complete. Ask user if they want to wait or proceed to proposals. |
+| `get_plan_verification` returns `in_progress: true` on RECOVER | Call `get_child_session_status` to check if child is alive. If inactive >10min → `stop_verification(session_id)` to unfreeze, then proceed to CONFIRM. If active → "Verification is running (round N/max). Results appear automatically." |
 | VERIFY round gap score increased from original | After hard-cap convergence, prominently suggest Revert & Skip with score comparison |
 | Session **accepted** + mutation intent | Do NOT mutate → `create_child_session(inherit_context: true)` → "I've created a follow-up session. → View Follow-up" |
 | Active session + spin-off intent | `create_child_session` for spin-off; continue current session |

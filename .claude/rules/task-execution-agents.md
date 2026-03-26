@@ -131,7 +131,6 @@ paths:
 |-------|-------|------|
 | `orchestrator-ideation` | opus | Facilitates ideation sessions, creates task proposals + plans |
 | `session-namer` | haiku | Generates 2-word session titles |
-| `dependency-suggester` | haiku | Auto-applies dependency suggestions between proposals |
 | `chat-task` | sonnet | Task-specific Q&A |
 | `chat-project` | sonnet | Project-level questions |
 | `ralphx-review-chat` | sonnet | Discuss review findings (when status = `review_passed`) |

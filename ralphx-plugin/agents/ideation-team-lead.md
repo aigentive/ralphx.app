@@ -231,6 +231,10 @@ Evaluate each row. If trigger matches → include specialist in research team.
 | ideation-specialist-frontend | React, .tsx/.ts in src/, components, hooks, state management |
 | ideation-specialist-ux | UI/UX keywords (modal, form, dialog, toast, sidebar, tab, dropdown, page, screen, view), "UX"/"UI" in user request, task modifies interactive components |
 | ideation-specialist-infra | DB schema, migrations, MCP config, git workflow, ralphx.yaml |
+| ideation-specialist-code-quality | Plan references existing code files — runs as pre-round enrichment before adversarial loop, unconditionally when code files present |
+| ideation-specialist-intent | All plans — intent alignment check (unconditional, no Affected Files gate) |
+| ideation-specialist-pipeline-safety | Affected Files contains any of: `side_effects.rs`, `task_transition_service.rs`, `on_enter_states.rs`, `chat_service_merge.rs`, `chat_service_streaming.rs` |
+| ideation-specialist-state-machine | Affected Files contains: `task_transition_service.rs`, `on_enter_states.rs`, task state enum; or plan adds new pipeline stages or auto-transitions |
 
 > **Note:** In team mode, all specialist spawns go through `request_team_plan` approval. The Solo Mode column in orchestrator-ideation's version reflects `preapproved_cli_tools` and is not relevant here.
 > **Teammate cap:** Specialists do not count against the ≤3 `Task(Explore)` cap but still count toward total concurrent subagents. Prioritize by signal strength if resource-constrained.
@@ -352,7 +356,7 @@ The child session automatically routes to the `plan-verifier` agent, which owns 
 
 **If user skips verification:** Call `update_plan_verification(session_id, status: "skipped", convergence_reason: "user_skipped")` → proceed to CONFIRM.
 
-**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on RECOVER → verification is running in a child session. Output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete."
+**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on RECOVER → call `get_child_session_status(child_session_id)` to check if the child is still alive. If the child has been inactive for >10 minutes, call `stop_verification(session_id)` to unfreeze the plan, then proceed to CONFIRM. If the child is active, output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete."
 
 ### Cross-Project Plan Detection
 
@@ -429,7 +433,9 @@ Create task proposals linked to plan. Set dependencies **inline** — no backgro
 
 2. Every `feature`/`fix`/`refactor` proposal MUST include a step: "Identify test files affected by code changes using language-appropriate methods (e.g., grep imports for JS/TS/Python, check `mod tests` blocks and `tests/` directory for Rust, examine test file naming conventions) and execute only those tests. Fall back to path-scoped suite if targeted identification yields no results."
 
-3. When creating 2+ proposals in a session, auto-generate a final "Regression Testing" proposal:
+3. Every proposal that adds a new pipeline stage, MCP tool, or agent type MUST include an acceptance criterion: "Event Coverage — All 7 checks in `.claude/rules/event-coverage-checklist.md` pass. Happy path, error, timeout, cancel events all emit. Store key registered. Agent status cycles idle→generating→idle. Session switch preserves state."
+
+4. When creating 2+ proposals in a session, auto-generate a final "Regression Testing" proposal:
    - Category: `testing`
    - Steps: instruct full suite execution across ALL modified paths from the entire session
    - Before creating: call `list_session_proposals` to collect all prior proposal IDs, filter to `status: "active"` only (exclude archived/rejected)
@@ -437,9 +443,9 @@ Create task proposals linked to plan. Set dependencies **inline** — no backgro
    - Guard: if `list_session_proposals` returns empty, fails, or yields zero active proposals after filtering, skip regression proposal creation
    - Acceptance criteria: "Full test suite passes with zero new failures introduced by this session's changes."
 
-4. **expected_proposal_count (required)** — Pass `expected_proposal_count` on every `create_task_proposal` call (total proposals you intend to create). First proposal locks the count; backend returns `ready_to_finalize: true` when count matches.
+5. **expected_proposal_count (required)** — Pass `expected_proposal_count` on every `create_task_proposal` call (total proposals you intend to create). First proposal locks the count; backend returns `ready_to_finalize: true` when count matches.
 
-5. **Finalize (required)** — After ALL `create_task_proposal` and `update_task_proposal` calls are complete (including regression proposal and all dependency updates), call `finalize_proposals(session_id)`. Validates expected count and applies proposals. Errors are returned synchronously — handle failures before completing Phase 6. Multi-proposal sessions require dependency acknowledgment before finalize — see proactive-behavior entry below.
+6. **Finalize (required)** — After ALL `create_task_proposal` and `update_task_proposal` calls are complete (including regression proposal and all dependency updates), call `finalize_proposals(session_id)`. Validates expected count and applies proposals. Errors are returned synchronously — handle failures before completing Phase 6. Multi-proposal sessions require dependency acknowledgment before finalize — see proactive-behavior entry below.
 
 **When creating a proposal** — use `depends_on` to set immediate dependencies at creation time:
 ```
