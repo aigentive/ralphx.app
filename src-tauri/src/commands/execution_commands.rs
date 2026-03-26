@@ -5189,6 +5189,159 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_resume_mixed_load_relaunches_execution_then_ideation_while_blocked_project_stays_queued() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+
+        let blocked_project = Project::new("A Blocked".to_string(), "/test/a-blocked".to_string());
+        let execution_project =
+            Project::new("B Execution".to_string(), "/test/b-execution".to_string());
+        let ideation_project =
+            Project::new("C Ideation".to_string(), "/test/c-ideation".to_string());
+        app_state
+            .project_repo
+            .create(blocked_project.clone())
+            .await
+            .unwrap();
+        app_state
+            .project_repo
+            .create(execution_project.clone())
+            .await
+            .unwrap();
+        app_state
+            .project_repo
+            .create(ideation_project.clone())
+            .await
+            .unwrap();
+
+        app_state
+            .execution_settings_repo
+            .update_settings(
+                Some(&blocked_project.id),
+                &ExecutionSettings {
+                    max_concurrent_tasks: 1,
+                    project_ideation_max: 1,
+                    auto_commit: true,
+                    pause_on_failure: true,
+                },
+            )
+            .await
+            .unwrap();
+
+        execution_state.set_global_max_concurrent(3);
+        execution_state.set_global_ideation_max(2);
+
+        let occupied = app_state
+            .task_repo
+            .create(Task {
+                internal_status: InternalStatus::Executing,
+                ..Task::new(blocked_project.id.clone(), "Blocked project occupied".to_string())
+            })
+            .await
+            .unwrap();
+        let execution_task = app_state
+            .task_repo
+            .create(Task {
+                internal_status: InternalStatus::Reviewing,
+                ..Task::new(
+                    execution_project.id.clone(),
+                    "Execution project review".to_string(),
+                )
+            })
+            .await
+            .unwrap();
+        let blocked_ideation = app_state
+            .ideation_session_repo
+            .create(IdeationSession::new(blocked_project.id.clone()))
+            .await
+            .unwrap();
+        let runnable_ideation = app_state
+            .ideation_session_repo
+            .create(IdeationSession::new(ideation_project.id.clone()))
+            .await
+            .unwrap();
+
+        app_state.message_queue.queue(
+            ChatContextType::Review,
+            execution_task.id.as_str(),
+            "execution project queued review".to_string(),
+        );
+        app_state.message_queue.queue(
+            ChatContextType::Ideation,
+            blocked_ideation.id.as_str(),
+            "blocked project queued ideation".to_string(),
+        );
+        app_state.message_queue.queue(
+            ChatContextType::Ideation,
+            runnable_ideation.id.as_str(),
+            "runnable project queued ideation".to_string(),
+        );
+
+        app_state
+            .running_agent_registry
+            .register(
+                RunningAgentKey::new("task_execution", occupied.id.as_str()),
+                51515,
+                "occupied-conv".to_string(),
+                "occupied-run".to_string(),
+                None,
+                None,
+            )
+            .await;
+        execution_state.set_running_count(1);
+
+        let slot_mock = Arc::new(MockChatService::new());
+        let slot_resumed = resume_paused_slot_consuming_queues_with_chat_service(
+            None,
+            &app_state,
+            &execution_state,
+            || Arc::clone(&slot_mock) as Arc<dyn ChatService>,
+        )
+        .await
+        .expect("resume execution-side queue under mixed load");
+
+        assert_eq!(slot_resumed, 1);
+        assert_eq!(
+            slot_mock.get_sent_messages().await,
+            vec!["execution project queued review".to_string()]
+        );
+
+        execution_state.set_running_count(2);
+
+        let ideation_mock = Arc::new(MockChatService::new());
+        let ideation_resumed = resume_paused_ideation_queues_with_chat_service(
+            None,
+            &app_state,
+            &execution_state,
+            |_| Arc::clone(&ideation_mock) as Arc<dyn ChatService>,
+        )
+        .await
+        .expect("resume ideation queue under mixed load");
+
+        assert_eq!(ideation_resumed, 1);
+        assert_eq!(
+            ideation_mock.get_sent_messages().await,
+            vec!["runnable project queued ideation".to_string()]
+        );
+        assert_eq!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Ideation, blocked_ideation.id.as_str())
+                .len(),
+            1,
+            "blocked project's ideation queue must remain pending"
+        );
+        assert_eq!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Ideation, runnable_ideation.id.as_str())
+                .len(),
+            0,
+            "runnable ideation project should consume the remaining global slot"
+        );
+    }
+
+    #[tokio::test]
     async fn test_project_has_execution_capacity_for_state_ignores_other_projects() {
         let app_state = AppState::new_test();
         let execution_state = Arc::new(ExecutionState::new());
