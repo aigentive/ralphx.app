@@ -1,7 +1,8 @@
 use ralphx_lib::application::chat_service::{ChatService, ClaudeChatService, SendMessageOptions};
 use ralphx_lib::application::AppState;
 use ralphx_lib::commands::ExecutionState;
-use ralphx_lib::domain::entities::{ChatContextType, InternalStatus, Project, Task};
+use ralphx_lib::domain::entities::ideation::IdeationSessionBuilder;
+use ralphx_lib::domain::entities::{ChatContextType, InternalStatus, Project, ProjectId, Task};
 use ralphx_lib::domain::execution::ExecutionSettings;
 use ralphx_lib::domain::services::RunningAgentKey;
 use ralphx_lib::http_server::types::HttpServerState;
@@ -55,13 +56,20 @@ async fn create_task(state: &HttpServerState, status: InternalStatus) -> String 
 
 async fn create_task_in_project(
     state: &HttpServerState,
-    project_id: ralphx_lib::domain::entities::ProjectId,
+    project_id: ProjectId,
     status: InternalStatus,
 ) -> String {
     let mut task = Task::new(project_id, "Pause Flow Task".to_string());
     task.internal_status = status;
     let task = state.app_state.task_repo.create(task).await.unwrap();
     task.id.as_str().to_string()
+}
+
+async fn create_ideation_session_in_project(state: &HttpServerState, project_id: ProjectId) -> String {
+    let session = IdeationSessionBuilder::new().project_id(project_id).build();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+    session_id
 }
 
 #[tokio::test]
@@ -214,5 +222,121 @@ async fn test_task_execution_send_blocks_when_project_total_cap_is_reached() {
     assert!(
         !state.app_state.running_agent_registry.is_running(&blocked_key).await,
         "failed admission must not leave a registered running-agent slot behind"
+    );
+}
+
+#[tokio::test]
+async fn test_review_send_blocks_when_same_project_ideation_consumes_only_slot() {
+    let state = setup_test_state().await;
+
+    let project = Project::new(
+        "Review Mixed Load".to_string(),
+        "/tmp/review-mixed-load".to_string(),
+    );
+    state.app_state.project_repo.create(project.clone()).await.unwrap();
+    state
+        .app_state
+        .execution_settings_repo
+        .update_settings(
+            Some(&project.id),
+            &ExecutionSettings {
+                max_concurrent_tasks: 1,
+                project_ideation_max: 1,
+                auto_commit: true,
+                pause_on_failure: true,
+            },
+        )
+        .await
+        .unwrap();
+
+    let review_task_id = create_task_in_project(&state, project.id.clone(), InternalStatus::Reviewing).await;
+    let ideation_session_id = create_ideation_session_in_project(&state, project.id.clone()).await;
+
+    state.execution_state.set_global_max_concurrent(5);
+    state.execution_state.set_global_ideation_max(5);
+    state
+        .app_state
+        .running_agent_registry
+        .register(
+            RunningAgentKey::new("ideation", &ideation_session_id),
+            81818,
+            "review-mixed-conv".to_string(),
+            "review-mixed-run".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let result = build_chat_service(&state)
+        .send_message(
+            ChatContextType::Review,
+            &review_task_id,
+            "Attempt review spawn while ideation holds only slot",
+            SendMessageOptions::default(),
+        )
+        .await;
+
+    let err = result.expect_err("same-project ideation occupancy must block review spawn");
+    assert!(
+        matches!(err, ralphx_lib::application::chat_service::ChatServiceError::SpawnFailed(ref msg) if msg.contains("project execution capacity reached")),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn test_merge_send_blocks_when_same_project_ideation_consumes_only_slot() {
+    let state = setup_test_state().await;
+
+    let project = Project::new(
+        "Merge Mixed Load".to_string(),
+        "/tmp/merge-mixed-load".to_string(),
+    );
+    state.app_state.project_repo.create(project.clone()).await.unwrap();
+    state
+        .app_state
+        .execution_settings_repo
+        .update_settings(
+            Some(&project.id),
+            &ExecutionSettings {
+                max_concurrent_tasks: 1,
+                project_ideation_max: 1,
+                auto_commit: true,
+                pause_on_failure: true,
+            },
+        )
+        .await
+        .unwrap();
+
+    let merge_task_id = create_task_in_project(&state, project.id.clone(), InternalStatus::Merging).await;
+    let ideation_session_id = create_ideation_session_in_project(&state, project.id.clone()).await;
+
+    state.execution_state.set_global_max_concurrent(5);
+    state.execution_state.set_global_ideation_max(5);
+    state
+        .app_state
+        .running_agent_registry
+        .register(
+            RunningAgentKey::new("ideation", &ideation_session_id),
+            91919,
+            "merge-mixed-conv".to_string(),
+            "merge-mixed-run".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let result = build_chat_service(&state)
+        .send_message(
+            ChatContextType::Merge,
+            &merge_task_id,
+            "Attempt merge spawn while ideation holds only slot",
+            SendMessageOptions::default(),
+        )
+        .await;
+
+    let err = result.expect_err("same-project ideation occupancy must block merge spawn");
+    assert!(
+        matches!(err, ralphx_lib::application::chat_service::ChatServiceError::SpawnFailed(ref msg) if msg.contains("project execution capacity reached")),
+        "unexpected error: {err}"
     );
 }
