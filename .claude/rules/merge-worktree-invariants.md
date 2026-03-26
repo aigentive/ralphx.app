@@ -2,7 +2,7 @@
 
 # Merge Worktree Invariants
 
-**Archetype addressed:** #1 (Merge worktree lifecycle — 164 commits, 19,350 log errors)
+**Archetype addressed:** #1 (Merge worktree lifecycle)
 
 Every change that touches merge worktree creation, cleanup, or lifecycle management MUST satisfy all invariants below.
 
@@ -17,7 +17,7 @@ Every change that touches merge worktree creation, cleanup, or lifecycle managem
 | 5 | Single owner | Only one process may own a worktree at a time — check lock before touching | yes / no |
 | 6 | Reconciler safe | Reconciler must not race with active merge — check phase before acting | yes / no |
 
-**All 6 must be yes before merging.** Any missed exit path = potential 19k+ log error storm.
+All 6 must be yes before merging. Any missed exit path is a serious regression risk in a historically fragile area.
 
 ## When This Applies
 
@@ -34,7 +34,7 @@ Every change that touches merge worktree creation, cleanup, or lifecycle managem
 
 | Symptom | Root Cause | Invariant |
 |---------|------------|-----------|
-| "phantom branch" loop (19,350 errors) | Retry on invalid git ref | #3 — No retry on phantom |
+| "phantom branch" loop | Retry on invalid git ref | #3 — No retry on phantom |
 | Leaked worktree directories | Missing cleanup on error path | #2 — Worktree cleanup |
 | Race condition on reconcile | Reconciler acting on active merge | #6 — Reconciler safe |
 | Concurrent worktree corruption | Two processes writing same worktree | #5 — Single owner |

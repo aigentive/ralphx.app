@@ -2,9 +2,9 @@
 
 # Event Coverage Checklist
 
-**Archetype addressed:** #5 (Incomplete event coverage — 5 same-day finalize_proposals fixes)
+**Archetype addressed:** #5 (Incomplete event coverage)
 
-Every feature or fix that adds a new pipeline stage, MCP tool, or agent type MUST pass all checks below before the proposal is accepted.
+Every feature or fix that adds a new pipeline stage, MCP tool, agent type, or event-bearing context MUST review the checks below before the proposal is accepted.
 
 ## NON-NEGOTIABLE Checklist
 
@@ -18,7 +18,7 @@ Every feature or fix that adds a new pipeline stage, MCP tool, or agent type MUS
 | 6 | Agent status cycle | Does the agent status cycle through idle→generating→idle? | yes / no |
 | 7 | Session switch | Does switching away and back preserve correct state? | yes / no |
 
-**All 7 must be yes before merging.** Partial coverage = incomplete feature.
+Core rule: all checks relevant to the affected context must pass before merge. Do not force irrelevant UI/session checks onto pure backend or non-switchable contexts.
 
 ## When This Applies
 
@@ -32,8 +32,16 @@ Every feature or fix that adds a new pipeline stage, MCP tool, or agent type MUS
 | Pure Rust backend (no UI events) | skip |
 | Documentation-only changes | skip |
 
+## How To Apply
+
+| Check | Apply when |
+|-------|------------|
+| Happy path event / Error path event / Timeout event / Cancel event | The feature has those exit paths |
+| Store key / Agent status cycle | A UI-visible agent or context state is introduced or changed |
+| Session switch | The UI can navigate away and return to the affected stateful view |
+
 ## How to Reference in Proposals
 
-Every proposal that adds a pipeline stage, MCP tool, or agent type MUST include an acceptance criterion:
+Every proposal that adds a pipeline stage, MCP tool, or agent type MUST include an acceptance criterion that names the relevant checks:
 
-> **Event Coverage** — All 7 checks in `.claude/rules/event-coverage-checklist.md` pass. Happy path, error, timeout, cancel events all emit. Store key registered. Agent status cycles idle→generating→idle. Session switch preserves state.
+> **Event Coverage** — Relevant checks in `.claude/rules/event-coverage-checklist.md` pass for this context. Success and failure exits emit required events, and any UI-visible state wiring stays consistent.

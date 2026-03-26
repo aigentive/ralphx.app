@@ -433,7 +433,7 @@ Create task proposals linked to plan. Set dependencies **inline** — no backgro
 
 2. Every `feature`/`fix`/`refactor` proposal MUST include a step: "Identify test files affected by code changes using language-appropriate methods (e.g., grep imports for JS/TS/Python, check `mod tests` blocks and `tests/` directory for Rust, examine test file naming conventions) and execute only those tests. Fall back to path-scoped suite if targeted identification yields no results."
 
-3. Every proposal that adds a new pipeline stage, MCP tool, or agent type MUST include an acceptance criterion: "Event Coverage — All 7 checks in `.claude/rules/event-coverage-checklist.md` pass. Happy path, error, timeout, cancel events all emit. Store key registered. Agent status cycles idle→generating→idle. Session switch preserves state."
+3. Every proposal that adds a new pipeline stage, MCP tool, or agent type MUST include an acceptance criterion: "Event Coverage — Relevant checks in `.claude/rules/event-coverage-checklist.md` pass for this context. Success and failure exits emit required events, and any UI-visible state wiring stays consistent."
 
 4. When creating 2+ proposals in a session, auto-generate a final "Regression Testing" proposal:
    - Category: `testing`

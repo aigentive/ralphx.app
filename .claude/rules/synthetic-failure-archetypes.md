@@ -2,12 +2,12 @@
 
 # Synthetic Failure Archetype Reference
 
-> Derived from synthetic data analysis: 4,052 commits (22.5% fix rate), 228k log lines, 33 agent specs, 23 rule files.
+> Heuristic reference derived from prior RalphX incidents, regressions, and hardening work.
 > Use this file to cross-check proposed changes against known recurring failure patterns BEFORE implementation begins.
 
 ## Purpose
 
-Evaluation specialists and plan critics MUST check proposed changes against these 5 archetypes during ideation verification. Each archetype includes trigger conditions, affected files, quantified evidence, and a cross-reference to the applicable guard checklist.
+Evaluation specialists and plan critics MUST check proposed changes against these 5 archetypes during ideation verification. Treat the archetypes as guardrail heuristics grounded in prior failures in this repo, not as a substitute for reading the actual code or incident logs.
 
 ---
 
@@ -17,8 +17,8 @@ Evaluation specialists and plan critics MUST check proposed changes against thes
 |-------|--------|
 | **Trigger** | New merge path leaves worktree state inconsistent (create without matching cleanup, phantom branch reference, concurrent access) |
 | **Affected Files** | `src-tauri/src/side_effects.rs`, `src-tauri/src/chat_service/chat_service_merge.rs` |
-| **Evidence** | 164 fix commits, 19,350 phantom branch errors logged |
-| **Still Active?** | Yes — highest-volume archetype in dataset |
+| **Evidence** | Repeated merge/worktree regressions and cleanup failures across prior hardening work |
+| **Still Active?** | Yes — historically one of the highest-risk lifecycle areas |
 | **Check** | Does this change add or modify a worktree creation/deletion path? → `.claude/rules/merge-worktree-invariants.md` |
 
 **Key failure modes:**
@@ -34,8 +34,8 @@ Evaluation specialists and plan critics MUST check proposed changes against thes
 |-------|--------|
 | **Trigger** | Auto-transition fires while agent is still live, OR fires repeatedly on app restart |
 | **Affected Files** | `src-tauri/src/task_transition_service.rs`, `src-tauri/src/on_enter_states.rs` |
-| **Evidence** | 30 fix commits, still active as of 2026-03-24 |
-| **Still Active?** | Yes — most recent archetype in dataset |
+| **Evidence** | Repeated transition-loop and restart-replay regressions in prior fixes |
+| **Still Active?** | Yes — still an active failure class |
 | **Check** | Does this change modify state transitions or add new pipeline stages? → Verify single-fire guard exists on every auto-transition |
 
 **Key failure modes:**
@@ -51,7 +51,7 @@ Evaluation specialists and plan critics MUST check proposed changes against thes
 |-------|--------|
 | **Trigger** | New async fn accesses SQLite without db.run wrapper |
 | **Affected Files** | Any new async fn touching the database layer |
-| **Evidence** | 45 DB-theme fix commits, 60-second lock starvation observed |
+| **Evidence** | Repeated DB lock/starvation fixes and async access regressions |
 | **Still Active?** | Periodic — flares up when new DB access code is added |
 | **Check** | Does this add async DB access? → DbConnection rule in CLAUDE.md (Rule #16) |
 
@@ -68,7 +68,7 @@ Evaluation specialists and plan critics MUST check proposed changes against thes
 |-------|--------|
 | **Trigger** | New session or agent type added without wiring UI store key, event handlers, or status transitions |
 | **Affected Files** | `src/components/IntegratedChatPanel.tsx`, `src/hooks/useAgentEvents.ts`, `src-tauri/src/commands/execution_commands.rs` |
-| **Evidence** | 49 UI fix commits, 10 silent exit events observed |
+| **Evidence** | Prior agent-status / UI-state mismatches and silent-exit cleanup bugs |
 | **Still Active?** | Periodic — flares up with each new agent type |
 | **Check** | Does this add a new agent/session type? → `.claude/rules/event-coverage-checklist.md` |
 
@@ -85,7 +85,7 @@ Evaluation specialists and plan critics MUST check proposed changes against thes
 |-------|--------|
 | **Trigger** | New feature ships without ALL exit paths (error, timeout, cancel, user action) emitting the required UI events |
 | **Affected Files** | Ideation pipeline handlers, `src-tauri/src/commands/`, `ralphx-plugin/agents/` pipeline stage handlers |
-| **Evidence** | 5 same-day finalize_proposals fix commits, cross-project gate bypass (5 errors) |
+| **Evidence** | Prior missing-event and gate-bypass regressions in pipeline handlers |
 | **Still Active?** | Yes — surface area grows with every new pipeline feature |
 | **Check** | Does this add pipeline functionality, a new MCP tool, or a new agent type? → `.claude/rules/event-coverage-checklist.md` |
 
@@ -110,9 +110,7 @@ Evaluation specialists and plan critics MUST check proposed changes against thes
 
 ## Evidence Source
 
-All numbers derived from synthetic dataset:
-- **4,052 commits** analyzed (22.5% fix rate = ~912 fix commits)
-- **228,000 log lines** parsed for error patterns
-- **33 agent spec files** audited for tool-prompt alignment
-- **23 rule files** reviewed for gap coverage
-- Date range: Covers full project history through 2026-03-25
+This file is a compact memory of recurring failure classes seen in RalphX hardening work.
+- Use it as a planning heuristic.
+- Do NOT cite the labels here as authoritative metrics unless the underlying incident data is checked separately.
+- When severity matters, prefer code evidence, current logs, and reproducible failure paths over the archetype summary itself.

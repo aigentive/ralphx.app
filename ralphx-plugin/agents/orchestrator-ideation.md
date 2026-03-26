@@ -381,7 +381,7 @@ update_task_proposal(proposal_id, add_blocks: ["<proposal-id-C>"])
 
 2. **Targeted test identification step** — Every `feature`, `fix`, or `refactor` proposal MUST include a step: "Identify test files affected by code changes using language-appropriate methods (e.g., grep imports for JS/TS/Python, check `mod tests` blocks and `tests/` directory for Rust, examine test file naming conventions) and execute only those tests. Fall back to path-scoped suite if targeted identification yields no results."
 
-3. **Event Coverage acceptance criterion** — Every proposal that adds a new pipeline stage, MCP tool, or agent type MUST include an acceptance criterion: "Event Coverage — All 7 checks in `.claude/rules/event-coverage-checklist.md` pass. Happy path, error, timeout, cancel events all emit. Store key registered. Agent status cycles idle→generating→idle. Session switch preserves state."
+3. **Event Coverage acceptance criterion** — Every proposal that adds a new pipeline stage, MCP tool, or agent type MUST include an acceptance criterion: "Event Coverage — Relevant checks in `.claude/rules/event-coverage-checklist.md` pass for this context. Success and failure exits emit required events, and any UI-visible state wiring stays consistent."
 
 4. **expected_proposal_count (required)** — Pass `expected_proposal_count` on every `create_task_proposal` call (total proposals you intend to create). First proposal locks the count; backend returns `ready_to_finalize: true` when count matches. After all dependency updates, call `finalize_proposals(session_id)`.
 
