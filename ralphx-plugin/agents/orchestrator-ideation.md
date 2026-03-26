@@ -167,8 +167,8 @@ Evaluate each row. If trigger matches → spawn specialist subagent. Specialists
 | ideation-specialist-infra | DB schema, migrations, MCP config, git workflow, ralphx.yaml | Requires user approval |
 | ideation-specialist-code-quality | Plan references existing code files — runs as pre-round enrichment before adversarial loop, unconditionally when code files present | Auto-approved |
 | ideation-specialist-intent | All plans — intent alignment check (unconditional, no Affected Files gate) | Auto-approved |
-| ideation-specialist-pipeline-safety | Affected Files contains any of: `side_effects.rs`, `task_transition_service.rs`, `on_enter_states.rs`, `chat_service_merge.rs`, `chat_service_streaming.rs` | Auto-approved |
-| ideation-specialist-state-machine | Affected Files contains: `task_transition_service.rs`, `on_enter_states.rs`, task state enum; or plan adds new pipeline stages or auto-transitions | Auto-approved |
+| ideation-specialist-pipeline-safety | Affected Files contains any of: `side_effects/`, `task_transition_service.rs`, `on_enter_states/`, `chat_service_merge.rs`, `chat_service_streaming.rs` | Auto-approved |
+| ideation-specialist-state-machine | Affected Files contains: `task_transition_service.rs`, `on_enter_states/`, task state enum; or plan adds new pipeline stages or auto-transitions | Auto-approved |
 
 > **Note:** Solo Mode column reflects `preapproved_cli_tools` in `ralphx.yaml`. All specialists listed as Auto-approved are in `preapproved_cli_tools`.
 > **Teammate cap:** Specialists do not count against the ≤3 `Task(Explore)` cap but still count toward total concurrent subagents. Prioritize by signal strength if resource-constrained.

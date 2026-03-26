@@ -4,7 +4,7 @@ paths:
   - "src-tauri/src/domain/entities/project.rs"
   - "src-tauri/src/domain/entities/plan_branch.rs"
   - "src-tauri/src/domain/repositories/plan_branch_repository.rs"
-  - "src-tauri/src/domain/state_machine/transition_handler/side_effects.rs"
+  - "src-tauri/src/domain/state_machine/transition_handler/merge_helpers.rs"
   - "src-tauri/src/http_server/handlers/git.rs"
   - "src-tauri/src/commands/plan_branch_commands.rs"
   - "src-tauri/src/commands/ideation_commands/**"
@@ -103,7 +103,7 @@ IdeationSession (has plan proposals)
 
 ### Base Branch Resolution
 
-**File:** `side_effects.rs:resolve_task_base_branch()`
+**File:** `merge_helpers.rs:resolve_task_base_branch()`
 
 | Condition | Base Branch |
 |-----------|-------------|
@@ -112,7 +112,7 @@ IdeationSession (has plan proposals)
 
 ### Merge Target Resolution
 
-**File:** `side_effects.rs:resolve_merge_branches()`
+**File:** `merge_helpers.rs:resolve_merge_branches()`
 
 | Condition | Source → Target |
 |-----------|-----------------|

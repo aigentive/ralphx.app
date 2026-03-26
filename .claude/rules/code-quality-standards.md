@@ -36,6 +36,7 @@ paths:
 | Hook for logic | Complex state→hook, component only renders |
 | Re-export on extract | `export { New as Old }` — don't break imports |
 | Extract = delete original | When moving functions to new modules, fully remove original code (not just copy) |
+| Reference upkeep | If a refactor moves/splits cited files or modules, update concrete file/path references in rules, prompts, and docs in the same change; remove or rewrite triggers that became impossible or stale |
 | Named constants | Magic numbers → `TIMEOUT_MS = 300` |
 | DRY | 2+ times → helper |
 

@@ -16,7 +16,7 @@ Evaluation specialists and plan critics MUST check proposed changes against thes
 | Field | Detail |
 |-------|--------|
 | **Trigger** | New merge path leaves worktree state inconsistent (create without matching cleanup, phantom branch reference, concurrent access) |
-| **Affected Files** | `src-tauri/src/side_effects.rs`, `src-tauri/src/chat_service/chat_service_merge.rs` |
+| **Affected Files** | `src-tauri/src/domain/state_machine/transition_handler/side_effects/`, `src-tauri/src/application/chat_service/chat_service_merge.rs` |
 | **Evidence** | Repeated merge/worktree regressions and cleanup failures across prior hardening work |
 | **Still Active?** | Yes — historically one of the highest-risk lifecycle areas |
 | **Check** | Does this change add or modify a worktree creation/deletion path? → `.claude/rules/merge-worktree-invariants.md` |
@@ -33,7 +33,7 @@ Evaluation specialists and plan critics MUST check proposed changes against thes
 | Field | Detail |
 |-------|--------|
 | **Trigger** | Auto-transition fires while agent is still live, OR fires repeatedly on app restart |
-| **Affected Files** | `src-tauri/src/task_transition_service.rs`, `src-tauri/src/on_enter_states.rs` |
+| **Affected Files** | `src-tauri/src/application/task_transition_service.rs`, `src-tauri/src/domain/state_machine/transition_handler/on_enter_states/` |
 | **Evidence** | Repeated transition-loop and restart-replay regressions in prior fixes |
 | **Still Active?** | Yes — still an active failure class |
 | **Check** | Does this change modify state transitions or add new pipeline stages? → Verify single-fire guard exists on every auto-transition |
@@ -67,7 +67,7 @@ Evaluation specialists and plan critics MUST check proposed changes against thes
 | Field | Detail |
 |-------|--------|
 | **Trigger** | New session or agent type added without wiring UI store key, event handlers, or status transitions |
-| **Affected Files** | `src/components/IntegratedChatPanel.tsx`, `src/hooks/useAgentEvents.ts`, `src-tauri/src/commands/execution_commands.rs` |
+| **Affected Files** | `src/components/Chat/IntegratedChatPanel.tsx`, `src/hooks/useAgentEvents.ts`, `src-tauri/src/commands/execution_commands.rs` |
 | **Evidence** | Prior agent-status / UI-state mismatches and silent-exit cleanup bugs |
 | **Still Active?** | Periodic — flares up with each new agent type |
 | **Check** | Does this add a new agent/session type? → `.claude/rules/event-coverage-checklist.md` |

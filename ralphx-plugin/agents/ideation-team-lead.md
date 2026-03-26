@@ -233,8 +233,8 @@ Evaluate each row. If trigger matches → include specialist in research team.
 | ideation-specialist-infra | DB schema, migrations, MCP config, git workflow, ralphx.yaml |
 | ideation-specialist-code-quality | Plan references existing code files — runs as pre-round enrichment before adversarial loop, unconditionally when code files present |
 | ideation-specialist-intent | All plans — intent alignment check (unconditional, no Affected Files gate) |
-| ideation-specialist-pipeline-safety | Affected Files contains any of: `side_effects.rs`, `task_transition_service.rs`, `on_enter_states.rs`, `chat_service_merge.rs`, `chat_service_streaming.rs` |
-| ideation-specialist-state-machine | Affected Files contains: `task_transition_service.rs`, `on_enter_states.rs`, task state enum; or plan adds new pipeline stages or auto-transitions |
+| ideation-specialist-pipeline-safety | Affected Files contains any of: `side_effects/`, `task_transition_service.rs`, `on_enter_states/`, `chat_service_merge.rs`, `chat_service_streaming.rs` |
+| ideation-specialist-state-machine | Affected Files contains: `task_transition_service.rs`, `on_enter_states/`, task state enum; or plan adds new pipeline stages or auto-transitions |
 
 > **Note:** In team mode, all specialist spawns go through `request_team_plan` approval. The Solo Mode column in orchestrator-ideation's version reflects `preapproved_cli_tools` and is not relevant here.
 > **Teammate cap:** Specialists do not count against the ≤3 `Task(Explore)` cap but still count toward total concurrent subagents. Prioritize by signal strength if resource-constrained.

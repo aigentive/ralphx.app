@@ -41,9 +41,9 @@ This specialist is dispatched when the plan's `## Affected Files` section contai
 
 | Signal File | Why High-Risk |
 |-------------|--------------|
-| `side_effects.rs` | Orchestrates most lifecycle transitions (Archetype #1 / #2) |
+| `side_effects/` | Transition-handler side effects and merge lifecycle helpers (Archetype #1 / #2) |
 | `task_transition_service.rs` | Auto-transition logic (Archetype #2) |
-| `on_enter_states.rs` | Per-state entry handlers (Archetype #2) |
+| `on_enter_states/` | Per-state entry handlers (Archetype #2) |
 | `chat_service_merge.rs` | Merge worktree create/destroy paths (Archetype #1) |
 | `chat_service_streaming.rs` | Agent streaming + event coverage (Archetype #5) |
 | Parent prompt explicitly flags a file/path as historically fragile or high-churn | Treat as high-risk even if it does not match the file list above |
@@ -69,8 +69,8 @@ For each file in the Affected Files section, determine which archetypes apply:
 
 | Archetype | Trigger | Key Files |
 |-----------|---------|-----------|
-| **#1 Merge Worktree Lifecycle** | Any change touching worktree create/delete paths or branch reference handling | `side_effects.rs`, `chat_service_merge.rs`, any reconciler files |
-| **#2 Auto-Transition Churn** | Any change to state transitions, pipeline stages, or on_enter handlers | `task_transition_service.rs`, `on_enter_states.rs`, `side_effects.rs` |
+| **#1 Merge Worktree Lifecycle** | Any change touching worktree create/delete paths or branch reference handling | `side_effects/`, `chat_service_merge.rs`, any reconciler files |
+| **#2 Auto-Transition Churn** | Any change to state transitions, pipeline stages, or on_enter handlers | `task_transition_service.rs`, `on_enter_states/`, `side_effects/` |
 | **#3 SQLite Concurrent Access** | Any new async fn that accesses the database layer | Files using `db.run()`, `DbConnection`, any new repository methods |
 | **#4 Agent Status Desync** | Any new agent type, context type, or session type | Frontend hooks, `useAgentEvents.ts`, `execution_commands.rs`, new agent `.md` files |
 | **#5 Incomplete Event Coverage** | Any new pipeline stage, MCP tool, or agent type | Pipeline handlers, `commands/` files, new MCP tool definitions, new agent specs |
@@ -152,7 +152,7 @@ Files in this plan that match pipeline safety trigger signals:
 
 | Archetype | Proposed Change | Risk | Severity | Finding |
 |-----------|----------------|------|----------|---------|
-| #1 Merge Worktree | `create_worktree()` at side_effects.rs:142 | Missing cleanup on timeout path | Critical | New worktree creation added but only success + error paths have cleanup. Timeout exit at line 200 returns early without calling cleanup, matching a known merge/worktree failure mode. |
+| #1 Merge Worktree | `create_worktree()` in `side_effects/` or `chat_service_merge.rs` | Missing cleanup on timeout path | Critical | New worktree creation added but only success + error paths have cleanup. Timeout exit returns early without calling cleanup, matching a known merge/worktree failure mode. |
 | #2 Auto-Transition | New `Reviewing` state in task_transition_service.rs | No idempotency guard | High | Auto-transition fires on state entry but no guard prevents double-fire on app restart. Matches the auto-transition churn pattern. |
 | #5 Event Coverage | New `finalize_verification` MCP tool | Missing error event | High | Success path emits `agent:run_completed` but error path at line 87 silently swallows exception. Matches the incomplete event coverage pattern. |
 

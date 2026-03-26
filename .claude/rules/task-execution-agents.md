@@ -152,7 +152,7 @@ paths:
 | TaskEvent enum | `src-tauri/src/domain/state_machine/events.rs` |
 | State machine dispatcher | `src-tauri/src/domain/state_machine/machine/transitions.rs` |
 | TransitionHandler + auto-transitions | `src-tauri/src/domain/state_machine/transition_handler/mod.rs` |
-| on_enter side effects | `src-tauri/src/domain/state_machine/transition_handler/side_effects.rs` |
+| on_enter side effects | `src-tauri/src/domain/state_machine/transition_handler/side_effects/mod.rs` |
 | GitService (all git ops) | `src-tauri/src/application/git_service.rs` |
 | TaskTransitionService | `src-tauri/src/application/task_transition_service.rs` |
 | Task scheduler | `src-tauri/src/application/task_scheduler_service.rs` |
