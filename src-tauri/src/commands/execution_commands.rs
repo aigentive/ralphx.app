@@ -1854,49 +1854,6 @@ pub async fn resume_execution(
             Arc::clone(&app_state.team_session_repo),
             Arc::clone(&app_state.team_message_repo),
         ));
-        if let Err(error) = resume_paused_ideation_queues_with_chat_service(
-            effective_project_id.as_ref(),
-            &app_state,
-            &execution_state_arc,
-            |is_team_mode| {
-                let mut service = ClaudeChatService::new(
-                    Arc::clone(&app_state.chat_message_repo),
-                    Arc::clone(&app_state.chat_attachment_repo),
-                    Arc::clone(&app_state.artifact_repo),
-                    Arc::clone(&app_state.chat_conversation_repo),
-                    Arc::clone(&app_state.agent_run_repo),
-                    Arc::clone(&app_state.project_repo),
-                    Arc::clone(&app_state.task_repo),
-                    Arc::clone(&app_state.task_dependency_repo),
-                    Arc::clone(&app_state.ideation_session_repo),
-                    Arc::clone(&app_state.activity_event_repo),
-                    Arc::clone(&app_state.message_queue),
-                    Arc::clone(&app_state.running_agent_registry),
-                    Arc::clone(&app_state.memory_event_repo),
-                )
-                .with_app_handle(handle.clone())
-                .with_execution_state(Arc::clone(&execution_state_arc))
-                .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-                .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-                .with_task_proposal_repo(Arc::clone(&app_state.task_proposal_repo))
-                .with_task_step_repo(Arc::clone(&app_state.task_step_repo))
-                .with_streaming_state_cache(app_state.streaming_state_cache.clone())
-                .with_interactive_process_registry(Arc::clone(
-                    &app_state.interactive_process_registry,
-                ))
-                .with_review_repo(Arc::clone(&app_state.review_repo))
-                .with_team_service(Arc::clone(&team_service));
-                if is_team_mode {
-                    service = service.with_team_mode(true);
-                }
-                Arc::new(service) as Arc<dyn ChatService>
-            },
-        )
-        .await
-        {
-            tracing::warn!(error = %error, "Failed to relaunch paused ideation queues on resume");
-        }
-
         if let Err(error) = resume_paused_slot_consuming_queues_with_chat_service(
             effective_project_id.as_ref(),
             &app_state,
@@ -1939,6 +1896,49 @@ pub async fn resume_execution(
                 error = %error,
                 "Failed to relaunch paused task/review/merge queues on resume"
             );
+        }
+
+        if let Err(error) = resume_paused_ideation_queues_with_chat_service(
+            effective_project_id.as_ref(),
+            &app_state,
+            &execution_state_arc,
+            |is_team_mode| {
+                let mut service = ClaudeChatService::new(
+                    Arc::clone(&app_state.chat_message_repo),
+                    Arc::clone(&app_state.chat_attachment_repo),
+                    Arc::clone(&app_state.artifact_repo),
+                    Arc::clone(&app_state.chat_conversation_repo),
+                    Arc::clone(&app_state.agent_run_repo),
+                    Arc::clone(&app_state.project_repo),
+                    Arc::clone(&app_state.task_repo),
+                    Arc::clone(&app_state.task_dependency_repo),
+                    Arc::clone(&app_state.ideation_session_repo),
+                    Arc::clone(&app_state.activity_event_repo),
+                    Arc::clone(&app_state.message_queue),
+                    Arc::clone(&app_state.running_agent_registry),
+                    Arc::clone(&app_state.memory_event_repo),
+                )
+                .with_app_handle(handle.clone())
+                .with_execution_state(Arc::clone(&execution_state_arc))
+                .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
+                .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
+                .with_task_proposal_repo(Arc::clone(&app_state.task_proposal_repo))
+                .with_task_step_repo(Arc::clone(&app_state.task_step_repo))
+                .with_streaming_state_cache(app_state.streaming_state_cache.clone())
+                .with_interactive_process_registry(Arc::clone(
+                    &app_state.interactive_process_registry,
+                ))
+                .with_review_repo(Arc::clone(&app_state.review_repo))
+                .with_team_service(Arc::clone(&team_service));
+                if is_team_mode {
+                    service = service.with_team_mode(true);
+                }
+                Arc::new(service) as Arc<dyn ChatService>
+            },
+        )
+        .await
+        {
+            tracing::warn!(error = %error, "Failed to relaunch paused ideation queues on resume");
         }
     }
 
@@ -5095,6 +5095,96 @@ mod tests {
                 .len(),
             0,
             "other project should still relaunch in the same resume pass"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resume_priority_relaunches_slot_work_before_ideation_when_only_one_global_slot_remains() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+
+        let execution_project =
+            Project::new("Execution Priority".to_string(), "/test/execution-priority".to_string());
+        let ideation_project =
+            Project::new("Ideation Secondary".to_string(), "/test/ideation-secondary".to_string());
+        app_state
+            .project_repo
+            .create(execution_project.clone())
+            .await
+            .unwrap();
+        app_state
+            .project_repo
+            .create(ideation_project.clone())
+            .await
+            .unwrap();
+
+        execution_state.set_global_max_concurrent(1);
+        execution_state.set_global_ideation_max(1);
+
+        let review_task = app_state
+            .task_repo
+            .create(Task {
+                internal_status: InternalStatus::Reviewing,
+                ..Task::new(
+                    execution_project.id.clone(),
+                    "Resume queued review before ideation".to_string(),
+                )
+            })
+            .await
+            .unwrap();
+        let ideation_session = app_state
+            .ideation_session_repo
+            .create(IdeationSession::new(ideation_project.id.clone()))
+            .await
+            .unwrap();
+
+        app_state.message_queue.queue(
+            ChatContextType::Review,
+            review_task.id.as_str(),
+            "priority review queue".to_string(),
+        );
+        app_state.message_queue.queue(
+            ChatContextType::Ideation,
+            ideation_session.id.as_str(),
+            "secondary ideation queue".to_string(),
+        );
+
+        let slot_mock = Arc::new(MockChatService::new());
+        let slot_resumed = resume_paused_slot_consuming_queues_with_chat_service(
+            None,
+            &app_state,
+            &execution_state,
+            || Arc::clone(&slot_mock) as Arc<dyn ChatService>,
+        )
+        .await
+        .expect("resume slot-consuming queue first");
+
+        assert_eq!(slot_resumed, 1);
+        assert_eq!(
+            slot_mock.get_sent_messages().await,
+            vec!["priority review queue".to_string()]
+        );
+        execution_state.set_running_count(1);
+
+        let ideation_mock = Arc::new(MockChatService::new());
+        let ideation_resumed = resume_paused_ideation_queues_with_chat_service(
+            None,
+            &app_state,
+            &execution_state,
+            |_| Arc::clone(&ideation_mock) as Arc<dyn ChatService>,
+        )
+        .await
+        .expect("resume ideation queue after slot-consuming work");
+
+        assert_eq!(ideation_resumed, 0);
+        assert_eq!(ideation_mock.call_count(), 0);
+        assert_eq!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Ideation, ideation_session.id.as_str())
+                .len(),
+            1,
+            "ideation should stay queued when execution consumed the last global slot"
         );
     }
 
