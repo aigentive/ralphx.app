@@ -2,8 +2,11 @@ use super::*;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
+use tauri::Manager;
+use tauri::test::{mock_builder, mock_context, noop_assets, MockRuntime};
 
-use crate::domain::entities::{IdeationSessionId, ProjectId, Task};
+use crate::application::{chat_service::ProviderErrorCategory, AppState};
+use crate::domain::entities::{app_state::ExecutionHaltMode, IdeationSessionId, InternalStatus, Project, ProjectId, Task};
 use crate::domain::repositories::{StateHistoryMetadata, StatusTransition};
 use crate::error::AppResult;
 
@@ -265,6 +268,67 @@ fn test_execution_completion_falls_back_to_output_when_step_tracking_missing() {
     assert!(!should_transition_task_execution_to_pending_review(
         false, false, false
     ));
+}
+
+#[tokio::test]
+async fn test_apply_system_wide_provider_pause_pauses_mixed_active_task_states() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+
+    let project = Project::new("Provider Pause".to_string(), "/tmp/provider-pause".to_string());
+    let project_id = project.id.clone();
+    app_state.project_repo.create(project).await.unwrap();
+
+    let mut executing = Task::new(project_id.clone(), "Executing".to_string());
+    executing.internal_status = InternalStatus::Executing;
+    let executing = app_state.task_repo.create(executing).await.unwrap();
+
+    let mut reviewing = Task::new(project_id.clone(), "Reviewing".to_string());
+    reviewing.internal_status = InternalStatus::Reviewing;
+    let reviewing = app_state.task_repo.create(reviewing).await.unwrap();
+
+    let mut merging = Task::new(project_id.clone(), "Merging".to_string());
+    merging.internal_status = InternalStatus::Merging;
+    let merging = app_state.task_repo.create(merging).await.unwrap();
+
+    let mut ready = Task::new(project_id.clone(), "Ready".to_string());
+    ready.internal_status = InternalStatus::Ready;
+    let ready = app_state.task_repo.create(ready).await.unwrap();
+
+    let app = mock_builder()
+        .manage(app_state)
+        .manage(Arc::clone(&execution_state))
+        .build(mock_context(noop_assets()))
+        .expect("mock app");
+    let handle = app.handle().clone();
+    let state = handle.state::<AppState>();
+
+    apply_system_wide_provider_pause::<MockRuntime>(
+        &Some(handle.clone()),
+        &ProviderErrorCategory::RateLimit,
+        "You've hit your limit · resets 11pm (Europe/Bucharest)",
+        &Some((chrono::Utc::now() + chrono::Duration::minutes(30)).to_rfc3339()),
+        "task_execution",
+        executing.id.as_str(),
+    )
+    .await;
+
+    assert!(execution_state.is_paused());
+    assert!(execution_state.is_provider_blocked());
+    assert!(!execution_state.can_start_task());
+
+    let persisted = state.app_state_repo.get().await.unwrap();
+    assert_eq!(persisted.execution_halt_mode, ExecutionHaltMode::Paused);
+
+    let executing_after = state.task_repo.get_by_id(&executing.id).await.unwrap().unwrap();
+    let reviewing_after = state.task_repo.get_by_id(&reviewing.id).await.unwrap().unwrap();
+    let merging_after = state.task_repo.get_by_id(&merging.id).await.unwrap().unwrap();
+    let ready_after = state.task_repo.get_by_id(&ready.id).await.unwrap().unwrap();
+
+    assert_eq!(executing_after.internal_status, InternalStatus::Paused);
+    assert_eq!(reviewing_after.internal_status, InternalStatus::Paused);
+    assert_eq!(merging_after.internal_status, InternalStatus::Paused);
+    assert_eq!(ready_after.internal_status, InternalStatus::Ready);
 }
 
 // ========================================
