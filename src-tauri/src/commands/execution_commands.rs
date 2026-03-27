@@ -43,6 +43,16 @@ mod control_helpers;
 pub use control_helpers::project_has_execution_capacity_for_state;
 use control_helpers::*;
 
+mod recovery;
+
+pub use recovery::{
+    CategorizedResume, RestartResult, ResumeCategory, ResumeValidationResult,
+    ResumeValidationWarning, categorize_resume_state,
+};
+use recovery::{
+    build_reconciler_for_recovery, build_transition_service_for_recovery, validate_resume,
+};
+
 /// Get current execution status
 /// Phase 82: Optional project_id for per-project scoping.
 /// If project_id is None, falls back to active project or aggregates across all projects.
@@ -909,49 +919,8 @@ pub async fn recover_task_execution(
     app: tauri::AppHandle,
 ) -> Result<bool, String> {
     let task_id = crate::domain::entities::TaskId::from_string(task_id);
-
-    let transition_service = Arc::new(
-        TaskTransitionService::new(
-            Arc::clone(&app_state.task_repo),
-            Arc::clone(&app_state.task_dependency_repo),
-            Arc::clone(&app_state.project_repo),
-            Arc::clone(&app_state.chat_message_repo),
-            Arc::clone(&app_state.chat_attachment_repo),
-            Arc::clone(&app_state.chat_conversation_repo),
-            Arc::clone(&app_state.agent_run_repo),
-            Arc::clone(&app_state.ideation_session_repo),
-            Arc::clone(&app_state.activity_event_repo),
-            Arc::clone(&app_state.message_queue),
-            Arc::clone(&app_state.running_agent_registry),
-            Arc::clone(&execution_state),
-            app_state.app_handle.clone(),
-            Arc::clone(&app_state.memory_event_repo),
-        )
-        .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
-    );
-
-    let reconciler = ReconciliationRunner::new(
-        Arc::clone(&app_state.task_repo),
-        Arc::clone(&app_state.task_dependency_repo),
-        Arc::clone(&app_state.project_repo),
-        Arc::clone(&app_state.chat_conversation_repo),
-        Arc::clone(&app_state.chat_message_repo),
-        Arc::clone(&app_state.chat_attachment_repo),
-        Arc::clone(&app_state.ideation_session_repo),
-        Arc::clone(&app_state.activity_event_repo),
-        Arc::clone(&app_state.message_queue),
-        Arc::clone(&app_state.running_agent_registry),
-        Arc::clone(&app_state.memory_event_repo),
-        Arc::clone(&app_state.agent_run_repo),
-        transition_service,
-        Arc::clone(&execution_state),
-        Some(app),
-    )
-    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
+    let reconciler =
+        build_reconciler_for_recovery(&app_state, Arc::clone(&execution_state), app);
 
     Ok(reconciler.recover_execution_stop(&task_id).await)
 }
@@ -971,48 +940,8 @@ pub async fn resolve_recovery_prompt(
         "cancel" => UserRecoveryAction::Cancel,
         _ => return Err("Invalid recovery action".to_string()),
     };
-
-    let transition_service = Arc::new(
-        TaskTransitionService::new(
-            Arc::clone(&app_state.task_repo),
-            Arc::clone(&app_state.task_dependency_repo),
-            Arc::clone(&app_state.project_repo),
-            Arc::clone(&app_state.chat_message_repo),
-            Arc::clone(&app_state.chat_attachment_repo),
-            Arc::clone(&app_state.chat_conversation_repo),
-            Arc::clone(&app_state.agent_run_repo),
-            Arc::clone(&app_state.ideation_session_repo),
-            Arc::clone(&app_state.activity_event_repo),
-            Arc::clone(&app_state.message_queue),
-            Arc::clone(&app_state.running_agent_registry),
-            Arc::clone(&execution_state),
-            app_state.app_handle.clone(),
-            Arc::clone(&app_state.memory_event_repo),
-        )
-        .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
-    );
-
-    let reconciler = ReconciliationRunner::new(
-        Arc::clone(&app_state.task_repo),
-        Arc::clone(&app_state.task_dependency_repo),
-        Arc::clone(&app_state.project_repo),
-        Arc::clone(&app_state.chat_conversation_repo),
-        Arc::clone(&app_state.chat_message_repo),
-        Arc::clone(&app_state.chat_attachment_repo),
-        Arc::clone(&app_state.ideation_session_repo),
-        Arc::clone(&app_state.activity_event_repo),
-        Arc::clone(&app_state.message_queue),
-        Arc::clone(&app_state.running_agent_registry),
-        Arc::clone(&app_state.memory_event_repo),
-        Arc::clone(&app_state.agent_run_repo),
-        transition_service,
-        Arc::clone(&execution_state),
-        Some(app),
-    )
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
+    let reconciler =
+        build_reconciler_for_recovery(&app_state, Arc::clone(&execution_state), app);
 
     let task = match app_state.task_repo.get_by_id(&task_id).await {
         Ok(Some(task)) => task,
@@ -1659,125 +1588,6 @@ async fn prune_stale_execution_registry_entries(
     }
 }
 
-// ========================================
-// Smart Resume Types and Functions
-// ========================================
-
-/// Category of resume behavior based on the stopped_from_status.
-///
-/// Determines how a task should be resumed after being stopped mid-execution.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ResumeCategory {
-    /// Directly resume to the original state (spawn agent if needed).
-    /// Used for: Executing, ReExecuting, Reviewing, QaRefining, QaTesting
-    Direct,
-    /// Validate git state before resuming.
-    /// Used for: Merging, PendingMerge, MergeConflict, MergeIncomplete
-    Validated,
-    /// Redirect to a successor state (avoid invalid intermediate states).
-    /// Used for: QaPassed, RevisionNeeded, PendingReview
-    Redirect,
-}
-
-/// Result of categorizing a resume state.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CategorizedResume {
-    /// The category of resume behavior
-    pub category: ResumeCategory,
-    /// The target status to resume to (may differ from original for Redirect)
-    pub target_status: InternalStatus,
-}
-
-/// Categorize the resume state based on the stopped_from_status.
-///
-/// Returns a `CategorizedResume` with the category and target status.
-/// For Redirect states, the target is the successor state.
-pub fn categorize_resume_state(stopped_from_status: InternalStatus) -> CategorizedResume {
-    match stopped_from_status {
-        // Direct Resume: spawn agent directly
-        InternalStatus::Executing
-        | InternalStatus::ReExecuting
-        | InternalStatus::Reviewing
-        | InternalStatus::QaRefining
-        | InternalStatus::QaTesting => CategorizedResume {
-            category: ResumeCategory::Direct,
-            target_status: stopped_from_status,
-        },
-
-        // Validated Resume: check git state first
-        InternalStatus::Merging
-        | InternalStatus::PendingMerge
-        | InternalStatus::MergeConflict
-        | InternalStatus::MergeIncomplete => CategorizedResume {
-            category: ResumeCategory::Validated,
-            target_status: stopped_from_status,
-        },
-
-        // Redirect: go to successor state (these have auto-transitions)
-        InternalStatus::QaPassed => CategorizedResume {
-            // QaPassed → PendingReview (auto-transitions anyway)
-            category: ResumeCategory::Redirect,
-            target_status: InternalStatus::PendingReview,
-        },
-        InternalStatus::RevisionNeeded => CategorizedResume {
-            // RevisionNeeded → ReExecuting (auto-transitions anyway)
-            category: ResumeCategory::Redirect,
-            target_status: InternalStatus::ReExecuting,
-        },
-        InternalStatus::PendingReview => CategorizedResume {
-            // PendingReview → Reviewing (spawn reviewer)
-            category: ResumeCategory::Redirect,
-            target_status: InternalStatus::Reviewing,
-        },
-
-        // Default: treat as Direct (fallback to Ready if invalid)
-        _ => CategorizedResume {
-            category: ResumeCategory::Direct,
-            target_status: stopped_from_status,
-        },
-    }
-}
-
-/// Validation warning for resume operations.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResumeValidationWarning {
-    /// Warning code (e.g., "dirty_worktree", "base_branch_moved")
-    pub code: String,
-    /// Human-readable warning message
-    pub message: String,
-}
-
-/// Result of resume validation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResumeValidationResult {
-    /// Whether validation passed (true = can proceed)
-    pub passed: bool,
-    /// Warnings encountered (non-blocking issues)
-    pub warnings: Vec<ResumeValidationWarning>,
-}
-
-/// Result type for restart_task command.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum RestartResult {
-    /// Task was successfully restarted
-    Success {
-        /// The updated task
-        task: serde_json::Value,
-        /// The category of resume that was used
-        category: ResumeCategory,
-        /// The status the task was resumed to
-        resumed_to_status: String,
-    },
-    /// Validation failed (only for Validated category)
-    ValidationFailed {
-        /// Validation warnings that caused the failure
-        warnings: Vec<ResumeValidationWarning>,
-        /// The stopped_from_status for reference
-        stopped_from_status: String,
-    },
-}
-
 /// Smart resume for stopped tasks.
 ///
 /// Restarts a task that was stopped mid-execution, using the captured stop metadata
@@ -1802,7 +1612,6 @@ pub async fn restart_task(
     state: State<'_, AppState>,
     execution_state: State<'_, Arc<ExecutionState>>,
 ) -> Result<RestartResult, String> {
-    use crate::application::TaskTransitionService;
     use crate::domain::state_machine::transition_handler::metadata_builder::{
         build_restart_metadata, parse_stop_metadata,
     };
@@ -1858,25 +1667,8 @@ pub async fn restart_task(
     }
 
     // 6. Build transition service
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(&execution_state),
-        state.app_handle.clone(),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let transition_service =
+        build_transition_service_for_recovery(&state, Arc::clone(&execution_state));
 
     // 7. Transition to target status: clear stop metadata and optionally store restart_note
     let restart_metadata = build_restart_metadata(note.as_deref());
@@ -1919,97 +1711,6 @@ pub async fn restart_task(
     })
 }
 
-/// Validate resume for Validated category states.
-///
-/// Checks:
-/// - Task branch exists and is accessible
-/// - Worktree is clean (no uncommitted changes)
-/// - No stale merge/rebase in progress
-async fn validate_resume(task: &Task, state: &AppState) -> ResumeValidationResult {
-    use crate::application::git_service::GitService;
-    use std::path::Path;
-
-    let mut warnings = Vec::new();
-
-    // Get project for git operations
-    let project = match state.project_repo.get_by_id(&task.project_id).await {
-        Ok(Some(p)) => p,
-        _ => {
-            warnings.push(ResumeValidationWarning {
-                code: "project_not_found".to_string(),
-                message: "Could not find project for git validation".to_string(),
-            });
-            return ResumeValidationResult {
-                passed: false,
-                warnings,
-            };
-        }
-    };
-
-    // Check if task has a branch
-    let branch_name = match &task.task_branch {
-        Some(branch) => branch.clone(),
-        None => {
-            warnings.push(ResumeValidationWarning {
-                code: "no_branch".to_string(),
-                message: "Task has no associated branch".to_string(),
-            });
-            return ResumeValidationResult {
-                passed: false,
-                warnings,
-            };
-        }
-    };
-
-    let repo_path = Path::new(&project.working_directory);
-
-    // Check branch exists
-    if !GitService::branch_exists(repo_path, &branch_name)
-        .await
-        .unwrap_or(false)
-    {
-        warnings.push(ResumeValidationWarning {
-            code: "branch_not_found".to_string(),
-            message: format!("Task branch '{}' does not exist", branch_name),
-        });
-        return ResumeValidationResult {
-            passed: false,
-            warnings,
-        };
-    }
-
-    // Check worktree is clean (if worktree path exists)
-    if let Some(worktree_path) = &task.worktree_path {
-        let worktree = Path::new(worktree_path);
-        match GitService::has_uncommitted_changes(worktree).await {
-            Ok(false) => {} // Clean, no changes
-            Ok(true) => {
-                warnings.push(ResumeValidationWarning {
-                    code: "dirty_worktree".to_string(),
-                    message: "Worktree has uncommitted changes".to_string(),
-                });
-                // Non-blocking warning - just log
-                tracing::warn!(
-                    task_id = task.id.as_str(),
-                    worktree = %worktree_path,
-                    "Worktree is dirty but proceeding"
-                );
-            }
-            Err(e) => {
-                warnings.push(ResumeValidationWarning {
-                    code: "worktree_check_failed".to_string(),
-                    message: format!("Could not check worktree status: {}", e),
-                });
-            }
-        }
-    }
-
-    // All critical checks passed
-    ResumeValidationResult {
-        passed: true,
-        warnings,
-    }
-}
 
 #[cfg(test)]
 #[cfg(test)]
