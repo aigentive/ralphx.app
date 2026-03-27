@@ -38,7 +38,7 @@ import { useProjectStore } from "@/stores/projectStore";
 import type { ChatContext, ViewType } from "@/types/chat";
 import type { ApplyProposalsInput } from "@/api/ideation.types";
 import type { UpdateProposalInput } from "@/api/ideation";
-import { toTaskProposal } from "@/api/ideation";
+import { toTaskProposal, ideationApi } from "@/api/ideation";
 import type { CreateProject } from "@/types/project";
 import { useTasksAwaitingReview } from "@/hooks/useReviews";
 import { useReviewMutations } from "@/hooks/useReviewMutations";
@@ -584,11 +584,24 @@ function AppContent() {
     }
   }, [archiveSession, setActiveSession, archiveSessionInStore, clearMessages]);
 
-  const handleSelectSession = useCallback((sessionId: string) => {
+  const handleSelectSession = useCallback(async (sessionId: string) => {
     // Find the session in allSessions and select it atomically
     const session = allSessions.find((s) => s.id === sessionId);
     if (session) {
       selectSession(session);
+      return;
+    }
+
+    // Session not in store (e.g. archived) — fetch from backend
+    try {
+      const fetchedSession = await ideationApi.sessions.get(sessionId);
+      if (fetchedSession) {
+        selectSession(fetchedSession);
+      } else {
+        toast.error("Failed to open session");
+      }
+    } catch {
+      toast.error("Failed to open session");
     }
   }, [allSessions, selectSession]);
 
