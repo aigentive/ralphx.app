@@ -72,6 +72,8 @@ import { TeamFilterTabs, type TeamFilterValue } from "./TeamFilterTabs";
 import { useTeamHistory } from "@/hooks/useTeamHistory";
 import { getTeamStatus } from "@/api/team";
 import { TimeoutWarning } from "./TimeoutWarning";
+import { ChildSessionNavigationContext } from "./tool-widgets/ChildSessionNavigationContext";
+import { toast } from "sonner";
 
 // Stable empty array to avoid new reference on every render when tasks query returns undefined
 const EMPTY_TASKS: never[] = [];
@@ -649,9 +651,11 @@ export function IntegratedChatPanel({
         selectSession(fetchedSession);
       } else {
         logger.warn("[IntegratedChatPanel] Child session not found:", childSessionId);
+        toast.error("Session not found");
       }
     } catch (error) {
       logger.warn("[IntegratedChatPanel] Failed to fetch child session:", { childSessionId, error });
+      toast.error("Session not found");
     }
   }, [allSessions, selectSession]);
 
@@ -825,7 +829,8 @@ export function IntegratedChatPanel({
             />
           )}
 
-          {/* Messages Area */}
+          {/* Messages Area — wrapped with navigation context for child session widgets */}
+          <ChildSessionNavigationContext.Provider value={handleNavigateToChildSession}>
           {isLoading ? (
             <div className="flex-1 flex items-center justify-center" data-testid="integrated-chat-messages">
               <LoadingState />
@@ -892,9 +897,9 @@ export function IntegratedChatPanel({
           {ideationSessionId && !isHistoryMode && (
             <ChildSessionNotification
               sessionId={ideationSessionId}
-              onNavigateToSession={handleNavigateToChildSession}
             />
           )}
+          </ChildSessionNavigationContext.Provider>
 
           {/* Previous Run Banner - shown when viewing stale agent conversation */}
           {isAgentContext && !isHistoryMode && agentStatus === "idle" && agentRunQuery.data?.status !== "running" && !isSending && sortedMessages.length > 0 && !isRecentlyActive && (

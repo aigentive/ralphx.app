@@ -21,6 +21,7 @@ import { MergeWidget } from "./MergeWidget";
 import { ProposalWidget } from "./ProposalWidget";
 import { IdeationWidget } from "./IdeationWidget";
 import { VerificationWidget } from "./VerificationWidget";
+import { ChildSessionWidget } from "./ChildSessionWidget";
 import { GrepWidget } from "./GrepWidget";
 import { GlobWidget } from "./GlobWidget";
 import { ReadWidget } from "./ReadWidget";
@@ -101,11 +102,12 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   "mcp__ralphx__send_ideation_session_message": IdeationWidget,
   "mcp__ralphx__finalize_proposals": IdeationWidget,
   "mcp__ralphx__cross_project_guide": IdeationWidget,
-  // Verification & child session tools → VerificationWidget
+  // Verification tools → VerificationWidget
   "mcp__ralphx__update_plan_verification": VerificationWidget,
   "mcp__ralphx__get_plan_verification": VerificationWidget,
-  "mcp__ralphx__create_child_session": VerificationWidget,
   "mcp__ralphx__get_child_session_status": VerificationWidget,
+  // Child session creation → ChildSessionWidget
+  "mcp__ralphx__create_child_session": ChildSessionWidget,
   // SendMessage tool → SendMessageWidget (team message card)
   "sendmessage": SendMessageWidget,
   // Task management tools → TeamTaskWidgets

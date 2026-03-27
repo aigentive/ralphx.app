@@ -5,7 +5,7 @@
  * Design reference: mockups/tool-call-widgets.html
  */
 
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 // ============================================================================
 // Tool Call Type (canonical definition — re-exported from ToolCallIndicator)
@@ -506,6 +506,18 @@ export const stepVariantConfig: Record<StepLineVariant, StepLineConfig> = {
   skipped: { color: colors.textMuted, label: "skipped", badgeVariant: "muted" },
   failed: { color: colors.error, label: "failed", badgeVariant: "error" },
 };
+
+/** Inline style for truncated title text (flex item, ellipsis overflow). */
+export function truncatedTitleStyle(compact = false): CSSProperties {
+  return {
+    flex: 1,
+    fontSize: compact ? 10.5 : 11,
+    color: colors.textSecondary,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  };
+}
 
 // ============================================================================
 // Component Prop Types (used by shared.tsx components)

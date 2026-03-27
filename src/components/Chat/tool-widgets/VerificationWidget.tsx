@@ -1,10 +1,9 @@
 /**
- * VerificationWidget — Compact indicators for plan verification and child session tools
+ * VerificationWidget — Compact indicators for plan verification and child session status tools
  *
  * Handles:
  * - update_plan_verification: verification state (round, gaps, convergence)
  * - get_plan_verification: verification state reader
- * - create_child_session: child session creation
  * - get_child_session_status: child session status check
  */
 
@@ -18,6 +17,7 @@ import {
   getArray,
   getBool,
   parseMcpToolResult,
+  truncatedTitleStyle,
 } from "./shared.constants";
 import type { ToolCallWidgetProps, BadgeVariant } from "./shared.constants";
 
@@ -28,14 +28,12 @@ import type { ToolCallWidgetProps, BadgeVariant } from "./shared.constants";
 type VerificationTool =
   | "update_plan_verification"
   | "get_plan_verification"
-  | "create_child_session"
   | "get_child_session_status";
 
 function getToolType(toolName: string): VerificationTool | null {
   const name = toolName.toLowerCase();
   if (name.includes("update_plan_verification")) return "update_plan_verification";
   if (name.includes("get_plan_verification")) return "get_plan_verification";
-  if (name.includes("create_child_session")) return "create_child_session";
   if (name.includes("get_child_session_status")) return "get_child_session_status";
   return null;
 }
@@ -171,48 +169,6 @@ function GetVerification({ toolCall, compact }: ToolCallWidgetProps) {
   );
 }
 
-function ChildSessionCreated({ toolCall, compact }: ToolCallWidgetProps) {
-  const parsed = parseMcpToolResult(toolCall.result);
-  const title =
-    getString(toolCall.arguments, "title") ??
-    getString(parsed, "title");
-  const purpose =
-    getString(toolCall.arguments, "purpose") ??
-    getString(parsed, "purpose");
-  const orchestrationTriggered = getBool(parsed, "orchestration_triggered");
-
-  if (!title) {
-    return (
-      <InlineIndicator
-        icon={<GitBranch size={11} style={{ color: colors.blue }} />}
-        text="Creating session..."
-      />
-    );
-  }
-
-  const purposeVariant: BadgeVariant = purpose === "verification" ? "blue" : "muted";
-
-  return (
-    <WidgetRow compact={compact}>
-      <GitBranch size={12} style={{ color: colors.blue, flexShrink: 0 }} />
-      <span
-        style={{
-          flex: 1,
-          fontSize: compact ? 10.5 : 11,
-          color: colors.textSecondary,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {title}
-      </span>
-      {purpose && <Badge variant={purposeVariant} compact>{purpose}</Badge>}
-      {orchestrationTriggered === true && <Badge variant="success" compact>Agent spawned</Badge>}
-    </WidgetRow>
-  );
-}
-
 function ChildSessionStatus({ toolCall, compact }: ToolCallWidgetProps) {
   const parsed = parseMcpToolResult(toolCall.result);
   const session = parsed.session as Record<string, unknown> | undefined;
@@ -238,18 +194,7 @@ function ChildSessionStatus({ toolCall, compact }: ToolCallWidgetProps) {
     <WidgetRow compact={compact}>
       <GitBranch size={12} style={{ color: colors.blue, flexShrink: 0 }} />
       {title && (
-        <span
-          style={{
-            flex: 1,
-            fontSize: compact ? 10.5 : 11,
-            color: colors.textSecondary,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {title}
-        </span>
+        <span style={truncatedTitleStyle(compact)}>{title}</span>
       )}
       <Badge variant={agentInfo.variant} compact>{agentInfo.label}</Badge>
       {verificationRound != null && (
@@ -271,8 +216,6 @@ export const VerificationWidget = React.memo(function VerificationWidget(props: 
       return <UpdateVerification {...props} />;
     case "get_plan_verification":
       return <GetVerification {...props} />;
-    case "create_child_session":
-      return <ChildSessionCreated {...props} />;
     case "get_child_session_status":
       return <ChildSessionStatus {...props} />;
     default:

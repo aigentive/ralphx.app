@@ -2,7 +2,7 @@
  * ChildSessionNotification component tests
  *
  * Tests verification notification rendering, reconciliation effect (auto-clear on terminal states),
- * dismiss button, and general follow-up notifications.
+ * and dismiss button. General follow-up navigation is handled by ChildSessionWidget.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -57,7 +57,6 @@ function renderNotification() {
   return render(
     <ChildSessionNotification
       sessionId={SESSION_ID}
-      onNavigateToSession={vi.fn()}
     />,
   );
 }
@@ -190,7 +189,6 @@ describe("ChildSessionNotification — reconciliation effect (terminal state aut
       rerender(
         <ChildSessionNotification
           sessionId={SESSION_ID}
-          onNavigateToSession={vi.fn()}
         />,
       );
     });

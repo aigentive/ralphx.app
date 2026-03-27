@@ -115,39 +115,6 @@ describe("VerificationWidget", () => {
     });
   });
 
-  describe("ChildSessionCreated (create_child_session)", () => {
-    it("shows loading state when no title available", () => {
-      const toolCall = makeToolCall("mcp__ralphx__create_child_session", {
-        arguments: {},
-        result: mcpWrap({}),
-      });
-      render(<VerificationWidget toolCall={toolCall} />);
-      expect(screen.getByText("Creating session...")).toBeInTheDocument();
-    });
-
-    it("renders session title from arguments", () => {
-      const toolCall = makeToolCall("mcp__ralphx__create_child_session", {
-        arguments: { title: "Plan Verification Session", purpose: "verification" },
-        result: mcpWrap({ session_id: "uuid-123", orchestration_triggered: true }),
-      });
-      render(<VerificationWidget toolCall={toolCall} />);
-      expect(screen.getByText("Plan Verification Session")).toBeInTheDocument();
-      expect(screen.getByText("verification")).toBeInTheDocument();
-      expect(screen.getByText("Agent spawned")).toBeInTheDocument();
-    });
-
-    it("renders general purpose badge as muted", () => {
-      const toolCall = makeToolCall("mcp__ralphx__create_child_session", {
-        arguments: { title: "General Session", purpose: "general" },
-        result: mcpWrap({ session_id: "uuid-456", orchestration_triggered: false }),
-      });
-      render(<VerificationWidget toolCall={toolCall} />);
-      expect(screen.getByText("General Session")).toBeInTheDocument();
-      expect(screen.getByText("general")).toBeInTheDocument();
-      expect(screen.queryByText("Agent spawned")).not.toBeInTheDocument();
-    });
-  });
-
   describe("ChildSessionStatus (get_child_session_status)", () => {
     it("shows loading state when no session or agent state", () => {
       const toolCall = makeToolCall("mcp__ralphx__get_child_session_status", {

@@ -187,6 +187,45 @@ export async function getConversationActiveState(
 }
 
 // ============================================================================
+// Child Session Status
+// ============================================================================
+
+export interface ChildSessionMessage {
+  role: string;
+  content: string;
+  created_at: string | null;
+}
+
+export interface ChildSessionAgentState {
+  estimated_status: "idle" | "likely_generating" | "likely_waiting";
+}
+
+export interface ChildSessionStatusResponse {
+  session_id: string;
+  title: string | null;
+  agent_state: ChildSessionAgentState;
+  recent_messages: ChildSessionMessage[];
+}
+
+/**
+ * Fetch the status and recent messages for a child ideation session.
+ *
+ * @param sessionId - The child session ID
+ * @returns Child session status response
+ */
+export async function getChildSessionStatus(
+  sessionId: string
+): Promise<ChildSessionStatusResponse> {
+  const res = await fetch(
+    `http://localhost:3847/api/ideation/sessions/${sessionId}/child-status?include_messages=true&message_limit=5`
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to get child session status: ${res.status}`);
+  }
+  return res.json() as Promise<ChildSessionStatusResponse>;
+}
+
+// ============================================================================
 // Response Schemas (snake_case from Rust backend)
 // ============================================================================
 
@@ -399,6 +438,8 @@ export const chatApi = {
   listMessageAttachments,
   // Active state
   getConversationActiveState,
+  // Child session
+  getChildSessionStatus,
 } as const;
 
 // ============================================================================
