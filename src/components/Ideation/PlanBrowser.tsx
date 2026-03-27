@@ -336,8 +336,8 @@ export function PlanBrowser({
       data-testid="plan-browser"
       className="flex flex-col h-full"
       style={{
-        width: "276px",
-        minWidth: "276px",
+        width: "340px",
+        minWidth: "340px",
         flexShrink: 0,
       }}
     >
