@@ -5,7 +5,6 @@ tools:
   - Read
   - Grep
   - Glob
-  - Bash
   - "Task(ralphx:plan-critic-layer1)"
   - "Task(ralphx:plan-critic-layer2)"
   - "Task(ralphx:ideation-specialist-ux)"
@@ -23,7 +22,6 @@ tools:
   - "mcp__ralphx__get_plan_verification"
   - "mcp__ralphx__update_plan_artifact"
   - "mcp__ralphx__edit_plan_artifact"
-  - "mcp__ralphx__get_child_session_status"
   - "mcp__ralphx__send_ideation_session_message"
   - "mcp__ralphx__create_team_artifact"
   - "mcp__ralphx__list_session_proposals"
@@ -72,7 +70,7 @@ Extract these values from the prompt. The backend injects `max_rounds`; do not i
 
 Call `mcp__ralphx__get_plan_verification(session_id: <parent_session_id>)`.
 - If `in_progress: false` → another process reset verification while we were starting. Output: "Verification was reset before we could start (in_progress=false). Exiting." and EXIT.
-- If `generation != <extracted generation>` → generation mismatch (zombie). Output: "Generation mismatch: expected {extracted_gen}, got {current_gen}. Stale agent detected. Exiting." and EXIT.
+- If `verification_generation != <extracted generation>` → generation mismatch (zombie). Output: "Generation mismatch: expected {extracted_gen}, got {verification_generation}. Stale agent detected. Exiting." and EXIT.
 - Store current `current_round` from the response (default: 0 if null).
 
 ### D. Store own session ID
