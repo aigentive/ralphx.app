@@ -615,6 +615,13 @@ export function PlanningView({
     setActiveIdeationTab(session.id, tab);
   }, [session, setActiveIdeationTab]);
 
+  // Fall back to plan tab if proposals tab is active but all proposals are deleted
+  useEffect(() => {
+    if (activeTab === 'proposals' && proposals.length === 0 && session) {
+      handleTabChange('plan');
+    }
+  }, [proposals.length, activeTab, session, handleTabChange]);
+
   const handleVerificationTabClick = useCallback(async () => {
     if (!session) return;
     setActiveIdeationTab(session.id, 'verification');
@@ -899,18 +906,18 @@ export function PlanningView({
                           )}
                         </button>
                       )}
-                      <button
-                        onClick={() => handleTabChange('proposals')}
-                        className="relative h-full px-3 text-[12px] font-medium transition-colors duration-150 flex items-center gap-1.5"
-                        style={{
-                          color: activeTab === "proposals"
-                            ? "hsl(220 10% 90%)"
-                            : "hsl(220 10% 50%)",
-                        }}
-                        data-testid="tab-proposals"
-                      >
-                        Proposals
-                        {proposals.length > 0 && (
+                      {proposals.length > 0 && (
+                        <button
+                          onClick={() => handleTabChange('proposals')}
+                          className="relative h-full px-3 text-[12px] font-medium transition-colors duration-150 flex items-center gap-1.5"
+                          style={{
+                            color: activeTab === "proposals"
+                              ? "hsl(220 10% 90%)"
+                              : "hsl(220 10% 50%)",
+                          }}
+                          data-testid="tab-proposals"
+                        >
+                          Proposals
                           <span
                             className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
                             style={{
@@ -924,14 +931,14 @@ export function PlanningView({
                           >
                             {proposals.length}
                           </span>
-                        )}
-                        {activeTab === "proposals" && (
-                          <span
-                            className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
-                            style={{ background: "hsl(14 100% 60%)" }}
-                          />
-                        )}
-                      </button>
+                          {activeTab === "proposals" && (
+                            <span
+                              className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
+                              style={{ background: "hsl(14 100% 60%)" }}
+                            />
+                          )}
+                        </button>
+                      )}
                       {teamArtifacts.length > 0 && (
                         <button
                           onClick={() => handleTabChange('research')}
