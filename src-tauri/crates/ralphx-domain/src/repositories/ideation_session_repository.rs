@@ -216,6 +216,11 @@ pub trait IdeationSessionRepository: Send + Sync {
         parent_session_id: &IdeationSessionId,
     ) -> AppResult<Vec<IdeationSession>>;
 
+    /// List ALL active (non-archived) verification child sessions across the entire project.
+    /// Used by the reconciler backstop to detect orphaned children whose parent has already resolved.
+    /// Ordered by created_at ASC.
+    async fn list_active_verification_children(&self) -> AppResult<Vec<IdeationSession>>;
+
     /// Get sessions for a project filtered by status, ordered by created_at DESC with a limit.
     async fn get_by_project_and_status(
         &self,

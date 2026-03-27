@@ -135,6 +135,19 @@ async fn spawn_child_orchestration(
             if let Some(current_generation) = verification_generation.take() {
                 rollback_verification_state(state, parent_id, current_generation, "spawn failure");
             }
+            // Archive the child row so it does not linger as an orphan
+            let child_id_obj = IdeationSessionId::from_string(child_session_str.to_string());
+            if let Err(archive_err) = state
+                .app_state
+                .ideation_session_repo
+                .update_status(&child_id_obj, IdeationSessionStatus::Archived)
+                .await
+            {
+                error!(
+                    "Failed to archive child session {} after spawn failure: {}",
+                    child_session_str, archive_err
+                );
+            }
             false
         }
     }

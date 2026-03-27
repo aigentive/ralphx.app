@@ -91,6 +91,18 @@ pub(crate) async fn create_verification_child_session(
                 "Failed to spawn plan-verifier on verification child session {}: {}",
                 child_session_str, e
             );
+            // Archive the child row so it does not linger as an orphan
+            if let Err(archive_err) = state
+                .app_state
+                .ideation_session_repo
+                .update_status(&child_id, IdeationSessionStatus::Archived)
+                .await
+            {
+                error!(
+                    "Failed to archive verification child session {} after spawn failure: {}",
+                    child_session_str, archive_err
+                );
+            }
             false
         }
     };

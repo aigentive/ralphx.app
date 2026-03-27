@@ -2256,3 +2256,139 @@ async fn test_mixed_recovery_verification_agent_spawned_after_ideation_placehold
         messages[0]
     );
 }
+
+// ---------------------------------------------------------------------------
+// archive_resolved_parent_orphans tests
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_archive_resolved_parent_orphans_archives_when_parent_resolved() {
+    let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Parent with verification_in_progress=false (already resolved)
+    let mut parent = IdeationSession::new(project_id.clone());
+    parent.verification_in_progress = false;
+    parent.verification_status = VerificationStatus::Verified;
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    // Active verification child linked to that parent
+    let mut child = IdeationSession::new(project_id);
+    child.session_purpose = crate::domain::entities::SessionPurpose::Verification;
+    child.parent_session_id = Some(parent_id.clone());
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let svc = make_service(repo.clone(), default_config());
+    svc.archive_resolved_parent_orphans().await;
+
+    let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_eq!(
+        child_after.status,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+        "child must be archived when parent's verification_in_progress=false"
+    );
+}
+
+#[tokio::test]
+async fn test_archive_resolved_parent_orphans_skips_when_parent_active() {
+    let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Parent with verification_in_progress=true (verification still running)
+    let mut parent = IdeationSession::new(project_id.clone());
+    parent.verification_in_progress = true;
+    parent.verification_status = VerificationStatus::Reviewing;
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    // Active verification child linked to that parent
+    let mut child = IdeationSession::new(project_id);
+    child.session_purpose = crate::domain::entities::SessionPurpose::Verification;
+    child.parent_session_id = Some(parent_id.clone());
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let svc = make_service(repo.clone(), default_config());
+    svc.archive_resolved_parent_orphans().await;
+
+    let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_ne!(
+        child_after.status,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+        "child must NOT be archived when parent's verification_in_progress=true"
+    );
+}
+
+#[tokio::test]
+async fn test_archive_resolved_parent_orphans_archives_when_parent_not_found() {
+    let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Child with a parent_session_id that doesn't exist in the DB
+    let nonexistent_parent_id =
+        crate::domain::entities::IdeationSessionId::from_string("nonexistent-parent-id".to_string());
+
+    let mut child = IdeationSession::new(project_id);
+    child.session_purpose = crate::domain::entities::SessionPurpose::Verification;
+    child.parent_session_id = Some(nonexistent_parent_id);
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let svc = make_service(repo.clone(), default_config());
+    svc.archive_resolved_parent_orphans().await;
+
+    let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_eq!(
+        child_after.status,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+        "child must be archived when parent session no longer exists"
+    );
+}
+
+#[tokio::test]
+async fn test_archive_resolved_parent_orphans_no_active_children_is_noop() {
+    let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Only a regular (non-verification) session
+    let session = IdeationSession::new(project_id);
+    repo.create(session).await.unwrap();
+
+    let svc = make_service(repo.clone(), default_config());
+    // Should complete without error and no panics
+    svc.archive_resolved_parent_orphans().await;
+}
+
+#[tokio::test]
+async fn test_archive_resolved_parent_orphans_already_archived_child_not_double_archived() {
+    let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Parent already resolved
+    let mut parent = IdeationSession::new(project_id.clone());
+    parent.verification_in_progress = false;
+    parent.verification_status = VerificationStatus::Verified;
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    // Child already archived — should not appear in list_active_verification_children
+    let mut child = IdeationSession::new(project_id);
+    child.session_purpose = crate::domain::entities::SessionPurpose::Verification;
+    child.parent_session_id = Some(parent_id.clone());
+    child.status = crate::domain::entities::IdeationSessionStatus::Archived;
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let svc = make_service(repo.clone(), default_config());
+    svc.archive_resolved_parent_orphans().await;
+
+    // Child was already archived — should remain archived (no double-archive error)
+    let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_eq!(
+        child_after.status,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+        "already-archived child must remain archived"
+    );
+}

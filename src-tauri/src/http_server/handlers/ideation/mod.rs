@@ -11,6 +11,7 @@ pub use dependency_analysis::*;
 pub use proposals::*;
 pub use runtime::*;
 pub use verification::*;
+pub(crate) use verification::{stop_and_archive_children, ChildFilter};
 
 type JsonError = (StatusCode, Json<serde_json::Value>);
 

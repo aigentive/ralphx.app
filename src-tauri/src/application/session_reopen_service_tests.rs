@@ -58,7 +58,7 @@ async fn test_reopen_accepted_session() {
 
     // Reopen
     let service = build_service(&state);
-    service.reopen(&created.id).await.unwrap();
+    service.reopen(&created.id, &state).await.unwrap();
 
     // Verify session is Active
     let reopened = state
@@ -97,7 +97,7 @@ async fn test_reopen_archived_session() {
         .unwrap();
 
     let service = build_service(&state);
-    service.reopen(&created.id).await.unwrap();
+    service.reopen(&created.id, &state).await.unwrap();
 
     let reopened = state
         .ideation_session_repo
@@ -118,7 +118,7 @@ async fn test_reopen_active_session_fails() {
 
     let service = build_service(&state);
 
-    let result = service.reopen(&created.id).await;
+    let result = service.reopen(&created.id, &state).await;
     assert!(result.is_err());
 }
 
@@ -128,7 +128,7 @@ async fn test_reopen_nonexistent_session_fails() {
 
     let service = build_service(&state);
 
-    let result = service.reopen(&IdeationSessionId::new()).await;
+    let result = service.reopen(&IdeationSessionId::new(), &state).await;
     assert!(result.is_err());
 }
 
@@ -146,7 +146,7 @@ async fn test_reopen_with_no_tasks() {
         .unwrap();
 
     let service = build_service(&state);
-    service.reopen(&created.id).await.unwrap();
+    service.reopen(&created.id, &state).await.unwrap();
 
     let reopened = state
         .ideation_session_repo
@@ -197,7 +197,7 @@ async fn test_reopen_deletes_plan_branch_record_to_allow_re_accept() {
 
     // Reopen session
     let service = build_service(&state);
-    service.reopen(&created.id).await.unwrap();
+    service.reopen(&created.id, &state).await.unwrap();
 
     // Plan branch DB record is deleted so the next accept can INSERT without hitting the UNIQUE INDEX.
     let after_reopen = state
@@ -239,7 +239,7 @@ async fn test_reopen_marks_execution_plan_superseded() {
 
     // Reopen session
     let service = build_service(&state);
-    service.reopen(&created.id).await.unwrap();
+    service.reopen(&created.id, &state).await.unwrap();
 
     // Verify execution plan is now superseded
     let plan_after = state
@@ -274,7 +274,7 @@ async fn test_reopen_without_execution_plan_succeeds() {
         .unwrap();
 
     let service = build_service(&state);
-    service.reopen(&created.id).await.unwrap();
+    service.reopen(&created.id, &state).await.unwrap();
 
     let reopened = state
         .ideation_session_repo
@@ -305,7 +305,7 @@ async fn test_reopen_resets_verification_state() {
         .unwrap();
 
     let service = build_service(&state);
-    service.reopen(&created.id).await.unwrap();
+    service.reopen(&created.id, &state).await.unwrap();
 
     let reopened = state
         .ideation_session_repo
@@ -351,7 +351,7 @@ async fn test_reopen_resets_acceptance_cycle_fields() {
         .unwrap();
 
     let service = build_service(&state);
-    service.reopen(&created.id).await.unwrap();
+    service.reopen(&created.id, &state).await.unwrap();
 
     let reopened = state
         .ideation_session_repo
@@ -729,6 +729,12 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
     async fn touch_updated_at(&self, session_id: &str) -> crate::error::AppResult<()> {
         self.inner.touch_updated_at(session_id).await
     }
+
+    async fn list_active_verification_children(
+        &self,
+    ) -> crate::error::AppResult<Vec<IdeationSession>> {
+        self.inner.list_active_verification_children().await
+    }
 }
 
 #[tokio::test]
@@ -771,7 +777,7 @@ async fn test_reopen_field_reset_error_propagates() {
     );
 
     // Reopen should fail because reset_acceptance_cycle_fields returns an error
-    let result = service.reopen(&created.id).await;
+    let result = service.reopen(&created.id, &state).await;
     assert!(result.is_err(), "reopen must propagate reset_acceptance_cycle_fields error");
 
     // Session status must NOT be Active — step 7 (reset) failed before step 8 (update_status)
@@ -836,7 +842,7 @@ async fn test_full_reopen_reaccept_cycle() {
 
     // --- REOPEN ---
     let service = build_service(&state);
-    service.reopen(&created.id).await.unwrap();
+    service.reopen(&created.id, &state).await.unwrap();
 
     // --- VERIFY ALL FIELDS RESET ---
     let reopened = state
@@ -909,5 +915,247 @@ async fn test_full_reopen_reaccept_cycle() {
     assert!(
         new_pb.is_some(),
         "new PlanBranch must be created successfully after reopen (no UNIQUE constraint violation)"
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Tests: reopen with active child sessions (lifecycle orphan cleanup)
+//
+// Covers the gap where reopened sessions were not treated as a clean slate:
+// active child sessions were left running after reopen.
+//
+// After reopen with active children:
+//   - Verification child: status=Archived
+//   - General child: status=Archived
+//   - Parent: status=Active (reopen succeeded)
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_reopen_archives_active_verification_child() {
+    use crate::domain::entities::{IdeationSessionStatus, SessionPurpose};
+
+    let state = AppState::new_test();
+    let project_id = ProjectId::new();
+
+    // Create parent session and accept it
+    let mut parent = IdeationSession::new(project_id.clone());
+    parent.verification_status = VerificationStatus::Reviewing;
+    parent.verification_in_progress = true;
+    parent.verification_generation = 1;
+    let created = state.ideation_session_repo.create(parent).await.unwrap();
+    state
+        .ideation_session_repo
+        .update_status(&created.id, IdeationSessionStatus::Accepted)
+        .await
+        .unwrap();
+
+    // Create active verification child session
+    let mut child = IdeationSession::new(project_id.clone());
+    child.session_purpose = SessionPurpose::Verification;
+    child.parent_session_id = Some(created.id.clone());
+    let created_child = state.ideation_session_repo.create(child).await.unwrap();
+
+    // Verify child is Active before reopen
+    let child_before = state
+        .ideation_session_repo
+        .get_by_id(&created_child.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        child_before.status,
+        IdeationSessionStatus::Active,
+        "verification child must be Active before reopen"
+    );
+
+    // Reopen parent — must stop and archive all active children
+    let service = build_service(&state);
+    service.reopen(&created.id, &state).await.unwrap();
+
+    // Parent must be Active after reopen
+    let parent_after = state
+        .ideation_session_repo
+        .get_by_id(&created.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        parent_after.status,
+        IdeationSessionStatus::Active,
+        "parent must be Active after reopen"
+    );
+
+    // Verification child must be archived
+    let child_after = state
+        .ideation_session_repo
+        .get_by_id(&created_child.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        child_after.status,
+        IdeationSessionStatus::Archived,
+        "verification child must be archived by reopen"
+    );
+
+    // No active verification children remain
+    let active_children = state
+        .ideation_session_repo
+        .get_verification_children(&created.id)
+        .await
+        .unwrap();
+    assert!(
+        active_children.is_empty(),
+        "no active verification children must remain after reopen"
+    );
+}
+
+#[tokio::test]
+async fn test_reopen_archives_active_general_child() {
+    use crate::domain::entities::IdeationSessionStatus;
+
+    let state = AppState::new_test();
+    let project_id = ProjectId::new();
+
+    // Create parent session and accept it
+    let parent = IdeationSession::new(project_id.clone());
+    let created = state.ideation_session_repo.create(parent).await.unwrap();
+    state
+        .ideation_session_repo
+        .update_status(&created.id, IdeationSessionStatus::Accepted)
+        .await
+        .unwrap();
+
+    // Create active general child session (SessionPurpose::General is the default)
+    let mut child = IdeationSession::new(project_id.clone());
+    child.parent_session_id = Some(created.id.clone());
+    let created_child = state.ideation_session_repo.create(child).await.unwrap();
+
+    // Verify child is Active before reopen
+    let child_before = state
+        .ideation_session_repo
+        .get_by_id(&created_child.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        child_before.status,
+        IdeationSessionStatus::Active,
+        "general child must be Active before reopen"
+    );
+
+    // Reopen parent — must archive ALL active children, not just verification ones
+    let service = build_service(&state);
+    service.reopen(&created.id, &state).await.unwrap();
+
+    // Parent must be Active after reopen
+    let parent_after = state
+        .ideation_session_repo
+        .get_by_id(&created.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        parent_after.status,
+        IdeationSessionStatus::Active,
+        "parent must be Active after reopen"
+    );
+
+    // General child must be archived (reopen cleans up ALL children, not just verification)
+    let child_after = state
+        .ideation_session_repo
+        .get_by_id(&created_child.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        child_after.status,
+        IdeationSessionStatus::Archived,
+        "general child must be archived by reopen — reopen cleans ALL child types"
+    );
+}
+
+#[tokio::test]
+async fn test_reopen_frees_capacity_by_archiving_child_sessions() {
+    use crate::domain::entities::{IdeationSessionStatus, SessionPurpose};
+
+    let state = AppState::new_test();
+    let project_id = ProjectId::new();
+
+    // Create parent and accept it
+    let parent = IdeationSession::new(project_id.clone());
+    let created = state.ideation_session_repo.create(parent).await.unwrap();
+    state
+        .ideation_session_repo
+        .update_status(&created.id, IdeationSessionStatus::Accepted)
+        .await
+        .unwrap();
+
+    // Create two active children: one verification, one general
+    let mut verification_child = IdeationSession::new(project_id.clone());
+    verification_child.session_purpose = SessionPurpose::Verification;
+    verification_child.parent_session_id = Some(created.id.clone());
+    let v_child = state
+        .ideation_session_repo
+        .create(verification_child)
+        .await
+        .unwrap();
+
+    let mut general_child = IdeationSession::new(project_id.clone());
+    general_child.parent_session_id = Some(created.id.clone());
+    let g_child = state
+        .ideation_session_repo
+        .create(general_child)
+        .await
+        .unwrap();
+
+    // Before reopen: 2 active children consume capacity (parent is Accepted, not Active)
+    let active_before = state
+        .ideation_session_repo
+        .count_by_status(&project_id, IdeationSessionStatus::Active)
+        .await
+        .unwrap();
+    // Only the 2 children are Active — parent is Accepted (different status)
+    assert_eq!(active_before, 2, "before reopen: 2 children must be Active (parent is Accepted)");
+
+    // Reopen — must archive all children, freeing their capacity slots
+    let service = build_service(&state);
+    service.reopen(&created.id, &state).await.unwrap();
+
+    // After reopen: parent becomes Active again, both children are Archived
+    // Active count drops from 2 (children) to 1 (parent only) — capacity freed
+    let active_after = state
+        .ideation_session_repo
+        .count_by_status(&project_id, IdeationSessionStatus::Active)
+        .await
+        .unwrap();
+    assert_eq!(
+        active_after, 1,
+        "after reopen: only parent must be Active — children archived, capacity freed"
+    );
+
+    // Explicitly verify children are Archived
+    let v_child_after = state
+        .ideation_session_repo
+        .get_by_id(&v_child.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        v_child_after.status,
+        IdeationSessionStatus::Archived,
+        "verification child must be Archived after reopen"
+    );
+
+    let g_child_after = state
+        .ideation_session_repo
+        .get_by_id(&g_child.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        g_child_after.status,
+        IdeationSessionStatus::Archived,
+        "general child must be Archived after reopen"
     );
 }

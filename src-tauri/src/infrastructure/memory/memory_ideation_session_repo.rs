@@ -745,6 +745,23 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         }
         Ok(())
     }
+
+    async fn list_active_verification_children(&self) -> AppResult<Vec<IdeationSession>> {
+        use crate::domain::entities::ideation::SessionPurpose;
+        let mut children: Vec<_> = self
+            .sessions
+            .read()
+            .unwrap()
+            .values()
+            .filter(|s| {
+                s.session_purpose == SessionPurpose::Verification
+                    && s.status != IdeationSessionStatus::Archived
+            })
+            .cloned()
+            .collect();
+        children.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        Ok(children)
+    }
 }
 
 #[cfg(test)]

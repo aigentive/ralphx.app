@@ -12,7 +12,7 @@ use crate::application::chat_service::{
     AgentRunCompletedPayload, ChatService, ClaudeChatService, SendMessageOptions,
 };
 use crate::application::InteractiveProcessKey;
-use crate::domain::entities::{ChatContextType, IdeationSessionId};
+use crate::domain::entities::{ChatContextType, IdeationSessionId, IdeationSessionStatus};
 use crate::domain::repositories::ExternalEventsRepository;
 use crate::domain::services::emit_verification_status_changed;
 use crate::domain::services::running_agent_registry::RunningAgentKey;
@@ -39,4 +39,5 @@ pub use self::query::get_plan_verification;
 pub use self::update::update_plan_verification;
 
 pub(crate) use self::lifecycle::stop_verification_children;
+pub(crate) use self::lifecycle::{stop_and_archive_children, ChildFilter};
 use self::auto_propose::auto_propose_for_external;

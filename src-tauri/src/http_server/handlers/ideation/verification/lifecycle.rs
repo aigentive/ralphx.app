@@ -40,21 +40,45 @@ pub(crate) async fn validate_verification_session(
     Ok(session)
 }
 
-/// Stop any running verification child agents for a session.
+/// Selects which child sessions to act on.
+pub(crate) enum ChildFilter {
+    /// All child sessions regardless of purpose.
+    #[allow(dead_code)]
+    AllChildren,
+    /// Only verification-purpose child sessions.
+    VerificationOnly,
+}
+
+/// Stop running child agents and optionally archive the child sessions.
 ///
-/// Called when verification is skipped or reverted to immediately release the write lock
-/// so the parent session can resume plan editing. Best-effort: errors are swallowed so the
-/// caller's skip/revert succeeds even if the agent is already dead.
-pub(crate) async fn stop_verification_children(
+/// For each matching child, stops any running agent (emitting `agent:stopped` +
+/// `agent:run_completed` events for UI consistency). When `archive_after_stop` is
+/// true, also archives the child row via `update_status(Archived)` so it no longer
+/// consumes ideation capacity or appears as an orphan.
+///
+/// Best-effort: errors during stop or archive are logged but do not abort the loop.
+pub(crate) async fn stop_and_archive_children(
     session_id: &str,
     app_state: &AppState,
+    filter: ChildFilter,
+    archive_after_stop: bool,
 ) -> Result<(), AppError> {
     use tauri::Emitter;
     let session_id_typed = IdeationSessionId::from_string(session_id.to_string());
-    let children = app_state
-        .ideation_session_repo
-        .get_verification_children(&session_id_typed)
-        .await?;
+    let children = match filter {
+        ChildFilter::VerificationOnly => {
+            app_state
+                .ideation_session_repo
+                .get_verification_children(&session_id_typed)
+                .await?
+        }
+        ChildFilter::AllChildren => {
+            app_state
+                .ideation_session_repo
+                .get_children(&session_id_typed)
+                .await?
+        }
+    };
 
     for child in &children {
         let key = RunningAgentKey::new("ideation", child.id.as_str());
@@ -101,8 +125,34 @@ pub(crate) async fn stop_verification_children(
                 }
             }
         }
+
+        if archive_after_stop {
+            if let Err(e) = app_state
+                .ideation_session_repo
+                .update_status(&child.id, IdeationSessionStatus::Archived)
+                .await
+            {
+                error!(
+                    "Failed to archive child session {} after stop: {}",
+                    child.id.as_str(),
+                    e
+                );
+            }
+        }
     }
     Ok(())
+}
+
+/// Stop any running verification child agents for a session.
+///
+/// Called when verification is skipped or reverted to immediately release the write lock
+/// so the parent session can resume plan editing. Best-effort: errors are swallowed so the
+/// caller's skip/revert succeeds even if the agent is already dead.
+pub(crate) async fn stop_verification_children(
+    session_id: &str,
+    app_state: &AppState,
+) -> Result<(), AppError> {
+    stop_and_archive_children(session_id, app_state, ChildFilter::VerificationOnly, false).await
 }
 
 /// Stop an in-progress verification loop for a session.

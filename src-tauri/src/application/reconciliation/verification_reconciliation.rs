@@ -474,6 +474,112 @@ impl VerificationReconciliationService {
         }
     }
 
+    /// Archive verification children whose parent session has already resolved
+    /// (verification_in_progress = false) or no longer exists.
+    ///
+    /// This is the reconciler backstop for the gap where the parent is already resolved
+    /// before the reconciler runs (e.g. reopen cleared verification state, or spawn failure
+    /// rolled back). The existing `archive_orphaned_children()` only fires when the reconciler
+    /// itself resets the parent — this method handles parents that were already resolved.
+    ///
+    /// Safety constraint: children of a parent with `verification_in_progress = true` are
+    /// NEVER archived — the verification loop is still running.
+    pub(crate) async fn archive_resolved_parent_orphans(&self) {
+        let children = match self
+            .ideation_session_repo
+            .list_active_verification_children()
+            .await
+        {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "archive_resolved_parent_orphans: failed to query active verification children"
+                );
+                return;
+            }
+        };
+
+        if children.is_empty() {
+            return;
+        }
+
+        // Group children by parent_session_id. Children with no parent are archived immediately.
+        let mut by_parent: std::collections::HashMap<String, Vec<IdeationSession>> =
+            std::collections::HashMap::new();
+        let mut no_parent: Vec<IdeationSession> = Vec::new();
+
+        for child in children {
+            match &child.parent_session_id {
+                Some(parent_id) => {
+                    by_parent
+                        .entry(parent_id.as_str().to_string())
+                        .or_default()
+                        .push(child);
+                }
+                None => {
+                    no_parent.push(child);
+                }
+            }
+        }
+
+        // Archive parentless orphans
+        for child in &no_parent {
+            tracing::info!(
+                child_session_id = %child.id.as_str(),
+                "archive_resolved_parent_orphans: archiving verification child with no parent"
+            );
+            archive_verification_session(&self.ideation_session_repo, &child.id).await;
+        }
+
+        // For each parent group, check if the parent has resolved
+        let mut archived_count = 0u32;
+        for (parent_id_str, group) in &by_parent {
+            let parent_id = IdeationSessionId::from_string(parent_id_str.clone());
+            let should_archive = match self.ideation_session_repo.get_by_id(&parent_id).await {
+                Ok(Some(parent)) => {
+                    // Only archive children if the parent's verification loop is not active
+                    !parent.verification_in_progress
+                }
+                Ok(None) => {
+                    // Parent deleted — archive orphaned children
+                    tracing::debug!(
+                        parent_id = %parent_id_str,
+                        "archive_resolved_parent_orphans: parent not found — archiving children"
+                    );
+                    true
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        parent_id = %parent_id_str,
+                        error = %e,
+                        "archive_resolved_parent_orphans: DB error fetching parent — skipping group"
+                    );
+                    false
+                }
+            };
+
+            if should_archive {
+                for child in group {
+                    tracing::info!(
+                        child_session_id = %child.id.as_str(),
+                        parent_id = %parent_id_str,
+                        "archive_resolved_parent_orphans: archiving orphaned verification child"
+                    );
+                    archive_verification_session(&self.ideation_session_repo, &child.id).await;
+                    archived_count += 1;
+                }
+            }
+        }
+
+        if archived_count > 0 {
+            tracing::info!(
+                count = archived_count,
+                "archive_resolved_parent_orphans: archived orphaned verification children"
+            );
+        }
+    }
+
     /// Run periodic reconciliation loop. Never returns (runs until task is cancelled).
     pub async fn run_periodic(self: Arc<Self>) {
         let mut interval =
@@ -484,6 +590,7 @@ impl VerificationReconciliationService {
             interval.tick().await;
             self.scan_and_reset(false).await;
             self.scan_and_archive_stale_external_sessions(false).await;
+            self.archive_resolved_parent_orphans().await;
         }
     }
 

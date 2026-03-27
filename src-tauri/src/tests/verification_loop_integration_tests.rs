@@ -939,14 +939,15 @@ async fn test_orphaned_verification_child_reconciled() {
 // ──────────────────────────────────────────────────────────────────────────────
 // Test 11: Spawn failure resets parent in_progress
 //
-// When create_child_session returns orchestration_triggered=false, the backend
-// calls reset_auto_verify_sync on the parent to clear
-// in_progress. This prevents permanent lock when the agent fails to start.
+// When the agent spawn attempt fails after the child session row is already
+// created, the backend archives the child row immediately and clears
+// parent in_progress. The child IS created before the spawn attempt —
+// spawn failure must archive the existing child row, not leave it active.
 //
-// After reset:
+// After spawn failure cleanup:
 //   - Parent: in_progress=false, status=Unverified
 //   - Gate still blocks (session unverified) but no longer locked
-//   - No verification children (spawn failed before child was created)
+//   - No active verification children (child IS created before spawn but archived on failure)
 // ──────────────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -1010,9 +1011,12 @@ async fn test_spawn_failure_resets_parent() {
         "error must be NotVerified (not InProgress) after spawn failure reset"
     );
 
-    // No verification children exist (spawn failed before child was created)
+    // No active verification children (child IS created before spawn, then archived on failure)
     let children = repo.get_verification_children(&parent_id).await.unwrap();
-    assert!(children.is_empty(), "no verification children after spawn failure");
+    assert!(
+        children.is_empty(),
+        "no active verification children after spawn failure — child was archived"
+    );
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -1160,5 +1164,325 @@ async fn test_escalation_lifecycle_needs_revision_gate_blocks_reconciliation_ski
     assert!(
         check_verification_gate(&after_reverify, &settings_with_gate_enabled()).is_ok(),
         "gate must allow acceptance after successful re-verification"
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Tests for session lifecycle orphan cleanup (Phase 4 — new targeted tests)
+//
+// These tests cover the three lifecycle gaps fixed in this plan:
+//   13. Generic child auto-spawn failure → child row archived immediately
+//   14. Verification child auto-spawn failure → child row archived, parent unblocked
+//   15. Reconciler backstop: orphaned verification child with resolved parent archived
+// ──────────────────────────────────────────────────────────────────────────────
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test 13: Generic child auto-spawn failure archives child immediately
+//
+// When a general-purpose child session is created and the agent spawn attempt
+// fails, the child row must be archived immediately (not left as Active).
+// This prevents orphaned general children from accumulating.
+//
+// Simulates: create.rs path — child created, spawn fails, child archived.
+//
+// After spawn failure cleanup:
+//   - Child: status=Archived (not Active)
+//   - Parent: status unchanged (no verification state to reset for general children)
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_generic_child_spawn_failure_archives_child_immediately() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Parent: active ideation session
+    let parent = make_session(&project_id);
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    // Child: general-purpose child session created before spawn attempt
+    // (SessionPurpose::General is the default for IdeationSession::new)
+    let mut child = make_session(&project_id);
+    child.parent_session_id = Some(parent_id.clone());
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    // Verify child is Active before spawn failure (it was just created)
+    let child_before = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_eq!(
+        child_before.status,
+        crate::domain::entities::IdeationSessionStatus::Active,
+        "general child must start as Active before spawn attempt"
+    );
+
+    // Simulate spawn failure: create.rs archives the child row immediately
+    // This is the new behavior — previously the child was left Active.
+    repo.update_status(
+        &child_id,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+    )
+    .await
+    .unwrap();
+
+    // Child must be archived (not left as Active orphan)
+    let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_eq!(
+        child_after.status,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+        "general child must be archived after spawn failure — not left as Active orphan"
+    );
+
+    // Parent must remain Active (no verification state involved for general children)
+    let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert_eq!(
+        parent_after.status,
+        crate::domain::entities::IdeationSessionStatus::Active,
+        "parent must remain Active after general child spawn failure"
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test 14: Verification child auto-spawn failure archives child and unblocks parent
+//
+// When a verification child is created and the agent spawn attempt fails,
+// the backend must:
+//   1. Archive the child row immediately (prevent orphaned active child)
+//   2. Reset parent verification_in_progress=false (unblock the parent)
+//
+// Simulates: verification.rs path — child created, spawn fails, child archived,
+//            parent verification lock released.
+//
+// After spawn failure cleanup:
+//   - Child: status=Archived
+//   - Parent: verification_in_progress=false, status=Unverified
+//   - No active verification children (get_verification_children returns empty)
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_verification_child_spawn_failure_archives_child_and_unblocks_parent() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Parent: verification triggered (in_progress=true, generation=1)
+    let mut parent = make_session(&project_id);
+    parent.verification_status = VerificationStatus::Reviewing;
+    parent.verification_in_progress = true;
+    parent.verification_generation = 1;
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    // Child: verification child created before spawn attempt
+    let mut child = make_session(&project_id);
+    child.session_purpose = SessionPurpose::Verification;
+    child.parent_session_id = Some(parent_id.clone());
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    // Verify child is Active before spawn failure
+    let child_before = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_eq!(
+        child_before.status,
+        crate::domain::entities::IdeationSessionStatus::Active,
+        "verification child must start as Active before spawn attempt"
+    );
+
+    // Gate must block while verification lock is held
+    let locked = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert!(
+        check_verification_gate(&locked, &settings_with_gate_enabled()).is_err(),
+        "gate must block while parent holds verification lock"
+    );
+
+    // Simulate spawn failure: verification.rs archives child and resets parent
+    // Step 1: Archive the child row
+    repo.update_status(
+        &child_id,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+    )
+    .await
+    .unwrap();
+
+    // Step 2: Reset parent verification state (unblock)
+    repo.update_verification_state(
+        &parent_id,
+        VerificationStatus::Unverified,
+        false, // in_progress cleared — lock released
+        None,
+    )
+    .await
+    .unwrap();
+
+    // Child must be archived — not left as Active orphan
+    let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_eq!(
+        child_after.status,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+        "verification child must be archived after spawn failure"
+    );
+
+    // Parent must have in_progress cleared — no longer permanently locked
+    let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert!(
+        !parent_after.verification_in_progress,
+        "spawn failure must clear parent in_progress to avoid permanent lock"
+    );
+    assert_eq!(
+        parent_after.verification_status,
+        VerificationStatus::Unverified,
+        "spawn failure must reset parent status to Unverified"
+    );
+
+    // No active verification children (archived child excluded)
+    let active_children = repo.get_verification_children(&parent_id).await.unwrap();
+    assert!(
+        active_children.is_empty(),
+        "no active verification children after spawn failure — child was archived"
+    );
+
+    // Gate now blocks for the right reason: NotVerified (not InProgress)
+    let gate = check_verification_gate(&parent_after, &settings_with_gate_enabled());
+    assert!(gate.is_err(), "gate must still block unverified parent after spawn failure");
+    assert!(
+        matches!(
+            gate.unwrap_err(),
+            crate::domain::entities::ideation::VerificationError::NotVerified
+        ),
+        "error must be NotVerified (not InProgress) after spawn failure reset"
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test 15: Reconciler backstop archives orphaned verification child
+//          whose parent has already resolved (verification_in_progress=false)
+//
+// This covers the gap where the parent is already resolved (e.g. reopen cleared
+// verification state, or a spawn failure rolled back) BEFORE the reconciler runs.
+// The existing scan_and_reset() only resets stuck in-progress parents — it
+// misses children whose parents were resolved by other means.
+//
+// The backstop archive_resolved_parent_orphans() fills this gap by scanning
+// active verification children and archiving those whose parent is resolved.
+//
+// Setup:
+//   - Parent: verification_in_progress=false (already resolved)
+//   - Child: Active verification child (orphaned — parent already resolved)
+//
+// After backstop scan:
+//   - Child: status=Archived
+//   - Parent: unchanged (in_progress=false, status=Verified)
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_reconciler_backstop_archives_orphaned_verification_child_resolved_parent() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Parent: already resolved — verification_in_progress=false
+    // (e.g. reopen cleared verification state before reconciler ran)
+    let mut parent = make_session(&project_id);
+    parent.verification_status = VerificationStatus::Verified;
+    parent.verification_in_progress = false;
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    // Orphaned verification child: Active but parent already resolved
+    let mut child = make_session(&project_id);
+    child.session_purpose = SessionPurpose::Verification;
+    child.parent_session_id = Some(parent_id.clone());
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    // Verify child is Active before backstop scan
+    let child_before = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_eq!(
+        child_before.status,
+        crate::domain::entities::IdeationSessionStatus::Active,
+        "orphaned child must be Active before backstop scan"
+    );
+
+    // scan_and_reset would NOT archive this child because parent is not in_progress
+    let svc = make_reconciliation_service(repo.clone());
+    let reset_count = svc.scan_and_reset(false).await;
+    assert_eq!(
+        reset_count, 0,
+        "scan_and_reset must not reset already-resolved parent"
+    );
+
+    // Child must still be Active after scan_and_reset (it doesn't handle this case)
+    let child_after_scan = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_eq!(
+        child_after_scan.status,
+        crate::domain::entities::IdeationSessionStatus::Active,
+        "child must still be Active after scan_and_reset (handled by backstop only)"
+    );
+
+    // Backstop: archive_resolved_parent_orphans fills the gap
+    svc.archive_resolved_parent_orphans().await;
+
+    // Child must be archived by the backstop
+    let child_after_backstop = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_eq!(
+        child_after_backstop.status,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+        "backstop must archive verification child whose parent is already resolved"
+    );
+
+    // Parent must be unchanged (backstop does not modify parent state)
+    let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert_eq!(
+        parent_after.verification_status,
+        VerificationStatus::Verified,
+        "parent verification status must be unchanged after backstop"
+    );
+    assert!(
+        !parent_after.verification_in_progress,
+        "parent in_progress must remain false after backstop"
+    );
+
+    // No active verification children after backstop
+    let active_children = repo.get_verification_children(&parent_id).await.unwrap();
+    assert!(
+        active_children.is_empty(),
+        "no active verification children must remain after backstop archives the orphan"
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test 15b: Reconciler backstop does NOT archive children of in-progress parent
+//
+// Safety constraint: children of a parent with verification_in_progress=true
+// must NEVER be archived by the backstop — the verification loop is still running.
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_reconciler_backstop_skips_children_of_in_progress_parent() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Parent: verification still in progress
+    let mut parent = make_session(&project_id);
+    parent.verification_status = VerificationStatus::Reviewing;
+    parent.verification_in_progress = true;
+    parent.verification_generation = 1;
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    // Active verification child — parent is still running
+    let mut child = make_session(&project_id);
+    child.session_purpose = SessionPurpose::Verification;
+    child.parent_session_id = Some(parent_id.clone());
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    // Backstop must NOT archive this child (parent still active)
+    let svc = make_reconciliation_service(repo.clone());
+    svc.archive_resolved_parent_orphans().await;
+
+    // Child must remain Active (parent still verifying)
+    let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_eq!(
+        child_after.status,
+        crate::domain::entities::IdeationSessionStatus::Active,
+        "backstop must NOT archive child whose parent is still actively verifying"
     );
 }

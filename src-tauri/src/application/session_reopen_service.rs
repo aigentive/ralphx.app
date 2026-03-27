@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::application::app_state::AppState;
 use crate::application::git_service::GitService;
 use crate::application::task_cleanup_service::{StopMode, TaskCleanupService};
 use crate::domain::entities::plan_branch::PlanBranchStatus;
@@ -14,6 +15,7 @@ use crate::domain::repositories::{
     TaskProposalRepository, TaskRepository,
 };
 use crate::error::AppResult;
+use crate::http_server::handlers::ideation::{ChildFilter, stop_and_archive_children};
 
 pub struct SessionReopenService {
     task_repo: Arc<dyn TaskRepository>,
@@ -49,6 +51,7 @@ impl SessionReopenService {
     /// Reopen an accepted/archived session back to Active.
     ///
     /// Cleanup order:
+    /// 0. Stop agents + archive ALL active child sessions (before resetting parent)
     /// 1. Validate session is Accepted or Archived
     /// 2. Mark active ExecutionPlan as superseded (preserves history)
     /// 3. Get all tasks for this session
@@ -58,7 +61,14 @@ impl SessionReopenService {
     /// 7. Reset acceptance-cycle fields (expected_proposal_count, dependencies_acknowledged, etc.)
     /// 8. Set session status to Active
     /// 9. Reset verification state
-    pub async fn reopen(&self, session_id: &IdeationSessionId) -> AppResult<()> {
+    pub async fn reopen(&self, session_id: &IdeationSessionId, app_state: &AppState) -> AppResult<()> {
+        // 0. Stop and archive ALL active child sessions before resetting parent.
+        //    Must happen first to avoid race with a running verification agent modifying the plan.
+        //    Best-effort: errors are logged but do not block the reopen.
+        stop_and_archive_children(session_id.as_str(), app_state, ChildFilter::AllChildren, true)
+            .await
+            .ok();
+
         // 1. Validate session is Accepted or Archived
         let session = self
             .ideation_session_repo

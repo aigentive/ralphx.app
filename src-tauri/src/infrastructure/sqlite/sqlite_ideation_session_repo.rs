@@ -1381,4 +1381,22 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
             })
             .await
     }
+
+    async fn list_active_verification_children(&self) -> AppResult<Vec<IdeationSession>> {
+        self.db
+            .run(move |conn| {
+                let sql = format!(
+                    "SELECT {} FROM ideation_sessions \
+                     WHERE session_purpose = 'verification' AND status != 'archived' \
+                     ORDER BY created_at ASC",
+                    SESSION_COLUMNS
+                );
+                let mut stmt = conn.prepare(&sql)?;
+                let sessions = stmt
+                    .query_map([], IdeationSession::from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(sessions)
+            })
+            .await
+    }
 }

@@ -443,7 +443,7 @@ pub async fn reopen_ideation_session(
     );
 
     service
-        .reopen(&session_id)
+        .reopen(&session_id, &state)
         .await
         .map_err(|e| e.to_string())?;
 

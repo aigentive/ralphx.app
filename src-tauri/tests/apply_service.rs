@@ -374,6 +374,12 @@ impl IdeationSessionRepository for MockSessionRepository {
     async fn touch_updated_at(&self, _session_id: &str) -> AppResult<()> {
         Ok(())
     }
+
+    async fn list_active_verification_children(
+        &self,
+    ) -> AppResult<Vec<ralphx_lib::domain::entities::IdeationSession>> {
+        Ok(vec![])
+    }
 }
 
 struct MockProposalRepository {
