@@ -61,6 +61,9 @@ pub use running::{
 };
 use running::prune_stale_execution_registry_entries;
 
+mod scheduling;
+use scheduling::schedule_ready_tasks_for_project;
+
 /// Get current execution status
 /// Phase 82: Optional project_id for per-project scoping.
 /// If project_id is None, falls back to active project or aggregates across all projects.
@@ -981,32 +984,8 @@ pub async fn set_max_concurrent(
     if max > old_max {
         // Get active project for scoped scheduling
         let active_project_id = active_project_state.get().await;
-
-        let scheduler = Arc::new(
-            TaskSchedulerService::new(
-                Arc::clone(&execution_state),
-                Arc::clone(&app_state.project_repo),
-                Arc::clone(&app_state.task_repo),
-                Arc::clone(&app_state.task_dependency_repo),
-                Arc::clone(&app_state.chat_message_repo),
-                Arc::clone(&app_state.chat_attachment_repo),
-                Arc::clone(&app_state.chat_conversation_repo),
-                Arc::clone(&app_state.agent_run_repo),
-                Arc::clone(&app_state.ideation_session_repo),
-                Arc::clone(&app_state.activity_event_repo),
-                Arc::clone(&app_state.message_queue),
-                Arc::clone(&app_state.running_agent_registry),
-                Arc::clone(&app_state.memory_event_repo),
-                app_state.app_handle.clone(),
-            )
-            .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-            .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-            .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
-        );
-        scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
-        // Set active project scope before scheduling to prevent cross-project scheduling
-        scheduler.set_active_project(active_project_id).await;
-        scheduler.try_schedule_ready_tasks().await;
+        schedule_ready_tasks_for_project(&app_state, Arc::clone(&execution_state), active_project_id)
+            .await;
     }
 
     // Get current status
@@ -1078,33 +1057,12 @@ pub async fn update_execution_settings(
 
         // If capacity increased, trigger scheduler to pick up waiting Ready tasks
         if new_max > old_max {
-            let scheduler = Arc::new(
-                TaskSchedulerService::new(
-                    Arc::clone(&execution_state),
-                    Arc::clone(&app_state.project_repo),
-                    Arc::clone(&app_state.task_repo),
-                    Arc::clone(&app_state.task_dependency_repo),
-                    Arc::clone(&app_state.chat_message_repo),
-                    Arc::clone(&app_state.chat_attachment_repo),
-                    Arc::clone(&app_state.chat_conversation_repo),
-                    Arc::clone(&app_state.agent_run_repo),
-                    Arc::clone(&app_state.ideation_session_repo),
-                    Arc::clone(&app_state.activity_event_repo),
-                    Arc::clone(&app_state.message_queue),
-                    Arc::clone(&app_state.running_agent_registry),
-                    Arc::clone(&app_state.memory_event_repo),
-                    app_state.app_handle.clone(),
-                )
-                .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-                .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-                .with_interactive_process_registry(Arc::clone(
-                    &app_state.interactive_process_registry,
-                )),
-            );
-            scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
-            // Set active project scope before scheduling to prevent cross-project scheduling
-            scheduler.set_active_project(project_id.clone()).await;
-            scheduler.try_schedule_ready_tasks().await;
+            schedule_ready_tasks_for_project(
+                &app_state,
+                Arc::clone(&execution_state),
+                project_id.clone(),
+            )
+            .await;
         }
     }
 
@@ -1272,32 +1230,8 @@ pub async fn update_global_execution_settings(
     if updated.global_max_concurrent > old_global_max {
         // Get active project for scoped scheduling
         let active_project_id = active_project_state.get().await;
-
-        let scheduler = Arc::new(
-            TaskSchedulerService::new(
-                Arc::clone(&execution_state),
-                Arc::clone(&app_state.project_repo),
-                Arc::clone(&app_state.task_repo),
-                Arc::clone(&app_state.task_dependency_repo),
-                Arc::clone(&app_state.chat_message_repo),
-                Arc::clone(&app_state.chat_attachment_repo),
-                Arc::clone(&app_state.chat_conversation_repo),
-                Arc::clone(&app_state.agent_run_repo),
-                Arc::clone(&app_state.ideation_session_repo),
-                Arc::clone(&app_state.activity_event_repo),
-                Arc::clone(&app_state.message_queue),
-                Arc::clone(&app_state.running_agent_registry),
-                Arc::clone(&app_state.memory_event_repo),
-                app_state.app_handle.clone(),
-            )
-            .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-            .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-            .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
-        );
-        scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
-        // Set active project scope before scheduling to prevent cross-project scheduling
-        scheduler.set_active_project(active_project_id).await;
-        scheduler.try_schedule_ready_tasks().await;
+        schedule_ready_tasks_for_project(&app_state, Arc::clone(&execution_state), active_project_id)
+            .await;
     }
 
     // Emit event for UI sync
