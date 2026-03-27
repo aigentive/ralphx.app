@@ -275,8 +275,8 @@ Once `finalize_proposals` completes and session transitions to Accepted:
 | `ideation-team-lead` | `ideation` | Team mode variant of orchestrator |
 | `session-namer` | `ideation` | Names session title via `update_session_title` MCP tool |
 | `plan-verifier` | child session | Owns adversarial verification loop; spawns critics |
-| `plan-critic-layer1` | — | Completeness critic (JSON gap analysis) |
-| `plan-critic-layer2` | — | Dual-lens implementation critic |
+| `plan-critic-completeness` | — | Completeness critic (JSON gap analysis) |
+| `plan-critic-implementation-feasibility` | — | Dual-lens implementation critic |
 
 ---
 

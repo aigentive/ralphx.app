@@ -5,8 +5,8 @@ tools:
   - Read
   - Grep
   - Glob
-  - "Task(ralphx:plan-critic-layer1)"
-  - "Task(ralphx:plan-critic-layer2)"
+  - "Task(ralphx:plan-critic-completeness)"
+  - "Task(ralphx:plan-critic-implementation-feasibility)"
   - "Task(ralphx:ideation-specialist-ux)"
   - "Task(ralphx:ideation-specialist-code-quality)"
   - "Task(ralphx:ideation-specialist-prompt-quality)"
@@ -224,8 +224,8 @@ Record round start timestamp now (before dispatching): `round_start_time = <curr
 Dispatch ALL agents (critics + specialists) in a SINGLE response message — this is how Claude Code runs Tasks in parallel:
 
 ```
-Task(subagent_type: "ralphx:plan-critic-layer1", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Return highest-signal failure predictors only.")
-Task(subagent_type: "ralphx:plan-critic-layer2", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Return highest-signal failure predictors only.")
+Task(subagent_type: "ralphx:plan-critic-completeness", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Return highest-signal failure predictors only.")
+Task(subagent_type: "ralphx:plan-critic-implementation-feasibility", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Return highest-signal failure predictors only.")
 [If UX specialist selected]:
 Task(subagent_type: "ralphx:ideation-specialist-ux", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nAnalyze the plan from a UI/UX perspective. Read the plan via get_session_plan. Create your TeamResearch artifact using session_id: <parent_session_id> — this is the PARENT IDEATION SESSION ID, not your own session. Title the artifact with prefix 'UX: ' followed by the feature name.")
 [If prompt quality specialist selected]:

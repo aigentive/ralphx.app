@@ -29,8 +29,8 @@ import {
   DEEP_RESEARCHER,
   MEMORY_MAINTAINER,
   MEMORY_CAPTURE,
-  PLAN_CRITIC_LAYER1,
-  PLAN_CRITIC_LAYER2,
+  PLAN_CRITIC_COMPLETENESS,
+  PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY,
   PLAN_VERIFIER,
   IDEATION_TEAM_LEAD,
   IDEATION_TEAM_MEMBER,
@@ -1916,8 +1916,8 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_memories_for_paths",
   ],
   // Plan critic agents - read-only, only need plan access tools
-  [PLAN_CRITIC_LAYER1]: ["get_session_plan", "get_artifact"],
-  [PLAN_CRITIC_LAYER2]: ["get_session_plan", "get_artifact"],
+  [PLAN_CRITIC_COMPLETENESS]: ["get_session_plan", "get_artifact"],
+  [PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY]: ["get_session_plan", "get_artifact"],
   // Plan verifier agent - owns the verification round loop
   [PLAN_VERIFIER]: [
     "get_session_plan",

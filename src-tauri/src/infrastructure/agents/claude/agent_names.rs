@@ -34,8 +34,9 @@ pub const SHORT_MEMORY_MAINTAINER: &str = "memory-maintainer";
 pub const SHORT_MEMORY_CAPTURE: &str = "memory-capture";
 
 // ── Plan verification critic agents ─────────────────────────────────────
-pub const SHORT_PLAN_CRITIC_LAYER1: &str = "plan-critic-layer1";
-pub const SHORT_PLAN_CRITIC_LAYER2: &str = "plan-critic-layer2";
+pub const SHORT_PLAN_CRITIC_COMPLETENESS: &str = "plan-critic-completeness";
+pub const SHORT_PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY: &str =
+    "plan-critic-implementation-feasibility";
 pub const SHORT_PLAN_VERIFIER: &str = "plan-verifier";
 
 // ── Team lead variants (extends base agents) ────────────────────────────

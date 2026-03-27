@@ -4,7 +4,7 @@
 
 ## Problem
 
-User reported critics (plan-critic-layer1, plan-critic-layer2) making code changes during auto-verification, crashing the app. Critics have `disallowedTools: [Write, Edit, NotebookEdit, Bash]` in their YAML definitions, but this wasn't enforced.
+User reported critics (`plan-critic-completeness`, `plan-critic-implementation-feasibility`) making code changes during auto-verification, crashing the app. Critics have `disallowedTools: [Write, Edit, NotebookEdit, Bash]` in their YAML definitions, but this wasn't enforced.
 
 ## Root Cause
 
@@ -12,7 +12,7 @@ User reported critics (plan-critic-layer1, plan-critic-layer2) making code chang
 ```
 ClaudeChatService.send_message()
   → spawns orchestrator-ideation (main Claude process)
-    → orchestrator calls Task(ralphx:plan-critic-layer1)
+    → orchestrator calls Task(ralphx:plan-critic-completeness)
       → critic runs as subagent
 ```
 
@@ -26,7 +26,7 @@ ClaudeChatService.send_message()
 
 ### Failure path
 
-If the `orchestrator-ideation` subprocess was spawned without `--plugin-dir ./ralphx-plugin`, the `ralphx:plan-critic-layer1` agent type cannot be resolved. The critic falls back to a general-purpose agent inheriting the orchestrator's full toolset (which has no Write/Edit restrictions at the process level if `bypassPermissions` is set).
+If the `orchestrator-ideation` subprocess was spawned without `--plugin-dir ./ralphx-plugin`, the `ralphx:plan-critic-completeness` agent type cannot be resolved. The critic falls back to a general-purpose agent inheriting the orchestrator's full toolset (which has no Write/Edit restrictions at the process level if `bypassPermissions` is set).
 
 ## Fix Applied
 
@@ -40,8 +40,8 @@ or codebase. You are a pure analysis agent.
 ```
 
 Files modified:
-- `ralphx-plugin/agents/plan-critic-layer1.md`
-- `ralphx-plugin/agents/plan-critic-layer2.md`
+- `ralphx-plugin/agents/plan-critic-completeness.md`
+- `ralphx-plugin/agents/plan-critic-implementation-feasibility.md`
 
 ## Defense-in-Depth Status
 

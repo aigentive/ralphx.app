@@ -30,7 +30,7 @@ plan-verifier agent (in child session):
   • Reads plan via get_session_plan (inherited from parent)
   • ROUND LOOP:
       A. Zombie guard: get_plan_verification(parent_session_id) — check generation
-      B. Spawn plan-critic-layer1 + plan-critic-layer2 (parallel Task subagents)
+      B. Spawn plan-critic-completeness + plan-critic-implementation-feasibility (parallel Task subagents)
       C. Critics fetch plan via get_session_plan MCP tool (no prompt bloat)
       D. Critics return structured gaps (JSON)
          ├─ Parse failure? → record in sliding window

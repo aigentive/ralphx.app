@@ -1,5 +1,5 @@
 ---
-name: plan-critic-layer2
+name: plan-critic-implementation-feasibility
 description: "Layer 2 critic (dual-lens: minimal/surgical + defense-in-depth) for automated plan verification. Reads actual codebase to find functional gaps in proposed changes. Returns structured JSON gap analysis only."
 tools:
   - Read
@@ -16,7 +16,7 @@ mcpServers:
       args:
         - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
         - "--agent-type"
-        - "plan-critic-layer2"
+        - "plan-critic-implementation-feasibility"
 disallowedTools:
   - Write
   - Edit

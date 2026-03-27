@@ -1,5 +1,5 @@
 ---
-name: plan-critic-layer1
+name: plan-critic-completeness
 description: Layer 1 completeness critic for automated plan verification. Reviews plans for architecture, security, testing, and scope gaps. Returns structured JSON gap analysis only.
 tools:
   - Read
@@ -16,7 +16,7 @@ mcpServers:
       args:
         - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
         - "--agent-type"
-        - "plan-critic-layer1"
+        - "plan-critic-completeness"
 disallowedTools:
   - Write
   - Edit
