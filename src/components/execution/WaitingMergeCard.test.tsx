@@ -2,7 +2,7 @@
  * WaitingMergeCard component tests
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { WaitingMergeCard } from "./WaitingMergeCard";
 import type { MergePipelineTask } from "@/api/merge-pipeline";
@@ -26,27 +26,27 @@ function createMockTask(overrides?: Partial<MergePipelineTask>): MergePipelineTa
 describe("WaitingMergeCard", () => {
   describe("normal waiting state", () => {
     it("renders task title", () => {
-      render(<WaitingMergeCard task={createMockTask({ title: "Add user auth" })} />);
+      render(<WaitingMergeCard task={createMockTask({ title: "Add user auth" })} onViewDetails={vi.fn()} />);
       expect(screen.getByText("Add user auth")).toBeInTheDocument();
     });
 
     it("renders short branch name", () => {
-      render(<WaitingMergeCard task={createMockTask({ targetBranch: "ralphx/app/plan-xyz" })} />);
+      render(<WaitingMergeCard task={createMockTask({ targetBranch: "ralphx/app/plan-xyz" })} onViewDetails={vi.fn()} />);
       expect(screen.getByText("plan-xyz")).toBeInTheDocument();
     });
 
     it("shows clock icon for non-deferred tasks", () => {
-      const { container } = render(<WaitingMergeCard task={createMockTask()} />);
+      const { container } = render(<WaitingMergeCard task={createMockTask()} onViewDetails={vi.fn()} />);
       expect(container.querySelector("[data-testid='main-merge-deferred-icon']")).not.toBeInTheDocument();
     });
 
     it("does not show deferred badge", () => {
-      render(<WaitingMergeCard task={createMockTask()} />);
+      render(<WaitingMergeCard task={createMockTask()} onViewDetails={vi.fn()} />);
       expect(screen.queryByTestId("main-merge-deferred-badge")).not.toBeInTheDocument();
     });
 
     it("shows tooltip with pending merge reason", () => {
-      const { container } = render(<WaitingMergeCard task={createMockTask()} />);
+      const { container } = render(<WaitingMergeCard task={createMockTask()} onViewDetails={vi.fn()} />);
       const row = container.firstElementChild as HTMLElement;
       expect(row.getAttribute("title")).toContain("Pending merge");
     });
@@ -58,7 +58,7 @@ describe("WaitingMergeCard", () => {
         isDeferred: true,
         blockingBranch: "ralphx/app/task-other",
       });
-      const { container } = render(<WaitingMergeCard task={task} />);
+      const { container } = render(<WaitingMergeCard task={task} onViewDetails={vi.fn()} />);
       const row = container.firstElementChild as HTMLElement;
       expect(row.getAttribute("title")).toContain("Waiting for ralphx/app/task-other to merge");
     });
@@ -68,14 +68,14 @@ describe("WaitingMergeCard", () => {
         isDeferred: true,
         blockingBranch: null,
       });
-      const { container } = render(<WaitingMergeCard task={task} />);
+      const { container } = render(<WaitingMergeCard task={task} onViewDetails={vi.fn()} />);
       const row = container.firstElementChild as HTMLElement;
       expect(row.getAttribute("title")).toContain("Waiting for active merge to complete");
     });
 
     it("does not show main-merge-deferred badge", () => {
       const task = createMockTask({ isDeferred: true, blockingBranch: "other" });
-      render(<WaitingMergeCard task={task} />);
+      render(<WaitingMergeCard task={task} onViewDetails={vi.fn()} />);
       expect(screen.queryByTestId("main-merge-deferred-badge")).not.toBeInTheDocument();
     });
   });
@@ -86,7 +86,7 @@ describe("WaitingMergeCard", () => {
         isDeferred: true,
         isMainMergeDeferred: true,
       });
-      render(<WaitingMergeCard task={task} />);
+      render(<WaitingMergeCard task={task} onViewDetails={vi.fn()} />);
       expect(screen.getByTestId("main-merge-deferred-icon")).toBeInTheDocument();
     });
 
@@ -95,7 +95,7 @@ describe("WaitingMergeCard", () => {
         isDeferred: true,
         isMainMergeDeferred: true,
       });
-      render(<WaitingMergeCard task={task} runningCount={3} />);
+      render(<WaitingMergeCard task={task} runningCount={3} onViewDetails={vi.fn()} />);
       expect(screen.getByTestId("main-merge-deferred-badge")).toBeInTheDocument();
       expect(screen.getByText("3 agents")).toBeInTheDocument();
     });
@@ -105,7 +105,7 @@ describe("WaitingMergeCard", () => {
         isDeferred: true,
         isMainMergeDeferred: true,
       });
-      render(<WaitingMergeCard task={task} runningCount={1} />);
+      render(<WaitingMergeCard task={task} runningCount={1} onViewDetails={vi.fn()} />);
       expect(screen.getByText("1 agent")).toBeInTheDocument();
     });
 
@@ -114,7 +114,7 @@ describe("WaitingMergeCard", () => {
         isDeferred: true,
         isMainMergeDeferred: true,
       });
-      render(<WaitingMergeCard task={task} runningCount={0} />);
+      render(<WaitingMergeCard task={task} runningCount={0} onViewDetails={vi.fn()} />);
       expect(screen.getByText("agents")).toBeInTheDocument();
     });
 
@@ -123,7 +123,7 @@ describe("WaitingMergeCard", () => {
         isDeferred: true,
         isMainMergeDeferred: true,
       });
-      render(<WaitingMergeCard task={task} />);
+      render(<WaitingMergeCard task={task} onViewDetails={vi.fn()} />);
       expect(screen.getByText("agents")).toBeInTheDocument();
     });
 
@@ -132,7 +132,7 @@ describe("WaitingMergeCard", () => {
         isDeferred: true,
         isMainMergeDeferred: true,
       });
-      const { container } = render(<WaitingMergeCard task={task} runningCount={2} />);
+      const { container } = render(<WaitingMergeCard task={task} runningCount={2} onViewDetails={vi.fn()} />);
       const row = container.firstElementChild as HTMLElement;
       expect(row.getAttribute("title")).toContain("Waiting for 2 agents to finish");
     });
@@ -142,7 +142,7 @@ describe("WaitingMergeCard", () => {
         isDeferred: true,
         isMainMergeDeferred: true,
       });
-      render(<WaitingMergeCard task={task} runningCount={2} />);
+      render(<WaitingMergeCard task={task} runningCount={2} onViewDetails={vi.fn()} />);
       const icon = screen.getByTestId("main-merge-deferred-icon");
       expect(icon).toHaveStyle({ color: "#ff6b35" });
 
@@ -157,7 +157,7 @@ describe("WaitingMergeCard", () => {
         isDeferred: true,
         isMainMergeDeferred: true,
       });
-      render(<WaitingMergeCard task={task} runningCount={1} />);
+      render(<WaitingMergeCard task={task} runningCount={1} onViewDetails={vi.fn()} />);
       expect(screen.getByText("Deploy feature X")).toBeInTheDocument();
       expect(screen.getByText("main")).toBeInTheDocument();
     });

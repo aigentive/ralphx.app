@@ -36,6 +36,8 @@ interface RunningProcessPopoverProps {
   onStopProcess: (taskId: string) => void;
   /** Called when settings link clicked */
   onOpenSettings: () => void;
+  /** Called when an ideation session is clicked to navigate to it */
+  onNavigateToSession?: (sessionId: string) => void;
   /** Children (trigger element) */
   children: React.ReactNode;
   /** Optional horizontal alignment offset for popover content */
@@ -52,6 +54,7 @@ export function RunningProcessPopover({
   onPauseProcess,
   onStopProcess,
   onOpenSettings,
+  onNavigateToSession,
   children,
   alignOffset = -24,
 }: RunningProcessPopoverProps) {
@@ -128,6 +131,12 @@ export function RunningProcessPopover({
                     <IdeationSessionCard
                       key={session.sessionId}
                       session={session}
+                      {...(onNavigateToSession !== undefined && {
+                        onClick: () => {
+                          onOpenChange(false);
+                          onNavigateToSession(session.sessionId);
+                        },
+                      })}
                     />
                   ))}
                   {processes.length > 0 && (

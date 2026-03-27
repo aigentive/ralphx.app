@@ -83,13 +83,14 @@ export function MergePipelinePopover({
   children,
   alignOffset = -24,
 }: MergePipelinePopoverProps) {
+  const [open, setOpen] = useState(false);
   const [sections, setSections] = useState({
     active: true,
     waiting: true,
     attention: true,
   });
 
-  const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
+  const navigateToTask = useUiStore((s) => s.navigateToTask);
 
   const handleStopMerge = async (taskId: string) => {
     try {
@@ -100,7 +101,8 @@ export function MergePipelinePopover({
   };
 
   const handleViewDetails = (taskId: string) => {
-    setSelectedTaskId(taskId);
+    setOpen(false);
+    navigateToTask(taskId);
   };
 
   const handleRetryMerge = async (taskId: string) => {
@@ -118,7 +120,7 @@ export function MergePipelinePopover({
   const total = active.length + waiting.length + needsAttention.length;
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         {children}
       </PopoverTrigger>
@@ -175,6 +177,7 @@ export function MergePipelinePopover({
                     key={task.taskId}
                     task={task}
                     onStop={handleStopMerge}
+                    onViewDetails={handleViewDetails}
                   />
                 ))}
             </div>
@@ -191,7 +194,7 @@ export function MergePipelinePopover({
               />
               {sections.waiting &&
                 waiting.map((task) => (
-                  <WaitingMergeCard key={task.taskId} task={task} runningCount={runningCount} />
+                  <WaitingMergeCard key={task.taskId} task={task} runningCount={runningCount} onViewDetails={handleViewDetails} />
                 ))}
             </div>
           )}

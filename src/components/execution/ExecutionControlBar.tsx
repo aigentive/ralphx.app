@@ -74,6 +74,8 @@ interface ExecutionControlBarProps {
   onStopProcess?: (taskId: string) => void;
   /** Called when settings link clicked in popover */
   onOpenSettings?: () => void;
+  /** Called when an ideation session is clicked in the running processes popover */
+  onNavigateToSession?: (sessionId: string) => void;
 }
 
 /**
@@ -132,6 +134,7 @@ export function ExecutionControlBar({
   onPauseProcess = () => {},
   onStopProcess = () => {},
   onOpenSettings = () => {},
+  onNavigateToSession,
 }: ExecutionControlBarProps) {
   const canStop = runningCount > 0 && !isLoading;
   const isStopped = haltMode === "stopped";
@@ -224,6 +227,7 @@ export function ExecutionControlBar({
               onPauseProcess={onPauseProcess}
               onStopProcess={onStopProcess}
               onOpenSettings={onOpenSettings}
+              {...(onNavigateToSession !== undefined && { onNavigateToSession })}
               alignOffset={POPOVER_ALIGN_TO_SEPARATOR_DOT}
             >
               <button

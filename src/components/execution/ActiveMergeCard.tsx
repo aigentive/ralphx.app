@@ -9,11 +9,10 @@ import type { MergePipelineTask } from "@/api/merge-pipeline";
 import { useCallback, useState } from "react";
 import { getStatusIconConfig } from "@/types/status-icons";
 import { BranchBadge } from "@/components/shared/BranchBadge";
-import { useUiStore } from "@/stores/uiStore";
-
 interface ActiveMergeCardProps {
   task: MergePipelineTask;
   onStop: (taskId: string) => void;
+  onViewDetails: (taskId: string) => void;
 }
 
 function formatElapsedTime(startTime: Date): string {
@@ -28,13 +27,12 @@ function formatElapsedTime(startTime: Date): string {
   return `${hours}h ${minutes}m`;
 }
 
-export function ActiveMergeCard({ task, onStop }: ActiveMergeCardProps) {
+export function ActiveMergeCard({ task, onStop, onViewDetails }: ActiveMergeCardProps) {
   const mergingStyle = getStatusIconConfig("merging");
   const conflictStyle = getStatusIconConfig("merge_conflict");
   const stoppedStyle = getStatusIconConfig("stopped");
   const [startTime] = useState(() => new Date(Date.now() - 30000));
   const elapsedTime = formatElapsedTime(startTime);
-  const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
 
   const handleStop = useCallback(() => {
     onStop(task.taskId);
@@ -56,7 +54,7 @@ export function ActiveMergeCard({ task, onStop }: ActiveMergeCardProps) {
       <button
         className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
         style={{ color: "hsl(220 10% 88%)" }}
-        onClick={() => setSelectedTaskId(task.taskId)}
+        onClick={() => onViewDetails(task.taskId)}
       >
         {task.title}
       </button>

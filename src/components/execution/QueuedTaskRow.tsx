@@ -18,7 +18,7 @@ interface QueuedTaskRowProps {
 
 export function QueuedTaskRow({ position, task }: QueuedTaskRowProps) {
   const priority = priorityFromScore(task.priority);
-  const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
+  const navigateToTask = useUiStore((s) => s.navigateToTask);
 
   return (
     <div
@@ -34,7 +34,7 @@ export function QueuedTaskRow({ position, task }: QueuedTaskRowProps) {
       <button
         className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
         style={{ color: "hsl(220 10% 88%)" }}
-        onClick={() => setSelectedTaskId(task.id)}
+        onClick={() => navigateToTask(task.id)}
       >
         {task.title}
       </button>

@@ -9,6 +9,7 @@
  * - user_initiated: manually paused by user
  */
 
+import { useState } from "react";
 import {
   Popover,
   PopoverContent,
@@ -85,7 +86,8 @@ export function PausedTasksPopover({
   children,
   alignOffset = -24,
 }: PausedTasksPopoverProps) {
-  const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
+  const [open, setOpen] = useState(false);
+  const navigateToTask = useUiStore((s) => s.navigateToTask);
 
   const handleResume = async (taskId: string) => {
     try {
@@ -96,7 +98,8 @@ export function PausedTasksPopover({
   };
 
   const handleViewDetails = (taskId: string) => {
-    setSelectedTaskId(taskId);
+    setOpen(false);
+    navigateToTask(taskId);
   };
 
   // Parse all paused tasks with their reasons
@@ -115,7 +118,7 @@ export function PausedTasksPopover({
   const hasBothGroups = providerErrors.length > 0 && (userPaused.length > 0 || unparsed.length > 0);
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
         side="top"

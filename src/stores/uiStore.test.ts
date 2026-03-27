@@ -992,4 +992,40 @@ describe("uiStore", () => {
       });
     });
   });
+
+  describe("navigateToTask", () => {
+    it("switches currentView to kanban", () => {
+      useUiStore.setState({ currentView: "graph" });
+      useUiStore.getState().navigateToTask("task-42");
+      expect(useUiStore.getState().currentView).toBe("kanban");
+    });
+
+    it("sets selectedTaskId to the given taskId", () => {
+      useUiStore.getState().navigateToTask("task-42");
+      expect(useUiStore.getState().selectedTaskId).toBe("task-42");
+    });
+
+    it("sets graphSelection to { kind: 'task', id: taskId }", () => {
+      useUiStore.getState().navigateToTask("task-42");
+      expect(useUiStore.getState().graphSelection).toEqual({ kind: "task", id: "task-42" });
+    });
+
+    it("sets chatVisibleByView.kanban to true", () => {
+      useUiStore.setState({
+        chatVisibleByView: {
+          kanban: false,
+          graph: false,
+          ideation: false,
+          activity: false,
+          settings: false,
+          extensibility: false,
+          insights: false,
+          task_detail: false,
+          team: false,
+        },
+      });
+      useUiStore.getState().navigateToTask("task-42");
+      expect(useUiStore.getState().chatVisibleByView.kanban).toBe(true);
+    });
+  });
 });

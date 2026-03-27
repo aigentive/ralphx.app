@@ -7,9 +7,10 @@
 
 import { Pause, Square, Loader2 } from "lucide-react";
 import type { RunningProcess } from "@/api/running-processes";
-import { useEffect, useState } from "react";
 import { getStatusIconConfig } from "@/types/status-icons";
 import { useUiStore } from "@/stores/uiStore";
+import { useElapsedTimer } from "@/hooks/useElapsedTimer";
+import { formatElapsedTime } from "@/lib/formatters";
 
 interface ProcessCardProps {
   /** The running process data */
@@ -135,22 +136,6 @@ function getOriginBadgeStyle(origin: string | null): {
   }
 }
 
-/**
- * Format elapsed seconds as human-readable duration
- */
-function formatElapsedTime(seconds: number | null): string {
-  if (seconds === null) return "\u2014";
-
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-
-  if (mins === 0) {
-    return `${secs}s`;
-  }
-
-  return `${mins}m ${secs}s`;
-}
-
 export function ProcessCard({
   process,
   onPause,
@@ -159,22 +144,10 @@ export function ProcessCard({
 }: ProcessCardProps) {
   const statusStyle = getStatusBadgeStyle(process.internalStatus);
   const originStyle = getOriginBadgeStyle(process.triggerOrigin);
-  const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
+  const navigateToTask = useUiStore((s) => s.navigateToTask);
 
   // Live elapsed time ticker (updates every second)
-  const [elapsedTime, setElapsedTime] = useState(process.elapsedSeconds);
-
-  useEffect(() => {
-    if (process.elapsedSeconds === null) return;
-
-    setElapsedTime(process.elapsedSeconds);
-
-    const interval = setInterval(() => {
-      setElapsedTime((prev) => (prev !== null ? prev + 1 : null));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [process.elapsedSeconds, process.taskId]);
+  const elapsedTime = useElapsedTimer(process.elapsedSeconds, process.taskId);
 
   const stepInfo = process.stepProgress
     ? `Step ${process.stepProgress.currentStep ? process.stepProgress.currentStep.sortOrder + 1 : process.stepProgress.completed}/${process.stepProgress.total}`
@@ -195,7 +168,7 @@ export function ProcessCard({
           className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
           style={{ color: "hsl(220 10% 88%)" }}
           title={process.title}
-          onClick={() => setSelectedTaskId(process.taskId)}
+          onClick={() => navigateToTask(process.taskId)}
         >
           {process.title}
         </button>

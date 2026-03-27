@@ -605,6 +605,11 @@ function AppContent() {
     }
   }, [allSessions, selectSession]);
 
+  const handleNavigateToSession = useCallback(async (sessionId: string) => {
+    setCurrentView("ideation");
+    await handleSelectSession(sessionId);
+  }, [setCurrentView, handleSelectSession]);
+
   const handleEditProposal = useCallback((proposalId: string) => {
     setEditingProposalId(proposalId);
   }, []);
@@ -1039,6 +1044,7 @@ function AppContent() {
                       onPauseProcess={handlePauseProcess}
                       onStopProcess={handleStopProcess}
                       onOpenSettings={handleOpenSettings}
+                      onNavigateToSession={handleNavigateToSession}
                     />
                   }
                 >
@@ -1074,6 +1080,7 @@ function AppContent() {
                       onPauseProcess={handlePauseProcess}
                       onStopProcess={handleStopProcess}
                       onOpenSettings={handleOpenSettings}
+                      onNavigateToSession={handleNavigateToSession}
                     />
                   }
                 />
@@ -1114,6 +1121,7 @@ function AppContent() {
                       onPauseProcess={handlePauseProcess}
                       onStopProcess={handleStopProcess}
                       onOpenSettings={handleOpenSettings}
+                      onNavigateToSession={handleNavigateToSession}
                     />
                   }
                 />

@@ -8,13 +8,13 @@ import { ProcessCard } from "./ProcessCard";
 import type { RunningProcess } from "@/api/running-processes";
 
 // Stable mock references for uiStore
-const { mockSetSelectedTaskId } = vi.hoisted(() => ({
-  mockSetSelectedTaskId: vi.fn(),
+const { mockNavigateToTask } = vi.hoisted(() => ({
+  mockNavigateToTask: vi.fn(),
 }));
 
 vi.mock("@/stores/uiStore", () => ({
-  useUiStore: vi.fn((selector: (s: { setSelectedTaskId: typeof mockSetSelectedTaskId }) => unknown) => {
-    const state = { setSelectedTaskId: mockSetSelectedTaskId };
+  useUiStore: vi.fn((selector: (s: { navigateToTask: typeof mockNavigateToTask }) => unknown) => {
+    const state = { navigateToTask: mockNavigateToTask };
     return selector ? selector(state) : state;
   }),
 }));
@@ -469,7 +469,7 @@ describe("ProcessCard", () => {
   });
 
   describe("click-to-navigate", () => {
-    it("calls setSelectedTaskId with process.taskId when title is clicked", () => {
+    it("calls navigateToTask with process.taskId when title is clicked", () => {
       const process = createMockProcess({ taskId: "task-nav-123", title: "Navigate to me" });
       render(
         <ProcessCard
@@ -481,8 +481,8 @@ describe("ProcessCard", () => {
 
       fireEvent.click(screen.getByText("Navigate to me"));
 
-      expect(mockSetSelectedTaskId).toHaveBeenCalledWith("task-nav-123");
-      expect(mockSetSelectedTaskId).toHaveBeenCalledOnce();
+      expect(mockNavigateToTask).toHaveBeenCalledWith("task-nav-123");
+      expect(mockNavigateToTask).toHaveBeenCalledOnce();
     });
 
     it("title is rendered as a button element", () => {

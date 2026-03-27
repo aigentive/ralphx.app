@@ -402,6 +402,8 @@ interface UiActions {
   cleanupProjectRoute: (projectId: string) => void;
   /** Update cached feature flags (called once on startup after Tauri command resolves) */
   setFeatureFlags: (flags: FeatureFlags) => void;
+  /** Atomically navigate to kanban view and select the given task */
+  navigateToTask: (taskId: string) => void;
 }
 
 // ============================================================================
@@ -409,7 +411,7 @@ interface UiActions {
 // ============================================================================
 
 export const useUiStore = create<UiState & UiActions>()(
-  immer((set) => ({
+  immer((set, get) => ({
     // Initial state
     sidebarOpen: true,
     reviewsPanelOpen: false,
@@ -840,6 +842,14 @@ export const useUiStore = create<UiState & UiActions>()(
       set((state) => {
         state.featureFlags = flags;
       }),
+
+    navigateToTask: (taskId) => {
+      get().setCurrentView("kanban");
+      set((state) => {
+        applyTaskSelection(state, taskId);
+        state.graphSelection = { kind: "task", id: taskId };
+      });
+    },
   }))
 );
 

@@ -7,31 +7,16 @@
 
 import { MessageSquare, Loader2, Pause } from "lucide-react";
 import type { RunningIdeationSession } from "@/api/running-processes";
-import { useEffect, useState } from "react";
+import { useElapsedTimer } from "@/hooks/useElapsedTimer";
+import { formatElapsedTime } from "@/lib/formatters";
 
 interface IdeationSessionCardProps {
   session: RunningIdeationSession;
+  onClick?: () => void;
 }
 
-function formatElapsedTime(seconds: number | null): string {
-  if (seconds === null) return "\u2014";
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  if (mins === 0) return `${secs}s`;
-  return `${mins}m ${secs}s`;
-}
-
-export function IdeationSessionCard({ session }: IdeationSessionCardProps) {
-  const [elapsedTime, setElapsedTime] = useState(session.elapsedSeconds);
-
-  useEffect(() => {
-    if (session.elapsedSeconds === null) return;
-    setElapsedTime(session.elapsedSeconds);
-    const interval = setInterval(() => {
-      setElapsedTime((prev) => (prev !== null ? prev + 1 : null));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [session.elapsedSeconds, session.sessionId]);
+export function IdeationSessionCard({ session, onClick }: IdeationSessionCardProps) {
+  const elapsedTime = useElapsedTimer(session.elapsedSeconds, session.sessionId);
 
   return (
     <div
@@ -51,13 +36,14 @@ export function IdeationSessionCard({ session }: IdeationSessionCardProps) {
             style={{ color: "hsl(220 10% 45%)" }}
           />
         )}
-        <span
-          className="flex-1 text-xs font-medium truncate min-w-0"
-          style={{ color: "hsl(220 10% 88%)" }}
+        <button
+          className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
+          style={{ color: "hsl(220 10% 88%)", background: "none", border: "none", padding: 0 }}
           title={session.title}
+          onClick={onClick}
         >
           {session.title}
-        </span>
+        </button>
         <span
           className="text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0"
           style={{

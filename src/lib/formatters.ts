@@ -145,6 +145,27 @@ export function formatDuration(seconds: number): string {
 }
 
 /**
+ * Format elapsed seconds as a compact duration for live timers.
+ *
+ * @param seconds - Elapsed seconds, or null if the timer has not started
+ * @returns Formatted string like "45s" or "3m 12s", or "—" if null
+ *
+ * @example
+ * ```ts
+ * formatElapsedTime(45)   // "45s"
+ * formatElapsedTime(192)  // "3m 12s"
+ * formatElapsedTime(null) // "—"
+ * ```
+ */
+export function formatElapsedTime(seconds: number | null): string {
+  if (seconds === null) return "\u2014";
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (mins === 0) return `${secs}s`;
+  return `${mins}m ${secs}s`;
+}
+
+/**
  * Format minutes into human-readable time: "18m", "7h 30m", "2h".
  * Rules: < 60 min → "Xm", >= 60 min → "Xh Ym", if Y is 0 → "Xh"
  */
