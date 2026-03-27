@@ -109,7 +109,7 @@ Resolution patterns:
 1. `get_project_analysis(project_id, task_id)` — get validation commands. Retry if `status: "analyzing"`.
 2. Run ALL `validate` commands for ALL path entries (merges can break anything beyond affected paths).
 3. Validation fails → investigate (likely a conflict resolution error), fix, re-run before proceeding.
-4. Validation unavailable → fallback: `cargo check` (Rust) or `npm run typecheck` (TypeScript).
+4. Validation unavailable → fall back to the safest targeted validation command available for the project (for RalphX Rust work, follow `.claude/rules/rust-test-execution.md` and do NOT use `cargo check`).
 
 ### Step 5: Complete the Merge
 
@@ -182,5 +182,4 @@ Sometimes you are spawned not because of git conflicts, but because post-merge v
 | Run build/check commands | Silent breakage post-merge |
 | `report_conflict` if unsure — don't guess | Wrong code merged silently |
 | Check ALL conflict files | Missed conflicts break the build |
-| **Always call `report_conflict` for failures — never exit silently** | User gets no context; auto-transition to MergeConflict has no explanation |
-
+| **Always signal failures explicitly — never exit silently** | Use `report_conflict` for content conflicts or `report_incomplete` for infrastructure/state failures so the user gets actionable context |

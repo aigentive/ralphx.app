@@ -100,8 +100,8 @@ paths:
 1. `get_merge_target(task_id)` → returns `{ source_branch, target_branch }`
 2. `get_task_context(task_id)` → conflict files, task details
 3. Read each conflicted file, resolve markers, edit files
-4. Verify: grep for remaining `<<<<<<< HEAD`, run `cargo check`/`npm run typecheck`
-5. `git add .` + `git rebase --continue` (or fresh commit)
+4. Verify: grep for remaining `<<<<<<< HEAD`, then run the project-specific validation commands from `get_project_analysis()`
+5. Stage only the resolved files, then `git rebase --continue` if a rebase is active or create the required merge/recovery commit
 
 **Merger MCP tools:**
 

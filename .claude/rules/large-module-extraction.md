@@ -54,7 +54,7 @@ When extracting from single impl block into separate modules:
 | Test in tests/ subdir | Private fn | `pub(super)` (can't see private) |
 | External crate | — | Must be `pub` |
 
-**Discovery:** Run `cargo check` → note errors → grep call sites → apply visibility fix.
+**Discovery:** Run the narrowest repo-appropriate compile/test command for the extracted module → note errors → grep call sites → apply visibility fix.
 
 ## Test Helper Extraction (Rust)
 

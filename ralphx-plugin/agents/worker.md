@@ -149,9 +149,9 @@ STOP immediately. Do not proceed. Report: "Task is blocked by: [task names]".
 
 | Scenario | Action |
 |----------|--------|
-| Validation (clippy/tests/build) fails 3+ consecutive times on same error | `fail_step(step_id, error)` and STOP — do not keep retrying |
-| Worktree creation fails with 'invalid reference' | `fail_step(step_id, error)` — do NOT retry git infrastructure errors |
-| Blocked by DB/MCP infrastructure error | Retry ONCE after 30s, then `fail_step(step_id, error)` if still blocked |
+| Repeated validation failures on the same error | `fail_step(step_id, error)` and STOP — do not keep retrying the same fix blindly |
+| Git/worktree infrastructure failure (for example invalid reference, corrupted index, detached state) | `fail_step(step_id, error)` — do NOT retry infrastructure errors blindly |
+| DB/MCP/tooling infrastructure failure | Retry only if the failure looks transient; otherwise `fail_step(step_id, error)` promptly |
 </invariants>
 
 <entry-dispatch>
@@ -193,7 +193,7 @@ After fixing all issues, proceed through state EXECUTE (VALIDATE + COMPLETE phas
 
 <phase name="PLAN">
 After reading your task's plan section:
-1. Generate 2-4 concrete implementation options grounded in the system card (see invariants above)
+1. For non-trivial tasks, generate 2-4 concrete implementation options grounded in the system card (see invariants above); for simple scoped fixes, choose the safest direct approach
 2. Select best option based on safety, dependency sequencing, and commit-gate feasibility
 3. Decompose your task into sub-scopes with no overlapping write ownership
 4. Build a dependency graph within YOUR task only; identify waves for parallel execution

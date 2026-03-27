@@ -59,8 +59,8 @@ Before finalizing a task, ask:
 2. **Does this task change a type signature?**
    - Yes → Include all callers/usages in the same task
 
-3. **Can I run `cargo check` / `npm run typecheck` after JUST this task?**
-   - No → Expand task scope until it compiles
+3. **Can I run the repo-appropriate validation/typecheck commands after JUST this task?**
+   - No → Expand task scope until the task leaves the repo in a valid intermediate state
 
 4. **Does the next task's `blockedBy` create a broken state?**
    - If Task N+1 is blocked by Task N, but Task N alone breaks the build, merge them
