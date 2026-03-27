@@ -72,6 +72,17 @@ async fn create_ideation_session_in_project(state: &HttpServerState, project_id:
     session_id
 }
 
+async fn create_project(state: &HttpServerState, name: &str, path: &str) -> Project {
+    let project = Project::new(name.to_string(), path.to_string());
+    state
+        .app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+    project
+}
+
 #[tokio::test]
 async fn test_paused_task_execution_send_is_queued_not_spawned() {
     let state = setup_test_state().await;
@@ -156,6 +167,64 @@ async fn test_paused_merge_send_is_queued_not_spawned() {
         1
     );
     let key = RunningAgentKey::new("merge", &task_id);
+    assert!(!state.app_state.running_agent_registry.is_running(&key).await);
+}
+
+#[tokio::test]
+async fn test_paused_task_chat_send_is_queued_not_spawned() {
+    let state = setup_test_state().await;
+    let task_id = create_task(&state, InternalStatus::Ready).await;
+    state.execution_state.pause();
+
+    let result = build_chat_service(&state)
+        .send_message(
+            ChatContextType::Task,
+            &task_id,
+            "Queue task chat during pause",
+            SendMessageOptions::default(),
+        )
+        .await
+        .expect("paused task chat send should queue");
+
+    assert!(result.was_queued);
+    assert_eq!(
+        state
+            .app_state
+            .message_queue
+            .get_queued(ChatContextType::Task, &task_id)
+            .len(),
+        1
+    );
+    let key = RunningAgentKey::new("task", &task_id);
+    assert!(!state.app_state.running_agent_registry.is_running(&key).await);
+}
+
+#[tokio::test]
+async fn test_paused_project_chat_send_is_queued_not_spawned() {
+    let state = setup_test_state().await;
+    let project = create_project(&state, "Paused Project Chat", "/tmp/paused-project-chat").await;
+    state.execution_state.pause();
+
+    let result = build_chat_service(&state)
+        .send_message(
+            ChatContextType::Project,
+            project.id.as_str(),
+            "Queue project chat during pause",
+            SendMessageOptions::default(),
+        )
+        .await
+        .expect("paused project chat send should queue");
+
+    assert!(result.was_queued);
+    assert_eq!(
+        state
+            .app_state
+            .message_queue
+            .get_queued(ChatContextType::Project, project.id.as_str())
+            .len(),
+        1
+    );
+    let key = RunningAgentKey::new("project", project.id.as_str());
     assert!(!state.app_state.running_agent_registry.is_running(&key).await);
 }
 

@@ -1941,6 +1941,14 @@ pub async fn process_stream_background<R: Runtime>(
 
     let has_output = outcome.has_meaningful_output();
 
+    if outcome.tool_calls.is_empty() {
+        if let Some(provider_err) =
+            super::chat_service_errors::classify_provider_error(&outcome.response_text)
+        {
+            return Err(provider_err);
+        }
+    }
+
     if !has_output {
         let payload = if debug_lines.is_empty() {
             format!(

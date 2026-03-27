@@ -32,6 +32,24 @@ pub(super) fn queue_processing_blocked_by_pause(
     super::uses_execution_slot(context_type) && execution_state.is_some_and(|exec| exec.is_paused())
 }
 
+fn queued_message_resume_in_place(metadata_override: Option<&str>) -> bool {
+    metadata_override
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .and_then(|value| value.get("resume_in_place").and_then(|v| v.as_bool()))
+        .unwrap_or(false)
+}
+
+fn with_resume_in_place_metadata(metadata_override: Option<String>) -> Option<String> {
+    let mut value = metadata_override
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert("resume_in_place".to_string(), serde_json::json!(true));
+    }
+    Some(value.to_string())
+}
+
 /// Process all queued messages for a context with retry loop.
 ///
 /// Returns the total number of messages processed.
@@ -214,70 +232,77 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
             }
 
             // Persist user message — apply overrides if present (e.g. auto-verification metadata + trigger timestamp)
-            let created_at_override = queued_msg
-                .created_at_override
-                .as_deref()
-                .and_then(|ts| chrono::DateTime::parse_from_rfc3339(ts).ok())
-                .map(|ts| ts.with_timezone(&chrono::Utc));
-            let mut user_msg = chat_service_context::create_user_message(
-                context_type,
-                context_id,
-                &queued_msg.content,
-                conversation_id,
-                queued_msg.metadata_override.clone(),
-                created_at_override,
-            );
-            // Mark session recovery rehydration prompts so the frontend can hide them
-            // (only if no metadata_override was provided — override takes precedence)
-            if queued_msg.metadata_override.is_none() && queued_msg.content.starts_with("<instructions>") {
-                user_msg.metadata = Some(r#"{"recovery_context":true}"#.to_string());
-            }
-            let user_msg_id = user_msg.id.as_str().to_string();
-            let user_msg_created_at = user_msg.created_at.to_rfc3339();
-            let user_msg_metadata = user_msg.metadata.clone();
-            let _ = chat_message_repo.create(user_msg).await;
+            let resume_in_place =
+                queued_message_resume_in_place(queued_msg.metadata_override.as_deref());
+            if !resume_in_place {
+                let created_at_override = queued_msg
+                    .created_at_override
+                    .as_deref()
+                    .and_then(|ts| chrono::DateTime::parse_from_rfc3339(ts).ok())
+                    .map(|ts| ts.with_timezone(&chrono::Utc));
+                let mut user_msg = chat_service_context::create_user_message(
+                    context_type,
+                    context_id,
+                    &queued_msg.content,
+                    conversation_id,
+                    queued_msg.metadata_override.clone(),
+                    created_at_override,
+                );
+                // Mark session recovery rehydration prompts so the frontend can hide them
+                // (only if no metadata_override was provided — override takes precedence)
+                if queued_msg.metadata_override.is_none()
+                    && queued_msg.content.starts_with("<instructions>")
+                {
+                    user_msg.metadata = Some(r#"{"recovery_context":true}"#.to_string());
+                }
+                let user_msg_id = user_msg.id.as_str().to_string();
+                let user_msg_created_at = user_msg.created_at.to_rfc3339();
+                let user_msg_metadata = user_msg.metadata.clone();
+                let _ = chat_message_repo.create(user_msg).await;
 
-            // Link pending attachments to the user message
-            if let Ok(pending_attachments) = chat_attachment_repo
-                .find_by_conversation_id(&conversation_id)
-                .await
-            {
-                let pending: Vec<_> = pending_attachments
-                    .into_iter()
-                    .filter(|a| a.message_id.is_none())
-                    .collect();
+                // Link pending attachments to the user message
+                if let Ok(pending_attachments) = chat_attachment_repo
+                    .find_by_conversation_id(&conversation_id)
+                    .await
+                {
+                    let pending: Vec<_> = pending_attachments
+                        .into_iter()
+                        .filter(|a| a.message_id.is_none())
+                        .collect();
 
-                if !pending.is_empty() {
-                    let attachment_ids: Vec<_> = pending.iter().map(|a| a.id.clone()).collect();
-                    let _ = chat_attachment_repo
-                        .update_message_ids(
-                            &attachment_ids,
-                            &crate::domain::entities::ChatMessageId::from_string(&user_msg_id),
-                        )
-                        .await;
-                    tracing::debug!(
-                        message_id = %user_msg_id,
-                        attachment_count = pending.len(),
-                        "[QUEUE] Linked attachments to user message"
+                    if !pending.is_empty() {
+                        let attachment_ids: Vec<_> =
+                            pending.iter().map(|a| a.id.clone()).collect();
+                        let _ = chat_attachment_repo
+                            .update_message_ids(
+                                &attachment_ids,
+                                &crate::domain::entities::ChatMessageId::from_string(&user_msg_id),
+                            )
+                            .await;
+                        tracing::debug!(
+                            message_id = %user_msg_id,
+                            attachment_count = pending.len(),
+                            "[QUEUE] Linked attachments to user message"
+                        );
+                    }
+                }
+
+                // Emit user message created
+                if let Some(ref handle) = app_handle {
+                    let _ = handle.emit(
+                        "agent:message_created",
+                        AgentMessageCreatedPayload {
+                            message_id: user_msg_id,
+                            conversation_id: conversation_id.as_str().to_string(),
+                            context_type: context_type.to_string(),
+                            context_id: context_id.to_string(),
+                            role: "user".to_string(),
+                            content: queued_msg.content.clone(),
+                            created_at: Some(user_msg_created_at),
+                            metadata: user_msg_metadata,
+                        },
                     );
                 }
-            }
-
-            // Emit user message created
-            if let Some(ref handle) = app_handle {
-                let _ = handle.emit(
-                    "agent:message_created",
-                    AgentMessageCreatedPayload {
-                        message_id: user_msg_id,
-                        conversation_id: conversation_id.as_str().to_string(),
-                        context_type: context_type.to_string(),
-                        context_id: context_id.to_string(),
-                        role: "user".to_string(),
-                        content: queued_msg.content.clone(),
-                        created_at: Some(user_msg_created_at),
-                        metadata: user_msg_metadata,
-                    },
-                );
             }
 
             // Build and spawn resume command
@@ -392,6 +417,31 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                             // to prevent UI flickering between messages.
                         }
                         Err(e) => {
+                            if let crate::application::chat_service::StreamError::ProviderError {
+                                category,
+                                message,
+                                retry_after,
+                            } = &e
+                            {
+                                let mut resumed_msg = queued_msg.clone();
+                                resumed_msg.metadata_override = with_resume_in_place_metadata(
+                                    resumed_msg.metadata_override.clone(),
+                                );
+                                message_queue.queue_front_existing(
+                                    context_type,
+                                    context_id,
+                                    resumed_msg,
+                                );
+                                super::chat_service_handlers::apply_system_wide_provider_pause(
+                                    &app_handle,
+                                    category,
+                                    message,
+                                    retry_after,
+                                    &context_type.to_string(),
+                                    context_id,
+                                )
+                                .await;
+                            }
                             let error_string = redact(&e.to_string());
                             tracing::error!(
                                 "Failed to process queued message stream: {}",

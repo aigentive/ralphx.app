@@ -810,6 +810,54 @@ fn test_classify_rate_limit_underscore_format() {
     }
 }
 
+#[test]
+fn test_classify_claude_limit_banner_as_rate_limit() {
+    let result =
+        classify_provider_error("You've hit your limit · resets 11pm (Europe/Bucharest)");
+    assert!(result.is_some());
+    if let Some(StreamError::ProviderError {
+        category,
+        retry_after,
+        ..
+    }) = result
+    {
+        assert_eq!(category, ProviderErrorCategory::RateLimit);
+        let parsed = retry_after
+            .as_deref()
+            .and_then(|ts| chrono::DateTime::parse_from_rfc3339(ts).ok());
+        assert!(parsed.is_some(), "Claude limit banner should produce retry_after");
+    }
+}
+
+#[test]
+fn test_classify_claude_extra_usage_banner_as_rate_limit() {
+    let result =
+        classify_provider_error("You're out of extra usage · resets 8am (Europe/Bucharest)");
+    assert!(result.is_some());
+    if let Some(StreamError::ProviderError { category, .. }) = result {
+        assert_eq!(category, ProviderErrorCategory::RateLimit);
+    }
+}
+
+#[test]
+fn test_parse_retry_after_from_claude_reset_banner_returns_future_timestamp() {
+    let retry_after = parse_retry_after_from_message(
+        "You've hit your limit · resets 11pm (Europe/Bucharest)",
+    )
+    .expect("Claude reset banner should parse");
+    let parsed = chrono::DateTime::parse_from_rfc3339(&retry_after)
+        .expect("retry_after should be RFC3339");
+    let now = chrono::Utc::now();
+    assert!(
+        parsed.with_timezone(&chrono::Utc) > now,
+        "retry_after should be in the future"
+    );
+    assert!(
+        parsed.with_timezone(&chrono::Utc) - now < chrono::Duration::hours(25),
+        "retry_after should not be more than 25h away"
+    );
+}
+
 // =========================================================================
 // PauseReason tests
 // =========================================================================

@@ -247,6 +247,26 @@ fn test_apply_global_rate_limit_backpressure_expired_does_not_block() {
     assert!(exec.can_start_task());
 }
 
+#[test]
+fn test_execution_completion_requires_completed_steps_when_step_tracking_exists() {
+    assert!(!should_transition_task_execution_to_pending_review(
+        true, true, false
+    ));
+    assert!(should_transition_task_execution_to_pending_review(
+        true, true, true
+    ));
+}
+
+#[test]
+fn test_execution_completion_falls_back_to_output_when_step_tracking_missing() {
+    assert!(should_transition_task_execution_to_pending_review(
+        true, false, false
+    ));
+    assert!(!should_transition_task_execution_to_pending_review(
+        false, false, false
+    ));
+}
+
 // ========================================
 // AgentExit + Step Completion Override Tests
 // ========================================

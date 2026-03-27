@@ -115,12 +115,39 @@ pub(crate) fn has_meaningful_output(
     if !stderr_text.trim().is_empty() {
         return false;
     }
+    if chat_service_errors::classify_provider_error(response_text).is_some() {
+        return false;
+    }
     !response_text.trim().is_empty()
+}
+
+fn resume_in_place_requested(metadata: Option<&str>) -> bool {
+    metadata
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .and_then(|value| value.get("resume_in_place").and_then(|v| v.as_bool()))
+        .unwrap_or(false)
+}
+
+fn strip_resume_in_place_metadata(metadata: Option<String>) -> Option<String> {
+    let Some(raw) = metadata else {
+        return None;
+    };
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return Some(raw);
+    };
+    let Some(obj) = value.as_object_mut() else {
+        return Some(raw);
+    };
+    obj.remove("resume_in_place");
+    if obj.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
 }
 
 /// Returns true for context types that consume execution slots (running count).
 /// TaskExecution, Review, Merge, and Ideation are tracked against max_concurrent.
-/// Task chat and Project chat are lightweight conversational agents — excluded.
 #[doc(hidden)]
 pub fn uses_execution_slot(context_type: ChatContextType) -> bool {
     matches!(
@@ -132,11 +159,19 @@ pub fn uses_execution_slot(context_type: ChatContextType) -> bool {
     )
 }
 
-fn slot_consuming_launches_paused(
+fn claude_launches_paused(
     context_type: ChatContextType,
     execution_state: Option<&Arc<crate::commands::ExecutionState>>,
 ) -> bool {
-    uses_execution_slot(context_type) && execution_state.is_some_and(|exec| exec.is_paused())
+    matches!(
+        context_type,
+        ChatContextType::TaskExecution
+            | ChatContextType::Review
+            | ChatContextType::Merge
+            | ChatContextType::Ideation
+            | ChatContextType::Task
+            | ChatContextType::Project
+    ) && execution_state.is_some_and(|exec| exec.is_paused())
 }
 
 fn is_ideation_registry_context(context_type: &str) -> bool {
@@ -870,7 +905,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         // task/review/merge/ideation work while the global execution state is
         // paused/stopped. Preserve the message in queue so it can be resumed later
         // instead of failing the user-facing send.
-        if slot_consuming_launches_paused(context_type, self.execution_state.as_ref()) {
+        if claude_launches_paused(context_type, self.execution_state.as_ref()) {
             let (conversation, is_new_conversation) = self
                 .get_or_create_conversation(context_type, context_id)
                 .await?;
@@ -880,7 +915,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 %context_type,
                 context_id,
                 queued_message_id = %queued.id,
-                "chat_service.send_message: execution paused, queued slot-consuming message instead of spawning"
+                "chat_service.send_message: execution paused, queued Claude-backed message instead of spawning"
             );
             return Ok(SendResult {
                 conversation_id: conversation.id.as_str().to_string(),
@@ -983,33 +1018,39 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                         }
                     };
 
-                    // Store user message for conversation history
-                    let user_msg = chat_service_context::create_user_message(
-                        context_type,
-                        context_id,
-                        message,
-                        conversation.id,
-                        options.metadata.clone(),
-                        options.created_at,
-                    );
-                    let user_msg_id = user_msg.id.as_str().to_string();
-                    let user_msg_created_at = user_msg.created_at.to_rfc3339();
-                    let _ = self.chat_message_repo.create(user_msg).await;
+                    let resume_in_place = resume_in_place_requested(options.metadata.as_deref());
+                    let persisted_metadata =
+                        strip_resume_in_place_metadata(options.metadata.clone());
 
-                    // Emit message_created event for frontend
-                    self.emit_event(
-                        "agent:message_created",
-                        AgentMessageCreatedPayload {
-                            message_id: user_msg_id,
-                            conversation_id: conversation.id.as_str().to_string(),
-                            context_type: context_type.to_string(),
-                            context_id: context_id.to_string(),
-                            role: "user".to_string(),
-                            content: message.to_string(),
-                            created_at: Some(user_msg_created_at),
-                            metadata: options.metadata.clone(),
-                        },
-                    );
+                    // Store user message for conversation history
+                    if !resume_in_place {
+                        let user_msg = chat_service_context::create_user_message(
+                            context_type,
+                            context_id,
+                            message,
+                            conversation.id,
+                            persisted_metadata.clone(),
+                            options.created_at,
+                        );
+                        let user_msg_id = user_msg.id.as_str().to_string();
+                        let user_msg_created_at = user_msg.created_at.to_rfc3339();
+                        let _ = self.chat_message_repo.create(user_msg).await;
+
+                        // Emit message_created event for frontend
+                        self.emit_event(
+                            "agent:message_created",
+                            AgentMessageCreatedPayload {
+                                message_id: user_msg_id,
+                                conversation_id: conversation.id.as_str().to_string(),
+                                context_type: context_type.to_string(),
+                                context_id: context_id.to_string(),
+                                role: "user".to_string(),
+                                content: message.to_string(),
+                                created_at: Some(user_msg_created_at),
+                                metadata: persisted_metadata.clone(),
+                            },
+                        );
+                    }
 
                     // Emit run_started so frontend shows activity spinner
                     let interactive_run_id = uuid::Uuid::new_v4().to_string();
@@ -1345,70 +1386,76 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             },
         );
 
+        let resume_in_place = resume_in_place_requested(options.metadata.as_deref());
+        let persisted_metadata = strip_resume_in_place_metadata(options.metadata.clone());
+
         // 4. Store user message
-        let user_msg = chat_service_context::create_user_message(
-            context_type,
-            context_id,
-            message,
-            conversation_id,
-            options.metadata.clone(),
-            options.created_at,
-        );
-        let user_msg_id = user_msg.id.as_str().to_string();
-        let user_msg_created_at = user_msg.created_at.to_rfc3339();
-        if let Err(e) = self.chat_message_repo.create(user_msg).await {
-            cleanup_and_err!(ChatServiceError::RepositoryError(e.to_string()));
-        }
-        tracing::debug!(
-            message_id = %user_msg_id,
-            "chat_service.send_message user message stored"
-        );
-
-        // 4b. Link pending attachments to the user message
-        let pending_attachments = match self
-            .chat_attachment_repo
-            .find_by_conversation_id(&conversation_id)
-            .await
-        {
-            Ok(v) => v
-                .into_iter()
-                .filter(|a| a.message_id.is_none())
-                .collect::<Vec<_>>(),
-            Err(e) => {
-                cleanup_and_err!(ChatServiceError::RepositoryError(e.to_string()));
-            }
-        };
-
-        if !pending_attachments.is_empty() {
-            let attachment_ids: Vec<_> = pending_attachments.iter().map(|a| a.id.clone()).collect();
-            if let Err(e) = self
-                .chat_attachment_repo
-                .update_message_ids(&attachment_ids, &ChatMessageId::from_string(&user_msg_id))
-                .await
-            {
+        if !resume_in_place {
+            let user_msg = chat_service_context::create_user_message(
+                context_type,
+                context_id,
+                message,
+                conversation_id,
+                persisted_metadata.clone(),
+                options.created_at,
+            );
+            let user_msg_id = user_msg.id.as_str().to_string();
+            let user_msg_created_at = user_msg.created_at.to_rfc3339();
+            if let Err(e) = self.chat_message_repo.create(user_msg).await {
                 cleanup_and_err!(ChatServiceError::RepositoryError(e.to_string()));
             }
             tracing::debug!(
                 message_id = %user_msg_id,
-                attachment_count = pending_attachments.len(),
-                "chat_service.send_message linked attachments to user message"
+                "chat_service.send_message user message stored"
+            );
+
+            // 4b. Link pending attachments to the user message
+            let pending_attachments = match self
+                .chat_attachment_repo
+                .find_by_conversation_id(&conversation_id)
+                .await
+            {
+                Ok(v) => v
+                    .into_iter()
+                    .filter(|a| a.message_id.is_none())
+                    .collect::<Vec<_>>(),
+                Err(e) => {
+                    cleanup_and_err!(ChatServiceError::RepositoryError(e.to_string()));
+                }
+            };
+
+            if !pending_attachments.is_empty() {
+                let attachment_ids: Vec<_> =
+                    pending_attachments.iter().map(|a| a.id.clone()).collect();
+                if let Err(e) = self
+                    .chat_attachment_repo
+                    .update_message_ids(&attachment_ids, &ChatMessageId::from_string(&user_msg_id))
+                    .await
+                {
+                    cleanup_and_err!(ChatServiceError::RepositoryError(e.to_string()));
+                }
+                tracing::debug!(
+                    message_id = %user_msg_id,
+                    attachment_count = pending_attachments.len(),
+                    "chat_service.send_message linked attachments to user message"
+                );
+            }
+
+            // 5. Emit message created event
+            self.emit_event(
+                "agent:message_created",
+                AgentMessageCreatedPayload {
+                    message_id: user_msg_id.clone(),
+                    conversation_id: conversation_id.as_str().to_string(),
+                    context_type: context_type.to_string(),
+                    context_id: context_id.to_string(),
+                    role: "user".to_string(),
+                    content: message.to_string(),
+                    created_at: Some(user_msg_created_at),
+                    metadata: persisted_metadata.clone(),
+                },
             );
         }
-
-        // 5. Emit message created event
-        self.emit_event(
-            "agent:message_created",
-            AgentMessageCreatedPayload {
-                message_id: user_msg_id.clone(),
-                conversation_id: conversation_id.as_str().to_string(),
-                context_type: context_type.to_string(),
-                context_id: context_id.to_string(),
-                role: "user".to_string(),
-                content: message.to_string(),
-                created_at: Some(user_msg_created_at),
-                metadata: options.metadata.clone(),
-            },
-        );
 
         // 6. Resolve working directory
         let mut working_directory = match self

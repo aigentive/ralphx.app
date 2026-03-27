@@ -8,11 +8,15 @@ use crate::domain::entities::{ChatContextType, ChatConversationId, InternalStatu
 use crate::error::AppError;
 use crate::infrastructure::agents::claude::limits_config;
 use crate::utils::truncate_str;
+use chrono::{Datelike, Duration, LocalResult, TimeZone, Utc};
+use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 
 /// Claude CLI error message indicating an expired/invalid session.
 /// Source: Claude CLI stderr when resuming with a stale session ID.
 pub const STALE_SESSION_ERROR: &str = "No conversation found with session ID";
+const CLAUDE_USAGE_LIMIT_PREFIX: &str = "you've hit your limit";
+const CLAUDE_EXTRA_USAGE_PREFIX: &str = "you're out of extra usage";
 
 /// Category of provider/API error for recovery decisions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -434,6 +438,16 @@ impl StreamError {
 pub fn classify_provider_error(error_text: &str) -> Option<StreamError> {
     let lower = error_text.to_lowercase();
 
+    // Claude Code subscription exhaustion banner delivered as assistant text.
+    if lower.contains(CLAUDE_USAGE_LIMIT_PREFIX) || lower.contains(CLAUDE_EXTRA_USAGE_PREFIX) {
+        let retry_after = parse_retry_after_from_message(error_text);
+        return Some(StreamError::ProviderError {
+            category: ProviderErrorCategory::RateLimit,
+            message: truncate_error_message(error_text),
+            retry_after,
+        });
+    }
+
     // 429 rate limit (z.ai style: "429 {"error":{"code":"1308","message":"Usage limit..."}}")
     if lower.contains("429") && (lower.contains("usage limit") || lower.contains("rate limit")) {
         let retry_after = parse_retry_after_from_message(error_text);
@@ -536,7 +550,70 @@ pub fn parse_retry_after_from_message(error_text: &str) -> Option<String> {
             }
         }
     }
-    None
+
+    parse_claude_reset_banner(error_text)
+}
+
+fn parse_claude_reset_banner(error_text: &str) -> Option<String> {
+    let lower = error_text.to_lowercase();
+    let resets_idx = lower.find("resets ")?;
+    let after = error_text.get(resets_idx + "resets ".len()..)?.trim();
+    let tz_start = after.find('(')?;
+    let tz_end = after[tz_start..].find(')')?;
+    let time_part = after.get(..tz_start)?.trim().to_lowercase();
+    let tz_name = after.get(tz_start + 1..tz_start + tz_end)?.trim();
+    let timezone: Tz = tz_name.parse().ok()?;
+
+    let (clock, meridiem) = if let Some(clock) = time_part.strip_suffix("am") {
+        (clock.trim(), "am")
+    } else if let Some(clock) = time_part.strip_suffix("pm") {
+        (clock.trim(), "pm")
+    } else {
+        return None;
+    };
+
+    let (hour_12, minute) = if let Some((hour, minute)) = clock.split_once(':') {
+        (hour.parse::<u32>().ok()?, minute.parse::<u32>().ok()?)
+    } else {
+        (clock.parse::<u32>().ok()?, 0)
+    };
+    if !(1..=12).contains(&hour_12) || minute > 59 {
+        return None;
+    }
+
+    let hour_24 = match (hour_12, meridiem) {
+        (12, "am") => 0,
+        (12, "pm") => 12,
+        (hour, "pm") => hour + 12,
+        (hour, "am") => hour,
+        _ => return None,
+    };
+
+    let now = Utc::now().with_timezone(&timezone);
+    let today = now.date_naive();
+    let candidate_today =
+        resolve_tz_local_datetime(timezone, today, hour_24, minute)?;
+    let candidate = if candidate_today <= now {
+        let tomorrow = today.checked_add_signed(Duration::days(1))?;
+        resolve_tz_local_datetime(timezone, tomorrow, hour_24, minute)?
+    } else {
+        candidate_today
+    };
+
+    Some(candidate.with_timezone(&Utc).to_rfc3339())
+}
+
+fn resolve_tz_local_datetime(
+    timezone: Tz,
+    date: chrono::NaiveDate,
+    hour: u32,
+    minute: u32,
+) -> Option<chrono::DateTime<Tz>> {
+    match timezone.with_ymd_and_hms(date.year(), date.month(), date.day(), hour, minute, 0) {
+        LocalResult::Single(dt) => Some(dt),
+        LocalResult::Ambiguous(early, late) => Some(early.min(late)),
+        LocalResult::None => None,
+    }
 }
 
 /// Truncate error message to reasonable length for storage.

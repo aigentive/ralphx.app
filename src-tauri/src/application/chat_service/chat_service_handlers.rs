@@ -10,15 +10,17 @@
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 
+use crate::application::AppState;
 use crate::application::question_state::QuestionState;
 use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::application::task_transition_service::TaskTransitionService;
-use crate::commands::ExecutionState;
+use crate::commands::{execution_commands::AGENT_ACTIVE_STATUSES, ExecutionState};
 use crate::domain::entities::{
-    AgentRunId, ChatContextType, ChatConversation, ChatConversationId, ChatMessageId,
-    IdeationSessionId, InternalStatus, MergeFailureSource, MergeRecoveryEvent,
+    app_state::ExecutionHaltMode, AgentRunId, ChatContextType, ChatConversation,
+    ChatConversationId, ChatMessageId, IdeationSessionId, InternalStatus, MergeFailureSource,
+    MergeRecoveryEvent,
     MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode, MergeRecoverySource,
     MergeRecoveryState, ReviewNote, ReviewOutcome, ReviewerType, SessionPurpose, TaskId,
     TaskStepStatus,
@@ -41,6 +43,13 @@ use super::chat_service_helpers::get_assistant_role;
 use super::chat_service_types::{AgentErrorPayload, AgentRunCompletedPayload};
 use super::EventContextPayload;
 use crate::utils::secret_redactor::redact;
+
+fn should_requeue_after_provider_pause(context_type: ChatContextType) -> bool {
+    matches!(
+        context_type,
+        ChatContextType::Ideation | ChatContextType::Task | ChatContextType::Project
+    )
+}
 
 /// Returns true if all steps for `task_id` are Completed or Skipped (and at least one
 /// step exists). Safe-fallback: returns false if repo is None or returns an error.
@@ -95,6 +104,144 @@ fn apply_global_rate_limit_backpressure(
     }
 }
 
+fn should_transition_task_execution_to_pending_review(
+    has_output: bool,
+    steps_tracked: bool,
+    all_steps_done: bool,
+) -> bool {
+    if steps_tracked {
+        all_steps_done
+    } else {
+        has_output
+    }
+}
+
+pub(super) async fn apply_system_wide_provider_pause<R: Runtime>(
+    app_handle: &Option<AppHandle<R>>,
+    category: &super::ProviderErrorCategory,
+    message: &str,
+    retry_after: &Option<String>,
+    source_context: &str,
+    source_context_id: &str,
+) {
+    let Some(handle) = app_handle else {
+        return;
+    };
+
+    let app_state = handle.state::<AppState>();
+    let execution_state = handle.state::<Arc<ExecutionState>>();
+
+    execution_state.pause();
+    apply_global_rate_limit_backpressure(
+        &Some(Arc::clone(execution_state.inner())),
+        retry_after,
+        source_context,
+        source_context_id,
+    );
+
+    if let Err(error) = app_state
+        .app_state_repo
+        .set_execution_halt_mode(ExecutionHaltMode::Paused)
+        .await
+    {
+        tracing::warn!(error = %error, "Failed to persist provider-triggered global pause");
+    }
+
+    app_state.running_agent_registry.stop_all().await;
+    app_state.interactive_process_registry.clear().await;
+
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.task_dependency_repo),
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.chat_message_repo),
+        Arc::clone(&app_state.chat_attachment_repo),
+        Arc::clone(&app_state.chat_conversation_repo),
+        Arc::clone(&app_state.agent_run_repo),
+        Arc::clone(&app_state.ideation_session_repo),
+        Arc::clone(&app_state.activity_event_repo),
+        Arc::clone(&app_state.message_queue),
+        Arc::clone(&app_state.running_agent_registry),
+        Arc::clone(execution_state.inner()),
+        app_state.app_handle.clone(),
+        Arc::clone(&app_state.memory_event_repo),
+    )
+    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
+    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
+
+    let paused_at = chrono::Utc::now().to_rfc3339();
+    let projects = match app_state.project_repo.get_all().await {
+        Ok(projects) => projects,
+        Err(error) => {
+            tracing::error!(error = %error, "Failed to load projects for provider-triggered pause");
+            return;
+        }
+    };
+
+    for project in projects {
+        let tasks = match app_state.task_repo.get_by_project(&project.id).await {
+            Ok(tasks) => tasks,
+            Err(error) => {
+                tracing::warn!(
+                    project_id = project.id.as_str(),
+                    error = %error,
+                    "Failed to load project tasks during provider-triggered pause"
+                );
+                continue;
+            }
+        };
+
+        for task in tasks {
+            if !AGENT_ACTIVE_STATUSES.contains(&task.internal_status) {
+                continue;
+            }
+
+            let pause_reason = super::PauseReason::ProviderError {
+                category: category.clone(),
+                message: message.to_string(),
+                retry_after: retry_after.clone(),
+                previous_status: task.internal_status.to_string(),
+                paused_at: paused_at.clone(),
+                auto_resumable: true,
+                resume_attempts: 0,
+            };
+
+            let mut updated_task = task.clone();
+            updated_task.metadata =
+                Some(pause_reason.write_to_task_metadata(updated_task.metadata.as_deref()));
+            updated_task.touch();
+            let _ = app_state.task_repo.update(&updated_task).await;
+
+            if let Err(error) = transition_service
+                .transition_task(&task.id, InternalStatus::Paused)
+                .await
+            {
+                tracing::warn!(
+                    task_id = task.id.as_str(),
+                    error = %error,
+                    "Failed to transition task to Paused during provider-triggered global pause"
+                );
+            }
+        }
+    }
+
+    let _ = handle.emit(
+        "execution:status_changed",
+        serde_json::json!({
+            "isPaused": execution_state.is_paused(),
+            "haltMode": "paused",
+            "runningCount": execution_state.running_count(),
+            "maxConcurrent": execution_state.max_concurrent(),
+            "reason": "provider_error",
+            "providerCategory": category.to_string(),
+            "providerMessage": message,
+            "providerRetryAfter": retry_after,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        }),
+    );
+}
+
 /// Read existing message content and tool_calls from the database.
 ///
 /// Used before error finalization to preserve any content that was flushed
@@ -115,8 +262,8 @@ async fn read_existing_message_content(
 /// Handle successful stream completion: task state transitions and merge auto-completion.
 ///
 /// For TaskExecution context:
-/// - If agent produced output → transition to PendingReview
-/// - If agent produced no output → transition to Failed
+/// - If all task steps are completed → transition to PendingReview
+/// - Otherwise → transition to Failed (text output alone is not sufficient)
 ///
 /// For Merge context:
 /// - Attempts merge auto-completion via git state inspection
@@ -228,7 +375,15 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                     } else {
                         transition_service
                     };
-                    if has_output {
+                    let all_steps_done = all_steps_completed(task_step_repo, &task_id).await;
+                    let should_transition_to_review =
+                        should_transition_task_execution_to_pending_review(
+                            has_output,
+                            task_step_repo.is_some(),
+                            all_steps_done,
+                        );
+
+                    if should_transition_to_review {
                         if let Err(e) = transition_service
                             .transition_task(&task_id, InternalStatus::PendingReview)
                             .await
@@ -240,16 +395,10 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                             );
                         }
                     } else {
-                        // Check if all steps are completed — worker found all work
-                        // already done and exited cleanly with no output.
-                        let all_steps_done =
-                            all_steps_completed(task_step_repo, &task_id).await;
-
                         if all_steps_done {
                             tracing::info!(
                                 task_id = task_id.as_str(),
-                                "Worker exited with no output but all steps completed; \
-                                 transitioning to PendingReview"
+                                "Worker run ended with all steps completed; transitioning to PendingReview"
                             );
                             if let Err(e) = transition_service
                                 .transition_task(&task_id, InternalStatus::PendingReview)
@@ -271,7 +420,7 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                             if let Some(obj) = metadata_obj.as_object_mut() {
                                 obj.insert(
                                     "last_agent_error".to_string(),
-                                    serde_json::json!("Agent completed with no output"),
+                                    serde_json::json!("Agent ended without completing all task steps"),
                                 );
                                 obj.insert(
                                     "last_agent_error_context".to_string(),
@@ -996,6 +1145,35 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
         None,
     )
     .await;
+
+    if let Some(StreamError::ProviderError {
+        category,
+        message,
+        retry_after,
+    }) = stream_error
+    {
+        apply_system_wide_provider_pause(
+            app_handle,
+            category,
+            message,
+            retry_after,
+            &context_type.to_string(),
+            context_id,
+        )
+        .await;
+
+        if should_requeue_after_provider_pause(context_type) {
+            if let Some(msg) = user_message_content {
+                let _ = message_queue.queue_with_overrides(
+                    context_type,
+                    context_id.to_string(),
+                    msg.to_string(),
+                    Some(r#"{"resume_in_place":true}"#.to_string()),
+                    None,
+                );
+            }
+        }
+    }
 
     // For worker execution failures, transition task out of active execution
     // Use StreamError::suggested_task_status() for precise transition when available
