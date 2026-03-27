@@ -862,11 +862,15 @@ agents:
     mcp_tools:
       [
         get_session_plan,
+        get_session_messages,
+        get_team_artifacts,
+        get_artifact,
         get_parent_session_context,
         update_plan_verification,
         get_plan_verification,
         update_plan_artifact,
         edit_plan_artifact,
+        send_ideation_session_message,
       ]
     preapproved_cli_tools: [Read, Grep, Glob, Bash]
 

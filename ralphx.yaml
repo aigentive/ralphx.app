@@ -859,26 +859,15 @@ agents:
     mcp_tools:
       [
         get_session_plan,
+        get_session_messages,
+        get_team_artifacts,
+        get_artifact,
         get_parent_session_context,
         update_plan_verification,
         get_plan_verification,
         update_plan_artifact,
         edit_plan_artifact,
-        # child session tools
-        get_child_session_status,
         send_ideation_session_message,
-        # specialist artifact creation and retrieval
-        get_team_artifacts,
-        get_artifact,
-        create_team_artifact,
-        list_session_proposals,
-        get_proposal,
-        # memory tools (inherited by specialist subagents via parent MCP connection)
-        search_memories,
-        get_memory,
-        get_memories_for_paths,
-        # intent specialist needs session message history
-        get_session_messages,
       ]
     preapproved_cli_tools: [Read, Grep, Glob, Bash, "Task(ralphx:plan-critic-completeness)", "Task(ralphx:plan-critic-implementation-feasibility)", "Task(ralphx:ideation-specialist-ux)", "Task(ralphx:ideation-specialist-code-quality)", "Task(ralphx:ideation-specialist-prompt-quality)", "Task(ralphx:ideation-specialist-intent)", "Task(ralphx:ideation-specialist-pipeline-safety)", "Task(ralphx:ideation-specialist-state-machine)"]
 
@@ -1057,19 +1046,9 @@ agents:
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
-        # Team artifact tools
         create_team_artifact,
-        get_team_artifacts,
-        # Plan read tools
         get_session_plan,
         get_artifact,
-        list_session_proposals,
-        get_proposal,
-        get_parent_session_context,
-        # Memory read tools
-        search_memories,
-        get_memory,
-        get_memories_for_paths,
       ]
     preapproved_cli_tools: []
 
@@ -1078,19 +1057,9 @@ agents:
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
-        # Team artifact tools
         create_team_artifact,
-        get_team_artifacts,
-        # Plan read tools
         get_session_plan,
         get_artifact,
-        list_session_proposals,
-        get_proposal,
-        get_parent_session_context,
-        # Memory read tools
-        search_memories,
-        get_memory,
-        get_memories_for_paths,
       ]
     preapproved_cli_tools: []
 
@@ -1099,20 +1068,12 @@ agents:
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
-        # Team artifact tools
         create_team_artifact,
-        get_team_artifacts,
-        # Plan read tools
         get_session_plan,
         get_artifact,
-        list_session_proposals,
-        get_proposal,
-        get_parent_session_context,
-        # Memory read tools
         search_memories,
         get_memory,
         get_memories_for_paths,
-        # Session message history (intent alignment needs original user messages)
         get_session_messages,
       ]
     preapproved_cli_tools: []
@@ -1122,19 +1083,9 @@ agents:
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
-        # Team artifact tools
         create_team_artifact,
-        get_team_artifacts,
-        # Plan read tools
         get_session_plan,
         get_artifact,
-        list_session_proposals,
-        get_proposal,
-        get_parent_session_context,
-        # Memory read tools
-        search_memories,
-        get_memory,
-        get_memories_for_paths,
       ]
     preapproved_cli_tools: []
 
@@ -1185,18 +1136,8 @@ agents:
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
-        # Team artifact tools
         create_team_artifact,
-        get_team_artifacts,
-        # Plan read tools
         get_session_plan,
         get_artifact,
-        list_session_proposals,
-        get_proposal,
-        get_parent_session_context,
-        # Memory read tools
-        search_memories,
-        get_memory,
-        get_memories_for_paths,
       ]
     preapproved_cli_tools: []

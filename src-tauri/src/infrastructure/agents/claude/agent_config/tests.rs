@@ -816,6 +816,136 @@ fn test_readonly_agent_has_get_plan_verification_not_update() {
     );
 }
 
+#[test]
+fn test_plan_verifier_mcp_tools_match_current_prompt_contract() {
+    let config = get_agent_config("plan-verifier").expect("plan-verifier should exist");
+
+    for tool in [
+        "get_session_plan",
+        "get_session_messages",
+        "get_team_artifacts",
+        "get_artifact",
+        "get_parent_session_context",
+        "update_plan_verification",
+        "get_plan_verification",
+        "update_plan_artifact",
+        "edit_plan_artifact",
+        "send_ideation_session_message",
+    ] {
+        assert!(
+            config.allowed_mcp_tools.contains(&tool.to_string()),
+            "plan-verifier missing expected MCP tool {tool}"
+        );
+    }
+
+    for tool in [
+        "create_team_artifact",
+        "list_session_proposals",
+        "get_proposal",
+        "get_child_session_status",
+        "search_memories",
+        "get_memory",
+        "get_memories_for_paths",
+    ] {
+        assert!(
+            !config.allowed_mcp_tools.contains(&tool.to_string()),
+            "plan-verifier should not include stale MCP tool {tool}"
+        );
+    }
+}
+
+#[test]
+fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
+    let audited_agents = [
+        (
+            "ideation-specialist-code-quality",
+            vec!["create_team_artifact", "get_session_plan", "get_artifact"],
+            vec![
+                "get_team_artifacts",
+                "list_session_proposals",
+                "get_proposal",
+                "get_parent_session_context",
+                "search_memories",
+                "get_memory",
+                "get_memories_for_paths",
+            ],
+        ),
+        (
+            "ideation-specialist-prompt-quality",
+            vec!["create_team_artifact", "get_session_plan", "get_artifact"],
+            vec![
+                "get_team_artifacts",
+                "list_session_proposals",
+                "get_proposal",
+                "get_parent_session_context",
+                "search_memories",
+                "get_memory",
+                "get_memories_for_paths",
+            ],
+        ),
+        (
+            "ideation-specialist-pipeline-safety",
+            vec!["create_team_artifact", "get_session_plan", "get_artifact"],
+            vec![
+                "get_team_artifacts",
+                "list_session_proposals",
+                "get_proposal",
+                "get_parent_session_context",
+                "search_memories",
+                "get_memory",
+                "get_memories_for_paths",
+            ],
+        ),
+        (
+            "ideation-specialist-state-machine",
+            vec!["create_team_artifact", "get_session_plan", "get_artifact"],
+            vec![
+                "get_team_artifacts",
+                "list_session_proposals",
+                "get_proposal",
+                "get_parent_session_context",
+                "search_memories",
+                "get_memory",
+                "get_memories_for_paths",
+            ],
+        ),
+        (
+            "ideation-specialist-intent",
+            vec![
+                "create_team_artifact",
+                "get_session_plan",
+                "get_artifact",
+                "get_session_messages",
+                "search_memories",
+                "get_memory",
+                "get_memories_for_paths",
+            ],
+            vec![
+                "get_team_artifacts",
+                "list_session_proposals",
+                "get_proposal",
+                "get_parent_session_context",
+            ],
+        ),
+    ];
+
+    for (agent_name, expected, absent) in audited_agents {
+        let config = get_agent_config(agent_name).unwrap_or_else(|| panic!("{agent_name} missing"));
+        for tool in expected {
+            assert!(
+                config.allowed_mcp_tools.contains(&tool.to_string()),
+                "{agent_name} missing expected MCP tool {tool}"
+            );
+        }
+        for tool in absent {
+            assert!(
+                !config.allowed_mcp_tools.contains(&tool.to_string()),
+                "{agent_name} should not include stale MCP tool {tool}"
+            );
+        }
+    }
+}
+
 // ── Agent extends inheritance tests ─────────────────────────────
 
 #[test]

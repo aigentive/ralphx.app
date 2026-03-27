@@ -9,6 +9,7 @@ Primary project docs:
 - `CLAUDE.md`
 - `src-tauri/CLAUDE.md`
 - `.claude/rules/*.md`
+- `.claude/rules/agent-mcp-tools.md` for multi-layer agent MCP/tool alignment across prompt frontmatter, `ralphx.yaml`, and MCP allowlists
 - `.claude/rules/rust-test-execution.md` for selective Rust test commands, the standard Rust test stack, shared SQLite fixtures/builders, and the no-broad-`fmt` rule
 
 ## Codex Rules
@@ -18,6 +19,7 @@ Primary project docs:
 | Read project instructions first | Before substantial work, read the relevant repo docs (`CLAUDE.md` at root, plus subtree docs like `src-tauri/CLAUDE.md`). |
 | Preserve user work | Never revert unrelated changes you did not make. If the tree is dirty, isolate your edits and verify diffs before commit. |
 | Minimal diffs | Avoid formatter churn and accidental refactors. Keep changes scoped to the task. |
+| Agent tool alignment | MCP/tool changes are multi-layer: keep prompt frontmatter, `ralphx.yaml`, and MCP allowlists in sync. Source: `.claude/rules/agent-mcp-tools.md`. |
 | Handler module split | Oversized Rust HTTP handlers belong in directory-backed modules (`foo/mod.rs` + endpoint-family files), not single multi-thousand-line `foo.rs` files. |
 | Extraction-first refactors | For large Rust module splits, programmatically move existing code into child files first, then make the smallest follow-up patches for visibility/imports/tests; don't hand-rewrite big functions. |
 | Rustfmt scope safety | Never run `rustfmt` on Rust module roots like `mod.rs` unless the user explicitly wants recursive formatting; it can rewrite child modules and create unrelated churn. |

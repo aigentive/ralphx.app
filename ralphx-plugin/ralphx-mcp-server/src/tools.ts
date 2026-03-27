@@ -1813,9 +1813,8 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_memories_for_paths",
   ],
   // Ideation specialist agents - domain research (read-only)
-  // Shared tool set for all ideation specialists (5 specialists + critic + advocate)
   ...((): Record<string, string[]> => {
-    const IDEATION_SPECIALIST_TOOLS = [
+    const IDEATION_SPECIALIST_RESEARCH_TOOLS = [
       "create_team_artifact",
       "get_team_artifacts",
       "get_session_plan",
@@ -1827,20 +1826,30 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
       "get_memory",
       "get_memories_for_paths",
     ];
+    const IDEATION_SPECIALIST_ENRICHMENT_TOOLS = [
+      "create_team_artifact",
+      "get_session_plan",
+      "get_artifact",
+    ];
     return {
-      [IDEATION_SPECIALIST_BACKEND]: IDEATION_SPECIALIST_TOOLS,
-      [IDEATION_SPECIALIST_FRONTEND]: IDEATION_SPECIALIST_TOOLS,
-      [IDEATION_SPECIALIST_INFRA]: IDEATION_SPECIALIST_TOOLS,
-      [IDEATION_SPECIALIST_UX]: IDEATION_SPECIALIST_TOOLS,
-      [IDEATION_SPECIALIST_CODE_QUALITY]: IDEATION_SPECIALIST_TOOLS,
-      [IDEATION_SPECIALIST_PROMPT_QUALITY]: IDEATION_SPECIALIST_TOOLS,
-      // Intent specialist gets an independent entry: same tools + get_session_messages
-      // (NOT added to shared IDEATION_SPECIALIST_TOOLS — least privilege for other agents)
-      [IDEATION_SPECIALIST_INTENT]: [...IDEATION_SPECIALIST_TOOLS, "get_session_messages"],
-      [IDEATION_SPECIALIST_PIPELINE_SAFETY]: IDEATION_SPECIALIST_TOOLS,
-      [IDEATION_SPECIALIST_STATE_MACHINE]: IDEATION_SPECIALIST_TOOLS,
-      [IDEATION_CRITIC]: IDEATION_SPECIALIST_TOOLS,
-      [IDEATION_ADVOCATE]: IDEATION_SPECIALIST_TOOLS,
+      [IDEATION_SPECIALIST_BACKEND]: IDEATION_SPECIALIST_RESEARCH_TOOLS,
+      [IDEATION_SPECIALIST_FRONTEND]: IDEATION_SPECIALIST_RESEARCH_TOOLS,
+      [IDEATION_SPECIALIST_INFRA]: IDEATION_SPECIALIST_RESEARCH_TOOLS,
+      [IDEATION_SPECIALIST_UX]: IDEATION_SPECIALIST_RESEARCH_TOOLS,
+      [IDEATION_SPECIALIST_CODE_QUALITY]: IDEATION_SPECIALIST_ENRICHMENT_TOOLS,
+      [IDEATION_SPECIALIST_PROMPT_QUALITY]: IDEATION_SPECIALIST_ENRICHMENT_TOOLS,
+      // Intent specialist needs original session history plus optional memory lookups.
+      [IDEATION_SPECIALIST_INTENT]: [
+        ...IDEATION_SPECIALIST_ENRICHMENT_TOOLS,
+        "get_session_messages",
+        "search_memories",
+        "get_memory",
+        "get_memories_for_paths",
+      ],
+      [IDEATION_SPECIALIST_PIPELINE_SAFETY]: IDEATION_SPECIALIST_ENRICHMENT_TOOLS,
+      [IDEATION_SPECIALIST_STATE_MACHINE]: IDEATION_SPECIALIST_ENRICHMENT_TOOLS,
+      [IDEATION_CRITIC]: IDEATION_SPECIALIST_RESEARCH_TOOLS,
+      [IDEATION_ADVOCATE]: IDEATION_SPECIALIST_RESEARCH_TOOLS,
     };
   })(),
   // Worker team lead - coordinates team execution for tasks
@@ -1921,26 +1930,15 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
   // Plan verifier agent - owns the verification round loop
   [PLAN_VERIFIER]: [
     "get_session_plan",
+    "get_session_messages",
+    "get_team_artifacts",
+    "get_artifact",
     "get_parent_session_context",
     "update_plan_verification",
     "get_plan_verification",
     "update_plan_artifact",
     "edit_plan_artifact",
-    // Child session tools
-    "get_child_session_status",
     "send_ideation_session_message",
-    // Specialist artifact creation and retrieval
-    "get_team_artifacts",
-    "get_artifact",
-    "create_team_artifact",
-    "list_session_proposals",
-    "get_proposal",
-    // Memory tools (inherited by specialist subagents via parent MCP connection)
-    "search_memories",
-    "get_memory",
-    "get_memories_for_paths",
-    // Intent specialist needs session message history (inherited via parent MCP connection)
-    "get_session_messages",
   ],
   // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
   debug: ALL_TOOLS.map((t) => t.name),

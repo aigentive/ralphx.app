@@ -85,7 +85,7 @@ New pattern → add one-liner here. Pattern name + rule only.
 |---|---|
 | Rustfmt module roots | Never run `rustfmt` on `mod.rs` or other module-root files for a surgical change; rustfmt can recurse into child modules and create unrelated diffs |
 | ExecutionState Propagation | `Arc<ExecutionState>` → `TaskTransitionService::new()` + `AgenticClientSpawner::with_execution_state()` |
-| Agent MCP Tool Allowlist | Three-layer system — see `agent-mcp-tools.md`. Source of truth: `agent_config.rs` (`AGENT_CONFIGS`) |
+| Agent MCP Tool Allowlist | MCP/tool changes are multi-layer: keep agent frontmatter, `ralphx.yaml`, and `ralphx-plugin/ralphx-mcp-server/src/tools.ts` aligned; see `.claude/rules/agent-mcp-tools.md` |
 | Git Modes & Merge | Two modes (Local/Worktree), two-level branches (plan→task) — see task-git-branching.md |
 | PreMergeCleanup | Kill agents + kill_worktree_processes BEFORE git worktree ops (TOCTOU race prevention) |
 | MergeDeadline | `attempt_programmatic_merge` wraps cleanup + strategy in bounded deadline (`attempt_merge_deadline_secs`) |
