@@ -42,9 +42,13 @@ pub(crate) use metadata::format_validation_error_metadata;
 pub(crate) use metadata::{
     extract_cached_validation, format_validation_warn_metadata, take_skip_validation_flag,
 };
-pub(crate) use logging::{cleanup_validation_logs, emit_merge_progress, validation_log_dir};
+pub(crate) use logging::{cleanup_validation_logs, emit_merge_progress};
+#[cfg(test)]
+pub(crate) use logging::validation_log_dir;
+#[cfg(test)]
 pub(crate) use install::run_install_phase;
 pub use install::run_pre_execution_setup;
+#[cfg(test)]
 pub(crate) use setup::{parse_symlink_command, try_handle_symlink_idempotent};
 use setup::run_setup_phase;
 use validate::run_validate_phase;
