@@ -21,8 +21,11 @@ Primary project docs:
 | Minimal diffs | Avoid formatter churn and accidental refactors. Keep changes scoped to the task. |
 | Agent tool alignment | MCP/tool changes are multi-layer: keep prompt frontmatter, `ralphx.yaml`, and MCP allowlists in sync. Source: `.claude/rules/agent-mcp-tools.md`. |
 | Handler module split | Oversized Rust HTTP handlers belong in directory-backed modules (`foo/mod.rs` + endpoint-family files), not single multi-thousand-line `foo.rs` files. |
-| Extraction-first refactors | For large Rust module splits, programmatically move existing code into child files first, then make the smallest follow-up patches for visibility/imports/tests; don't hand-rewrite big functions. |
+| Mechanical extraction only (NON-NEGOTIABLE) | Large code moves/splits must use real move/extract operations (`mv`, `sed`, `awk`, scripted extraction). Do not hand-copy or retype large existing bodies into new files. Source: `.claude/rules/code-quality-standards.md`. |
+| Apply-patch is fix-up only (NON-NEGOTIABLE) | After a mechanical move, `apply_patch` is only for the small follow-up layer: imports, visibility, re-exports, module wiring, tests. It is not a substitute for moving existing code. |
+| Mechanical split recovery | If a large extraction drifts into patch-copying or visibility churn, restore the module to `HEAD`, clean any parked WIP out of the repo tree, and redo the split mechanically; do not keep iterating on a half-split tree. |
 | Rustfmt scope safety | Never run `rustfmt` on Rust module roots like `mod.rs` unless the user explicitly wants recursive formatting; it can rewrite child modules and create unrelated churn. |
+| Cargo during refactors | Never overlap Cargo jobs while validating a large extraction; one targeted run at a time or you recreate build-lock noise and lose signal. |
 | Rust test runner split | Use `cargo test` for selective filters and doctests; use `cargo nextest run` for broad Rust lib runs. CI runs both. Details: `.claude/rules/rust-test-execution.md`. |
 | Rust toolchain source of truth | `rust-toolchain.toml` is authoritative; use a `rustup`-managed toolchain so the repo pin actually applies. |
 | Rust std API stability (NON-NEGOTIABLE) | Do not use unstable std APIs in production Rust (example: `is_multiple_of`). Use stable equivalents such as `%` with a zero guard where needed. Source of truth: `.claude/rules/rust-stable-apis.md`. |
@@ -37,6 +40,7 @@ When working in `src-tauri/`, also follow:
 - `.claude/rules/rust-test-execution.md`
 - `.claude/rules/task-git-branching.md`
 - `.claude/rules/code-quality-standards.md`
+- `.claude/rules/agent-mcp-tools.md`
 
 ## Optimization Tracking
 

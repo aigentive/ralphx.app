@@ -31,7 +31,11 @@ paths:
 |------|---------|
 | Atomic commits | New files + deletions in same commit |
 | No .bak | Git is backup |
-| Copy don't rewrite | For large refactors, move/extract existing code blocks programmatically first; patch after, don't hand-rewrite working code |
+| Copy don't rewrite (NON-NEGOTIABLE) | For large refactors, move/extract existing code blocks programmatically first; patch after, don't hand-rewrite working code |
+| Mechanical extraction only (NON-NEGOTIABLE) | Large module splits must use `mv`/`sed`/`awk`/scripted extraction for the moved bodies; `apply_patch` is only for the follow-up import/visibility/re-export fix-up layer |
+| No manual body recreation (NON-NEGOTIABLE) | If an existing function/impl/block is being moved, do not recreate that body by hand in a new file; move it mechanically, then patch around it |
+| Abort bad splits fast (NON-NEGOTIABLE) | If a split becomes half-moved, accumulates visibility churn, or stops being a mechanical move, restore the module to `HEAD`, remove parked WIP from the repo tree, and redo the extraction mechanically |
+| Serial validation during splits | Never overlap Cargo validation jobs while a large extraction is in flight; run one targeted command at a time so build-lock noise does not mask real errors |
 | Validate | `cargo clippy --all-targets --all-features -- -D warnings` / `npm run typecheck` before commit |
 | Hook for logic | Complex state→hook, component only renders |
 | Re-export on extract | `export { New as Old }` — don't break imports |
