@@ -267,7 +267,7 @@ pub async fn start_ideation_http(
         let repo = Arc::clone(&state.app_state.ideation_session_repo);
         let sid = IdeationSessionId::from_string(session_id_str.clone());
         tokio::spawn(async move {
-            if let Err(e) = repo.update_external_activity_phase(&sid, "created").await {
+            if let Err(e) = repo.update_external_activity_phase(&sid, Some("created")).await {
                 error!(
                     "Failed to set activity phase 'created' for session {}: {}",
                     sid.as_str(),

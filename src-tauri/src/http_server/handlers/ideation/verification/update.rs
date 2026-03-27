@@ -461,7 +461,7 @@ pub async fn update_plan_verification(
         let repo = std::sync::Arc::clone(&state.app_state.ideation_session_repo);
         let sid = crate::domain::entities::IdeationSessionId::from_string(session_id.clone());
         tokio::spawn(async move {
-            if let Err(e) = repo.update_external_activity_phase(&sid, "ready").await {
+            if let Err(e) = repo.update_external_activity_phase(&sid, Some("ready")).await {
                 error!(
                     "Failed to set activity phase 'ready' for session {}: {}",
                     sid.as_str(),

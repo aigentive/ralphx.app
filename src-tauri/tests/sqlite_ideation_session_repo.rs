@@ -2,7 +2,7 @@ use ralphx_lib::domain::entities::{
     ArtifactId, IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
     VerificationStatus,
 };
-use ralphx_lib::domain::entities::ideation::SessionPurpose;
+use ralphx_lib::domain::entities::ideation::{SessionOrigin, SessionPurpose};
 use ralphx_lib::domain::repositories::IdeationSessionRepository;
 use ralphx_lib::infrastructure::sqlite::SqliteIdeationSessionRepository;
 use ralphx_lib::testing::SqliteTestDb;
@@ -2179,5 +2179,104 @@ async fn test_get_stale_in_progress_sessions_includes_active() {
     assert!(
         results.iter().any(|s| s.id == session.id),
         "active stale session must be included in stale query"
+    );
+}
+
+#[tokio::test]
+async fn test_touch_updated_at_bumps_timestamp() {
+    let db = setup_test_db();
+    let shared = db.shared_conn();
+    let repo = SqliteIdeationSessionRepository::from_shared(shared.clone());
+    let project_id = ProjectId::new();
+    {
+        let conn = shared.lock().await;
+        insert_test_project(&conn, &project_id, "Test Project", "/test/touch");
+    }
+
+    let session = IdeationSession::builder()
+        .project_id(project_id.clone())
+        .build();
+    repo.create(session.clone()).await.unwrap();
+
+    // Force a stale updated_at
+    let stale_ts = "2020-01-01T00:00:00+00:00";
+    {
+        let conn = shared.lock().await;
+        conn.execute(
+            "UPDATE ideation_sessions SET updated_at = ?1 WHERE id = ?2",
+            rusqlite::params![stale_ts, session.id.as_str()],
+        )
+        .unwrap();
+    }
+
+    // Verify it is stale
+    let before = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(
+        before.updated_at.format("%Y").to_string(),
+        "2020",
+        "updated_at must be stale before touch"
+    );
+
+    repo.touch_updated_at(session.id.as_str()).await.unwrap();
+
+    let after = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert!(
+        after.updated_at > before.updated_at,
+        "touch_updated_at must bump updated_at"
+    );
+}
+
+#[tokio::test]
+async fn test_touch_updated_at_keeps_session_out_of_archival() {
+    let db = setup_test_db();
+    let shared = db.shared_conn();
+    let repo = SqliteIdeationSessionRepository::from_shared(shared.clone());
+    let project_id = ProjectId::new();
+    {
+        let conn = shared.lock().await;
+        insert_test_project(&conn, &project_id, "Test Project", "/test/archival");
+    }
+
+    // Create an external session with phase='created'
+    let session = IdeationSession::builder()
+        .project_id(project_id.clone())
+        .origin(SessionOrigin::External)
+        .external_activity_phase("created")
+        .build();
+    repo.create(session.clone()).await.unwrap();
+
+    // Force a stale updated_at so it would normally be archived
+    let stale_ts = "2020-01-01T00:00:00+00:00";
+    {
+        let conn = shared.lock().await;
+        conn.execute(
+            "UPDATE ideation_sessions SET updated_at = ?1 WHERE id = ?2",
+            rusqlite::params![stale_ts, session.id.as_str()],
+        )
+        .unwrap();
+    }
+
+    // Confirm it is eligible for archival before touch
+    let stale_cutoff = chrono::Utc::now();
+    let before_touch = repo
+        .list_active_external_sessions_for_archival(Some(stale_cutoff))
+        .await
+        .unwrap();
+    assert!(
+        before_touch.iter().any(|s| s.id == session.id),
+        "stale external session must appear in archival list before touch"
+    );
+
+    // Simulate message creation: touch updated_at
+    repo.touch_updated_at(session.id.as_str()).await.unwrap();
+
+    // Now it must NOT appear in archival list because updated_at is fresh
+    let after_touch = repo
+        .list_active_external_sessions_for_archival(Some(stale_cutoff))
+        .await
+        .unwrap();
+    assert!(
+        !after_touch.iter().any(|s| s.id == session.id),
+        "external session with recent activity must not appear in archival list after touch"
     );
 }

@@ -1272,6 +1272,69 @@ async fn test_stale_external_scan_skips_internal_sessions() {
     );
 }
 
+/// Reopened external sessions (NULL phase) must not be re-archived by stale scan.
+#[tokio::test]
+async fn test_periodic_scan_skips_reopened_session_with_null_phase() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Create a session that looks "old" by created_at AND updated_at,
+    // but has NULL external_activity_phase (simulating a manually reopened session).
+    // After reopen, update_external_activity_phase(None) is called, clearing the phase.
+    let mut session = IdeationSession::new(project_id.clone());
+    session.origin = SessionOrigin::External;
+    session.external_activity_phase = None; // NULL phase — reopened session
+    session.created_at = Utc::now() - Duration::hours(5);
+    session.updated_at = Utc::now() - Duration::hours(5);
+    let session_id = session.id.clone();
+    repo.create(session).await.unwrap();
+
+    let config = VerificationReconciliationConfig {
+        external_session_stale_secs: 7200, // 2 hours
+        ..Default::default()
+    };
+    let svc = make_service(repo.clone(), config);
+    svc.scan_and_archive_stale_external_sessions(false).await;
+
+    let after = repo.get_by_id(&session_id).await.unwrap().unwrap();
+    assert_eq!(
+        after.status,
+        IdeationSessionStatus::Active,
+        "reopened session with NULL phase must NOT be archived — phase IN ('created','error') filter excludes NULL"
+    );
+}
+
+/// External sessions with recent updated_at must not be archived even if created_at is old.
+#[tokio::test]
+async fn test_periodic_scan_spares_session_with_recent_updated_at() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Old by created_at (5 hours), but updated_at is recent (10 minutes).
+    // This simulates a session that has had recent activity (new messages, plan updates, etc.)
+    let mut session = IdeationSession::new(project_id.clone());
+    session.origin = SessionOrigin::External;
+    session.external_activity_phase = Some("created".to_string());
+    session.created_at = Utc::now() - Duration::hours(5);
+    session.updated_at = Utc::now() - Duration::minutes(10); // fresh activity
+    let session_id = session.id.clone();
+    repo.create(session).await.unwrap();
+
+    let config = VerificationReconciliationConfig {
+        external_session_stale_secs: 7200, // 2 hours TTL
+        ..Default::default()
+    };
+    let svc = make_service(repo.clone(), config);
+    svc.scan_and_archive_stale_external_sessions(false).await;
+
+    let after = repo.get_by_id(&session_id).await.unwrap().unwrap();
+    assert_eq!(
+        after.status,
+        IdeationSessionStatus::Active,
+        "session with recent updated_at must NOT be archived — archival now uses updated_at not created_at"
+    );
+}
+
 /// Stall detection marks sessions with no recent activity as 'stalled'.
 #[tokio::test]
 async fn test_stall_detection_marks_sessions_stalled() {

@@ -20,7 +20,7 @@ pub(super) async fn auto_propose_for_external(
         let repo = std::sync::Arc::clone(&state.app_state.ideation_session_repo);
         let sid = crate::domain::entities::IdeationSessionId::from_string(session_id.to_string());
         tokio::spawn(async move {
-            if let Err(e) = repo.update_external_activity_phase(&sid, "proposing").await {
+            if let Err(e) = repo.update_external_activity_phase(&sid, Some("proposing")).await {
                 tracing::error!("Failed to set activity phase 'proposing' for session {}: {}", sid.as_str(), e);
             }
         });
@@ -71,7 +71,7 @@ pub(super) async fn auto_propose_for_external(
         let sid_ready =
             crate::domain::entities::IdeationSessionId::from_string(session_id.to_string());
         if let Err(e) = repo_ready
-            .update_external_activity_phase(&sid_ready, "ready")
+            .update_external_activity_phase(&sid_ready, Some("ready"))
             .await
         {
             tracing::error!(

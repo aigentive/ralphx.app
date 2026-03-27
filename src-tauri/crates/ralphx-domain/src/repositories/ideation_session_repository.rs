@@ -280,10 +280,11 @@ pub trait IdeationSessionRepository: Send + Sync {
     ) -> AppResult<Option<IdeationSession>>;
 
     /// Update the external_activity_phase for a session.
+    /// Pass `None` to clear the phase (set to NULL), e.g. on session reopen.
     async fn update_external_activity_phase(
         &self,
         id: &IdeationSessionId,
-        phase: &str,
+        phase: Option<&str>,
     ) -> AppResult<()>;
 
     /// Update the external_last_read_message_id cursor for a session.
@@ -307,9 +308,9 @@ pub trait IdeationSessionRepository: Send + Sync {
     /// - origin = 'external'
     /// - status = 'active'
     /// - external_activity_phase IN ('created', 'error')
-    /// - created_at < stale_before (if Some; if None, no TTL filter — startup scan)
+    /// - updated_at < stale_before (if Some; if None, no TTL filter — startup scan)
     ///
-    /// Ordered by created_at ASC.
+    /// Ordered by updated_at ASC.
     async fn list_active_external_sessions_for_archival(
         &self,
         stale_before: Option<DateTime<Utc>>,
@@ -344,6 +345,13 @@ pub trait IdeationSessionRepository: Send + Sync {
     ///
     /// Called by `SessionReopenService` before resetting status to Active.
     async fn reset_acceptance_cycle_fields(&self, session_id: &str) -> AppResult<()>;
+
+    /// Bump `updated_at` for a session without changing any other field.
+    ///
+    /// Called after ideation message creation so that active sessions with
+    /// ongoing conversations are not incorrectly archived by the staleness
+    /// reconciler (which filters on `updated_at < cutoff`).
+    async fn touch_updated_at(&self, session_id: &str) -> AppResult<()>;
 }
 
 #[cfg(test)]

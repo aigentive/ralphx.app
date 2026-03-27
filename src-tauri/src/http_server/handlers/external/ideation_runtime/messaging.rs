@@ -73,7 +73,7 @@ pub async fn ideation_message_http(
     | {
         if phase.as_deref() == Some("created") {
             tokio::spawn(async move {
-                if let Err(e) = repo.update_external_activity_phase(&sid, "planning").await {
+                if let Err(e) = repo.update_external_activity_phase(&sid, Some("planning")).await {
                     error!(
                         "Failed to set activity phase 'planning' for session {}: {}",
                         sid.as_str(),

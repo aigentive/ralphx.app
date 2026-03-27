@@ -260,6 +260,10 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 let user_msg_metadata = user_msg.metadata.clone();
                 let _ = chat_message_repo.create(user_msg).await;
 
+                if context_type == ChatContextType::Ideation {
+                    let _ = ideation_session_repo.touch_updated_at(context_id).await;
+                }
+
                 // Link pending attachments to the user message
                 if let Ok(pending_attachments) = chat_attachment_repo
                     .find_by_conversation_id(&conversation_id)

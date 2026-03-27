@@ -615,7 +615,7 @@ impl VerificationReconciliationService {
         for session in &sessions {
             match self
                 .ideation_session_repo
-                .update_external_activity_phase(&session.id, "stalled")
+                .update_external_activity_phase(&session.id, Some("stalled"))
                 .await
             {
                 Ok(()) => {

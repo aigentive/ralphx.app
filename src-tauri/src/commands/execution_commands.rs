@@ -1528,5 +1528,4 @@ pub async fn restart_task(
 
 
 #[cfg(test)]
-#[cfg(test)]
 mod tests;

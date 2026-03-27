@@ -129,9 +129,7 @@ fn resume_in_place_requested(metadata: Option<&str>) -> bool {
 }
 
 fn strip_resume_in_place_metadata(metadata: Option<String>) -> Option<String> {
-    let Some(raw) = metadata else {
-        return None;
-    };
+    let raw = metadata?;
     let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&raw) else {
         return Some(raw);
     };
@@ -1036,6 +1034,10 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                         let user_msg_created_at = user_msg.created_at.to_rfc3339();
                         let _ = self.chat_message_repo.create(user_msg).await;
 
+                        if context_type == ChatContextType::Ideation {
+                            let _ = self.ideation_session_repo.touch_updated_at(context_id).await;
+                        }
+
                         // Emit message_created event for frontend
                         self.emit_event(
                             "agent:message_created",
@@ -1243,8 +1245,6 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                     ) {
                         let project_borrow_available = exec.allow_ideation_borrow_idle_execution()
                             && !project_execution_waiting;
-                        let global_borrow_available = exec.allow_ideation_borrow_idle_execution()
-                            && !global_execution_waiting;
 
                         let message =
                             if running_project_total >= project_settings.max_concurrent_tasks {
@@ -1260,14 +1260,6 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                                 format!(
                                     "project ideation capacity reached ({}/{} active ideation slots in project)",
                                     running_project_ideation, project_settings.project_ideation_max
-                                )
-                            } else if running_global_ideation >= exec.global_ideation_max()
-                                && !global_borrow_available
-                            {
-                                format!(
-                                    "ideation capacity reached ({}/{} active ideation slots)",
-                                    running_global_ideation,
-                                    exec.global_ideation_max()
                                 )
                             } else {
                                 format!(
@@ -1403,6 +1395,9 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             let user_msg_created_at = user_msg.created_at.to_rfc3339();
             if let Err(e) = self.chat_message_repo.create(user_msg).await {
                 cleanup_and_err!(ChatServiceError::RepositoryError(e.to_string()));
+            }
+            if context_type == ChatContextType::Ideation {
+                let _ = self.ideation_session_repo.touch_updated_at(context_id).await;
             }
             tracing::debug!(
                 message_id = %user_msg_id,
@@ -1784,6 +1779,10 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                     let user_msg_id = user_msg.id.as_str().to_string();
                     let user_msg_created_at = user_msg.created_at.to_rfc3339();
                     let _ = self.chat_message_repo.create(user_msg).await;
+
+                    if context_type == ChatContextType::Ideation {
+                        let _ = self.ideation_session_repo.touch_updated_at(context_id).await;
+                    }
 
                     // Emit message_created so frontend shows the user message
                     self.emit_event(

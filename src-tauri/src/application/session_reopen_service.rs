@@ -144,6 +144,12 @@ impl SessionReopenService {
             )
             .await?;
 
+        // 10. Clear external activity phase so the session exits the archival filter.
+        // A reopened session should not be treated as stale by the reconciler.
+        self.ideation_session_repo
+            .update_external_activity_phase(session_id, None)
+            .await?;
+
         tracing::info!(session_id = session_id.as_str(), "Session reopened; verification state reset");
 
         Ok(())

@@ -278,7 +278,6 @@ fn truncate_output(s: &str, max_len: usize) -> String {
 }
 
 /// Directory for validation log files: ~/.ralphx/logs/{task_id}/
-
 /// Load effective analysis, resolve template vars, and run all validate commands.
 ///
 /// Returns `None` if no analysis entries exist (backward compatible — skip validation).

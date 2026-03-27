@@ -1211,10 +1211,10 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
     async fn update_external_activity_phase(
         &self,
         id: &IdeationSessionId,
-        phase: &str,
+        phase: Option<&str>,
     ) -> AppResult<()> {
         let id = id.as_str().to_string();
-        let phase = phase.to_string();
+        let phase = phase.map(|p| p.to_string());
         self.db
             .run(move |conn| {
                 conn.execute(
@@ -1280,8 +1280,8 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                         "SELECT {} FROM ideation_sessions \
                          WHERE origin = 'external' AND status = 'active' \
                          AND external_activity_phase IN ('created', 'error') \
-                         AND created_at < ?1 \
-                         ORDER BY created_at ASC",
+                         AND updated_at < ?1 \
+                         ORDER BY updated_at ASC",
                         SESSION_COLUMNS
                     );
                     let mut stmt = conn.prepare(&sql)?;
@@ -1294,7 +1294,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                         "SELECT {} FROM ideation_sessions \
                          WHERE origin = 'external' AND status = 'active' \
                          AND external_activity_phase IN ('created', 'error') \
-                         ORDER BY created_at ASC",
+                         ORDER BY updated_at ASC",
                         SESSION_COLUMNS
                     );
                     let mut stmt = conn.prepare(&sql)?;
@@ -1361,6 +1361,20 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                          cross_project_checked = 0, \
                          updated_at = ?1 \
                      WHERE id = ?2",
+                    rusqlite::params![now, session_id],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn touch_updated_at(&self, session_id: &str) -> AppResult<()> {
+        let session_id = session_id.to_string();
+        self.db
+            .run(move |conn| {
+                let now = Utc::now().to_rfc3339();
+                conn.execute(
+                    "UPDATE ideation_sessions SET updated_at = ?1 WHERE id = ?2",
                     rusqlite::params![now, session_id],
                 )?;
                 Ok(())

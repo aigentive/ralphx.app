@@ -621,11 +621,11 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
     async fn update_external_activity_phase(
         &self,
         id: &IdeationSessionId,
-        phase: &str,
+        phase: Option<&str>,
     ) -> AppResult<()> {
         let mut sessions = self.sessions.write().unwrap();
         if let Some(session) = sessions.get_mut(id.as_str()) {
-            session.external_activity_phase = Some(phase.to_string());
+            session.external_activity_phase = phase.map(|p| p.to_string());
             session.updated_at = chrono::Utc::now();
         }
         Ok(())
@@ -682,14 +682,14 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
                     return false;
                 }
                 if let Some(cutoff) = stale_before {
-                    s.created_at < cutoff
+                    s.updated_at < cutoff
                 } else {
                     true
                 }
             })
             .cloned()
             .collect();
-        result.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        result.sort_by(|a, b| a.updated_at.cmp(&b.updated_at));
         Ok(result)
     }
 
@@ -734,6 +734,14 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
             session.auto_accept_status = None;
             session.auto_accept_started_at = None;
             session.cross_project_checked = false;
+        }
+        Ok(())
+    }
+
+    async fn touch_updated_at(&self, session_id: &str) -> AppResult<()> {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(session) = sessions.values_mut().find(|s| s.id.as_str() == session_id) {
+            session.updated_at = chrono::Utc::now();
         }
         Ok(())
     }

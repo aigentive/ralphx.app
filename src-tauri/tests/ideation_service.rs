@@ -374,10 +374,10 @@ impl IdeationSessionRepository for MockSessionRepository {
     async fn update_external_activity_phase(
         &self,
         id: &IdeationSessionId,
-        phase: &str,
+        phase: Option<&str>,
     ) -> AppResult<()> {
         if let Some(session) = self.sessions.lock().unwrap().get_mut(&id.to_string()) {
-            session.external_activity_phase = Some(phase.to_string());
+            session.external_activity_phase = phase.map(|s| s.to_string());
             session.updated_at = Utc::now();
         }
         Ok(())
@@ -432,6 +432,10 @@ impl IdeationSessionRepository for MockSessionRepository {
     }
 
     async fn reset_acceptance_cycle_fields(&self, _session_id: &str) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn touch_updated_at(&self, _session_id: &str) -> AppResult<()> {
         Ok(())
     }
 }

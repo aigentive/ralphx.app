@@ -329,7 +329,7 @@ impl IdeationSessionRepository for MockSessionRepository {
     async fn update_external_activity_phase(
         &self,
         _id: &IdeationSessionId,
-        _phase: &str,
+        _phase: Option<&str>,
     ) -> AppResult<()> {
         Ok(())
     }
@@ -368,6 +368,10 @@ impl IdeationSessionRepository for MockSessionRepository {
     }
 
     async fn reset_acceptance_cycle_fields(&self, _session_id: &str) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn touch_updated_at(&self, _session_id: &str) -> AppResult<()> {
         Ok(())
     }
 }

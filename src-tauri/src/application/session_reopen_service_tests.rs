@@ -675,7 +675,7 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
     async fn update_external_activity_phase(
         &self,
         id: &crate::domain::entities::IdeationSessionId,
-        phase: &str,
+        phase: Option<&str>,
     ) -> crate::error::AppResult<()> {
         self.inner.update_external_activity_phase(id, phase).await
     }
@@ -724,6 +724,10 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
         Err(crate::error::AppError::Database(
             "reset_acceptance_cycle_fields failed (injected test error)".to_string(),
         ))
+    }
+
+    async fn touch_updated_at(&self, session_id: &str) -> crate::error::AppResult<()> {
+        self.inner.touch_updated_at(session_id).await
     }
 }
 

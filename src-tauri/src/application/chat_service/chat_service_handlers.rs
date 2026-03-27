@@ -394,8 +394,7 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                                 e
                             );
                         }
-                    } else {
-                        if all_steps_done {
+                    } else if all_steps_done {
                             tracing::info!(
                                 task_id = task_id.as_str(),
                                 "Worker run ended with all steps completed; transitioning to PendingReview"
@@ -453,7 +452,6 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                                 );
                             }
                         }
-                    }
                 }
             }
         } else {

@@ -135,7 +135,7 @@ pub async fn trigger_verification_http(
         let trigger_session_id = IdeationSessionId::from_string(session_id.clone());
         tokio::spawn(async move {
             if let Err(e) = repo
-                .update_external_activity_phase(&trigger_session_id, "verifying")
+                .update_external_activity_phase(&trigger_session_id, Some("verifying"))
                 .await
             {
                 error!(
