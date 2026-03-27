@@ -150,7 +150,7 @@ export function ProcessCard({
   const elapsedTime = useElapsedTimer(process.elapsedSeconds, process.taskId);
 
   const stepInfo = process.stepProgress
-    ? `Step ${process.stepProgress.currentStep ? process.stepProgress.currentStep.sortOrder + 1 : process.stepProgress.completed}/${process.stepProgress.total}`
+    ? `${process.stepProgress.completed}/${process.stepProgress.total} steps`
     : null;
 
   return (

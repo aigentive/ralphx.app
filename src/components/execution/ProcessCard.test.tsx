@@ -130,7 +130,7 @@ describe("ProcessCard", () => {
   });
 
   describe("step progress display", () => {
-    it("displays step progress using currentStep.sortOrder when available", () => {
+    it("displays completed/total steps regardless of currentStep", () => {
       const process = createMockProcess({
         stepProgress: {
           taskId: "task-123",
@@ -166,11 +166,11 @@ describe("ProcessCard", () => {
           onStop={vi.fn()}
         />
       );
-      // currentStep.sortOrder is 2, so display should be "Step 3/7" (sortOrder + 1)
-      expect(screen.getByText(/Step 3\/7/)).toBeInTheDocument();
+      // shows completed/total regardless of which step is active
+      expect(screen.getByText(/2\/7 steps/)).toBeInTheDocument();
     });
 
-    it("displays completed count when no currentStep", () => {
+    it("displays completed/total steps when no currentStep", () => {
       const process = createMockProcess({
         stepProgress: {
           taskId: "task-123",
@@ -192,7 +192,7 @@ describe("ProcessCard", () => {
           onStop={vi.fn()}
         />
       );
-      expect(screen.getByText(/Step 5\/7/)).toBeInTheDocument();
+      expect(screen.getByText(/5\/7 steps/)).toBeInTheDocument();
     });
 
     it("handles process without step progress", () => {
