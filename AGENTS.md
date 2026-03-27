@@ -48,6 +48,7 @@ When working in `src-tauri/`, also follow:
 | P1 | Queue + recovery alignment | Landed: pause queues all slot-consuming sends, resume relaunches paused ideation + active task/review/merge queued work in execution-first order, stop clears queued slot-consuming work, and execution status now reports queued agent-message pressure separately from Ready-task queue depth; next validate whether more real-time queue event emission is worth the extra plumbing |
 | P1 | Settings surface | YAML-seeded defaults plus UI/API controls now cover global/project ideation caps + borrow toggle; next keep validating those controls against per-project admission and borrowing behavior |
 | P2 | Transition handler support layer | After concurrency semantics stabilize, resume splitting `merge_validation`, `merge_coordination`, and remaining `side_effects` hot spots |
+| P2 | Execution command orchestration | Split `src-tauri/src/commands/execution_commands.rs` after the transition-handler support layer pass; priority slices are pause/stop/resume orchestration, queue relaunch helpers, status/event payload shaping, and the oversized embedded test block |
 | P2 | Capability test split | Continue moving OS-capability checks out of default broad suites into explicit ignored tests or dedicated capability binaries |
 | P3 | Oversized HTTP handlers | After transition-handler stabilization, resume large backend handler refactors like `git.rs` and `teams.rs` |
 

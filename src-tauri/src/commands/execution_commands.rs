@@ -5585,6 +5585,136 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_resume_mixed_context_relaunches_execution_ideation_and_chat_queues() {
+        let app_state = AppState::new_test();
+        let execution_state = Arc::new(ExecutionState::new());
+
+        let project = Project::new("Mixed Resume".to_string(), "/test/mixed-resume".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        let review_task = app_state
+            .task_repo
+            .create(Task {
+                internal_status: InternalStatus::Reviewing,
+                ..Task::new(project.id.clone(), "Resume review task".to_string())
+            })
+            .await
+            .unwrap();
+        let task_chat_task = app_state
+            .task_repo
+            .create(Task::new(
+                project.id.clone(),
+                "Resume task chat target".to_string(),
+            ))
+            .await
+            .unwrap();
+        let ideation_session = app_state
+            .ideation_session_repo
+            .create(IdeationSession::new(project.id.clone()))
+            .await
+            .unwrap();
+
+        app_state.message_queue.queue(
+            ChatContextType::Review,
+            review_task.id.as_str(),
+            "resume mixed review".to_string(),
+        );
+        app_state.message_queue.queue(
+            ChatContextType::Ideation,
+            ideation_session.id.as_str(),
+            "resume mixed ideation".to_string(),
+        );
+        app_state.message_queue.queue_with_overrides(
+            ChatContextType::Task,
+            task_chat_task.id.as_str(),
+            "resume mixed task chat".to_string(),
+            Some(r#"{"resume_in_place":true}"#.to_string()),
+            None,
+        );
+        app_state.message_queue.queue_with_overrides(
+            ChatContextType::Project,
+            project.id.as_str(),
+            "resume mixed project chat".to_string(),
+            Some(r#"{"resume_in_place":true}"#.to_string()),
+            None,
+        );
+
+        let slot_mock = Arc::new(MockChatService::new());
+        let slot_resumed = resume_paused_slot_consuming_queues_with_chat_service(
+            None,
+            &app_state,
+            &execution_state,
+            || Arc::clone(&slot_mock) as Arc<dyn ChatService>,
+        )
+        .await
+        .expect("resume mixed slot-consuming queue");
+
+        assert_eq!(slot_resumed, 1);
+        assert_eq!(
+            slot_mock.get_sent_messages().await,
+            vec!["resume mixed review".to_string()]
+        );
+
+        let ideation_mock = Arc::new(MockChatService::new());
+        let ideation_resumed = resume_paused_ideation_queues_with_chat_service(
+            None,
+            &app_state,
+            &execution_state,
+            |_| Arc::clone(&ideation_mock) as Arc<dyn ChatService>,
+        )
+        .await
+        .expect("resume mixed ideation queue");
+
+        assert_eq!(ideation_resumed, 1);
+        assert_eq!(
+            ideation_mock.get_sent_messages().await,
+            vec!["resume mixed ideation".to_string()]
+        );
+
+        let chat_mock = Arc::new(MockChatService::new());
+        let chat_resumed = resume_paused_non_slot_chat_queues_with_chat_service(
+            None,
+            &app_state,
+            || Arc::clone(&chat_mock) as Arc<dyn ChatService>,
+        )
+        .await
+        .expect("resume mixed non-slot chat queues");
+
+        assert_eq!(chat_resumed, 2);
+        assert_eq!(
+            chat_mock.get_sent_messages().await,
+            vec![
+                "resume mixed project chat".to_string(),
+                "resume mixed task chat".to_string(),
+            ]
+        );
+        assert!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Review, review_task.id.as_str())
+                .is_empty()
+        );
+        assert!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Ideation, ideation_session.id.as_str())
+                .is_empty()
+        );
+        assert!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Task, task_chat_task.id.as_str())
+                .is_empty()
+        );
+        assert!(
+            app_state
+                .message_queue
+                .get_queued(ChatContextType::Project, project.id.as_str())
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
     async fn test_project_has_execution_capacity_for_state_ignores_other_projects() {
         let app_state = AppState::new_test();
         let execution_state = Arc::new(ExecutionState::new());
