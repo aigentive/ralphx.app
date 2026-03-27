@@ -558,7 +558,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
         purpose?: string;
       };
-      result = await callTauri("create_child_session", { parent_session_id, title, description, inherit_context, initial_prompt, team_mode, team_config, purpose });
+      // Propagate external trigger context from the spawning process env var.
+      // RALPHX_IS_EXTERNAL_TRIGGER=1 is set by the backend when the agent was spawned
+      // in response to an external MCP message (is_external_mcp=true).
+      const is_external_trigger = process.env.RALPHX_IS_EXTERNAL_TRIGGER === "1";
+      result = await callTauri("create_child_session", { parent_session_id, title, description, inherit_context, initial_prompt, team_mode, team_config, purpose, is_external_trigger });
     } else if (name === "get_parent_session_context") {
       // GET /api/parent_session_context/:session_id
       const { session_id } = args as { session_id: string };

@@ -135,18 +135,21 @@ async fn spawn_child_orchestration(
             if let Some(current_generation) = verification_generation.take() {
                 rollback_verification_state(state, parent_id, current_generation, "spawn failure");
             }
-            // Archive the child row so it does not linger as an orphan
-            let child_id_obj = IdeationSessionId::from_string(child_session_str.to_string());
-            if let Err(archive_err) = state
-                .app_state
-                .ideation_session_repo
-                .update_status(&child_id_obj, IdeationSessionStatus::Archived)
-                .await
-            {
-                error!(
-                    "Failed to archive child session {} after spawn failure: {}",
-                    child_session_str, archive_err
-                );
+            // Only archive verification children on spawn failure — general follow-up
+            // children remain Active so users can retry orchestration later.
+            if created_session.session_purpose == SessionPurpose::Verification {
+                let child_id_obj = IdeationSessionId::from_string(child_session_str.to_string());
+                if let Err(archive_err) = state
+                    .app_state
+                    .ideation_session_repo
+                    .update_status(&child_id_obj, IdeationSessionStatus::Archived)
+                    .await
+                {
+                    error!(
+                        "Failed to archive verification child session {} after spawn failure: {}",
+                        child_session_str, archive_err
+                    );
+                }
             }
             false
         }
@@ -261,7 +264,21 @@ pub async fn create_child_session(
             .unwrap_or_default(),
         cross_project_checked: true,
         plan_version_last_read: None,
-        origin: parent.origin,
+        origin: {
+            let purpose = req
+                .purpose
+                .as_deref()
+                .and_then(|p| p.parse::<SessionPurpose>().ok())
+                .unwrap_or_default();
+            if purpose == SessionPurpose::Verification {
+                // Verification children are system artifacts; inherit parent origin.
+                parent.origin
+            } else if req.is_external_trigger {
+                SessionOrigin::External
+            } else {
+                SessionOrigin::Internal
+            }
+        },
         expected_proposal_count: None,
         auto_accept_status: None,
         auto_accept_started_at: None,

@@ -142,6 +142,7 @@ mod verification_init_tests {
             team_mode: None,
             team_config: None,
             purpose: Some("verification".to_string()),
+            is_external_trigger: false,
         }
     }
 
@@ -469,6 +470,7 @@ mod verification_init_tests {
             team_mode: None,
             team_config: None,
             purpose: Some("verification".to_string()),
+            is_external_trigger: false,
         };
 
         let result = create_child_session(State(state.clone()), Json(req)).await;
@@ -552,6 +554,7 @@ mod verification_init_tests {
             team_mode: None,
             team_config: None,
             purpose: Some("verification".to_string()),
+            is_external_trigger: false,
         };
 
         let result = create_child_session(State(state.clone()), Json(req)).await;

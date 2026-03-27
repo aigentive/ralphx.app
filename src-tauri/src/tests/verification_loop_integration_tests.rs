@@ -1171,27 +1171,28 @@ async fn test_escalation_lifecycle_needs_revision_gate_blocks_reconciliation_ski
 // Tests for session lifecycle orphan cleanup (Phase 4 — new targeted tests)
 //
 // These tests cover the three lifecycle gaps fixed in this plan:
-//   13. Generic child auto-spawn failure → child row archived immediately
+//   13. Generic child auto-spawn failure → child row remains Active (retryable)
 //   14. Verification child auto-spawn failure → child row archived, parent unblocked
 //   15. Reconciler backstop: orphaned verification child with resolved parent archived
 // ──────────────────────────────────────────────────────────────────────────────
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Test 13: Generic child auto-spawn failure archives child immediately
+// Test 13: Generic child auto-spawn failure keeps child Active (retryable)
 //
 // When a general-purpose child session is created and the agent spawn attempt
-// fails, the child row must be archived immediately (not left as Active).
-// This prevents orphaned general children from accumulating.
+// fails, the child row must remain Active (not archived). This lets users
+// retry orchestration later via the UI. Only Verification children are
+// archived on spawn failure.
 //
-// Simulates: create.rs path — child created, spawn fails, child archived.
+// Simulates: create.rs path — child created, spawn fails, child NOT archived.
 //
-// After spawn failure cleanup:
-//   - Child: status=Archived (not Active)
+// After spawn failure:
+//   - Child: status=Active (retryable — not archived)
 //   - Parent: status unchanged (no verification state to reset for general children)
 // ──────────────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn test_generic_child_spawn_failure_archives_child_immediately() {
+async fn test_generic_child_spawn_failure_keeps_child_active() {
     let repo = Arc::new(MemoryIdeationSessionRepository::new());
     let project_id = ProjectId::new();
 
@@ -1215,21 +1216,16 @@ async fn test_generic_child_spawn_failure_archives_child_immediately() {
         "general child must start as Active before spawn attempt"
     );
 
-    // Simulate spawn failure: create.rs archives the child row immediately
-    // This is the new behavior — previously the child was left Active.
-    repo.update_status(
-        &child_id,
-        crate::domain::entities::IdeationSessionStatus::Archived,
-    )
-    .await
-    .unwrap();
+    // Simulate spawn failure for general child: create.rs skips archival for
+    // General purpose children — they remain Active so users can retry.
+    // (No repo.update_status call here — the new code path does nothing for General children.)
 
-    // Child must be archived (not left as Active orphan)
+    // Child must remain Active after spawn failure (not archived)
     let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
     assert_eq!(
         child_after.status,
-        crate::domain::entities::IdeationSessionStatus::Archived,
-        "general child must be archived after spawn failure — not left as Active orphan"
+        crate::domain::entities::IdeationSessionStatus::Active,
+        "general child must remain Active after spawn failure — users can retry orchestration"
     );
 
     // Parent must remain Active (no verification state involved for general children)

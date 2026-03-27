@@ -113,6 +113,7 @@ async fn c2_external_origin_propagates_to_verification_child() {
         team_mode: None,
         team_config: None,
         purpose: Some("verification".to_string()),
+        is_external_trigger: false,
     };
 
     let result = create_child_session(State(state.clone()), Json(req)).await;
@@ -182,6 +183,7 @@ async fn c2_internal_origin_produces_internal_verification_child() {
         team_mode: None,
         team_config: None,
         purpose: Some("verification".to_string()),
+        is_external_trigger: false,
     };
 
     let result = create_child_session(State(state.clone()), Json(req)).await;
@@ -239,7 +241,8 @@ async fn c3_team_mode_inherited_for_external_session_with_inherit_context() {
         initial_prompt: None,
         team_mode: None, // no explicit mode; must inherit from parent
         team_config: None,
-        purpose: None, // general purpose
+        purpose: None,
+        is_external_trigger: false, // general purpose
     };
 
     let result = create_child_session(State(state.clone()), Json(req)).await;
@@ -273,17 +276,21 @@ async fn c3_team_mode_inherited_for_external_session_with_inherit_context() {
         Some("debate"),
         "DB team_mode must be 'debate' (inherited from External parent)"
     );
+    // With the new origin propagation model, general follow-up children get origin=Internal
+    // unless the request includes is_external_trigger=true. The primary assertion of this
+    // test (team_mode inheritance) is unaffected.
     assert_eq!(
         child.origin,
-        SessionOrigin::External,
-        "Child origin must remain External"
+        SessionOrigin::Internal,
+        "General child origin is Internal when is_external_trigger is not set"
     );
 }
 
 /// C3b: External session with team_mode → child does NOT inherit when inherit_context=false.
 ///
-/// Boundary condition: origin is always inherited, but team_mode is only inherited
-/// when inherit_context=true. This test verifies the two fields are independent.
+/// Boundary condition: team_mode is only inherited when inherit_context=true.
+/// With the new origin propagation model, general follow-up children get Internal origin
+/// unless is_external_trigger=true.
 #[tokio::test]
 async fn c3_team_mode_not_inherited_without_inherit_context() {
     let state = setup_sqlite_state().await;
@@ -310,6 +317,7 @@ async fn c3_team_mode_not_inherited_without_inherit_context() {
         team_mode: None,
         team_config: None,
         purpose: None,
+        is_external_trigger: false,
     };
 
     let result = create_child_session(State(state.clone()), Json(req)).await;
@@ -326,11 +334,13 @@ async fn c3_team_mode_not_inherited_without_inherit_context() {
         .unwrap()
         .expect("Child must exist");
 
-    // origin IS inherited (always), but team_mode is NOT (inherit_context=false)
+    // With the new origin propagation model, general follow-up children get Internal unless
+    // is_external_trigger=true is passed in the request. team_mode is NOT inherited here
+    // because inherit_context=false.
     assert_eq!(
         child.origin,
-        SessionOrigin::External,
-        "Origin is always inherited regardless of inherit_context"
+        SessionOrigin::Internal,
+        "General child origin is Internal when is_external_trigger is not set"
     );
     assert_eq!(
         child.team_mode, None,
@@ -339,6 +349,228 @@ async fn c3_team_mode_not_inherited_without_inherit_context() {
     assert_eq!(
         response.team_mode, None,
         "Response team_mode must be None when inherit_context=false"
+    );
+}
+
+// ============================================================================
+// C5: is_external_trigger → origin propagation for general follow-up children
+// ============================================================================
+
+/// C5a: is_external_trigger=true → general child gets origin=External.
+///
+/// Covers proof obligation #5 from the plan: when the triggering message arrived
+/// via external MCP, the env var RALPHX_IS_EXTERNAL_TRIGGER=1 is set on the agent
+/// process, the MCP server reads it and sets is_external_trigger=true in the HTTP
+/// request, and the handler assigns origin=External to the general child.
+#[tokio::test]
+async fn c5a_external_trigger_sets_external_origin_for_general_child() {
+    let state = setup_sqlite_state().await;
+    let project_id = ProjectId::from_string("proj-c5a".to_string());
+
+    // Parent can have any origin — general child origin comes from is_external_trigger, not parent
+    let mut parent = make_external_session(&project_id, None, None);
+    parent.origin = SessionOrigin::Internal; // set to Internal to prove child doesn't inherit
+    let parent_id = parent.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    let req = CreateChildSessionRequest {
+        parent_session_id: parent_id.as_str().to_string(),
+        title: None,
+        description: None,
+        inherit_context: false,
+        initial_prompt: None,
+        team_mode: None,
+        team_config: None,
+        purpose: None, // general
+        is_external_trigger: true,
+    };
+
+    let result = create_child_session(State(state.clone()), Json(req)).await;
+    assert!(result.is_ok(), "Handler must succeed, got: {:?}", result.err());
+
+    let child_id = IdeationSessionId::from_string(result.unwrap().0.session_id);
+    let child = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&child_id)
+        .await
+        .unwrap()
+        .expect("Child must exist");
+
+    assert_eq!(
+        child.origin,
+        SessionOrigin::External,
+        "is_external_trigger=true must set origin=External on general child"
+    );
+    assert_eq!(
+        child.session_purpose,
+        SessionPurpose::default(), // General
+        "Child session_purpose must be General (default)"
+    );
+}
+
+/// C5b: is_external_trigger=false → general child gets origin=Internal.
+///
+/// Default case: no external trigger flag → origin is Internal regardless of parent origin.
+#[tokio::test]
+async fn c5b_no_external_trigger_sets_internal_origin_for_general_child() {
+    let state = setup_sqlite_state().await;
+    let project_id = ProjectId::from_string("proj-c5b".to_string());
+
+    // Parent is External — general child should still get Internal (not inherited)
+    let parent = make_external_session(&project_id, None, None);
+    let parent_id = parent.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    let req = CreateChildSessionRequest {
+        parent_session_id: parent_id.as_str().to_string(),
+        title: None,
+        description: None,
+        inherit_context: false,
+        initial_prompt: None,
+        team_mode: None,
+        team_config: None,
+        purpose: None, // general
+        is_external_trigger: false,
+    };
+
+    let result = create_child_session(State(state.clone()), Json(req)).await;
+    assert!(result.is_ok(), "Handler must succeed, got: {:?}", result.err());
+
+    let child_id = IdeationSessionId::from_string(result.unwrap().0.session_id);
+    let child = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&child_id)
+        .await
+        .unwrap()
+        .expect("Child must exist");
+
+    assert_eq!(
+        child.origin,
+        SessionOrigin::Internal,
+        "is_external_trigger=false must set origin=Internal (not inherited from External parent)"
+    );
+}
+
+/// C5c: Verification child inherits parent origin regardless of is_external_trigger.
+///
+/// Verification children are system artifacts of the parent's verification loop;
+/// they always inherit parent.origin, not the trigger origin.
+#[tokio::test]
+async fn c5c_verification_child_inherits_parent_origin_ignoring_is_external_trigger() {
+    let state = setup_sqlite_state().await;
+    let project_id = ProjectId::from_string("proj-c5c".to_string());
+
+    let parent = make_external_session(&project_id, None, Some(ArtifactId::new()));
+    let parent_id = parent.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    // Pass is_external_trigger=false — verification child must still get External from parent
+    let req = CreateChildSessionRequest {
+        parent_session_id: parent_id.as_str().to_string(),
+        title: None,
+        description: Some("Verify".to_string()),
+        inherit_context: false,
+        initial_prompt: None,
+        team_mode: None,
+        team_config: None,
+        purpose: Some("verification".to_string()),
+        is_external_trigger: false, // trigger says Internal, but verification inherits
+    };
+
+    let result = create_child_session(State(state.clone()), Json(req)).await;
+    assert!(result.is_ok(), "Handler must succeed, got: {:?}", result.err());
+
+    let child_id = IdeationSessionId::from_string(result.unwrap().0.session_id);
+    let child = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&child_id)
+        .await
+        .unwrap()
+        .expect("Child must exist");
+
+    assert_eq!(
+        child.origin,
+        SessionOrigin::External,
+        "Verification child must inherit parent.origin=External even when is_external_trigger=false"
+    );
+    assert_eq!(
+        child.session_purpose,
+        SessionPurpose::Verification,
+        "Child must be Verification purpose"
+    );
+}
+
+/// C5d: Backward compat — request without is_external_trigger field deserializes with default false.
+///
+/// Ensures existing callers that don't pass is_external_trigger still work correctly.
+/// The #[serde(default)] annotation handles JSON deserialization; this test verifies
+/// that the default value produces Internal origin for a general child.
+#[tokio::test]
+async fn c5d_missing_is_external_trigger_defaults_to_internal_origin() {
+    let state = setup_sqlite_state().await;
+    let project_id = ProjectId::from_string("proj-c5d".to_string());
+
+    // External parent — child should still get Internal if no trigger flag
+    let parent = make_external_session(&project_id, None, None);
+    let parent_id = parent.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    // Simulate JSON payload without is_external_trigger field via serde
+    let json_payload = serde_json::json!({
+        "parent_session_id": parent_id.as_str(),
+        "title": null,
+        "description": null,
+        "inherit_context": false,
+        "initial_prompt": null,
+        "team_mode": null,
+        "team_config": null,
+        "purpose": null
+        // is_external_trigger deliberately absent
+    });
+    let req: CreateChildSessionRequest =
+        serde_json::from_value(json_payload).expect("deserialization must succeed");
+
+    assert!(!req.is_external_trigger, "Missing field must default to false");
+
+    let result = create_child_session(State(state.clone()), Json(req)).await;
+    assert!(result.is_ok(), "Handler must succeed, got: {:?}", result.err());
+
+    let child_id = IdeationSessionId::from_string(result.unwrap().0.session_id);
+    let child = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&child_id)
+        .await
+        .unwrap()
+        .expect("Child must exist");
+
+    assert_eq!(
+        child.origin,
+        SessionOrigin::Internal,
+        "Default is_external_trigger=false must produce Internal origin"
     );
 }
 

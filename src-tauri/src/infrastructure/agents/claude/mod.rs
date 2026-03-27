@@ -142,6 +142,11 @@ pub fn build_base_cli_command(
     apply_common_spawn_env(&mut cmd);
     cmd.env("CLAUDE_PLUGIN_ROOT", plugin_dir);
 
+    // Propagate external trigger context so MCP server can set child session origin correctly.
+    if is_external_mcp {
+        cmd.env("RALPHX_IS_EXTERNAL_TRIGGER", "1");
+    }
+
     // Optional setting-sources override from ralphx.yaml.
     if let Some(sources) = &claude_runtime_config().setting_sources {
         if !sources.is_empty() {
@@ -1183,5 +1188,36 @@ mod tests {
     fn test_spawnable_command_debug_impl() {
         fn assert_debug<T: std::fmt::Debug>() {}
         assert_debug::<SpawnableCommand>();
+    }
+
+    /// build_base_cli_command with is_external_mcp=true is also blocked in tests by the
+    /// same spawn guard. The env var propagation logic (RALPHX_IS_EXTERNAL_TRIGGER=1)
+    /// executes after the guard; this test confirms the function accepts the flag and
+    /// returns the expected blocked error in the test environment.
+    #[test]
+    fn test_build_base_cli_command_external_mcp_blocked_in_tests() {
+        let result = build_base_cli_command(
+            Path::new("/fake/claude"),
+            Path::new("/fake/plugin"),
+            None,
+            true, // is_external_mcp=true
+        );
+        assert!(result.is_err(), "should be blocked in test environment");
+        assert!(
+            result.unwrap_err().contains("disabled"),
+            "error should mention spawn disabled"
+        );
+    }
+
+    /// build_base_cli_command with is_external_mcp=false is also blocked in tests.
+    #[test]
+    fn test_build_base_cli_command_internal_mcp_blocked_in_tests() {
+        let result = build_base_cli_command(
+            Path::new("/fake/claude"),
+            Path::new("/fake/plugin"),
+            None,
+            false, // is_external_mcp=false
+        );
+        assert!(result.is_err(), "should be blocked in test environment");
     }
 }

@@ -339,6 +339,10 @@ export const ALL_TOOLS = [
                     enum: ["general", "verification"],
                     description: "Purpose of the child session. 'general' for regular follow-on sessions (default), 'verification' for plan verification sessions that run in the background.",
                 },
+                is_external_trigger: {
+                    type: "boolean",
+                    description: "When true, the child session origin is set to External. Automatically set by the backend via RALPHX_IS_EXTERNAL_TRIGGER env var — agents do not need to pass this manually.",
+                },
             },
             required: ["parent_session_id"],
         },

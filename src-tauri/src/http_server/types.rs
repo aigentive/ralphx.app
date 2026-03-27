@@ -920,6 +920,11 @@ pub struct CreateChildSessionRequest {
     pub team_config: Option<TeamConfigInput>,
     /// Purpose of the child session: "general" (default) or "verification"
     pub purpose: Option<String>,
+    /// When true, the child session origin is set to External (triggered via external MCP).
+    /// When false or absent (default), origin is set to Internal.
+    /// Ignored for verification children — they always inherit parent origin.
+    #[serde(default)]
+    pub is_external_trigger: bool,
 }
 
 /// Team configuration input for create_child_session
