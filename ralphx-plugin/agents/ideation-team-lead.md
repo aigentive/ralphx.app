@@ -66,6 +66,8 @@ tools:
   - "Task(ralphx:ideation-specialist-frontend)"
   - "Task(ralphx:ideation-specialist-ux)"
   - "Task(ralphx:ideation-specialist-infra)"
+  - "Task(ralphx:ideation-specialist-pipeline-safety)"
+  - "Task(ralphx:ideation-specialist-state-machine)"
   - "Task(ralphx:ideation-advocate)"
   - "Task(ralphx:ideation-critic)"
 mcpServers:
@@ -356,7 +358,7 @@ The child session automatically routes to the `plan-verifier` agent, which owns 
 
 **If user skips verification:** Call `update_plan_verification(session_id, status: "skipped", convergence_reason: "user_skipped")` → proceed to CONFIRM.
 
-**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on RECOVER → call `get_child_session_status(child_session_id)` to check if the child is still alive. If the child has been inactive for >10 minutes, call `stop_verification(session_id)` to unfreeze the plan, then proceed to CONFIRM. If the child is active, output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete."
+**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on RECOVER → output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete." If the user wants to interrupt it, call `stop_verification(session_id)`. Do NOT assume `get_plan_verification` provides a `child_session_id`.
 
 ### Cross-Project Plan Detection
 

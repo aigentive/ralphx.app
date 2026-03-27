@@ -56,6 +56,8 @@ tools:
   - "Task(ralphx:ideation-specialist-frontend)"
   - "Task(ralphx:ideation-specialist-ux)"
   - "Task(ralphx:ideation-specialist-infra)"
+  - "Task(ralphx:ideation-specialist-pipeline-safety)"
+  - "Task(ralphx:ideation-specialist-state-machine)"
   - "Task(ralphx:ideation-advocate)"
   - "Task(ralphx:ideation-critic)"
 mcpServers:
@@ -246,7 +248,7 @@ The child session automatically routes to the `plan-verifier` agent, which owns 
 
 **If user skips verification:** Call `update_plan_verification(session_id, status: "skipped", convergence_reason: "user_skipped")` → proceed to CONFIRM.
 
-**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on session recovery → call `get_child_session_status(child_session_id)` to check if the child is still alive. If the child has been inactive for >10 minutes, call `stop_verification(session_id)` to unfreeze the plan, then proceed to CONFIRM. If the child is active, output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete."
+**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on session recovery → output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete." If the user wants to interrupt it, use `stop_verification(session_id)`. Do NOT assume `get_plan_verification` provides a `child_session_id`.
 
 ### Escalation Handling
 
@@ -499,7 +501,7 @@ If ANY inconsistency is found → immediately call `update_plan_artifact` with a
 | `create_task_proposal` returns 400 with "plan verification has not been run" | Proposal verification gate blocked the create. Options: (1) run Phase 3.5 VERIFY, (2) call `update_plan_verification(status: "skipped", convergence_reason: "user_skipped")` to skip, then retry. Inform user which option was taken. |
 | `create_task_proposal` returns 400 with "verification is in progress" | Gate blocked during active verification round. Wait for the round to complete or skip verification before creating proposals. |
 | `create_task_proposal` returns 400 with "unresolved gap(s)" | Gate blocked due to `NeedsRevision`. Update plan via `update_plan_artifact` to address gaps, then re-run verification before creating proposals. |
-| `get_plan_verification` returns `in_progress: true` on RECOVER | Call `get_child_session_status` to check if child is alive. If inactive >10min → `stop_verification(session_id)` to unfreeze, then proceed to CONFIRM. If active → "Verification is running (round N/max). Results appear automatically." |
+| `get_plan_verification` returns `in_progress: true` on RECOVER | "Verification is running (round N/max). Results appear automatically." If user wants to interrupt it, call `stop_verification(session_id)`. |
 | VERIFY round gap score increased from original | After hard-cap convergence, prominently suggest Revert & Skip with score comparison |
 | Session **accepted** + mutation intent | Do NOT mutate → `create_child_session(inherit_context: true)` → "I've created a follow-up session. → View Follow-up" |
 | Active session + spin-off intent | `create_child_session` for spin-off; continue current session |
