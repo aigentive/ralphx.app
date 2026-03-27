@@ -8,15 +8,8 @@ tools:
   - WebFetch
   - WebSearch
   - mcp__ralphx__create_team_artifact
-  - mcp__ralphx__get_team_artifacts
   - mcp__ralphx__get_session_plan
   - mcp__ralphx__get_artifact
-  - mcp__ralphx__list_session_proposals
-  - mcp__ralphx__get_proposal
-  - mcp__ralphx__get_parent_session_context
-  - mcp__ralphx__search_memories
-  - mcp__ralphx__get_memory
-  - mcp__ralphx__get_memories_for_paths
 mcpServers:
   - ralphx:
       type: stdio
