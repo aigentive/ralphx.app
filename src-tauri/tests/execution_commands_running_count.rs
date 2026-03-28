@@ -10,7 +10,10 @@ use std::sync::Arc;
 use ralphx_lib::application::{chat_service::uses_execution_slot, AppState};
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::commands::execution_commands::context_matches_running_status_for_gc;
-use ralphx_lib::domain::entities::{ChatContextType, InternalStatus, Project, Task, TaskId};
+use ralphx_lib::domain::entities::{
+    ChatContextType, IdeationSession, IdeationSessionStatus, InternalStatus, Project, ProjectId,
+    Task, TaskId, types::IdeationSessionId,
+};
 use ralphx_lib::domain::repositories::{ProjectRepository, TaskRepository};
 use ralphx_lib::domain::services::{RunningAgentKey, RunningAgentRegistry};
 use ralphx_lib::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
@@ -716,4 +719,238 @@ async fn test_generating_ideation_counted_in_running_counts() {
         project_count, 1,
         "Generating ideation must count toward per-project running count"
     );
+}
+
+// =========================================================================
+// Multi-project ideation scoping: counts must be project-scoped
+// =========================================================================
+
+/// Build a minimal IdeationSession for a given project, identified by session_id.
+fn make_ideation_session(session_id: &str, project_id: &ProjectId) -> IdeationSession {
+    IdeationSession {
+        id: IdeationSessionId::from_string(session_id.to_string()),
+        project_id: project_id.clone(),
+        title: None,
+        status: IdeationSessionStatus::default(),
+        plan_artifact_id: None,
+        inherited_plan_artifact_id: None,
+        seed_task_id: None,
+        parent_session_id: None,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        archived_at: None,
+        converted_at: None,
+        team_mode: None,
+        team_config_json: None,
+        title_source: None,
+        verification_status: Default::default(),
+        verification_in_progress: false,
+        verification_metadata: None,
+        verification_generation: 0,
+        source_project_id: None,
+        source_session_id: None,
+        session_purpose: Default::default(),
+        cross_project_checked: true,
+        plan_version_last_read: None,
+        origin: Default::default(),
+        expected_proposal_count: None,
+        auto_accept_status: None,
+        auto_accept_started_at: None,
+        api_key_id: None,
+        idempotency_key: None,
+        external_activity_phase: None,
+        external_last_read_message_id: None,
+        dependencies_acknowledged: false,
+        pending_initial_prompt: None,
+    }
+}
+
+/// Replicate the UPDATED `get_execution_status` per-project loop logic:
+/// session lookup + project filter for ideation, task lookup + project filter for tasks.
+async fn count_scoped_running(
+    app_state: &AppState,
+    execution_state: &ExecutionState,
+    project_id: Option<&ProjectId>,
+) -> (u32, u32, u32) {
+    // returns (running_count, ideation_active, ideation_idle)
+    let registry_entries = app_state.running_agent_registry.list_all().await;
+    let mut running_count = 0u32;
+    let mut ideation_active = 0u32;
+    let mut ideation_idle = 0u32;
+
+    for (key, _) in registry_entries {
+        let context_type = match key.context_type.parse::<ChatContextType>() {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+
+        if !uses_execution_slot(context_type) {
+            continue;
+        }
+
+        if matches!(context_type, ChatContextType::Ideation) {
+            let session_id = IdeationSessionId::from_string(key.context_id.clone());
+            let session = match app_state
+                .ideation_session_repo
+                .get_by_id(&session_id)
+                .await
+            {
+                Ok(Some(s)) => s,
+                _ => continue,
+            };
+            if let Some(pid) = project_id {
+                if session.project_id != *pid {
+                    continue;
+                }
+            }
+            let slot_key = format!("{}/{}", key.context_type, key.context_id);
+            if execution_state.is_interactive_idle(&slot_key) {
+                ideation_idle += 1;
+            } else {
+                ideation_active += 1;
+                running_count += 1;
+            }
+            continue;
+        }
+
+        let task_id = TaskId::from_string(key.context_id);
+        let task = match app_state.task_repo.get_by_id(&task_id).await {
+            Ok(Some(task)) => task,
+            _ => continue,
+        };
+
+        if let Some(pid) = project_id {
+            if task.project_id != *pid {
+                continue;
+            }
+        }
+
+        if !context_matches_running_status_for_gc(context_type, task.internal_status) {
+            continue;
+        }
+
+        running_count += 1;
+    }
+
+    (running_count, ideation_active, ideation_idle)
+}
+
+/// Test: ideation_active counts are scoped to the requested project.
+/// Project A has 2 active sessions, project B has 1. Querying project A → 2; B → 1.
+#[tokio::test]
+async fn test_ideation_active_is_project_scoped() {
+    let state = AppState::with_repos(
+        Arc::new(MemoryTaskRepository::new()),
+        Arc::new(MemoryProjectRepository::new()),
+    );
+    let exec_state = ExecutionState::new();
+
+    let pid_a = ProjectId::from_string("proj-a".to_string());
+    let pid_b = ProjectId::from_string("proj-b".to_string());
+
+    // Seed sessions in the ideation_session_repo
+    state
+        .ideation_session_repo
+        .create(make_ideation_session("session-a1", &pid_a))
+        .await
+        .unwrap();
+    state
+        .ideation_session_repo
+        .create(make_ideation_session("session-a2", &pid_a))
+        .await
+        .unwrap();
+    state
+        .ideation_session_repo
+        .create(make_ideation_session("session-b1", &pid_b))
+        .await
+        .unwrap();
+
+    // Register all three as active (generating) in the registry
+    register_ideation(&*state.running_agent_registry, "session-a1").await;
+    register_ideation(&*state.running_agent_registry, "session-a2").await;
+    register_ideation(&*state.running_agent_registry, "session-b1").await;
+
+    let (rc_a, active_a, idle_a) = count_scoped_running(&state, &exec_state, Some(&pid_a)).await;
+    let (rc_b, active_b, idle_b) = count_scoped_running(&state, &exec_state, Some(&pid_b)).await;
+
+    assert_eq!(active_a, 2, "Project A must have 2 active ideation sessions");
+    assert_eq!(idle_a, 0, "Project A must have 0 idle ideation sessions");
+    assert_eq!(rc_a, 2, "running_count for project A must be 2");
+
+    assert_eq!(active_b, 1, "Project B must have 1 active ideation session");
+    assert_eq!(idle_b, 0, "Project B must have 0 idle ideation sessions");
+    assert_eq!(rc_b, 1, "running_count for project B must be 1");
+}
+
+/// Test: orphaned registry entries (no matching session row) are skipped.
+#[tokio::test]
+async fn test_orphaned_ideation_registry_entry_is_skipped() {
+    let state = AppState::with_repos(
+        Arc::new(MemoryTaskRepository::new()),
+        Arc::new(MemoryProjectRepository::new()),
+    );
+    let exec_state = ExecutionState::new();
+
+    // Register a session that has NO matching row in ideation_session_repo
+    register_ideation(&*state.running_agent_registry, "session-orphan").await;
+
+    let (rc, active, idle) = count_scoped_running(&state, &exec_state, None).await;
+
+    assert_eq!(rc, 0, "Orphaned registry entry must not be counted");
+    assert_eq!(active, 0);
+    assert_eq!(idle, 0);
+}
+
+/// Test: running_count = (same-project active ideation) + (same-project active tasks).
+#[tokio::test]
+async fn test_running_count_equals_project_ideation_plus_project_tasks() {
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_a = Project::new("Project A".to_string(), "/a".to_string());
+    let pid_a = project_a.id.clone();
+    let project_b = Project::new("Project B".to_string(), "/b".to_string());
+    let pid_b = project_b.id.clone();
+    project_repo.create(project_a).await.unwrap();
+    project_repo.create(project_b).await.unwrap();
+
+    // Project A: 1 executing task + 1 ideation session
+    let mut task_a = Task::new(pid_a.clone(), "Task A".to_string());
+    task_a.internal_status = InternalStatus::Executing;
+    let task_a = task_repo.create(task_a).await.unwrap();
+
+    // Project B: 1 executing task (must NOT appear in project A counts)
+    let mut task_b = Task::new(pid_b.clone(), "Task B".to_string());
+    task_b.internal_status = InternalStatus::Executing;
+    let task_b = task_repo.create(task_b).await.unwrap();
+
+    let state = AppState::with_repos(task_repo, project_repo);
+    let exec_state = ExecutionState::new();
+
+    state
+        .ideation_session_repo
+        .create(make_ideation_session("session-a1", &pid_a))
+        .await
+        .unwrap();
+
+    register_task_execution(&*state.running_agent_registry, &task_a.id).await;
+    register_task_execution(&*state.running_agent_registry, &task_b.id).await;
+    register_ideation(&*state.running_agent_registry, "session-a1").await;
+
+    let (rc_a, active_a, _idle_a) =
+        count_scoped_running(&state, &exec_state, Some(&pid_a)).await;
+    let (rc_b, active_b, _idle_b) =
+        count_scoped_running(&state, &exec_state, Some(&pid_b)).await;
+
+    assert_eq!(
+        rc_a, 2,
+        "Project A running_count must be 1 task + 1 ideation = 2"
+    );
+    assert_eq!(active_a, 1, "Project A must have 1 active ideation session");
+
+    assert_eq!(
+        rc_b, 1,
+        "Project B running_count must be 1 task only (no ideation)"
+    );
+    assert_eq!(active_b, 0, "Project B has no ideation sessions");
 }

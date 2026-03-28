@@ -159,9 +159,23 @@ pub async fn get_execution_status(
             continue;
         }
 
-        // Ideation uses session IDs (not task IDs) — no task lookup or GC needed.
+        // Ideation uses session IDs (not task IDs) — look up session for project filtering.
         // Track active (generating) and idle (waiting_for_input) separately.
         if matches!(context_type, ChatContextType::Ideation) {
+            let session_id = IdeationSessionId::from_string(key.context_id.clone());
+            let session = match app_state
+                .ideation_session_repo
+                .get_by_id(&session_id)
+                .await
+            {
+                Ok(Some(s)) => s,
+                _ => continue, // orphaned registry entry — skip
+            };
+            if let Some(pid) = &effective_project_id {
+                if session.project_id != *pid {
+                    continue;
+                }
+            }
             let slot_key = format!("{}/{}", key.context_type, key.context_id);
             if execution_state.is_interactive_idle(&slot_key) {
                 ideation_idle += 1;

@@ -54,14 +54,16 @@ export function WaitingForCapacityState({ pendingInitialPrompt, projectId }: Wai
           <p className="text-sm leading-relaxed" style={{ color: "hsl(220 10% 60%)" }}>
             Ideation capacity:{" "}
             <span style={{ color: "hsl(220 10% 80%)" }}>
-              {data.ideationActive}/{data.ideationMaxProject} slots active
+              {data.ideationActive}/{data.ideationMaxProject} {data.ideationMaxProject === 1 ? "slot" : "slots"} active in this project.
             </span>
-            {" "}({data.ideationIdle} idle, {data.ideationWaiting} waiting).
-            This session will start automatically when a slot becomes available.
+            {data.ideationWaiting > 0 && (
+              <>{" "}{data.ideationWaiting} {data.ideationWaiting === 1 ? "session" : "sessions"} waiting to start.</>
+            )}{" "}
+            This session will start automatically when a slot opens.
           </p>
         ) : (
           <p className="text-sm leading-relaxed" style={{ color: "hsl(220 10% 60%)" }}>
-            All ideation slots are in use. This session will start automatically when one becomes available.
+            All ideation slots are in use. This session will start automatically when a slot opens.
           </p>
         )}
 
