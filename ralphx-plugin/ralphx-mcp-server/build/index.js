@@ -521,8 +521,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         else if (name === "execution_complete") {
             // POST /api/execution/tasks/:task_id/complete
-            const { task_id, summary } = args;
-            result = await callTauri(`execution/tasks/${task_id}/complete`, { summary: summary || "" });
+            const { task_id, summary, test_result } = args;
+            const body = { summary: summary || "" };
+            if (test_result) {
+                body.testResult = {
+                    testsRan: test_result.tests_ran,
+                    testsPassed: test_result.tests_passed,
+                    testSummary: test_result.test_summary,
+                };
+            }
+            result = await callTauri(`execution/tasks/${task_id}/complete`, body);
         }
         else if (name === "list_projects") {
             // GET /api/internal/projects

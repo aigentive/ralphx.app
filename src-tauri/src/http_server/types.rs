@@ -1358,8 +1358,11 @@ impl From<crate::application::chat_service::CachedStreamingTask> for ActiveStrea
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestResultInput {
+    #[serde(alias = "tests_ran")]
     pub tests_ran: bool,
+    #[serde(alias = "tests_passed")]
     pub tests_passed: bool,
+    #[serde(alias = "test_summary")]
     pub test_summary: Option<String>,
 }
 
@@ -1368,6 +1371,7 @@ pub struct TestResultInput {
 pub struct ExecutionCompleteRequest {
     pub summary: Option<String>,
     /// Optional test results for validation cache. When absent, no cache entry is created.
+    #[serde(alias = "test_result")]
     pub test_result: Option<TestResultInput>,
 }
 
