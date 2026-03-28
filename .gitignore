@@ -44,6 +44,8 @@ dist/
 dist-ssr/
 build/
 out/
+/target/
+/librust_out.rlib
 
 # Rust/Tauri
 src-tauri/target
