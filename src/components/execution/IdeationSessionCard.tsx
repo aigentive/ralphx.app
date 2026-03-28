@@ -21,7 +21,20 @@ export function IdeationSessionCard({ session, onClick }: IdeationSessionCardPro
   return (
     <div
       data-testid={`ideation-card-${session.sessionId}`}
-      className="px-2 py-1.5 rounded-md hover:bg-white/[0.04] transition-colors"
+      className={`px-2 py-1.5 rounded-md hover:bg-white/[0.04] transition-colors${onClick ? " cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20" : ""}`}
+      {...(onClick
+        ? {
+            role: "button" as const,
+            tabIndex: 0,
+            onClick,
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            },
+          }
+        : {})}
     >
       {/* Line 1: Icon | Title | Badge */}
       <div className="flex items-center gap-2">
@@ -36,14 +49,13 @@ export function IdeationSessionCard({ session, onClick }: IdeationSessionCardPro
             style={{ color: "hsl(220 10% 45%)" }}
           />
         )}
-        <button
-          className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
-          style={{ color: "hsl(220 10% 88%)", background: "none", border: "none", padding: 0 }}
+        <span
+          className="flex-1 text-xs font-medium truncate min-w-0 text-left"
+          style={{ color: "hsl(220 10% 88%)" }}
           title={session.title}
-          onClick={onClick}
         >
           {session.title}
-        </button>
+        </span>
         <span
           className="text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0"
           style={{

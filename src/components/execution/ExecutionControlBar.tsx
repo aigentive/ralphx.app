@@ -152,6 +152,7 @@ export function ExecutionControlBar({
   const statusState = isStopped ? "stopped" : getStatusState(runningCount, isPaused);
   const isRunning = runningCount > 0 && !isPaused;
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"execution" | "ideation">("execution");
 
   // Responsive breakpoint tracking
   const [breakpoint, setBreakpoint] = useState<"wide" | "medium" | "narrow">("wide");
@@ -235,6 +236,7 @@ export function ExecutionControlBar({
               ideationSessions={ideationSessions}
               runningCount={runningCount}
               maxConcurrent={maxConcurrent}
+              ideationMax={ideationMax}
               open={isPopoverOpen}
               onOpenChange={setIsPopoverOpen}
               onPauseProcess={onPauseProcess}
@@ -242,12 +244,14 @@ export function ExecutionControlBar({
               onOpenSettings={onOpenSettings}
               {...(onNavigateToSession !== undefined && { onNavigateToSession })}
               alignOffset={POPOVER_ALIGN_TO_SEPARATOR_DOT}
+              initialTab={activeTab}
+              showIdeation={showIdeation}
             >
               <button
                 data-testid="running-count"
                 className="text-[13px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
                 style={{ color: runningCount > 0 ? STATUS_COLORS.running : "hsl(220 10% 90%)" }}
-                onClick={() => setIsPopoverOpen(!isPopoverOpen)}
+                onClick={() => { setActiveTab("execution"); setIsPopoverOpen(true); }}
               >
                 {runningLabel}{runningCount}/{maxConcurrent}
               </button>
@@ -363,29 +367,16 @@ export function ExecutionControlBar({
             <>
               <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
               <div className="flex items-center gap-1.5">
-                <RunningProcessPopover
-                  processes={runningProcesses}
-                  ideationSessions={ideationSessions}
-                  runningCount={runningCount}
-                  maxConcurrent={maxConcurrent}
-                  open={isPopoverOpen}
-                  onOpenChange={setIsPopoverOpen}
-                  onPauseProcess={onPauseProcess}
-                  onStopProcess={onStopProcess}
-                  onOpenSettings={onOpenSettings}
-                  {...(onNavigateToSession !== undefined && { onNavigateToSession })}
-                  alignOffset={POPOVER_ALIGN_TO_SEPARATOR_DOT}
+                <button
+                  data-testid="ideation-count"
+                  data-ideation-trigger
+                  className="text-[13px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
+                  style={{ color: ideationActive > 0 ? "#ff6b35" : "hsl(220 10% 65%)" }}
+                  onClick={() => { setActiveTab("ideation"); setIsPopoverOpen(true); }}
+                  aria-label={`Ideation: ${ideationActive} active, ${ideationMax} max`}
                 >
-                  <button
-                    data-testid="ideation-count"
-                    className="text-[13px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
-                    style={{ color: ideationActive > 0 ? "hsl(270 70% 72%)" : "hsl(220 10% 65%)" }}
-                    onClick={() => setIsPopoverOpen(!isPopoverOpen)}
-                    aria-label={`Ideation: ${ideationActive} active, ${ideationMax} max`}
-                  >
-                    {ideationLabel}{ideationActive}/{ideationMax}
-                  </button>
-                </RunningProcessPopover>
+                  {ideationLabel}{ideationActive}/{ideationMax}
+                </button>
                 {ideationWaiting > 0 && (
                   <span
                     data-testid="ideation-waiting-badge"

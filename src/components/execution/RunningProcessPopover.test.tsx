@@ -2,10 +2,17 @@
  * RunningProcessPopover component tests
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { RunningProcessPopover } from "./RunningProcessPopover";
-import type { RunningProcess } from "@/api/running-processes";
+import type { RunningProcess, RunningIdeationSession } from "@/api/running-processes";
+import { useUiStore } from "@/stores/uiStore";
+
+vi.mock("@/stores/uiStore", () => ({
+  useUiStore: vi.fn(),
+}));
+
+const mockNavigateToTask = vi.fn();
 
 // Mock process data helper
 function createMockProcess(overrides?: Partial<RunningProcess>): RunningProcess {
@@ -46,7 +53,28 @@ function createMockProcess(overrides?: Partial<RunningProcess>): RunningProcess 
   };
 }
 
+// Mock process data helper
+function createMockIdeationSession(
+  overrides?: Partial<RunningIdeationSession>
+): RunningIdeationSession {
+  return {
+    sessionId: "session-1",
+    title: "Test Ideation Session",
+    elapsedSeconds: 60,
+    teamMode: null,
+    isGenerating: true,
+    ...overrides,
+  };
+}
+
 describe("RunningProcessPopover", () => {
+  beforeEach(() => {
+    vi.mocked(useUiStore).mockImplementation(
+      (selector: (state: { navigateToTask: typeof mockNavigateToTask }) => unknown) =>
+        selector({ navigateToTask: mockNavigateToTask })
+    );
+  });
+
   describe("basic rendering", () => {
     it("renders trigger element", () => {
       render(
@@ -119,7 +147,7 @@ describe("RunningProcessPopover", () => {
           <button>Trigger</button>
         </RunningProcessPopover>
       );
-      expect(screen.getByText("Running Processes (2/3)")).toBeInTheDocument();
+      expect(screen.getByText("Execution (2/3)")).toBeInTheDocument();
     });
 
     it("displays max concurrency in settings button", () => {
@@ -175,7 +203,7 @@ describe("RunningProcessPopover", () => {
           <button>Trigger</button>
         </RunningProcessPopover>
       );
-      expect(screen.getByText("No running processes")).toBeInTheDocument();
+      expect(screen.getByText("No active execution processes")).toBeInTheDocument();
     });
 
     it("renders all processes as ProcessCard components", () => {
@@ -320,6 +348,185 @@ describe("RunningProcessPopover", () => {
       );
 
       expect(screen.getByTestId("running-process-popover")).toBeInTheDocument();
+    });
+  });
+
+  describe("tab switching", () => {
+    it("renders both Execution and Ideation tab pills when showIdeation=true", () => {
+      render(
+        <RunningProcessPopover
+          processes={[]}
+          ideationSessions={[]}
+          maxConcurrent={3}
+          open={true}
+          onOpenChange={vi.fn()}
+          onPauseProcess={vi.fn()}
+          onStopProcess={vi.fn()}
+          onOpenSettings={vi.fn()}
+          showIdeation={true}
+          ideationMax={2}
+        >
+          <button>Trigger</button>
+        </RunningProcessPopover>
+      );
+      expect(screen.getByRole("tab", { name: /Execution/ })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /Ideation/ })).toBeInTheDocument();
+    });
+
+    it("does not render tab bar when showIdeation=false", () => {
+      render(
+        <RunningProcessPopover
+          processes={[]}
+          maxConcurrent={3}
+          open={true}
+          onOpenChange={vi.fn()}
+          onPauseProcess={vi.fn()}
+          onStopProcess={vi.fn()}
+          onOpenSettings={vi.fn()}
+          showIdeation={false}
+        >
+          <button>Trigger</button>
+        </RunningProcessPopover>
+      );
+      expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    });
+
+    it("clicking Ideation tab shows ideation content", () => {
+      const session = createMockIdeationSession({ title: "My Ideation Session" });
+      render(
+        <RunningProcessPopover
+          processes={[]}
+          ideationSessions={[session]}
+          maxConcurrent={3}
+          open={true}
+          onOpenChange={vi.fn()}
+          onPauseProcess={vi.fn()}
+          onStopProcess={vi.fn()}
+          onOpenSettings={vi.fn()}
+          showIdeation={true}
+          ideationMax={2}
+        >
+          <button>Trigger</button>
+        </RunningProcessPopover>
+      );
+
+      fireEvent.click(screen.getByRole("tab", { name: /Ideation/ }));
+      expect(screen.getByText("My Ideation Session")).toBeInTheDocument();
+    });
+
+    it("clicking Execution tab shows execution content", () => {
+      const process = createMockProcess({ taskId: "task-exec", title: "Exec Task" });
+      const session = createMockIdeationSession({ title: "Hidden Ideation" });
+      render(
+        <RunningProcessPopover
+          processes={[process]}
+          ideationSessions={[session]}
+          maxConcurrent={3}
+          open={true}
+          onOpenChange={vi.fn()}
+          onPauseProcess={vi.fn()}
+          onStopProcess={vi.fn()}
+          onOpenSettings={vi.fn()}
+          showIdeation={true}
+          ideationMax={2}
+          initialTab="ideation"
+        >
+          <button>Trigger</button>
+        </RunningProcessPopover>
+      );
+
+      // Currently on ideation tab — switch back to execution
+      fireEvent.click(screen.getByRole("tab", { name: /Execution/ }));
+      expect(screen.getByTestId("process-card-task-exec")).toBeInTheDocument();
+    });
+
+    it("initialTab='ideation' starts on ideation tab", () => {
+      const session = createMockIdeationSession({ title: "Initial Ideation Session" });
+      render(
+        <RunningProcessPopover
+          processes={[]}
+          ideationSessions={[session]}
+          maxConcurrent={3}
+          open={true}
+          onOpenChange={vi.fn()}
+          onPauseProcess={vi.fn()}
+          onStopProcess={vi.fn()}
+          onOpenSettings={vi.fn()}
+          showIdeation={true}
+          ideationMax={2}
+          initialTab="ideation"
+        >
+          <button>Trigger</button>
+        </RunningProcessPopover>
+      );
+      expect(screen.getByText("Initial Ideation Session")).toBeInTheDocument();
+    });
+  });
+
+  describe("navigation callbacks", () => {
+    it("clicking a process card calls onOpenChange(false) and navigateToTask", () => {
+      const onOpenChange = vi.fn();
+      const processes = [createMockProcess({ taskId: "task-nav-1" })];
+      render(
+        <RunningProcessPopover
+          processes={processes}
+          maxConcurrent={3}
+          open={true}
+          onOpenChange={onOpenChange}
+          onPauseProcess={vi.fn()}
+          onStopProcess={vi.fn()}
+          onOpenSettings={vi.fn()}
+        >
+          <button>Trigger</button>
+        </RunningProcessPopover>
+      );
+
+      fireEvent.click(screen.getByTestId("process-card-task-nav-1"));
+
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+      expect(mockNavigateToTask).toHaveBeenCalledWith("task-nav-1");
+    });
+  });
+
+  describe("empty states per tab", () => {
+    it("shows 'No active execution processes' on execution tab when empty", () => {
+      render(
+        <RunningProcessPopover
+          processes={[]}
+          maxConcurrent={3}
+          open={true}
+          onOpenChange={vi.fn()}
+          onPauseProcess={vi.fn()}
+          onStopProcess={vi.fn()}
+          onOpenSettings={vi.fn()}
+          showIdeation={true}
+          ideationMax={2}
+        >
+          <button>Trigger</button>
+        </RunningProcessPopover>
+      );
+      expect(screen.getByText("No active execution processes")).toBeInTheDocument();
+    });
+
+    it("shows 'No active ideation sessions' on ideation tab when empty", () => {
+      render(
+        <RunningProcessPopover
+          processes={[]}
+          ideationSessions={[]}
+          maxConcurrent={3}
+          open={true}
+          onOpenChange={vi.fn()}
+          onPauseProcess={vi.fn()}
+          onStopProcess={vi.fn()}
+          onOpenSettings={vi.fn()}
+          showIdeation={true}
+          ideationMax={2}
+          initialTab="ideation"
+        >
+          <button>Trigger</button>
+        </RunningProcessPopover>
+      );
+      expect(screen.getByText("No active ideation sessions")).toBeInTheDocument();
     });
   });
 });

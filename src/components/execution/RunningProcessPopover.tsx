@@ -1,21 +1,26 @@
 /**
- * RunningProcessPopover - Compact running processes list
+ * RunningProcessPopover - Compact running processes list with tabbed view
  *
  * Dense row-based layout matching macOS Activity Monitor style.
- * Each process is a two-line compact row.
+ * Tabs: Execution (processes + team groups) | Ideation (ideation sessions)
+ * Controlled mode: uses PopoverAnchor (not PopoverTrigger) for external open control.
  */
 
+import { useEffect, useState } from "react";
 import {
   Popover,
   PopoverContent,
-  PopoverTrigger,
+  PopoverAnchor,
 } from "@/components/ui/popover";
 import { Settings } from "lucide-react";
 import { ProcessCard } from "./ProcessCard";
 import { TeamProcessGroup } from "./TeamProcessGroup";
 import { IdeationSessionCard } from "./IdeationSessionCard";
 import type { RunningProcess, RunningIdeationSession } from "@/api/running-processes";
+import { useUiStore } from "@/stores/uiStore";
 import { cn } from "@/lib/utils";
+
+type TabType = "execution" | "ideation";
 
 interface RunningProcessPopoverProps {
   /** List of currently running processes */
@@ -26,6 +31,8 @@ interface RunningProcessPopoverProps {
   runningCount?: number;
   /** Current max concurrent tasks */
   maxConcurrent: number;
+  /** Maximum concurrent ideation sessions */
+  ideationMax?: number;
   /** Whether popover is open (controlled) */
   open: boolean;
   /** Called when open state changes */
@@ -38,10 +45,14 @@ interface RunningProcessPopoverProps {
   onOpenSettings: () => void;
   /** Called when an ideation session is clicked to navigate to it */
   onNavigateToSession?: (sessionId: string) => void;
-  /** Children (trigger element) */
+  /** Children (anchor element — NOT a trigger, controlled externally) */
   children: React.ReactNode;
   /** Optional horizontal alignment offset for popover content */
   alignOffset?: number;
+  /** Initial tab to show — synced on every change to allow pre-selection and external switching */
+  initialTab?: TabType;
+  /** Whether to show the Ideation tab (false hides it entirely when ideationMax=0) */
+  showIdeation?: boolean;
 }
 
 export function RunningProcessPopover({
@@ -49,6 +60,7 @@ export function RunningProcessPopover({
   ideationSessions = [],
   runningCount,
   maxConcurrent,
+  ideationMax = 0,
   open,
   onOpenChange,
   onPauseProcess,
@@ -57,14 +69,93 @@ export function RunningProcessPopover({
   onNavigateToSession,
   children,
   alignOffset = -24,
+  initialTab = "execution",
+  showIdeation = false,
 }: RunningProcessPopoverProps) {
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
+  const navigateToTask = useUiStore((s) => s.navigateToTask);
+
+  // Sync tab whenever initialTab changes — handles external switching while popover is open
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
+
   const activeIdeationCount = ideationSessions.filter((s) => s.isGenerating).length;
   const effectiveRunningCount = runningCount ?? (processes.length + activeIdeationCount);
-  const hasAnyRunning = processes.length > 0 || ideationSessions.length > 0;
+
+  const handleNavigate = (taskId: string) => {
+    onOpenChange(false);
+    navigateToTask(taskId);
+  };
+
+  const handleNavigateToSession = (sessionId: string) => {
+    onOpenChange(false);
+    onNavigateToSession?.(sessionId);
+  };
+
+  // Tab-aware header title
+  const headerTitle =
+    activeTab === "execution" || !showIdeation
+      ? `Execution (${effectiveRunningCount}/${maxConcurrent})`
+      : `Ideation (${activeIdeationCount}/${ideationMax})`;
+
+  // Content for the execution tab
+  const executionContent =
+    processes.length === 0 ? (
+      <div
+        className="py-6 text-center text-xs"
+        style={{ color: "hsl(220 10% 42%)" }}
+      >
+        No active execution processes
+      </div>
+    ) : (
+      <>
+        {processes.map((process) =>
+          process.teamName ? (
+            <TeamProcessGroup
+              key={process.taskId}
+              process={process}
+              onPause={onPauseProcess}
+              onStop={onStopProcess}
+              onNavigate={handleNavigate}
+            />
+          ) : (
+            <ProcessCard
+              key={process.taskId}
+              process={process}
+              onPause={onPauseProcess}
+              onStop={onStopProcess}
+              onNavigate={handleNavigate}
+            />
+          )
+        )}
+      </>
+    );
+
+  // Content for the ideation tab
+  const ideationContent =
+    ideationSessions.length === 0 ? (
+      <div
+        className="py-6 text-center text-xs"
+        style={{ color: "hsl(220 10% 42%)" }}
+      >
+        No active ideation sessions
+      </div>
+    ) : (
+      <>
+        {ideationSessions.map((session) => (
+          <IdeationSessionCard
+            key={session.sessionId}
+            session={session}
+            onClick={() => handleNavigateToSession(session.sessionId)}
+          />
+        ))}
+      </>
+    );
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>{children}</PopoverTrigger>
+      <PopoverAnchor asChild>{children}</PopoverAnchor>
       <PopoverContent
         data-testid="running-process-popover"
         align="start"
@@ -79,96 +170,99 @@ export function RunningProcessPopover({
           boxShadow:
             "0 4px 16px hsla(220 20% 0% / 0.4), 0 12px 32px hsla(220 20% 0% / 0.3)",
         }}
+        onInteractOutside={(e) => {
+          // Prevent Radix outside-click dismissal when clicking the ideation trigger button
+          // This avoids close→reopen flicker when switching tabs via the external ideation button
+          const target = e.target as HTMLElement;
+          if (target.closest("[data-ideation-trigger]")) {
+            e.preventDefault();
+          }
+        }}
       >
         {/* Header */}
         <div
-          className="flex items-center justify-between px-3 py-2.5"
+          className="px-3 py-2.5"
           style={{
             borderBottom: "1px solid hsla(220 20% 100% / 0.06)",
           }}
         >
-          <h3
-            className="text-xs font-semibold"
-            style={{ color: "hsl(220 10% 80%)" }}
-          >
-            Running Processes ({effectiveRunningCount}/{maxConcurrent})
-          </h3>
+          {/* Top row: tab-aware title + settings */}
+          <div className="flex items-center justify-between mb-2">
+            <h3
+              className="text-xs font-semibold"
+              style={{ color: "hsl(220 10% 80%)" }}
+            >
+              {headerTitle}
+            </h3>
 
-          <button
-            data-testid="open-settings-button"
-            onClick={onOpenSettings}
-            className={cn(
-              "flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px]",
-              "transition-colors hover:bg-white/[0.05]"
-            )}
-            style={{ color: "hsl(220 10% 50%)" }}
-          >
-            <Settings className="w-3 h-3" />
-            Max: {maxConcurrent}
-          </button>
+            <button
+              data-testid="open-settings-button"
+              onClick={onOpenSettings}
+              className={cn(
+                "flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px]",
+                "transition-colors hover:bg-white/[0.05]"
+              )}
+              style={{ color: "hsl(220 10% 50%)" }}
+            >
+              <Settings className="w-3 h-3" />
+              Max: {maxConcurrent}
+            </button>
+          </div>
+
+          {/* Tab bar — only rendered when ideation is enabled */}
+          {showIdeation && (
+            <div role="tablist" className="flex items-center gap-1">
+              <button
+                role="tab"
+                aria-selected={activeTab === "execution"}
+                onClick={() => setActiveTab("execution")}
+                className={cn(
+                  "px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors"
+                )}
+                style={
+                  activeTab === "execution"
+                    ? { backgroundColor: "hsl(14 100% 60%)", color: "white" }
+                    : { color: "hsl(220 10% 50%)" }
+                }
+              >
+                Execution ({processes.length})
+              </button>
+              <button
+                role="tab"
+                aria-selected={activeTab === "ideation"}
+                onClick={() => setActiveTab("ideation")}
+                className={cn(
+                  "px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors"
+                )}
+                style={
+                  activeTab === "ideation"
+                    ? { backgroundColor: "hsl(14 100% 60%)", color: "white" }
+                    : { color: "hsl(220 10% 50%)" }
+                }
+              >
+                Ideation ({ideationSessions.length})
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Process List */}
+        {/* Tab content panel */}
         <div
+          role="tabpanel"
           className="max-h-[320px] overflow-y-auto p-1.5"
           style={{
             scrollbarWidth: "thin",
             scrollbarColor: "hsla(220 10% 100% / 0.1) transparent",
           }}
         >
-          {!hasAnyRunning ? (
-            <div
-              className="py-6 text-center text-xs"
-              style={{ color: "hsl(220 10% 42%)" }}
-            >
-              No running processes
-            </div>
+          {showIdeation ? (
+            activeTab === "execution" ? executionContent : ideationContent
           ) : (
-            <>
-              {ideationSessions.length > 0 && (
-                <>
-                  {ideationSessions.map((session) => (
-                    <IdeationSessionCard
-                      key={session.sessionId}
-                      session={session}
-                      {...(onNavigateToSession !== undefined && {
-                        onClick: () => {
-                          onOpenChange(false);
-                          onNavigateToSession(session.sessionId);
-                        },
-                      })}
-                    />
-                  ))}
-                  {processes.length > 0 && (
-                    <div
-                      className="mx-2 my-1"
-                      style={{ borderBottom: "1px solid hsla(220 20% 100% / 0.06)" }}
-                    />
-                  )}
-                </>
-              )}
-              {processes.map((process) =>
-                process.teamName ? (
-                  <TeamProcessGroup
-                    key={process.taskId}
-                    process={process}
-                    onPause={onPauseProcess}
-                    onStop={onStopProcess}
-                  />
-                ) : (
-                  <ProcessCard
-                    key={process.taskId}
-                    process={process}
-                    onPause={onPauseProcess}
-                    onStop={onStopProcess}
-                  />
-                )
-              )}
-            </>
+            executionContent
           )}
         </div>
 
-        {/* Footer */}
+        {/* Footer — tab-aware capacity text */}
         <div
           className="flex items-center justify-between px-3 py-2 text-[11px]"
           style={{
@@ -177,7 +271,9 @@ export function RunningProcessPopover({
           }}
         >
           <span>
-            Concurrency runs up to {maxConcurrent} tasks in parallel.
+            {activeTab === "ideation" && showIdeation
+              ? `Ideation capacity: up to ${ideationMax} sessions.`
+              : `Concurrency runs up to ${maxConcurrent} tasks in parallel.`}
           </span>
           <button
             onClick={onOpenSettings}

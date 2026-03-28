@@ -19,6 +19,8 @@ interface TeamProcessGroupProps {
   onPause: (taskId: string) => void;
   /** Called when stop button clicked */
   onStop: (taskId: string) => void;
+  /** Called when the team header row is clicked to navigate to the task */
+  onNavigate?: (taskId: string) => void;
 }
 
 /** Status dot color for teammate status */
@@ -46,6 +48,7 @@ export function TeamProcessGroup({
   process,
   onPause,
   onStop,
+  onNavigate,
 }: TeamProcessGroupProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const teammates = process.teammates ?? [];
@@ -69,10 +72,25 @@ export function TeamProcessGroup({
       }}
     >
       {/* Team Header */}
-      <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-white/[0.04] transition-colors rounded-t-md">
+      <div
+        className="flex items-center gap-2 px-2 py-1.5 hover:bg-white/[0.04] transition-colors rounded-t-md cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
+        role="button"
+        tabIndex={0}
+        onClick={() => onNavigate?.(process.taskId)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onNavigate?.(process.taskId);
+          }
+        }}
+      >
         <button
           data-testid={`team-toggle-${process.taskId}`}
-          onClick={() => setIsExpanded(!isExpanded)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsExpanded(!isExpanded);
+          }}
+          onKeyDown={(e) => e.stopPropagation()}
           className="flex items-center justify-center w-4 h-4 shrink-0"
           style={{ color: "hsl(220 10% 50%)" }}
         >
@@ -106,7 +124,11 @@ export function TeamProcessGroup({
         <div className="flex items-center shrink-0">
           <button
             data-testid={`pause-button-${process.taskId}`}
-            onClick={() => onPause(process.taskId)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPause(process.taskId);
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
             className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.08] transition-colors"
             style={{ color: "hsl(220 10% 55%)" }}
             title="Pause team"
@@ -115,7 +137,11 @@ export function TeamProcessGroup({
           </button>
           <button
             data-testid={`stop-button-${process.taskId}`}
-            onClick={() => onStop(process.taskId)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onStop(process.taskId);
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
             className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.08] transition-colors"
             style={{ color: "hsl(0 70% 60%)" }}
             title="Stop team"
@@ -142,7 +168,7 @@ export function TeamProcessGroup({
             </div>
           )}
 
-          {/* Teammate Sub-entries */}
+          {/* Teammate Sub-entries (display-only — no click handlers) */}
           {teammates.map((teammate, idx) => {
             const dotColor = teammate.color ?? getTeammateDotColor(teammate.status);
             const isDone = ["completed", "done"].includes(teammate.status.toLowerCase());

@@ -7,18 +7,6 @@ import { render, screen, fireEvent, act } from "@testing-library/react";
 import { ProcessCard } from "./ProcessCard";
 import type { RunningProcess } from "@/api/running-processes";
 
-// Stable mock references for uiStore
-const { mockNavigateToTask } = vi.hoisted(() => ({
-  mockNavigateToTask: vi.fn(),
-}));
-
-vi.mock("@/stores/uiStore", () => ({
-  useUiStore: vi.fn((selector: (s: { navigateToTask: typeof mockNavigateToTask }) => unknown) => {
-    const state = { navigateToTask: mockNavigateToTask };
-    return selector ? selector(state) : state;
-  }),
-}));
-
 // Mock process data helper
 function createMockProcess(overrides?: Partial<RunningProcess>): RunningProcess {
   return {
@@ -469,23 +457,25 @@ describe("ProcessCard", () => {
   });
 
   describe("click-to-navigate", () => {
-    it("calls navigateToTask with process.taskId when title is clicked", () => {
+    it("calls onNavigate with process.taskId when card row is clicked", () => {
+      const onNavigate = vi.fn();
       const process = createMockProcess({ taskId: "task-nav-123", title: "Navigate to me" });
       render(
         <ProcessCard
           process={process}
           onPause={vi.fn()}
           onStop={vi.fn()}
+          onNavigate={onNavigate}
         />
       );
 
-      fireEvent.click(screen.getByText("Navigate to me"));
+      fireEvent.click(screen.getByTestId("process-card-task-nav-123"));
 
-      expect(mockNavigateToTask).toHaveBeenCalledWith("task-nav-123");
-      expect(mockNavigateToTask).toHaveBeenCalledOnce();
+      expect(onNavigate).toHaveBeenCalledWith("task-nav-123");
+      expect(onNavigate).toHaveBeenCalledOnce();
     });
 
-    it("title is rendered as a button element", () => {
+    it("title is rendered as a span element", () => {
       const process = createMockProcess({ title: "My Task" });
       render(
         <ProcessCard
@@ -496,7 +486,39 @@ describe("ProcessCard", () => {
       );
 
       const titleEl = screen.getByText("My Task");
-      expect(titleEl.tagName).toBe("BUTTON");
+      expect(titleEl.tagName).toBe("SPAN");
+    });
+
+    it("clicking pause button does NOT call onNavigate (stopPropagation)", () => {
+      const onNavigate = vi.fn();
+      const process = createMockProcess({ taskId: "task-sp-pause" });
+      render(
+        <ProcessCard
+          process={process}
+          onPause={vi.fn()}
+          onStop={vi.fn()}
+          onNavigate={onNavigate}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId("pause-button-task-sp-pause"));
+      expect(onNavigate).not.toHaveBeenCalled();
+    });
+
+    it("clicking stop button does NOT call onNavigate (stopPropagation)", () => {
+      const onNavigate = vi.fn();
+      const process = createMockProcess({ taskId: "task-sp-stop" });
+      render(
+        <ProcessCard
+          process={process}
+          onPause={vi.fn()}
+          onStop={vi.fn()}
+          onNavigate={onNavigate}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId("stop-button-task-sp-stop"));
+      expect(onNavigate).not.toHaveBeenCalled();
     });
   });
 });

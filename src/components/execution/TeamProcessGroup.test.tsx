@@ -215,4 +215,85 @@ describe("TeamProcessGroup", () => {
       expect(onStop).toHaveBeenCalledWith("t-1");
     });
   });
+
+  describe("click-to-navigate", () => {
+    it("clicking header row calls onNavigate with taskId", () => {
+      const onNavigate = vi.fn();
+      const process = createMockProcess({ taskId: "team-nav-1" });
+      render(
+        <TeamProcessGroup
+          process={process}
+          onPause={vi.fn()}
+          onStop={vi.fn()}
+          onNavigate={onNavigate}
+        />
+      );
+
+      // Click the team header row (role=button div)
+      const header = screen.getByTestId("team-group-team-nav-1").querySelector('[role="button"]');
+      fireEvent.click(header!);
+
+      expect(onNavigate).toHaveBeenCalledWith("team-nav-1");
+      expect(onNavigate).toHaveBeenCalledOnce();
+    });
+
+    it("clicking chevron toggle does NOT call onNavigate (stopPropagation)", () => {
+      const onNavigate = vi.fn();
+      const process = createMockProcess({ taskId: "team-chevron-1" });
+      render(
+        <TeamProcessGroup
+          process={process}
+          onPause={vi.fn()}
+          onStop={vi.fn()}
+          onNavigate={onNavigate}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId("team-toggle-team-chevron-1"));
+      expect(onNavigate).not.toHaveBeenCalled();
+    });
+
+    it("clicking pause button does NOT call onNavigate (stopPropagation)", () => {
+      const onNavigate = vi.fn();
+      const process = createMockProcess({ taskId: "team-sp-pause" });
+      render(
+        <TeamProcessGroup
+          process={process}
+          onPause={vi.fn()}
+          onStop={vi.fn()}
+          onNavigate={onNavigate}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId("pause-button-team-sp-pause"));
+      expect(onNavigate).not.toHaveBeenCalled();
+    });
+
+    it("clicking stop button does NOT call onNavigate (stopPropagation)", () => {
+      const onNavigate = vi.fn();
+      const process = createMockProcess({ taskId: "team-sp-stop" });
+      render(
+        <TeamProcessGroup
+          process={process}
+          onPause={vi.fn()}
+          onStop={vi.fn()}
+          onNavigate={onNavigate}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId("stop-button-team-sp-stop"));
+      expect(onNavigate).not.toHaveBeenCalled();
+    });
+
+    it("teammate rows have no role=button (not clickable)", () => {
+      const process = createMockProcess({
+        teammates: [createMockTeammate({ name: "worker-a", status: "active" })],
+      });
+      render(<TeamProcessGroup process={process} onPause={vi.fn()} onStop={vi.fn()} />);
+
+      const teammateRow = screen.getByTestId("teammate-worker-a");
+      expect(teammateRow).not.toHaveAttribute("role", "button");
+      expect(teammateRow).not.toHaveAttribute("tabindex");
+    });
+  });
 });

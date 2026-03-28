@@ -8,7 +8,6 @@
 import { Pause, Square, Loader2 } from "lucide-react";
 import type { RunningProcess } from "@/api/running-processes";
 import { getStatusIconConfig } from "@/types/status-icons";
-import { useUiStore } from "@/stores/uiStore";
 import { useElapsedTimer } from "@/hooks/useElapsedTimer";
 import { formatElapsedTime } from "@/lib/formatters";
 
@@ -21,6 +20,8 @@ interface ProcessCardProps {
   onStop: (taskId: string) => void;
   /** Whether pause/stop actions are in progress */
   isLoading?: boolean;
+  /** Called when the card row is clicked to navigate to the task */
+  onNavigate?: (taskId: string) => void;
 }
 
 /**
@@ -141,10 +142,10 @@ export function ProcessCard({
   onPause,
   onStop,
   isLoading = false,
+  onNavigate,
 }: ProcessCardProps) {
   const statusStyle = getStatusBadgeStyle(process.internalStatus);
   const originStyle = getOriginBadgeStyle(process.triggerOrigin);
-  const navigateToTask = useUiStore((s) => s.navigateToTask);
 
   // Live elapsed time ticker (updates every second)
   const elapsedTime = useElapsedTimer(process.elapsedSeconds, process.taskId);
@@ -156,7 +157,16 @@ export function ProcessCard({
   return (
     <div
       data-testid={`process-card-${process.taskId}`}
-      className="px-2 py-1.5 rounded-md hover:bg-white/[0.04] transition-colors"
+      className="px-2 py-1.5 rounded-md hover:bg-white/[0.04] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
+      role="button"
+      tabIndex={0}
+      onClick={() => onNavigate?.(process.taskId)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onNavigate?.(process.taskId);
+        }
+      }}
     >
       {/* Line 1: Spinner | Title | Status Badge | Actions */}
       <div className="flex items-center gap-2">
@@ -164,14 +174,13 @@ export function ProcessCard({
           className="w-3.5 h-3.5 animate-spin shrink-0"
           style={{ color: statusStyle.color }}
         />
-        <button
-          className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
+        <span
+          className="flex-1 text-xs font-medium truncate min-w-0 text-left"
           style={{ color: "hsl(220 10% 88%)" }}
           title={process.title}
-          onClick={() => navigateToTask(process.taskId)}
         >
           {process.title}
-        </button>
+        </span>
         <span
           className="text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0"
           style={{
@@ -184,7 +193,11 @@ export function ProcessCard({
         <div className="flex items-center shrink-0">
           <button
             data-testid={`pause-button-${process.taskId}`}
-            onClick={() => onPause(process.taskId)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPause(process.taskId);
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
             disabled={isLoading}
             className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.08] transition-colors disabled:opacity-40"
             style={{ color: "hsl(220 10% 55%)" }}
@@ -198,7 +211,11 @@ export function ProcessCard({
           </button>
           <button
             data-testid={`stop-button-${process.taskId}`}
-            onClick={() => onStop(process.taskId)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onStop(process.taskId);
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
             disabled={isLoading}
             className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.08] transition-colors disabled:opacity-40"
             style={{ color: "hsl(0 70% 60%)" }}
