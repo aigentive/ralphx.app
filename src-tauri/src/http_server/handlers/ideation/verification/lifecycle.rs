@@ -43,7 +43,6 @@ pub(crate) async fn validate_verification_session(
 /// Selects which child sessions to act on.
 pub(crate) enum ChildFilter {
     /// All child sessions regardless of purpose.
-    #[allow(dead_code)]
     AllChildren,
     /// Only verification-purpose child sessions.
     VerificationOnly,
@@ -152,7 +151,7 @@ pub(crate) async fn stop_verification_children(
     session_id: &str,
     app_state: &AppState,
 ) -> Result<(), AppError> {
-    stop_and_archive_children(session_id, app_state, ChildFilter::VerificationOnly, false).await
+    stop_and_archive_children(session_id, app_state, ChildFilter::VerificationOnly, true).await
 }
 
 /// Stop an in-progress verification loop for a session.

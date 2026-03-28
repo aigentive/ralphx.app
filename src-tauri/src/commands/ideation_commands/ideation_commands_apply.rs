@@ -19,6 +19,7 @@ use super::ideation_commands_types::{
 };
 use crate::commands::branch_helpers::ensure_base_branch_exists;
 use crate::commands::plan_branch_commands::slug_from_name;
+use crate::http_server::handlers::ideation::stop_verification_children;
 use super::is_local_proposal;
 
 // ============================================================================
@@ -803,6 +804,9 @@ pub async fn apply_proposals_to_kanban(
                 result.session_id
             );
         }
+
+        // Stop and archive any running verification child agents (best-effort).
+        stop_verification_children(&result.session_id, &state).await.ok();
     }
 
     // Re-trigger session-namer if title was not manually set by user.

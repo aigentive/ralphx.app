@@ -1,6 +1,7 @@
 use super::*;
 use crate::application::TaskSchedulerService;
 use crate::domain::state_machine::services::TaskScheduler;
+use crate::http_server::handlers::ideation::stop_verification_children;
 use crate::infrastructure::agents::claude::scheduler_config;
 
 /// Request body for `POST /api/external/apply_proposals`.
@@ -126,6 +127,9 @@ pub async fn external_apply_proposals(
                 "IPR cleanup: no running process found for accepted session (HTTP path)"
             );
         }
+
+        // Stop and archive any running verification child agents (best-effort).
+        stop_verification_children(&result.session_id, &state.app_state).await.ok();
     }
 
     tracing::info!(
