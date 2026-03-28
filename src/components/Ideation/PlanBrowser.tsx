@@ -12,6 +12,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
+  ChevronLeft,
   MessageSquare,
   Plus,
   Sparkles,
@@ -42,6 +43,8 @@ interface PlanBrowserProps {
   onArchivePlan?: (planId: string) => void;
   onReopenPlan?: (planId: string) => void;
   onResetReacceptPlan?: (planId: string) => void;
+  width?: number;
+  onCollapse?: () => void;
 }
 
 // ============================================================================
@@ -114,9 +117,15 @@ function GroupSection({
     const observer = new IntersectionObserver(
       (entries) => {
         const first = entries[0];
-        if (first?.isIntersecting && hasNextPageRef.current && !isFetchingNextPage) {
-          fetchNextPageRef.current();
+        // Guard: skip if sidebar container is hidden (display: none) — avoids burst
+        // fetchNextPage() calls when display toggles from none to visible
+        if (!first?.isIntersecting || !hasNextPageRef.current || isFetchingNextPage) return;
+        const parentContainer = sentinelRef.current?.closest("[data-testid='plan-browser']");
+        if (parentContainer) {
+          const style = window.getComputedStyle(parentContainer);
+          if (style.display === "none") return;
         }
+        fetchNextPageRef.current();
       },
       { threshold: 0.1 }
     );
@@ -190,6 +199,8 @@ export function PlanBrowser({
   onArchivePlan,
   onReopenPlan,
   onResetReacceptPlan,
+  width = 340,
+  onCollapse,
 }: PlanBrowserProps) {
   const { data: counts } = useSessionGroupCounts(projectId);
 
@@ -336,8 +347,8 @@ export function PlanBrowser({
       data-testid="plan-browser"
       className="flex flex-col h-full"
       style={{
-        width: "340px",
-        minWidth: "340px",
+        width,
+        minWidth: width,
         flexShrink: 0,
       }}
     >
@@ -385,6 +396,27 @@ export function PlanBrowser({
                 {totalCount} {totalCount === 1 ? "plan" : "plans"}
               </p>
             </div>
+            {onCollapse != null && (
+              <button
+                type="button"
+                aria-label="Close sidebar"
+                aria-expanded={true}
+                data-testid="sidebar-collapse-button"
+                onClick={onCollapse}
+                className="ml-auto w-7 h-7 flex items-center justify-center rounded-md transition-colors duration-150"
+                style={{ color: "hsl(220 10% 50%)" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "hsl(220 10% 80%)";
+                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "hsl(220 10% 50%)";
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
           {/* New Plan Button - flat Tahoe style */}

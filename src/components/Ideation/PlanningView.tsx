@@ -20,6 +20,7 @@ import {
   CheckCircle,
   AlertTriangle,
   ShieldCheck,
+  Menu,
 } from "lucide-react";
 import { useEventBus } from "@/providers/EventProvider";
 import { toast } from "sonner";
@@ -54,6 +55,7 @@ import { DropZoneOverlay } from "./DropZoneOverlay";
 import { ReopenSessionDialog } from "./ReopenSessionDialog";
 import type { ReopenMode } from "./ReopenSessionDialog";
 import { useReopenSession, useResetAndReaccept, useIdeationSessions } from "@/hooks/useIdeation";
+import { usePlanBrowserLayout } from "@/hooks/usePlanBrowserLayout";
 import { ideationApi } from "@/api/ideation";
 import { useQuery } from "@tanstack/react-query";
 import { planBranchApi } from "@/api/plan-branch";
@@ -146,6 +148,15 @@ export function PlanningView({
   const [isResizing, setIsResizing] = useState(false);
   const [isAcceptModalOpen, setIsAcceptModalOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const {
+    sidebarWidth,
+    isCollapsed,
+    isOverlayOpen,
+    toggleCollapse,
+    closeOverlay,
+    suppressTransition,
+  } = usePlanBrowserLayout();
 
   const planArtifact = useIdeationStore((state) => state.planArtifact);
   const fetchPlanArtifact = useIdeationStore((state) => state.fetchPlanArtifact);
@@ -662,21 +673,127 @@ export function PlanningView({
       >
         <div className="flex flex-1 overflow-hidden">
           {/* Plan Browser Sidebar */}
-          <PlanBrowser
-            projectId={activeProjectId || session?.projectId || ""}
-            currentPlanId={session?.id ?? null}
-            onSelectPlan={onSelectSession}
-            onNewPlan={onNewSession}
-            onArchivePlan={onArchiveSession}
-            onReopenPlan={(planId) => {
-              onSelectSession(planId);
-              handleOpenReopenDialog("reopen");
+
+          {/* Toggle strip — shown when collapsed (inline, not overlay) */}
+          {isCollapsed && !isOverlayOpen && (
+            <div
+              role="button"
+              aria-label="Open sidebar"
+              tabIndex={0}
+              data-testid="sidebar-toggle-strip"
+              onClick={toggleCollapse}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  toggleCollapse();
+                }
+              }}
+              className="flex items-center justify-center shrink-0 cursor-pointer transition-colors duration-150"
+              style={{
+                width: 36,
+                background: "hsla(220 10% 10% / 0.5)",
+                borderRight: "1px solid hsla(220 10% 100% / 0.06)",
+                color: "hsl(220 10% 50%)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                e.currentTarget.style.color = "hsl(220 10% 80%)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "hsla(220 10% 10% / 0.5)";
+                e.currentTarget.style.color = "hsl(220 10% 50%)";
+              }}
+            >
+              <Menu className="w-4 h-4" />
+            </div>
+          )}
+
+          {/* Overlay backdrop */}
+          {isOverlayOpen && (
+            <div
+              aria-hidden="true"
+              onClick={closeOverlay}
+              style={{
+                position: "fixed",
+                inset: 0,
+                top: 56,
+                background: "rgba(0,0,0,0.3)",
+                zIndex: 34,
+              }}
+            />
+          )}
+
+          {/* Inline sidebar column — kept mounted to preserve query cache */}
+          <div
+            style={{
+              width: isCollapsed && !isOverlayOpen ? 0 : sidebarWidth,
+              minWidth: isCollapsed && !isOverlayOpen ? 0 : sidebarWidth,
+              flexShrink: 0,
+              overflow: "hidden",
+              transition: suppressTransition.current ? "none" : "width 300ms ease",
+              display: isCollapsed && !isOverlayOpen ? "none" : undefined,
             }}
-            onResetReacceptPlan={(planId) => {
-              onSelectSession(planId);
-              handleOpenReopenDialog("reset");
-            }}
-          />
+            aria-hidden={isCollapsed && !isOverlayOpen ? "true" : undefined}
+          >
+            <PlanBrowser
+              projectId={activeProjectId || session?.projectId || ""}
+              currentPlanId={session?.id ?? null}
+              onSelectPlan={onSelectSession}
+              onNewPlan={onNewSession}
+              onArchivePlan={onArchiveSession}
+              onReopenPlan={(planId) => {
+                onSelectSession(planId);
+                handleOpenReopenDialog("reopen");
+              }}
+              onResetReacceptPlan={(planId) => {
+                onSelectSession(planId);
+                handleOpenReopenDialog("reset");
+              }}
+              width={sidebarWidth || 340}
+              onCollapse={toggleCollapse}
+            />
+          </div>
+
+          {/* Overlay sidebar */}
+          {isOverlayOpen && (
+            <div
+              className="plan-browser-slide-in"
+              style={{
+                position: "fixed",
+                top: 56,
+                left: 0,
+                height: "calc(100vh - 56px)",
+                width: 340,
+                zIndex: 35,
+              }}
+            >
+              <PlanBrowser
+                projectId={activeProjectId || session?.projectId || ""}
+                currentPlanId={session?.id ?? null}
+                onSelectPlan={(planId) => {
+                  onSelectSession(planId);
+                  closeOverlay();
+                }}
+                onNewPlan={() => {
+                  onNewSession();
+                  closeOverlay();
+                }}
+                onArchivePlan={onArchiveSession}
+                onReopenPlan={(planId) => {
+                  onSelectSession(planId);
+                  handleOpenReopenDialog("reopen");
+                  closeOverlay();
+                }}
+                onResetReacceptPlan={(planId) => {
+                  onSelectSession(planId);
+                  handleOpenReopenDialog("reset");
+                  closeOverlay();
+                }}
+                width={340}
+                onCollapse={closeOverlay}
+              />
+            </div>
+          )}
 
           {/* Main Content - Column layout for session or no-session */}
           <div className="flex flex-col flex-1 overflow-hidden">

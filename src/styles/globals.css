@@ -726,3 +726,50 @@ body {
 .react-flow__controls-button svg {
   fill: inherit !important;
 }
+
+/* ============================================================================
+ * Ideation Sidebar Overlay Animations
+ * ============================================================================ */
+
+@keyframes planBrowserSlideIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes planBrowserSlideOut {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+.plan-browser-slide-in {
+  animation: planBrowserSlideIn 220ms ease-out;
+}
+
+.plan-browser-slide-out {
+  animation: planBrowserSlideOut 220ms ease-in;
+}
+
+/* ============================================================================
+ * Reduced Motion Support
+ * ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-browser-slide-in,
+  .plan-browser-slide-out {
+    animation-duration: 0s;
+  }
+
+  .sidebar-overlay,
+  .sidebar-panel {
+    transition-duration: 0s;
+    animation-duration: 0s;
+  }
+}

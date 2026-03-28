@@ -18,6 +18,23 @@ class ResizeObserverMock implements ResizeObserver {
 }
 global.ResizeObserver = ResizeObserverMock;
 
+// Mock window.matchMedia for hooks that use media queries (e.g., usePlanBrowserLayout)
+// Individual tests can override this with Object.defineProperty if they need specific breakpoints.
+Object.defineProperty(window, "matchMedia", {
+  writable: true,
+  configurable: true,
+  value: vi.fn((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
+});
+
 // Cleanup after each test case (e.g., clearing jsdom)
 afterEach(() => {
   cleanup();
