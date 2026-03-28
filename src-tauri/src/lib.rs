@@ -564,6 +564,7 @@ pub fn run() {
                 let startup_runner_app_handle = startup_app_handle.clone();
                 // Clone task_repo for watchdog (before StartupJobRunner moves it)
                 let watchdog_task_repo = Arc::clone(&startup_task_repo);
+                let watchdog_project_repo = Arc::clone(&startup_project_repo);
 
                 // Create TaskTransitionService for startup resumption
                 let mut transition_service_builder = TaskTransitionService::new(
@@ -787,11 +788,15 @@ pub fn run() {
                     }
                 });
 
-                // Spawn Ready-task watchdog: periodic safety net for tasks stuck in Ready state.
-                // Reschedules stale Ready tasks every 60s (safety net for S5, S6, S7, S8).
+                // Spawn scheduler watchdog: periodic safety net for tasks stuck in Ready
+                // and review-parked PendingReview after freshness backoff expiry.
                 let watchdog_scheduler = Arc::clone(&task_scheduler);
                 tauri::async_runtime::spawn(async move {
-                    application::ReadyWatchdog::new(watchdog_scheduler, watchdog_task_repo)
+                    application::ReadyWatchdog::new(
+                        watchdog_scheduler,
+                        watchdog_task_repo,
+                        watchdog_project_repo,
+                    )
                         .run_loop()
                         .await;
                 });

@@ -1,3 +1,5 @@
+use async_trait::async_trait;
+use chrono::{Duration, Utc};
 use ralphx_lib::application::{AppState, ReadyWatchdog, TaskSchedulerService};
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
@@ -9,7 +11,11 @@ use ralphx_lib::domain::services::RunningAgentKey;
 use ralphx_lib::domain::state_machine::services::TaskScheduler;
 use ralphx_lib::domain::state_machine::transition_handler::DEFERRED_MERGE_TIMEOUT_SECONDS;
 use ralphx_lib::infrastructure::agents::claude::scheduler_config;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
+use tempfile::TempDir;
 
 /// Helper to create test state
 async fn setup_test_state() -> (Arc<ExecutionState>, AppState) {
@@ -1263,7 +1269,27 @@ async fn test_contention_respects_max_retry_limit() {
 /// (all Ready tasks are immediately stale) for testing.
 fn build_watchdog(app_state: &AppState, execution_state: &Arc<ExecutionState>) -> ReadyWatchdog {
     let scheduler = Arc::new(build_scheduler(app_state, execution_state));
-    ReadyWatchdog::new(scheduler, Arc::clone(&app_state.task_repo)).with_stale_threshold_secs(0)
+    ReadyWatchdog::new(
+        scheduler,
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.project_repo),
+    )
+    .with_stale_threshold_secs(0)
+}
+
+struct CountingScheduler {
+    calls: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl TaskScheduler for CountingScheduler {
+    async fn try_schedule_ready_tasks(&self) {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+    }
+
+    async fn try_retry_deferred_merges(&self, _project_id: &str) {}
+
+    async fn try_retry_main_merges(&self) {}
 }
 
 #[tokio::test]
@@ -1385,8 +1411,12 @@ async fn test_watchdog_with_high_threshold_skips_fresh_tasks() {
 
     // Watchdog with a 3600-second threshold (task is too fresh to be stale)
     let scheduler = Arc::new(build_scheduler(&app_state, &execution_state));
-    let watchdog = ReadyWatchdog::new(scheduler, Arc::clone(&app_state.task_repo))
-        .with_stale_threshold_secs(3600);
+    let watchdog = ReadyWatchdog::new(
+        scheduler,
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.project_repo),
+    )
+    .with_stale_threshold_secs(3600);
 
     let count = watchdog.run_once().await;
     assert_eq!(count, 0, "Fresh task should not be detected as stale");
@@ -1412,12 +1442,142 @@ async fn test_watchdog_configurable_threshold() {
     let watchdog = ReadyWatchdog::new(
         Arc::new(build_scheduler(&app_state, &execution_state)),
         Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.project_repo),
     )
     .with_stale_threshold_secs(120)
     .with_interval_secs(30);
 
     assert_eq!(watchdog.stale_threshold_secs_for_test(), 120);
     assert_eq!(watchdog.interval_secs_for_test(), 30);
+}
+
+#[tokio::test]
+async fn test_scheduler_retries_pending_review_after_freshness_backoff_expiry() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let temp_dir = TempDir::new().unwrap();
+    let project = Project::new(
+        "Test Project".to_string(),
+        temp_dir.path().display().to_string(),
+    );
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Retry parked review".to_string());
+    task.internal_status = InternalStatus::PendingReview;
+    task.worktree_path = Some(temp_dir.path().display().to_string());
+    task.metadata = Some(
+        serde_json::json!({
+            "freshness_origin_state": "reviewing",
+            "freshness_conflict_count": 1,
+            "freshness_backoff_until": (Utc::now() - Duration::seconds(5)).to_rfc3339(),
+            "branch_freshness_conflict": true,
+            "source_update_conflict": true
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    scheduler.try_schedule_ready_tasks().await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(
+        updated.internal_status,
+        InternalStatus::PendingReview,
+        "Expired review-origin freshness backoff should re-arm the parked task"
+    );
+}
+
+#[tokio::test]
+async fn test_watchdog_detects_retryable_pending_review_after_backoff_expiry() {
+    let (_execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Retryable PendingReview".to_string());
+    task.internal_status = InternalStatus::PendingReview;
+    task.metadata = Some(
+        serde_json::json!({
+            "freshness_origin_state": "reviewing",
+            "freshness_conflict_count": 1,
+            "freshness_backoff_until": (Utc::now() - Duration::seconds(5)).to_rfc3339(),
+            "branch_freshness_conflict": true,
+            "source_update_conflict": true
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task).await.unwrap();
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let scheduler = Arc::new(CountingScheduler {
+        calls: Arc::clone(&calls),
+    });
+    let watchdog = ReadyWatchdog::new(
+        scheduler,
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.project_repo),
+    )
+    .with_stale_threshold_secs(3600);
+
+    let count = watchdog.run_once().await;
+    assert_eq!(count, 1, "Expired review backoff should be retried even with a high Ready-task threshold");
+    assert_eq!(calls.load(Ordering::SeqCst), 1, "Watchdog should trigger scheduling when a parked review becomes retryable");
+}
+
+#[tokio::test]
+async fn test_watchdog_ignores_pending_review_before_freshness_backoff_expires() {
+    let (_execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Cooling down PendingReview".to_string());
+    task.internal_status = InternalStatus::PendingReview;
+    task.metadata = Some(
+        serde_json::json!({
+            "freshness_origin_state": "reviewing",
+            "freshness_conflict_count": 1,
+            "freshness_backoff_until": (Utc::now() + Duration::seconds(120)).to_rfc3339(),
+            "branch_freshness_conflict": true,
+            "source_update_conflict": true
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task).await.unwrap();
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let scheduler = Arc::new(CountingScheduler {
+        calls: Arc::clone(&calls),
+    });
+    let watchdog = ReadyWatchdog::new(
+        scheduler,
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.project_repo),
+    )
+    .with_stale_threshold_secs(0);
+
+    let count = watchdog.run_once().await;
+    assert_eq!(count, 0, "PendingReview task should stay parked until freshness backoff expires");
+    assert_eq!(calls.load(Ordering::SeqCst), 0, "Watchdog must not schedule review retries before backoff expiry");
 }
 
 // ═══════════════════════════════════════════════════════════════════════

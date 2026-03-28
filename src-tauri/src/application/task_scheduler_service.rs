@@ -11,6 +11,7 @@
 // - resume_execution and set_max_concurrent commands (future Phase 26 tasks)
 
 use async_trait::async_trait;
+use chrono::Utc;
 use std::sync::{
     atomic::{AtomicU32, Ordering},
     Arc, Mutex,
@@ -279,6 +280,113 @@ impl<R: Runtime> TaskSchedulerService<R> {
         }
 
         None
+    }
+
+    async fn find_oldest_retryable_pending_review_task(&self) -> Option<Task> {
+        let active_project = self.active_project_id.read().await.clone();
+        let projects = if let Some(project_id) = active_project {
+            match self.project_repo.get_by_id(&project_id).await {
+                Ok(Some(project)) => vec![project],
+                Ok(None) => return None,
+                Err(error) => {
+                    tracing::warn!(
+                        project_id = project_id.as_str(),
+                        error = %error,
+                        "Failed to load active project while scanning retryable PendingReview tasks"
+                    );
+                    return None;
+                }
+            }
+        } else {
+            match self.project_repo.get_all().await {
+                Ok(projects) => projects,
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        "Failed to load projects while scanning retryable PendingReview tasks"
+                    );
+                    return None;
+                }
+            }
+        };
+
+        let mut candidates = Vec::new();
+        let now = Utc::now();
+
+        for project in projects {
+            let tasks = match self
+                .task_repo
+                .get_by_status(&project.id, InternalStatus::PendingReview)
+                .await
+            {
+                Ok(tasks) => tasks,
+                Err(error) => {
+                    tracing::warn!(
+                        project_id = project.id.as_str(),
+                        error = %error,
+                        "Failed to load PendingReview tasks while scanning retryable review tasks"
+                    );
+                    continue;
+                }
+            };
+
+            for task in tasks {
+                let Some(metadata_str) = task.metadata.as_deref() else {
+                    continue;
+                };
+                let Ok(metadata_val) = serde_json::from_str::<serde_json::Value>(metadata_str) else {
+                    continue;
+                };
+                let freshness = FreshnessMetadata::from_task_metadata(&metadata_val);
+                let Some(backoff_until) = freshness.freshness_backoff_until else {
+                    continue;
+                };
+                if freshness.freshness_origin_state.as_deref() != Some("reviewing")
+                    || now < backoff_until
+                {
+                    continue;
+                }
+                if !self.project_has_execution_capacity(&task.project_id).await {
+                    tracing::debug!(
+                        task_id = task.id.as_str(),
+                        project_id = task.project_id.as_str(),
+                        "Skipping retryable PendingReview task: project execution capacity reached"
+                    );
+                    continue;
+                }
+                candidates.push(task);
+            }
+        }
+
+        candidates.sort_by(|a, b| {
+            a.updated_at
+                .cmp(&b.updated_at)
+                .then_with(|| a.created_at.cmp(&b.created_at))
+        });
+        candidates.into_iter().next()
+    }
+
+    async fn retry_pending_review_task(&self, task: &Task) {
+        tracing::info!(
+            task_id = task.id.as_str(),
+            task_title = task.title.as_str(),
+            "Retrying PendingReview task after freshness backoff expiry"
+        );
+
+        if !self.execution_state.try_start_scheduling(task.id.as_str()) {
+            tracing::debug!(
+                task_id = task.id.as_str(),
+                "Scheduler: PendingReview task already being retried by another caller, skipping"
+            );
+            return;
+        }
+
+        let transition_service = self.build_transition_service();
+        transition_service
+            .execute_entry_actions(&task.id, task, InternalStatus::PendingReview)
+            .await;
+
+        self.execution_state.finish_scheduling(task.id.as_str());
     }
 
     async fn count_active_slot_consuming_contexts_for_project(
@@ -628,6 +736,10 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
 
             // Find next schedulable task (accounting for Local-mode constraints)
             let Some(task) = self.find_oldest_schedulable_task().await else {
+                if let Some(task) = self.find_oldest_retryable_pending_review_task().await {
+                    self.retry_pending_review_task(&task).await;
+                    continue;
+                }
                 tracing::debug!("No more schedulable tasks");
                 break;
             };
@@ -1097,6 +1209,7 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
 pub struct ReadyWatchdog {
     scheduler: Arc<dyn TaskScheduler>,
     task_repo: Arc<dyn crate::domain::repositories::TaskRepository>,
+    project_repo: Arc<dyn ProjectRepository>,
     /// How often to run the watchdog scan.
     interval_secs: u64,
     /// How long a task must be in Ready state before being considered stale.
@@ -1108,11 +1221,13 @@ impl ReadyWatchdog {
     pub fn new(
         scheduler: Arc<dyn TaskScheduler>,
         task_repo: Arc<dyn crate::domain::repositories::TaskRepository>,
+        project_repo: Arc<dyn ProjectRepository>,
     ) -> Self {
         let sched_cfg = scheduler_config();
         Self {
             scheduler,
             task_repo,
+            project_repo,
             interval_secs: sched_cfg.watchdog_interval_secs,
             stale_threshold_secs: sched_cfg.watchdog_stale_threshold_secs,
         }
@@ -1142,35 +1257,53 @@ impl ReadyWatchdog {
 
     /// Run one watchdog cycle: scan for stale Ready tasks and reschedule if any are found.
     ///
-    /// Returns the number of stale tasks found (0 means no action was taken).
+    /// Returns the number of stale/retryable tasks found (0 means no action was taken).
     pub async fn run_once(&self) -> usize {
-        match self
+        let stale_ready_tasks = match self
             .task_repo
             .get_stale_ready_tasks(self.stale_threshold_secs)
             .await
         {
-            Ok(stale_tasks) => {
-                let count = stale_tasks.len();
-                if count > 0 {
-                    tracing::warn!(
-                        stale_count = count,
-                        threshold_secs = self.stale_threshold_secs,
-                        "Watchdog: found stale Ready tasks, triggering reschedule"
-                    );
-                    self.scheduler.try_schedule_ready_tasks().await;
-                } else {
-                    tracing::debug!("Watchdog: no stale Ready tasks found");
-                }
-                count
-            }
+            Ok(stale_tasks) => stale_tasks,
             Err(e) => {
                 tracing::error!(
                     error = %e,
                     "Watchdog: failed to query stale Ready tasks"
                 );
-                0
+                return 0;
             }
+        };
+
+        let retryable_pending_review_count = match self
+            .count_retryable_pending_review_tasks()
+            .await
+        {
+            Ok(count) => count,
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    "Watchdog: failed to query retryable PendingReview tasks"
+                );
+                return stale_ready_tasks.len();
+            }
+        };
+
+        let stale_ready_count = stale_ready_tasks.len();
+        let total_count = stale_ready_count + retryable_pending_review_count;
+
+        if total_count > 0 {
+            tracing::warn!(
+                stale_ready_count = stale_ready_count,
+                retryable_pending_review_count = retryable_pending_review_count,
+                threshold_secs = self.stale_threshold_secs,
+                "Watchdog: found retryable tasks, triggering reschedule"
+            );
+            self.scheduler.try_schedule_ready_tasks().await;
+        } else {
+            tracing::debug!("Watchdog: no stale Ready or retryable PendingReview tasks found");
         }
+
+        total_count
     }
 
     /// Run the watchdog loop indefinitely, sleeping `interval_secs` between cycles.
@@ -1182,5 +1315,40 @@ impl ReadyWatchdog {
             tokio::time::sleep(interval).await;
             self.run_once().await;
         }
+    }
+
+    async fn count_retryable_pending_review_tasks(
+        &self,
+    ) -> crate::error::AppResult<usize> {
+        let projects = self.project_repo.get_all().await?;
+        let now = Utc::now();
+        let mut count = 0usize;
+
+        for project in projects {
+            let tasks = self
+                .task_repo
+                .get_by_status(&project.id, InternalStatus::PendingReview)
+                .await?;
+
+            for task in tasks {
+                let Some(metadata_str) = task.metadata.as_deref() else {
+                    continue;
+                };
+                let Ok(metadata_val) = serde_json::from_str::<serde_json::Value>(metadata_str) else {
+                    continue;
+                };
+                let freshness = FreshnessMetadata::from_task_metadata(&metadata_val);
+                let Some(backoff_until) = freshness.freshness_backoff_until else {
+                    continue;
+                };
+                if freshness.freshness_origin_state.as_deref() == Some("reviewing")
+                    && now >= backoff_until
+                {
+                    count += 1;
+                }
+            }
+        }
+
+        Ok(count)
     }
 }
