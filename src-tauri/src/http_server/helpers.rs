@@ -829,6 +829,7 @@ pub async fn finalize_proposals_impl(
             warnings: vec![],
             project_id: session.project_id.to_string(),
             skipped_foreign_count: count_foreign,
+            any_ready_tasks: false,
         });
     }
 
@@ -863,6 +864,7 @@ pub async fn finalize_proposals_impl(
         warnings: result.warnings,
         project_id: result.project_id,
         skipped_foreign_count: count_foreign,
+        any_ready_tasks: result.any_ready_tasks,
     })
 }
 

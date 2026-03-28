@@ -162,6 +162,9 @@ pub struct FinalizeProposalsResponse {
     /// Number of proposals skipped because their target_project points to a different project.
     #[serde(default)]
     pub skipped_foreign_count: u32,
+    /// Whether any tasks were created in Ready status — used to guard scheduler trigger.
+    #[serde(default)]
+    pub any_ready_tasks: bool,
 }
 
 #[derive(Debug, Deserialize)]

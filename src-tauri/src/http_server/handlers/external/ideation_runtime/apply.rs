@@ -1,4 +1,7 @@
 use super::*;
+use crate::application::TaskSchedulerService;
+use crate::domain::state_machine::services::TaskScheduler;
+use crate::infrastructure::agents::claude::scheduler_config;
 
 /// Request body for `POST /api/external/apply_proposals`.
 ///
@@ -61,9 +64,9 @@ pub struct ExternalApplyProposalsResponse {
 /// 2. **Verification gate** — the plan must pass `check_verification_gate` before
 ///    proposals are accepted. Full enforcement requires Wave 1 schema migration.
 ///
-/// Unlike the Tauri IPC path (`apply_proposals_to_kanban`), this endpoint does **not**
-/// trigger the task scheduler. External agents poll
-/// `GET /api/external/pipeline/:project_id` to monitor when tasks become Ready.
+/// Like the Tauri IPC path (`apply_proposals_to_kanban`), this endpoint triggers the
+/// task scheduler when any tasks are created in Ready status, so execution starts
+/// immediately without waiting for the ReadyWatchdog (30-90s delay).
 pub async fn external_apply_proposals(
     State(state): State<HttpServerState>,
     scope: ProjectScope,
@@ -130,6 +133,33 @@ pub async fn external_apply_proposals(
         created = result.created_task_ids.len(),
         "External apply_proposals completed"
     );
+
+    // Trigger scheduler to pick up newly Ready tasks (ready_settle_ms delay)
+    // This is necessary because tasks are set via direct repo update, bypassing TransitionHandler
+    if result.any_ready_tasks {
+        let scheduler = TaskSchedulerService::new(
+            Arc::clone(&state.execution_state),
+            Arc::clone(&state.app_state.project_repo),
+            Arc::clone(&state.app_state.task_repo),
+            Arc::clone(&state.app_state.task_dependency_repo),
+            Arc::clone(&state.app_state.chat_message_repo),
+            Arc::clone(&state.app_state.chat_attachment_repo),
+            Arc::clone(&state.app_state.chat_conversation_repo),
+            Arc::clone(&state.app_state.agent_run_repo),
+            Arc::clone(&state.app_state.ideation_session_repo),
+            Arc::clone(&state.app_state.activity_event_repo),
+            Arc::clone(&state.app_state.message_queue),
+            Arc::clone(&state.app_state.running_agent_registry),
+            Arc::clone(&state.app_state.memory_event_repo),
+            state.app_state.app_handle.as_ref().cloned(),
+        )
+        .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo));
+        let settle_ms = scheduler_config().ready_settle_ms;
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(settle_ms)).await;
+            scheduler.try_schedule_ready_tasks().await;
+        });
+    }
 
     Ok(Json(ExternalApplyProposalsResponse {
         created_task_ids: result.created_task_ids,

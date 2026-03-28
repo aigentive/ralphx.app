@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use axum::{
     extract::{Path, State},
@@ -8,12 +9,14 @@ use axum::{
 use tauri::Emitter;
 use tracing::error;
 
-use crate::application::{CreateProposalOptions, UpdateProposalOptions, UpdateSource};
+use crate::application::{CreateProposalOptions, TaskSchedulerService, UpdateProposalOptions, UpdateSource};
+use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::entities::{IdeationSessionId, Priority, TaskProposalId};
 use crate::http_server::helpers::{
     archive_proposal_impl, create_proposal_impl, finalize_proposals_impl, parse_category,
     parse_priority, update_proposal_impl,
 };
+use crate::infrastructure::agents::claude::scheduler_config;
 use crate::http_server::types::{
     CreateProposalRequest, DeleteProposalRequest, FinalizeProposalsRequest,
     FinalizeProposalsResponse, HttpServerState, ListProposalsResponse, ProposalDetailResponse,
@@ -224,6 +227,33 @@ pub async fn finalize_proposals(
                 tracing::warn!("Failed to emit execution:queue_changed event: {}", e);
             }
         }
+    }
+
+    // Trigger scheduler to pick up newly Ready tasks (ready_settle_ms delay)
+    // This is necessary because tasks are set via direct repo update, bypassing TransitionHandler
+    if response.any_ready_tasks {
+        let scheduler = TaskSchedulerService::new(
+            Arc::clone(&state.execution_state),
+            Arc::clone(&state.app_state.project_repo),
+            Arc::clone(&state.app_state.task_repo),
+            Arc::clone(&state.app_state.task_dependency_repo),
+            Arc::clone(&state.app_state.chat_message_repo),
+            Arc::clone(&state.app_state.chat_attachment_repo),
+            Arc::clone(&state.app_state.chat_conversation_repo),
+            Arc::clone(&state.app_state.agent_run_repo),
+            Arc::clone(&state.app_state.ideation_session_repo),
+            Arc::clone(&state.app_state.activity_event_repo),
+            Arc::clone(&state.app_state.message_queue),
+            Arc::clone(&state.app_state.running_agent_registry),
+            Arc::clone(&state.app_state.memory_event_repo),
+            state.app_state.app_handle.as_ref().cloned(),
+        )
+        .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo));
+        let settle_ms = scheduler_config().ready_settle_ms;
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(settle_ms)).await;
+            scheduler.try_schedule_ready_tasks().await;
+        });
     }
 
     Ok(Json(response))
