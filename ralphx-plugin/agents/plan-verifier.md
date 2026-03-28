@@ -176,6 +176,8 @@ Rules:
 - Sort merged gaps by estimated penalty mass before revising
 - Prefer the smallest revision that materially lowers blocking penalty mass
 - Do not add content unless it reduces a named penalty or satisfies a missing proof obligation
+- Treat weak `## Affected Files` boundaries as a real upstream risk signal. If the plan is too vague for later proposals to derive credible coarse `affected_paths`, that is a completeness problem now, not an execution surprise later.
+- Treat likely out-of-scope spill as a plan-quality problem when the plan would predictably force unrelated repo-wide cleanup, cross-project routing ambiguity, or pre-existing-failure detours without naming them, constraining them, or carving them into follow-up work.
 
 ---
 

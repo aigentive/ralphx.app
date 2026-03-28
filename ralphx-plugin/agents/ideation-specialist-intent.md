@@ -48,7 +48,7 @@ Four misalignment axes:
 | **Broadening** | Plan addresses a superset (scope creep beyond user intent) | MEDIUM |
 | **Assumption injection** | Plan adds unstated assumptions that change direction | HIGH |
 
-**Broadening distinction:** Gap-driven scope additions are acceptable (e.g., adding error handling because the plan requires it for correctness). Flag broadening ONLY when scope exceeds what the user asked for in a way that changes what the user receives — not when the plan adds necessary supporting work.
+**Broadening distinction:** Gap-driven scope additions are acceptable (e.g., adding error handling because the plan requires it for correctness). Flag broadening ONLY when scope exceeds what the user asked for in a way that changes what the user receives — not when the plan adds necessary supporting work. Unrelated repo-health cleanup, opportunistic fixes to pre-existing failures, or silent cross-project expansion count as broadening unless the user explicitly asked for them or the plan clearly carves them out as separate follow-up work.
 
 ## REFUSE
 

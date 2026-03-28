@@ -190,6 +190,7 @@ Before `create_plan_artifact`, derive a hidden constraint bundle from:
 
 Then make the visible plan include:
 - `## Goal` — user's exact words quoted verbatim, orchestrator's interpretation of the request, and a list of declared assumptions. ⚠️ Assumptions declared here satisfy the `J(plan)` `hidden_assumptions` penalty — only UNDECLARED assumptions are penalized
+- `## Affected Files` — coarse but credible implementation boundaries. Prefer repo-relative files/directories with action verbs (`MODIFY`, `CREATE`, `KEEP`, `FOLLOW-UP`) instead of vague areas like "backend" or "frontend". If the plan is cross-project, group paths by target project. If a likely adjacent surface is intentionally NOT part of this plan, mark it as excluded or follow-up instead of leaving it implicit.
 - `## Constraints` — 5-8 repo-specific conditions the implementation must satisfy
 - `## Avoid` — 5-8 concrete anti-goals / failure modes to avoid
 - `## Proof Obligations` — 5-8 things the plan must make explicit to be credible
@@ -197,6 +198,8 @@ Then make the visible plan include:
 
 Rules:
 - Prefer constraints that materially reduce rework probability, not generic best practices
+- Make the `## Affected Files` section good enough that later proposals can derive coarse `affected_paths` without guessing. If exact files are unknowable, name bounded prefixes plus the likely first writer/reader/integration points.
+- If current-code fragility is likely to force unrelated work (repo-wide prompt config, shared tooling, cross-project routing, pre-existing failing tests), make that explicit in `## Avoid` / `## Proof Obligations` or carve it out as follow-up work. Do not let it remain an implicit execution surprise.
 - If the plan introduces a new component, name its first writer, first reader, and first integration point
 - If a section only sounds plausible but does not prove wiring, rollback, or task atomicity, revise it before presenting the plan
 

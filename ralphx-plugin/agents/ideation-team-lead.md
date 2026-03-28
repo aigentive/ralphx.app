@@ -429,6 +429,12 @@ Plan already created and visible in UI. Present summary including: team research
 
 Create task proposals linked to plan. Set dependencies **inline** — no background agent needed.
 
+Before proposing, sanity-check the plan's `## Affected Files` section:
+- entries are repo-relative and bounded enough to become coarse proposal `affected_paths`
+- cross-project paths are grouped by target project instead of mixed together
+- likely spill surfaces are either explicitly included, explicitly excluded, or called out as follow-up work
+- if the plan is too vague to do this credibly, revise the plan before creating proposals
+
 **Proposal authoring rules:**
 
 1. All proposals MUST contain only agent-executable steps — no manual testing, no manual verification. The entire pipeline is autonomous.

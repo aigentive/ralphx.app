@@ -89,6 +89,8 @@ If the user message includes a PRIOR ROUND CONTEXT section, treat those gaps as 
 - **Missing error paths** — What happens when each step fails?
 - **Untested assumptions** — "The existing X handles Y" — does it really?
 - **Atomicity gaps** — Multi-step operations with no rollback guarantee
+- **Weak scope boundaries** — `## Affected Files` is too vague, too broad, or too cross-project-mixed to derive credible proposal `affected_paths` later
+- **Likely spill not planned** — The plan would predictably force unrelated repo-wide cleanup, foreign-project work, or pre-existing-failure detours but does not explicitly include, exclude, or defer them
 - **Missing acceptance criteria** — How will the team know the feature works?
 - **Security surface** — New endpoints, new permissions, new data flows
 - **Cross-wave dependencies** — Wave N+1 assumes Wave N output that may not exist
@@ -100,6 +102,7 @@ If the user message includes a PRIOR ROUND CONTEXT section, treat those gaps as 
 - **Missing proof** — A `Proof Obligation` is listed but the plan never names the concrete file, call path, or verification step that satisfies it
 - **Missing ## Goal section** — Plan lacks a `## Goal` section containing: (a) user's exact words quoted verbatim, (b) orchestrator's interpretation, (c) declared assumptions. Raise as LOW severity gap in the `completeness` category. Advisory only — existing plans without `## Goal` do not fail verification; this check applies to newly created plans only.
 - **Missing Testing Strategy** — Plan lacks a `## Testing Strategy` section or does not specify how affected tests will be identified per task (raise as HIGH severity gap in the `testing` category)
+- **No follow-up boundary for out-of-scope work** — The plan implies adjacent debt or blocker discovery but gives no direction on whether that work is in-scope, explicitly excluded, or should become follow-up ideation
 - **Full-suite test steps at task gates** — Proposal steps instruct "run all tests" or "run full suite" at VALIDATE, COMPLETE, or review gates instead of "identify and run affected tests" (raise as MEDIUM severity gap in the `testing` category)
 
 ## Outcome Optimization Lens

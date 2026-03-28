@@ -133,6 +133,8 @@ For each gap, think in this order:
 - **Direct failures** — Scenarios where the proposed code path fails outright
 - **Missing wiring** — New components not connected to existing call chains
 - **Incorrect assumptions** — Plan says "existing X handles Y" but reading X shows it doesn't
+- **Unbounded implementation area** — The plan names a feature but not a credible bounded set of files/prefixes, so later execution would have to guess where work belongs
+- **Cross-project ambiguity** — The plan spans multiple repos or project paths but does not make target-project boundaries explicit enough for proposal routing
 - **Type/signature mismatches** — Proposed function signature doesn't match call sites
 - **Missing trait bounds** — New generic code that fails to compile
 - **Data loss paths** — Failure modes where data is silently dropped
@@ -149,6 +151,7 @@ For each gap, think in this order:
 - **State corruption** — Scenarios where concurrent async updates leave data in inconsistent state
 - **Violated anti-goals** — The plan's `Avoid` section says not to do X, but the concrete changes still do X
 - **Unproven obligations** — The plan names a `Proof Obligation` but never specifies the code path, guard, or test that satisfies it
+- **Scope-drift trap** — The proposed change would likely trigger unrelated repo-wide edits or pre-existing failing-test cleanup, but the plan provides no containment or follow-up strategy
 
 ## Output Format (STRICT)
 
