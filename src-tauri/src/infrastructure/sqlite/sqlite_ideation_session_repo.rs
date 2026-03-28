@@ -24,12 +24,13 @@ use super::DbConnection;
 // IDLE: tasks that haven't started yet
 const _IDLE_STATUSES: &[&str] = &["backlog", "ready", "blocked"];
 
-/// All 34 SELECT columns for IdeationSession — single source of truth (DRY).
+/// All 38 SELECT columns for IdeationSession — single source of truth (DRY).
 /// Must be kept in sync with IdeationSession::from_row column names.
 /// Column order: id(0)..origin(24), expected_proposal_count(25), auto_accept_status(26),
 /// auto_accept_started_at(27), api_key_id(28), idempotency_key(29),
 /// external_activity_phase(30), external_last_read_message_id(31), dependencies_acknowledged(32),
-/// pending_initial_prompt(33)
+/// pending_initial_prompt(33), source_task_id(34), source_context_type(35),
+/// source_context_id(36), spawn_reason(37)
 const SESSION_COLUMNS: &str = "id, project_id, title, title_source, status, plan_artifact_id, \
     inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
     updated_at, archived_at, converted_at, team_mode, team_config_json, \
@@ -38,7 +39,8 @@ const SESSION_COLUMNS: &str = "id, project_id, title, title_source, status, plan
     cross_project_checked, plan_version_last_read, origin, \
     expected_proposal_count, auto_accept_status, auto_accept_started_at, \
     api_key_id, idempotency_key, external_activity_phase, external_last_read_message_id, \
-    dependencies_acknowledged, pending_initial_prompt";
+    dependencies_acknowledged, pending_initial_prompt, source_task_id, source_context_type, \
+    source_context_id, spawn_reason";
 // TERMINAL: tasks that have reached a final state
 const _TERMINAL_STATUSES: &[&str] = &["approved", "merged", "failed", "cancelled", "stopped"];
 // ACTIVE: any status NOT in IDLE or TERMINAL (catch-all, matches categorizeStatus() logic)
@@ -83,12 +85,12 @@ impl SqliteIdeationSessionRepository {
             "INSERT INTO ideation_sessions \
              (id, project_id, title, title_source, status, plan_artifact_id, \
               inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
-              updated_at, archived_at, converted_at, team_mode, team_config_json, \
+             updated_at, archived_at, converted_at, team_mode, team_config_json, \
               verification_status, source_project_id, source_session_id, session_purpose, \
               cross_project_checked, origin, api_key_id, idempotency_key, \
               external_activity_phase, external_last_read_message_id, dependencies_acknowledged, \
-              pending_initial_prompt) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)",
+              pending_initial_prompt, source_task_id, source_context_type, source_context_id, spawn_reason) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31)",
             rusqlite::params![
                 session.id.as_str(),
                 session.project_id.as_str(),
@@ -117,6 +119,10 @@ impl SqliteIdeationSessionRepository {
                 session.external_last_read_message_id.as_deref(),
                 session.dependencies_acknowledged as i32,
                 session.pending_initial_prompt.as_deref(),
+                session.source_task_id.as_ref().map(|id| id.as_str()),
+                session.source_context_type.as_deref(),
+                session.source_context_id.as_deref(),
+                session.spawn_reason.as_deref(),
             ],
         )?;
         Ok(session.clone())
@@ -1045,12 +1051,10 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                     row.get::<_, i64>(0)
                 })? as u32;
 
-                // Data query with LEFT JOIN for parent title and correlated subqueries for progress
-                // Columns 0-20: standard session columns (matching IdeationSession::from_row exactly)
-                // Columns 21-24: s.session_purpose, s.cross_project_checked, s.plan_version_last_read, s.origin (read by name in from_row)
-                // Column 25: parent_session_title
-                // Columns 26-28: active_count, done_count, total_count (for progress)
-                // Column 29: verification_child_count
+                // Data query with LEFT JOIN for parent title and correlated subqueries for progress.
+                // SESSION_COLUMNS are selected first, followed by:
+                // parent_session_title, active_count, done_count, total_count,
+                // verification_child_count, has_pending_prompt.
                 let data_sql = if include_progress {
                     format!(
                         "SELECT s.id, s.project_id, s.title, s.title_source, s.status, s.plan_artifact_id, \
@@ -1059,6 +1063,10 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                          s.verification_status, s.verification_in_progress, s.verification_metadata, \
                          s.verification_generation, s.source_project_id, s.source_session_id, \
                          s.session_purpose, s.cross_project_checked, s.plan_version_last_read, s.origin, \
+                         s.expected_proposal_count, s.auto_accept_status, s.auto_accept_started_at, \
+                         s.api_key_id, s.idempotency_key, s.external_activity_phase, s.external_last_read_message_id, \
+                         s.dependencies_acknowledged, s.pending_initial_prompt, s.source_task_id, s.source_context_type, \
+                         s.source_context_id, s.spawn_reason, \
                          parent.title as parent_session_title, \
                          (SELECT COUNT(*) FROM tasks t WHERE t.ideation_session_id = s.id \
                            AND t.internal_status NOT IN ('backlog','ready','blocked','approved','merged','failed','cancelled','stopped')) as active_count, \
@@ -1082,6 +1090,10 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                          s.verification_status, s.verification_in_progress, s.verification_metadata, \
                          s.verification_generation, s.source_project_id, s.source_session_id, \
                          s.session_purpose, s.cross_project_checked, s.plan_version_last_read, s.origin, \
+                         s.expected_proposal_count, s.auto_accept_status, s.auto_accept_started_at, \
+                         s.api_key_id, s.idempotency_key, s.external_activity_phase, s.external_last_read_message_id, \
+                         s.dependencies_acknowledged, s.pending_initial_prompt, s.source_task_id, s.source_context_type, \
+                         s.source_context_id, s.spawn_reason, \
                          parent.title as parent_session_title, \
                          NULL as active_count, NULL as done_count, NULL as total_count, \
                          (SELECT COUNT(*) FROM ideation_sessions vc WHERE vc.parent_session_id = s.id AND vc.session_purpose = 'verification') as verification_child_count, \
@@ -1101,13 +1113,12 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                         rusqlite::params![project_id, offset, limit],
                         |row| {
                             let session = IdeationSession::from_row(row)?;
-                            // positions 21-24: session_purpose, cross_project_checked, plan_version_last_read, origin (read by name in from_row)
-                            let parent_session_title: Option<String> = row.get(25)?;
-                            let active_count: Option<i64> = row.get(26)?;
-                            let done_count: Option<i64> = row.get(27)?;
-                            let total_count: Option<i64> = row.get(28)?;
-                            let verification_child_count: i64 = row.get(29)?;
-                            let has_pending_prompt: bool = row.get::<_, bool>(30)?;
+                            let parent_session_title: Option<String> = row.get(38)?;
+                            let active_count: Option<i64> = row.get(39)?;
+                            let done_count: Option<i64> = row.get(40)?;
+                            let total_count: Option<i64> = row.get(41)?;
+                            let verification_child_count: i64 = row.get(42)?;
+                            let has_pending_prompt: bool = row.get::<_, bool>(43)?;
 
                             let progress = if let (Some(active), Some(done_ct), Some(total)) =
                                 (active_count, done_count, total_count)

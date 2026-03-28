@@ -31,6 +31,10 @@ export const IdeationSessionResponseSchema = z.object({
   gap_score: z.number().int().nullable().optional(),
   source_project_id: z.string().nullable().optional(),
   source_session_id: z.string().nullable().optional(),
+  source_task_id: z.string().nullable().optional(),
+  source_context_type: z.string().nullable().optional(),
+  source_context_id: z.string().nullable().optional(),
+  spawn_reason: z.string().nullable().optional(),
   inherited_plan_artifact_id: z.string().nullable().optional(),
   session_purpose: z.enum(["general", "verification"]).optional(),
 });

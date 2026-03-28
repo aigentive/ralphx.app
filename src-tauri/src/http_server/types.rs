@@ -929,6 +929,14 @@ pub struct CreateChildSessionRequest {
     /// Ignored for verification children — they always inherit parent origin.
     #[serde(default)]
     pub is_external_trigger: bool,
+    /// Task that triggered this follow-up session, when spawned from execution/review/merge.
+    pub source_task_id: Option<String>,
+    /// Originating non-ideation context type (task_execution, review, merge, research, etc.).
+    pub source_context_type: Option<String>,
+    /// Originating non-ideation context ID.
+    pub source_context_id: Option<String>,
+    /// Why this follow-up was spawned (out_of_scope_failure, review_followup, etc.).
+    pub spawn_reason: Option<String>,
 }
 
 /// Team configuration input for create_child_session

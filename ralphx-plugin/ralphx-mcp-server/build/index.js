@@ -467,6 +467,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const is_external_trigger = process.env.RALPHX_IS_EXTERNAL_TRIGGER === "1";
             result = await callTauri("create_child_session", { parent_session_id, title, description, inherit_context, initial_prompt, team_mode, team_config, purpose, is_external_trigger });
         }
+        else if (name === "create_followup_session") {
+            // POST /api/create_child_session with first-class execution/review provenance
+            const { source_ideation_session_id, title, description, inherit_context, initial_prompt, source_task_id, source_context_type, source_context_id, spawn_reason, } = args;
+            result = await callTauri("create_child_session", {
+                parent_session_id: source_ideation_session_id,
+                title,
+                description,
+                inherit_context,
+                initial_prompt,
+                source_task_id,
+                source_context_type,
+                source_context_id,
+                spawn_reason,
+            });
+        }
         else if (name === "get_parent_session_context") {
             // GET /api/parent_session_context/:session_id
             const { session_id } = args;

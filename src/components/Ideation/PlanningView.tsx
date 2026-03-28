@@ -59,6 +59,7 @@ import { usePlanBrowserLayout } from "@/hooks/usePlanBrowserLayout";
 import { ideationApi } from "@/api/ideation";
 import { useQuery } from "@tanstack/react-query";
 import { planBranchApi } from "@/api/plan-branch";
+import { useTasks } from "@/hooks/useTasks";
 import { PlanTabContent } from "./PlanTabContent";
 import { ProposalsTabContent } from "./ProposalsTabContent";
 import { TeamResearchTabContent } from "./TeamResearchTabContent";
@@ -201,6 +202,27 @@ export function PlanningView({
   // Sessions list for breadcrumb parent resolution
   const projectIdForSessions = activeProjectId || session?.projectId || "";
   const { data: allSessionsForBreadcrumb = [] } = useIdeationSessions(projectIdForSessions);
+  const { data: projectTasks = [] } = useTasks(projectIdForSessions);
+
+  const sourceTaskTitle = useMemo(() => {
+    if (!session?.sourceTaskId) return null;
+    return projectTasks.find((task) => task.id === session.sourceTaskId)?.title ?? null;
+  }, [projectTasks, session?.sourceTaskId]);
+
+  const sourceContextLabel = useMemo(() => {
+    switch (session?.sourceContextType) {
+      case "task_execution":
+        return "Execution follow-up";
+      case "review":
+        return "Review follow-up";
+      case "merge":
+        return "Merge follow-up";
+      case "research":
+        return "Research follow-up";
+      default:
+        return session?.sourceContextType ? "Follow-up" : null;
+    }
+  }, [session?.sourceContextType]);
 
   const canReopen = isReadOnly && (session?.status === "accepted" || session?.status === "archived");
   const canResetReaccept = session?.status === "accepted";
@@ -867,6 +889,27 @@ export function PlanningView({
                   >
                     {proposals.length} {proposals.length === 1 ? "proposal" : "proposals"}
                   </p>
+                  {(session.sourceTaskId || session.spawnReason || session.sourceProjectId || session.sourceSessionId) && (
+                    <div
+                      className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[10px]"
+                      style={{ color: "hsl(220 10% 58%)" }}
+                    >
+                      {session.sourceTaskId && (
+                        <span>
+                          {sourceContextLabel || "Follow-up"}: {sourceTaskTitle || session.sourceTaskId}
+                        </span>
+                      )}
+                      {!session.sourceTaskId && session.sourceSessionId && (
+                        <span>Source session: {session.sourceSessionId}</span>
+                      )}
+                      {session.sourceProjectId && (
+                        <span>Source project: {session.sourceProjectId}</span>
+                      )}
+                      {session.spawnReason && (
+                        <span>Reason: {session.spawnReason.split("_").join(" ")}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-1.5">

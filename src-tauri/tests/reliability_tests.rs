@@ -63,6 +63,10 @@ fn make_external_session(
         verification_generation: 0,
         source_project_id: None,
         source_session_id: None,
+        source_task_id: None,
+        source_context_type: None,
+        source_context_id: None,
+        spawn_reason: None,
         session_purpose: Default::default(),
         cross_project_checked: true,
         plan_version_last_read: None,
@@ -115,6 +119,10 @@ async fn c2_external_origin_propagates_to_verification_child() {
         team_config: None,
         purpose: Some("verification".to_string()),
         is_external_trigger: false,
+        source_task_id: None,
+        source_context_type: None,
+        source_context_id: None,
+        spawn_reason: None,
     };
 
     let result = create_child_session(State(state.clone()), Json(req)).await;
@@ -185,6 +193,10 @@ async fn c2_internal_origin_produces_internal_verification_child() {
         team_config: None,
         purpose: Some("verification".to_string()),
         is_external_trigger: false,
+        source_task_id: None,
+        source_context_type: None,
+        source_context_id: None,
+        spawn_reason: None,
     };
 
     let result = create_child_session(State(state.clone()), Json(req)).await;
@@ -244,6 +256,10 @@ async fn c3_team_mode_inherited_for_external_session_with_inherit_context() {
         team_config: None,
         purpose: None,
         is_external_trigger: false, // general purpose
+        source_task_id: None,
+        source_context_type: None,
+        source_context_id: None,
+        spawn_reason: None,
     };
 
     let result = create_child_session(State(state.clone()), Json(req)).await;
@@ -319,6 +335,10 @@ async fn c3_team_mode_not_inherited_without_inherit_context() {
         team_config: None,
         purpose: None,
         is_external_trigger: false,
+        source_task_id: None,
+        source_context_type: None,
+        source_context_id: None,
+        spawn_reason: None,
     };
 
     let result = create_child_session(State(state.clone()), Json(req)).await;
@@ -389,6 +409,10 @@ async fn c5a_external_trigger_sets_external_origin_for_general_child() {
         team_config: None,
         purpose: None, // general
         is_external_trigger: true,
+        source_task_id: None,
+        source_context_type: None,
+        source_context_id: None,
+        spawn_reason: None,
     };
 
     let result = create_child_session(State(state.clone()), Json(req)).await;
@@ -443,6 +467,10 @@ async fn c5b_no_external_trigger_sets_internal_origin_for_general_child() {
         team_config: None,
         purpose: None, // general
         is_external_trigger: false,
+        source_task_id: None,
+        source_context_type: None,
+        source_context_id: None,
+        spawn_reason: None,
     };
 
     let result = create_child_session(State(state.clone()), Json(req)).await;
@@ -493,6 +521,10 @@ async fn c5c_verification_child_inherits_parent_origin_ignoring_is_external_trig
         team_config: None,
         purpose: Some("verification".to_string()),
         is_external_trigger: false, // trigger says Internal, but verification inherits
+        source_task_id: None,
+        source_context_type: None,
+        source_context_id: None,
+        spawn_reason: None,
     };
 
     let result = create_child_session(State(state.clone()), Json(req)).await;
@@ -627,6 +659,10 @@ async fn c4_finalize_proposals_links_all_proposals_to_tasks() {
         verification_generation: 0,
         source_project_id: None,
         source_session_id: None,
+        source_task_id: None,
+        source_context_type: None,
+        source_context_id: None,
+        spawn_reason: None,
         session_purpose: Default::default(),
         cross_project_checked: true,
         plan_version_last_read: None,
@@ -786,6 +822,10 @@ async fn c4_count_mismatch_prevents_finalize_and_leaves_no_orphans() {
         verification_generation: 0,
         source_project_id: None,
         source_session_id: None,
+        source_task_id: None,
+        source_context_type: None,
+        source_context_id: None,
+        spawn_reason: None,
         session_purpose: Default::default(),
         cross_project_checked: true,
         plan_version_last_read: None,
@@ -1006,6 +1046,10 @@ fn make_c5_session(
         verification_generation: 0,
         source_project_id: None,
         source_session_id: None,
+        source_task_id: None,
+        source_context_type: None,
+        source_context_id: None,
+        spawn_reason: None,
         session_purpose: Default::default(),
         cross_project_checked: true,
         plan_version_last_read: None,

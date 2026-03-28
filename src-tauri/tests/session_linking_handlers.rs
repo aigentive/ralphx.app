@@ -35,6 +35,10 @@ fn make_session(team_mode: Option<&str>) -> IdeationSession {
         verification_generation: 0,
         source_project_id: None,
         source_session_id: None,
+        source_task_id: None,
+        source_context_type: None,
+        source_context_id: None,
+        spawn_reason: None,
         session_purpose: Default::default(),
         cross_project_checked: true,
         plan_version_last_read: None,
@@ -118,6 +122,10 @@ mod verification_init_tests {
             verification_generation: 0,
             source_project_id: None,
             source_session_id: None,
+            source_task_id: None,
+            source_context_type: None,
+            source_context_id: None,
+            spawn_reason: None,
             session_purpose: Default::default(),
             cross_project_checked: true,
             plan_version_last_read: None,
@@ -141,6 +149,10 @@ mod verification_init_tests {
             description: None,
             inherit_context: false,
             initial_prompt: None,
+            source_task_id: None,
+            source_context_type: None,
+            source_context_id: None,
+            spawn_reason: None,
             team_mode: None,
             team_config: None,
             purpose: Some("verification".to_string()),
@@ -469,6 +481,10 @@ mod verification_init_tests {
             description: Some("Verify this plan".to_string()),
             inherit_context: false,
             initial_prompt: None,
+            source_task_id: None,
+            source_context_type: None,
+            source_context_id: None,
+            spawn_reason: None,
             team_mode: None,
             team_config: None,
             purpose: Some("verification".to_string()),
@@ -537,6 +553,59 @@ mod verification_init_tests {
         state.execution_state.increment_running();
     }
 
+    #[tokio::test]
+    async fn test_followup_provenance_persisted_on_child_session_creation() {
+        let state = setup_sqlite_state().await;
+
+        let parent = make_parent_session(None);
+        let parent_id = parent.id.clone();
+        state
+            .app_state
+            .ideation_session_repo
+            .create(parent)
+            .await
+            .unwrap();
+
+        let req = CreateChildSessionRequest {
+            parent_session_id: parent_id.as_str().to_string(),
+            title: Some("Execution follow-up".to_string()),
+            description: None,
+            inherit_context: true,
+            initial_prompt: None,
+            source_task_id: Some("task-123".to_string()),
+            source_context_type: Some("task_execution".to_string()),
+            source_context_id: Some("task-123".to_string()),
+            spawn_reason: Some("out_of_scope_failure".to_string()),
+            team_mode: None,
+            team_config: None,
+            purpose: None,
+            is_external_trigger: false,
+        };
+
+        let response = create_child_session(State(state.clone()), Json(req))
+            .await
+            .expect("Child session creation should succeed")
+            .0;
+
+        let child_id = IdeationSessionId::from_string(response.session_id);
+        let child = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&child_id)
+            .await
+            .unwrap()
+            .expect("Child session must exist");
+
+        assert_eq!(child.parent_session_id, Some(parent_id));
+        assert_eq!(
+            child.source_task_id.as_ref().map(|id| id.as_str()),
+            Some("task-123")
+        );
+        assert_eq!(child.source_context_type.as_deref(), Some("task_execution"));
+        assert_eq!(child.source_context_id.as_deref(), Some("task-123"));
+        assert_eq!(child.spawn_reason.as_deref(), Some("out_of_scope_failure"));
+    }
+
     // When spawn fails for a non-verification child with initial_prompt, the handler must
     // persist the prompt to pending_initial_prompt and surface it in the response.
     #[tokio::test]
@@ -561,6 +630,10 @@ mod verification_init_tests {
             description: None,
             inherit_context: false,
             initial_prompt: Some(initial_prompt.to_string()),
+            source_task_id: None,
+            source_context_type: None,
+            source_context_id: None,
+            spawn_reason: None,
             team_mode: None,
             team_config: None,
             purpose: None, // non-verification
@@ -620,6 +693,10 @@ mod verification_init_tests {
             description: Some(description.to_string()),
             inherit_context: false,
             initial_prompt: None,
+            source_task_id: None,
+            source_context_type: None,
+            source_context_id: None,
+            spawn_reason: None,
             team_mode: None,
             team_config: None,
             purpose: None, // non-verification
@@ -676,6 +753,10 @@ mod verification_init_tests {
             description: None,
             inherit_context: false,
             initial_prompt: None,
+            source_task_id: None,
+            source_context_type: None,
+            source_context_id: None,
+            spawn_reason: None,
             team_mode: None,
             team_config: None,
             purpose: None,
@@ -720,6 +801,10 @@ mod verification_init_tests {
             description: None,
             inherit_context: false,
             initial_prompt: Some(explicit_prompt.to_string()),
+            source_task_id: None,
+            source_context_type: None,
+            source_context_id: None,
+            spawn_reason: None,
             team_mode: None,
             team_config: None,
             purpose: Some("verification".to_string()),

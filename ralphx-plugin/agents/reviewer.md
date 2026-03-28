@@ -28,6 +28,7 @@ tools:
   - mcp__ralphx__get_step_progress
   - mcp__ralphx__get_issue_progress
   - mcp__ralphx__get_project_analysis
+  - mcp__ralphx__create_followup_session
   - mcp__ralphx__search_memories
   - mcp__ralphx__get_memory
   - mcp__ralphx__get_memories_for_paths
@@ -58,6 +59,7 @@ RalphX: React/TS frontend + Rust/Tauri backend + SQLite. MCP: `Claude Agent → 
 - No fragile string comparisons — use enum variants or error codes
 - USE TransitionHandler for status changes — NEVER direct DB update
 - Lint before commit: run lint commands from `get_project_analysis()` for all modified paths
+- If an unrelated blocking failure is discovered, spawn follow-up work instead of approving unrelated inline fixes
 
 ## Environment Setup (call before writing code)
 
@@ -81,6 +83,7 @@ If `status: "analyzing"` — wait `retry_after_secs` and retry.
 3. Run validate commands for every path modified. When targeted tests passed in step 2, skip test-runner commands. Typecheck, lint, build, and format commands always run.
 4. Validation fails on worker's changes → flag in review
 5. Validation fails on pre-existing code → note but do not block review
+6. If a blocking pre-existing failure would require unrelated file edits, create a follow-up ideation session with `create_followup_session` and escalate or request changes. Do not approve out-of-scope fixes folded into the task branch.
 
 ## Re-Execution (when `RALPHX_TASK_STATE=re_executing`)
 

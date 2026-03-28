@@ -103,6 +103,10 @@ export const IdeationSessionSchema = z.object({
   verificationUpdateSeq: z.number().int().optional(),
   sourceProjectId: z.string().nullable().optional(),
   sourceSessionId: z.string().nullable().optional(),
+  sourceTaskId: z.string().nullable().optional(),
+  sourceContextType: z.string().nullable().optional(),
+  sourceContextId: z.string().nullable().optional(),
+  spawnReason: z.string().nullable().optional(),
   sessionPurpose: z.enum(["general", "verification"]).default("general"),
 });
 

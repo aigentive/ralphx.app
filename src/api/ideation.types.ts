@@ -22,6 +22,10 @@ export interface IdeationSessionResponse {
   gapScore: number | null;
   sourceProjectId?: string | null;
   sourceSessionId?: string | null;
+  sourceTaskId?: string | null;
+  sourceContextType?: string | null;
+  sourceContextId?: string | null;
+  spawnReason?: string | null;
   inheritedPlanArtifactId?: string | null;
   sessionPurpose: "general" | "verification";
 }

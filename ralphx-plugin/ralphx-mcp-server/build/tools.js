@@ -348,6 +348,59 @@ export const ALL_TOOLS = [
         },
     },
     {
+        name: "create_followup_session",
+        description: "Create a new follow-up ideation session linked to an existing ideation session and stamped with first-class execution/review provenance. " +
+            "Use this when you hit an out-of-scope blocker or need to spin out follow-up work without mutating the accepted parent session.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                source_ideation_session_id: {
+                    type: "string",
+                    description: "The accepted ideation session to follow up from. This becomes the parent_session_id for inherited context.",
+                },
+                title: {
+                    type: "string",
+                    description: "Title for the new follow-up session",
+                },
+                description: {
+                    type: "string",
+                    description: "Description of the follow-up work. When provided, a child ideation agent is auto-spawned.",
+                },
+                initial_prompt: {
+                    type: "string",
+                    description: "Optional initial prompt to send to the spawned child session agent.",
+                },
+                inherit_context: {
+                    type: "boolean",
+                    description: "Whether to inherit the parent session's plan/team context. Default: true.",
+                },
+                source_task_id: {
+                    type: "string",
+                    description: "Task ID that encountered the blocker or follow-up condition.",
+                },
+                source_context_type: {
+                    type: "string",
+                    description: "Originating context type, for example task_execution, review, merge, or research.",
+                },
+                source_context_id: {
+                    type: "string",
+                    description: "Originating context ID. For task_execution/review this is typically the task ID.",
+                },
+                spawn_reason: {
+                    type: "string",
+                    description: "Reason for spawning the follow-up session, for example out_of_scope_failure.",
+                },
+            },
+            required: [
+                "source_ideation_session_id",
+                "title",
+                "source_context_type",
+                "source_context_id",
+                "spawn_reason",
+            ],
+        },
+    },
+    {
         name: "get_parent_session_context",
         description: "Get the parent session context for a child session. Returns parent session metadata, plan content, and proposals summary.",
         inputSchema: {
@@ -1461,6 +1514,7 @@ export const TOOL_ALLOWLIST = {
     [REVIEWER]: [
         // specific review tools
         "complete_review",
+        "create_followup_session",
         // issue tools (re-review workflow)
         "get_task_issues",
         "get_step_progress",
@@ -1527,6 +1581,7 @@ export const TOOL_ALLOWLIST = {
         "get_step_context",
         "get_sub_steps",
         "execution_complete",
+        "create_followup_session",
         // issue tools (re-execution workflow)
         "get_task_issues",
         "mark_issue_in_progress",

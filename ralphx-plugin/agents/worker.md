@@ -38,6 +38,7 @@ tools:
   - mcp__ralphx__mark_issue_in_progress
   - mcp__ralphx__mark_issue_addressed
   - mcp__ralphx__get_project_analysis
+  - mcp__ralphx__create_followup_session
   - mcp__ralphx__execution_complete
   - mcp__ralphx__search_memories
   - mcp__ralphx__get_memory
@@ -66,6 +67,7 @@ RalphX: React/TS frontend + Rust/Tauri backend + SQLite. MCP: `Claude Agent → 
 - Use TransitionHandler for status changes — NEVER direct DB update
 - Lint before commit: run lint commands from `get_project_analysis()` for all modified paths
 - Modify only files directly related to the task
+- If an unrelated blocking failure is discovered, spawn follow-up work instead of patching unrelated files inline
 
 ## Step Tracking Protocol
 
@@ -189,6 +191,7 @@ After fixing all issues, proceed through state EXECUTE (VALIDATE + COMPLETE phas
 6. Call `get_project_analysis(project_id, task_id)` → run `validate` commands (worktree_setup is ALREADY done by the backend — do NOT re-run)
    - All validate commands must pass before writing code (pre-existing failures: note and proceed)
    - NEVER commit `node_modules`, `target`, or other symlinked directories — these are worktree artifacts
+7. If a pre-existing failure outside your task scope blocks progress, create a follow-up ideation session with `create_followup_session` and stop. Do not edit unrelated files to make the current task green.
 </phase>
 
 <phase name="PLAN">

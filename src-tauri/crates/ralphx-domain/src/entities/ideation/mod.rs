@@ -82,6 +82,14 @@ pub struct IdeationSession {
     pub source_project_id: Option<String>,
     /// Source session ID when this session was imported from another project
     pub source_session_id: Option<String>,
+    /// Source task ID when this session was spawned from execution/review/merge work
+    pub source_task_id: Option<TaskId>,
+    /// Originating non-ideation context type (task_execution, review, merge, research, etc.)
+    pub source_context_type: Option<String>,
+    /// Originating non-ideation context ID
+    pub source_context_id: Option<String>,
+    /// Reason this session was spawned (out_of_scope_failure, review_followup, etc.)
+    pub spawn_reason: Option<String>,
     /// Purpose of this session: General (default) or Verification (plan-verifier child)
     #[serde(default)]
     pub session_purpose: SessionPurpose,
@@ -147,6 +155,10 @@ pub struct IdeationSessionBuilder {
     verification_generation: Option<i32>,
     source_project_id: Option<String>,
     source_session_id: Option<String>,
+    source_task_id: Option<TaskId>,
+    source_context_type: Option<String>,
+    source_context_id: Option<String>,
+    spawn_reason: Option<String>,
     session_purpose: Option<SessionPurpose>,
     cross_project_checked: Option<bool>,
     plan_version_last_read: Option<i32>,
@@ -282,6 +294,30 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set the source task ID
+    pub fn source_task_id(mut self, source_task_id: TaskId) -> Self {
+        self.source_task_id = Some(source_task_id);
+        self
+    }
+
+    /// Set the source context type
+    pub fn source_context_type(mut self, source_context_type: impl Into<String>) -> Self {
+        self.source_context_type = Some(source_context_type.into());
+        self
+    }
+
+    /// Set the source context ID
+    pub fn source_context_id(mut self, source_context_id: impl Into<String>) -> Self {
+        self.source_context_id = Some(source_context_id.into());
+        self
+    }
+
+    /// Set the spawn reason
+    pub fn spawn_reason(mut self, spawn_reason: impl Into<String>) -> Self {
+        self.spawn_reason = Some(spawn_reason.into());
+        self
+    }
+
     /// Set the session purpose
     pub fn session_purpose(mut self, session_purpose: SessionPurpose) -> Self {
         self.session_purpose = Some(session_purpose);
@@ -374,6 +410,10 @@ impl IdeationSessionBuilder {
             verification_generation: self.verification_generation.unwrap_or(0),
             source_project_id: self.source_project_id,
             source_session_id: self.source_session_id,
+            source_task_id: self.source_task_id,
+            source_context_type: self.source_context_type,
+            source_context_id: self.source_context_id,
+            spawn_reason: self.spawn_reason,
             session_purpose: self.session_purpose.unwrap_or_default(),
             cross_project_checked: self.cross_project_checked.unwrap_or(false),
             plan_version_last_read: self.plan_version_last_read,
@@ -522,6 +562,19 @@ impl IdeationSession {
                 .unwrap_or(None),
             source_session_id: row
                 .get::<_, Option<String>>("source_session_id")
+                .unwrap_or(None),
+            source_task_id: row
+                .get::<_, Option<String>>("source_task_id")
+                .unwrap_or(None)
+                .map(TaskId::from_string),
+            source_context_type: row
+                .get::<_, Option<String>>("source_context_type")
+                .unwrap_or(None),
+            source_context_id: row
+                .get::<_, Option<String>>("source_context_id")
+                .unwrap_or(None),
+            spawn_reason: row
+                .get::<_, Option<String>>("spawn_reason")
                 .unwrap_or(None),
             session_purpose: row
                 .get::<_, Option<String>>("session_purpose")

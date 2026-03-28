@@ -104,6 +104,28 @@ describe("ideationApi.sessions", () => {
       expect(result.status).toBe("active");
     });
 
+    it("should preserve follow-up provenance fields", async () => {
+      mockInvoke.mockResolvedValue(
+        createMockSessionRaw({
+          source_project_id: "project-source",
+          source_session_id: "session-source",
+          source_task_id: "task-123",
+          source_context_type: "task_execution",
+          source_context_id: "task-123",
+          spawn_reason: "out_of_scope_failure",
+        })
+      );
+
+      const result = await ideationApi.sessions.create("project-1");
+
+      expect(result.sourceProjectId).toBe("project-source");
+      expect(result.sourceSessionId).toBe("session-source");
+      expect(result.sourceTaskId).toBe("task-123");
+      expect(result.sourceContextType).toBe("task_execution");
+      expect(result.sourceContextId).toBe("task-123");
+      expect(result.spawnReason).toBe("out_of_scope_failure");
+    });
+
     it("should validate session schema", async () => {
       mockInvoke.mockResolvedValue({ invalid: "session" });
 

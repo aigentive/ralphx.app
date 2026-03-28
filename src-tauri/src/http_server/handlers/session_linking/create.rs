@@ -1,4 +1,5 @@
 use super::*;
+use crate::domain::entities::TaskId;
 
 async fn initialize_verification_state(
     state: &HttpServerState,
@@ -257,6 +258,13 @@ pub async fn create_child_session(
         verification_generation: 0,
         source_project_id: None,
         source_session_id: None,
+        source_task_id: req
+            .source_task_id
+            .as_ref()
+            .map(|id| TaskId::from_string(id.clone())),
+        source_context_type: req.source_context_type.clone(),
+        source_context_id: req.source_context_id.clone(),
+        spawn_reason: req.spawn_reason.clone(),
         session_purpose: req
             .purpose
             .as_deref()

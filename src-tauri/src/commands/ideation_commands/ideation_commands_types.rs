@@ -69,6 +69,10 @@ pub struct IdeationSessionResponse {
     pub inherited_plan_artifact_id: Option<String>,
     pub source_project_id: Option<String>,
     pub source_session_id: Option<String>,
+    pub source_task_id: Option<String>,
+    pub source_context_type: Option<String>,
+    pub source_context_id: Option<String>,
+    pub spawn_reason: Option<String>,
     pub session_purpose: String,
     pub cross_project_checked: bool,
 }
@@ -103,6 +107,10 @@ impl From<IdeationSession> for IdeationSessionResponse {
             inherited_plan_artifact_id: session.inherited_plan_artifact_id.map(|id| id.as_str().to_string()),
             source_project_id: session.source_project_id,
             source_session_id: session.source_session_id,
+            source_task_id: session.source_task_id.map(|id| id.as_str().to_string()),
+            source_context_type: session.source_context_type,
+            source_context_id: session.source_context_id,
+            spawn_reason: session.spawn_reason,
             session_purpose: session.session_purpose.to_string(),
             cross_project_checked: session.cross_project_checked,
         }
