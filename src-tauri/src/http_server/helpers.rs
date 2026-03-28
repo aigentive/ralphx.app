@@ -96,6 +96,37 @@ pub fn parse_artifact_type(s: &str) -> Result<ArtifactType, String> {
     }
 }
 
+fn normalize_affected_paths(raw: &str) -> Result<Vec<String>, AppError> {
+    let paths: Vec<String> = serde_json::from_str(raw).map_err(|e| {
+        AppError::Validation(format!("affected_paths must be a JSON array of strings: {e}"))
+    })?;
+    let normalized = paths
+        .into_iter()
+        .map(|path| path.trim().to_string())
+        .filter(|path| !path.is_empty())
+        .collect::<Vec<_>>();
+
+    if normalized.is_empty() {
+        return Err(AppError::Validation(
+            "affected_paths must include at least one non-empty file path or directory prefix"
+                .to_string(),
+        ));
+    }
+
+    Ok(normalized)
+}
+
+fn validate_affected_paths_json(raw: Option<&String>) -> AppResult<()> {
+    if let Some(raw) = raw {
+        let _ = normalize_affected_paths(raw)?;
+    }
+    Ok(())
+}
+
+fn proposal_requires_affected_paths(category: ProposalCategory) -> bool {
+    !matches!(category, ProposalCategory::Research | ProposalCategory::Design)
+}
+
 // ============================================================================
 // Transformation Functions
 // ============================================================================
@@ -179,6 +210,7 @@ pub async fn create_proposal_impl(
     session_id: IdeationSessionId,
     options: CreateProposalOptions,
 ) -> AppResult<(TaskProposal, Vec<String>, bool)> {
+    validate_affected_paths_json(options.affected_paths.as_ref())?;
     let expected_proposal_count = options.expected_proposal_count;
 
     // Single lock: all checks + INSERT in one transaction (TOCTOU prevention).
@@ -432,6 +464,9 @@ pub async fn update_proposal_impl(
     proposal_id: &TaskProposalId,
     options: UpdateProposalOptions,
 ) -> AppResult<(TaskProposal, Vec<String>)> {
+    if let Some(raw) = options.affected_paths.as_ref().and_then(|value| value.as_ref()) {
+        validate_affected_paths_json(Some(raw))?;
+    }
     let pid = proposal_id.as_str().to_string();
 
     // Single lock: fetch + validate + UPDATE in one transaction.
@@ -808,6 +843,18 @@ pub async fn finalize_proposals_impl(
     let count_foreign = foreign_proposals.len() as u32;
     let count_total = count_local + count_foreign;
 
+    let proposals_missing_scope = local_proposals
+        .iter()
+        .filter(|proposal| proposal_requires_affected_paths(proposal.category))
+        .filter_map(|proposal| match proposal.affected_paths.as_ref() {
+            Some(raw) => match normalize_affected_paths(raw) {
+                Ok(_) => None,
+                Err(_) => Some(proposal.title.clone()),
+            },
+            None => Some(proposal.title.clone()),
+        })
+        .collect::<Vec<_>>();
+
     // Validate count matches expected_proposal_count against TOTAL (local + foreign)
     if let Some(expected) = session.expected_proposal_count {
         if count_total != expected {
@@ -816,6 +863,13 @@ pub async fn finalize_proposals_impl(
                 expected, count_total, count_local, count_foreign
             )));
         }
+    }
+
+    if !proposals_missing_scope.is_empty() {
+        return Err(AppError::Validation(format!(
+            "Cannot finalize proposals until every implementation-scoped local proposal declares coarse affected_paths. Missing scope for: {}. Update the proposal(s) with repo-relative file paths or directory prefixes, then retry finalize. Pure research/design proposals may omit affected_paths when no credible repo-change scope exists.",
+            proposals_missing_scope.join(", ")
+        )));
     }
 
     // Short-circuit if no local proposals — all have been migrated to foreign projects

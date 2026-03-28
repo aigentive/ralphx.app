@@ -387,7 +387,7 @@ update_task_proposal(proposal_id, add_blocks: ["<proposal-id-C>"])
 
 4. **expected_proposal_count (required)** — Pass `expected_proposal_count` on every `create_task_proposal` call (total proposals you intend to create). First proposal locks the count; backend returns `ready_to_finalize: true` when count matches. After all dependency updates, call `finalize_proposals(session_id)`.
 
-5. **affected_paths (required in practice)** — Every proposal should include coarse `affected_paths` derived from the plan's `## Affected Files` and architecture. Use repo-relative file paths or directory prefixes broad enough to allow legitimate implementation discovery without pretending to know every final file.
+5. **affected_paths (required for implementation-affecting proposals)** — For `setup`, `feature`, `fix`, `refactor`, `docs`, `test`, `performance`, `security`, `devops`, and `chore` proposals, include coarse `affected_paths` derived from the plan's `## Affected Files` and architecture. Use repo-relative file paths or directory prefixes broad enough to allow legitimate implementation discovery without pretending to know every final file. Pure `research` / `design` proposals may omit `affected_paths` when no credible repo-change scope exists. In cross-project sessions, set `affected_paths` relative to the proposal's target project.
 
 6. **Auto-generate Regression Testing proposal** — When creating 2 or more proposals in a session, auto-generate a final "Regression Testing" proposal:
    - Category: `testing`
@@ -398,7 +398,7 @@ update_task_proposal(proposal_id, add_blocks: ["<proposal-id-C>"])
    - Acceptance criteria: "Full test suite passes with zero new failures introduced by this session's changes."
    - `affected_paths`: set to the union of the session's previously declared proposal scopes, not an empty list
 
-7. **Finalize (required)** — After ALL `create_task_proposal` and `update_task_proposal` calls are complete (including regression proposal and all dependency updates), call `finalize_proposals(session_id)`. Validates expected count and applies proposals. Errors are returned synchronously — handle failures before completing Phase 5. Multi-proposal sessions require dependency acknowledgment before finalize — see proactive-behavior entry below.
+7. **Finalize (required)** — After ALL `create_task_proposal` and `update_task_proposal` calls are complete (including regression proposal and all dependency updates), call `finalize_proposals(session_id)`. Validates expected count and applies proposals. Errors are returned synchronously — handle failures before completing Phase 5. Multi-proposal sessions require dependency acknowledgment before finalize — see proactive-behavior entry below. Local implementation-affecting proposals without meaningful `affected_paths` will be rejected at finalize time.
 </workflow>
 
 <tool-usage>

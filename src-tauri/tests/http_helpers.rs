@@ -1587,7 +1587,7 @@ fn make_proposal_options(title: &str, expected_count: Option<u32>) -> CreateProp
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
-        affected_paths: None,
+        affected_paths: Some(r#"["src-tauri/src"]"#.to_string()),
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
@@ -1795,6 +1795,56 @@ async fn test_finalize_blocked_by_verification_gate() {
         IdeationSessionStatus::Active,
         "Session must remain Active when finalize fails"
     );
+}
+
+#[tokio::test]
+async fn test_finalize_rejects_feature_without_affected_paths() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+
+    let mut options = make_proposal_options("Feature Without Scope", Some(1));
+    options.affected_paths = None;
+
+    create_proposal_impl(&state, session.id.clone(), options)
+        .await
+        .expect("proposal creation should still succeed");
+
+    let result = finalize_proposals_impl(&state, session.id.as_str()).await;
+
+    assert!(result.is_err(), "finalize must reject feature proposals without scope");
+    match result.unwrap_err() {
+        AppError::Validation(msg) => {
+            assert!(
+                msg.contains("affected_paths"),
+                "Error must mention affected_paths, got: {msg}"
+            );
+            assert!(
+                msg.contains("Feature Without Scope"),
+                "Error must include proposal title, got: {msg}"
+            );
+        }
+        other => panic!("Expected validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_finalize_allows_research_without_affected_paths() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+
+    let mut options = make_proposal_options("Research Spike", Some(1));
+    options.category = ProposalCategory::Research;
+    options.affected_paths = None;
+
+    create_proposal_impl(&state, session.id.clone(), options)
+        .await
+        .expect("proposal creation should succeed");
+
+    let response = finalize_proposals_impl(&state, session.id.as_str())
+        .await
+        .expect("research proposal should finalize without affected_paths");
+
+    assert_eq!(response.tasks_created, 1);
 }
 
 // Scenario 28: No gating when expected_proposal_count is omitted (backward compatibility).

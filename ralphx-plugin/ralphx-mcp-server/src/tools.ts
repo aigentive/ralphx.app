@@ -100,7 +100,7 @@ export const ALL_TOOLS: Tool[] = [
           type: "array",
           items: { type: "string" },
           description:
-            "Coarse planned file or directory scope for this proposal. Prefer repo-relative paths or prefixes like 'src-tauri/src/http_server' or 'src/components/execution'. Use broad, credible boundaries rather than guessing an exact final file list.",
+            "Coarse planned file or directory scope for this proposal. Prefer repo-relative paths or prefixes like 'src-tauri/src/http_server' or 'src/components/execution'. Use broad, credible boundaries rather than guessing an exact final file list. Required for implementation-affecting proposals; pure research/design proposals may omit it when no credible repo-change scope exists.",
         },
         target_project: {
           type: "string",
