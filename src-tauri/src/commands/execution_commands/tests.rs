@@ -3181,6 +3181,11 @@ async fn test_resume_restores_multiple_paused_tasks() {
     for (status, title) in &test_cases {
         let mut task = Task::new(project.id.clone(), title.to_string());
         task.internal_status = *status;
+        // Reviewing tasks need a worktree_path to pass ensure_review_worktree_ready.
+        // Use the system temp dir (guaranteed to exist) to satisfy the existence check.
+        if *status == InternalStatus::Reviewing {
+            task.worktree_path = Some(std::env::temp_dir().to_string_lossy().into_owned());
+        }
         app_state.task_repo.create(task.clone()).await.unwrap();
         task_ids.push(task.id);
         original_statuses.push(*status);

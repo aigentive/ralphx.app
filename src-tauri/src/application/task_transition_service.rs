@@ -1344,6 +1344,42 @@ impl<R: Runtime> TaskTransitionService<R> {
                         }
                     }
                 }
+            } else if matches!(&e, AppError::BranchFreshnessConflict) {
+                tracing::warn!(
+                    task_id = task_id.as_str(),
+                    "BranchFreshnessConflict during initial on_enter — delegating to corrective handler"
+                );
+                self.handle_branch_freshness_conflict(&handler, task_id, &state).await;
+            } else if matches!(&e, AppError::ReviewWorktreeMissing) {
+                use crate::domain::state_machine::machine::State as MState;
+                tracing::warn!(
+                    task_id = task_id.as_str(),
+                    "ReviewWorktreeMissing during initial on_enter — routing to Escalated"
+                );
+                handler.on_exit(&state, &MState::Escalated).await;
+                if let Some(result) = self
+                    .apply_corrective_transition(
+                        task_id,
+                        InternalStatus::Escalated,
+                        None,
+                        "system",
+                    )
+                    .await
+                {
+                    if let Some(ref handle) = self._app_handle {
+                        let _ = handle.emit(
+                            "task:event",
+                            serde_json::json!({
+                                "type": "status_changed",
+                                "taskId": task_id.as_str(),
+                                "from": result.from_status.as_str(),
+                                "to": "escalated",
+                                "changedBy": "system",
+                                "reason": "ReviewWorktreeMissing during initial on_enter",
+                            }),
+                        );
+                    }
+                }
             }
         }
         tracing::debug!("TransitionHandler::on_enter complete");
@@ -1420,214 +1456,7 @@ impl<R: Runtime> TaskTransitionService<R> {
                 // preserving review requirement). "executing"/"re_executing"/absent → Merging
                 // (existing behavior for execution-phase conflicts).
                 if matches!(&e, AppError::BranchFreshnessConflict) {
-                    use crate::domain::state_machine::machine::State;
-                    use crate::domain::state_machine::transition_handler::freshness::FreshnessMetadata;
-
-                    // Read freshness metadata written by on_enter_states.rs before the error.
-                    let fresh_task = self
-                        .task_repo
-                        .get_by_id(task_id)
-                        .await
-                        .ok()
-                        .flatten();
-                    let task_meta_val: serde_json::Value = fresh_task
-                        .as_ref()
-                        .and_then(|t| t.metadata.as_deref())
-                        .and_then(|m| serde_json::from_str(m).ok())
-                        .unwrap_or_else(|| serde_json::json!({}));
-
-                    let freshness_origin = task_meta_val["freshness_origin_state"]
-                        .as_str()
-                        .map(|s| s.to_owned());
-                    let reviewing_origin = freshness_origin.as_deref() == Some("reviewing");
-
-                    // Conditional increment: ensure_branches_fresh() already increments
-                    // freshness_conflict_count for the normal freshness path. The conflict
-                    // marker scan path (on_enter_states.rs) bypasses ensure_branches_fresh
-                    // and does NOT increment. Increment here only for the marker scan path.
-                    let already_incremented = task_meta_val["freshness_count_incremented_by"]
-                        .as_str()
-                        .is_some();
-                    let conflict_count = if already_incremented {
-                        task_meta_val["freshness_conflict_count"]
-                            .as_u64()
-                            .unwrap_or(0) as u32
-                    } else {
-                        // Conflict marker scan path: increment and persist
-                        let mut freshness = FreshnessMetadata::from_task_metadata(&task_meta_val);
-                        freshness.freshness_conflict_count += 1;
-                        let mut updated_meta = task_meta_val.clone();
-                        freshness.merge_into(&mut updated_meta);
-                        let task_id_clone = task_id.clone();
-                        let _ = self
-                            .task_repo
-                            .update_metadata(&task_id_clone, Some(updated_meta.to_string()))
-                            .await;
-                        freshness.freshness_conflict_count
-                    };
-
-                    // Cap check: >= 5 during review → escalate to Failed to prevent
-                    // infinite PendingReview↔Reviewing loops.
-                    const FRESHNESS_RETRY_LIMIT: u32 = 5;
-                    if reviewing_origin && conflict_count >= FRESHNESS_RETRY_LIMIT {
-                        tracing::warn!(
-                            task_id = task_id.as_str(),
-                            conflict_count = conflict_count,
-                            "Freshness retry limit exceeded during review — escalating to Failed"
-                        );
-                        handler.on_exit(&auto_state, &State::Failed(Default::default())).await;
-                        if let Some(result) = self
-                            .apply_corrective_transition(
-                                task_id,
-                                InternalStatus::Failed,
-                                Some("Exceeded freshness retry limit during review".to_string()),
-                                "system",
-                            )
-                            .await
-                        {
-                            if let Some(ref handle) = self._app_handle {
-                                let _ = handle.emit(
-                                    "task:event",
-                                    serde_json::json!({
-                                        "type": "status_changed",
-                                        "taskId": task_id.as_str(),
-                                        "from": result.from_status.as_str(),
-                                        "to": "failed",
-                                        "changedBy": "system",
-                                        "reason": "Exceeded freshness retry limit during review",
-                                    }),
-                                );
-                            }
-                        }
-                        break;
-                    }
-
-                    let (target_state, corrective_status, to_str) = if reviewing_origin {
-                        (State::PendingReview, InternalStatus::PendingReview, "pending_review")
-                    } else {
-                        (State::Merging, InternalStatus::Merging, "merging")
-                    };
-
-                    tracing::warn!(
-                        task_id = task_id.as_str(),
-                        from = auto_status.as_str(),
-                        origin = ?freshness_origin,
-                        routing_to = to_str,
-                        "BranchFreshnessConflict during auto-transition on_enter — routing to {:?}",
-                        target_state
-                    );
-
-                    // Clean up the auto-transition target state using dynamically-determined target
-                    handler.on_exit(&auto_state, &target_state).await;
-
-                    // L1: When routing back to PendingReview (reviewing_origin path), restore
-                    // worktree_path from merge-prefixed path back to the task execution worktree.
-                    // apply_corrective_transition re-fetches the task and preserves worktree_path,
-                    // so we must persist the restored path BEFORE the corrective transition.
-                    if reviewing_origin {
-                        if let Ok(Some(mut task)) = self.task_repo.get_by_id(task_id).await {
-                            let needs_restore = task
-                                .worktree_path
-                                .as_deref()
-                                .map(crate::domain::state_machine::transition_handler::is_merge_worktree_path)
-                                .unwrap_or(false);
-                            if needs_restore {
-                                match self.project_repo.get_by_id(&task.project_id).await {
-                                    Ok(Some(project)) => {
-                                        let repo_path = std::path::Path::new(&project.working_directory);
-                                        match crate::domain::state_machine::transition_handler::restore_task_worktree(
-                                            &mut task, &project, repo_path,
-                                        )
-                                        .await
-                                        {
-                                            Ok(restored) => {
-                                                tracing::info!(
-                                                    task_id = task_id.as_str(),
-                                                    restored_path = %restored.display(),
-                                                    "L1: restored worktree_path on Merging→PendingReview transition"
-                                                );
-                                                if let Err(e) = self.task_repo.update(&task).await {
-                                                    tracing::warn!(
-                                                        task_id = task_id.as_str(),
-                                                        error = %e,
-                                                        "L1: failed to persist restored worktree_path"
-                                                    );
-                                                }
-                                            }
-                                            Err(e) => {
-                                                tracing::warn!(
-                                                    task_id = task_id.as_str(),
-                                                    error = %e,
-                                                    "L1: failed to restore task worktree on Merging→PendingReview"
-                                                );
-                                            }
-                                        }
-                                    }
-                                    Ok(None) => {
-                                        tracing::warn!(
-                                            task_id = task_id.as_str(),
-                                            "L1: project not found for worktree restoration"
-                                        );
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!(
-                                            task_id = task_id.as_str(),
-                                            error = %e,
-                                            "L1: failed to fetch project for worktree restoration"
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if let Some(result) = self
-                        .apply_corrective_transition(
-                            task_id,
-                            corrective_status,
-                            None,
-                            "system",
-                        )
-                        .await
-                    {
-                        let reason = if reviewing_origin {
-                            "BranchFreshnessConflict during review — re-queuing for review"
-                        } else {
-                            "BranchFreshnessConflict during auto-transition"
-                        };
-
-                        // Emit corrective event for UI
-                        if let Some(ref handle) = self._app_handle {
-                            let _ = handle.emit(
-                                "task:event",
-                                serde_json::json!({
-                                    "type": "status_changed",
-                                    "taskId": task_id.as_str(),
-                                    "from": result.from_status.as_str(),
-                                    "to": to_str,
-                                    "changedBy": "system",
-                                    "reason": reason,
-                                }),
-                            );
-                        }
-
-                        if reviewing_origin {
-                            tracing::info!(
-                                task_id = task_id.as_str(),
-                                "Parked task in PendingReview after review-origin freshness conflict; skipping immediate re-entry to Reviewing"
-                            );
-                            break;
-                        } else {
-                            // Spawn merger agent (existing behavior for execution-phase conflicts)
-                            let merging_state = State::Merging;
-                            if let Err(merge_err) = handler.on_enter(&merging_state).await {
-                                tracing::error!(
-                                    error = %merge_err,
-                                    "on_enter(Merging) failed after BranchFreshnessConflict correction"
-                                );
-                            }
-                        }
-                    }
+                    self.handle_branch_freshness_conflict(&handler, task_id, &auto_state).await;
                 } else if matches!(&e, AppError::ReviewWorktreeMissing) {
                     use crate::domain::state_machine::machine::State;
 
@@ -1668,6 +1497,237 @@ impl<R: Runtime> TaskTransitionService<R> {
             }
             tracing::debug!(?auto_state, "Auto-transition on_enter complete");
             current_state = auto_state;
+        }
+    }
+
+    /// Shared handler for `BranchFreshnessConflict` errors.
+    ///
+    /// Called from both the initial `on_enter` error handler (startup recovery /
+    /// direct re-entry via `execute_entry_actions`) and the auto-transition
+    /// `on_enter` error handler.
+    ///
+    /// `current_state` is the state the task was in when the error occurred:
+    /// - Initial path: `&state` (the state passed to `execute_entry_actions`)
+    /// - Auto-transition path: `&auto_state` (the auto-transition target that failed)
+    ///
+    /// Operation order (load-bearing — do not reorder):
+    /// metadata read → conditional count increment → cap enforcement →
+    /// on_exit → worktree restoration → apply_corrective_transition →
+    /// event emission → conditional merger spawn.
+    ///
+    /// Note: during startup recovery the task has no running agent, so
+    /// `running_count` was never incremented. `on_exit` calls `saturating_sub` —
+    /// no underflow is possible.
+    async fn handle_branch_freshness_conflict(
+        &self,
+        handler: &crate::domain::state_machine::transition_handler::TransitionHandler<'_>,
+        task_id: &TaskId,
+        current_state: &crate::domain::state_machine::machine::State,
+    ) {
+        use crate::domain::state_machine::machine::State;
+        use crate::domain::state_machine::transition_handler::freshness::FreshnessMetadata;
+
+        // Step 1: Read freshness metadata written by on_enter before the error.
+        let fresh_task = self
+            .task_repo
+            .get_by_id(task_id)
+            .await
+            .ok()
+            .flatten();
+        let task_meta_val: serde_json::Value = fresh_task
+            .as_ref()
+            .and_then(|t| t.metadata.as_deref())
+            .and_then(|m| serde_json::from_str(m).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        let freshness_origin = task_meta_val["freshness_origin_state"]
+            .as_str()
+            .map(|s| s.to_owned());
+        let reviewing_origin = freshness_origin.as_deref() == Some("reviewing");
+
+        // Step 2: Conditional increment — only for the conflict marker scan path
+        // (which doesn't call ensure_branches_fresh and never sets
+        // freshness_count_incremented_by).
+        let already_incremented = task_meta_val["freshness_count_incremented_by"]
+            .as_str()
+            .is_some();
+        let conflict_count = if already_incremented {
+            task_meta_val["freshness_conflict_count"]
+                .as_u64()
+                .unwrap_or(0) as u32
+        } else {
+            let mut freshness = FreshnessMetadata::from_task_metadata(&task_meta_val);
+            freshness.freshness_conflict_count += 1;
+            let mut updated_meta = task_meta_val.clone();
+            freshness.merge_into(&mut updated_meta);
+            let task_id_clone = task_id.clone();
+            let _ = self
+                .task_repo
+                .update_metadata(&task_id_clone, Some(updated_meta.to_string()))
+                .await;
+            freshness.freshness_conflict_count
+        };
+
+        // Step 3: Cap enforcement — >= 5 during review → escalate to Failed.
+        const FRESHNESS_RETRY_LIMIT: u32 = 5;
+        if reviewing_origin && conflict_count >= FRESHNESS_RETRY_LIMIT {
+            tracing::warn!(
+                task_id = task_id.as_str(),
+                conflict_count = conflict_count,
+                "Freshness retry limit exceeded during review — escalating to Failed"
+            );
+            handler.on_exit(current_state, &State::Failed(Default::default())).await;
+            if let Some(result) = self
+                .apply_corrective_transition(
+                    task_id,
+                    InternalStatus::Failed,
+                    Some("Exceeded freshness retry limit during review".to_string()),
+                    "system",
+                )
+                .await
+            {
+                if let Some(ref handle) = self._app_handle {
+                    let _ = handle.emit(
+                        "task:event",
+                        serde_json::json!({
+                            "type": "status_changed",
+                            "taskId": task_id.as_str(),
+                            "from": result.from_status.as_str(),
+                            "to": "failed",
+                            "changedBy": "system",
+                            "reason": "Exceeded freshness retry limit during review",
+                        }),
+                    );
+                }
+            }
+            return;
+        }
+
+        let (target_state, corrective_status, to_str) = if reviewing_origin {
+            (State::PendingReview, InternalStatus::PendingReview, "pending_review")
+        } else {
+            (State::Merging, InternalStatus::Merging, "merging")
+        };
+
+        tracing::warn!(
+            task_id = task_id.as_str(),
+            origin = ?freshness_origin,
+            routing_to = to_str,
+            "BranchFreshnessConflict during on_enter — routing to {:?}",
+            target_state
+        );
+
+        // Step 4: on_exit for the current state.
+        handler.on_exit(current_state, &target_state).await;
+
+        // Step 5: Worktree restoration — for reviewing_origin path returning to
+        // PendingReview, restore worktree_path from merge-prefixed path back to
+        // the task execution worktree. Must persist BEFORE apply_corrective_transition
+        // (which re-fetches and preserves the current worktree_path).
+        if reviewing_origin {
+            if let Ok(Some(mut task)) = self.task_repo.get_by_id(task_id).await {
+                let needs_restore = task
+                    .worktree_path
+                    .as_deref()
+                    .map(crate::domain::state_machine::transition_handler::is_merge_worktree_path)
+                    .unwrap_or(false);
+                if needs_restore {
+                    match self.project_repo.get_by_id(&task.project_id).await {
+                        Ok(Some(project)) => {
+                            let repo_path = std::path::Path::new(&project.working_directory);
+                            match crate::domain::state_machine::transition_handler::restore_task_worktree(
+                                &mut task, &project, repo_path,
+                            )
+                            .await
+                            {
+                                Ok(restored) => {
+                                    tracing::info!(
+                                        task_id = task_id.as_str(),
+                                        restored_path = %restored.display(),
+                                        "L1: restored worktree_path on BranchFreshnessConflict → PendingReview"
+                                    );
+                                    if let Err(e) = self.task_repo.update(&task).await {
+                                        tracing::warn!(
+                                            task_id = task_id.as_str(),
+                                            error = %e,
+                                            "L1: failed to persist restored worktree_path"
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        task_id = task_id.as_str(),
+                                        error = %e,
+                                        "L1: failed to restore task worktree on BranchFreshnessConflict → PendingReview"
+                                    );
+                                }
+                            }
+                        }
+                        Ok(None) => {
+                            tracing::warn!(
+                                task_id = task_id.as_str(),
+                                "L1: project not found for worktree restoration"
+                            );
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                task_id = task_id.as_str(),
+                                error = %e,
+                                "L1: failed to fetch project for worktree restoration"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // Step 6: apply_corrective_transition.
+        if let Some(result) = self
+            .apply_corrective_transition(
+                task_id,
+                corrective_status,
+                None,
+                "system",
+            )
+            .await
+        {
+            let reason = if reviewing_origin {
+                "BranchFreshnessConflict during review — re-queuing for review"
+            } else {
+                "BranchFreshnessConflict during on_enter"
+            };
+
+            // Step 7: UI event emission.
+            if let Some(ref handle) = self._app_handle {
+                let _ = handle.emit(
+                    "task:event",
+                    serde_json::json!({
+                        "type": "status_changed",
+                        "taskId": task_id.as_str(),
+                        "from": result.from_status.as_str(),
+                        "to": to_str,
+                        "changedBy": "system",
+                        "reason": reason,
+                    }),
+                );
+            }
+
+            // Step 8: Conditional merger spawn — only for non-reviewing origin
+            // (Merging routing). Reviewing origin parks in PendingReview.
+            if reviewing_origin {
+                tracing::info!(
+                    task_id = task_id.as_str(),
+                    "Parked task in PendingReview after review-origin freshness conflict; skipping immediate re-entry to Reviewing"
+                );
+            } else {
+                let merging_state = State::Merging;
+                if let Err(merge_err) = handler.on_enter(&merging_state).await {
+                    tracing::error!(
+                        error = %merge_err,
+                        "on_enter(Merging) failed after BranchFreshnessConflict correction"
+                    );
+                }
+            }
         }
     }
 
