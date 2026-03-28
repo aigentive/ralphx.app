@@ -1,4 +1,5 @@
 use super::*;
+use crate::domain::entities::ReviewScopeMetadata;
 use crate::domain::state_machine::{State, TransitionHandler};
 use crate::domain::state_machine::transition_handler::{BranchPair, ProjectCtx, TaskCore, cleanup_helpers, merge_coordination, merge_helpers};
 
@@ -296,6 +297,56 @@ impl<'a> TransitionHandler<'a> {
             self.transition_to_merge_incomplete(
                 TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
                 metadata, true,
+            ).await;
+            return;
+        }
+
+        if let Some(violation) = self
+            .evaluate_merge_scope_backstop(task, project, &target_branch)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    error = %e,
+                    "Merge scope backstop failed to evaluate; allowing merge attempt to continue"
+                );
+                None
+            })
+        {
+            tracing::warn!(
+                task_id = task_id_str,
+                out_of_scope_files = ?violation.out_of_scope_files,
+                reason = %violation.reason,
+                "Merge scope backstop blocked PendingMerge and is routing back to revision"
+            );
+            crate::domain::entities::merge_progress_event::clear_merge_progress(task_id_str);
+            let metadata = serde_json::json!({
+                "error": violation.reason,
+                "error_code": "merge_scope_drift_guard",
+                "scope_guard_triggered": true,
+                "scope_guard_out_of_scope_files": violation.out_of_scope_files,
+                "source_branch": source_branch,
+                "target_branch": target_branch,
+            });
+            if self
+                .route_merge_scope_violation_to_revision(
+                    TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
+                    metadata,
+                )
+                .await
+            {
+                return;
+            }
+
+            self.transition_to_merge_incomplete(
+                TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
+                serde_json::json!({
+                    "error": "Merge scope backstop could not route task back to revision",
+                    "error_code": "merge_scope_drift_guard_fallback",
+                    "source_branch": source_branch,
+                    "target_branch": target_branch,
+                }),
+                true,
             ).await;
             return;
         }
@@ -871,4 +922,164 @@ impl<'a> TransitionHandler<'a> {
             }
         }
     }
+
+    async fn evaluate_merge_scope_backstop(
+        &self,
+        task: &Task,
+        project: &Project,
+        target_branch: &str,
+    ) -> AppResult<Option<MergeScopeBackstopViolation>> {
+        let Some(review_scope) =
+            ReviewScopeMetadata::from_task_metadata(task.metadata.as_deref())
+                .map_err(|e| crate::error::AppError::Validation(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        if review_scope.planned_paths.is_empty() {
+            return Ok(None);
+        }
+
+        let repo_path = task
+            .worktree_path
+            .as_ref()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(&project.working_directory));
+
+        let Some(source_branch) = task.task_branch.as_deref() else {
+            return Ok(None);
+        };
+
+        let diff = GitService::get_diff_stats_between(&repo_path, target_branch, source_branch).await?;
+        let current_out_of_scope_files = diff
+            .changed_files
+            .into_iter()
+            .filter(|path| !matches_planned_scope(path, &review_scope.planned_paths))
+            .collect::<Vec<_>>();
+
+        if current_out_of_scope_files.is_empty() {
+            return Ok(None);
+        }
+
+        let violation = match review_scope.drift_classification.as_deref() {
+            None => Some(MergeScopeBackstopViolation {
+                reason: format!(
+                    "Task branch still contains scope expansion at merge time, but review never recorded a drift classification: {}",
+                    current_out_of_scope_files.join(", ")
+                ),
+                out_of_scope_files: current_out_of_scope_files,
+            }),
+            Some("unrelated_drift") => Some(MergeScopeBackstopViolation {
+                reason: format!(
+                    "Task branch still contains unrelated scope drift at merge time: {}",
+                    current_out_of_scope_files.join(", ")
+                ),
+                out_of_scope_files: current_out_of_scope_files,
+            }),
+            Some("adjacent_scope_expansion") | Some("plan_correction") => {
+                let reviewed = review_scope
+                    .reviewed_out_of_scope_files
+                    .iter()
+                    .cloned()
+                    .collect::<std::collections::HashSet<_>>();
+                let unreviewed = current_out_of_scope_files
+                    .iter()
+                    .filter(|path| !reviewed.contains(*path))
+                    .cloned()
+                    .collect::<Vec<_>>();
+
+                if unreviewed.is_empty() {
+                    None
+                } else {
+                    Some(MergeScopeBackstopViolation {
+                        reason: format!(
+                            "Task branch introduced new out-of-scope files after review without fresh classification: {}",
+                            unreviewed.join(", ")
+                        ),
+                        out_of_scope_files: unreviewed,
+                    })
+                }
+            }
+            Some(other) => Some(MergeScopeBackstopViolation {
+                reason: format!(
+                    "Task branch has unsupported review scope drift classification '{}' at merge time",
+                    other
+                ),
+                out_of_scope_files: current_out_of_scope_files,
+            }),
+        };
+
+        Ok(violation)
+    }
+
+    async fn route_merge_scope_violation_to_revision(
+        &self,
+        tc: TaskCore<'_>,
+        metadata: serde_json::Value,
+    ) -> bool {
+        let (task, task_id, task_id_str, task_repo) =
+            (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
+        merge_helpers::merge_metadata_into(task, &metadata);
+        task.touch();
+        if let Err(e) = task_repo.update(task).await {
+            tracing::warn!(
+                task_id = task_id_str,
+                error = %e,
+                "Failed to persist merge scope guard metadata before retrying revision"
+            );
+            return false;
+        }
+
+        let Some(transition_service) = &self.machine.context.services.transition_service else {
+            tracing::warn!(
+                task_id = task_id_str,
+                "transition_service unavailable; cannot route merge scope guard back to revision"
+            );
+            return false;
+        };
+
+        match transition_service
+            .transition_task(task_id, InternalStatus::RevisionNeeded)
+            .await
+        {
+            Ok(_) => {
+                tracing::info!(
+                    task_id = task_id_str,
+                    "Merge scope backstop routed task back to RevisionNeeded"
+                );
+                true
+            }
+            Err(e) => {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    error = %e,
+                    "Failed to route merge scope guard back to RevisionNeeded"
+                );
+                false
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct MergeScopeBackstopViolation {
+    reason: String,
+    out_of_scope_files: Vec<String>,
+}
+
+fn matches_planned_scope(path: &str, planned_scope: &[String]) -> bool {
+    let normalized_path = normalize_scope_path(path);
+    planned_scope.iter().any(|entry| {
+        let normalized_entry = normalize_scope_path(entry);
+        normalized_path == normalized_entry
+            || normalized_path
+                .strip_prefix(&normalized_entry)
+                .is_some_and(|rest| rest.starts_with('/'))
+    })
+}
+
+fn normalize_scope_path(path: &str) -> String {
+    path.trim()
+        .trim_start_matches("./")
+        .trim_matches('/')
+        .to_string()
 }

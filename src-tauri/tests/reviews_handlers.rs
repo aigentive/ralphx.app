@@ -25,7 +25,7 @@ use ralphx_lib::application::{
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
     IdeationSession, InternalStatus, Priority, Project, ProjectId, ProposalCategory, ReviewNote,
-    ReviewOutcome, ReviewerType, Task, TaskProposal,
+    ReviewOutcome, ReviewScopeMetadata, ReviewerType, Task, TaskProposal,
 };
 use ralphx_lib::domain::review::ReviewSettings;
 use ralphx_lib::http_server::handlers::*;
@@ -408,6 +408,68 @@ async fn test_complete_review_needs_changes_creates_first_class_review_issues() 
         Some("Scope drift spans the task branch, not a single execution step")
     );
     assert_eq!(issue.file_path.as_deref(), Some("src/feature.rs"));
+}
+
+#[tokio::test]
+async fn test_complete_review_persists_review_scope_snapshot_for_merge_backstop() {
+    let (state, task) = setup_review_scope_drift_state().await;
+
+    let req = CompleteReviewRequest {
+        task_id: task.id.as_str().to_string(),
+        decision: "needs_changes".to_string(),
+        summary: Some("Needs revision".to_string()),
+        feedback: Some("Keep the branch scoped to the proposal boundary.".to_string()),
+        issues: Some(vec![ReviewIssueRequest {
+            severity: "major".to_string(),
+            title: Some("feature.rs is outside task scope".to_string()),
+            step_id: None,
+            no_step_reason: Some(
+                "Scope drift spans the task branch, not a single execution step".to_string(),
+            ),
+            description: Some(
+                "The branch modified feature.rs even though the proposal only covered src-tauri/src/http_server."
+                    .to_string(),
+            ),
+            category: Some("quality".to_string()),
+            file_path: Some("feature.rs".to_string()),
+            line_number: None,
+            code_snippet: None,
+        }]),
+        escalation_reason: None,
+        scope_drift_classification: Some("unrelated_drift".to_string()),
+        scope_drift_notes: Some("feature.rs came from unrelated repo cleanup.".to_string()),
+    };
+
+    let result = complete_review(State(state.clone()), ProjectScope(None), Json(req)).await;
+    assert!(result.is_ok(), "needs_changes with structured issues should succeed");
+
+    let updated_task = state
+        .app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let review_scope = ReviewScopeMetadata::from_task_metadata(updated_task.metadata.as_deref())
+        .unwrap()
+        .expect("review_scope metadata should be present");
+
+    assert_eq!(
+        review_scope.planned_paths,
+        vec!["src-tauri/src/http_server".to_string()]
+    );
+    assert_eq!(
+        review_scope.reviewed_out_of_scope_files,
+        vec!["feature.rs".to_string()]
+    );
+    assert_eq!(
+        review_scope.drift_classification.as_deref(),
+        Some("unrelated_drift")
+    );
+    assert_eq!(
+        review_scope.drift_notes.as_deref(),
+        Some("feature.rs came from unrelated repo cleanup.")
+    );
 }
 
 #[tokio::test]

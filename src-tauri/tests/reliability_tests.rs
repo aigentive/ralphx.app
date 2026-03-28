@@ -702,6 +702,7 @@ async fn c4_finalize_proposals_links_all_proposals_to_tasks() {
             plan_version_at_creation: None,
             created_task_id: None, // starts as None — will be linked after finalize
             selected: false,
+            affected_paths: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
             archived_at: None,
@@ -881,6 +882,7 @@ async fn c4_count_mismatch_prevents_finalize_and_leaves_no_orphans() {
             plan_version_at_creation: None,
             created_task_id: None,
             selected: false,
+            affected_paths: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
             archived_at: None,
@@ -1092,6 +1094,7 @@ fn make_c5_proposal(
         plan_version_at_creation: None,
         created_task_id: None,
         selected: false,
+        affected_paths: None,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
         archived_at: None,

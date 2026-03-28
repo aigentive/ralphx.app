@@ -16,6 +16,55 @@ fn merge_recovery_metadata_default_works() {
 }
 
 #[test]
+fn review_scope_metadata_roundtrip_through_task_metadata() {
+    let meta = ReviewScopeMetadata::new(
+        vec!["src-tauri/src/http_server".to_string()],
+        vec!["ralphx.yaml".to_string()],
+        Some("plan_correction".to_string()),
+        Some("Needed a small adjacent boundary expansion".to_string()),
+    );
+
+    let json = meta
+        .update_task_metadata(Some(r#"{"other":"value"}"#))
+        .unwrap();
+    let restored = ReviewScopeMetadata::from_task_metadata(Some(&json))
+        .unwrap()
+        .expect("review_scope should exist");
+
+    assert_eq!(restored.planned_paths, vec!["src-tauri/src/http_server"]);
+    assert_eq!(restored.reviewed_out_of_scope_files, vec!["ralphx.yaml"]);
+    assert_eq!(
+        restored.drift_classification.as_deref(),
+        Some("plan_correction")
+    );
+    assert_eq!(
+        restored.drift_notes.as_deref(),
+        Some("Needed a small adjacent boundary expansion")
+    );
+}
+
+#[test]
+fn review_scope_metadata_clear_removes_only_review_scope_key() {
+    let meta = ReviewScopeMetadata::new(
+        vec!["src".to_string()],
+        vec!["other/file.rs".to_string()],
+        Some("adjacent_scope_expansion".to_string()),
+        None,
+    );
+    let json = meta
+        .update_task_metadata(Some(r#"{"keep":"value"}"#))
+        .unwrap();
+
+    let cleared = ReviewScopeMetadata::clear_from_task_metadata(Some(&json))
+        .unwrap()
+        .expect("metadata should remain");
+    let value: serde_json::Value = serde_json::from_str(&cleared).unwrap();
+
+    assert_eq!(value["keep"], "value");
+    assert!(value.get("review_scope").is_none());
+}
+
+#[test]
 fn merge_recovery_metadata_max_events_constant() {
     assert_eq!(MergeRecoveryMetadata::MAX_EVENTS, 50);
 }

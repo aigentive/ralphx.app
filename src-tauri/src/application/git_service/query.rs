@@ -266,6 +266,29 @@ impl GitService {
         })
     }
 
+    pub async fn get_diff_stats_between(path: &Path, from_ref: &str, to_ref: &str) -> AppResult<DiffStats> {
+        let range = format!("{from_ref}..{to_ref}");
+
+        let stat_output = git_cmd::run(&["diff", "--shortstat", &range], path).await?;
+        let stat_stdout = String::from_utf8_lossy(&stat_output.stdout);
+        let (files_changed, insertions, deletions) = Self::parse_shortstat(&stat_stdout);
+
+        let name_output = git_cmd::run(&["diff", "--name-only", &range], path).await?;
+        let name_stdout = String::from_utf8_lossy(&name_output.stdout);
+        let changed_files: Vec<String> = name_stdout
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(String::from)
+            .collect();
+
+        Ok(DiffStats {
+            files_changed,
+            insertions,
+            deletions,
+            changed_files,
+        })
+    }
+
     /// Parse git shortstat output
     pub(super) fn parse_shortstat(output: &str) -> (u32, u32, u32) {
         let mut files = 0u32;

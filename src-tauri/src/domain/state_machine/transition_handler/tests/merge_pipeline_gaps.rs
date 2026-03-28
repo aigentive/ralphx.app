@@ -13,7 +13,8 @@
 
 use super::helpers::*;
 use crate::domain::entities::{
-    IdeationSessionId, InternalStatus, MergeStrategy, PlanBranchStatus, Project, ProjectId, Task,
+    IdeationSessionId, InternalStatus, MergeStrategy, PlanBranchStatus, Project, ProjectId,
+    ReviewScopeMetadata, Task,
 };
 use crate::domain::repositories::PlanBranchRepository;
 use crate::domain::state_machine::services::TaskScheduler;
@@ -289,6 +290,74 @@ async fn gap2_two_phase_plan_update_then_task_merge() {
         plan_log_str.contains("task work") || plan_log_str.contains("two-phase"),
         "Plan branch should contain task's work (phase 2 task-merge). Log:\n{}",
         plan_log_str,
+    );
+}
+
+/// Merge backstop: if review already recorded unrelated drift and the branch still contains
+/// that out-of-scope file at PendingMerge, the merge must fail closed instead of silently
+/// proceeding to merge unrelated work.
+#[tokio::test]
+async fn gap2b_unrelated_reviewed_drift_blocks_merge_attempt() {
+    let git_repo = setup_real_git_repo();
+    let path = git_repo.path();
+
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let mut task = Task::new(project_id.clone(), "Gap2b scope drift backstop".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.task_branch = Some(git_repo.task_branch.clone());
+    task.metadata = Some(
+        ReviewScopeMetadata::new(
+            vec!["src-tauri/src/http_server".to_string()],
+            vec!["feature.rs".to_string()],
+            Some("unrelated_drift".to_string()),
+            Some("feature.rs came from unrelated cleanup and must not merge".to_string()),
+        )
+        .update_task_metadata(None)
+        .unwrap(),
+    );
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let mut project = make_real_git_project(&git_repo.path_string());
+    project.id = project_id;
+    project.base_branch = Some("main".to_string());
+    project.merge_strategy = MergeStrategy::Merge;
+    project_repo.create(project).await.unwrap();
+
+    let (_, services) =
+        make_services_with_tracked_chat(Arc::clone(&task_repo), Arc::clone(&project_repo));
+    let context = TaskContext::new(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeIncomplete,
+        "Without transition_service wiring in this test harness, unrelated reviewed drift should fail closed before merge. Metadata: {:?}",
+        updated.metadata,
+    );
+
+    let metadata: serde_json::Value =
+        serde_json::from_str(updated.metadata.as_deref().unwrap_or("{}")).unwrap();
+    assert_eq!(metadata["scope_guard_triggered"], true);
+    assert_eq!(metadata["error_code"], "merge_scope_drift_guard_fallback");
+
+    let log = std::process::Command::new("git")
+        .args(["log", "--oneline", "main"])
+        .current_dir(path)
+        .output()
+        .expect("git log");
+    let log_str = String::from_utf8_lossy(&log.stdout);
+    assert!(
+        !log_str.contains("Gap2b scope drift backstop"),
+        "Merge must not create a main-branch merge commit when the backstop trips. Log:\n{}",
+        log_str,
     );
 }
 

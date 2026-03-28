@@ -9,8 +9,8 @@ use super::*;
 use crate::application::{GitService, TaskSchedulerService, TaskTransitionService};
 use crate::domain::entities::{
     IssueCategory, IssueSeverity, InternalStatus, Review, ReviewIssue as ReviewNoteIssue,
-    ReviewIssueEntity, ReviewNote, ReviewOutcome, ReviewerType, ScopeDriftStatus, TaskId,
-    TaskStepId,
+    ReviewIssueEntity, ReviewNote, ReviewOutcome, ReviewScopeMetadata, ReviewerType,
+    ScopeDriftStatus, TaskId, TaskStepId,
 };
 use crate::domain::services::running_agent_registry::RunningAgentKey;
 use crate::domain::tools::complete_review::ScopeDriftClassification;
@@ -32,7 +32,7 @@ pub async fn complete_review(
     let task_id = TaskId::from_string(req.task_id);
 
     // 1. Get task and validate state is Reviewing
-    let task = state
+    let mut task = state
         .app_state
         .task_repo
         .get_by_id(&task_id)
@@ -262,6 +262,15 @@ pub async fn complete_review(
         .add_note(&review_note)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    persist_review_scope_snapshot(
+        &state,
+        &mut task,
+        &task_context,
+        scope_drift_classification,
+        req.scope_drift_notes.clone(),
+    )
+    .await?;
 
     if matches!(outcome, ReviewToolOutcome::NeedsChanges) {
         if let Some(issues) = parsed_issues {
@@ -591,6 +600,46 @@ pub async fn complete_review(
     }))
 }
 
+async fn persist_review_scope_snapshot(
+    state: &HttpServerState,
+    task: &mut crate::domain::entities::Task,
+    task_context: &crate::domain::entities::TaskContext,
+    scope_drift_classification: Option<ScopeDriftClassification>,
+    scope_drift_notes: Option<String>,
+) -> Result<(), (StatusCode, String)> {
+    let planned_paths = task_context
+        .source_proposal
+        .as_ref()
+        .map(|proposal| proposal.affected_paths.clone())
+        .unwrap_or_default();
+
+    let updated_metadata = if planned_paths.is_empty() {
+        ReviewScopeMetadata::clear_from_task_metadata(task.metadata.as_deref())
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    } else {
+        let review_scope = ReviewScopeMetadata::new(
+            planned_paths,
+            task_context.out_of_scope_files.clone(),
+            scope_drift_classification.map(scope_drift_classification_to_str),
+            scope_drift_notes,
+        );
+        Some(
+            review_scope
+                .update_task_metadata(task.metadata.as_deref())
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+        )
+    };
+
+    task.metadata = updated_metadata;
+    state
+        .app_state
+        .task_repo
+        .update(task)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(())
+}
+
 fn parse_scope_drift_classification(
     value: &str,
 ) -> Result<ScopeDriftClassification, String> {
@@ -602,6 +651,18 @@ fn parse_scope_drift_classification(
             "Invalid scope_drift_classification: '{}'. Expected 'adjacent_scope_expansion', 'plan_correction', or 'unrelated_drift'",
             other
         )),
+    }
+}
+
+fn scope_drift_classification_to_str(
+    classification: ScopeDriftClassification,
+) -> String {
+    match classification {
+        ScopeDriftClassification::AdjacentScopeExpansion => {
+            "adjacent_scope_expansion".to_string()
+        }
+        ScopeDriftClassification::PlanCorrection => "plan_correction".to_string(),
+        ScopeDriftClassification::UnrelatedDrift => "unrelated_drift".to_string(),
     }
 }
 

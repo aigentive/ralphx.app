@@ -105,6 +105,7 @@ async fn create_session_with_plan_and_proposals(
             plan_version_at_creation: None,
             created_task_id: None,
             selected: false,
+            affected_paths: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
             archived_at: None,

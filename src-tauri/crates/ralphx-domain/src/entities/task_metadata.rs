@@ -118,6 +118,100 @@ impl Default for MergeRecoveryMetadata {
     }
 }
 
+/// Review-time scope snapshot stored in task metadata for later merge-time verification.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReviewScopeMetadata {
+    /// The proposal's coarse planned scope at review time.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub planned_paths: Vec<String>,
+    /// Backend-computed out-of-scope files seen by the reviewer.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reviewed_out_of_scope_files: Vec<String>,
+    /// Reviewer's explicit drift classification, if any.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub drift_classification: Option<String>,
+    /// Optional reviewer notes explaining the drift decision.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub drift_notes: Option<String>,
+    /// When this review snapshot was recorded.
+    pub reviewed_at: DateTime<Utc>,
+}
+
+impl ReviewScopeMetadata {
+    pub fn new(
+        planned_paths: Vec<String>,
+        reviewed_out_of_scope_files: Vec<String>,
+        drift_classification: Option<String>,
+        drift_notes: Option<String>,
+    ) -> Self {
+        Self {
+            planned_paths,
+            reviewed_out_of_scope_files,
+            drift_classification,
+            drift_notes,
+            reviewed_at: Utc::now(),
+        }
+    }
+
+    /// Parse metadata from task's metadata JSON string.
+    pub fn from_task_metadata(
+        metadata_json: Option<&str>,
+    ) -> Result<Option<Self>, serde_json::Error> {
+        let Some(json_str) = metadata_json else {
+            return Ok(None);
+        };
+
+        let value: serde_json::Value = serde_json::from_str(json_str)?;
+
+        if let Some(review_scope) = value.get("review_scope") {
+            let review_scope: ReviewScopeMetadata =
+                serde_json::from_value(review_scope.clone())?;
+            Ok(Some(review_scope))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Update task metadata with this review scope snapshot.
+    pub fn update_task_metadata(
+        &self,
+        existing_metadata: Option<&str>,
+    ) -> Result<String, serde_json::Error> {
+        let mut metadata_obj = if let Some(json_str) = existing_metadata {
+            serde_json::from_str::<serde_json::Value>(json_str)
+                .unwrap_or_else(|_| serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+
+        if let Some(obj) = metadata_obj.as_object_mut() {
+            obj.insert("review_scope".to_string(), serde_json::to_value(self)?);
+        }
+
+        serde_json::to_string(&metadata_obj)
+    }
+
+    /// Remove any stale review scope snapshot from task metadata.
+    pub fn clear_from_task_metadata(
+        existing_metadata: Option<&str>,
+    ) -> Result<Option<String>, serde_json::Error> {
+        let Some(json_str) = existing_metadata else {
+            return Ok(None);
+        };
+
+        let mut metadata_obj: serde_json::Value =
+            serde_json::from_str(json_str).unwrap_or_else(|_| serde_json::json!({}));
+
+        if let Some(obj) = metadata_obj.as_object_mut() {
+            if obj.remove("review_scope").is_some() {
+                return Ok(Some(serde_json::to_string(&metadata_obj)?));
+            }
+        }
+
+        Ok(Some(json_str.to_string()))
+    }
+}
+
 /// Individual merge recovery event
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MergeRecoveryEvent {
