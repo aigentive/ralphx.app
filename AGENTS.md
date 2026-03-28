@@ -51,11 +51,18 @@ When working in `src-tauri/`, also follow:
 | P0 | Pipeline allocation | Ideation spawn/resume now respect global cap, project ideation cap, project total cap, borrowing only when execution is not waiting, cross-project paused-queue fairness during resume, and execution-side queued work now gets first claim on shared capacity before ideation relaunch; task/review/merge admission, manual task resume, reconciliation retries, and spawner dispatch all respect project totals across runtime + recovery paths; next validate under heavier mixed load and decide whether queued-message pressure needs stronger inline UX than the current telemetry |
 | P1 | Queue + recovery alignment | Landed: pause queues all slot-consuming sends, resume relaunches paused ideation + active task/review/merge queued work in execution-first order, stop clears queued slot-consuming work, and execution status now reports queued agent-message pressure separately from Ready-task queue depth; next validate whether more real-time queue event emission is worth the extra plumbing |
 | P1 | Settings surface | YAML-seeded defaults plus UI/API controls now cover global/project ideation caps + borrow toggle; next keep validating those controls against per-project admission and borrowing behavior |
+| P1 | Autonomous scope drift prevention | Multi-session tracker: preserve adaptive execution without silent out-of-scope edits; next slices are (1) ideation/proposal scope declaration hardening, (2) verifier/specialist preemption of likely spill, (3) execution/review drift detection with revise-first loops, (4) follow-up ideation provenance/UI refinement, (5) merge-time final safety net that distinguishes necessary scope expansion from unrelated drift |
 | P2 | Transition handler support layer | After concurrency semantics stabilize, resume splitting `merge_validation`, `merge_coordination`, remaining `side_effects` hot spots, and the oversized review/freshness corrective-routing path across `src-tauri/src/application/task_transition_service.rs` plus `src-tauri/src/domain/state_machine/transition_handler/on_enter_states/review.rs` |
 | P2 | Scheduler + watchdog orchestration | `src-tauri/src/application/task_scheduler_service.rs` now carries Ready scheduling, deferred-merge retries, main-merge retries, contention retry logic, and parked-review freshness wakeups; next extract retry families/watchdog querying into smaller support modules once the current semantics settle |
 | P2 | Execution command orchestration | Split `src-tauri/src/commands/execution_commands.rs` after the transition-handler support layer pass; priority slices are pause/stop/resume orchestration, queue relaunch helpers, status/event payload shaping, and the oversized embedded test block |
 | P2 | Capability test split | Continue moving OS-capability checks out of default broad suites into explicit ignored tests or dedicated capability binaries |
 | P3 | Oversized HTTP handlers | After transition-handler stabilization, resume large backend handler refactors like `git.rs` and `teams.rs` |
+
+## Cross-Session Tracker Notes
+
+| Tracker | Current Guardrails |
+|---|---|
+| Autonomous scope drift prevention | Accepted ideation sessions stay read-only; unrelated blocking failures should prefer spawning follow-up ideation sessions with first-class provenance; review should send back to revise before escalating when drift looks fixable; any future scope guard must allow necessary plan correction and adjacent files, not only exact initial file lists |
 
 ## Current TDD Rollout
 
