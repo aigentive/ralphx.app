@@ -27,12 +27,14 @@ import { useEventBus } from "@/providers/EventProvider";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useChatStore } from "@/stores/chatStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
+import { navigateToIdeationSession } from "@/lib/navigation";
 import { ideationKeys } from "./useIdeation";
 import type { Unsubscribe } from "@/lib/event-bus";
 import { logger } from "@/lib/logger";
 import type { VerificationStatus, VerificationGap } from "@/types/ideation";
 import type { VerificationStatusResponse } from "@/api/ideation.types";
 import { PlanVerificationStatusChangedSchema } from "@/types/events";
+import type { EventVerificationGap } from "@/types/events";
 export type { PlanVerificationStatusChangedEvent, PlanVerificationStatusChangedPayload } from "@/types/events";
 
 // ============================================================================
@@ -68,8 +70,8 @@ export function useVerificationEvents() {
 
         const parsed = PlanVerificationStatusChangedSchema.safeParse(payload);
         if (!parsed.success) {
-          console.error(
-            "Invalid plan_verification:status_changed event:",
+          logger.debug(
+            "[VerificationEvents] Invalid plan_verification:status_changed event:",
             parsed.error.message
           );
           return;
@@ -83,7 +85,7 @@ export function useVerificationEvents() {
           gap_score: rawGapScore,
           round: rawRound,
           max_rounds: rawMaxRounds,
-          convergence_reason: convergenceReason,
+          convergence_reason: rawConvergenceReason,
           current_gaps: currentGaps,
           rounds,
         } = parsed.data;
@@ -91,6 +93,7 @@ export function useVerificationEvents() {
         const gapScore = rawGapScore ?? undefined;
         const round = rawRound ?? undefined;
         const maxRounds = rawMaxRounds ?? undefined;
+        const convergenceReason = rawConvergenceReason ?? undefined;
 
         // Partial store update so components re-render immediately (sync)
         // Increment verificationUpdateSeq so resolvedSession merge prefers store over stale React Query data
@@ -104,12 +107,28 @@ export function useVerificationEvents() {
 
         // Toast notifications for terminal transitions (in_progress=false with terminal status)
         if (!inProgress) {
+          const sessionTitle =
+            useIdeationStore.getState().sessions[sessionId]?.title ?? "Ideation Session";
+          const toastOptions = {
+            id: `verification:${sessionId}`,
+            duration: 30000,
+            closeButton: true,
+            description: `Session: ${sessionTitle}`,
+            action: {
+              label: "View Session",
+              onClick: () => {
+                navigateToIdeationSession(sessionId);
+                toast.dismiss(`verification:${sessionId}`);
+              },
+            },
+          };
+
           if (status === "verified") {
-            toast.success("Plan verified — no critical gaps remain.", { duration: 5000 });
+            toast.success("Plan verified — no critical gaps remain.", toastOptions);
           } else if (status === "needs_revision") {
-            toast.warning("Verification complete — gaps found that need attention.", { duration: 6000 });
+            toast.warning("Verification complete — gaps found that need attention.", toastOptions);
           } else if (status === "skipped") {
-            toast.info("Verification skipped.");
+            toast.info("Verification skipped.", toastOptions);
           }
           // Clear verification notification banner on any terminal state
           clearVerificationNotification(sessionId);
@@ -119,105 +138,20 @@ export function useVerificationEvents() {
           useChatStore.getState().setAgentStatus(buildStoreKey('ideation', sessionId), 'idle');
         }
 
-        // Async portion wrapped in IIFE — bus.subscribe callbacks must be synchronous
-        void (async () => {
-          // 1. Cancel in-flight verification fetches BEFORE setQueryData.
-          //    This closes the race window where a background refetch started by a
-          //    previous event could complete after setQueryData and overwrite fresh data.
-          await queryClient.cancelQueries({ queryKey: ["verification", sessionId] });
-
-          // 2. Fast path: if event carries full gap/round data, populate cache directly
-          //    so UI updates instantly without waiting for a refetch round-trip.
-          if (currentGaps !== undefined && rounds !== undefined) {
-            const cached = queryClient.getQueryData<VerificationStatusResponse>(["verification", sessionId]);
-            const generationChanged =
-              generation !== undefined && generation !== cached?.generation;
-            const generationAdvanced =
-              generation !== undefined &&
-              (cached?.generation === undefined || generation > cached.generation);
-
-            // Round guard: reject out-of-order events within the same generation only.
-            // A newer generation must always win even if its round number is lower.
-            const isStaleRound =
-              !generationAdvanced &&
-              cached?.currentRound !== undefined &&
-              round !== undefined &&
-              round < cached.currentRound &&
-              status !== "unverified";
-
-            if (isStaleRound) {
-              logger.debug(
-                "[VerificationEvents] Skipping stale event: round",
-                round,
-                "< cached",
-                cached?.currentRound,
-                "for generation",
-                generation ?? cached?.generation
-              );
-            } else {
-              const transformedGaps: VerificationGap[] = currentGaps.map((g) => ({
-                severity: g.severity,
-                category: g.category,
-                description: g.description,
-                ...(g.why_it_matters != null && { whyItMatters: g.why_it_matters }),
-              }));
-
-              // Stamp current plan version so staleness can be derived later by comparing
-              // planArtifact.version (store) vs planVersion (verification cache).
-              const planVersion = useIdeationStore.getState().planArtifact?.metadata.version;
-              if (planVersion === undefined) {
-                logger.debug(
-                  "[VerificationEvents] planVersion undefined at stamp time — " +
-                  "staleness comparison will fall through to 'not stale'"
-                );
-              }
-
-              const cacheData: VerificationStatusResponse = {
-                sessionId,
-                status: status as VerificationStatusResponse["status"],
-                inProgress,
-                ...(generation !== undefined && { generation }),
-                ...(round !== undefined && { currentRound: round }),
-                ...(maxRounds !== undefined && { maxRounds }),
-                ...(gapScore !== undefined && { gapScore }),
-                ...(convergenceReason != null && { convergenceReason }),
-                gaps: transformedGaps,
-                rounds: [],  // Event rounds have different shape (fingerprints); safety net refetch fills this
-                ...(planVersion !== undefined && { planVersion }),
-              };
-              queryClient.setQueryData(["verification", sessionId], cacheData);
-              logger.debug(
-                "[VerificationEvents] setQueryData fast path for",
-                sessionId,
-                "generation",
-                generation,
-                "round",
-                round
-              );
-            }
-
-            // Fast path has authoritative data. On generation changes we still invalidate as a
-            // safety net so the HTTP cache re-hydrates any fields the start/reset event omitted.
-            if (generationChanged) {
-              queryClient.invalidateQueries({ queryKey: ["verification", sessionId] });
-            }
-            // Invalidate child sessions so history picker and VerificationPanel stay fresh.
-            queryClient.invalidateQueries({ queryKey: ["childSessions", sessionId] });
-          } else {
-            // No fast path data — must invalidate to trigger refetch.
-            // This branch currently never fires (all emission points include full data)
-            // but serves as safety net for future emission points.
-            queryClient.invalidateQueries({ queryKey: ["verification", sessionId] });
-            // Invalidate child sessions (prefix match covers all purpose variants).
-            queryClient.invalidateQueries({ queryKey: ["childSessions", sessionId] });
-          }
-
-          // Always invalidate session queries (different data source, no race risk)
-          queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
-          queryClient.invalidateQueries({
-            queryKey: ideationKeys.sessionWithData(sessionId),
-          });
-        })();
+        // Async cache update — bus.subscribe callbacks must be synchronous
+        void updateVerificationQueryCache({
+          queryClient,
+          sessionId,
+          status,
+          inProgress,
+          generation,
+          gapScore,
+          round,
+          maxRounds,
+          convergenceReason,
+          currentGaps,
+          rounds,
+        });
       })
     );
 
@@ -225,4 +159,136 @@ export function useVerificationEvents() {
       unsubscribes.forEach((unsub) => unsub());
     };
   }, [bus, updateSession, clearVerificationNotification, queryClient]);
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+interface UpdateVerificationQueryCacheParams {
+  queryClient: ReturnType<typeof useQueryClient>;
+  sessionId: string;
+  status: string;
+  inProgress: boolean;
+  generation: number | undefined;
+  gapScore: number | undefined;
+  round: number | undefined;
+  maxRounds: number | undefined;
+  convergenceReason: string | undefined;
+  currentGaps: EventVerificationGap[] | undefined;
+  rounds: unknown[] | undefined;
+}
+
+async function updateVerificationQueryCache({
+  queryClient,
+  sessionId,
+  status,
+  inProgress,
+  generation,
+  gapScore,
+  round,
+  maxRounds,
+  convergenceReason,
+  currentGaps,
+  rounds,
+}: UpdateVerificationQueryCacheParams): Promise<void> {
+  // 1. Cancel in-flight verification fetches BEFORE setQueryData.
+  //    This closes the race window where a background refetch started by a
+  //    previous event could complete after setQueryData and overwrite fresh data.
+  await queryClient.cancelQueries({ queryKey: ["verification", sessionId] });
+
+  // 2. Fast path: if event carries full gap/round data, populate cache directly
+  //    so UI updates instantly without waiting for a refetch round-trip.
+  if (currentGaps !== undefined && rounds !== undefined) {
+    const cached = queryClient.getQueryData<VerificationStatusResponse>(["verification", sessionId]);
+    const generationChanged =
+      generation !== undefined && generation !== cached?.generation;
+    const generationAdvanced =
+      generation !== undefined &&
+      (cached?.generation === undefined || generation > cached.generation);
+
+    // Round guard: reject out-of-order events within the same generation only.
+    // A newer generation must always win even if its round number is lower.
+    const isStaleRound =
+      !generationAdvanced &&
+      cached?.currentRound !== undefined &&
+      round !== undefined &&
+      round < cached.currentRound &&
+      status !== "unverified";
+
+    if (isStaleRound) {
+      logger.debug(
+        "[VerificationEvents] Skipping stale event: round",
+        round,
+        "< cached",
+        cached?.currentRound,
+        "for generation",
+        generation ?? cached?.generation
+      );
+    } else {
+      const transformedGaps: VerificationGap[] = transformGaps(currentGaps);
+
+      // Stamp current plan version so staleness can be derived later by comparing
+      // planArtifact.version (store) vs planVersion (verification cache).
+      const planVersion = useIdeationStore.getState().planArtifact?.metadata.version;
+      if (planVersion === undefined) {
+        logger.debug(
+          "[VerificationEvents] planVersion undefined at stamp time — " +
+          "staleness comparison will fall through to 'not stale'"
+        );
+      }
+
+      const cacheData: VerificationStatusResponse = {
+        sessionId,
+        status: status as VerificationStatusResponse["status"],
+        inProgress,
+        ...(generation !== undefined && { generation }),
+        ...(round !== undefined && { currentRound: round }),
+        ...(maxRounds !== undefined && { maxRounds }),
+        ...(gapScore !== undefined && { gapScore }),
+        ...(convergenceReason != null && { convergenceReason }),
+        gaps: transformedGaps,
+        rounds: [],  // Event rounds have different shape (fingerprints); safety net refetch fills this
+        ...(planVersion !== undefined && { planVersion }),
+      };
+      queryClient.setQueryData(["verification", sessionId], cacheData);
+      logger.debug(
+        "[VerificationEvents] setQueryData fast path for",
+        sessionId,
+        "generation",
+        generation,
+        "round",
+        round
+      );
+    }
+
+    // Fast path has authoritative data. On generation changes we still invalidate as a
+    // safety net so the HTTP cache re-hydrates any fields the start/reset event omitted.
+    if (generationChanged) {
+      queryClient.invalidateQueries({ queryKey: ["verification", sessionId] });
+    }
+  } else {
+    // No fast path data — must invalidate to trigger refetch.
+    // This branch currently never fires (all emission points include full data)
+    // but serves as safety net for future emission points.
+    queryClient.invalidateQueries({ queryKey: ["verification", sessionId] });
+  }
+
+  // Invalidate child sessions so history picker and VerificationPanel stay fresh.
+  queryClient.invalidateQueries({ queryKey: ["childSessions", sessionId] });
+
+  // Always invalidate session queries (different data source, no race risk)
+  queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
+  queryClient.invalidateQueries({
+    queryKey: ideationKeys.sessionWithData(sessionId),
+  });
+}
+
+function transformGaps(gaps: EventVerificationGap[]): VerificationGap[] {
+  return gaps.map((g) => ({
+    severity: g.severity,
+    category: g.category,
+    description: g.description,
+    ...(g.why_it_matters != null && { whyItMatters: g.why_it_matters }),
+  }));
 }
