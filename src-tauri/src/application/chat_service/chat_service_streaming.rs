@@ -100,6 +100,7 @@ const COMPLETION_TOOL_NAMES: &[&str] = &[
     "mcp__ralphx__execution_complete",
     "mcp__ralphx__complete_review",
     "mcp__ralphx__complete_merge",
+    "mcp__ralphx__finalize_proposals",
 ];
 
 #[doc(hidden)]

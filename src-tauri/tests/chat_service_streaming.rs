@@ -231,6 +231,11 @@ fn test_completion_tool_detection_accepts_merge_mcp_name() {
 }
 
 #[test]
+fn test_completion_tool_detection_accepts_finalize_proposals_mcp_name() {
+    assert!(is_completion_tool_name("mcp__ralphx__finalize_proposals"));
+}
+
+#[test]
 fn test_completion_tool_detection_rejects_non_completion_mcp_names() {
     let mut tracker = CompletionSignalTracker::default();
 
@@ -553,6 +558,7 @@ fn test_completion_tracker_recognizes_all_completion_tools() {
         "mcp__ralphx__execution_complete",
         "mcp__ralphx__complete_review",
         "mcp__ralphx__complete_merge",
+        "mcp__ralphx__finalize_proposals",
     ] {
         let mut tracker = CompletionSignalTracker::default();
         if is_completion_tool_name(tool_name) {
