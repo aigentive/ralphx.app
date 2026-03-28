@@ -199,6 +199,13 @@ export function getArray(obj: unknown, key: string): unknown[] | undefined {
 // Utility Functions
 // ============================================================================
 
+/** Truncate text to maxLen characters, appending "…" if truncated. */
+export function truncate(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  return text.slice(0, maxLen) + "…";
+}
+
+
 /**
  * Parse a tool result into an array of non-empty lines.
  * Handles: plain string, MCP wrapper [{text: "..."}], object with text property, and string arrays.

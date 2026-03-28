@@ -272,4 +272,65 @@ describe("ChildSessionWidget", () => {
     renderWithProviders(<ChildSessionWidget toolCall={toolCall} />);
     expect(mockedUseChildSessionStatus).toHaveBeenCalledWith("test-session-id");
   });
+
+  // ===== Phase 3 tests (layout fixes) =====
+
+  it("shows static 'Verification Session' label in header when purpose is verification", () => {
+    const toolCall = makeToolCall({
+      arguments: { title: "Custom Verification Title", purpose: "verification" },
+      result: mcpWrap({ session_id: "uuid-123" }),
+    });
+    renderWithProviders(<ChildSessionWidget toolCall={toolCall} />);
+    // Header shows static label
+    expect(screen.getByText("Verification Session")).toBeInTheDocument();
+    // Full session title also appears in body
+    expect(screen.getByText("Custom Verification Title")).toBeInTheDocument();
+  });
+
+  it("shows static 'Follow-up Session' label in header when purpose is not verification", () => {
+    const toolCall = makeToolCall({
+      arguments: { title: "Custom Follow-up Title", purpose: "general" },
+      result: mcpWrap({ session_id: "uuid-456" }),
+    });
+    renderWithProviders(<ChildSessionWidget toolCall={toolCall} />);
+    expect(screen.getByText("Follow-up Session")).toBeInTheDocument();
+    expect(screen.getByText("Custom Follow-up Title")).toBeInTheDocument();
+  });
+
+  it("Open Session button is visible in collapsed (default) state — button lives in header badge area", () => {
+    const toolCall = makeToolCall({
+      arguments: { title: "Collapsed Session" },
+      result: mcpWrap({ session_id: "uuid-123" }),
+    });
+    renderWithProviders(<ChildSessionWidget toolCall={toolCall} />);
+    expect(screen.getByRole("button", { name: "Open Session" })).toBeInTheDocument();
+  });
+
+  it("clicking Open Session button calls onNavigate and stops React synthetic event propagation", () => {
+    const onNavigate = vi.fn();
+    const parentClickHandler = vi.fn();
+    const toolCall = makeToolCall({
+      arguments: { title: "My Session" },
+      result: mcpWrap({ session_id: "uuid-123" }),
+    });
+    const queryClient = makeQueryClient();
+    render(
+      createElement(
+        QueryClientProvider,
+        { client: queryClient },
+        createElement(
+          ChildSessionNavigationContext.Provider,
+          { value: onNavigate },
+          createElement("div", { onClick: parentClickHandler },
+            createElement(ChildSessionWidget, { toolCall })
+          )
+        )
+      )
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Session" }));
+
+    expect(onNavigate).toHaveBeenCalledWith("uuid-123");
+    expect(parentClickHandler).not.toHaveBeenCalled();
+  });
 });

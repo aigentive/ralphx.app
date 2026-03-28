@@ -15,7 +15,7 @@ import React, { useContext, useEffect, useMemo, useState } from "react";
 import { Terminal } from "lucide-react";
 
 import { WidgetCard, WidgetHeader, Badge } from "./shared";
-import { colors } from "./shared.constants";
+import { colors, truncate } from "./shared.constants";
 import type { ToolCallWidgetProps } from "./shared.constants";
 import { stripAnsiCodes } from "../ToolCallIndicator.helpers";
 import { ToolCallStoreKeyContext } from "./ToolCallStoreKeyContext";
@@ -89,12 +89,6 @@ function parseBashToolCall(toolCall: ToolCallWidgetProps["toolCall"]): ParsedBas
   const hasError = Boolean(toolCall.error) || (exitCode !== null && exitCode !== 0);
 
   return { command, description, output, exitCode, hasError };
-}
-
-/** Truncate text with ellipsis */
-function truncate(text: string, maxLen: number): string {
-  if (text.length <= maxLen) return text;
-  return text.slice(0, maxLen) + "\u2026";
 }
 
 // ============================================================================

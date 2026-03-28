@@ -17,6 +17,7 @@ import {
   getString,
   getBool,
   parseMcpToolResult,
+  truncate,
   truncatedTitleStyle,
 } from "./shared.constants";
 import type { ToolCallWidgetProps, BadgeVariant } from "./shared.constants";
@@ -27,11 +28,6 @@ import { formatRelativeTime } from "@/lib/formatters";
 // ============================================================================
 // Helpers
 // ============================================================================
-
-function truncate(text: string, maxLen: number): string {
-  if (text.length <= maxLen) return text;
-  return text.slice(0, maxLen) + "…";
-}
 
 function stripMarkdown(text: string): string {
   return text
@@ -203,7 +199,7 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
       header={
         <WidgetHeader
           icon={<GitBranch size={12} />}
-          title={title}
+          title={purpose === "verification" ? "Verification Session" : "Follow-up Session"}
           {...(compact !== undefined && { compact })}
           badge={
             <>
@@ -215,11 +211,43 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
                 <Badge variant="warning" compact>Waiting for capacity</Badge>
               )}
               {!isPendingCapacity && agentStatus !== "idle" && <AgentStatusBadge status={agentStatus} />}
+              {sessionId && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onNavigate(sessionId); }}
+                  onKeyDown={(e) => { e.stopPropagation(); }}
+                  style={{
+                    padding: "2px 8px",
+                    fontSize: 11,
+                    cursor: "pointer",
+                    border: `1px solid ${colors.accentBorder}`,
+                    borderRadius: 4,
+                    backgroundColor: colors.accentDim,
+                    color: colors.accent,
+                    lineHeight: 1.4,
+                  }}
+                  aria-label="Open Session"
+                >
+                  Open Session
+                </button>
+              )}
             </>
           }
         />
       }
     >
+      {/* Full session title — always visible in body */}
+      <span
+        style={{
+          display: "block",
+          fontSize: 12,
+          color: colors.textPrimary,
+          wordBreak: "break-word",
+          marginBottom: 4,
+        }}
+      >
+        {title}
+      </span>
+
       {/* Collapsed body: snippet (single line — stable height) */}
       <WidgetRow compact={compact}>
         <span
@@ -247,24 +275,6 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
             />
           ))}
         </div>
-      )}
-      {sessionId && (
-        <button
-          onClick={() => onNavigate(sessionId)}
-          style={{
-            marginTop: 8,
-            padding: "4px 10px",
-            fontSize: 12,
-            cursor: "pointer",
-            border: `1px solid hsla(220 15% 30% / 0.8)`,
-            borderRadius: 4,
-            backgroundColor: "hsla(220 15% 15% / 0.8)",
-            color: "hsl(220 10% 85%)",
-          }}
-          aria-label="Open Session"
-        >
-          Open Session
-        </button>
       )}
     </WidgetCard>
   );
