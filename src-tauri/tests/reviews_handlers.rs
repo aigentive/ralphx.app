@@ -24,9 +24,10 @@ use ralphx_lib::application::{
 };
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
-    IdeationSession, InternalStatus, Priority, Project, ProjectId, ProposalCategory, Task,
-    TaskProposal,
+    IdeationSession, InternalStatus, Priority, Project, ProjectId, ProposalCategory, ReviewNote,
+    ReviewOutcome, ReviewerType, Task, TaskProposal,
 };
+use ralphx_lib::domain::review::ReviewSettings;
 use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::helpers::get_task_context_impl;
 use ralphx_lib::http_server::project_scope::ProjectScope;
@@ -455,6 +456,132 @@ async fn test_complete_review_thin_legacy_issue_payload_backfills_first_class_is
         Some("Reviewer did not associate this issue with a specific task step")
     );
     assert_eq!(issue.line_number, Some(7));
+}
+
+#[tokio::test]
+async fn test_complete_review_rejects_unrelated_drift_escalation_while_revision_budget_remains() {
+    let (state, task) = setup_review_scope_drift_state().await;
+
+    let req = CompleteReviewRequest {
+        task_id: task.id.as_str().to_string(),
+        decision: "escalate".to_string(),
+        summary: Some("Out-of-scope blocker".to_string()),
+        feedback: Some("This branch contains unrelated drift and should be revised first.".to_string()),
+        issues: Some(vec![ReviewIssueRequest {
+            severity: "major".to_string(),
+            title: Some("feature.rs is outside task scope".to_string()),
+            step_id: None,
+            no_step_reason: Some("Scope drift spans the task branch".to_string()),
+            description: Some("The branch contains unrelated changes that should be removed from this task.".to_string()),
+            category: Some("quality".to_string()),
+            file_path: Some("src/feature.rs".to_string()),
+            line_number: Some(1),
+            code_snippet: None,
+        }]),
+        escalation_reason: Some("Scope drift found".to_string()),
+        scope_drift_classification: Some("unrelated_drift".to_string()),
+        scope_drift_notes: Some("Reviewer should send this back to revise first.".to_string()),
+    };
+
+    let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
+
+    match result {
+        Err((status, msg)) => {
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert!(
+                msg.contains("must go back through revise"),
+                "expected revise-first guard message, got: {msg}"
+            );
+        }
+        Ok(_) => panic!("unrelated drift should not escalate while revision budget remains"),
+    }
+}
+
+#[tokio::test]
+async fn test_complete_review_allows_unrelated_drift_escalation_after_revision_budget_exhausted() {
+    let (state, task) = setup_review_scope_drift_state().await;
+
+    state
+        .app_state
+        .review_settings_repo
+        .update_settings(&ReviewSettings {
+            max_revision_cycles: 1,
+            ..ReviewSettings::default()
+        })
+        .await
+        .expect("review settings update should succeed");
+
+    let prior_note = ReviewNote::with_content(
+        task.id.clone(),
+        ReviewerType::Ai,
+        ReviewOutcome::ChangesRequested,
+        Some("Previous revise round".to_string()),
+        Some("Already sent back once".to_string()),
+        None,
+    );
+    state
+        .app_state
+        .review_repo
+        .add_note(&prior_note)
+        .await
+        .expect("prior review note should persist");
+
+    let req = CompleteReviewRequest {
+        task_id: task.id.as_str().to_string(),
+        decision: "escalate".to_string(),
+        summary: Some("Still blocked by unrelated drift".to_string()),
+        feedback: Some("The branch keeps reintroducing unrelated scope drift.".to_string()),
+        issues: Some(vec![ReviewIssueRequest {
+            severity: "major".to_string(),
+            title: Some("feature.rs is outside task scope".to_string()),
+            step_id: None,
+            no_step_reason: Some("Scope drift spans the task branch".to_string()),
+            description: Some("Repeated revise rounds did not remove the unrelated change.".to_string()),
+            category: Some("quality".to_string()),
+            file_path: Some("src/feature.rs".to_string()),
+            line_number: Some(1),
+            code_snippet: None,
+        }]),
+        escalation_reason: Some("Revision budget exhausted for unrelated scope drift".to_string()),
+        scope_drift_classification: Some("unrelated_drift".to_string()),
+        scope_drift_notes: Some("Escalation is now allowed because revise budget is exhausted.".to_string()),
+    };
+
+    let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
+    assert!(
+        result.is_ok(),
+        "escalation should be allowed after revision budget exhaustion, got: {:?}",
+        result
+    );
+}
+
+#[tokio::test]
+async fn test_complete_review_requires_issues_for_unrelated_drift_needs_changes() {
+    let (state, task) = setup_review_scope_drift_state().await;
+
+    let req = CompleteReviewRequest {
+        task_id: task.id.as_str().to_string(),
+        decision: "needs_changes".to_string(),
+        summary: Some("Needs revision".to_string()),
+        feedback: Some("Unrelated scope drift must be revised out of the branch.".to_string()),
+        issues: None,
+        escalation_reason: None,
+        scope_drift_classification: Some("unrelated_drift".to_string()),
+        scope_drift_notes: Some("Worker needs a structured issue to act on.".to_string()),
+    };
+
+    let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
+
+    match result {
+        Err((status, msg)) => {
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert!(
+                msg.contains("requires at least one structured issue"),
+                "expected structured issue guard message, got: {msg}"
+            );
+        }
+        Ok(_) => panic!("needs_changes for unrelated drift must require structured issues"),
+    }
 }
 
 // ============================================================================

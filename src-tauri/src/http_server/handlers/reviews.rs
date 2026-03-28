@@ -63,6 +63,22 @@ pub async fn complete_review(
         .map(parse_scope_drift_classification)
         .transpose()
         .map_err(|msg| (StatusCode::BAD_REQUEST, msg))?;
+    let prior_review_notes = state
+        .app_state
+        .review_repo
+        .get_notes_by_task_id(&task_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let revision_count = prior_review_notes
+        .iter()
+        .filter(|note| note.outcome == ReviewOutcome::ChangesRequested)
+        .count() as u32;
+    let review_settings = state
+        .app_state
+        .review_settings_repo
+        .get_settings()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if matches!(
         task_context.scope_drift_status,
@@ -108,6 +124,32 @@ pub async fn complete_review(
             "Cannot approve task with unrelated scope drift; request changes or escalate instead"
                 .to_string(),
         ));
+    }
+
+    if matches!(
+        scope_drift_classification,
+        Some(ScopeDriftClassification::UnrelatedDrift)
+    ) {
+        if matches!(outcome, ReviewToolOutcome::Escalate)
+            && !review_settings.exceeded_max_revisions(revision_count)
+        {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "Unrelated scope drift must go back through revise while revision budget remains ({revision_count}/{max_revisions} used). Use needs_changes with structured issues first, then escalate only if repeated revise cycles fail.",
+                    max_revisions = review_settings.max_revision_cycles
+                ),
+            ));
+        }
+
+        if matches!(outcome, ReviewToolOutcome::NeedsChanges)
+            && req.issues.as_ref().map_or(true, |issues| issues.is_empty())
+        {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Needs-changes for unrelated scope drift requires at least one structured issue so the worker can revise the branch cleanly.".to_string(),
+            ));
+        }
     }
 
     // 3. Get feedback - stored separately from issues now

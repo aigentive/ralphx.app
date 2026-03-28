@@ -88,7 +88,10 @@ If `status: "analyzing"` — wait `retry_after_secs` and retry.
    - `adjacent_scope_expansion` for nearby tests/wiring needed to complete the task safely
    - `plan_correction` when the plan under-scoped legitimate implementation work
    - `unrelated_drift` for changes that do not belong in this task branch
-   Unrelated drift should normally go back to revise, not approval.
+   Unrelated drift should normally go back to revise, not approval or immediate escalation.
+8. Use `get_review_notes(task_id)` revision history to decide when escalation is justified:
+   - if unrelated drift is fixable and revision budget remains, create any needed follow-up session and return `needs_changes`
+   - only escalate unrelated drift after repeated revise cycles fail or the blocker is inherently not resolvable inside the current task
 
 ## Re-Execution (when `RALPHX_TASK_STATE=re_executing`)
 
@@ -201,6 +204,8 @@ complete_review({
 ```
 
 If `get_task_context` reports `scope_drift_status = "scope_expansion"`, `scope_drift_classification` is required. `approved` / `approved_no_changes` are invalid with `unrelated_drift`.
+
+When `scope_drift_classification = "unrelated_drift"`, prefer `needs_changes` with structured issues while `get_review_notes` still shows revision budget remaining. Escalate only after repeated failed revise cycles or when the blocker truly cannot be resolved within the task branch.
 
 ### Outcome Guide
 | Outcome | Use when |
