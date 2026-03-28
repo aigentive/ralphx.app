@@ -207,8 +207,8 @@ impl SqliteTestDb {
                 .map(|issues| to_string(issues).expect("Failed to serialize review issues"));
 
             conn.execute(
-                "INSERT INTO review_notes (id, task_id, reviewer, outcome, summary, notes, issues, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                "INSERT INTO review_notes (id, task_id, reviewer, outcome, summary, notes, issues, followup_session_id, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 rusqlite::params![
                     note.id.as_str(),
                     note.task_id.as_str(),
@@ -217,6 +217,7 @@ impl SqliteTestDb {
                     note.summary.as_deref(),
                     note.notes.as_deref(),
                     issues_json.as_deref(),
+                    note.followup_session_id.as_deref(),
                     note.created_at.to_rfc3339(),
                 ],
             )

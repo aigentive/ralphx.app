@@ -65,6 +65,7 @@ export const ReviewNoteResponseSchema = z.object({
   summary: z.string().nullish(),
   notes: z.string().nullish(),
   issues: z.array(ReviewIssueSchema).nullish(),
+  followup_session_id: z.string().nullish(),
   created_at: z.string(),
 });
 

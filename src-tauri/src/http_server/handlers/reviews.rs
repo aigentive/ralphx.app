@@ -240,6 +240,23 @@ pub async fn complete_review(
             .collect()
     });
 
+    // For now, we don't create fix tasks automatically - that can be added later
+    let fix_task_id: Option<TaskId> = None;
+    let followup_session_id = maybe_spawn_unrelated_drift_followup(
+        &state,
+        &task,
+        &review,
+        &task_context,
+        outcome,
+        scope_drift_classification,
+        revision_count,
+        &review_settings,
+        req.summary.as_deref(),
+        req.feedback.as_deref(),
+        req.escalation_reason.as_deref(),
+    )
+    .await;
+
     // Create review note for history.
     // For escalations, prefer escalation_reason over generic feedback so the
     // frontend EscalatedTaskDetail can display a precise reason.
@@ -249,7 +266,7 @@ pub async fn complete_review(
         req.feedback.clone()
     };
     // Legitimate AI decision via MCP tool — agent deliberately called complete_review. Do NOT change to System.
-    let review_note = ReviewNote::with_content(
+    let mut review_note = ReviewNote::with_content(
         task_id.clone(),
         ReviewerType::Ai,
         review_outcome,
@@ -257,6 +274,7 @@ pub async fn complete_review(
         note_content,
         domain_issues,
     );
+    review_note.followup_session_id = followup_session_id.clone();
     state
         .app_state
         .review_repo
@@ -305,23 +323,6 @@ pub async fn complete_review(
             }
         }
     }
-
-    // For now, we don't create fix tasks automatically - that can be added later
-    let fix_task_id: Option<TaskId> = None;
-    let followup_session_id = maybe_spawn_unrelated_drift_followup(
-        &state,
-        &task,
-        &review,
-        &task_context,
-        outcome,
-        scope_drift_classification,
-        revision_count,
-        &review_settings,
-        req.summary.as_deref(),
-        req.feedback.as_deref(),
-        req.escalation_reason.as_deref(),
-    )
-    .await;
 
     // 6. Trigger state transition via TaskTransitionService
     // Create scheduler for auto-scheduling next Ready task when this one exits Reviewing
@@ -985,6 +986,7 @@ pub async fn get_review_notes(
                 summary: note.summary,
                 notes: note.notes,
                 issues,
+                followup_session_id: note.followup_session_id,
                 created_at: note.created_at.to_rfc3339(),
             }
         })

@@ -118,6 +118,7 @@ impl SqliteReviewRepository {
         summary: Option<String>,
         notes: Option<String>,
         issues_json: Option<String>,
+        followup_session_id: Option<String>,
         created_at: String,
     ) -> AppResult<ReviewNote> {
         let reviewer = ReviewerType::from_str(&reviewer)
@@ -140,6 +141,7 @@ impl SqliteReviewRepository {
             summary,
             notes,
             issues,
+            followup_session_id,
             created_at,
         })
     }
@@ -452,8 +454,8 @@ impl ReviewRepository for SqliteReviewRepository {
                     .and_then(|issues| serde_json::to_string(issues).ok());
 
                 conn.execute(
-                    "INSERT INTO review_notes (id, task_id, reviewer, outcome, summary, notes, issues, created_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    "INSERT INTO review_notes (id, task_id, reviewer, outcome, summary, notes, issues, followup_session_id, created_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                     (
                         note.id.as_str(),
                         note.task_id.as_str(),
@@ -462,6 +464,7 @@ impl ReviewRepository for SqliteReviewRepository {
                         note.summary.as_deref(),
                         note.notes.as_deref(),
                         issues_json.as_deref(),
+                        note.followup_session_id.as_deref(),
                         SqliteReviewRepository::format_datetime(&note.created_at),
                     ),
                 )
@@ -476,12 +479,12 @@ impl ReviewRepository for SqliteReviewRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, task_id, reviewer, outcome, summary, notes, issues, created_at
+                    "SELECT id, task_id, reviewer, outcome, summary, notes, issues, followup_session_id, created_at
                      FROM review_notes WHERE task_id = ?1 ORDER BY created_at ASC",
                 )
                 .map_err(|e| AppError::Database(format!("Failed to prepare statement: {}", e)))?;
 
-                let rows: Vec<(String, String, String, String, Option<String>, Option<String>, Option<String>, String)> = stmt
+                let rows: Vec<(String, String, String, String, Option<String>, Option<String>, Option<String>, Option<String>, String)> = stmt
                     .query_map([task_id.as_str()], |row| {
                         Ok((
                             row.get::<_, String>(0)?,
@@ -491,7 +494,8 @@ impl ReviewRepository for SqliteReviewRepository {
                             row.get::<_, Option<String>>(4)?,
                             row.get::<_, Option<String>>(5)?,
                             row.get::<_, Option<String>>(6)?,
-                            row.get::<_, String>(7)?,
+                            row.get::<_, Option<String>>(7)?,
+                            row.get::<_, String>(8)?,
                         ))
                     })
                     .map_err(|e| AppError::Database(format!("Failed to query notes: {}", e)))?
@@ -499,7 +503,7 @@ impl ReviewRepository for SqliteReviewRepository {
                     .map_err(|e| AppError::Database(format!("Failed to read row: {}", e)))?;
 
                 let mut notes = Vec::new();
-                for (id, task_id, reviewer, outcome, summary, note_text, issues_json, created_at) in rows {
+                for (id, task_id, reviewer, outcome, summary, note_text, issues_json, followup_session_id, created_at) in rows {
                     notes.push(SqliteReviewRepository::row_to_note(
                         id,
                         task_id,
@@ -508,6 +512,7 @@ impl ReviewRepository for SqliteReviewRepository {
                         summary,
                         note_text,
                         issues_json,
+                        followup_session_id,
                         created_at,
                     )?);
                 }
@@ -521,7 +526,7 @@ impl ReviewRepository for SqliteReviewRepository {
         self.db
             .run(move |conn| {
                 let result = conn.query_row(
-                    "SELECT id, task_id, reviewer, outcome, summary, notes, issues, created_at
+                    "SELECT id, task_id, reviewer, outcome, summary, notes, issues, followup_session_id, created_at
                      FROM review_notes WHERE id = ?1",
                     [id.as_str()],
                     |row| {
@@ -533,13 +538,14 @@ impl ReviewRepository for SqliteReviewRepository {
                             row.get::<_, Option<String>>(4)?,
                             row.get::<_, Option<String>>(5)?,
                             row.get::<_, Option<String>>(6)?,
-                            row.get::<_, String>(7)?,
+                            row.get::<_, Option<String>>(7)?,
+                            row.get::<_, String>(8)?,
                         ))
                     },
                 );
 
                 match result {
-                    Ok((id, task_id, reviewer, outcome, summary, note_text, issues_json, created_at)) => {
+                    Ok((id, task_id, reviewer, outcome, summary, note_text, issues_json, followup_session_id, created_at)) => {
                         Ok(Some(SqliteReviewRepository::row_to_note(
                             id,
                             task_id,
@@ -548,6 +554,7 @@ impl ReviewRepository for SqliteReviewRepository {
                             summary,
                             note_text,
                             issues_json,
+                            followup_session_id,
                             created_at,
                         )?))
                     }

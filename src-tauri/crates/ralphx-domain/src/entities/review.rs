@@ -506,6 +506,9 @@ pub struct ReviewNote {
     /// Issues found during review (stored as JSON in DB)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub issues: Option<Vec<ReviewIssue>>,
+    /// Linked follow-up ideation session spawned from this review attempt, if any
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub followup_session_id: Option<String>,
     /// When the note was created
     pub created_at: DateTime<Utc>,
 }
@@ -521,6 +524,7 @@ impl ReviewNote {
             summary: None,
             notes: None,
             issues: None,
+            followup_session_id: None,
             created_at: Utc::now(),
         }
     }
@@ -542,6 +546,7 @@ impl ReviewNote {
             summary,
             notes,
             issues,
+            followup_session_id: None,
             created_at: Utc::now(),
         }
     }

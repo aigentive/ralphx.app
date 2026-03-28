@@ -86,6 +86,8 @@ pub struct ReviewNoteResponse {
     pub notes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub issues: Option<Vec<ReviewIssue>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub followup_session_id: Option<String>,
     pub created_at: String,
 }
 
@@ -112,6 +114,7 @@ impl From<ReviewNote> for ReviewNoteResponse {
             summary: note.summary,
             notes: note.notes,
             issues,
+            followup_session_id: note.followup_session_id,
             created_at: note.created_at.to_rfc3339(),
         }
     }

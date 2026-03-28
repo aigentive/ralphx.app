@@ -14,9 +14,11 @@ import {
   ChevronRight,
   FileText,
   Clock,
+  ExternalLink,
 } from "lucide-react";
 import type { ToolCallWidgetProps } from "./shared";
 import { parseMcpToolResult, getArray } from "./shared.constants";
+import { navigateToIdeationSession } from "@/lib/navigation";
 
 // ============================================================================
 // Types
@@ -42,6 +44,7 @@ interface CompleteReviewResult {
   message?: string;
   new_status?: string;
   fix_task_id?: string;
+  followup_session_id?: string;
 }
 
 interface ReviewNoteEntry {
@@ -189,7 +192,8 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
   const style = getOutcomeStyle(args.decision);
   const { Icon } = style;
   const issues = args.issues ?? [];
-  const hasBody = Boolean(args.feedback) || issues.length > 0;
+  const followupSessionId = result?.followup_session_id;
+  const hasBody = Boolean(args.feedback) || issues.length > 0 || Boolean(followupSessionId);
   const iconSize = compact ? 12 : 14;
 
   return (
@@ -246,6 +250,25 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
             Failed
           </span>
         )}
+
+        {followupSessionId && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              navigateToIdeationSession(followupSessionId);
+            }}
+            className={`${compact ? "text-[9px]" : "text-[10px]"} flex items-center gap-1 px-1.5 py-0.5 rounded transition-opacity hover:opacity-80`}
+            style={{
+              backgroundColor: "hsla(14, 100%, 60%, 0.12)",
+              color: "hsl(14, 100%, 68%)",
+              border: "1px solid hsla(14, 100%, 60%, 0.2)",
+            }}
+          >
+            <ExternalLink size={compact ? 9 : 10} />
+            Open Follow-up
+          </button>
+        )}
       </button>
 
       {/* Expanded body */}
@@ -301,6 +324,36 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {followupSessionId && (
+            <div className="space-y-1">
+              <div
+                className={`${compact ? "text-[9px]" : "text-[10px]"} font-medium uppercase tracking-wide`}
+                style={{ color: "hsl(220, 10%, 45%)" }}
+              >
+                Follow-up Session
+              </div>
+              <div
+                className={`${compact ? "text-[10px]" : "text-[11px]"} px-2 py-1.5 rounded flex items-center justify-between gap-2`}
+                style={{ backgroundColor: "hsl(220, 10%, 10%)" }}
+              >
+                <span style={{ color: "hsl(220, 10%, 72%)" }}>{followupSessionId}</span>
+                <button
+                  type="button"
+                  onClick={() => navigateToIdeationSession(followupSessionId)}
+                  className="flex items-center gap-1 px-2 py-1 rounded transition-opacity hover:opacity-80"
+                  style={{
+                    backgroundColor: "hsla(14, 100%, 60%, 0.12)",
+                    color: "hsl(14, 100%, 68%)",
+                    border: "1px solid hsla(14, 100%, 60%, 0.2)",
+                  }}
+                >
+                  <ExternalLink size={compact ? 10 : 11} />
+                  Open
+                </button>
+              </div>
             </div>
           )}
         </div>

@@ -26,6 +26,7 @@ import { useTaskStateTransitions } from "@/hooks/useTaskStateTransitions";
 import { taskKeys } from "@/hooks/useTasks";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { api } from "@/lib/tauri";
+import { navigateToIdeationSession } from "@/lib/navigation";
 import {
   Loader2,
   AlertTriangle,
@@ -38,6 +39,7 @@ import {
   XCircle,
   Clock,
   Settings,
+  ExternalLink,
 } from "lucide-react";
 import type { Task } from "@/types/task";
 import type { ReviewNoteResponse } from "@/lib/tauri";
@@ -405,6 +407,7 @@ export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTas
   const { data: stateTransitions = [] } = useTaskStateTransitions(task.id);
   const escalationReview = getLatestEscalationReview(history ?? []);
   const escalationInfo = determineEscalationInfo(escalationReview, task.metadata);
+  const followupSessionId = escalationReview?.followup_session_id ?? null;
 
   // Fetch structured issues from review issues API
   const { data: issues = [] } = useQuery({
@@ -449,6 +452,36 @@ export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTas
         <SectionTitle>Why AI Escalated</SectionTitle>
         <EscalationReasonCard escalationInfo={escalationInfo} />
       </section>
+
+      {followupSessionId && (
+        <section data-testid="followup-session-section">
+          <SectionTitle>Follow-Up Session</SectionTitle>
+          <DetailCard>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[13px] font-semibold text-white/80">
+                  AI spawned a follow-up ideation session
+                </div>
+                <div className="mt-1 text-[12px] text-white/45 break-all">
+                  {followupSessionId}
+                </div>
+              </div>
+              <Button
+                type="button"
+                onClick={() => navigateToIdeationSession(followupSessionId)}
+                className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
+                style={{
+                  backgroundColor: "rgba(255, 107, 53, 0.16)",
+                  color: "#ff8a5b",
+                }}
+              >
+                <ExternalLink className="w-4 h-4" />
+                Open Follow-Up
+              </Button>
+            </div>
+          </DetailCard>
+        </section>
+      )}
 
       {/* Issues Found */}
       {issues.length > 0 && (

@@ -433,6 +433,8 @@ pub struct ReviewNoteResponse {
     pub summary: Option<String>,
     pub notes: Option<String>,
     pub issues: Option<Vec<ReviewIssue>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub followup_session_id: Option<String>,
     pub created_at: String,
 }
 
