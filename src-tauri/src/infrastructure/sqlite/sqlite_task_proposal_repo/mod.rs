@@ -53,6 +53,7 @@ impl SqliteTaskProposalRepository {
     ) -> AppResult<Vec<TaskProposal>> {
         let mut stmt = conn.prepare(
             "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
+                    affected_paths,
                     suggested_priority, priority_score, priority_reason, priority_factors,
                     estimated_complexity, user_priority, user_modified, status, selected,
                     created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at,
@@ -128,13 +129,14 @@ impl SqliteTaskProposalRepository {
         conn.execute(
             "INSERT INTO task_proposals (
                 id, session_id, title, description, category, steps, acceptance_criteria,
+                affected_paths,
                 suggested_priority, priority_score, priority_reason, priority_factors,
                 estimated_complexity, user_priority, user_modified, status, selected,
                 created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at,
                 target_project, migrated_from_session_id, migrated_from_proposal_id
             ) VALUES (
-                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22,
-                ?23, ?24, ?25
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23,
+                ?24, ?25, ?26
             )",
             rusqlite::params![
                 proposal.id.as_str(),
@@ -144,6 +146,7 @@ impl SqliteTaskProposalRepository {
                 proposal.category.to_string(),
                 proposal.steps,
                 proposal.acceptance_criteria,
+                proposal.affected_paths,
                 proposal.suggested_priority.to_string(),
                 proposal.priority_score,
                 proposal.priority_reason,
@@ -196,11 +199,11 @@ impl SqliteTaskProposalRepository {
         conn.execute(
             "UPDATE task_proposals SET
                 title = ?2, description = ?3, category = ?4, steps = ?5, acceptance_criteria = ?6,
-                suggested_priority = ?7, priority_score = ?8, priority_reason = ?9, priority_factors = ?10,
-                estimated_complexity = ?11, user_priority = ?12, user_modified = ?13, status = ?14,
-                selected = ?15, created_task_id = ?16, plan_artifact_id = ?17, plan_version_at_creation = ?18,
-                target_project = ?19, sort_order = ?20, updated_at = ?21,
-                migrated_from_session_id = ?22, migrated_from_proposal_id = ?23
+                affected_paths = ?7, suggested_priority = ?8, priority_score = ?9, priority_reason = ?10, priority_factors = ?11,
+                estimated_complexity = ?12, user_priority = ?13, user_modified = ?14, status = ?15,
+                selected = ?16, created_task_id = ?17, plan_artifact_id = ?18, plan_version_at_creation = ?19,
+                target_project = ?20, sort_order = ?21, updated_at = ?22,
+                migrated_from_session_id = ?23, migrated_from_proposal_id = ?24
              WHERE id = ?1",
             rusqlite::params![
                 proposal.id.as_str(),
@@ -209,6 +212,7 @@ impl SqliteTaskProposalRepository {
                 proposal.category.to_string(),
                 proposal.steps,
                 proposal.acceptance_criteria,
+                proposal.affected_paths,
                 proposal.suggested_priority.to_string(),
                 proposal.priority_score,
                 proposal.priority_reason,
@@ -263,6 +267,7 @@ impl SqliteTaskProposalRepository {
         )?;
         let proposal = conn.query_row(
             "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
+                    affected_paths,
                     suggested_priority, priority_score, priority_reason, priority_factors,
                     estimated_complexity, user_priority, user_modified, status, selected,
                     created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at,
@@ -290,6 +295,7 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
             .query_optional(move |conn| {
                 conn.query_row(
                     "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
+                            affected_paths,
                             suggested_priority, priority_score, priority_reason, priority_factors,
                             estimated_complexity, user_priority, user_modified, status, selected,
                             created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at,
@@ -308,6 +314,7 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
             .run(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
+                            affected_paths,
                             suggested_priority, priority_score, priority_reason, priority_factors,
                             estimated_complexity, user_priority, user_modified, status, selected,
                             created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at,
@@ -456,6 +463,7 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
             .run(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
+                            affected_paths,
                             suggested_priority, priority_score, priority_reason, priority_factors,
                             estimated_complexity, user_priority, user_modified, status, selected,
                             created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at,
@@ -505,6 +513,7 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
             .run(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
+                            affected_paths,
                             suggested_priority, priority_score, priority_reason, priority_factors,
                             estimated_complexity, user_priority, user_modified, status, selected,
                             created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at,

@@ -21,6 +21,9 @@ fn test_task_context_creation() {
         task_branch: None,
         worktree_path: None,
         validation_cache: None,
+        actual_changed_files: vec![],
+        scope_drift_status: ScopeDriftStatus::Unbounded,
+        out_of_scope_files: vec![],
     };
 
     assert_eq!(context.task.id, task.id);
@@ -45,6 +48,7 @@ fn test_task_proposal_summary_creation() {
         implementation_notes: Some("Notes here".to_string()),
         plan_version_at_creation: Some(1),
         priority_score: 75,
+        affected_paths: vec!["src-tauri/src/http_server".to_string()],
     };
 
     assert_eq!(summary.title, "Test Proposal");
@@ -52,6 +56,7 @@ fn test_task_proposal_summary_creation() {
     assert!(summary.implementation_notes.is_some());
     assert_eq!(summary.plan_version_at_creation, Some(1));
     assert_eq!(summary.priority_score, 75);
+    assert_eq!(summary.affected_paths, vec!["src-tauri/src/http_server"]);
 }
 
 #[test]
@@ -99,6 +104,7 @@ fn test_task_context_with_full_context() {
         implementation_notes: Some("Follow pattern X".to_string()),
         plan_version_at_creation: Some(1),
         priority_score: 80,
+        affected_paths: vec!["src-tauri/src/application/chat_service".to_string()],
     };
 
     let plan_summary = ArtifactSummary {
@@ -147,6 +153,11 @@ fn test_task_context_with_full_context() {
         task_branch: Some("ralphx/test-project/task-abc123".to_string()),
         worktree_path: None,
         validation_cache: None,
+        actual_changed_files: vec![
+            "src-tauri/src/application/chat_service/chat_service_streaming.rs".to_string(),
+        ],
+        scope_drift_status: ScopeDriftStatus::WithinScope,
+        out_of_scope_files: vec![],
     };
 
     assert_eq!(context.task.id, task.id);

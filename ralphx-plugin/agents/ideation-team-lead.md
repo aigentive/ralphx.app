@@ -447,7 +447,9 @@ Create task proposals linked to plan. Set dependencies **inline** — no backgro
 
 5. **expected_proposal_count (required)** — Pass `expected_proposal_count` on every `create_task_proposal` call (total proposals you intend to create). First proposal locks the count; backend returns `ready_to_finalize: true` when count matches.
 
-6. **Finalize (required)** — After ALL `create_task_proposal` and `update_task_proposal` calls are complete (including regression proposal and all dependency updates), call `finalize_proposals(session_id)`. Validates expected count and applies proposals. Errors are returned synchronously — handle failures before completing Phase 6. Multi-proposal sessions require dependency acknowledgment before finalize — see proactive-behavior entry below.
+6. **affected_paths (required in practice)** — Every proposal should include coarse `affected_paths` derived from the plan's `## Affected Files` and architecture. Use repo-relative file paths or directory prefixes that bound the likely implementation area without pretending to know every final file.
+
+7. **Finalize (required)** — After ALL `create_task_proposal` and `update_task_proposal` calls are complete (including regression proposal and all dependency updates), call `finalize_proposals(session_id)`. Validates expected count and applies proposals. Errors are returned synchronously — handle failures before completing Phase 6. Multi-proposal sessions require dependency acknowledgment before finalize — see proactive-behavior entry below.
 
 **When creating a proposal** — use `depends_on` to set immediate dependencies at creation time:
 ```

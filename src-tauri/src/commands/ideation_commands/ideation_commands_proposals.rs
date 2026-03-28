@@ -43,6 +43,9 @@ pub async fn create_task_proposal(
     let acceptance_criteria = input
         .acceptance_criteria
         .map(|ac| serde_json::to_string(&ac).unwrap_or_default());
+    let affected_paths = input
+        .affected_paths
+        .map(|paths| serde_json::to_string(&paths).unwrap_or_default());
 
     let options = CreateProposalOptions {
         title: input.title,
@@ -51,6 +54,7 @@ pub async fn create_task_proposal(
         suggested_priority: priority,
         steps,
         acceptance_criteria,
+        affected_paths,
         estimated_complexity: input.complexity,
         target_project: input.target_project,
         depends_on: input.depends_on,
@@ -129,6 +133,9 @@ pub async fn update_task_proposal(
     let acceptance_criteria = input
         .acceptance_criteria
         .map(|ac| Some(serde_json::to_string(&ac).unwrap_or_default()));
+    let affected_paths = input
+        .affected_paths
+        .map(|paths| Some(serde_json::to_string(&paths).unwrap_or_default()));
 
     let options = UpdateProposalOptions {
         title: input.title,
@@ -136,6 +143,7 @@ pub async fn update_task_proposal(
         category,
         steps,
         acceptance_criteria,
+        affected_paths,
         user_priority,
         estimated_complexity: input.complexity,
         target_project: input.target_project.map(Some),

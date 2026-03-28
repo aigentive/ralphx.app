@@ -114,6 +114,7 @@ pub struct CreateProposalRequest {
     pub priority: Option<String>,
     pub steps: Option<Vec<String>>,
     pub acceptance_criteria: Option<Vec<String>>,
+    pub affected_paths: Option<Vec<String>>,
     /// Optional list of proposal IDs this proposal depends on
     #[serde(default)]
     pub depends_on: Vec<String>,
@@ -131,6 +132,7 @@ pub struct UpdateProposalRequest {
     pub category: Option<String>,
     pub steps: Option<Vec<String>>,
     pub acceptance_criteria: Option<Vec<String>>,
+    pub affected_paths: Option<Vec<String>>,
     pub user_priority: Option<String>,
     /// Additive: proposal IDs this proposal should depend on
     #[serde(default)]
@@ -396,6 +398,8 @@ pub struct CompleteReviewRequest {
     pub feedback: Option<String>,
     pub issues: Option<Vec<ReviewIssue>>,
     pub escalation_reason: Option<String>,
+    pub scope_drift_classification: Option<String>,
+    pub scope_drift_notes: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

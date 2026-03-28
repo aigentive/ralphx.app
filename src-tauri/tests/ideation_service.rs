@@ -1022,6 +1022,7 @@ fn create_proposal_options() -> CreateProposalOptions {
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],

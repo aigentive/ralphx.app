@@ -77,6 +77,18 @@ pub async fn create_task_proposal(
             })
         })
         .transpose()?;
+    let affected_paths = req
+        .affected_paths
+        .map(|paths| {
+            serde_json::to_string(&paths).map_err(|e| {
+                error!("Failed to serialize affected_paths: {}", e);
+                json_error(
+                    StatusCode::BAD_REQUEST,
+                    format!("Failed to serialize affected_paths: {}", e),
+                )
+            })
+        })
+        .transpose()?;
 
     let options = CreateProposalOptions {
         title: req.title,
@@ -85,6 +97,7 @@ pub async fn create_task_proposal(
         suggested_priority: priority,
         steps,
         acceptance_criteria,
+        affected_paths,
         estimated_complexity: None,
         depends_on: req.depends_on,
         target_project: req.target_project,
@@ -348,6 +361,18 @@ pub async fn update_task_proposal(
             })
         })
         .transpose()?;
+    let affected_paths = req
+        .affected_paths
+        .map(|paths| {
+            serde_json::to_string(&paths).map_err(|e| {
+                error!("Failed to serialize affected_paths: {}", e);
+                json_error(
+                    StatusCode::BAD_REQUEST,
+                    format!("Failed to serialize affected_paths: {}", e),
+                )
+            })
+        })
+        .transpose()?;
 
     let options = UpdateProposalOptions {
         title: req.title,
@@ -355,6 +380,7 @@ pub async fn update_task_proposal(
         category,
         steps: steps.map(Some),
         acceptance_criteria: acceptance_criteria.map(Some),
+        affected_paths: affected_paths.map(Some),
         user_priority,
         estimated_complexity: None,
         source: UpdateSource::Api,

@@ -8,14 +8,17 @@ use tauri::Emitter;
 use super::*;
 use crate::application::{GitService, TaskSchedulerService, TaskTransitionService};
 use crate::domain::entities::{
-    InternalStatus, Review, ReviewIssue, ReviewNote, ReviewOutcome, ReviewerType, TaskId,
+    InternalStatus, Review, ReviewIssue, ReviewNote, ReviewOutcome, ReviewerType, ScopeDriftStatus,
+    TaskId,
 };
 use crate::domain::services::running_agent_registry::RunningAgentKey;
+use crate::domain::tools::complete_review::ScopeDriftClassification;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::transition_handler::{
     deferred_merge_cleanup, set_no_code_changes_metadata, set_pending_cleanup_metadata,
 };
 use crate::domain::tools::complete_review::ReviewToolOutcome;
+use crate::http_server::helpers::get_task_context_impl;
 use crate::http_server::project_scope::{ProjectScope, ProjectScopeGuard};
 use std::sync::Arc;
 
@@ -49,6 +52,30 @@ pub async fn complete_review(
         ));
     }
 
+    let task_context = get_task_context_impl(&state.app_state, &task_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let scope_drift_classification = req
+        .scope_drift_classification
+        .as_deref()
+        .map(parse_scope_drift_classification)
+        .transpose()
+        .map_err(|msg| (StatusCode::BAD_REQUEST, msg))?;
+
+    if matches!(
+        task_context.scope_drift_status,
+        ScopeDriftStatus::ScopeExpansion
+    ) && scope_drift_classification.is_none()
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Scope drift classification required when changed files exceed planned scope: {}",
+                task_context.out_of_scope_files.join(", ")
+            ),
+        ));
+    }
+
     // 2. Parse and map decision to ReviewToolOutcome
     let outcome = match req.decision.as_str() {
         "approved" => ReviewToolOutcome::Approved,
@@ -66,6 +93,20 @@ pub async fn complete_review(
             ))
         }
     };
+
+    if matches!(
+        outcome,
+        ReviewToolOutcome::Approved | ReviewToolOutcome::ApprovedNoChanges
+    ) && matches!(
+        scope_drift_classification,
+        Some(ScopeDriftClassification::UnrelatedDrift)
+    ) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Cannot approve task with unrelated scope drift; request changes or escalate instead"
+                .to_string(),
+        ));
+    }
 
     // 3. Get feedback - stored separately from issues now
     let feedback = req.feedback.clone();
@@ -462,6 +503,20 @@ pub async fn complete_review(
         new_status: new_status.as_str().to_string(),
         fix_task_id: fix_task_id.map(|id| id.as_str().to_string()),
     }))
+}
+
+fn parse_scope_drift_classification(
+    value: &str,
+) -> Result<ScopeDriftClassification, String> {
+    match value {
+        "adjacent_scope_expansion" => Ok(ScopeDriftClassification::AdjacentScopeExpansion),
+        "plan_correction" => Ok(ScopeDriftClassification::PlanCorrection),
+        "unrelated_drift" => Ok(ScopeDriftClassification::UnrelatedDrift),
+        other => Err(format!(
+            "Invalid scope_drift_classification: '{}'. Expected 'adjacent_scope_expansion', 'plan_correction', or 'unrelated_drift'",
+            other
+        )),
+    }
 }
 
 pub async fn get_review_notes(

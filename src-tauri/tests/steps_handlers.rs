@@ -1,14 +1,20 @@
+mod support;
+
 use axum::{extract::{Path, State}, Json};
 use ralphx_lib::application::{
     AppState, InteractiveProcessKey, TeamService, TeamStateTracker,
 };
 use ralphx_lib::commands::ExecutionState;
-use ralphx_lib::domain::entities::{ProjectId, Task, TaskStep, ValidationCacheMetadata};
+use ralphx_lib::domain::entities::{
+    IdeationSession, Priority, Project, ProjectId, ProposalCategory, ScopeDriftStatus, Task,
+    TaskProposal, TaskStep, ValidationCacheMetadata,
+};
 use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::helpers::get_task_context_impl;
 use ralphx_lib::http_server::project_scope::ProjectScope;
 use ralphx_lib::http_server::types::{ExecutionCompleteRequest, HttpServerState, TestResultInput};
 use std::sync::Arc;
+use support::real_git_repo::setup_real_git_repo;
 
 async fn setup_test_state() -> HttpServerState {
     let app_state = Arc::new(AppState::new_test());
@@ -155,6 +161,63 @@ async fn test_get_sub_steps() {
     assert_eq!(response.0.len(), 2);
     assert_eq!(response.0[0].title, "Sub 1");
     assert_eq!(response.0[1].title, "Sub 2");
+}
+
+#[tokio::test]
+async fn test_get_task_context_reports_scope_expansion_against_proposal_scope() {
+    let state = AppState::new_sqlite_test();
+    let repo = setup_real_git_repo();
+
+    let mut project = Project::new("Scope Drift Project".to_string(), repo.path_string());
+    project.base_branch = Some("main".to_string());
+    let project_id = project.id.clone();
+    state.project_repo.create(project).await.unwrap();
+
+    let session = IdeationSession::new_with_title(project_id.clone(), "Scoped Session");
+    let session_id = session.id.clone();
+    state.ideation_session_repo.create(session).await.unwrap();
+
+    let mut proposal = TaskProposal::new(
+        session_id.clone(),
+        "Scoped proposal",
+        ProposalCategory::Feature,
+        Priority::Medium,
+    );
+    proposal.affected_paths = Some(serde_json::to_string(&vec![
+        "src-tauri/src/http_server".to_string(),
+    ]).unwrap());
+    let proposal_id = proposal.id.clone();
+    state.task_proposal_repo.create(proposal).await.unwrap();
+
+    let mut task = Task::new(project_id, "Scoped execution task".to_string());
+    task.source_proposal_id = Some(proposal_id);
+    task.ideation_session_id = Some(session_id);
+    task.task_branch = Some(repo.task_branch.clone());
+    state.task_repo.create(task.clone()).await.unwrap();
+
+    let checkout_status = std::process::Command::new("git")
+        .args(["checkout", &repo.task_branch])
+        .current_dir(repo.path())
+        .status()
+        .expect("checkout task branch");
+    assert!(checkout_status.success(), "task branch checkout must succeed");
+
+    let context = get_task_context_impl(&state, &task.id).await.unwrap();
+
+    assert_eq!(context.scope_drift_status, ScopeDriftStatus::ScopeExpansion);
+    assert!(
+        context
+            .actual_changed_files
+            .iter()
+            .any(|path| path == "feature.rs"),
+        "expected actual changed files to include feature.rs, got {:?}",
+        context.actual_changed_files
+    );
+    assert_eq!(context.out_of_scope_files, vec!["feature.rs".to_string()]);
+    assert_eq!(
+        context.source_proposal.unwrap().affected_paths,
+        vec!["src-tauri/src/http_server".to_string()]
+    );
 }
 
 // ============================================================================

@@ -13,7 +13,8 @@ use crate::domain::services::{check_proposal_verification_gate, ProposalOperatio
 use crate::domain::entities::{
     Artifact, ArtifactContent, ArtifactSummary, ArtifactType, Complexity, IdeationSession,
     IdeationSessionId, IdeationSessionStatus, InternalStatus, Priority, ProposalCategory,
-    TaskContext, TaskId, TaskProposal, TaskProposalId, ValidationCacheData, ValidationCacheMetadata,
+    ScopeDriftStatus, TaskContext, TaskId, TaskProposal, TaskProposalId, ValidationCacheData,
+    ValidationCacheMetadata,
 };
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::sqlite::{
@@ -294,6 +295,7 @@ pub async fn create_proposal_impl(
             proposal.description = options.description;
             proposal.steps = options.steps;
             proposal.acceptance_criteria = options.acceptance_criteria;
+            proposal.affected_paths = options.affected_paths;
             proposal.sort_order = count as i32;
             proposal.plan_version_at_creation = Some(artifact.metadata.version);
             proposal.plan_artifact_id = Some(plan_artifact_id);
@@ -444,7 +446,7 @@ pub async fn update_proposal_impl(
                             suggested_priority, priority_score, priority_reason, priority_factors,
                             estimated_complexity, user_priority, user_modified, status, selected,
                             created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at,
-                            target_project
+                            target_project, affected_paths
                      FROM task_proposals WHERE id = ?1",
                     [&pid],
                     |row| TaskProposal::from_row(row),
@@ -519,6 +521,12 @@ pub async fn update_proposal_impl(
             }
             if let Some(acceptance_criteria) = options.acceptance_criteria {
                 proposal.acceptance_criteria = acceptance_criteria;
+                if is_ipc {
+                    proposal.user_modified = true;
+                }
+            }
+            if let Some(affected_paths) = options.affected_paths {
+                proposal.affected_paths = affected_paths;
                 if is_ipc {
                     proposal.user_modified = true;
                 }
@@ -908,6 +916,11 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
                     implementation_notes: None,
                     plan_version_at_creation: proposal.plan_version_at_creation,
                     priority_score: proposal.priority_score,
+                    affected_paths: proposal
+                        .affected_paths
+                        .as_ref()
+                        .and_then(|json_str| serde_json::from_str(json_str).ok())
+                        .unwrap_or_default(),
                 })
             }
             None => None,
@@ -954,6 +967,9 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
     } else {
         vec![]
     };
+
+    let (actual_changed_files, scope_drift_status, out_of_scope_files) =
+        compute_task_scope_drift(state, &task, source_proposal.as_ref()).await?;
 
     // 5. Fetch steps for the task
     let steps = state.task_step_repo.get_by_task(task_id).await?;
@@ -1053,6 +1069,14 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
         context_hints.push(
             "Task was created from ideation proposal - check acceptance criteria".to_string(),
         );
+        if let Some(proposal) = &source_proposal {
+            if !proposal.affected_paths.is_empty() {
+                context_hints.push(format!(
+                    "PLANNED SCOPE: proposal expects work under {}",
+                    proposal.affected_paths.join(", ")
+                ));
+            }
+        }
     }
     if plan_artifact.is_some() {
         context_hints.push(
@@ -1080,6 +1104,12 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
             "Task has {} step{} defined - use get_task_steps to see them",
             steps.len(),
             if steps.len() == 1 { "" } else { "s" }
+        ));
+    }
+    if matches!(scope_drift_status, ScopeDriftStatus::ScopeExpansion) {
+        context_hints.push(format!(
+            "SCOPE DRIFT DETECTED: changed files outside planned scope: {}",
+            out_of_scope_files.join(", ")
         ));
     }
     if task.description.is_some() {
@@ -1119,7 +1149,112 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
         task_branch,
         worktree_path,
         validation_cache,
+        actual_changed_files,
+        scope_drift_status,
+        out_of_scope_files,
     })
+}
+
+async fn compute_task_scope_drift(
+    state: &AppState,
+    task: &crate::domain::entities::Task,
+    source_proposal: Option<&crate::domain::entities::TaskProposalSummary>,
+) -> AppResult<(Vec<String>, ScopeDriftStatus, Vec<String>)> {
+    let Some(proposal) = source_proposal else {
+        return Ok((Vec::new(), ScopeDriftStatus::Unbounded, Vec::new()));
+    };
+    if proposal.affected_paths.is_empty() {
+        return Ok((Vec::new(), ScopeDriftStatus::Unbounded, Vec::new()));
+    }
+
+    let Some(repo_path) = resolve_task_context_repo_path(state, task).await? else {
+        return Ok((Vec::new(), ScopeDriftStatus::Unbounded, Vec::new()));
+    };
+
+    if let Some(expected_branch) = &task.task_branch {
+        let current_branch = GitService::get_current_branch(&repo_path).await?;
+        if current_branch != *expected_branch {
+            return Ok((Vec::new(), ScopeDriftStatus::Unbounded, Vec::new()));
+        }
+    }
+
+    let Some(base_branch) = resolve_task_context_base_branch(state, task).await? else {
+        return Ok((Vec::new(), ScopeDriftStatus::Unbounded, Vec::new()));
+    };
+
+    let diff = GitService::get_diff_stats(&repo_path, &base_branch).await?;
+    let changed_files = diff.changed_files;
+    let out_of_scope_files = changed_files
+        .iter()
+        .filter(|path| !matches_planned_scope(path, &proposal.affected_paths))
+        .cloned()
+        .collect::<Vec<_>>();
+    let status = if out_of_scope_files.is_empty() {
+        ScopeDriftStatus::WithinScope
+    } else {
+        ScopeDriftStatus::ScopeExpansion
+    };
+    Ok((changed_files, status, out_of_scope_files))
+}
+
+async fn resolve_task_context_repo_path(
+    state: &AppState,
+    task: &crate::domain::entities::Task,
+) -> AppResult<Option<PathBuf>> {
+    if let Some(path) = &task.worktree_path {
+        return Ok(Some(PathBuf::from(path)));
+    }
+
+    Ok(state
+        .project_repo
+        .get_by_id(&task.project_id)
+        .await?
+        .map(|project| PathBuf::from(project.working_directory)))
+}
+
+async fn resolve_task_context_base_branch(
+    state: &AppState,
+    task: &crate::domain::entities::Task,
+) -> AppResult<Option<String>> {
+    if let Some(exec_plan_id) = &task.execution_plan_id {
+        if let Some(plan_branch) = state
+            .plan_branch_repo
+            .get_by_execution_plan_id(exec_plan_id)
+            .await?
+        {
+            return Ok(Some(plan_branch.branch_name));
+        }
+    }
+
+    if let Some(session_id) = &task.ideation_session_id {
+        if let Some(plan_branch) = state.plan_branch_repo.get_by_session_id(session_id).await? {
+            return Ok(Some(plan_branch.branch_name));
+        }
+    }
+
+    Ok(state
+        .project_repo
+        .get_by_id(&task.project_id)
+        .await?
+        .map(|project| project.base_branch_or_default().to_string()))
+}
+
+fn matches_planned_scope(path: &str, planned_scope: &[String]) -> bool {
+    let normalized_path = normalize_scope_path(path);
+    planned_scope.iter().any(|entry| {
+        let normalized_entry = normalize_scope_path(entry);
+        normalized_path == normalized_entry
+            || normalized_path
+                .strip_prefix(&normalized_entry)
+                .is_some_and(|rest| rest.starts_with('/'))
+    })
+}
+
+fn normalize_scope_path(path: &str) -> String {
+    path.trim()
+        .trim_start_matches("./")
+        .trim_matches('/')
+        .to_string()
 }
 
 /// Pure function to compute the validation hint and human-readable message from a cache entry

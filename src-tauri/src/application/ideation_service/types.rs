@@ -55,6 +55,8 @@ pub struct CreateProposalOptions {
     pub steps: Option<String>,
     /// Optional acceptance criteria (JSON array)
     pub acceptance_criteria: Option<String>,
+    /// Optional coarse file/path scope hints (JSON array)
+    pub affected_paths: Option<String>,
     /// Optional estimated complexity string (parsed to Complexity enum in impl)
     pub estimated_complexity: Option<String>,
     /// Optional target project ID for cross-project proposals
@@ -78,6 +80,8 @@ pub struct UpdateProposalOptions {
     pub steps: Option<Option<String>>,
     /// New acceptance criteria (if provided)
     pub acceptance_criteria: Option<Option<String>>,
+    /// New coarse file/path scope hints (if provided)
+    pub affected_paths: Option<Option<String>>,
     /// User priority override (if provided)
     pub user_priority: Option<Priority>,
     /// Estimated complexity string (parsed to Complexity enum in impl, if provided)

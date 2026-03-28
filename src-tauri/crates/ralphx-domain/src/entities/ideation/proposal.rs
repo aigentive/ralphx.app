@@ -24,6 +24,8 @@ pub struct TaskProposal {
     pub steps: Option<String>,
     /// Acceptance criteria (JSON array of strings)
     pub acceptance_criteria: Option<String>,
+    /// Coarse file/path scope hints captured during ideation (JSON array of strings)
+    pub affected_paths: Option<String>,
     /// AI-suggested priority level
     pub suggested_priority: Priority,
     /// Numeric priority score (0-100, higher = more important)
@@ -85,6 +87,7 @@ impl TaskProposal {
             category,
             steps: None,
             acceptance_criteria: None,
+            affected_paths: None,
             suggested_priority,
             priority_score: 50,
             priority_reason: None,
@@ -182,6 +185,7 @@ impl TaskProposal {
                 .unwrap_or(ProposalCategory::Feature),
             steps: row.get("steps")?,
             acceptance_criteria: row.get("acceptance_criteria")?,
+            affected_paths: row.get("affected_paths")?,
             suggested_priority: row
                 .get::<_, String>("suggested_priority")?
                 .parse()

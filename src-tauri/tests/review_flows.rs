@@ -775,6 +775,8 @@ fn test_complete_review_input_needs_changes_requires_fix_description() {
         issues: vec![],
         fix_description: None, // Missing!
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
 
     assert!(

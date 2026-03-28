@@ -16,16 +16,23 @@
 //   3. Stale reviewer call on Ready task → 400 BAD_REQUEST (guard fires for non-review states).
 //   4. Valid reviewer call on Reviewing task → guard does NOT fire (proceeds past guard line 32).
 
+mod support;
+
 use axum::{extract::State, http::StatusCode, Json};
 use ralphx_lib::application::{
     interactive_process_registry::InteractiveProcessKey, AppState, TeamService, TeamStateTracker,
 };
 use ralphx_lib::commands::ExecutionState;
-use ralphx_lib::domain::entities::{InternalStatus, ProjectId, Task};
+use ralphx_lib::domain::entities::{
+    IdeationSession, InternalStatus, Priority, Project, ProjectId, ProposalCategory, Task,
+    TaskProposal,
+};
 use ralphx_lib::http_server::handlers::*;
+use ralphx_lib::http_server::helpers::get_task_context_impl;
 use ralphx_lib::http_server::project_scope::ProjectScope;
 use ralphx_lib::http_server::types::HttpServerState;
 use std::sync::Arc;
+use support::real_git_repo::setup_real_git_repo;
 
 /// Build a minimal HttpServerState backed by in-memory repos (no SQLite, no Tauri app handle).
 async fn setup_review_test_state() -> HttpServerState {
@@ -40,6 +47,80 @@ async fn setup_review_test_state() -> HttpServerState {
         team_tracker: tracker,
         team_service,
     }
+}
+
+async fn setup_review_scope_drift_state() -> (HttpServerState, Task) {
+    let app_state = Arc::new(AppState::new_sqlite_test());
+    let execution_state = Arc::new(ExecutionState::new());
+    let tracker = TeamStateTracker::new();
+    let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
+    let state = HttpServerState {
+        app_state,
+        execution_state,
+        team_tracker: tracker,
+        team_service,
+    };
+
+    let repo = setup_real_git_repo();
+    let repo_path = repo.dir.keep();
+    let repo_path_string = repo_path.to_string_lossy().to_string();
+    let checkout_status = std::process::Command::new("git")
+        .args(["checkout", &repo.task_branch])
+        .current_dir(&repo_path)
+        .status()
+        .expect("checkout task branch");
+    assert!(checkout_status.success(), "task branch checkout must succeed");
+
+    let mut project = Project::new("Review Scope Project".to_string(), repo_path_string);
+    project.base_branch = Some("main".to_string());
+    let project_id = project.id.clone();
+    state.app_state.project_repo.create(project).await.unwrap();
+
+    let session = IdeationSession::new_with_title(project_id.clone(), "Scope Review Session");
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    let mut proposal = TaskProposal::new(
+        session_id.clone(),
+        "Scoped proposal",
+        ProposalCategory::Feature,
+        Priority::Medium,
+    );
+    proposal.affected_paths = Some(
+        serde_json::to_string(&vec!["src-tauri/src/http_server".to_string()]).unwrap(),
+    );
+    let proposal_id = proposal.id.clone();
+    state
+        .app_state
+        .task_proposal_repo
+        .create(proposal)
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project_id, "Reviewing task with drift".to_string());
+    task.internal_status = InternalStatus::Reviewing;
+    task.source_proposal_id = Some(proposal_id);
+    task.ideation_session_id = Some(session_id);
+    task.task_branch = Some(repo.task_branch);
+    state.app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let context = get_task_context_impl(&state.app_state, &task.id)
+        .await
+        .expect("task context should load");
+    assert_eq!(
+        context.scope_drift_status,
+        ralphx_lib::domain::entities::ScopeDriftStatus::ScopeExpansion,
+        "test fixture must produce scope expansion; actual changed files = {:?}, out_of_scope = {:?}",
+        context.actual_changed_files,
+        context.out_of_scope_files
+    );
+
+    (state, task)
 }
 
 /// Create a task with the given status in the state's task repo.
@@ -70,6 +151,8 @@ async fn test_complete_review_rejected_when_task_already_review_passed() {
         feedback: None,
         issues: None,
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
 
     let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
@@ -108,6 +191,8 @@ async fn test_complete_review_rejected_when_task_merged() {
         feedback: None,
         issues: None,
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
 
     let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
@@ -142,6 +227,8 @@ async fn test_complete_review_rejected_when_task_ready() {
         feedback: Some("looks wrong".to_string()),
         issues: None,
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
 
     let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
@@ -185,6 +272,8 @@ async fn test_complete_review_guard_does_not_fire_for_reviewing_task() {
         feedback: None,
         issues: None,
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
 
     let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
@@ -200,6 +289,76 @@ async fn test_complete_review_guard_does_not_fire_for_reviewing_task() {
         );
     }
     // If Ok — guard correctly didn't fire, handler proceeded.
+}
+
+#[tokio::test]
+async fn test_complete_review_requires_scope_drift_classification_for_scope_expansion() {
+    let (state, task) = setup_review_scope_drift_state().await;
+
+    let req = CompleteReviewRequest {
+        task_id: task.id.as_str().to_string(),
+        decision: "approved".to_string(),
+        summary: None,
+        feedback: Some("Looks okay".to_string()),
+        issues: None,
+        escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
+    };
+
+    let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
+
+    match result {
+        Err((status, msg)) => {
+            assert_eq!(
+                status,
+                StatusCode::BAD_REQUEST,
+                "expected scope drift guard to return 400, got {status} with message: {msg}"
+            );
+            assert!(
+                msg.contains("Scope drift classification required"),
+                "expected scope drift guard message, got: {msg}"
+            );
+            assert!(
+                msg.contains("feature.rs"),
+                "expected out-of-scope file to be surfaced, got: {msg}"
+            );
+        }
+        Ok(_) => panic!("approval without scope drift classification must fail"),
+    }
+}
+
+#[tokio::test]
+async fn test_complete_review_rejects_approval_with_unrelated_scope_drift() {
+    let (state, task) = setup_review_scope_drift_state().await;
+
+    let req = CompleteReviewRequest {
+        task_id: task.id.as_str().to_string(),
+        decision: "approved".to_string(),
+        summary: None,
+        feedback: Some("Looks okay".to_string()),
+        issues: None,
+        escalation_reason: None,
+        scope_drift_classification: Some("unrelated_drift".to_string()),
+        scope_drift_notes: Some("feature.rs is outside the proposal scope".to_string()),
+    };
+
+    let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
+
+    match result {
+        Err((status, msg)) => {
+            assert_eq!(
+                status,
+                StatusCode::BAD_REQUEST,
+                "expected unrelated drift approval rejection to return 400, got {status} with message: {msg}"
+            );
+            assert!(
+                msg.contains("Cannot approve task with unrelated scope drift"),
+                "expected unrelated drift approval rejection, got: {msg}"
+            );
+        }
+        Ok(_) => panic!("approval with unrelated_drift classification must fail"),
+    }
 }
 
 // ============================================================================
@@ -224,6 +383,8 @@ async fn test_complete_review_no_ipr_entry_is_safe() {
         feedback: None,
         issues: None,
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
     let result = complete_review(State(state.clone()), ProjectScope(None), Json(req)).await;
 
@@ -282,6 +443,8 @@ async fn test_complete_review_ipr_removed_on_success() {
         feedback: None,
         issues: None,
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
     let result = complete_review(State(state.clone()), ProjectScope(None), Json(req)).await;
 
@@ -350,6 +513,8 @@ async fn test_complete_review_ipr_removed_on_needs_changes() {
         feedback: Some("Please fix the error handling".to_string()),
         issues: None,
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
     let result = complete_review(State(state.clone()), ProjectScope(None), Json(req)).await;
 
@@ -416,6 +581,8 @@ async fn test_complete_review_ipr_removed_on_escalate() {
         feedback: Some("Needs a human expert to decide".to_string()),
         issues: None,
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
     let result = complete_review(State(state.clone()), ProjectScope(None), Json(req)).await;
 
@@ -466,6 +633,8 @@ async fn test_approved_no_changes_string_parsed_correctly() {
         feedback: None,
         issues: None,
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
 
     let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
@@ -498,6 +667,8 @@ async fn test_invalid_decision_still_rejected() {
         feedback: None,
         issues: None,
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
 
     let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
@@ -534,6 +705,8 @@ async fn test_invalid_decision_error_lists_approved_no_changes() {
         feedback: None,
         issues: None,
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
 
     let result = complete_review(State(state), ProjectScope(None), Json(req)).await;

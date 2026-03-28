@@ -71,6 +71,7 @@ async fn test_create_proposal_without_plan_artifact_returns_validation_error() {
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
@@ -124,6 +125,7 @@ async fn test_create_proposal_with_plan_artifact_succeeds_and_auto_links() {
         suggested_priority: Priority::High,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
@@ -173,6 +175,7 @@ async fn test_create_proposal_sets_plan_version_at_creation() {
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
@@ -202,6 +205,13 @@ async fn setup_session_with_gate(
     gate_enabled: bool,
 ) -> (IdeationSession, ArtifactId) {
     let project_id = ProjectId::new();
+    let project = ralphx_lib::domain::entities::Project::new(
+        "Gate Test Project".to_string(),
+        "/tmp/gate-test-project".to_string(),
+    );
+    let mut project = project;
+    project.id = project_id.clone();
+    state.project_repo.create(project).await.unwrap();
 
     let artifact = Artifact::new_inline("Plan", ArtifactType::Specification, "# Plan", "test");
     let artifact_id = artifact.id.clone();
@@ -249,6 +259,7 @@ async fn create_test_proposal(state: &AppState, session_id: &IdeationSessionId) 
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
@@ -274,6 +285,7 @@ async fn test_create_gate_blocks_unverified_when_enabled() {
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
@@ -309,6 +321,7 @@ async fn test_create_gate_ipc_parity_same_error_as_http() {
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
@@ -321,6 +334,7 @@ async fn test_create_gate_ipc_parity_same_error_as_http() {
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
@@ -446,6 +460,7 @@ async fn test_create_proposal_inserted_exactly_once() {
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
@@ -464,6 +479,48 @@ async fn test_create_proposal_inserted_exactly_once() {
         .unwrap();
     assert_eq!(proposals.len(), 1, "Exactly one proposal should exist");
     assert_eq!(proposals[0].id, proposal.id);
+}
+
+#[tokio::test]
+async fn test_create_proposal_persists_affected_paths() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+
+    let options = CreateProposalOptions {
+        title: "Scoped Proposal".to_string(),
+        description: None,
+        category: ProposalCategory::Feature,
+        suggested_priority: Priority::Medium,
+        steps: None,
+        acceptance_criteria: None,
+        affected_paths: Some(
+            serde_json::to_string(&vec![
+                "src-tauri/src/http_server".to_string(),
+                "src/components/execution".to_string(),
+            ])
+            .unwrap(),
+        ),
+        estimated_complexity: None,
+        target_project: None,
+        depends_on: vec![],
+        expected_proposal_count: None,
+    };
+
+    let (proposal, _dep_errors, _) = create_proposal_impl(&state, session.id.clone(), options)
+        .await
+        .unwrap();
+
+    let persisted = state
+        .task_proposal_repo
+        .get_by_id(&proposal.id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        persisted.affected_paths.as_deref(),
+        Some("[\"src-tauri/src/http_server\",\"src/components/execution\"]")
+    );
 }
 
 // Scenario 15: IPC update sets user_modified=true on changed fields.
@@ -519,6 +576,35 @@ async fn test_update_api_does_not_set_user_modified() {
     );
 }
 
+#[tokio::test]
+async fn test_update_proposal_persists_affected_paths() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+    let proposal_id = create_test_proposal(&state, &session.id).await;
+
+    let options = UpdateProposalOptions {
+        affected_paths: Some(Some(
+            serde_json::to_string(&vec![
+                "src-tauri/src/application/chat_service".to_string(),
+                "src-tauri/tests/chat_service_streaming.rs".to_string(),
+            ])
+            .unwrap(),
+        )),
+        source: UpdateSource::Api,
+        ..Default::default()
+    };
+    let (updated, _dep_errors) = update_proposal_impl(&state, &proposal_id, options)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        updated.affected_paths.as_deref(),
+        Some(
+            "[\"src-tauri/src/application/chat_service\",\"src-tauri/tests/chat_service_streaming.rs\"]"
+        )
+    );
+}
+
 // Scenario 17: estimated_complexity roundtrip — create with complexity → stored correctly.
 #[tokio::test]
 async fn test_create_proposal_with_estimated_complexity_roundtrip() {
@@ -532,6 +618,7 @@ async fn test_create_proposal_with_estimated_complexity_roundtrip() {
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: Some("complex".to_string()),
         target_project: None,
         depends_on: vec![],
@@ -866,6 +953,7 @@ async fn test_create_gate_off_allows_any_status() {
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
@@ -897,6 +985,7 @@ async fn test_concurrent_creates_produce_unique_sort_orders() {
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
@@ -951,6 +1040,7 @@ async fn test_create_with_valid_depends_on_inserts_dependency() {
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![a_id.as_str().to_string()],
@@ -984,6 +1074,7 @@ async fn test_create_with_nonexistent_dep_partial_failure() {
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec!["nonexistent-proposal-id".to_string()],
@@ -1024,6 +1115,7 @@ async fn test_create_with_cross_session_dep_rejected() {
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![other_proposal_id.as_str().to_string()],
@@ -1253,6 +1345,7 @@ async fn test_stale_plan_guard_null_passthrough() {
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
@@ -1308,6 +1401,7 @@ async fn test_stale_plan_guard_fresh_version_ok() {
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
@@ -1378,6 +1472,7 @@ async fn test_stale_plan_guard_stale_version_blocked_with_actionable_error() {
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
@@ -1429,6 +1524,7 @@ async fn test_concurrent_create_during_status_transition_no_partial_state() {
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],
@@ -1491,6 +1587,7 @@ fn make_proposal_options(title: &str, expected_count: Option<u32>) -> CreateProp
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        affected_paths: None,
         estimated_complexity: None,
         target_project: None,
         depends_on: vec![],

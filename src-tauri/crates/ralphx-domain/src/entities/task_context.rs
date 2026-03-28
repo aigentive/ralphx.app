@@ -5,6 +5,18 @@ use serde::{Deserialize, Serialize};
 
 use super::task_step::StepProgressSummary;
 
+/// Backend-computed comparison between planned coarse scope and actual changed files.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ScopeDriftStatus {
+    /// No reliable planned scope or diff context was available.
+    Unbounded,
+    /// Actual changed files stayed within the declared coarse scope.
+    WithinScope,
+    /// Actual changed files expanded beyond the declared coarse scope.
+    ScopeExpansion,
+}
+
 /// Rich context returned by get_task_context MCP tool
 /// Contains the task being executed along with linked artifacts and proposals
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +65,15 @@ pub struct TaskContext {
     /// Validation cache from last execution (if available).
     /// Backend pre-computes a validation_hint so agents don't compare SHAs themselves.
     pub validation_cache: Option<ValidationCacheData>,
+
+    /// Actual changed files between the task branch/worktree and its review base.
+    pub actual_changed_files: Vec<String>,
+
+    /// Backend-computed scope drift status for reviewers/agents.
+    pub scope_drift_status: ScopeDriftStatus,
+
+    /// Changed files outside the proposal's declared coarse scope.
+    pub out_of_scope_files: Vec<String>,
 }
 
 /// Summary of a task proposal for context purposes
@@ -69,6 +90,8 @@ pub struct TaskProposalSummary {
     pub plan_version_at_creation: Option<u32>,
     /// Numeric priority score (0-100, higher = more important)
     pub priority_score: i32,
+    /// Coarse planned file/path scope hints captured during ideation.
+    pub affected_paths: Vec<String>,
 }
 
 /// Summary of a task for dependency context (blocker or dependent)

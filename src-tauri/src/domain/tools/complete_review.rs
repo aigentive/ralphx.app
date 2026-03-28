@@ -24,6 +24,18 @@ pub enum ReviewToolOutcome {
     Escalate,
 }
 
+/// Reviewer classification for detected scope expansion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScopeDriftClassification {
+    /// Scope expanded into nearby files/surfaces that were reasonably adjacent.
+    AdjacentScopeExpansion,
+    /// Scope expanded because the original plan needed correction to be valid.
+    PlanCorrection,
+    /// Scope expanded into unrelated drift that should not be silently approved.
+    UnrelatedDrift,
+}
+
 impl std::fmt::Display for ReviewToolOutcome {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -227,6 +239,12 @@ pub struct CompleteReviewInput {
     /// Reason for escalation to human (required if outcome is escalate)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub escalation_reason: Option<String>,
+    /// Required when backend detected scope expansion during review.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_drift_classification: Option<ScopeDriftClassification>,
+    /// Optional reviewer rationale for the drift classification.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_drift_notes: Option<String>,
 }
 
 /// Validation errors for CompleteReviewInput
@@ -299,6 +317,8 @@ impl CompleteReviewInput {
             issues: Vec::new(),
             fix_description: None,
             escalation_reason: None,
+            scope_drift_classification: None,
+            scope_drift_notes: None,
         }
     }
 
@@ -313,6 +333,8 @@ impl CompleteReviewInput {
             issues: Vec::new(),
             fix_description: Some(fix_description.into()),
             escalation_reason: None,
+            scope_drift_classification: None,
+            scope_drift_notes: None,
         }
     }
 
@@ -328,6 +350,8 @@ impl CompleteReviewInput {
             issues,
             fix_description: Some(fix_description.into()),
             escalation_reason: None,
+            scope_drift_classification: None,
+            scope_drift_notes: None,
         }
     }
 
@@ -339,6 +363,8 @@ impl CompleteReviewInput {
             issues: Vec::new(),
             fix_description: None,
             escalation_reason: Some(escalation_reason.into()),
+            scope_drift_classification: None,
+            scope_drift_notes: None,
         }
     }
 

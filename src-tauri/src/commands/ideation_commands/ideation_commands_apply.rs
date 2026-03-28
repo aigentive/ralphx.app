@@ -437,6 +437,7 @@ pub async fn apply_proposals_core(
                     Some(IdeationSessionId::from_string(session_id_str.clone()));
                 task.execution_plan_id = Some(execution_plan_id.clone());
                 task.priority = proposal.priority_score;
+                task.source_proposal_id = Some(proposal.id.clone());
                 // Set plan_artifact_id during INSERT — eliminates the Phase 2 update loop
                 task.plan_artifact_id = proposal
                     .plan_artifact_id

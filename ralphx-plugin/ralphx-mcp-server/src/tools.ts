@@ -96,6 +96,12 @@ export const ALL_TOOLS: Tool[] = [
           items: { type: "string" },
           description: "Testable criteria to verify task completion (e.g., 'API returns 200 with valid schema', 'All tests pass'). Typically 3-5 criteria.",
         },
+        affected_paths: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Coarse planned file or directory scope for this proposal. Prefer repo-relative paths or prefixes like 'src-tauri/src/http_server' or 'src/components/execution'. Use broad, credible boundaries rather than guessing an exact final file list.",
+        },
         target_project: {
           type: "string",
           description: "Optional: target project ID or filesystem path for cross-project ideation. Tag this proposal with the project it targets.",
@@ -146,6 +152,12 @@ export const ALL_TOOLS: Tool[] = [
           type: "array",
           items: { type: "string" },
           description: "Updated acceptance criteria. Testable criteria to verify task completion (e.g., 'API returns 200 with valid schema'). Typically 3-5 criteria.",
+        },
+        affected_paths: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Updated coarse planned scope for the proposal. Use repo-relative path prefixes that bound the intended implementation area without pretending to know every final file.",
         },
         target_project: {
           type: "string",
@@ -1070,6 +1082,17 @@ export const ALL_TOOLS: Tool[] = [
           type: "string",
           description:
             "Required when decision is 'escalate': concise explanation of why human review is needed",
+        },
+        scope_drift_classification: {
+          type: "string",
+          enum: ["adjacent_scope_expansion", "plan_correction", "unrelated_drift"],
+          description:
+            "Required when get_task_context reports scope_drift_status='scope_expansion'. Use adjacent_scope_expansion for nearby necessary files, plan_correction when the plan under-scoped the real implementation, or unrelated_drift for changes that do not belong in the task branch.",
+        },
+        scope_drift_notes: {
+          type: "string",
+          description:
+            "Optional explanation for the scope drift classification, especially when the reviewer is sending the task back for revise.",
         },
       },
       required: ["task_id", "decision", "feedback"],

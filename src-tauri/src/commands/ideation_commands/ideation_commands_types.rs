@@ -227,6 +227,7 @@ pub struct CreateProposalInput {
     pub category: String,
     pub steps: Option<Vec<String>>,
     pub acceptance_criteria: Option<Vec<String>>,
+    pub affected_paths: Option<Vec<String>>,
     pub priority: Option<String>,
     pub complexity: Option<String>,
     /// Optional target project ID for cross-project proposals
@@ -246,6 +247,7 @@ pub struct UpdateProposalInput {
     pub category: Option<String>,
     pub steps: Option<Vec<String>>,
     pub acceptance_criteria: Option<Vec<String>>,
+    pub affected_paths: Option<Vec<String>>,
     pub user_priority: Option<String>,
     pub complexity: Option<String>,
     /// Optional target project ID for cross-project proposals
@@ -268,6 +270,7 @@ pub struct TaskProposalResponse {
     pub category: String,
     pub steps: Vec<String>,
     pub acceptance_criteria: Vec<String>,
+    pub affected_paths: Vec<String>,
     pub suggested_priority: String,
     pub priority_score: i32,
     pub priority_reason: Option<String>,
@@ -302,6 +305,10 @@ impl From<TaskProposal> for TaskProposalResponse {
             .acceptance_criteria
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default();
+        let affected_paths: Vec<String> = proposal
+            .affected_paths
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
 
         Self {
             id: proposal.id.as_str().to_string(),
@@ -311,6 +318,7 @@ impl From<TaskProposal> for TaskProposalResponse {
             category: proposal.category.to_string(),
             steps,
             acceptance_criteria,
+            affected_paths,
             suggested_priority: proposal.suggested_priority.to_string(),
             priority_score: proposal.priority_score,
             priority_reason: proposal.priority_reason,

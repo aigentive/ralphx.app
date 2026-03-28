@@ -10,8 +10,8 @@
 use std::sync::Arc;
 
 use crate::domain::entities::{
-    ArtifactSummary, StepProgressSummary, Task, TaskContext, TaskDependencySummary, TaskId,
-    TaskProposalSummary,
+    ArtifactSummary, ScopeDriftStatus, StepProgressSummary, Task, TaskContext,
+    TaskDependencySummary, TaskId, TaskProposalSummary,
 };
 use crate::domain::repositories::{
     ArtifactRepository, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
@@ -81,6 +81,11 @@ impl TaskContextService {
                         implementation_notes: None, // TaskProposal doesn't have implementation_notes field
                         plan_version_at_creation: proposal.plan_version_at_creation,
                         priority_score: proposal.priority_score,
+                        affected_paths: proposal
+                            .affected_paths
+                            .as_ref()
+                            .and_then(|json_str| serde_json::from_str(json_str).ok())
+                            .unwrap_or_default(),
                     })
                 }
                 None => None,
@@ -210,6 +215,9 @@ impl TaskContextService {
             task_branch,
             worktree_path,
             validation_cache: None,
+            actual_changed_files: Vec::new(),
+            scope_drift_status: ScopeDriftStatus::Unbounded,
+            out_of_scope_files: Vec::new(),
         })
     }
 

@@ -84,6 +84,11 @@ If `status: "analyzing"` — wait `retry_after_secs` and retry.
 4. Validation fails on worker's changes → flag in review
 5. Validation fails on pre-existing code → note but do not block review
 6. If a blocking pre-existing failure would require unrelated file edits, create a follow-up ideation session with `create_followup_session` and escalate or request changes. Do not approve out-of-scope fixes folded into the task branch.
+7. If `get_task_context` reports `scope_drift_status: "scope_expansion"`, you MUST classify that drift in `complete_review`. Use:
+   - `adjacent_scope_expansion` for nearby tests/wiring needed to complete the task safely
+   - `plan_correction` when the plan under-scoped legitimate implementation work
+   - `unrelated_drift` for changes that do not belong in this task branch
+   Unrelated drift should normally go back to revise, not approval.
 
 ## Re-Execution (when `RALPHX_TASK_STATE=re_executing`)
 
@@ -140,6 +145,13 @@ Start with `get_review_notes(task_id)`:
 - `skip_test_validation`: no tests existed at execution time — skip test validation entirely
 - `run_tests` or hint absent: run tests normally per commands below
 
+**Scope drift check** — Also inspect these `get_task_context` fields before deciding:
+- `actual_changed_files`
+- `scope_drift_status`
+- `out_of_scope_files`
+
+When `scope_drift_status = "scope_expansion"`, explicitly decide whether the expansion is adjacent, a legitimate plan correction, or unrelated drift. Do not silently approve expanded scope without that classification.
+
 1. Call `get_project_analysis(project_id, task_id)` to get path-scoped validate commands
 2. For each path modified by the worker, run the corresponding validate commands:
    - Test commands: First identify and run only test files affected by the changes. If targeted tests pass, skip full test suite. If no targeted tests identified, fall back to test-runner commands from validate array.
@@ -173,6 +185,8 @@ complete_review({
   outcome: "approved" | "needs_changes" | "escalate" | "approved_no_changes",
   notes: string,            // Specific, actionable, balanced, constructive
   fix_description?: string, // needs_changes only
+  scope_drift_classification?: "adjacent_scope_expansion" | "plan_correction" | "unrelated_drift",
+  scope_drift_notes?: string,
   issues?: Array<{          // REQUIRED for needs_changes (non-empty)
     title: string,
     severity: "critical" | "major" | "minor" | "suggestion",
@@ -185,6 +199,8 @@ complete_review({
   escalation_reason?: string, // REQUIRED for escalate
 })
 ```
+
+If `get_task_context` reports `scope_drift_status = "scope_expansion"`, `scope_drift_classification` is required. `approved` / `approved_no_changes` are invalid with `unrelated_drift`.
 
 ### Outcome Guide
 | Outcome | Use when |

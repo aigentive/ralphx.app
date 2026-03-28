@@ -121,6 +121,8 @@ fn test_validate_approved_empty_notes() {
         issues: Vec::new(),
         fix_description: None,
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
     assert_eq!(
         input.validate(),
@@ -137,6 +139,8 @@ fn test_validate_approved_whitespace_notes() {
         issues: Vec::new(),
         fix_description: None,
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
     assert_eq!(
         input.validate(),
@@ -165,6 +169,8 @@ fn test_validate_needs_changes_missing_fix_description() {
         issues: vec![issue],
         fix_description: None,
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
     assert_eq!(
         input.validate(),
@@ -182,6 +188,8 @@ fn test_validate_needs_changes_empty_fix_description() {
         issues: vec![issue],
         fix_description: Some("".to_string()),
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
     assert_eq!(
         input.validate(),
@@ -199,6 +207,8 @@ fn test_validate_needs_changes_whitespace_fix_description() {
         issues: vec![issue],
         fix_description: Some("   ".to_string()),
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
     assert_eq!(
         input.validate(),
@@ -214,6 +224,8 @@ fn test_validate_needs_changes_missing_issues() {
         issues: Vec::new(),
         fix_description: Some("Fix it".to_string()),
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
     assert_eq!(
         input.validate(),
@@ -231,6 +243,8 @@ fn test_validate_needs_changes_invalid_issue() {
         issues: vec![invalid_issue],
         fix_description: Some("Fix it".to_string()),
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
     assert!(matches!(
         input.validate(),
@@ -256,6 +270,8 @@ fn test_validate_escalate_missing_escalation_reason() {
         issues: Vec::new(),
         fix_description: None,
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
     assert_eq!(
         input.validate(),
@@ -271,6 +287,8 @@ fn test_validate_escalate_empty_escalation_reason() {
         issues: Vec::new(),
         fix_description: None,
         escalation_reason: Some("".to_string()),
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
     assert_eq!(
         input.validate(),
@@ -286,6 +304,8 @@ fn test_validate_escalate_whitespace_escalation_reason() {
         issues: Vec::new(),
         fix_description: None,
         escalation_reason: Some("  \t\n  ".to_string()),
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
     assert_eq!(
         input.validate(),
@@ -538,6 +558,8 @@ fn test_complete_review_input_approved_no_changes_validate_ok() {
         issues: vec![],
         fix_description: None,
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
     assert!(input.validate().is_ok(), "ApprovedNoChanges with empty issues and no fix_description should be valid");
 }
@@ -552,6 +574,8 @@ fn test_complete_review_input_approved_no_changes_validate_err_with_issues() {
         issues: vec![issue],
         fix_description: None,
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
     // With issues present: ApprovedNoChanges should still be Ok (issues are optional for approval)
     // It's the same behavior as Approved — issues are allowed but not required
@@ -566,6 +590,8 @@ fn test_complete_review_input_is_approved_for_approved_no_changes() {
         issues: vec![],
         fix_description: None,
         escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
     assert!(input.is_approved(), "is_approved() should return true for ApprovedNoChanges");
     assert!(!input.is_needs_changes());
