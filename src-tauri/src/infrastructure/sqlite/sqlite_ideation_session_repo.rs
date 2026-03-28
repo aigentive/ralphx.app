@@ -392,10 +392,10 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
             .run(move |conn| {
                 let query = match status {
                     IdeationSessionStatus::Archived => {
-                        "UPDATE ideation_sessions SET status = ?2, updated_at = ?3, archived_at = ?4, verification_in_progress = 0 WHERE id = ?1"
+                        "UPDATE ideation_sessions SET status = ?2, updated_at = ?3, archived_at = ?4, verification_in_progress = 0, pending_initial_prompt = NULL WHERE id = ?1"
                     }
                     IdeationSessionStatus::Accepted => {
-                        "UPDATE ideation_sessions SET status = ?2, updated_at = ?3, converted_at = ?4 WHERE id = ?1"
+                        "UPDATE ideation_sessions SET status = ?2, updated_at = ?3, converted_at = ?4, pending_initial_prompt = NULL WHERE id = ?1"
                     }
                     IdeationSessionStatus::Active => {
                         "UPDATE ideation_sessions SET status = ?2, updated_at = ?3, archived_at = NULL, converted_at = NULL WHERE id = ?1"
@@ -1066,7 +1066,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                            AND t.internal_status IN ('approved','merged','failed','cancelled','stopped')) as done_count, \
                          (SELECT COUNT(*) FROM tasks t WHERE t.ideation_session_id = s.id) as total_count, \
                          (SELECT COUNT(*) FROM ideation_sessions vc WHERE vc.parent_session_id = s.id AND vc.session_purpose = 'verification') as verification_child_count, \
-                         (s.pending_initial_prompt IS NOT NULL) as has_pending_prompt \
+                         (s.pending_initial_prompt IS NOT NULL AND s.status = 'active') as has_pending_prompt \
                          FROM ideation_sessions s \
                          LEFT JOIN ideation_sessions parent ON s.parent_session_id = parent.id \
                          WHERE {} \
@@ -1085,7 +1085,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                          parent.title as parent_session_title, \
                          NULL as active_count, NULL as done_count, NULL as total_count, \
                          (SELECT COUNT(*) FROM ideation_sessions vc WHERE vc.parent_session_id = s.id AND vc.session_purpose = 'verification') as verification_child_count, \
-                         (s.pending_initial_prompt IS NOT NULL) as has_pending_prompt \
+                         (s.pending_initial_prompt IS NOT NULL AND s.status = 'active') as has_pending_prompt \
                          FROM ideation_sessions s \
                          LEFT JOIN ideation_sessions parent ON s.parent_session_id = parent.id \
                          WHERE {} \

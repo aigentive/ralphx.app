@@ -2692,3 +2692,170 @@ async fn test_set_pending_if_unset_returns_false_for_unknown_session() {
         .unwrap();
     assert!(!result, "must return false when session does not exist");
 }
+
+// ==================== PENDING_INITIAL_PROMPT INVARIANT TESTS ====================
+
+/// update_status(Accepted) must atomically clear pending_initial_prompt.
+#[tokio::test]
+async fn test_update_status_accepted_clears_pending_prompt() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let session = create_test_session(&project_id, Some("Pending accepted"));
+    repo.create(session.clone()).await.unwrap();
+
+    repo.set_pending_initial_prompt(session.id.as_str(), Some("queued prompt".to_string()))
+        .await
+        .unwrap();
+
+    // Verify prompt is set before transition
+    let before = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert!(before.pending_initial_prompt.is_some());
+
+    repo.update_status(&session.id, IdeationSessionStatus::Accepted)
+        .await
+        .unwrap();
+
+    let after = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(after.status, IdeationSessionStatus::Accepted);
+    assert!(
+        after.pending_initial_prompt.is_none(),
+        "update_status(Accepted) must atomically clear pending_initial_prompt"
+    );
+}
+
+/// update_status(Archived) must atomically clear pending_initial_prompt.
+#[tokio::test]
+async fn test_update_status_archived_clears_pending_prompt() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let session = create_test_session(&project_id, Some("Pending archived"));
+    repo.create(session.clone()).await.unwrap();
+
+    repo.set_pending_initial_prompt(session.id.as_str(), Some("queued prompt".to_string()))
+        .await
+        .unwrap();
+
+    let before = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert!(before.pending_initial_prompt.is_some());
+
+    repo.update_status(&session.id, IdeationSessionStatus::Archived)
+        .await
+        .unwrap();
+
+    let after = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(after.status, IdeationSessionStatus::Archived);
+    assert!(
+        after.pending_initial_prompt.is_none(),
+        "update_status(Archived) must atomically clear pending_initial_prompt"
+    );
+}
+
+/// update_status(Active) must NOT clear pending_initial_prompt.
+#[tokio::test]
+async fn test_update_status_active_preserves_pending_prompt() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    // Start with an archived session that has a pending prompt
+    let mut session = create_test_session(&project_id, Some("Reactivate with prompt"));
+    session.archive();
+    repo.create(session.clone()).await.unwrap();
+
+    repo.set_pending_initial_prompt(session.id.as_str(), Some("queued prompt".to_string()))
+        .await
+        .unwrap();
+
+    repo.update_status(&session.id, IdeationSessionStatus::Active)
+        .await
+        .unwrap();
+
+    let after = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(after.status, IdeationSessionStatus::Active);
+    assert_eq!(
+        after.pending_initial_prompt.as_deref(),
+        Some("queued prompt"),
+        "update_status(Active) must NOT clear pending_initial_prompt"
+    );
+}
+
+/// Defense-in-depth: list_by_group returns has_pending_prompt=false for accepted sessions
+/// even if pending_initial_prompt is stale in the DB (SQL guard: AND s.status = 'active').
+#[tokio::test]
+async fn test_list_has_pending_prompt_false_for_accepted() {
+    let (_db, shared, repo) = setup_shared_test_db();
+    let project_id = ProjectId::new();
+    {
+        let conn = shared.lock().await;
+        insert_test_project(&conn, &project_id, "Test Project", "/test/path");
+    }
+
+    let session = create_test_session(&project_id, Some("Accepted stale prompt"));
+    repo.create(session.clone()).await.unwrap();
+
+    // Simulate stale state: set pending_initial_prompt and accepted status directly in SQL,
+    // bypassing update_status() to prove the SQL guard is the last line of defense.
+    {
+        let conn = shared.lock().await;
+        conn.execute(
+            "UPDATE ideation_sessions SET status = 'accepted', converted_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), pending_initial_prompt = 'stale prompt' WHERE id = ?1",
+            rusqlite::params![session.id.as_str()],
+        )
+        .unwrap();
+    }
+
+    let (sessions, _) = repo
+        .list_by_group(&project_id, "accepted", 0, 20)
+        .await
+        .unwrap();
+
+    let found = sessions
+        .iter()
+        .find(|s| s.session.id == session.id)
+        .expect("session must appear in accepted group");
+
+    assert!(
+        !found.has_pending_prompt,
+        "has_pending_prompt must be false for accepted sessions even if DB field is stale"
+    );
+}
+
+/// list_by_group returns has_pending_prompt=true for active sessions with pending_initial_prompt set.
+#[tokio::test]
+async fn test_list_has_pending_prompt_true_for_active() {
+    let (_db, shared, repo) = setup_shared_test_db();
+    let project_id = ProjectId::new();
+    {
+        let conn = shared.lock().await;
+        insert_test_project(&conn, &project_id, "Test Project", "/test/path");
+    }
+
+    let session = create_test_session(&project_id, Some("Active with prompt"));
+    repo.create(session.clone()).await.unwrap();
+
+    repo.set_pending_initial_prompt(session.id.as_str(), Some("waiting prompt".to_string()))
+        .await
+        .unwrap();
+
+    let (sessions, _) = repo
+        .list_by_group(&project_id, "drafts", 0, 20)
+        .await
+        .unwrap();
+
+    let found = sessions
+        .iter()
+        .find(|s| s.session.id == session.id)
+        .expect("session must appear in drafts group");
+
+    assert!(
+        found.has_pending_prompt,
+        "has_pending_prompt must be true for active sessions with pending_initial_prompt set"
+    );
+}

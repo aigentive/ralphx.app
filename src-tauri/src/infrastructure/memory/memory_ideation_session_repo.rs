@@ -77,9 +77,11 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
                 IdeationSessionStatus::Archived => {
                     session.archived_at = Some(Utc::now());
                     session.verification_in_progress = false;
+                    session.pending_initial_prompt = None;
                 }
                 IdeationSessionStatus::Accepted => {
                     session.converted_at = Some(Utc::now());
+                    session.pending_initial_prompt = None;
                 }
                 IdeationSessionStatus::Active => {
                     session.archived_at = None;
