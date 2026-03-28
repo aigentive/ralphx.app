@@ -66,6 +66,7 @@ function createMockReviewNote(
     summary: "Code review passed",
     notes: "All checks passed",
     issues: null,
+    followup_session_id: null,
     created_at: "2026-02-23T10:00:00+00:00",
     ...overrides,
   };
@@ -304,6 +305,27 @@ describe("useAuditTrail", () => {
     expect(entry.type).toBe("Changes Requested");
     expect(entry.actor).toBe("AI Reviewer");
     expect(entry.description).toBe("Found 3 issues");
+  });
+
+  it("maps follow-up session id from review notes into audit entries", async () => {
+    const reviewNote = createMockReviewNote({
+      id: "note-followup",
+      followup_session_id: "session-123",
+    });
+
+    mockGetStateHistory.mockResolvedValue([reviewNote]);
+    mockGetStateTransitions.mockResolvedValue([]);
+    mockListTaskEvents.mockResolvedValue(emptyPage);
+
+    const { result } = renderHook(() => useAuditTrail("task-1"), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.entries[0]!.followupSessionId).toBe("session-123");
   });
 
   it("maps review note with only summary (no notes) to description", async () => {

@@ -30,6 +30,7 @@ export interface AuditEntry {
   toStatus?: string | undefined;
   phaseId?: string | undefined;
   severity?: "info" | "warning" | "error" | "success" | undefined;
+  followupSessionId?: string | undefined;
 }
 
 export interface AuditPhase {
@@ -209,6 +210,7 @@ function mapReviewToAuditEntry(review: ReviewNoteResponse): AuditEntry {
     metadata: review.issues?.length
       ? `${review.issues.length} issue${review.issues.length === 1 ? "" : "s"} found`
       : undefined,
+    followupSessionId: review.followup_session_id ?? undefined,
   };
 }
 

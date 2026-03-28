@@ -5,12 +5,19 @@
  * EventCard dispatcher, SourceBadge, and ExpandableContent behaviour.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { EventCard, SourceBadge } from "./EventCards";
 import type { AuditEntry } from "./EventCards";
+
+const mockNavigateToIdeationSession = vi.fn();
+
+vi.mock("@/lib/navigation", () => ({
+  navigateToIdeationSession: (sessionId: string) =>
+    mockNavigateToIdeationSession(sessionId),
+}));
 
 // ============================================================================
 // Helpers
@@ -258,6 +265,23 @@ describe("ReviewEventCard", () => {
       />
     );
     expect(screen.getByText(/AI Reviewer/i)).toBeInTheDocument();
+  });
+
+  it("shows follow-up session link and navigates to ideation", async () => {
+    render(
+      <EventCard
+        entry={makeEntry({
+          source: "review",
+          type: "Rejected",
+          actor: "AI Reviewer",
+          description: "Blocked by unrelated drift",
+          followupSessionId: "session-followup-1",
+        })}
+      />
+    );
+    expect(screen.getByText(/Follow-up: session-followup-1/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Open/i }));
+    expect(mockNavigateToIdeationSession).toHaveBeenCalledWith("session-followup-1");
   });
 
   it("shows timestamp", () => {

@@ -4,7 +4,8 @@
  * Shared utilities live in EventCardHelpers.tsx.
  */
 
-import { ArrowRight, Bot, MessageSquare, User } from "lucide-react";
+import { ArrowRight, Bot, ExternalLink, MessageSquare, User } from "lucide-react";
+import { navigateToIdeationSession } from "@/lib/navigation";
 import {
   ACTIVITY_TYPE_CONFIG,
   CARD_STYLE,
@@ -194,6 +195,28 @@ function ReviewEventCard({ entry }: { entry: AuditEntry }) {
           >
             {entry.metadata}
           </p>
+        )}
+        {entry.followupSessionId && (
+          <div
+            className="mt-2 flex items-center justify-between gap-2 rounded px-2 py-1.5"
+            style={{
+              backgroundColor: "rgba(255, 107, 53, 0.08)",
+              border: "1px solid rgba(255,255,255,0.05)",
+            }}
+          >
+            <span className="text-[10px] text-white/45 break-all min-w-0">
+              Follow-up: {entry.followupSessionId}
+            </span>
+            <button
+              type="button"
+              onClick={() => navigateToIdeationSession(entry.followupSessionId!)}
+              className="shrink-0 inline-flex items-center gap-1 text-[10px] font-medium transition-opacity hover:opacity-80"
+              style={{ color: "#ff8a5b" }}
+            >
+              <ExternalLink className="w-3 h-3" />
+              Open
+            </button>
+          </div>
         )}
       </div>
     </div>
