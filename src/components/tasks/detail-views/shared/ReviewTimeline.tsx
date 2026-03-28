@@ -7,10 +7,11 @@
 import { useState, Fragment } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { CheckCircle2, RotateCcw, Bot, User, Settings } from "lucide-react";
+import { CheckCircle2, RotateCcw, Bot, User, Settings, ExternalLink } from "lucide-react";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 import type { StateTransition } from "@/api/tasks";
+import { navigateToIdeationSession } from "@/lib/navigation";
 
 // ============================================================================
 // Staleness Detection
@@ -294,6 +295,36 @@ function TimelineItem({
                     style={{ color: "hsl(217 90% 60%)" }}
                   >
                     Show less
+                  </button>
+                </div>
+              )}
+
+              {entry.followup_session_id && (
+                <div className="mt-3 flex items-center justify-between gap-2 rounded-lg px-2.5 py-2"
+                  style={{
+                    backgroundColor: "rgba(255, 107, 53, 0.08)",
+                    border: "1px solid rgba(255, 107, 53, 0.14)",
+                  }}
+                >
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-medium text-white/65">
+                      Follow-up ideation session
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-white/45 break-all">
+                      {entry.followup_session_id}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigateToIdeationSession(entry.followup_session_id!)}
+                    className="shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-opacity hover:opacity-80"
+                    style={{
+                      color: "hsl(14 100% 68%)",
+                      backgroundColor: "rgba(255, 107, 53, 0.12)",
+                    }}
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Open
                   </button>
                 </div>
               )}
