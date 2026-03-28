@@ -102,25 +102,6 @@ export const planBranchApi = {
     ),
 
   /**
-   * Disable feature branch for a plan
-   * Only allowed if no tasks have been merged to the feature branch yet
-   * @param planArtifactId - The plan artifact ID to disable
-   */
-  disable: (planArtifactId: string): Promise<void> =>
-    invoke("disable_feature_branch", { planArtifactId }) as Promise<void>,
-
-  /**
-   * Update project-level feature branch setting
-   * @param projectId - The project ID to update
-   * @param enabled - Whether feature branches should be enabled by default
-   */
-  updateProjectSetting: (projectId: string, enabled: boolean): Promise<void> =>
-    invoke("update_project_feature_branch_setting", {
-      projectId,
-      enabled,
-    }) as Promise<void>,
-
-  /**
    * Get plan branch by merge task ID
    * @param taskId - The merge task ID to look up
    * @returns PlanBranch or null if none exists

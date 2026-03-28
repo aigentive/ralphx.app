@@ -283,8 +283,7 @@ export function registerTools(
         name: "v1_accept_plan_and_schedule",
         description:
           "Saga: apply proposals → create tasks → schedule (idempotent, resumable on failure). " +
-          "Optional: set base_branch_override to merge into a branch other than the project default (e.g. 'develop'). " +
-          "Set use_feature_branch=true to create an isolated feature branch for the plan's tasks.",
+          "Optional: set base_branch_override to merge into a branch other than the project default (e.g. 'develop').",
         inputSchema: {
           type: "object" as const,
           properties: {
@@ -294,11 +293,6 @@ export function registerTools(
               description:
                 "Branch to merge into instead of the project default (e.g. 'develop', 'staging'). " +
                 "Use v1_get_project_details to discover the project's default base_branch.",
-            },
-            use_feature_branch: {
-              type: "boolean",
-              description:
-                "When true, creates an isolated feature branch for the plan's tasks instead of working directly on the base branch.",
             },
           },
           required: ["session_id"],

@@ -389,14 +389,6 @@ const commandHandlers: Record<
     });
     return toSnakeCasePlanBranch(branch);
   },
-  disable_feature_branch: async (args) =>
-    mockPlanBranchApi.disable(args.planArtifactId as string),
-  update_project_feature_branch_setting: async (args) =>
-    mockPlanBranchApi.updateProjectSetting(
-      args.projectId as string,
-      args.enabled as boolean
-    ),
-
   // Health check
   health_check: async () => ({ status: "ok" }),
 };

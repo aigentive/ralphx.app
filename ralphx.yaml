@@ -1047,7 +1047,6 @@ agents:
     tools: { extends: base_tools }
     mcp_tools: [
         create_team_artifact,
-        get_team_artifacts,
         get_session_plan,
         get_artifact,
       ]
@@ -1059,7 +1058,6 @@ agents:
     tools: { extends: base_tools }
     mcp_tools: [
         create_team_artifact,
-        get_team_artifacts,
         get_session_plan,
         get_artifact,
       ]
@@ -1071,7 +1069,6 @@ agents:
     tools: { extends: base_tools }
     mcp_tools: [
         create_team_artifact,
-        get_team_artifacts,
         get_session_plan,
         get_artifact,
         search_memories,
@@ -1087,7 +1084,6 @@ agents:
     tools: { extends: base_tools }
     mcp_tools: [
         create_team_artifact,
-        get_team_artifacts,
         get_session_plan,
         get_artifact,
       ]
@@ -1141,7 +1137,6 @@ agents:
     tools: { extends: base_tools }
     mcp_tools: [
         create_team_artifact,
-        get_team_artifacts,
         get_session_plan,
         get_artifact,
       ]

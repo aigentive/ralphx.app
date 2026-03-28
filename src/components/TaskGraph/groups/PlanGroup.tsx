@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/context-menu";
 import { GroupContextMenuItems } from "@/components/tasks/GroupContextMenuItems";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { useProjectStore } from "@/stores/projectStore";
 import { PlanGroupHeader } from "./PlanGroupHeader";
 import { UNGROUPED_PLAN_ID } from "./tierGroupUtils";
 import type { StatusSummary } from "@/api/task-graph.types";
@@ -128,13 +127,6 @@ export const PlanGroup = memo(function PlanGroup({
     onNavigateToTask,
     onCancelAll,
   } = data;
-  const workingDirectory = useProjectStore(
-    (s) => (projectId ? s.projects[projectId]?.workingDirectory : undefined)
-  );
-  const baseBranch = useProjectStore(
-    (s) => (projectId ? (s.projects[projectId]?.baseBranch ?? undefined) : undefined)
-  );
-
   const hasTierControls = Boolean(
     tierGroupIds && tierGroupIds.length > 0 && onToggleAllTiers
   );
@@ -182,7 +174,6 @@ export const PlanGroup = memo(function PlanGroup({
       {/* Header */}
       <PlanGroupHeader
         planArtifactId={planArtifactId}
-        sessionId={sessionId}
         {...(projectId ? { projectId } : {})}
         sessionTitle={sessionTitle}
         taskCount={taskIds.length}
@@ -191,8 +182,6 @@ export const PlanGroup = memo(function PlanGroup({
         {...(tierControls ?? {})}
         onToggleCollapse={() => onToggleCollapse?.(planArtifactId)}
         {...(onNavigateToTask ? { onNavigateToTask } : {})}
-        {...(workingDirectory ? { workingDirectory } : {})}
-        {...(baseBranch !== undefined ? { baseBranch } : {})}
       />
 
       {/* Content area - empty, task nodes are positioned inside by React Flow */}

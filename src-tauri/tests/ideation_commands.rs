@@ -1396,81 +1396,6 @@ async fn test_delete_session_with_no_tasks() {
         .is_none());
 }
 
-// ========================================================================
-// Feature Branch Decision Tests
-// ========================================================================
-
-#[test]
-fn test_feature_branch_uses_project_default() {
-    // When no override is set, use project default
-    assert!(should_create_feature_branch(None, true));
-    assert!(!should_create_feature_branch(None, false));
-}
-
-#[test]
-fn test_feature_branch_respects_override() {
-    // Override takes precedence over project default
-    assert!(should_create_feature_branch(Some(true), false));
-    assert!(!should_create_feature_branch(Some(false), true));
-}
-
-#[test]
-fn test_single_proposal_now_creates_feature_branch_when_enabled() {
-    // Regression test: single-proposal plans now respect the project setting.
-    // Previously, single-proposal plans skipped feature branches unconditionally.
-    assert!(should_create_feature_branch(None, true));
-    assert!(should_create_feature_branch(Some(true), true));
-}
-
-#[tokio::test]
-async fn test_single_proposal_now_creates_feature_branch() {
-    // Integration test: single-proposal plan now respects feature branch setting.
-    // When feature branches are enabled, a single proposal should create a feature branch.
-    let state = setup_test_state();
-    let project_id = ProjectId::new();
-
-    // Create session
-    let session = IdeationSession::new(project_id.clone());
-    let created_session = state
-        .ideation_session_repo
-        .create(session)
-        .await
-        .expect("Failed to create session");
-
-    // Create 1 proposal
-    let proposal = TaskProposal::new(
-        created_session.id.clone(),
-        "Solo Proposal",
-        ProposalCategory::Feature,
-        Priority::Medium,
-    );
-    let p1 = state
-        .task_proposal_repo
-        .create(proposal)
-        .await
-        .expect("Failed to create proposal");
-
-    // Create the corresponding task (simulating what apply_proposals_to_kanban does)
-    let mut task = ralphx_lib::domain::entities::Task::new(project_id.clone(), p1.title.clone());
-    task.ideation_session_id = Some(created_session.id.clone());
-    let _created_task = state
-        .task_repo
-        .create(task)
-        .await
-        .expect("Failed to create task");
-
-    // Decision: should_create_feature_branch now returns true for project default enabled
-    let should_create = should_create_feature_branch(None, true);
-    assert!(
-        should_create,
-        "Feature branch should now be created for single-proposal plan when enabled"
-    );
-
-    // Note: The actual plan_branch record and merge task creation happens in
-    // apply_proposals_to_kanban, not in this test. This test only verifies
-    // the decision function returns the correct value.
-}
-
 #[tokio::test]
 async fn test_delete_session_only_deletes_own_tasks() {
     let state = setup_test_state();
@@ -1802,7 +1727,6 @@ async fn test_apply_proposals_core_creates_tasks_with_ready_status() {
         session_id: session.id.as_str().to_string(),
         proposal_ids: proposal_ids.clone(),
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 
@@ -1844,7 +1768,6 @@ async fn test_apply_proposals_core_session_converts_to_accepted() {
         session_id: session.id.as_str().to_string(),
         proposal_ids,
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 
@@ -1874,7 +1797,6 @@ async fn test_apply_proposals_core_partial_apply_does_not_convert_session() {
         session_id: session.id.as_str().to_string(),
         proposal_ids: vec![proposal_ids[0].clone()],
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 
@@ -1927,7 +1849,6 @@ async fn test_apply_proposals_core_idempotency_guard() {
         session_id: session.id.as_str().to_string(),
         proposal_ids,
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 
@@ -1977,7 +1898,6 @@ async fn test_apply_proposals_core_repairs_stale_orphaned_execution_plan() {
         session_id: session.id.as_str().to_string(),
         proposal_ids,
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 
@@ -2027,7 +1947,6 @@ async fn test_apply_proposals_core_rejects_inactive_session() {
         session_id: session.id.as_str().to_string(),
         proposal_ids,
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 
@@ -2053,7 +1972,6 @@ async fn test_apply_proposals_core_rejects_unknown_proposals() {
         session_id: session.id.as_str().to_string(),
         proposal_ids: vec!["nonexistent-proposal-id".to_string()],
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 
@@ -2084,7 +2002,6 @@ async fn test_apply_proposals_core_result_contains_context_fields() {
         session_id: session.id.as_str().to_string(),
         proposal_ids,
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 
@@ -2164,7 +2081,6 @@ async fn test_apply_proposals_core_preserves_dependencies() {
             p2.id.as_str().to_string(),
         ],
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 
@@ -2326,7 +2242,6 @@ async fn test_apply_proposals_core_branch_creation_failure_leaves_no_orphaned_ex
         session_id: session.id.as_str().to_string(),
         proposal_ids: vec![proposal.id.as_str().to_string()],
         target_column: "auto".to_string(),
-        use_feature_branch: Some(true),
         // "new-branch" doesn't exist; base is "nonexistent-source" → create_branch fails
         base_branch_override: Some("new-branch".to_string()),
     };
@@ -2414,7 +2329,6 @@ async fn test_apply_proposals_core_tasks_created_count_excludes_merge_task() {
         session_id: session.id.as_str().to_string(),
         proposal_ids: proposal_ids.clone(),
         target_column: "auto".to_string(),
-        use_feature_branch: Some(true),
         base_branch_override: Some("feature/counter-fix-test".to_string()),
     };
 
@@ -2448,7 +2362,6 @@ async fn test_apply_proposals_core_gate_blocks_unacknowledged_session() {
         session_id: session.id.as_str().to_string(),
         proposal_ids,
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 
@@ -2489,7 +2402,6 @@ async fn test_apply_proposals_core_gate_passes_after_analyze_session_dependencie
         session_id: session.id.as_str().to_string(),
         proposal_ids,
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 
@@ -2571,7 +2483,6 @@ async fn test_apply_proposals_core_gate_passes_with_deps_set_at_creation() {
             p2.id.as_str().to_string(),
         ],
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 
@@ -2595,7 +2506,7 @@ async fn test_apply_proposals_core_gate_passes_with_deps_set_at_creation() {
 ///
 /// Scenario: A prior failed finalize attempt (or `enable_feature_branch`) left an abandoned
 /// `plan_branch` row with `session_id = X`. When `apply_proposals_core` runs next with
-/// `use_feature_branch=true`, the `ON CONFLICT(session_id) DO UPDATE` replaces the stale row
+/// the `ON CONFLICT(session_id) DO UPDATE` replaces the stale row
 /// instead of failing with a UNIQUE constraint error.
 #[tokio::test]
 async fn test_finalize_with_preexisting_abandoned_plan_branch() {
@@ -2670,7 +2581,6 @@ async fn test_finalize_with_preexisting_abandoned_plan_branch() {
         session_id: session.id.as_str().to_string(),
         proposal_ids: vec![proposal.id.as_str().to_string()],
         target_column: "auto".to_string(),
-        use_feature_branch: Some(true),
         base_branch_override: Some("feature/upsert-test".to_string()),
     };
 
@@ -2792,7 +2702,6 @@ async fn test_refinalize_after_orphan_plan_and_orphan_branch() {
         session_id: session.id.as_str().to_string(),
         proposal_ids: vec![proposal.id.as_str().to_string()],
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 
@@ -2918,7 +2827,6 @@ async fn test_finalize_atomicity_all_records_consistent() {
             p2.id.as_str().to_string(),
         ],
         target_column: "auto".to_string(),
-        use_feature_branch: Some(true),
         base_branch_override: Some("feature/atomic-test".to_string()),
     };
 
@@ -3055,7 +2963,6 @@ async fn test_apply_proposals_core_excludes_foreign_proposals() {
             foreign1.id.as_str().to_string(),
         ],
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 

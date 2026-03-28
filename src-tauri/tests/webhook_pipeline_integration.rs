@@ -210,7 +210,6 @@ async fn test_pipeline_session_to_tasks_e2e() {
             created_p2.id.as_str().to_string(),
         ],
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
     let apply_result =
@@ -629,7 +628,6 @@ async fn test_full_pipeline_with_webhook_registration() {
         session_id: session_id.as_str().to_string(),
         proposal_ids: proposal_ids.clone(),
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
     let apply_result =

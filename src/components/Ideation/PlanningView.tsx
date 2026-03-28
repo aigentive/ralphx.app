@@ -1272,7 +1272,6 @@ export function PlanningView({
           sessionId={session.id}
           onAccept={handleAcceptConfirm}
           onCancel={handleAcceptCancel}
-          defaultUseFeatureBranch={activeProject?.useFeatureBranches ?? false}
           session={session}
           workingDirectory={activeProject?.workingDirectory}
           baseBranch={activeProject?.baseBranch ?? "main"}

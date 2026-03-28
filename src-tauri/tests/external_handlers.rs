@@ -1917,7 +1917,6 @@ async fn test_external_apply_proposals_session_not_found() {
         session_id: "nonexistent-session".to_string(),
         proposal_ids: vec![],
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 
@@ -1937,7 +1936,6 @@ async fn test_external_apply_proposals_project_scope_enforced() {
         session_id,
         proposal_ids: vec![],
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 
@@ -1965,7 +1963,6 @@ async fn test_external_apply_proposals_unrestricted_scope_allowed() {
         session_id,
         proposal_ids: vec![],
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 
@@ -1983,7 +1980,6 @@ async fn test_external_apply_proposals_correct_scope_allowed() {
         session_id,
         proposal_ids: vec![],
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 
@@ -2030,7 +2026,6 @@ async fn test_external_apply_proposals_creates_tasks_from_proposals() {
             created_p2.id.as_str().to_string(),
         ],
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false), // no feature branch for test simplicity
         base_branch_override: None,
     };
 
@@ -2077,7 +2072,6 @@ async fn test_external_apply_proposals_blocks_unacknowledged_multi_proposal_sess
             created_p2.id.as_str().to_string(),
         ],
         target_column: "auto".to_string(),
-        use_feature_branch: Some(false),
         base_branch_override: None,
     };
 

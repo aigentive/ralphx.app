@@ -167,8 +167,8 @@ pub use unified_chat_commands::{
 };
 // Plan branch commands (Phase 85 - Feature branch for plan groups)
 pub use plan_branch_commands::{
-    disable_feature_branch, enable_feature_branch, get_plan_branch, get_plan_branch_by_task_id,
-    get_project_plan_branches, update_project_feature_branch_setting, EnableFeatureBranchInput,
+    enable_feature_branch, get_plan_branch, get_plan_branch_by_task_id,
+    get_project_plan_branches, EnableFeatureBranchInput,
     PlanBranchResponse,
 };
 // UI feature flag commands

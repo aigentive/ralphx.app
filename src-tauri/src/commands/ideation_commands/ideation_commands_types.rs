@@ -403,9 +403,6 @@ pub struct ApplyProposalsInput {
     pub session_id: String,
     pub proposal_ids: Vec<String>,
     pub target_column: String,
-    /// Per-plan override for feature branch usage (None = use project default)
-    #[serde(default)]
-    pub use_feature_branch: Option<bool>,
     /// Per-plan override for base branch (None = use project default)
     #[serde(default)]
     pub base_branch_override: Option<String>,

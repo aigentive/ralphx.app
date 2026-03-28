@@ -204,59 +204,20 @@ describe("AcceptModal", () => {
     });
   });
 
-  describe("Feature Branch Checkbox", () => {
-    it("renders checkbox with label", () => {
+  describe("Feature Branch Info", () => {
+    it("shows informational text about mandatory feature branches", () => {
       render(<AcceptModal {...defaultProps} />);
-      expect(screen.getByLabelText(/Use feature branch/i)).toBeInTheDocument();
+      expect(screen.getByText(/A feature branch will be created from the base branch below/i)).toBeInTheDocument();
     });
 
-    it("checkbox is unchecked by default when defaultUseFeatureBranch not provided", () => {
+    it("shows merge-to-main task info", () => {
       render(<AcceptModal {...defaultProps} />);
-      const checkbox = screen.getByLabelText(/Use feature branch/i) as HTMLInputElement;
-      expect(checkbox.checked).toBe(false);
+      expect(screen.getByText(/merge-to-main task is added automatically/i)).toBeInTheDocument();
     });
 
-    it("checkbox respects defaultUseFeatureBranch prop when true", () => {
-      render(<AcceptModal {...defaultProps} defaultUseFeatureBranch={true} />);
-      const checkbox = screen.getByLabelText(/Use feature branch/i) as HTMLInputElement;
-      expect(checkbox.checked).toBe(true);
-    });
-
-    it("checkbox respects defaultUseFeatureBranch prop when false", () => {
-      render(<AcceptModal {...defaultProps} defaultUseFeatureBranch={false} />);
-      const checkbox = screen.getByLabelText(/Use feature branch/i) as HTMLInputElement;
-      expect(checkbox.checked).toBe(false);
-    });
-
-    it("allows toggling checkbox", async () => {
-      const user = userEvent.setup();
-      render(<AcceptModal {...defaultProps} />);
-      const checkbox = screen.getByLabelText(/Use feature branch/i);
-      await user.click(checkbox);
-      expect(checkbox).toBeChecked();
-    });
-
-    it("shows helper text explaining the option", () => {
-      render(<AcceptModal {...defaultProps} />);
-      expect(screen.getByText(/merge into an isolated branch/i)).toBeInTheDocument();
-    });
-
-    it("calls onAccept with useFeatureBranch: true when checked", async () => {
-      const onAccept = vi.fn();
-      const user = userEvent.setup();
-      render(<AcceptModal {...defaultProps} onAccept={onAccept} />);
-
-      const featureBranchCheckbox = screen.getByLabelText(/Use feature branch/i);
-      await user.click(featureBranchCheckbox);
-
-      const acceptButton = screen.getByRole("button", { name: /Accept Plan/i });
-      await user.click(acceptButton);
-
-      expect(onAccept).toHaveBeenCalledWith(
-        expect.objectContaining({
-          useFeatureBranch: true,
-        })
-      );
+    it("renders base branch input always visible", () => {
+      render(<AcceptModal {...defaultProps} workingDirectory="/some/path" baseBranch="main" />);
+      expect(screen.getByTestId("base-branch-input")).toBeInTheDocument();
     });
   });
 
@@ -272,7 +233,6 @@ describe("AcceptModal", () => {
       render(
         <AcceptModal
           {...defaultProps}
-          defaultUseFeatureBranch={true}
           workingDirectory="/some/path"
           baseBranch="main"
         />
@@ -298,7 +258,6 @@ describe("AcceptModal", () => {
       render(
         <AcceptModal
           {...defaultProps}
-          defaultUseFeatureBranch={true}
           workingDirectory="/some/path"
           baseBranch="main"
         />
@@ -313,12 +272,10 @@ describe("AcceptModal", () => {
       });
     });
 
-    it("does not show loading spinner when feature branch is unchecked", () => {
+    it("does not show loading spinner when workingDirectory is not provided", () => {
       render(
         <AcceptModal
           {...defaultProps}
-          defaultUseFeatureBranch={false}
-          workingDirectory="/some/path"
         />
       );
 
@@ -333,7 +290,6 @@ describe("AcceptModal", () => {
       render(
         <AcceptModal
           {...defaultProps}
-          defaultUseFeatureBranch={true}
           workingDirectory="/some/path"
           baseBranch="main"
         />
@@ -350,35 +306,25 @@ describe("AcceptModal", () => {
       expect(input).toHaveValue("main");
     });
 
-    it("shows branch selector only when feature branch is checked", async () => {
+    it("always shows branch selector (not conditional on feature branch toggle)", () => {
       render(
         <AcceptModal
           {...defaultProps}
-          defaultUseFeatureBranch={false}
           workingDirectory="/some/path"
           baseBranch="develop"
         />
       );
 
-      // Branch input not visible when unchecked
-      expect(screen.queryByTestId("base-branch-input")).not.toBeInTheDocument();
-
-      // Check the checkbox
-      const checkbox = screen.getByRole("checkbox", { name: /use feature branch/i });
-      await userEvent.click(checkbox);
-
-      // Now branch input is visible
       expect(screen.getByTestId("base-branch-input")).toBeInTheDocument();
     });
 
-    it("sends baseBranchOverride in accept options when feature branch enabled", async () => {
+    it("sends baseBranchOverride in accept options", async () => {
       vi.mocked(getGitBranches).mockResolvedValueOnce(["main", "develop", "feature/test"]);
 
       const onAccept = vi.fn();
       render(
         <AcceptModal
           {...defaultProps}
-          defaultUseFeatureBranch={true}
           workingDirectory="/some/path"
           baseBranch="main"
           onAccept={onAccept}
@@ -397,7 +343,6 @@ describe("AcceptModal", () => {
       expect(onAccept).toHaveBeenCalledWith(
         expect.objectContaining({
           baseBranchOverride: "develop",
-          useFeatureBranch: true,
         })
       );
     });
@@ -409,7 +354,6 @@ describe("AcceptModal", () => {
       render(
         <AcceptModal
           {...defaultProps}
-          defaultUseFeatureBranch={true}
           workingDirectory="/some/path"
           baseBranch="main"
           onAccept={onAccept}
@@ -430,19 +374,17 @@ describe("AcceptModal", () => {
       expect(onAccept).toHaveBeenCalledWith(
         expect.objectContaining({
           baseBranchOverride: "Branch-override",
-          useFeatureBranch: true,
         })
       );
     });
 
-    it("disables accept button when feature branch checked and branch input is empty", async () => {
+    it("disables accept button when branch input is empty", async () => {
       vi.mocked(getGitBranches).mockResolvedValueOnce(["main", "develop"]);
 
       const onAccept = vi.fn();
       render(
         <AcceptModal
           {...defaultProps}
-          defaultUseFeatureBranch={true}
           workingDirectory="/some/path"
           baseBranch="main"
           onAccept={onAccept}
@@ -464,12 +406,11 @@ describe("AcceptModal", () => {
       expect(onAccept).not.toHaveBeenCalled();
     });
 
-    it("does not send baseBranchOverride when feature branch unchecked", async () => {
+    it("sends baseBranchOverride with default baseBranch value when not changed", async () => {
       const onAccept = vi.fn();
       render(
         <AcceptModal
           {...defaultProps}
-          defaultUseFeatureBranch={false}
           workingDirectory="/some/path"
           baseBranch="main"
           onAccept={onAccept}
@@ -480,7 +421,7 @@ describe("AcceptModal", () => {
       await userEvent.click(acceptButton);
 
       expect(onAccept).toHaveBeenCalledWith(
-        expect.not.objectContaining({ baseBranchOverride: expect.anything() })
+        expect.objectContaining({ baseBranchOverride: "main" })
       );
     });
   });
@@ -561,7 +502,7 @@ describe("AcceptModal", () => {
         sessionId: "session-1",
         proposalIds: ["proposal-1", "proposal-2", "proposal-3"],
         targetColumn: "auto",
-        useFeatureBranch: false,
+        baseBranchOverride: "main",
       });
     });
 
@@ -652,7 +593,7 @@ describe("AcceptModal", () => {
 
     it("has proper labels for form controls", () => {
       render(<AcceptModal {...defaultProps} />);
-      expect(screen.getByLabelText(/Use feature branch/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Base branch/i)).toBeInTheDocument();
     });
 
     it("warnings have role=alert", () => {

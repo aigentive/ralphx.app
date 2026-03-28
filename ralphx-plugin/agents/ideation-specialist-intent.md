@@ -8,7 +8,6 @@ tools:
   - WebFetch
   - WebSearch
   - mcp__ralphx__create_team_artifact
-  - mcp__ralphx__get_team_artifacts
   - mcp__ralphx__get_session_plan
   - mcp__ralphx__get_artifact
   - mcp__ralphx__get_session_messages

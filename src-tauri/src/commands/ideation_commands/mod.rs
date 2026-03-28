@@ -32,7 +32,7 @@ pub use ideation_commands_types::*;
 // Re-export all commands
 pub use ideation_commands_apply::*;
 #[doc(hidden)]
-pub use ideation_commands_apply::{apply_proposals_core, should_create_feature_branch};
+pub use ideation_commands_apply::apply_proposals_core;
 pub use ideation_commands_chat::*;
 pub use ideation_commands_cross_project::*;
 pub use ideation_commands_dependencies::*;

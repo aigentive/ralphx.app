@@ -157,7 +157,6 @@ export interface ApplyProposalsInput {
   sessionId: string;
   proposalIds: string[];
   targetColumn: string;
-  useFeatureBranch?: boolean;
   baseBranchOverride?: string;
 }
 

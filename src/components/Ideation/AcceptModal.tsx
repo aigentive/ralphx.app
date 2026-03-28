@@ -23,8 +23,6 @@ interface AcceptModalProps {
   onCancel: () => void;
   isAccepting?: boolean;
   warnings?: string[];
-  /** Default value for feature branch checkbox, sourced from project settings */
-  defaultUseFeatureBranch?: boolean;
   /** Session for verification gate — shows warning and blocks accept when unverified */
   session?: Pick<IdeationSessionResponse, "verificationStatus" | "verificationInProgress"> | null;
   /** Working directory for git branch listing */
@@ -42,13 +40,11 @@ export function AcceptModal({
   onCancel,
   isAccepting = false,
   warnings = [],
-  defaultUseFeatureBranch = false,
   session = null,
   workingDirectory,
   baseBranch = "main",
 }: AcceptModalProps) {
   const verificationGate = useVerificationGate(session);
-  const [useFeatureBranch, setUseFeatureBranch] = useState(defaultUseFeatureBranch);
   const [baseBranchOverride, setBaseBranchOverride] = useState<string>(baseBranch);
   const [branches, setBranches] = useState<string[]>([]);
   const [branchLoadError, setBranchLoadError] = useState(false);
@@ -68,9 +64,9 @@ export function AcceptModal({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, isAccepting, onCancel]);
 
-  // Load git branches when feature branch is enabled
+  // Load git branches for the base branch selector
   useEffect(() => {
-    if (!useFeatureBranch || !workingDirectory) return;
+    if (!workingDirectory) return;
 
     setBranchLoadError(false);
     setBranchesLoading(true);
@@ -81,7 +77,7 @@ export function AcceptModal({
         setBranches([]);
       })
       .finally(() => setBranchesLoading(false));
-  }, [useFeatureBranch, workingDirectory]);
+  }, [workingDirectory]);
 
   const handleOverlayClick = useCallback(() => {
     if (!isAccepting) {
@@ -94,11 +90,9 @@ export function AcceptModal({
   }, []);
 
   const normalizedBaseBranch = baseBranchOverride.trim();
-  const baseBranchValidationError = !useFeatureBranch
-    ? null
-    : normalizedBaseBranch.length === 0
-      ? "Enter a base branch"
-      : null;
+  const baseBranchValidationError = normalizedBaseBranch.length === 0
+    ? "Enter a base branch"
+    : null;
 
   const handleAccept = useCallback(() => {
     const options: ApplyProposalsInput = {
@@ -108,13 +102,12 @@ export function AcceptModal({
       // - No blockers → Ready
       // - Has blockers → Blocked
       targetColumn: "auto",
-      useFeatureBranch,
-      ...(useFeatureBranch && normalizedBaseBranch !== "" && {
+      ...(normalizedBaseBranch !== "" && {
         baseBranchOverride: normalizedBaseBranch,
       }),
     };
     onAccept(options);
-  }, [sessionId, proposals, useFeatureBranch, normalizedBaseBranch, onAccept]);
+  }, [sessionId, proposals, normalizedBaseBranch, onAccept]);
 
   if (!isOpen) return null;
 
@@ -300,103 +293,74 @@ export function AcceptModal({
           </ul>
         </div>
 
-        {/* Git Workflow Checkbox */}
+        {/* Feature Branch Info */}
         <div className="mb-6">
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={useFeatureBranch}
-              onChange={(e) => {
-                setUseFeatureBranch(e.target.checked);
-                if (!e.target.checked) {
-                  setBaseBranchOverride(baseBranch);
-                  setBranches([]);
-                  setBranchLoadError(false);
-                }
-              }}
-              disabled={isAccepting}
-              className="mt-1"
-              aria-label="Use feature branch for tasks"
-            />
-            <div>
-              <span
-                className="text-sm font-medium"
-                style={{ color: "var(--text-primary)" }}
-              >
-                Use feature branch
-              </span>
-              <p
-                className="text-xs"
-                style={{ color: "var(--text-muted)" }}
-              >
-                Tasks merge into an isolated branch. A merge-to-main task is created automatically.
-              </p>
-            </div>
-          </label>
+          <p
+            className="text-xs mb-3"
+            style={{ color: "var(--text-muted)" }}
+          >
+            A feature branch will be created from the base branch below. A merge-to-main task is added automatically.
+          </p>
 
-          {useFeatureBranch && (
-            <div className="mt-3 ml-6">
-              <div className="flex items-center gap-2 mb-1">
-                <label
-                  className="block text-xs font-medium"
-                  style={{ color: "var(--text-secondary)" }}
-                  htmlFor="base-branch-input"
-                >
-                  Base branch
-                </label>
-                {branchesLoading && (
-                  <div
-                    data-testid="branch-loading-spinner"
-                    className="w-3 h-3 rounded-full border border-current border-t-transparent animate-spin"
-                    style={{ color: "var(--text-muted)" }}
-                    aria-label="Loading branches"
-                  />
-                )}
-              </div>
-              <input
-                id="base-branch-input"
-                type="text"
-                list="base-branch-datalist"
-                value={baseBranchOverride}
-                onChange={(e) => setBaseBranchOverride(e.target.value)}
-                disabled={isAccepting}
-                placeholder="e.g. main"
-                data-testid="base-branch-input"
-                aria-invalid={baseBranchValidationError ? "true" : "false"}
-                className="w-full px-2 py-1.5 text-sm rounded border outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none"
-                style={{
-                  backgroundColor: "var(--bg-base)",
-                  borderColor: baseBranchValidationError
-                    ? "var(--status-danger)"
-                    : "var(--border-subtle)",
-                  color: "var(--text-primary)",
-                  boxShadow: "none",
-                }}
+          <div className="flex items-center gap-2 mb-1">
+            <label
+              className="block text-xs font-medium"
+              style={{ color: "var(--text-secondary)" }}
+              htmlFor="base-branch-input"
+            >
+              Base branch
+            </label>
+            {branchesLoading && (
+              <div
+                data-testid="branch-loading-spinner"
+                className="w-3 h-3 rounded-full border border-current border-t-transparent animate-spin"
+                style={{ color: "var(--text-muted)" }}
+                aria-label="Loading branches"
               />
-              <datalist id="base-branch-datalist">
-                {branches.map((branch) => (
-                  <option key={branch} value={branch} />
-                ))}
-              </datalist>
-              {branchLoadError && (
-                <p
-                  className="mt-1 text-xs"
-                  style={{ color: "var(--text-muted)" }}
-                  data-testid="branch-load-error"
-                >
-                  Could not load branches — type branch name manually
-                </p>
-              )}
-              {baseBranchValidationError && (
-                <p
-                  className="mt-1 text-xs"
-                  style={{ color: "var(--status-danger)" }}
-                  data-testid="branch-validation-error"
-                >
-                  {baseBranchValidationError}
-                </p>
-              )}
-            </div>
+            )}
+          </div>
+          <input
+            id="base-branch-input"
+            type="text"
+            list="base-branch-datalist"
+            value={baseBranchOverride}
+            onChange={(e) => setBaseBranchOverride(e.target.value)}
+            disabled={isAccepting}
+            placeholder="e.g. main"
+            data-testid="base-branch-input"
+            aria-invalid={baseBranchValidationError ? "true" : "false"}
+            className="w-full px-2 py-1.5 text-sm rounded border outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none"
+            style={{
+              backgroundColor: "var(--bg-base)",
+              borderColor: baseBranchValidationError
+                ? "var(--status-danger)"
+                : "var(--border-subtle)",
+              color: "var(--text-primary)",
+              boxShadow: "none",
+            }}
+          />
+          <datalist id="base-branch-datalist">
+            {branches.map((branch) => (
+              <option key={branch} value={branch} />
+            ))}
+          </datalist>
+          {branchLoadError && (
+            <p
+              className="mt-1 text-xs"
+              style={{ color: "var(--text-muted)" }}
+              data-testid="branch-load-error"
+            >
+              Could not load branches — type branch name manually
+            </p>
+          )}
+          {baseBranchValidationError && (
+            <p
+              className="mt-1 text-xs"
+              style={{ color: "var(--status-danger)" }}
+              data-testid="branch-validation-error"
+            >
+              {baseBranchValidationError}
+            </p>
           )}
         </div>
 

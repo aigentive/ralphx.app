@@ -57,7 +57,6 @@ export async function acceptAndSchedule(input, context) {
             session_id: input.sessionId,
             proposal_ids: proposalIds,
             ...(input.baseBranchOverride !== undefined && { base_branch_override: input.baseBranchOverride }),
-            ...(input.useFeatureBranch !== undefined && { use_feature_branch: input.useFeatureBranch }),
         });
         if (applyResp.status < 200 || applyResp.status >= 300) {
             throw new BackendError(applyResp.status, `apply_proposals returned HTTP ${applyResp.status}`);

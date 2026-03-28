@@ -687,7 +687,6 @@ describe("ideationApi.apply", () => {
         sessionId: "session-1",
         proposalIds: ["p1"],
         targetColumn: "backlog",
-        useFeatureBranch: true,
         baseBranchOverride: "develop",
       });
 

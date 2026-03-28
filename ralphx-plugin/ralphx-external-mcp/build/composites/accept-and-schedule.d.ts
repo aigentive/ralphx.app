@@ -17,7 +17,6 @@ import type { ApiKeyContext } from "../types.js";
 export interface AcceptAndScheduleInput {
     sessionId: string;
     baseBranchOverride?: string;
-    useFeatureBranch?: boolean;
 }
 export interface AcceptAndScheduleProgress {
     step: "load_session" | "apply_proposals" | "create_tasks" | "schedule_tasks";

@@ -231,11 +231,8 @@ pub async fn apply_proposals_core(
             ))
         })?;
 
-    let use_feature_branch =
-        should_create_feature_branch(input.use_feature_branch, project.use_feature_branches);
-
     // Ensure base branch exists before creating any rows — failure returns early cleanly.
-    if use_feature_branch && input.base_branch_override.is_some() {
+    if input.base_branch_override.is_some() {
         let base_branch = input.base_branch_override.as_deref().unwrap();
         let repo_path = std::path::PathBuf::from(&project.working_directory);
         let was_created =
@@ -296,7 +293,6 @@ pub async fn apply_proposals_core(
     let session_id_str = session_id.as_str().to_string();
     let project_id_str = session.project_id.as_str().to_string();
     let plan_artifact_id_tx = plan_artifact_id.clone();
-    let use_feature_branch_tx = use_feature_branch;
     let use_auto_status_tx = use_auto_status;
     let base_branch_override_tx = input.base_branch_override.clone();
     let project_base_branch_tx = project.base_branch.clone();
@@ -336,10 +332,9 @@ pub async fn apply_proposals_core(
             let execution_plan_id = exec_plan.id.clone();
 
             // ----------------------------------------------------------------
-            // (b) UPSERT plan_branch if use_feature_branch
+            // (b) UPSERT plan_branch (always create feature branch)
             // ----------------------------------------------------------------
-            let mut pending_merge: Option<(PlanBranchId, String)> = None;
-            if use_feature_branch_tx {
+            let pending_merge: (PlanBranchId, String) = {
                 let effective_plan_id_str = plan_artifact_id_tx
                     .as_ref()
                     .map(|id| id.as_str().to_string())
@@ -414,8 +409,8 @@ pub async fn apply_proposals_core(
                     })
                     .map_err(|e| AppError::Database(format!("Failed to fetch upserted branch: {}", e)))?;
 
-                pending_merge = Some((persisted.id, base_branch));
-            }
+                (persisted.id, base_branch)
+            };
 
             // ----------------------------------------------------------------
             // (c) INSERT tasks + task_steps
@@ -609,7 +604,8 @@ pub async fn apply_proposals_core(
             // ----------------------------------------------------------------
             // (f) INSERT merge task if feature branch
             // ----------------------------------------------------------------
-            if let Some((ref branch_id, ref base_branch_name)) = pending_merge {
+            {
+                let (ref branch_id, ref base_branch_name) = pending_merge;
                 let plan_title = format!("Merge plan into {}", base_branch_name);
                 let mut merge_task = Task::new_with_category(
                     ProjectId::from_string(project_id_str.clone()),
@@ -910,17 +906,6 @@ pub async fn apply_proposals_to_kanban(
     }
 
     Ok(result.into())
-}
-
-/// Determine whether a feature branch should be created for this plan apply.
-///
-/// Simply returns the per-plan override if set, otherwise the project default.
-#[doc(hidden)]
-pub fn should_create_feature_branch(
-    per_plan_override: Option<bool>,
-    project_default: bool,
-) -> bool {
-    per_plan_override.unwrap_or(project_default)
 }
 
 /// Get blockers for a task (tasks it depends on)

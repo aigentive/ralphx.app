@@ -500,9 +500,6 @@ export const ideationApi = {
             session_id: input.sessionId,
             proposal_ids: input.proposalIds,
             target_column: input.targetColumn,
-            ...(input.useFeatureBranch !== undefined && {
-              use_feature_branch: input.useFeatureBranch,
-            }),
             ...(input.baseBranchOverride !== undefined && {
               base_branch_override: input.baseBranchOverride,
             }),

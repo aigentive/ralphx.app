@@ -189,9 +189,6 @@ export async function handleAcceptPlanAndSchedule(
         ...(args.base_branch_override !== undefined && {
           baseBranchOverride: args.base_branch_override as string,
         }),
-        ...(args.use_feature_branch !== undefined && {
-          useFeatureBranch: args.use_feature_branch as boolean,
-        }),
       },
       context
     );

@@ -252,11 +252,8 @@ export function useResetAndReaccept() {
         sessionId,
         proposalIds,
         targetColumn: "backlog",
-        ...(existingPlanBranch && {
-          useFeatureBranch: true,
-          ...(existingPlanBranch.baseBranchOverride != null && {
-            baseBranchOverride: existingPlanBranch.baseBranchOverride,
-          }),
+        ...(existingPlanBranch?.baseBranchOverride != null && {
+          baseBranchOverride: existingPlanBranch.baseBranchOverride,
         }),
       };
       await ideationApi.apply.toKanban(applyInput);

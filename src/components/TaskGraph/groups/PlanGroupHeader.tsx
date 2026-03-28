@@ -8,7 +8,7 @@
  * Shows feature branch badge and settings gear when a plan branch exists.
  */
 
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDown,
@@ -36,8 +36,6 @@ import { PlanGroupSettings } from "./PlanGroupSettings";
 export interface PlanGroupHeaderProps {
   /** Plan artifact ID for linking */
   planArtifactId: string;
-  /** Session ID for navigation */
-  sessionId: string;
   /** Project ID for API calls */
   projectId?: string;
   /** Session/plan title to display */
@@ -64,10 +62,6 @@ export interface PlanGroupHeaderProps {
   onNavigateToSession?: () => void;
   /** Optional: Navigate to a specific task (merge task link) */
   onNavigateToTask?: (taskId: string) => void;
-  /** Working directory for fetching git branches in settings */
-  workingDirectory?: string;
-  /** Project's default base branch for initializing branch selector */
-  baseBranch?: string;
 }
 
 // ============================================================================
@@ -195,7 +189,6 @@ const FeatureBranchBadge = memo(function FeatureBranchBadge({
 
 export const PlanGroupHeader = memo(function PlanGroupHeader({
   planArtifactId,
-  sessionId,
   projectId,
   sessionTitle,
   taskCount,
@@ -207,8 +200,6 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
   onToggleCollapse,
   onNavigateToSession,
   onNavigateToTask,
-  workingDirectory,
-  baseBranch,
 }: PlanGroupHeaderProps) {
   const queryClient = useQueryClient();
   const eventBus = useEventBus();
@@ -222,9 +213,6 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
     staleTime: 5_000,
   });
 
-  const handleBranchChange = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["plan-branch", planArtifactId] });
-  }, [queryClient, planArtifactId]);
 
   // Reactively update badge when plan merge completes
   useEffect(() => {
@@ -233,9 +221,6 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
     });
     return unsubscribe;
   }, [eventBus, queryClient, planArtifactId]);
-
-  // Check if any tasks have been merged (merged status in summary)
-  const hasMergedTasks = statusSummary.completed > 0;
 
   const counts = useMemo(() => ({
     done: statusSummary.completed,
@@ -381,18 +366,11 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
                 onClick={(event) => event.stopPropagation()}
               >
                 <PlanGroupSettings
-                  planArtifactId={planArtifactId}
-                  sessionId={sessionId}
-                  projectId={projectId}
                   planBranch={planBranch ?? null}
-                  hasMergedTasks={hasMergedTasks}
-                  onBranchChange={handleBranchChange}
                   onNavigateToMergeTask={(taskId) => {
                     setSettingsOpen(false);
                     onNavigateToTask?.(taskId);
                   }}
-                  {...(workingDirectory !== undefined && { workingDirectory })}
-                  {...(baseBranch !== undefined && { baseBranch })}
                 />
               </PopoverContent>
             </Popover>

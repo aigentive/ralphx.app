@@ -16,9 +16,6 @@ pub struct ExternalApplyProposalsRequest {
     /// the dependency graph: tasks with no blockers → Ready, with blockers → Blocked.
     #[serde(default = "external_apply_default_column")]
     pub target_column: String,
-    /// Per-plan override for feature branch usage. `None` uses the project default.
-    #[serde(default)]
-    pub use_feature_branch: Option<bool>,
     /// Per-plan override for the base branch. External callers can specify a custom branch;
     /// the backend validates it exists locally (see apply_proposals_core).
     #[serde(default)]
@@ -35,7 +32,6 @@ impl From<ExternalApplyProposalsRequest> for ApplyProposalsInput {
             session_id: req.session_id,
             proposal_ids: req.proposal_ids,
             target_column: req.target_column,
-            use_feature_branch: req.use_feature_branch,
             base_branch_override: req.base_branch_override,
         }
     }

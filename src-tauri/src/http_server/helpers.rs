@@ -843,7 +843,6 @@ pub async fn finalize_proposals_impl(
         session_id: session_id.to_string(),
         proposal_ids,
         target_column: "auto".to_string(),
-        use_feature_branch: None,
         base_branch_override: None,
     };
 
