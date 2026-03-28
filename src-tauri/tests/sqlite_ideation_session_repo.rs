@@ -2280,3 +2280,270 @@ async fn test_touch_updated_at_keeps_session_out_of_archival() {
         "external session with recent activity must not appear in archival list after touch"
     );
 }
+
+// ==================== PENDING INITIAL PROMPT TESTS ====================
+
+#[tokio::test]
+async fn test_set_pending_initial_prompt_stores_value() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let session = create_test_session(&project_id, None);
+    repo.create(session.clone()).await.unwrap();
+
+    repo.set_pending_initial_prompt(session.id.as_str(), Some("Hello world".to_string()))
+        .await
+        .unwrap();
+
+    let fetched = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(fetched.pending_initial_prompt, Some("Hello world".to_string()));
+}
+
+#[tokio::test]
+async fn test_set_pending_initial_prompt_clears_value() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let session = create_test_session(&project_id, None);
+    repo.create(session.clone()).await.unwrap();
+
+    repo.set_pending_initial_prompt(session.id.as_str(), Some("Initial prompt".to_string()))
+        .await
+        .unwrap();
+    repo.set_pending_initial_prompt(session.id.as_str(), None)
+        .await
+        .unwrap();
+
+    let fetched = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(fetched.pending_initial_prompt, None);
+}
+
+#[tokio::test]
+async fn test_claim_pending_session_returns_none_when_empty() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+
+    let result = repo
+        .claim_pending_session_for_project(project_id.as_str())
+        .await
+        .unwrap();
+    assert!(result.is_none());
+}
+
+#[tokio::test]
+async fn test_claim_pending_session_returns_session_and_clears_prompt() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let session = create_test_session(&project_id, None);
+    repo.create(session.clone()).await.unwrap();
+    repo.set_pending_initial_prompt(session.id.as_str(), Some("Auto-launch me".to_string()))
+        .await
+        .unwrap();
+
+    let result = repo
+        .claim_pending_session_for_project(project_id.as_str())
+        .await
+        .unwrap();
+
+    assert!(result.is_some());
+    let (claimed_id, prompt) = result.unwrap();
+    assert_eq!(claimed_id, session.id.as_str());
+    assert_eq!(prompt, "Auto-launch me");
+
+    // Prompt must be cleared after claim
+    let fetched = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(fetched.pending_initial_prompt, None);
+}
+
+#[tokio::test]
+async fn test_claim_pending_session_is_idempotent_second_claim_returns_none() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let session = create_test_session(&project_id, None);
+    repo.create(session.clone()).await.unwrap();
+    repo.set_pending_initial_prompt(session.id.as_str(), Some("Once only".to_string()))
+        .await
+        .unwrap();
+
+    let first = repo
+        .claim_pending_session_for_project(project_id.as_str())
+        .await
+        .unwrap();
+    assert!(first.is_some());
+
+    let second = repo
+        .claim_pending_session_for_project(project_id.as_str())
+        .await
+        .unwrap();
+    assert!(second.is_none(), "second claim must return None after prompt cleared");
+}
+
+#[tokio::test]
+async fn test_claim_pending_session_respects_status_active_filter() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let session = create_test_session(&project_id, None);
+    repo.create(session.clone()).await.unwrap();
+    repo.set_pending_initial_prompt(session.id.as_str(), Some("Archived session".to_string()))
+        .await
+        .unwrap();
+
+    // Archive the session — status changes from 'active' to 'archived'
+    repo.update_status(&session.id, IdeationSessionStatus::Archived).await.unwrap();
+
+    // Claim must ignore non-active sessions
+    let result = repo
+        .claim_pending_session_for_project(project_id.as_str())
+        .await
+        .unwrap();
+    assert!(result.is_none(), "archived session must not be claimed");
+}
+
+#[tokio::test]
+async fn test_claim_pending_session_uses_fifo_ordering() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+
+    // Create two sessions — insert them in order; oldest gets claimed first
+    let session_a = create_test_session(&project_id, Some("First"));
+    let session_b = create_test_session(&project_id, Some("Second"));
+    repo.create(session_a.clone()).await.unwrap();
+    repo.create(session_b.clone()).await.unwrap();
+
+    repo.set_pending_initial_prompt(session_a.id.as_str(), Some("Prompt A".to_string()))
+        .await
+        .unwrap();
+    repo.set_pending_initial_prompt(session_b.id.as_str(), Some("Prompt B".to_string()))
+        .await
+        .unwrap();
+
+    let first_claim = repo
+        .claim_pending_session_for_project(project_id.as_str())
+        .await
+        .unwrap()
+        .unwrap();
+
+    // session_a was created first — it must be claimed first (FIFO)
+    assert_eq!(first_claim.0, session_a.id.as_str());
+    assert_eq!(first_claim.1, "Prompt A");
+
+    let second_claim = repo
+        .claim_pending_session_for_project(project_id.as_str())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(second_claim.0, session_b.id.as_str());
+    assert_eq!(second_claim.1, "Prompt B");
+}
+
+#[tokio::test]
+async fn test_list_projects_with_pending_sessions_empty() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+
+    let result = repo.list_projects_with_pending_sessions().await.unwrap();
+    assert!(result.is_empty());
+}
+
+#[tokio::test]
+async fn test_list_projects_with_pending_sessions_returns_project() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let session = create_test_session(&project_id, None);
+    repo.create(session.clone()).await.unwrap();
+    repo.set_pending_initial_prompt(session.id.as_str(), Some("pending".to_string()))
+        .await
+        .unwrap();
+
+    let result = repo.list_projects_with_pending_sessions().await.unwrap();
+    assert_eq!(result, vec![project_id.as_str().to_string()]);
+}
+
+#[tokio::test]
+async fn test_list_projects_with_pending_sessions_deduplicates() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+
+    // Two sessions in same project both have pending prompts
+    let session_a = create_test_session(&project_id, Some("A"));
+    let session_b = create_test_session(&project_id, Some("B"));
+    repo.create(session_a.clone()).await.unwrap();
+    repo.create(session_b.clone()).await.unwrap();
+    repo.set_pending_initial_prompt(session_a.id.as_str(), Some("p1".to_string()))
+        .await
+        .unwrap();
+    repo.set_pending_initial_prompt(session_b.id.as_str(), Some("p2".to_string()))
+        .await
+        .unwrap();
+
+    let result = repo.list_projects_with_pending_sessions().await.unwrap();
+    // DISTINCT — must appear exactly once
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0], project_id.as_str().to_string());
+}
+
+#[tokio::test]
+async fn test_list_projects_with_pending_sessions_excludes_non_active() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let session = create_test_session(&project_id, None);
+    repo.create(session.clone()).await.unwrap();
+    repo.set_pending_initial_prompt(session.id.as_str(), Some("archived".to_string()))
+        .await
+        .unwrap();
+    repo.update_status(&session.id, IdeationSessionStatus::Archived).await.unwrap();
+
+    let result = repo.list_projects_with_pending_sessions().await.unwrap();
+    assert!(result.is_empty(), "archived sessions must not appear in pending projects list");
+}
+
+#[tokio::test]
+async fn test_list_projects_with_pending_sessions_excludes_cleared_prompts() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let session = create_test_session(&project_id, None);
+    repo.create(session.clone()).await.unwrap();
+    repo.set_pending_initial_prompt(session.id.as_str(), Some("temp".to_string()))
+        .await
+        .unwrap();
+    repo.set_pending_initial_prompt(session.id.as_str(), None)
+        .await
+        .unwrap();
+
+    let result = repo.list_projects_with_pending_sessions().await.unwrap();
+    assert!(result.is_empty(), "cleared prompt must not appear in pending projects list");
+}

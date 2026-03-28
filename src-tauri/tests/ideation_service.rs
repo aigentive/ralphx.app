@@ -444,6 +444,25 @@ impl IdeationSessionRepository for MockSessionRepository {
     ) -> AppResult<Vec<ralphx_lib::domain::entities::IdeationSession>> {
         Ok(vec![])
     }
+
+    async fn set_pending_initial_prompt(
+        &self,
+        _session_id: &str,
+        _prompt: Option<String>,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn claim_pending_session_for_project(
+        &self,
+        _project_id: &str,
+    ) -> AppResult<Option<(String, String)>> {
+        Ok(None)
+    }
+
+    async fn list_projects_with_pending_sessions(&self) -> AppResult<Vec<String>> {
+        Ok(vec![])
+    }
 }
 
 struct MockProposalRepository {

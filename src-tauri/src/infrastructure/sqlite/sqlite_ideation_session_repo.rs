@@ -24,11 +24,12 @@ use super::DbConnection;
 // IDLE: tasks that haven't started yet
 const _IDLE_STATUSES: &[&str] = &["backlog", "ready", "blocked"];
 
-/// All 33 SELECT columns for IdeationSession — single source of truth (DRY).
+/// All 34 SELECT columns for IdeationSession — single source of truth (DRY).
 /// Must be kept in sync with IdeationSession::from_row column names.
 /// Column order: id(0)..origin(24), expected_proposal_count(25), auto_accept_status(26),
 /// auto_accept_started_at(27), api_key_id(28), idempotency_key(29),
-/// external_activity_phase(30), external_last_read_message_id(31), dependencies_acknowledged(32)
+/// external_activity_phase(30), external_last_read_message_id(31), dependencies_acknowledged(32),
+/// pending_initial_prompt(33)
 const SESSION_COLUMNS: &str = "id, project_id, title, title_source, status, plan_artifact_id, \
     inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
     updated_at, archived_at, converted_at, team_mode, team_config_json, \
@@ -37,7 +38,7 @@ const SESSION_COLUMNS: &str = "id, project_id, title, title_source, status, plan
     cross_project_checked, plan_version_last_read, origin, \
     expected_proposal_count, auto_accept_status, auto_accept_started_at, \
     api_key_id, idempotency_key, external_activity_phase, external_last_read_message_id, \
-    dependencies_acknowledged";
+    dependencies_acknowledged, pending_initial_prompt";
 // TERMINAL: tasks that have reached a final state
 const _TERMINAL_STATUSES: &[&str] = &["approved", "merged", "failed", "cancelled", "stopped"];
 // ACTIVE: any status NOT in IDLE or TERMINAL (catch-all, matches categorizeStatus() logic)
@@ -85,8 +86,9 @@ impl SqliteIdeationSessionRepository {
               updated_at, archived_at, converted_at, team_mode, team_config_json, \
               verification_status, source_project_id, source_session_id, session_purpose, \
               cross_project_checked, origin, api_key_id, idempotency_key, \
-              external_activity_phase, external_last_read_message_id, dependencies_acknowledged) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
+              external_activity_phase, external_last_read_message_id, dependencies_acknowledged, \
+              pending_initial_prompt) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)",
             rusqlite::params![
                 session.id.as_str(),
                 session.project_id.as_str(),
@@ -114,6 +116,7 @@ impl SqliteIdeationSessionRepository {
                 session.external_activity_phase.as_deref(),
                 session.external_last_read_message_id.as_deref(),
                 session.dependencies_acknowledged as i32,
+                session.pending_initial_prompt.as_deref(),
             ],
         )?;
         Ok(session.clone())
@@ -1396,6 +1399,77 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                     .query_map([], IdeationSession::from_row)?
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(sessions)
+            })
+            .await
+    }
+
+    async fn set_pending_initial_prompt(
+        &self,
+        session_id: &str,
+        prompt: Option<String>,
+    ) -> AppResult<()> {
+        let session_id = session_id.to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE ideation_sessions SET pending_initial_prompt = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
+                    rusqlite::params![prompt, session_id],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn claim_pending_session_for_project(
+        &self,
+        project_id: &str,
+    ) -> AppResult<Option<(String, String)>> {
+        let project_id = project_id.to_string();
+        self.db
+            .run_transaction(move |conn| {
+                // SELECT oldest active session with a pending prompt for this project
+                let result: Option<(String, String)> = match conn.query_row(
+                    "SELECT id, pending_initial_prompt FROM ideation_sessions \
+                     WHERE project_id = ?1 \
+                       AND status = 'active' \
+                       AND pending_initial_prompt IS NOT NULL \
+                     ORDER BY created_at ASC \
+                     LIMIT 1",
+                    rusqlite::params![project_id],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                ) {
+                    Ok(row) => Some(row),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                    Err(e) => return Err(AppError::Database(e.to_string())),
+                };
+
+                match result {
+                    None => Ok(None),
+                    Some((session_id, prompt)) => {
+                        // Atomically clear the prompt so no other drain can claim this session
+                        conn.execute(
+                            "UPDATE ideation_sessions SET pending_initial_prompt = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?1",
+                            rusqlite::params![session_id],
+                        )?;
+                        Ok(Some((session_id, prompt)))
+                    }
+                }
+            })
+            .await
+    }
+
+    async fn list_projects_with_pending_sessions(&self) -> AppResult<Vec<String>> {
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT DISTINCT project_id FROM ideation_sessions \
+                     WHERE pending_initial_prompt IS NOT NULL \
+                       AND status = 'active'",
+                )?;
+                let ids = stmt
+                    .query_map([], |row| row.get::<_, String>(0))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(ids)
             })
             .await
     }

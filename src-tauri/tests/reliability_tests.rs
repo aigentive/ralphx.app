@@ -75,6 +75,7 @@ fn make_external_session(
         external_activity_phase: None,
         external_last_read_message_id: None,
         dependencies_acknowledged: false,
+        pending_initial_prompt: None,
     }
 }
 
@@ -638,6 +639,7 @@ async fn c4_finalize_proposals_links_all_proposals_to_tasks() {
         external_activity_phase: None,
         external_last_read_message_id: None,
         dependencies_acknowledged: false,
+        pending_initial_prompt: None,
     };
     state.ideation_session_repo.create(session).await.unwrap();
 
@@ -796,6 +798,7 @@ async fn c4_count_mismatch_prevents_finalize_and_leaves_no_orphans() {
         external_activity_phase: None,
         external_last_read_message_id: None,
         dependencies_acknowledged: false,
+        pending_initial_prompt: None,
     };
     state.ideation_session_repo.create(session).await.unwrap();
 
@@ -1015,6 +1018,7 @@ fn make_c5_session(
         external_activity_phase: None,
         external_last_read_message_id: None,
         dependencies_acknowledged: false,
+        pending_initial_prompt: None,
     }
 }
 

@@ -762,6 +762,63 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         children.sort_by(|a, b| a.created_at.cmp(&b.created_at));
         Ok(children)
     }
+
+    async fn set_pending_initial_prompt(
+        &self,
+        session_id: &str,
+        prompt: Option<String>,
+    ) -> AppResult<()> {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(session) = sessions.values_mut().find(|s| s.id.as_str() == session_id) {
+            session.pending_initial_prompt = prompt;
+            session.updated_at = chrono::Utc::now();
+        }
+        Ok(())
+    }
+
+    async fn claim_pending_session_for_project(
+        &self,
+        project_id: &str,
+    ) -> AppResult<Option<(String, String)>> {
+        let mut sessions = self.sessions.write().unwrap();
+        // Find the oldest active session with a pending prompt for this project
+        let candidate = sessions
+            .values()
+            .filter(|s| {
+                s.project_id.as_str() == project_id
+                    && s.status == IdeationSessionStatus::Active
+                    && s.pending_initial_prompt.is_some()
+            })
+            .min_by_key(|s| s.created_at)
+            .map(|s| (s.id.as_str().to_string(), s.pending_initial_prompt.clone().unwrap()));
+
+        match candidate {
+            None => Ok(None),
+            Some((session_id, prompt)) => {
+                if let Some(session) = sessions.values_mut().find(|s| s.id.as_str() == session_id) {
+                    session.pending_initial_prompt = None;
+                    session.updated_at = chrono::Utc::now();
+                }
+                Ok(Some((session_id, prompt)))
+            }
+        }
+    }
+
+    async fn list_projects_with_pending_sessions(&self) -> AppResult<Vec<String>> {
+        let sessions = self.sessions.read().unwrap();
+        let mut project_ids: Vec<String> = sessions
+            .values()
+            .filter(|s| {
+                s.status == IdeationSessionStatus::Active
+                    && s.pending_initial_prompt.is_some()
+            })
+            .map(|s| s.project_id.as_str().to_string())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        project_ids.sort();
+        Ok(project_ids)
+    }
 }
 
 #[cfg(test)]

@@ -87,6 +87,7 @@ pub struct ChildSessionStatusResponse {
     pub agent_state: AgentStateInfo,
     pub verification: Option<VerificationInfo>,
     pub recent_messages: Option<Vec<ChatMessageSummary>>,
+    pub pending_initial_prompt: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -967,6 +968,11 @@ pub struct CreateChildSessionResponse {
     /// Verification generation number; only set when purpose == "verification" and initialization succeeded
     #[serde(skip_serializing_if = "Option::is_none")]
     pub generation: Option<i32>,
+    /// Prompt persisted for deferred launch when orchestration spawn failed due to capacity limits.
+    /// Only present for non-verification children when `orchestration_triggered` is false and a
+    /// prompt/description was provided.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending_initial_prompt: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

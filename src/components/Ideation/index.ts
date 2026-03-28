@@ -2,7 +2,7 @@ export { AcceptModal } from "./AcceptModal";
 // Backward compatibility alias
 export { AcceptModal as ApplyModal } from "./AcceptModal";
 export { DependencyVisualization } from "./DependencyVisualization";
-export { ConversationEmptyState } from "./EmptyStates";
+export { ConversationEmptyState, WaitingForCapacityState } from "./EmptyStates";
 export { ProposalsEmptyState } from "./ProposalsEmptyState";
 export { PlanningView, IdeationView } from "./PlanningView";
 export { PriorityBadge } from "./PriorityBadge";

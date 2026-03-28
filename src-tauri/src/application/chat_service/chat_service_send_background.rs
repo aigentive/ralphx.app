@@ -617,6 +617,52 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     }
                 }
 
+                // When an ideation session completes and frees a slot, check whether any
+                // pending sessions are waiting for capacity in this project and launch them.
+                if context_type == ChatContextType::Ideation {
+                    if let (Some(project_id), Some(exec_state), Some(exec_settings)) = (
+                        resolved_project_id.clone(),
+                        execution_state.as_ref().cloned(),
+                        execution_settings_repo.as_ref().cloned(),
+                    ) {
+                        let mut svc = super::ClaudeChatService::new(
+                            Arc::clone(&chat_message_repo),
+                            Arc::clone(&chat_attachment_repo),
+                            Arc::clone(&artifact_repo),
+                            Arc::clone(&conversation_repo),
+                            Arc::clone(&agent_run_repo),
+                            Arc::clone(&project_repo),
+                            Arc::clone(&task_repo),
+                            Arc::clone(&task_dependency_repo),
+                            Arc::clone(&ideation_session_repo),
+                            Arc::clone(&activity_event_repo),
+                            Arc::clone(&message_queue),
+                            Arc::clone(&running_agent_registry),
+                            Arc::clone(&memory_event_repo),
+                        )
+                        .with_execution_state(Arc::clone(&exec_state))
+                        .with_execution_settings_repo(Arc::clone(&exec_settings));
+                        if let Some(ref ah) = app_handle {
+                            svc = svc.with_app_handle(ah.clone());
+                        }
+                        let chat_svc: Arc<dyn super::ChatService> = Arc::new(svc);
+
+                        let drain = Arc::new(
+                            crate::application::pending_session_drain::PendingSessionDrainService::new(
+                                Arc::clone(&ideation_session_repo),
+                                Arc::clone(&task_repo),
+                                exec_settings,
+                                exec_state,
+                                Arc::clone(&running_agent_registry),
+                                chat_svc,
+                            ),
+                        );
+                        tokio::spawn(async move {
+                            drain.try_drain_pending_for_project(&project_id).await;
+                        });
+                    }
+                }
+
                 // Detect and log the "Cancelled + turns_finalized > 0" path.
                 // In this scenario: agent did useful work (turns finalized in stream loop)
                 // but the process was cancelled before returning. The subsequent

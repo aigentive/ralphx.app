@@ -287,6 +287,7 @@ pub async fn create_child_session(
         external_activity_phase: None,
         external_last_read_message_id: None,
         dependencies_acknowledged: false,
+        pending_initial_prompt: None,
     };
 
     let child_id = child_session.id.clone();
@@ -387,6 +388,32 @@ pub async fn create_child_session(
         false
     };
 
+    // When spawn failed for a non-verification child, persist the effective prompt so the
+    // drain service can auto-launch the session once a slot frees up.
+    // Verification children: archived on spawn failure (not deferred).
+    let persisted_pending_prompt =
+        if !orchestration_triggered && created_session.session_purpose != SessionPurpose::Verification {
+            let effective_prompt_for_defer = effective_initial_prompt
+                .clone()
+                .or_else(|| effective_description.clone().filter(|d| !d.trim().is_empty()));
+            if let Some(ref deferred_prompt) = effective_prompt_for_defer {
+                if let Err(e) = state
+                    .app_state
+                    .ideation_session_repo
+                    .set_pending_initial_prompt(&child_session_str, Some(deferred_prompt.clone()))
+                    .await
+                {
+                    error!(
+                        "Failed to persist pending_initial_prompt for session {}: {}",
+                        child_session_str, e
+                    );
+                }
+            }
+            effective_prompt_for_defer
+        } else {
+            None
+        };
+
     if let Some(app_handle) = &state.app_state.app_handle {
         let mut event_payload = serde_json::json!({
             "sessionId": child_session_str,
@@ -418,5 +445,6 @@ pub async fn create_child_session(
         team_mode: created_session.team_mode.clone(),
         team_config,
         generation: verification_generation,
+        pending_initial_prompt: persisted_pending_prompt,
     }))
 }

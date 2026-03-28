@@ -2,9 +2,46 @@
  * EmptyStates - Empty state components for Ideation view
  *
  * - ConversationEmptyState: Shown when no messages in conversation
+ * - WaitingForCapacityState: Shown when session has pending_initial_prompt set (waiting for slot)
  */
 
-import { MessageSquareText } from "lucide-react";
+import { Clock, MessageSquareText } from "lucide-react";
+
+// ============================================================================
+// Conversation Empty State
+// ============================================================================
+
+// ============================================================================
+// Waiting for Capacity State
+// ============================================================================
+
+export function WaitingForCapacityState() {
+  return (
+    <div className="flex flex-col items-center justify-center h-full p-6">
+      <div className="text-center max-w-[280px]">
+        {/* Pulsing amber clock icon */}
+        <div className="flex items-center justify-center mb-6">
+          <div
+            className="w-14 h-14 rounded-full flex items-center justify-center animate-pulse"
+            style={{
+              background: "hsl(38 90% 50% / 0.12)",
+              border: "1px solid hsl(38 90% 50% / 0.25)",
+            }}
+          >
+            <Clock className="w-6 h-6" style={{ color: "hsl(38 90% 60%)" }} />
+          </div>
+        </div>
+
+        <h3 className="text-base font-semibold mb-2 tracking-tight" style={{ color: "hsl(220 10% 90%)" }}>
+          Waiting for capacity
+        </h3>
+        <p className="text-sm leading-relaxed" style={{ color: "hsl(220 10% 60%)" }}>
+          All ideation slots are in use. This session will start automatically when one becomes available.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 // ============================================================================
 // Conversation Empty State

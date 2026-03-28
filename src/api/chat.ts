@@ -205,6 +205,7 @@ export interface ChildSessionStatusResponse {
   title: string | null;
   agent_state: ChildSessionAgentState;
   recent_messages: ChildSessionMessage[];
+  pending_initial_prompt?: string | null;
 }
 
 /**

@@ -117,6 +117,10 @@ pub struct IdeationSession {
     /// False = finalize_proposals will block if inter-proposal dependencies exist.
     #[serde(default)]
     pub dependencies_acknowledged: bool,
+    /// Initial prompt to auto-launch when capacity becomes available.
+    /// Set when spawn_child_orchestration fails due to ideation capacity limits.
+    /// Cleared to NULL by the drain service after successful launch.
+    pub pending_initial_prompt: Option<String>,
 }
 
 /// Builder for creating IdeationSession instances
@@ -155,6 +159,7 @@ pub struct IdeationSessionBuilder {
     external_activity_phase: Option<String>,
     external_last_read_message_id: Option<String>,
     dependencies_acknowledged: Option<bool>,
+    pending_initial_prompt: Option<String>,
 }
 
 impl IdeationSessionBuilder {
@@ -337,6 +342,12 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set the pending initial prompt for deferred session launch
+    pub fn pending_initial_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.pending_initial_prompt = Some(prompt.into());
+        self
+    }
+
     /// Build the IdeationSession
     /// Panics if project_id is not set
     pub fn build(self) -> IdeationSession {
@@ -375,6 +386,7 @@ impl IdeationSessionBuilder {
             external_activity_phase: self.external_activity_phase,
             external_last_read_message_id: self.external_last_read_message_id,
             dependencies_acknowledged: self.dependencies_acknowledged.unwrap_or(false),
+            pending_initial_prompt: self.pending_initial_prompt,
         }
     }
 }
@@ -559,6 +571,9 @@ impl IdeationSession {
                 .unwrap_or(None)
                 .map(|v| v != 0)
                 .unwrap_or(false),
+            pending_initial_prompt: row
+                .get::<_, Option<String>>("pending_initial_prompt")
+                .unwrap_or(None),
         })
     }
 

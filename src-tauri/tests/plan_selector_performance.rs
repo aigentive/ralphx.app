@@ -73,6 +73,7 @@ async fn create_accepted_session(
         external_activity_phase: None,
         external_last_read_message_id: None,
         dependencies_acknowledged: false,
+        pending_initial_prompt: None,
     };
 
     state

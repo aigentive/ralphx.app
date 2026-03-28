@@ -47,6 +47,7 @@ fn make_session(team_mode: Option<&str>) -> IdeationSession {
         external_activity_phase: None,
         external_last_read_message_id: None,
         dependencies_acknowledged: false,
+        pending_initial_prompt: None,
     }
 }
 
@@ -129,6 +130,7 @@ mod verification_init_tests {
             external_activity_phase: None,
             external_last_read_message_id: None,
             dependencies_acknowledged: false,
+            pending_initial_prompt: None,
         }
     }
 
@@ -527,6 +529,173 @@ mod verification_init_tests {
             );
         }
     }
+    // Force ideation capacity failure so orchestration_triggered=false deterministically.
+    // Sets global_max_concurrent=1 and increments running_count to 1 so the capacity
+    // check in can_start_ideation fires (running >= global_max) before Claude is spawned.
+    fn saturate_ideation_capacity(state: &HttpServerState) {
+        state.execution_state.set_global_max_concurrent(1);
+        state.execution_state.increment_running();
+    }
+
+    // When spawn fails for a non-verification child with initial_prompt, the handler must
+    // persist the prompt to pending_initial_prompt and surface it in the response.
+    #[tokio::test]
+    async fn test_deferred_prompt_persisted_on_non_verification_spawn_failure() {
+        let state = setup_sqlite_state().await;
+        // Saturate capacity so send_message returns Err (SpawnFailed) → orchestration_triggered=false
+        saturate_ideation_capacity(&state);
+
+        let parent = make_parent_session(None);
+        let parent_id = parent.id.clone();
+        state
+            .app_state
+            .ideation_session_repo
+            .create(parent)
+            .await
+            .unwrap();
+
+        let initial_prompt = "Start the follow-on session with this prompt";
+        let req = CreateChildSessionRequest {
+            parent_session_id: parent_id.as_str().to_string(),
+            title: None,
+            description: None,
+            inherit_context: false,
+            initial_prompt: Some(initial_prompt.to_string()),
+            team_mode: None,
+            team_config: None,
+            purpose: None, // non-verification
+            is_external_trigger: false,
+        };
+
+        let result = create_child_session(State(state.clone()), Json(req)).await;
+        assert!(result.is_ok(), "Handler should succeed even when spawn fails, got: {:?}", result.err());
+
+        let response = result.unwrap().0;
+        assert!(
+            !response.orchestration_triggered,
+            "With saturated capacity, orchestration_triggered must be false"
+        );
+        assert_eq!(
+            response.pending_initial_prompt,
+            Some(initial_prompt.to_string()),
+            "pending_initial_prompt must equal the initial_prompt when spawn fails"
+        );
+
+        // Verify the DB row was updated
+        let child_id = IdeationSessionId::from_string(response.session_id.clone());
+        let child_row = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&child_id)
+            .await
+            .unwrap()
+            .expect("Child session must exist in DB");
+        assert_eq!(
+            child_row.pending_initial_prompt,
+            Some(initial_prompt.to_string()),
+            "DB row pending_initial_prompt must equal the initial_prompt"
+        );
+    }
+
+    // When spawn fails for a non-verification child with description (no initial_prompt),
+    // the description is used as the deferred prompt.
+    #[tokio::test]
+    async fn test_deferred_prompt_uses_description_when_no_initial_prompt() {
+        let state = setup_sqlite_state().await;
+        saturate_ideation_capacity(&state);
+
+        let parent = make_parent_session(None);
+        let parent_id = parent.id.clone();
+        state
+            .app_state
+            .ideation_session_repo
+            .create(parent)
+            .await
+            .unwrap();
+
+        let description = "A follow-on session description";
+        let req = CreateChildSessionRequest {
+            parent_session_id: parent_id.as_str().to_string(),
+            title: None,
+            description: Some(description.to_string()),
+            inherit_context: false,
+            initial_prompt: None,
+            team_mode: None,
+            team_config: None,
+            purpose: None, // non-verification
+            is_external_trigger: false,
+        };
+
+        let result = create_child_session(State(state.clone()), Json(req)).await;
+        assert!(result.is_ok(), "Handler should succeed even when spawn fails, got: {:?}", result.err());
+
+        let response = result.unwrap().0;
+        assert!(
+            !response.orchestration_triggered,
+            "With saturated capacity, orchestration_triggered must be false"
+        );
+        assert_eq!(
+            response.pending_initial_prompt,
+            Some(description.to_string()),
+            "pending_initial_prompt must use description when initial_prompt is absent"
+        );
+
+        let child_id = IdeationSessionId::from_string(response.session_id.clone());
+        let child_row = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&child_id)
+            .await
+            .unwrap()
+            .expect("Child session must exist in DB");
+        assert_eq!(
+            child_row.pending_initial_prompt,
+            Some(description.to_string()),
+            "DB row pending_initial_prompt must equal the description"
+        );
+    }
+
+    // When no prompt is provided, pending_initial_prompt stays None even on spawn failure.
+    #[tokio::test]
+    async fn test_deferred_prompt_none_when_no_prompt_provided() {
+        let state = setup_sqlite_state().await;
+        saturate_ideation_capacity(&state);
+
+        let parent = make_parent_session(None);
+        let parent_id = parent.id.clone();
+        state
+            .app_state
+            .ideation_session_repo
+            .create(parent)
+            .await
+            .unwrap();
+
+        let req = CreateChildSessionRequest {
+            parent_session_id: parent_id.as_str().to_string(),
+            title: None,
+            description: None,
+            inherit_context: false,
+            initial_prompt: None,
+            team_mode: None,
+            team_config: None,
+            purpose: None,
+            is_external_trigger: false,
+        };
+
+        let result = create_child_session(State(state.clone()), Json(req)).await;
+        assert!(result.is_ok(), "Handler should succeed even when spawn fails, got: {:?}", result.err());
+
+        let response = result.unwrap().0;
+        assert!(
+            !response.orchestration_triggered,
+            "With saturated capacity, orchestration_triggered must be false"
+        );
+        assert_eq!(
+            response.pending_initial_prompt, None,
+            "pending_initial_prompt must be None when no prompt was provided"
+        );
+    }
+
     // Regression: explicit initial_prompt must take precedence over synthesis.
     // When initial_prompt is provided, the .or_else(synthesize) closure must NOT fire.
     // In test env, spawn fails, so we assert: Ok response + message (if stored) uses

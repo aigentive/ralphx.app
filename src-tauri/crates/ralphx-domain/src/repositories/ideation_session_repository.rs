@@ -357,6 +357,38 @@ pub trait IdeationSessionRepository: Send + Sync {
     /// ongoing conversations are not incorrectly archived by the staleness
     /// reconciler (which filters on `updated_at < cutoff`).
     async fn touch_updated_at(&self, session_id: &str) -> AppResult<()>;
+
+    /// Set (or clear) `pending_initial_prompt` on a session.
+    ///
+    /// Pass `Some(prompt)` to persist the deferred launch prompt;
+    /// pass `None` to clear it after the drain service successfully launches the session.
+    async fn set_pending_initial_prompt(
+        &self,
+        session_id: &str,
+        prompt: Option<String>,
+    ) -> AppResult<()>;
+
+    /// Atomically claim the oldest pending session for a project.
+    ///
+    /// Uses `BEGIN IMMEDIATE` to prevent two concurrent drain services from
+    /// claiming the same session. Selects the oldest active session with a
+    /// non-null `pending_initial_prompt` for the given project, clears the field
+    /// to NULL, and returns `(session_id, prompt)`. Returns `None` if no
+    /// pending session exists.
+    ///
+    /// WHERE clause includes `status = 'active'` to exclude archived/accepted sessions.
+    async fn claim_pending_session_for_project(
+        &self,
+        project_id: &str,
+    ) -> AppResult<Option<(String, String)>>;
+
+    /// List all project IDs that have at least one active session with a
+    /// non-null `pending_initial_prompt`.
+    ///
+    /// Used by `StartupJobRunner` to discover which projects need draining on
+    /// app restart. The WHERE clause includes `status = 'active'` to exclude
+    /// stale rows on archived sessions.
+    async fn list_projects_with_pending_sessions(&self) -> AppResult<Vec<String>>;
 }
 
 #[cfg(test)]

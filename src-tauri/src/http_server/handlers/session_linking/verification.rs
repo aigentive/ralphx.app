@@ -50,6 +50,7 @@ pub(crate) async fn create_verification_child_session(
         external_activity_phase: None,
         external_last_read_message_id: None,
         dependencies_acknowledged: false,
+        pending_initial_prompt: None,
     };
 
     let child_id = child_session.id.clone();

@@ -40,7 +40,8 @@ import { usePlanStore } from "@/stores/planStore";
 import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
 import { AcceptModal } from "./AcceptModal";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
-import { ConversationEmptyState } from "./EmptyStates";
+import { ConversationEmptyState, WaitingForCapacityState } from "./EmptyStates";
+import { useChildSessionStatus } from "@/hooks/useChildSessionStatus";
 import { animationStyles } from "./PlanningView.constants";
 import { PlanBrowser } from "./PlanBrowser";
 import { StartSessionPanel } from "./StartSessionPanel";
@@ -322,6 +323,13 @@ export function PlanningView({
   );
   const lastVerificationChildId = useIdeationStore(
     (s) => s.lastVerificationChildId[session?.id ?? ''] ?? null
+  );
+
+  // Poll status for verification child and direct child session views to detect pending_initial_prompt
+  const { data: verificationChildStatus } = useChildSessionStatus(lastVerificationChildId);
+  // Only poll for the current session when it's a child (has parentSessionId) to detect pending prompt
+  const { data: currentSessionStatus } = useChildSessionStatus(
+    session?.parentSessionId ? session.id : null
   );
 
   // Eagerly fetch verification child sessions so lastVerificationChildId is populated
@@ -1066,7 +1074,7 @@ export function PlanningView({
                   key={session.id}
                   projectId={session.projectId}
                   ideationSessionId={session.id}
-                  emptyState={<ConversationEmptyState />}
+                  emptyState={currentSessionStatus?.pending_initial_prompt ? <WaitingForCapacityState /> : <ConversationEmptyState />}
                   showHelperTextAlways={true}
                   isVisible={!isVerificationTabActive || !lastVerificationChildId}
                   headerContent={
@@ -1090,7 +1098,7 @@ export function PlanningView({
                     key={lastVerificationChildId}
                     projectId={session.projectId}
                     ideationSessionId={lastVerificationChildId!}
-                    emptyState={<ConversationEmptyState />}
+                    emptyState={verificationChildStatus?.pending_initial_prompt ? <WaitingForCapacityState /> : <ConversationEmptyState />}
                     showHelperTextAlways={true}
                     isVisible={isVerificationTabActive}
                     headerContent={

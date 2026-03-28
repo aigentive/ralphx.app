@@ -108,6 +108,7 @@ mod v79_external_session_reliability;
 mod v80_dependencies_acknowledged;
 mod v81_external_session_reliability_backfill;
 mod v20260325120000_app_state_execution_halt_mode;
+mod v20260327233752_pending_initial_prompt;
 mod v20260325131500_execution_ideation_allocation_settings;
 
 #[cfg(test)]
@@ -228,9 +229,11 @@ mod v81_external_session_reliability_backfill_tests;
 mod v20260325120000_app_state_execution_halt_mode_tests;
 #[cfg(test)]
 mod v20260325131500_execution_ideation_allocation_settings_tests;
+#[cfg(test)]
+mod v20260327233752_pending_initial_prompt_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i64 = 20260325131500;
+pub const SCHEMA_VERSION: i64 = 20260327233752;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -659,6 +662,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 20260325131500,
         name: "execution_ideation_allocation_settings",
         migrate: v20260325131500_execution_ideation_allocation_settings::migrate,
+    },
+    Migration {
+        version: 20260327233752,
+        name: "pending_initial_prompt",
+        migrate: v20260327233752_pending_initial_prompt::migrate,
     },
 ];
 

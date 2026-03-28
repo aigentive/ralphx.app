@@ -817,6 +817,11 @@ impl<R: Runtime> StartupJobRunner<R> {
             }
         }
 
+        // Phase 4: Startup recovery for pending ideation sessions.
+        // Drains sessions that were deferred at creation time due to capacity limits.
+        // Runs after main startup recovery to avoid competing with orphaned-agent re-spawning.
+        self.drain_pending_ideation_sessions().await;
+
         // Phase N+1: Ideation agent recovery — fire-and-forget.
         // Processes the snapshot captured in Phase 0, after all other startup phases complete.
         // Does NOT block startup; app becomes responsive before recovery finishes.
@@ -1665,6 +1670,72 @@ impl<R: Runtime> StartupJobRunner<R> {
         use crate::domain::state_machine::transition_handler::has_main_merge_deferred_metadata;
 
         has_main_merge_deferred_metadata(task) && running_count > 0
+    }
+
+    /// Phase 4: Drain deferred pending ideation sessions on startup.
+    ///
+    /// Queries all projects with sessions that have `pending_initial_prompt` set
+    /// (deferred due to capacity limits at session creation time) and attempts to
+    /// launch them now that the app is restarting with fresh capacity.
+    ///
+    /// Outcome of each drain attempt (spawned / skipped / re-persisted) is logged
+    /// by `PendingSessionDrainService` internally.
+    async fn drain_pending_ideation_sessions(&self) {
+        let chat_service = match self.chat_service.as_ref() {
+            Some(cs) => Arc::clone(cs),
+            None => {
+                debug!("Startup pending drain: no chat service configured, skipping");
+                return;
+            }
+        };
+
+        let project_ids = match self
+            .ideation_session_repo
+            .list_projects_with_pending_sessions()
+            .await
+        {
+            Ok(ids) => ids,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "Startup pending drain: failed to query projects with pending sessions"
+                );
+                return;
+            }
+        };
+
+        if project_ids.is_empty() {
+            debug!("Startup pending drain: no projects with pending sessions found");
+            return;
+        }
+
+        info!(
+            count = project_ids.len(),
+            "Startup pending drain: found projects with pending sessions"
+        );
+
+        let drain_service =
+            crate::application::pending_session_drain::PendingSessionDrainService::new(
+                Arc::clone(&self.ideation_session_repo),
+                Arc::clone(&self.task_repo),
+                Arc::clone(&self.execution_settings_repo),
+                Arc::clone(&self.execution_state),
+                Arc::clone(&self.running_agent_registry),
+                chat_service,
+            );
+
+        for project_id in &project_ids {
+            info!(
+                project_id = %project_id,
+                "Startup pending drain: draining pending sessions for project"
+            );
+            drain_service.try_drain_pending_for_project(project_id).await;
+        }
+
+        info!(
+            count = project_ids.len(),
+            "Startup pending drain: drain complete"
+        );
     }
 }
 

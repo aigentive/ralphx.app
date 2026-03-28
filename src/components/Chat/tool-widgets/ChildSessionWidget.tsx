@@ -192,6 +192,7 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
 
   const purposeVariant: BadgeVariant = purpose === "verification" ? "blue" : "muted";
   const agentStatus = data?.agent_state.estimated_status ?? "idle";
+  const isPendingCapacity = !!(data?.pending_initial_prompt);
   const latestMessage = data?.recent_messages[data.recent_messages.length - 1];
   const snippet = latestMessage ? truncate(stripMarkdown(latestMessage.content), 80) : null;
 
@@ -210,7 +211,10 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
               {orchestrationTriggered === true && (
                 <Badge variant="success" compact>Agent spawned</Badge>
               )}
-              {agentStatus !== "idle" && <AgentStatusBadge status={agentStatus} />}
+              {isPendingCapacity && agentStatus === "idle" && (
+                <Badge variant="warning" compact>Waiting for capacity</Badge>
+              )}
+              {!isPendingCapacity && agentStatus !== "idle" && <AgentStatusBadge status={agentStatus} />}
             </>
           }
         />
@@ -222,10 +226,10 @@ export const ChildSessionWidget = React.memo(function ChildSessionWidget({
           style={{
             ...truncatedTitleStyle(compact),
             fontSize: 11,
-            color: snippet ? colors.textMuted : "transparent",
+            color: (snippet || isPendingCapacity) ? colors.textMuted : "transparent",
           }}
         >
-          {snippet ?? "No messages yet"}
+          {snippet ?? (isPendingCapacity ? "Waiting for capacity..." : "No messages yet")}
         </span>
       </WidgetRow>
 

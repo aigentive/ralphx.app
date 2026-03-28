@@ -77,7 +77,7 @@ export const colors = {
 // Badge Variant Type
 // ============================================================================
 
-export type BadgeVariant = "muted" | "success" | "accent" | "error" | "blue";
+export type BadgeVariant = "muted" | "success" | "accent" | "error" | "blue" | "warning";
 
 export const badgeStyles: Record<BadgeVariant, { bg: string; color: string }> = {
   muted: { bg: colors.border, color: colors.textMuted },
@@ -85,6 +85,7 @@ export const badgeStyles: Record<BadgeVariant, { bg: string; color: string }> = 
   accent: { bg: colors.accentDim, color: colors.accent },
   error: { bg: colors.errorDim, color: colors.error },
   blue: { bg: colors.blueDim, color: colors.blue },
+  warning: { bg: "hsl(38 90% 50% / 0.15)", color: "hsl(38 90% 60%)" },
 };
 
 // ============================================================================

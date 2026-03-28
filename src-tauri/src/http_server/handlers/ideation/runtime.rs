@@ -255,6 +255,7 @@ pub async fn get_child_session_status_handler(
         agent_state,
         verification,
         recent_messages,
+        pending_initial_prompt: session.pending_initial_prompt.clone(),
     }))
 }
 

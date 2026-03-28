@@ -735,6 +735,25 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
     ) -> crate::error::AppResult<Vec<IdeationSession>> {
         self.inner.list_active_verification_children().await
     }
+
+    async fn set_pending_initial_prompt(
+        &self,
+        session_id: &str,
+        prompt: Option<String>,
+    ) -> crate::error::AppResult<()> {
+        self.inner.set_pending_initial_prompt(session_id, prompt).await
+    }
+
+    async fn claim_pending_session_for_project(
+        &self,
+        project_id: &str,
+    ) -> crate::error::AppResult<Option<(String, String)>> {
+        self.inner.claim_pending_session_for_project(project_id).await
+    }
+
+    async fn list_projects_with_pending_sessions(&self) -> crate::error::AppResult<Vec<String>> {
+        self.inner.list_projects_with_pending_sessions().await
+    }
 }
 
 #[tokio::test]
