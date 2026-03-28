@@ -16,6 +16,7 @@ import { taskKeys } from "@/hooks/useTasks";
 import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
 import { stateTransitionKeys } from "@/hooks/useTaskStateTransitions";
 import { reviewKeys } from "@/hooks/useReviews";
+import { ideationKeys } from "@/hooks/useIdeation";
 import { transformTask, type Task } from "@/types/task";
 
 const REVIEW_STATUSES = new Set([
@@ -76,6 +77,8 @@ export function useTaskEvents() {
       if ((from !== undefined && REVIEW_STATUSES.has(from)) || REVIEW_STATUSES.has(to)) {
         queryClient.invalidateQueries({ queryKey: reviewKeys.all });
       }
+      // Invalidate ideation sidebar counts and per-plan progress
+      queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
       // Bridge to graph hooks that listen for task:updated
       bus.emit("task:updated", { taskId });
     };
@@ -96,6 +99,8 @@ export function useTaskEvents() {
           // Invalidate both regular and infinite task queries
           queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
           queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
+          // Invalidate ideation sidebar counts and per-plan progress
+          queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
           // Bridge to graph hooks that listen for task:updated
           bus.emit("task:updated", { taskId: taskEvent.task.id });
           break;
@@ -125,6 +130,8 @@ export function useTaskEvents() {
           if (changes.internal_status !== undefined) {
             queryClient.invalidateQueries({ queryKey: reviewKeys.all });
           }
+          // Invalidate ideation sidebar counts and per-plan progress
+          queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
           // Bridge to graph hooks that listen for task:updated
           bus.emit("task:updated", { taskId: taskEvent.taskId });
           break;
@@ -136,6 +143,8 @@ export function useTaskEvents() {
           queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
           // Invalidate review queries — deleted task may have been in a review stage
           queryClient.invalidateQueries({ queryKey: reviewKeys.all });
+          // Invalidate ideation sidebar counts and per-plan progress
+          queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
           break;
         case "status_changed":
           handleStatusChange(taskEvent.taskId, taskEvent.from, taskEvent.to);
