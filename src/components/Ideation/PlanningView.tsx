@@ -397,9 +397,10 @@ export function PlanningView({
   const showVerificationTab = Boolean(
     verificationStatus !== "unverified" || planArtifact
   );
+  const isVerificationActive = (session?.verificationInProgress ?? false) || !!activeVerificationChildId;
   const verificationBadge: "in_progress" | "verified" | "warning" | null = (() => {
     if (!session) return null;
-    if (session.verificationInProgress) return "in_progress";
+    if (isVerificationActive) return "in_progress";
     if (verificationStatus === "verified" || verificationStatus === "imported_verified") return "verified";
     if (verificationStatus === "needs_revision") return "warning";
     return null;
@@ -641,7 +642,8 @@ export function PlanningView({
     setActiveIdeationTab(session.id, 'verification');
 
     // If child ID already preloaded (set by event handler), skip async fetch
-    if (activeVerificationChildId || lastVerificationChildId) return;
+    // But allow refetch when verification is actively running (state may have changed)
+    if ((activeVerificationChildId || lastVerificationChildId) && !isVerificationActive) return;
 
     // Fetch the latest verification child session
     try {
@@ -653,7 +655,10 @@ export function PlanningView({
         );
         const latest = sorted[0];
         if (latest) {
-          setActiveVerificationChildId(session.id, latest.id);
+          // Only set activeVerificationChildId if not already populated (fresh hydration only)
+          if (!activeVerificationChildId) {
+            setActiveVerificationChildId(session.id, latest.id);
+          }
           setLastVerificationChildId(session.id, latest.id);
         }
       }
@@ -661,7 +666,7 @@ export function PlanningView({
       console.error('Verification tab: failed to fetch child sessions', err);
       // Tab switches regardless — child panel stays hidden until child exists
     }
-  }, [session, activeVerificationChildId, lastVerificationChildId, setActiveIdeationTab, setActiveVerificationChildId, setLastVerificationChildId]);
+  }, [session, activeVerificationChildId, lastVerificationChildId, isVerificationActive, setActiveIdeationTab, setActiveVerificationChildId, setLastVerificationChildId]);
 
   return (
     <>

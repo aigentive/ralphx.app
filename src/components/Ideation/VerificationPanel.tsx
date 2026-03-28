@@ -238,8 +238,7 @@ function VerificationRunPicker({
                     style={{ color: isActive ? "hsl(14 100% 65%)" : "hsl(220 10% 85%)" }}
                   >
                     Run {run.runNumber}
-                    {isNewest && <span className="ml-1.5 text-[10px] font-normal" style={{ color: "hsl(220 10% 45%)" }}>— {label}</span>}
-                    {!isNewest && <span className="ml-1.5 text-[10px] font-normal" style={{ color: "hsl(220 10% 45%)" }}>— {label}</span>}
+                    <span className="ml-1.5 text-[10px] font-normal" style={{ color: "hsl(220 10% 45%)" }}>— {label}</span>
                   </span>
                 </div>
                 <span
@@ -283,7 +282,7 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   const verificationStatus = session.verificationStatus ?? "unverified";
   const hasPlan = !!session.planArtifactId;
   const isApproved = session.status === "accepted";
-  const isInProgress = session.verificationInProgress ?? false;
+  const isInProgress = (session.verificationInProgress ?? false) || !!activeVerificationChildId;
 
   // Fetch full verification data — always fires when a plan exists (not gated on verificationStatus)
   // so that page-load hydration works even when the session cache still shows "unverified".
@@ -342,6 +341,9 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
     );
   }, [verificationData, verificationStatus, session.id, queryClient]);
 
+  // Stable boolean extracted from verificationData to prevent object-identity re-fires in the effect below.
+  const apiInProgress = verificationData?.inProgress ?? false;
+
   // Auto-update verification child IDs when a new verification run appears.
   // lastVerificationChildId tracks the display reference (persists after agent terminates).
   // activeVerificationChildId is only set on first mount (when both are null) to avoid
@@ -356,11 +358,16 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
     if (latestId !== lastVerificationChildId) {
       setLastVerificationChildId(session.id, latestId);
     }
-    // Only set activeVerificationChildId on first mount (both null) — prevents re-asserting after termination
-    if (activeVerificationChildId === null && lastVerificationChildId === null) {
+    // Set activeVerificationChildId on first mount (both null) — prevents re-asserting after termination.
+    // Also hydrate when API confirms verification is active AND a NEW child exists (not the just-terminated one).
+    // Race-safety: latestId !== lastVerificationChildId guard prevents re-asserting terminated child
+    // when stale verificationData?.inProgress is still true before cache invalidates.
+    if (activeVerificationChildId === null &&
+        (lastVerificationChildId === null ||
+         (latestId !== lastVerificationChildId && apiInProgress))) {
       setActiveVerificationChildId(session.id, latestId);
     }
-  }, [childSessions, activeVerificationChildId, lastVerificationChildId, session.id, setActiveVerificationChildId, setLastVerificationChildId]);
+  }, [childSessions, activeVerificationChildId, lastVerificationChildId, apiInProgress, session.id, setActiveVerificationChildId, setLastVerificationChildId]);
 
   // Refresh nowMs every 30s while in-progress (stale detection clock)
   useEffect(() => {
@@ -387,7 +394,7 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
 
   // ── Action handlers ──────────────────────────────────────────────────────
 
-  const handleVerifyFirst = useCallback(async () => {
+  const handleTriggerVerification = useCallback(async () => {
     try {
       await chatApi.sendAgentMessage("ideation", session.id, "verify");
     } catch (err) {
@@ -412,15 +419,6 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
       toast.error("Failed to skip verification");
     }
   }, [session.id, queryClient]);
-
-  const handleRetryVerification = useCallback(async () => {
-    try {
-      await chatApi.sendAgentMessage("ideation", session.id, "verify");
-    } catch (err) {
-      console.error("Failed to retry verification:", err);
-      toast.error("Failed to retry verification");
-    }
-  }, [session.id]);
 
   const handleAddressGaps = useCallback(async () => {
     const gaps = verificationData?.gaps ?? [];
@@ -457,8 +455,6 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   const showSkipVerification = !isVerified && !isSkipped && !isApproved;
   const showAddressGaps =
     verificationStatus === "needs_revision" && !isInProgress && hasGaps;
-  // planVersionBeforeVerification not yet surfaced by the API — hidden for now
-  const showRevertAndSkip = false;
   const showReVerify =
     !isInProgress &&
     (verificationStatus === "needs_revision" || (isVerified && hasGaps));
@@ -519,7 +515,7 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
           <div className="flex flex-col gap-2 w-full">
             {hasPlan && (
               <Button
-                onClick={handleVerifyFirst}
+                onClick={handleTriggerVerification}
                 data-testid="verify-first-button"
                 className="h-8 gap-2 text-[12px] font-semibold w-full rounded-lg transition-colors duration-150"
                 style={{
@@ -618,7 +614,7 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
             </div>
             <Button
               size="sm"
-              onClick={handleRetryVerification}
+              onClick={handleTriggerVerification}
               data-testid="stale-retry-button"
               className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg self-start transition-colors duration-150"
               style={{
@@ -654,33 +650,11 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
           {...(verificationData?.convergenceReason !== undefined && {
             convergenceReason: verificationData.convergenceReason,
           })}
-          onRetry={handleRetryVerification}
+          onRetry={handleTriggerVerification}
         />
 
         {/* Secondary action buttons */}
         <div className="flex items-center gap-1.5">
-          {showRevertAndSkip && (
-            <Button
-              variant="ghost"
-              size="sm"
-              data-testid="revert-and-skip-button"
-              className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
-              style={{
-                color: "hsl(45 93% 60%)",
-                background: "hsla(45 93% 50% / 0.1)",
-                border: "1px solid hsla(45 93% 50% / 0.2)",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "hsla(45 93% 50% / 0.15)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "hsla(45 93% 50% / 0.1)";
-              }}
-            >
-              <RotateCcw className="w-3 h-3" />
-              Revert &amp; Skip
-            </Button>
-          )}
           {showSkipVerification && (
             <Button
               variant="ghost"
@@ -774,7 +748,7 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
         <Button
           variant="ghost"
           size="sm"
-          onClick={handleRetryVerification}
+          onClick={handleTriggerVerification}
           data-testid="re-verify-button"
           className="h-7 px-2.5 text-[11px] font-medium gap-1.5 rounded-lg transition-colors duration-150"
           style={{

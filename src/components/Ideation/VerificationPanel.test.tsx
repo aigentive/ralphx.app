@@ -262,6 +262,130 @@ describe("VerificationPanel — page-load hydration", () => {
     expect(mockSetLastVerificationChildId).toHaveBeenCalledWith("session-1", "child-run-1");
   });
 
+  // ── isInProgress dual-source derivation ───────────────────────────────────
+
+  it("isInProgress: false when both session.verificationInProgress=false and activeVerificationChildId=null", async () => {
+    const { useQuery } = await import("@tanstack/react-query");
+    const verificationData = { sessionId: "session-1", status: "needs_revision", inProgress: false, gaps: [{ description: "gap1" }], rounds: [{ round: 1, gapScore: 3, gapCount: 1 }] };
+    vi.mocked(useQuery)
+      .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [] } as unknown as ReturnType<typeof useQuery>);
+
+    mockStoreState = { ...mockStoreState, activeVerificationChildId: {}, lastVerificationChildId: {} };
+    const { VerificationPanel } = await import("./VerificationPanel");
+    render(<VerificationPanel session={{ ...baseSession, verificationStatus: "needs_revision" }} />);
+
+    // When neither source is active, Address Gaps and Re-verify should be visible
+    await waitFor(() => {
+      expect(screen.getByTestId("address-gaps-button")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("re-verify-button")).toBeInTheDocument();
+  });
+
+  it("isInProgress: true when session.verificationInProgress=true and activeVerificationChildId=null", async () => {
+    const { useQuery } = await import("@tanstack/react-query");
+    const verificationData = { sessionId: "session-1", status: "needs_revision", inProgress: true, gaps: [{ description: "gap1" }], rounds: [{ round: 1, gapScore: 3, gapCount: 1 }] };
+    vi.mocked(useQuery)
+      .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [] } as unknown as ReturnType<typeof useQuery>);
+
+    mockStoreState = { ...mockStoreState, activeVerificationChildId: {}, lastVerificationChildId: {} };
+    const { VerificationPanel } = await import("./VerificationPanel");
+    render(<VerificationPanel session={{ ...baseSession, verificationStatus: "needs_revision", verificationInProgress: true }} />);
+
+    // When session.verificationInProgress=true, Address Gaps and Re-verify should be hidden
+    await waitFor(() => {
+      expect(screen.queryByTestId("address-gaps-button")).not.toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("re-verify-button")).not.toBeInTheDocument();
+  });
+
+  it("isInProgress: true when session.verificationInProgress=false but activeVerificationChildId is set", async () => {
+    const { useQuery } = await import("@tanstack/react-query");
+    const verificationData = { sessionId: "session-1", status: "needs_revision", inProgress: false, gaps: [{ description: "gap1" }], rounds: [{ round: 1, gapScore: 3, gapCount: 1 }] };
+    vi.mocked(useQuery)
+      .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [] } as unknown as ReturnType<typeof useQuery>);
+
+    // activeVerificationChildId set — this is the key dual-source fix
+    mockStoreState = { ...mockStoreState, activeVerificationChildId: { "session-1": "child-123" }, lastVerificationChildId: {} };
+    const { VerificationPanel } = await import("./VerificationPanel");
+    render(<VerificationPanel session={{ ...baseSession, verificationStatus: "needs_revision", verificationInProgress: false }} />);
+
+    // activeVerificationChildId alone makes isInProgress=true, so Address Gaps and Re-verify hidden
+    await waitFor(() => {
+      expect(screen.queryByTestId("address-gaps-button")).not.toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("re-verify-button")).not.toBeInTheDocument();
+  });
+
+  it("isInProgress: true when both session.verificationInProgress=true AND activeVerificationChildId set", async () => {
+    const { useQuery } = await import("@tanstack/react-query");
+    const verificationData = { sessionId: "session-1", status: "needs_revision", inProgress: true, gaps: [{ description: "gap1" }], rounds: [{ round: 1, gapScore: 3, gapCount: 1 }] };
+    vi.mocked(useQuery)
+      .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [] } as unknown as ReturnType<typeof useQuery>);
+
+    mockStoreState = { ...mockStoreState, activeVerificationChildId: { "session-1": "child-123" }, lastVerificationChildId: {} };
+    const { VerificationPanel } = await import("./VerificationPanel");
+    render(<VerificationPanel session={{ ...baseSession, verificationStatus: "needs_revision", verificationInProgress: true }} />);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("address-gaps-button")).not.toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("re-verify-button")).not.toBeInTheDocument();
+  });
+
+  // ── Hydration effect: apiInProgress + new child ───────────────────────────
+
+  it("hydration effect sets activeVerificationChildId when apiInProgress=true and latestId differs from lastVerificationChildId", async () => {
+    const { useQuery } = await import("@tanstack/react-query");
+    const childSession = { id: "child-new", sessionPurpose: "verification", createdAt: "2026-01-01T01:00:00Z" };
+    const verificationData = { sessionId: "session-1", status: "reviewing", inProgress: true, gaps: [], rounds: [] };
+    vi.mocked(useQuery)
+      .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [childSession] } as unknown as ReturnType<typeof useQuery>);
+
+    // activeVerificationChildId=null, lastVerificationChildId="child-old" (terminated child)
+    // latestId="child-new" !== "child-old" → hydration should fire
+    mockStoreState = {
+      ...mockStoreState,
+      activeVerificationChildId: {},
+      lastVerificationChildId: { "session-1": "child-old" },
+    };
+
+    const { VerificationPanel } = await import("./VerificationPanel");
+    render(<VerificationPanel session={baseSession} />);
+
+    await waitFor(() => {
+      expect(mockSetActiveVerificationChildId).toHaveBeenCalledWith("session-1", "child-new");
+    });
+  });
+
+  it("hydration effect does NOT re-assert activeVerificationChildId when latestId equals lastVerificationChildId (termination guard)", async () => {
+    const { useQuery } = await import("@tanstack/react-query");
+    const childSession = { id: "child-terminated", sessionPurpose: "verification", createdAt: "2026-01-01T01:00:00Z" };
+    // stale verificationData still shows inProgress=true but the same child terminated
+    const verificationData = { sessionId: "session-1", status: "reviewing", inProgress: true, gaps: [], rounds: [] };
+    vi.mocked(useQuery)
+      .mockReturnValueOnce({ data: verificationData } as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [childSession] } as unknown as ReturnType<typeof useQuery>);
+
+    // activeVerificationChildId=null (cleared by termination), lastVerificationChildId="child-terminated"
+    // latestId="child-terminated" === lastVerificationChildId → hydration must NOT fire
+    mockStoreState = {
+      ...mockStoreState,
+      activeVerificationChildId: {},
+      lastVerificationChildId: { "session-1": "child-terminated" },
+    };
+
+    const { VerificationPanel } = await import("./VerificationPanel");
+    render(<VerificationPanel session={baseSession} />);
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mockSetActiveVerificationChildId).not.toHaveBeenCalled();
+  });
+
   it("does NOT hydrate session cache when session already has a non-unverified status", async () => {
     const { useQuery } = await import("@tanstack/react-query");
     const verificationData = {
