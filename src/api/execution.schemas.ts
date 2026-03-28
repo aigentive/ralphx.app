@@ -16,6 +16,11 @@ export const ExecutionStatusResponseSchema = z.object({
   queued_count: z.number().int().nonnegative(),
   queued_message_count: z.number().int().nonnegative(),
   can_start_task: z.boolean(),
+  ideation_active: z.number().int().nonnegative(),
+  ideation_idle: z.number().int().nonnegative(),
+  ideation_waiting: z.number().int().nonnegative(),
+  ideation_max_project: z.number().int().nonnegative(),
+  ideation_max_global: z.number().int().nonnegative(),
 });
 
 /**

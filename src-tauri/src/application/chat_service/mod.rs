@@ -90,9 +90,9 @@ pub use chat_service_types::{
     AgentMessageCreatedPayload, AgentMessageQueuedPayload, AgentQueueSentPayload,
     AgentRunCompletedPayload, AgentRunStartedPayload, AgentTaskCompletedPayload,
     AgentTaskStartedPayload, AgentToolCallPayload, ChatConversationWithMessages, ChatServiceError,
-    SendResult, TeamCostUpdatePayload, TeamArtifactCreatedPayload, TeamCreatedPayload,
-    TeamDisbandedPayload, TeamMessagePayload, TeamTeammateIdlePayload, TeamTeammateShutdownPayload,
-    TeamTeammateSpawnedPayload,
+    SendCallerContext, SendResult, TeamCostUpdatePayload, TeamArtifactCreatedPayload,
+    TeamCreatedPayload, TeamDisbandedPayload, TeamMessagePayload, TeamTeammateIdlePayload,
+    TeamTeammateShutdownPayload, TeamTeammateSpawnedPayload,
 };
 pub use chat_service_types::events::AGENT_MESSAGE_QUEUED;
 pub use streaming_state_cache::{
@@ -211,6 +211,9 @@ pub struct SendMessageOptions {
     /// Filters interactive-only tools (e.g. `ask_user_question`) from the allowed tool list
     /// to prevent deadlocks where the agent waits for human input that will never arrive.
     pub is_external_mcp: bool,
+    /// Who initiated this send.  Controls the SpawnFailed catch-and-persist behaviour for
+    /// ideation contexts (see `SendCallerContext`).  Defaults to `UserInitiated`.
+    pub caller_context: SendCallerContext,
 }
 
 /// Unified chat service for all context types
@@ -921,6 +924,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 is_new_conversation,
                 was_queued: true,
                 queued_message_id: Some(queued.id),
+                queued_as_pending: false,
             });
         }
 
@@ -1141,6 +1145,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 is_new_conversation: false,
                 was_queued: true,
                 queued_message_id: Some(queued.id),
+                queued_as_pending: false,
             });
         }
 
@@ -1246,7 +1251,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                         let project_borrow_available = exec.allow_ideation_borrow_idle_execution()
                             && !project_execution_waiting;
 
-                        let message =
+                        let capacity_err_msg =
                             if running_project_total >= project_settings.max_concurrent_tasks {
                                 format!(
                                     "project execution capacity reached ({}/{} active slots)",
@@ -1269,7 +1274,72 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                                 )
                             };
 
-                        cleanup_and_err!(ChatServiceError::SpawnFailed(message));
+                        if options.caller_context == SendCallerContext::UserInitiated {
+                            // Try to persist the user's message as pending_initial_prompt so
+                            // the drain service can launch the session when capacity frees up.
+                            // `running_incremented` is still false here (capacity check fires
+                            // before exec.increment_running), so cleanup is just registry
+                            // unregister.
+                            match self
+                                .ideation_session_repo
+                                .set_pending_initial_prompt_if_unset(
+                                    context_id,
+                                    message.to_string(),
+                                )
+                                .await
+                            {
+                                Ok(true) => {
+                                    // Persisted — release the registry slot and return queued.
+                                    self.running_agent_registry
+                                        .unregister(&registry_key, &agent_run_id)
+                                        .await;
+                                    tracing::info!(
+                                        %context_type,
+                                        context_id,
+                                        "send_message: capacity full, \
+                                         message persisted as pending_initial_prompt"
+                                    );
+                                    return Ok(SendResult {
+                                        conversation_id: conversation.id.as_str().to_string(),
+                                        agent_run_id: agent_run_id.clone(),
+                                        is_new_conversation: false,
+                                        was_queued: true,
+                                        queued_as_pending: true,
+                                        queued_message_id: None,
+                                    });
+                                }
+                                Ok(false) => {
+                                    // Multi-message guard: a prompt is already set, reject.
+                                    tracing::warn!(
+                                        %context_type,
+                                        context_id,
+                                        "send_message: capacity full and \
+                                         pending_initial_prompt already set — rejecting"
+                                    );
+                                    cleanup_and_err!(ChatServiceError::SpawnFailed(
+                                        capacity_err_msg
+                                    ));
+                                }
+                                Err(e) => {
+                                    // Persist failed — surface error so the frontend keeps the
+                                    // message in the input field for retry (never lose silently).
+                                    tracing::error!(
+                                        %context_type,
+                                        context_id,
+                                        error = %e,
+                                        "send_message: capacity full and persist failed — \
+                                         returning SpawnFailed to caller"
+                                    );
+                                    cleanup_and_err!(ChatServiceError::SpawnFailed(
+                                        capacity_err_msg
+                                    ));
+                                }
+                            }
+                        } else {
+                            // DrainService caller: propagate Err so drain breaks cleanly
+                            // and does not re-persist (it already handles that itself).
+                            cleanup_and_err!(ChatServiceError::SpawnFailed(capacity_err_msg));
+                        }
                     }
                 } else {
                     let task_id = TaskId::from_string(context_id.to_string());

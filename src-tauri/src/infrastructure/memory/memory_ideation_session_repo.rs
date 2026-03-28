@@ -558,6 +558,7 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
                     progress: None,
                     parent_session_title: None,
                     verification_child_count,
+                    has_pending_prompt: false,
                 }
             })
             .collect();
@@ -776,6 +777,23 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         Ok(())
     }
 
+    async fn set_pending_initial_prompt_if_unset(
+        &self,
+        session_id: &str,
+        prompt: String,
+    ) -> AppResult<bool> {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(session) = sessions.values_mut().find(|s| s.id.as_str() == session_id) {
+            if session.pending_initial_prompt.is_none() {
+                session.pending_initial_prompt = Some(prompt);
+                session.updated_at = chrono::Utc::now();
+                return Ok(true);
+            }
+            return Ok(false);
+        }
+        Ok(false)
+    }
+
     async fn claim_pending_session_for_project(
         &self,
         project_id: &str,
@@ -818,6 +836,22 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
             .collect();
         project_ids.sort();
         Ok(project_ids)
+    }
+
+    async fn count_pending_sessions_for_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppResult<u32> {
+        let sessions = self.sessions.read().unwrap();
+        let count = sessions
+            .values()
+            .filter(|s| {
+                s.project_id == *project_id
+                    && s.status == IdeationSessionStatus::Active
+                    && s.pending_initial_prompt.is_some()
+            })
+            .count() as u32;
+        Ok(count)
     }
 }
 

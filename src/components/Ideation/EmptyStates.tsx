@@ -5,7 +5,9 @@
  * - WaitingForCapacityState: Shown when session has pending_initial_prompt set (waiting for slot)
  */
 
-import { Clock, MessageSquareText } from "lucide-react";
+import { Clock, MessageSquareText, Settings } from "lucide-react";
+import { useExecutionStatus } from "@/hooks/useExecutionControl";
+import { useUiStore } from "@/stores/uiStore";
 
 // ============================================================================
 // Conversation Empty State
@@ -15,10 +17,22 @@ import { Clock, MessageSquareText } from "lucide-react";
 // Waiting for Capacity State
 // ============================================================================
 
-export function WaitingForCapacityState() {
+interface WaitingForCapacityStateProps {
+  /** The queued message text to display (pending_initial_prompt). */
+  pendingInitialPrompt?: string | null;
+  /** Project ID for per-project capacity scoping. */
+  projectId?: string;
+}
+
+export function WaitingForCapacityState({ pendingInitialPrompt, projectId }: WaitingForCapacityStateProps) {
+  const { data, isLoading, isError } = useExecutionStatus(projectId);
+  const setCurrentView = useUiStore((s) => s.setCurrentView);
+
+  const hasCapacityData = !isLoading && !isError && data != null;
+
   return (
     <div className="flex flex-col items-center justify-center h-full p-6">
-      <div className="text-center max-w-[280px]">
+      <div className="text-center max-w-[320px]">
         {/* Pulsing amber clock icon */}
         <div className="flex items-center justify-center mb-6">
           <div
@@ -35,9 +49,53 @@ export function WaitingForCapacityState() {
         <h3 className="text-base font-semibold mb-2 tracking-tight" style={{ color: "hsl(220 10% 90%)" }}>
           Waiting for capacity
         </h3>
-        <p className="text-sm leading-relaxed" style={{ color: "hsl(220 10% 60%)" }}>
-          All ideation slots are in use. This session will start automatically when one becomes available.
-        </p>
+
+        {hasCapacityData ? (
+          <p className="text-sm leading-relaxed" style={{ color: "hsl(220 10% 60%)" }}>
+            Ideation capacity:{" "}
+            <span style={{ color: "hsl(220 10% 80%)" }}>
+              {data.ideationActive}/{data.ideationMaxProject} slots active
+            </span>
+            {" "}({data.ideationIdle} idle, {data.ideationWaiting} waiting).
+            This session will start automatically when a slot becomes available.
+          </p>
+        ) : (
+          <p className="text-sm leading-relaxed" style={{ color: "hsl(220 10% 60%)" }}>
+            All ideation slots are in use. This session will start automatically when one becomes available.
+          </p>
+        )}
+
+        {/* Settings navigation link */}
+        <button
+          onClick={() => setCurrentView("settings")}
+          className="mt-3 inline-flex items-center gap-1 text-xs transition-colors"
+          style={{ color: "hsl(38 90% 60%)" }}
+        >
+          <Settings className="w-3 h-3" />
+          Adjust limits in Settings →
+        </button>
+
+        {/* Queued message preview */}
+        {pendingInitialPrompt && (
+          <div
+            className="mt-5 text-left rounded-md px-3 py-2.5"
+            style={{
+              background: "hsla(220 10% 100% / 0.04)",
+              border: "1px solid hsla(220 10% 100% / 0.08)",
+              borderLeft: "2px solid hsl(38 90% 50% / 0.5)",
+            }}
+          >
+            <p className="text-xs mb-1 font-medium" style={{ color: "hsl(220 10% 50%)" }}>
+              Your queued message
+            </p>
+            <p
+              className="text-sm leading-relaxed line-clamp-4"
+              style={{ color: "hsl(220 10% 70%)" }}
+            >
+              {pendingInitialPrompt}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

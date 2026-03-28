@@ -34,6 +34,7 @@ fn test_send_agent_message_response_from() {
         is_new_conversation: true,
         was_queued: false,
         queued_message_id: None,
+        queued_as_pending: false,
     };
 
     let response = SendAgentMessageResponse::from(result);
@@ -52,6 +53,7 @@ fn test_send_agent_message_response_queued() {
         is_new_conversation: false,
         was_queued: true,
         queued_message_id: Some("queued-msg-123".to_string()),
+        queued_as_pending: false,
     };
 
     let response = SendAgentMessageResponse::from(result);

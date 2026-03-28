@@ -2547,3 +2547,148 @@ async fn test_list_projects_with_pending_sessions_excludes_cleared_prompts() {
     let result = repo.list_projects_with_pending_sessions().await.unwrap();
     assert!(result.is_empty(), "cleared prompt must not appear in pending projects list");
 }
+
+// ============================================================================
+// count_pending_sessions_for_project tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_count_pending_sessions_for_project_basic() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    let other_project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Project A", "/path/a");
+    create_test_project(&db, &other_project_id, "Project B", "/path/b");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+
+    // No pending sessions initially
+    let count = repo.count_pending_sessions_for_project(&project_id).await.unwrap();
+    assert_eq!(count, 0, "no pending sessions initially");
+
+    // Add a session with pending prompt
+    let s1 = create_test_session(&project_id, Some("Session 1"));
+    repo.create(s1.clone()).await.unwrap();
+    repo.set_pending_initial_prompt(s1.id.as_str(), Some("hello".to_string())).await.unwrap();
+
+    let count = repo.count_pending_sessions_for_project(&project_id).await.unwrap();
+    assert_eq!(count, 1, "one pending session");
+
+    // Add another pending session
+    let s2 = create_test_session(&project_id, Some("Session 2"));
+    repo.create(s2.clone()).await.unwrap();
+    repo.set_pending_initial_prompt(s2.id.as_str(), Some("world".to_string())).await.unwrap();
+
+    let count = repo.count_pending_sessions_for_project(&project_id).await.unwrap();
+    assert_eq!(count, 2, "two pending sessions");
+
+    // Other project should have 0
+    let count_other = repo.count_pending_sessions_for_project(&other_project_id).await.unwrap();
+    assert_eq!(count_other, 0, "other project has no pending sessions");
+}
+
+#[tokio::test]
+async fn test_count_pending_sessions_excludes_archived() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Project A", "/path/a");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+
+    let session = create_test_session(&project_id, None);
+    repo.create(session.clone()).await.unwrap();
+    repo.set_pending_initial_prompt(session.id.as_str(), Some("queued".to_string())).await.unwrap();
+    // Archive the session — should be excluded from count
+    repo.update_status(&session.id, IdeationSessionStatus::Archived).await.unwrap();
+
+    let count = repo.count_pending_sessions_for_project(&project_id).await.unwrap();
+    assert_eq!(count, 0, "archived sessions must not count as pending");
+}
+
+#[tokio::test]
+async fn test_count_pending_sessions_excludes_cleared_prompt() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Project A", "/path/a");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+
+    let session = create_test_session(&project_id, None);
+    repo.create(session.clone()).await.unwrap();
+    repo.set_pending_initial_prompt(session.id.as_str(), Some("temp".to_string())).await.unwrap();
+    // Clear the prompt
+    repo.set_pending_initial_prompt(session.id.as_str(), None).await.unwrap();
+
+    let count = repo.count_pending_sessions_for_project(&project_id).await.unwrap();
+    assert_eq!(count, 0, "cleared prompt must not count as pending");
+}
+
+// ============================================================================
+// set_pending_initial_prompt_if_unset tests (capacity-full guard)
+// ============================================================================
+
+#[tokio::test]
+async fn test_set_pending_if_unset_sets_when_null() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let session = create_test_session(&project_id, None);
+    repo.create(session.clone()).await.unwrap();
+
+    // First call: no existing prompt → should set and return true.
+    let result = repo
+        .set_pending_initial_prompt_if_unset(session.id.as_str(), "First message".to_string())
+        .await
+        .unwrap();
+    assert!(result, "must return true when prompt was NULL");
+
+    let fetched = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(fetched.pending_initial_prompt.as_deref(), Some("First message"));
+}
+
+#[tokio::test]
+async fn test_set_pending_if_unset_rejects_when_already_set() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let session = create_test_session(&project_id, None);
+    repo.create(session.clone()).await.unwrap();
+
+    // Pre-set a prompt so the guard fires.
+    repo.set_pending_initial_prompt(session.id.as_str(), Some("Existing prompt".to_string()))
+        .await
+        .unwrap();
+
+    // Second call: prompt already set → must return false and NOT overwrite.
+    let result = repo
+        .set_pending_initial_prompt_if_unset(session.id.as_str(), "Overwrite attempt".to_string())
+        .await
+        .unwrap();
+    assert!(!result, "must return false when prompt is already set");
+
+    let fetched = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(
+        fetched.pending_initial_prompt.as_deref(),
+        Some("Existing prompt"),
+        "existing prompt must not be overwritten"
+    );
+}
+
+#[tokio::test]
+async fn test_set_pending_if_unset_returns_false_for_unknown_session() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    // Session does not exist — no rows matched → false.
+    let result = repo
+        .set_pending_initial_prompt_if_unset("nonexistent-id", "Hello".to_string())
+        .await
+        .unwrap();
+    assert!(!result, "must return false when session does not exist");
+}

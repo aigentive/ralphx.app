@@ -327,10 +327,9 @@ export function PlanningView({
 
   // Poll status for verification child and direct child session views to detect pending_initial_prompt
   const { data: verificationChildStatus } = useChildSessionStatus(lastVerificationChildId);
-  // Only poll for the current session when it's a child (has parentSessionId) to detect pending prompt
-  const { data: currentSessionStatus } = useChildSessionStatus(
-    session?.parentSessionId ? session.id : null
-  );
+  // Poll for the current session unconditionally — works for both child and top-level sessions.
+  // The hook's historyMode guard will disable polling if the session is idle with no pending prompt.
+  const { data: currentSessionStatus } = useChildSessionStatus(session?.id);
 
   // Eagerly fetch verification child sessions so lastVerificationChildId is populated
   // before the user clicks the Verification tab (eliminates cold-start flash of parent chat)
@@ -1068,7 +1067,7 @@ export function PlanningView({
                   key={session.id}
                   projectId={session.projectId}
                   ideationSessionId={session.id}
-                  emptyState={currentSessionStatus?.pending_initial_prompt ? <WaitingForCapacityState /> : <ConversationEmptyState />}
+                  emptyState={currentSessionStatus?.pending_initial_prompt ? <WaitingForCapacityState pendingInitialPrompt={currentSessionStatus.pending_initial_prompt} projectId={session.projectId} /> : <ConversationEmptyState />}
                   showHelperTextAlways={true}
                   isVisible={!isVerificationTabActive || !lastVerificationChildId}
                   headerContent={
@@ -1092,7 +1091,7 @@ export function PlanningView({
                     key={lastVerificationChildId}
                     projectId={session.projectId}
                     ideationSessionId={lastVerificationChildId!}
-                    emptyState={verificationChildStatus?.pending_initial_prompt ? <WaitingForCapacityState /> : <ConversationEmptyState />}
+                    emptyState={verificationChildStatus?.pending_initial_prompt ? <WaitingForCapacityState pendingInitialPrompt={verificationChildStatus.pending_initial_prompt} projectId={session.projectId} /> : <ConversationEmptyState />}
                     showHelperTextAlways={true}
                     isVisible={isVerificationTabActive}
                     toolbarBackAction={{ label: 'Plan', icon: <ArrowLeft className="w-3 h-3" />, onClick: () => setActiveIdeationTab(session.id, 'plan') }}

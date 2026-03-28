@@ -40,6 +40,7 @@ use state::*;
 
 mod control_helpers;
 
+pub use control_helpers::count_active_ideation_slots;
 pub use control_helpers::project_has_execution_capacity_for_state;
 use control_helpers::*;
 
@@ -146,6 +147,8 @@ pub async fn get_execution_status(
     let global_running_count = active_count;
 
     let mut running_count = 0u32;
+    let mut ideation_active = 0u32;
+    let mut ideation_idle = 0u32;
     for (key, _) in registry_entries {
         let context_type = match ChatContextType::from_str(&key.context_type) {
             Ok(value) => value,
@@ -157,10 +160,13 @@ pub async fn get_execution_status(
         }
 
         // Ideation uses session IDs (not task IDs) — no task lookup or GC needed.
-        // Only count ideation sessions that are actively generating (not idle between turns).
+        // Track active (generating) and idle (waiting_for_input) separately.
         if matches!(context_type, ChatContextType::Ideation) {
             let slot_key = format!("{}/{}", key.context_type, key.context_id);
-            if !execution_state.is_interactive_idle(&slot_key) {
+            if execution_state.is_interactive_idle(&slot_key) {
+                ideation_idle += 1;
+            } else {
+                ideation_active += 1;
                 running_count += 1;
             }
             continue;
@@ -187,6 +193,16 @@ pub async fn get_execution_status(
         running_count += 1;
     }
 
+    // Count sessions waiting for ideation capacity (have pending_initial_prompt set).
+    let ideation_waiting = match &effective_project_id {
+        Some(pid) => app_state
+            .ideation_session_repo
+            .count_pending_sessions_for_project(pid)
+            .await
+            .unwrap_or(0),
+        None => 0,
+    };
+
     let max_concurrent = execution_state.max_concurrent();
     let global_max = execution_state.global_max_concurrent();
     let halt_mode = load_execution_halt_mode(&app_state).await?;
@@ -210,6 +226,11 @@ pub async fn get_execution_status(
         } else {
             None
         },
+        ideation_active,
+        ideation_idle,
+        ideation_waiting,
+        ideation_max_project: execution_state.project_ideation_max(),
+        ideation_max_global: execution_state.global_ideation_max(),
     })
 }
 

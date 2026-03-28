@@ -19,7 +19,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tracing::{debug, info};
 
-use crate::application::chat_service::{ChatService, SendMessageOptions};
+use crate::application::chat_service::{ChatService, SendCallerContext, SendMessageOptions};
 use crate::application::git_service::GitService;
 use crate::application::recovery_queue::{RecoveryItem, RecoveryPriority, RecoveryQueue};
 use crate::application::ReconciliationRunner;
@@ -934,6 +934,7 @@ impl<R: Runtime> StartupJobRunner<R> {
                     metadata: None,
                     created_at: None,
                     is_external_mcp: false,
+                    caller_context: SendCallerContext::UserInitiated,
                 },
             )
             .await

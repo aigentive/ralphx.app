@@ -101,6 +101,8 @@ pub struct ExecutionState {
     /// This is a pipeline cap inside the global hard cap so ideation cannot consume
     /// all slots and starve task/review/merge execution.
     global_ideation_max: AtomicU32,
+    /// Per-project maximum concurrent ideation sessions (synced from project execution settings).
+    project_ideation_max: AtomicU32,
     /// When true, ideation may exceed `global_ideation_max` only if there is still
     /// total capacity available and no runnable execution work is waiting.
     allow_ideation_borrow_idle_execution: AtomicBool,
@@ -138,6 +140,7 @@ impl ExecutionState {
             max_concurrent: AtomicU32::new(2),
             global_max_concurrent: AtomicU32::new(20),
             global_ideation_max: AtomicU32::new(4),
+            project_ideation_max: AtomicU32::new(4),
             allow_ideation_borrow_idle_execution: AtomicBool::new(false),
             rate_limited_until: AtomicU64::new(0),
             auto_completes_in_flight: std::sync::Mutex::new(HashSet::new()),
@@ -155,6 +158,7 @@ impl ExecutionState {
             max_concurrent: AtomicU32::new(max),
             global_max_concurrent: AtomicU32::new(20),
             global_ideation_max: AtomicU32::new(4),
+            project_ideation_max: AtomicU32::new(4),
             allow_ideation_borrow_idle_execution: AtomicBool::new(false),
             rate_limited_until: AtomicU64::new(0),
             auto_completes_in_flight: std::sync::Mutex::new(HashSet::new()),
@@ -265,6 +269,16 @@ impl ExecutionState {
     pub fn set_global_ideation_max(&self, max: u32) {
         let clamped = max.clamp(1, self.global_max_concurrent());
         self.global_ideation_max.store(clamped, Ordering::SeqCst);
+    }
+
+    /// Get per-project max concurrent ideation sessions.
+    pub fn project_ideation_max(&self) -> u32 {
+        self.project_ideation_max.load(Ordering::SeqCst)
+    }
+
+    /// Set per-project max concurrent ideation sessions (synced from project settings).
+    pub fn set_project_ideation_max(&self, max: u32) {
+        self.project_ideation_max.store(max, Ordering::SeqCst);
     }
 
     /// Check whether ideation may borrow idle execution capacity.
@@ -556,6 +570,16 @@ pub struct ExecutionStatusResponse {
     /// Epoch seconds when the provider rate limit expires (0 = no limit)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_blocked_until: Option<u64>,
+    /// Currently generating ideation sessions (consuming slots)
+    pub ideation_active: u32,
+    /// Ideation sessions in waiting_for_input state (NOT consuming slots)
+    pub ideation_idle: u32,
+    /// Sessions with pending_initial_prompt set (queued, waiting for capacity)
+    pub ideation_waiting: u32,
+    /// Per-project maximum concurrent ideation sessions
+    pub ideation_max_project: u32,
+    /// Global maximum concurrent ideation sessions across all projects
+    pub ideation_max_global: u32,
 }
 
 /// Response for pause/resume/stop commands
@@ -681,8 +705,9 @@ pub(super) async fn sync_quota_from_project(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Sync runtime ExecutionState with persisted max_concurrent
+    // Sync runtime ExecutionState with persisted project settings
     execution_state.set_max_concurrent(settings.max_concurrent_tasks);
+    execution_state.set_project_ideation_max(settings.project_ideation_max);
 
     Ok((effective_project_id, settings.max_concurrent_tasks))
 }

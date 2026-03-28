@@ -15,6 +15,16 @@ export interface ExecutionStatusResponse {
   queuedCount: number;
   queuedMessageCount?: number;
   canStartTask: boolean;
+  /** Currently generating ideation sessions (consuming slots) */
+  ideationActive: number;
+  /** Ideation sessions in waiting_for_input state (NOT consuming slots) */
+  ideationIdle: number;
+  /** Sessions with pending_initial_prompt set (queued, waiting for capacity) */
+  ideationWaiting: number;
+  /** Per-project maximum concurrent ideation sessions */
+  ideationMaxProject: number;
+  /** Global maximum concurrent ideation sessions across all projects */
+  ideationMaxGlobal: number;
 }
 
 /**

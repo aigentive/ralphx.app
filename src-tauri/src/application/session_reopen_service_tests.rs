@@ -744,6 +744,14 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
         self.inner.set_pending_initial_prompt(session_id, prompt).await
     }
 
+    async fn set_pending_initial_prompt_if_unset(
+        &self,
+        session_id: &str,
+        prompt: String,
+    ) -> crate::error::AppResult<bool> {
+        self.inner.set_pending_initial_prompt_if_unset(session_id, prompt).await
+    }
+
     async fn claim_pending_session_for_project(
         &self,
         project_id: &str,
@@ -753,6 +761,13 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
 
     async fn list_projects_with_pending_sessions(&self) -> crate::error::AppResult<Vec<String>> {
         self.inner.list_projects_with_pending_sessions().await
+    }
+
+    async fn count_pending_sessions_for_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> crate::error::AppResult<u32> {
+        self.inner.count_pending_sessions_for_project(project_id).await
     }
 }
 

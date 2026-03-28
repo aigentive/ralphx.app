@@ -64,6 +64,25 @@ pub mod events {
 // Types
 // ============================================================================
 
+/// Context indicating who initiated a `send_message` call.
+///
+/// Controls whether a `SpawnFailed` error on an ideation context is caught-and-persisted
+/// (UserInitiated) or propagated directly (DrainService).  The distinction prevents an
+/// infinite drain loop: if the drain service already called `send_message`, capacity is
+/// still full — persisting the prompt again and returning `Ok` would cause the drain to
+/// re-claim the same session on the next tick.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SendCallerContext {
+    /// User-initiated send (frontend / HTTP handler).
+    /// On ideation capacity full → persist message as `pending_initial_prompt` and return
+    /// `Ok(SendResult { queued_as_pending: true })`.
+    #[default]
+    UserInitiated,
+    /// Drain-service-initiated send.
+    /// On ideation capacity full → return `Err(SpawnFailed)` so the drain service breaks cleanly.
+    DrainService,
+}
+
 /// Result from sending a message (returns immediately while processing continues in background)
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct SendResult {
@@ -77,6 +96,10 @@ pub struct SendResult {
     pub was_queued: bool,
     /// The queued message ID if was_queued is true
     pub queued_message_id: Option<String>,
+    /// Whether the message was persisted as `pending_initial_prompt` because ideation
+    /// capacity was full.  Distinct from `was_queued` (which means an agent is already running
+    /// for the context and the message entered the backend queue).
+    pub queued_as_pending: bool,
 }
 
 /// A conversation with its messages

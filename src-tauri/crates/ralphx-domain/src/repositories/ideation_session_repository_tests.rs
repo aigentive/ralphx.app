@@ -379,6 +379,14 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
         Ok(())
     }
 
+    async fn set_pending_initial_prompt_if_unset(
+        &self,
+        _session_id: &str,
+        _prompt: String,
+    ) -> AppResult<bool> {
+        Ok(false)
+    }
+
     async fn claim_pending_session_for_project(
         &self,
         _project_id: &str,
@@ -388,6 +396,13 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
 
     async fn list_projects_with_pending_sessions(&self) -> AppResult<Vec<String>> {
         Ok(Vec::new())
+    }
+
+    async fn count_pending_sessions_for_project(
+        &self,
+        _project_id: &ProjectId,
+    ) -> AppResult<u32> {
+        Ok(0)
     }
 }
 

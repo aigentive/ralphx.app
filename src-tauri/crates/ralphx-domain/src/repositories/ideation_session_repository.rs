@@ -42,6 +42,8 @@ pub struct IdeationSessionWithProgress {
     pub parent_session_title: Option<String>,
     /// Count of verification child sessions (session_purpose = 'verification') for this session
     pub verification_child_count: u32,
+    /// True when pending_initial_prompt IS NOT NULL — session is waiting for capacity
+    pub has_pending_prompt: bool,
 }
 
 /// Repository trait for IdeationSession persistence.
@@ -368,6 +370,16 @@ pub trait IdeationSessionRepository: Send + Sync {
         prompt: Option<String>,
     ) -> AppResult<()>;
 
+    /// Set `pending_initial_prompt` only if it is not already set (multi-message guard).
+    ///
+    /// Returns `true` if the field was written (was NULL), `false` if a prompt was already
+    /// present and the write was skipped.  Never overwrites an existing prompt.
+    async fn set_pending_initial_prompt_if_unset(
+        &self,
+        session_id: &str,
+        prompt: String,
+    ) -> AppResult<bool>;
+
     /// Atomically claim the oldest pending session for a project.
     ///
     /// Uses `BEGIN IMMEDIATE` to prevent two concurrent drain services from
@@ -389,6 +401,16 @@ pub trait IdeationSessionRepository: Send + Sync {
     /// app restart. The WHERE clause includes `status = 'active'` to exclude
     /// stale rows on archived sessions.
     async fn list_projects_with_pending_sessions(&self) -> AppResult<Vec<String>>;
+
+    /// Count active sessions with `pending_initial_prompt` set for a specific project.
+    ///
+    /// Used by `get_execution_status` to report how many sessions are waiting for
+    /// capacity to become available. Only counts `status = 'active'` sessions to
+    /// exclude archived/accepted sessions.
+    async fn count_pending_sessions_for_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppResult<u32>;
 }
 
 #[cfg(test)]

@@ -10,7 +10,9 @@
 
 use std::sync::Arc;
 
-use crate::application::chat_service::{uses_execution_slot, ChatService, SendMessageOptions};
+use crate::application::chat_service::{
+    uses_execution_slot, ChatService, SendCallerContext, SendMessageOptions,
+};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{ChatContextType, IdeationSessionId, ProjectId, TaskId};
 use crate::domain::repositories::{
@@ -138,7 +140,10 @@ impl PendingSessionDrainService {
                     ChatContextType::Ideation,
                     &session_id,
                     &prompt,
-                    SendMessageOptions::default(),
+                    SendMessageOptions {
+                        caller_context: SendCallerContext::DrainService,
+                        ..Default::default()
+                    },
                 )
                 .await
                 .map_err(|e| e.to_string())

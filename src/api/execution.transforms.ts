@@ -32,6 +32,11 @@ export function transformExecutionStatus(
     queuedCount: raw.queued_count,
     queuedMessageCount: raw.queued_message_count,
     canStartTask: raw.can_start_task,
+    ideationActive: raw.ideation_active,
+    ideationIdle: raw.ideation_idle,
+    ideationWaiting: raw.ideation_waiting,
+    ideationMaxProject: raw.ideation_max_project,
+    ideationMaxGlobal: raw.ideation_max_global,
   };
 }
 

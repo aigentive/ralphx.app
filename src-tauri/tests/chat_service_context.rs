@@ -500,6 +500,14 @@ impl IdeationSessionRepository for MockIdeationRepo {
         Ok(())
     }
 
+    async fn set_pending_initial_prompt_if_unset(
+        &self,
+        _session_id: &str,
+        _prompt: String,
+    ) -> AppResult<bool> {
+        Ok(false)
+    }
+
     async fn claim_pending_session_for_project(
         &self,
         _project_id: &str,
@@ -509,6 +517,13 @@ impl IdeationSessionRepository for MockIdeationRepo {
 
     async fn list_projects_with_pending_sessions(&self) -> AppResult<Vec<String>> {
         Ok(vec![])
+    }
+
+    async fn count_pending_sessions_for_project(
+        &self,
+        _project_id: &ralphx_lib::domain::entities::ProjectId,
+    ) -> AppResult<u32> {
+        Ok(0)
     }
 }
 

@@ -824,4 +824,107 @@ describe("ExecutionControlBar", () => {
       expect(stopBtn).toHaveAttribute("aria-label", "Stop all running tasks");
     });
   });
+
+  describe("ideation capacity indicator", () => {
+    it("shows ideation indicator when ideationMax > 0", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={10}
+          queuedCount={0}
+          isPaused={false}
+          ideationActive={1}
+          ideationMax={2}
+          ideationWaiting={0}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      expect(screen.getByTestId("ideation-count")).toBeInTheDocument();
+      expect(screen.getByTestId("ideation-count")).toHaveTextContent(/1\/2/);
+    });
+
+    it("hides ideation indicator when ideationMax is 0", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={10}
+          queuedCount={0}
+          isPaused={false}
+          ideationActive={0}
+          ideationMax={0}
+          ideationWaiting={0}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      expect(screen.queryByTestId("ideation-count")).not.toBeInTheDocument();
+    });
+
+    it("hides ideation indicator when ideationMax is not provided", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={10}
+          queuedCount={0}
+          isPaused={false}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      expect(screen.queryByTestId("ideation-count")).not.toBeInTheDocument();
+    });
+
+    it("shows waiting badge when ideationWaiting > 0", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={10}
+          queuedCount={0}
+          isPaused={false}
+          ideationActive={2}
+          ideationMax={2}
+          ideationWaiting={3}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      expect(screen.getByTestId("ideation-waiting-badge")).toBeInTheDocument();
+      expect(screen.getByTestId("ideation-waiting-badge")).toHaveTextContent("+3");
+    });
+
+    it("hides waiting badge when ideationWaiting is 0", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={10}
+          queuedCount={0}
+          isPaused={false}
+          ideationActive={1}
+          ideationMax={2}
+          ideationWaiting={0}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      expect(screen.queryByTestId("ideation-waiting-badge")).not.toBeInTheDocument();
+    });
+
+    it("shows 0/N when no active ideation sessions", () => {
+      render(
+        <ExecutionControlBar
+          runningCount={0}
+          maxConcurrent={10}
+          queuedCount={0}
+          isPaused={false}
+          ideationActive={0}
+          ideationMax={4}
+          ideationWaiting={0}
+          onPauseToggle={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+      expect(screen.getByTestId("ideation-count")).toHaveTextContent(/0\/4/);
+    });
+  });
 });

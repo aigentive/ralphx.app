@@ -20,6 +20,7 @@ import { useTeamStore } from "@/stores/teamStore";
 import { buildStoreKey, parseStoreKey } from "@/lib/chat-context-registry";
 import { findStoreKeyForContextId } from "@/lib/agent-event-utils";
 import { chatKeys } from "./useChat";
+import { ideationKeys } from "./useIdeation";
 import type { Unsubscribe } from "@/lib/event-bus";
 import { logger } from "@/lib/logger";
 
@@ -160,6 +161,12 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         queryClient.invalidateQueries({
           queryKey: chatKeys.conversationList(context_type as ContextType, eventContextId),
         });
+
+        // Invalidate ideation session list so hasPendingPrompt badge clears
+        // when drain service launches a waiting-for-capacity session
+        if (context_type === "ideation") {
+          queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
+        }
 
         // If no active conversation is set, set it to this one
         // This handles the case where a new conversation was just created by the backend.

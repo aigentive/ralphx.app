@@ -1065,7 +1065,8 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                          (SELECT COUNT(*) FROM tasks t WHERE t.ideation_session_id = s.id \
                            AND t.internal_status IN ('approved','merged','failed','cancelled','stopped')) as done_count, \
                          (SELECT COUNT(*) FROM tasks t WHERE t.ideation_session_id = s.id) as total_count, \
-                         (SELECT COUNT(*) FROM ideation_sessions vc WHERE vc.parent_session_id = s.id AND vc.session_purpose = 'verification') as verification_child_count \
+                         (SELECT COUNT(*) FROM ideation_sessions vc WHERE vc.parent_session_id = s.id AND vc.session_purpose = 'verification') as verification_child_count, \
+                         (s.pending_initial_prompt IS NOT NULL) as has_pending_prompt \
                          FROM ideation_sessions s \
                          LEFT JOIN ideation_sessions parent ON s.parent_session_id = parent.id \
                          WHERE {} \
@@ -1083,7 +1084,8 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                          s.session_purpose, s.cross_project_checked, s.plan_version_last_read, s.origin, \
                          parent.title as parent_session_title, \
                          NULL as active_count, NULL as done_count, NULL as total_count, \
-                         (SELECT COUNT(*) FROM ideation_sessions vc WHERE vc.parent_session_id = s.id AND vc.session_purpose = 'verification') as verification_child_count \
+                         (SELECT COUNT(*) FROM ideation_sessions vc WHERE vc.parent_session_id = s.id AND vc.session_purpose = 'verification') as verification_child_count, \
+                         (s.pending_initial_prompt IS NOT NULL) as has_pending_prompt \
                          FROM ideation_sessions s \
                          LEFT JOIN ideation_sessions parent ON s.parent_session_id = parent.id \
                          WHERE {} \
@@ -1105,6 +1107,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                             let done_count: Option<i64> = row.get(27)?;
                             let total_count: Option<i64> = row.get(28)?;
                             let verification_child_count: i64 = row.get(29)?;
+                            let has_pending_prompt: bool = row.get::<_, bool>(30)?;
 
                             let progress = if let (Some(active), Some(done_ct), Some(total)) =
                                 (active_count, done_count, total_count)
@@ -1128,6 +1131,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                                 progress,
                                 parent_session_title,
                                 verification_child_count: verification_child_count as u32,
+                                has_pending_prompt,
                             })
                         },
                     )?
@@ -1420,6 +1424,25 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
             .await
     }
 
+    async fn set_pending_initial_prompt_if_unset(
+        &self,
+        session_id: &str,
+        prompt: String,
+    ) -> AppResult<bool> {
+        let session_id = session_id.to_string();
+        self.db
+            .run(move |conn| {
+                let rows_changed = conn.execute(
+                    "UPDATE ideation_sessions \
+                     SET pending_initial_prompt = ?1, updated_at = CURRENT_TIMESTAMP \
+                     WHERE id = ?2 AND pending_initial_prompt IS NULL",
+                    rusqlite::params![prompt, session_id],
+                )?;
+                Ok(rows_changed == 1)
+            })
+            .await
+    }
+
     async fn claim_pending_session_for_project(
         &self,
         project_id: &str,
@@ -1470,6 +1493,26 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                     .query_map([], |row| row.get::<_, String>(0))?
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(ids)
+            })
+            .await
+    }
+
+    async fn count_pending_sessions_for_project(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppResult<u32> {
+        let project_id = project_id.to_string();
+        self.db
+            .run(move |conn| {
+                let count: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM ideation_sessions \
+                     WHERE project_id = ?1 \
+                       AND pending_initial_prompt IS NOT NULL \
+                       AND status = 'active'",
+                    rusqlite::params![project_id],
+                    |row| row.get(0),
+                )?;
+                Ok(count as u32)
             })
             .await
     }

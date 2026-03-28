@@ -283,6 +283,11 @@ fn test_execution_status_response_serialization() {
         can_start_task: false,
         provider_blocked: false,
         provider_blocked_until: None,
+        ideation_active: 0,
+        ideation_idle: 0,
+        ideation_waiting: 0,
+        ideation_max_project: 2,
+        ideation_max_global: 4,
     };
 
     let json = serde_json::to_string(&response).unwrap();
@@ -313,6 +318,11 @@ fn test_execution_command_response_serialization() {
             can_start_task: true,
             provider_blocked: false,
             provider_blocked_until: None,
+            ideation_active: 0,
+            ideation_idle: 0,
+            ideation_waiting: 0,
+            ideation_max_project: 2,
+            ideation_max_global: 4,
         },
     };
 

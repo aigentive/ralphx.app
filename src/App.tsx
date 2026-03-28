@@ -1031,6 +1031,9 @@ function AppContent() {
                       queuedMessageCount={executionStatus.queuedMessageCount ?? 0}
                       pausedCount={pausedCount}
                       pausedTasks={pausedTasks}
+                      ideationActive={executionStatus.ideationActive}
+                      ideationMax={executionStatus.ideationMaxProject}
+                      ideationWaiting={executionStatus.ideationWaiting}
                       mergingCount={mergingCount}
                       hasAttentionMerges={hasAttentionMerges}
                       mergePipelineData={mergePipelineData ?? null}
@@ -1067,6 +1070,9 @@ function AppContent() {
                       queuedMessageCount={executionStatus.queuedMessageCount ?? 0}
                       pausedCount={pausedCount}
                       pausedTasks={pausedTasks}
+                      ideationActive={executionStatus.ideationActive}
+                      ideationMax={executionStatus.ideationMaxProject}
+                      ideationWaiting={executionStatus.ideationWaiting}
                       mergingCount={mergingCount}
                       hasAttentionMerges={hasAttentionMerges}
                       mergePipelineData={mergePipelineData ?? null}
@@ -1108,6 +1114,9 @@ function AppContent() {
                       queuedMessageCount={executionStatus.queuedMessageCount ?? 0}
                       pausedCount={pausedCount}
                       pausedTasks={pausedTasks}
+                      ideationActive={executionStatus.ideationActive}
+                      ideationMax={executionStatus.ideationMaxProject}
+                      ideationWaiting={executionStatus.ideationWaiting}
                       mergingCount={mergingCount}
                       hasAttentionMerges={hasAttentionMerges}
                       mergePipelineData={mergePipelineData ?? null}

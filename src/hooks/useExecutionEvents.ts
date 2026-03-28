@@ -111,17 +111,23 @@ export function useExecutionEvents() {
           return;
         }
 
+        const currentStatus = useUiStore.getState().executionStatus;
         setExecutionStatus({
           isPaused,
-          haltMode: haltMode ?? useUiStore.getState().executionStatus.haltMode,
+          haltMode: haltMode ?? currentStatus.haltMode,
           runningCount,
           maxConcurrent,
-          globalMaxConcurrent: globalMaxConcurrent ?? useUiStore.getState().executionStatus.globalMaxConcurrent,
+          globalMaxConcurrent: globalMaxConcurrent ?? currentStatus.globalMaxConcurrent,
           // Preserve current queuedCount - will be updated by queue_changed event
-          queuedCount: useUiStore.getState().executionStatus.queuedCount,
-          queuedMessageCount:
-            queuedMessageCount ?? useUiStore.getState().executionStatus.queuedMessageCount ?? 0,
+          queuedCount: currentStatus.queuedCount,
+          queuedMessageCount: queuedMessageCount ?? currentStatus.queuedMessageCount ?? 0,
           canStartTask: !isPaused && runningCount < maxConcurrent,
+          // Preserve ideation stats - updated by getExecutionStatus polling
+          ideationActive: currentStatus.ideationActive,
+          ideationIdle: currentStatus.ideationIdle,
+          ideationWaiting: currentStatus.ideationWaiting,
+          ideationMaxProject: currentStatus.ideationMaxProject,
+          ideationMaxGlobal: currentStatus.ideationMaxGlobal,
         });
       })
     );

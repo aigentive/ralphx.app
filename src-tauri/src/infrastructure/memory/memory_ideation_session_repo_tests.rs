@@ -421,3 +421,62 @@ async fn test_get_stale_in_progress_sessions_includes_active() {
         "active stale session must be included in stale query"
     );
 }
+
+// ============================================================================
+// set_pending_initial_prompt_if_unset tests (capacity-full guard)
+// ============================================================================
+
+#[tokio::test]
+async fn test_set_pending_if_unset_sets_when_none() {
+    let repo = MemoryIdeationSessionRepository::new();
+    let project_id = ProjectId::new();
+    let session = IdeationSession::new(project_id.clone());
+    repo.create(session.clone()).await.unwrap();
+
+    // No existing prompt → returns true and stores value.
+    let result = repo
+        .set_pending_initial_prompt_if_unset(session.id.as_str(), "First message".to_string())
+        .await
+        .unwrap();
+    assert!(result, "must return true when prompt was None");
+
+    let fetched = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(fetched.pending_initial_prompt.as_deref(), Some("First message"));
+}
+
+#[tokio::test]
+async fn test_set_pending_if_unset_rejects_when_already_set() {
+    let repo = MemoryIdeationSessionRepository::new();
+    let project_id = ProjectId::new();
+    let session = IdeationSession::new(project_id.clone());
+    repo.create(session.clone()).await.unwrap();
+
+    // Pre-set a prompt.
+    repo.set_pending_initial_prompt(session.id.as_str(), Some("Existing".to_string()))
+        .await
+        .unwrap();
+
+    // If-unset must return false without overwriting.
+    let result = repo
+        .set_pending_initial_prompt_if_unset(session.id.as_str(), "Overwrite".to_string())
+        .await
+        .unwrap();
+    assert!(!result, "must return false when prompt is already set");
+
+    let fetched = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(
+        fetched.pending_initial_prompt.as_deref(),
+        Some("Existing"),
+        "existing prompt must not be overwritten"
+    );
+}
+
+#[tokio::test]
+async fn test_set_pending_if_unset_returns_false_for_missing_session() {
+    let repo = MemoryIdeationSessionRepository::new();
+    let result = repo
+        .set_pending_initial_prompt_if_unset("nonexistent-id", "Hello".to_string())
+        .await
+        .unwrap();
+    assert!(!result, "must return false when session does not exist");
+}

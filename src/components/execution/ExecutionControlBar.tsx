@@ -46,6 +46,12 @@ interface ExecutionControlBarProps {
   pausedCount?: number;
   /** Tasks paused due to provider errors (for popover) */
   pausedTasks?: Task[];
+  /** Number of currently generating ideation sessions (consuming slots) */
+  ideationActive?: number;
+  /** Per-project maximum concurrent ideation sessions */
+  ideationMax?: number;
+  /** Number of ideation sessions waiting for capacity (pending_initial_prompt) */
+  ideationWaiting?: number;
   /** Number of tasks in the merge pipeline */
   mergingCount: number;
   /** Whether any merge tasks need attention (conflict/incomplete) */
@@ -120,6 +126,9 @@ export function ExecutionControlBar({
   queuedMessageCount = 0,
   pausedCount = 0,
   pausedTasks = [],
+  ideationActive = 0,
+  ideationMax = 0,
+  ideationWaiting = 0,
   mergingCount,
   hasAttentionMerges,
   mergePipelineData,
@@ -171,6 +180,10 @@ export function ExecutionControlBar({
     breakpoint === "wide" ? "Msgs: " : breakpoint === "medium" ? "Msg: " : "";
   const pausedLabel = breakpoint === "wide" ? "Paused: " : breakpoint === "medium" ? "P: " : "";
   const mergingLabel = breakpoint === "wide" ? "Merging: " : breakpoint === "medium" ? "M: " : "";
+  const ideationLabel = breakpoint === "wide" ? "Ideation: " : breakpoint === "medium" ? "I: " : "";
+
+  // Only show ideation indicator when max > 0
+  const showIdeation = ideationMax > 0;
 
   return (
     <TooltipProvider>
@@ -341,6 +354,52 @@ export function ExecutionControlBar({
                   {queuedMessageLabel}
                   {queuedMessageCount}
                 </span>
+              </div>
+            </>
+          )}
+
+          {/* Ideation Capacity Indicator - only visible when max > 0 */}
+          {showIdeation && (
+            <>
+              <span style={{ color: "hsl(220 10% 45%)" }}>•</span>
+              <div className="flex items-center gap-1.5">
+                <RunningProcessPopover
+                  processes={runningProcesses}
+                  ideationSessions={ideationSessions}
+                  runningCount={runningCount}
+                  maxConcurrent={maxConcurrent}
+                  open={isPopoverOpen}
+                  onOpenChange={setIsPopoverOpen}
+                  onPauseProcess={onPauseProcess}
+                  onStopProcess={onStopProcess}
+                  onOpenSettings={onOpenSettings}
+                  {...(onNavigateToSession !== undefined && { onNavigateToSession })}
+                  alignOffset={POPOVER_ALIGN_TO_SEPARATOR_DOT}
+                >
+                  <button
+                    data-testid="ideation-count"
+                    className="text-[13px] font-medium cursor-pointer hover:opacity-80 transition-opacity"
+                    style={{ color: ideationActive > 0 ? "hsl(270 70% 72%)" : "hsl(220 10% 65%)" }}
+                    onClick={() => setIsPopoverOpen(!isPopoverOpen)}
+                    aria-label={`Ideation: ${ideationActive} active, ${ideationMax} max`}
+                  >
+                    {ideationLabel}{ideationActive}/{ideationMax}
+                  </button>
+                </RunningProcessPopover>
+                {ideationWaiting > 0 && (
+                  <span
+                    data-testid="ideation-waiting-badge"
+                    className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[11px] font-medium"
+                    style={{
+                      color: "hsl(35 95% 68%)",
+                      backgroundColor: "hsla(35 95% 55% / 0.14)",
+                      border: "1px solid hsla(35 95% 65% / 0.22)",
+                    }}
+                    title={`${ideationWaiting} ideation session${ideationWaiting === 1 ? "" : "s"} waiting for capacity`}
+                  >
+                    +{ideationWaiting}
+                  </span>
+                )}
               </div>
             </>
           )}

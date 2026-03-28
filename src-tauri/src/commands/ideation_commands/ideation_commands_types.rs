@@ -170,6 +170,8 @@ pub struct IdeationSessionWithProgressResponse {
     pub parent_session_title: Option<String>,
     /// Count of verification child sessions (session_purpose = 'verification') for this session
     pub verification_child_count: u32,
+    /// True when pending_initial_prompt IS NOT NULL — session is waiting for capacity
+    pub has_pending_prompt: bool,
 }
 
 impl From<crate::domain::repositories::ideation_session_repository::IdeationSessionWithProgress>
@@ -189,6 +191,7 @@ impl From<crate::domain::repositories::ideation_session_repository::IdeationSess
             progress,
             parent_session_title: item.parent_session_title,
             verification_child_count: item.verification_child_count,
+            has_pending_prompt: item.has_pending_prompt,
         }
     }
 }

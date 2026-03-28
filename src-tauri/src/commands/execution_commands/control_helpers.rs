@@ -178,7 +178,8 @@ pub(super) async fn count_slot_consuming_queued_messages(
     Ok(count)
 }
 
-pub(super) async fn count_active_ideation_slots(
+#[doc(hidden)]
+pub async fn count_active_ideation_slots(
     app_state: &AppState,
     execution_state: &Arc<ExecutionState>,
     project_filter: Option<&ProjectId>,

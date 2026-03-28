@@ -26,6 +26,11 @@ let mockExecutionState: ExecutionStatusResponse = {
   globalMaxConcurrent: 20,
   queuedCount: 0,
   canStartTask: true,
+  ideationActive: 0,
+  ideationIdle: 0,
+  ideationWaiting: 0,
+  ideationMaxProject: 2,
+  ideationMaxGlobal: 4,
 };
 
 let mockGlobalSettings: GlobalExecutionSettingsResponse = {
@@ -91,6 +96,11 @@ export const mockExecutionApi = {
       globalMaxConcurrent: 20,
       queuedCount: 0,
       canStartTask: false,
+      ideationActive: 0,
+      ideationIdle: 0,
+      ideationWaiting: 0,
+      ideationMaxProject: 2,
+      ideationMaxGlobal: 4,
     };
     return {
       success: true,
