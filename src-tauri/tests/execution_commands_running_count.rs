@@ -82,9 +82,9 @@ async fn count_running(app_state: &AppState) -> u32 {
             continue;
         }
 
-        // Ideation uses session IDs (not task IDs) — no task lookup or GC needed.
+        // Ideation uses execution slots but is excluded from running_count
+        // (running_count is execution-only: TaskExecution, Review, Merge).
         if matches!(context_type, ChatContextType::Ideation) {
-            running_count += 1;
             continue;
         }
 
@@ -303,7 +303,7 @@ fn test_guard_non_execution_contexts_always_false() {
 }
 
 // =========================================================================
-// Ideation: counted in running count but excluded from process list
+// Ideation: excluded from running_count but excluded from process list
 // =========================================================================
 
 #[tokio::test]
@@ -315,7 +315,7 @@ async fn test_ideation_entry_counted_in_running_count() {
     register_ideation(&*state.running_agent_registry, "session-abc").await;
 
     let count = count_running(&state).await;
-    assert_eq!(count, 1, "Ideation entry must be counted as running");
+    assert_eq!(count, 0, "Ideation entry must NOT be counted in running_count (execution-only)");
 }
 
 #[tokio::test]
@@ -347,8 +347,8 @@ async fn test_mixed_executing_task_and_ideation() {
     let process_count = count_visible_processes(&state).await;
 
     assert_eq!(
-        running_count, 2,
-        "Both executing task and ideation must be counted"
+        running_count, 1,
+        "Only the executing task must be counted in running_count (ideation excluded)"
     );
     assert_eq!(
         process_count, 1,
@@ -367,8 +367,8 @@ async fn test_ideation_not_affected_by_failed_task_regression() {
     let process_count = count_visible_processes(&state).await;
 
     assert_eq!(
-        running_count, 1,
-        "Only ideation should be counted (failed task excluded)"
+        running_count, 0,
+        "Neither ideation nor failed task must be counted in running_count"
     );
     assert_eq!(
         process_count, 0,
@@ -808,7 +808,7 @@ async fn count_scoped_running(
                 ideation_idle += 1;
             } else {
                 ideation_active += 1;
-                running_count += 1;
+                // Ideation is excluded from running_count (execution-only counter).
             }
             continue;
         }
@@ -875,11 +875,11 @@ async fn test_ideation_active_is_project_scoped() {
 
     assert_eq!(active_a, 2, "Project A must have 2 active ideation sessions");
     assert_eq!(idle_a, 0, "Project A must have 0 idle ideation sessions");
-    assert_eq!(rc_a, 2, "running_count for project A must be 2");
+    assert_eq!(rc_a, 0, "running_count for project A must be 0 (ideation excluded)");
 
     assert_eq!(active_b, 1, "Project B must have 1 active ideation session");
     assert_eq!(idle_b, 0, "Project B must have 0 idle ideation sessions");
-    assert_eq!(rc_b, 1, "running_count for project B must be 1");
+    assert_eq!(rc_b, 0, "running_count for project B must be 0 (ideation excluded)");
 }
 
 /// Test: orphaned registry entries (no matching session row) are skipped.
@@ -943,8 +943,8 @@ async fn test_running_count_equals_project_ideation_plus_project_tasks() {
         count_scoped_running(&state, &exec_state, Some(&pid_b)).await;
 
     assert_eq!(
-        rc_a, 2,
-        "Project A running_count must be 1 task + 1 ideation = 2"
+        rc_a, 1,
+        "Project A running_count must be 1 (task only, ideation excluded)"
     );
     assert_eq!(active_a, 1, "Project A must have 1 active ideation session");
 

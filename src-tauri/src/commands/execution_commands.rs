@@ -147,6 +147,7 @@ pub async fn get_execution_status(
     let global_running_count = active_count;
 
     let mut running_count = 0u32;
+    let mut total_project_active = 0u32;
     let mut ideation_active = 0u32;
     let mut ideation_idle = 0u32;
     for (key, _) in registry_entries {
@@ -181,7 +182,7 @@ pub async fn get_execution_status(
                 ideation_idle += 1;
             } else {
                 ideation_active += 1;
-                running_count += 1;
+                total_project_active += 1;
             }
             continue;
         }
@@ -205,6 +206,7 @@ pub async fn get_execution_status(
         }
 
         running_count += 1;
+        total_project_active += 1;
     }
 
     // Count sessions waiting for ideation capacity (have pending_initial_prompt set).
@@ -232,7 +234,7 @@ pub async fn get_execution_status(
         queued_message_count,
         can_start_task: !execution_state.is_paused()
             && !execution_state.is_provider_blocked()
-            && running_count < max_concurrent
+            && total_project_active < max_concurrent
             && global_running_count < global_max,
         provider_blocked: execution_state.is_provider_blocked(),
         provider_blocked_until: if blocked_until > 0 {

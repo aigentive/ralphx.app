@@ -81,7 +81,7 @@ export function RunningProcessPopover({
   }, [initialTab]);
 
   const activeIdeationCount = ideationSessions.filter((s) => s.isGenerating).length;
-  const effectiveRunningCount = runningCount ?? (processes.length + activeIdeationCount);
+  const effectiveRunningCount = runningCount ?? processes.length;
 
   const handleNavigate = (taskId: string) => {
     onOpenChange(false);
@@ -205,7 +205,7 @@ export function RunningProcessPopover({
               style={{ color: "hsl(220 10% 50%)" }}
             >
               <Settings className="w-3 h-3" />
-              Max: {maxConcurrent}
+              Max: {activeTab === "ideation" && showIdeation ? ideationMax : maxConcurrent}
             </button>
           </div>
 
