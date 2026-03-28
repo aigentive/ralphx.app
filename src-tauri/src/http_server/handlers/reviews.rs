@@ -8,8 +8,9 @@ use tauri::Emitter;
 use super::*;
 use crate::application::{GitService, TaskSchedulerService, TaskTransitionService};
 use crate::domain::entities::{
-    InternalStatus, Review, ReviewIssue, ReviewNote, ReviewOutcome, ReviewerType, ScopeDriftStatus,
-    TaskId,
+    IssueCategory, IssueSeverity, InternalStatus, Review, ReviewIssue as ReviewNoteIssue,
+    ReviewIssueEntity, ReviewNote, ReviewOutcome, ReviewerType, ScopeDriftStatus, TaskId,
+    TaskStepId,
 };
 use crate::domain::services::running_agent_registry::RunningAgentKey;
 use crate::domain::tools::complete_review::ScopeDriftClassification;
@@ -20,6 +21,7 @@ use crate::domain::state_machine::transition_handler::{
 use crate::domain::tools::complete_review::ReviewToolOutcome;
 use crate::http_server::helpers::get_task_context_impl;
 use crate::http_server::project_scope::{ProjectScope, ProjectScopeGuard};
+use crate::http_server::types::ReviewIssueRequest;
 use std::sync::Arc;
 
 pub async fn complete_review(
@@ -173,15 +175,24 @@ pub async fn complete_review(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     }
 
-    // Convert issues from HTTP type to domain type
-    let domain_issues = req.issues.as_ref().map(|issues| {
+    let parsed_issues = req
+        .issues
+        .as_ref()
+        .map(|issues| parse_review_issues(issues))
+        .transpose()
+        .map_err(|msg| (StatusCode::BAD_REQUEST, msg))?;
+
+    let domain_issues = parsed_issues.as_ref().map(|issues| {
         issues
             .iter()
-            .map(|i| ReviewIssue {
-                severity: i.severity.clone(),
-                file: i.file.clone(),
-                line: i.line.map(|l| l as i32),
-                description: i.description.clone(),
+            .map(|issue| ReviewNoteIssue {
+                severity: issue.severity.to_db_string().to_string(),
+                file: issue.file_path.clone(),
+                line: issue.line_number,
+                description: issue
+                    .description
+                    .clone()
+                    .unwrap_or_else(|| issue.title.clone()),
             })
             .collect()
     });
@@ -209,6 +220,39 @@ pub async fn complete_review(
         .add_note(&review_note)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if matches!(outcome, ReviewToolOutcome::NeedsChanges) {
+        if let Some(issues) = parsed_issues {
+            if !issues.is_empty() {
+                state
+                    .app_state
+                    .review_issue_repo
+                    .bulk_create(
+                        issues
+                            .into_iter()
+                            .map(|issue| {
+                                let mut entity = ReviewIssueEntity::new(
+                                    review_note.id.clone(),
+                                    task_id.clone(),
+                                    issue.title,
+                                    issue.severity,
+                                );
+                                entity.description = issue.description;
+                                entity.category = issue.category;
+                                entity.step_id = issue.step_id;
+                                entity.no_step_reason = issue.no_step_reason;
+                                entity.file_path = issue.file_path;
+                                entity.line_number = issue.line_number;
+                                entity.code_snippet = issue.code_snippet;
+                                entity
+                            })
+                            .collect(),
+                    )
+                    .await
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            }
+        }
+    }
 
     // For now, we don't create fix tasks automatically - that can be added later
     let fix_task_id: Option<TaskId> = None;
@@ -517,6 +561,70 @@ fn parse_scope_drift_classification(
             other
         )),
     }
+}
+
+const DEFAULT_REVIEW_ISSUE_TITLE: &str = "Review issue";
+const DEFAULT_NO_STEP_REASON: &str =
+    "Reviewer did not associate this issue with a specific task step";
+
+#[derive(Debug, Clone)]
+struct ParsedReviewIssue {
+    title: String,
+    description: Option<String>,
+    severity: IssueSeverity,
+    category: Option<IssueCategory>,
+    step_id: Option<TaskStepId>,
+    no_step_reason: Option<String>,
+    file_path: Option<String>,
+    line_number: Option<i32>,
+    code_snippet: Option<String>,
+}
+
+fn parse_review_issues(issues: &[ReviewIssueRequest]) -> Result<Vec<ParsedReviewIssue>, String> {
+    issues.iter().map(parse_review_issue).collect()
+}
+
+fn parse_review_issue(issue: &ReviewIssueRequest) -> Result<ParsedReviewIssue, String> {
+    let severity = IssueSeverity::from_db_string(&issue.severity).map_err(|_| {
+        format!(
+            "Invalid issue severity: '{}'. Expected 'critical', 'major', 'minor', or 'suggestion'",
+            issue.severity
+        )
+    })?;
+    let category = issue
+        .category
+        .as_deref()
+        .map(IssueCategory::from_db_string)
+        .transpose()
+        .map_err(|_| {
+            format!(
+                "Invalid issue category: '{}'. Expected 'bug', 'missing', 'quality', or 'design'",
+                issue.category.as_deref().unwrap_or_default()
+            )
+        })?;
+    let step_id = issue.step_id.as_deref().map(TaskStepId::from_string);
+    let title = issue
+        .title
+        .clone()
+        .or_else(|| issue.description.clone())
+        .unwrap_or_else(|| DEFAULT_REVIEW_ISSUE_TITLE.to_string());
+    let no_step_reason = match (&step_id, &issue.no_step_reason) {
+        (Some(_), _) => None,
+        (None, Some(reason)) if !reason.trim().is_empty() => Some(reason.clone()),
+        (None, _) => Some(DEFAULT_NO_STEP_REASON.to_string()),
+    };
+
+    Ok(ParsedReviewIssue {
+        title,
+        description: issue.description.clone(),
+        severity,
+        category,
+        step_id,
+        no_step_reason,
+        file_path: issue.file_path.clone(),
+        line_number: issue.line_number.map(|line| line as i32),
+        code_snippet: issue.code_snippet.clone(),
+    })
 }
 
 pub async fn get_review_notes(

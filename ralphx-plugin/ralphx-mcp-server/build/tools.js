@@ -981,15 +981,35 @@ export const ALL_TOOLS = [
                     items: {
                         type: "object",
                         properties: {
+                            title: {
+                                type: "string",
+                                description: "Short issue title",
+                            },
                             severity: {
                                 type: "string",
                                 enum: ["critical", "major", "minor", "suggestion"],
                             },
-                            file: { type: "string" },
-                            line: { type: "number" },
-                            description: { type: "string" },
+                            step_id: {
+                                type: "string",
+                                description: "Task step ID when the issue maps to a specific execution step",
+                            },
+                            no_step_reason: {
+                                type: "string",
+                                description: "Required when step_id is absent; explains why the issue is not tied to a specific task step",
+                            },
+                            description: {
+                                type: "string",
+                                description: "Optional detailed explanation of the issue",
+                            },
+                            category: {
+                                type: "string",
+                                enum: ["bug", "missing", "quality", "design"],
+                            },
+                            file_path: { type: "string" },
+                            line_number: { type: "number" },
+                            code_snippet: { type: "string" },
                         },
-                        required: ["severity", "description"],
+                        required: ["title", "severity"],
                     },
                     description: "Specific issues found during review",
                 },

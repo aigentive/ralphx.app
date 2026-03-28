@@ -30,7 +30,7 @@ use ralphx_lib::domain::entities::{
 use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::helpers::get_task_context_impl;
 use ralphx_lib::http_server::project_scope::ProjectScope;
-use ralphx_lib::http_server::types::HttpServerState;
+use ralphx_lib::http_server::types::{HttpServerState, ReviewIssueRequest};
 use std::sync::Arc;
 use support::real_git_repo::setup_real_git_repo;
 
@@ -359,6 +359,102 @@ async fn test_complete_review_rejects_approval_with_unrelated_scope_drift() {
         }
         Ok(_) => panic!("approval with unrelated_drift classification must fail"),
     }
+}
+
+#[tokio::test]
+async fn test_complete_review_needs_changes_creates_first_class_review_issues() {
+    let (state, task) = setup_review_scope_drift_state().await;
+
+    let req = CompleteReviewRequest {
+        task_id: task.id.as_str().to_string(),
+        decision: "needs_changes".to_string(),
+        summary: Some("Drift found".to_string()),
+        feedback: Some("Please narrow the branch and address the scoped issue.".to_string()),
+        issues: Some(vec![ReviewIssueRequest {
+            severity: "major".to_string(),
+            title: Some("feature.rs is outside task scope".to_string()),
+            step_id: None,
+            no_step_reason: Some("Scope drift spans the task branch, not a single execution step".to_string()),
+            description: Some("The branch modified src/feature.rs even though the proposal only covered src-tauri/src/http_server.".to_string()),
+            category: Some("quality".to_string()),
+            file_path: Some("src/feature.rs".to_string()),
+            line_number: Some(1),
+            code_snippet: None,
+        }]),
+        escalation_reason: None,
+        scope_drift_classification: Some("unrelated_drift".to_string()),
+        scope_drift_notes: Some("Send back to revise and keep the unrelated change out of this branch.".to_string()),
+    };
+
+    let result = complete_review(State(state.clone()), ProjectScope(None), Json(req)).await;
+    assert!(
+        result.is_ok(),
+        "needs_changes with classified drift should succeed, got: {:?}",
+        result
+    );
+
+    let issues = state
+        .app_state
+        .review_issue_repo
+        .get_by_task_id(&task.id)
+        .await
+        .expect("issues query should succeed");
+    assert_eq!(issues.len(), 1, "expected a first-class review issue row");
+    let issue = &issues[0];
+    assert_eq!(issue.title, "feature.rs is outside task scope");
+    assert_eq!(
+        issue.no_step_reason.as_deref(),
+        Some("Scope drift spans the task branch, not a single execution step")
+    );
+    assert_eq!(issue.file_path.as_deref(), Some("src/feature.rs"));
+}
+
+#[tokio::test]
+async fn test_complete_review_thin_legacy_issue_payload_backfills_first_class_issue_fields() {
+    let (state, task) = setup_review_scope_drift_state().await;
+
+    let req = CompleteReviewRequest {
+        task_id: task.id.as_str().to_string(),
+        decision: "needs_changes".to_string(),
+        summary: Some("Legacy issue payload".to_string()),
+        feedback: Some("Please fix the scoped work first.".to_string()),
+        issues: Some(vec![ReviewIssueRequest {
+            severity: "major".to_string(),
+            title: None,
+            step_id: None,
+            no_step_reason: None,
+            description: Some("Legacy issue without structured fields".to_string()),
+            category: None,
+            file_path: Some("src/feature.rs".to_string()),
+            line_number: Some(7),
+            code_snippet: None,
+        }]),
+        escalation_reason: None,
+        scope_drift_classification: Some("unrelated_drift".to_string()),
+        scope_drift_notes: Some("Legacy payload should still produce a real issue row.".to_string()),
+    };
+
+    let result = complete_review(State(state.clone()), ProjectScope(None), Json(req)).await;
+    assert!(
+        result.is_ok(),
+        "legacy thin issue payload should still succeed, got: {:?}",
+        result
+    );
+
+    let issues = state
+        .app_state
+        .review_issue_repo
+        .get_by_task_id(&task.id)
+        .await
+        .expect("issues query should succeed");
+    assert_eq!(issues.len(), 1, "expected one persisted issue");
+    let issue = &issues[0];
+    assert_eq!(issue.title, "Legacy issue without structured fields");
+    assert_eq!(
+        issue.no_step_reason.as_deref(),
+        Some("Reviewer did not associate this issue with a specific task step")
+    );
+    assert_eq!(issue.line_number, Some(7));
 }
 
 // ============================================================================

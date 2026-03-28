@@ -382,10 +382,33 @@ pub struct SuggestTaskResponse {
 // Request/Response Types - Reviews
 // ============================================================================
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct ReviewIssueRequest {
+    pub severity: String, // "critical" | "major" | "minor" | "suggestion"
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub step_id: Option<String>,
+    #[serde(default)]
+    pub no_step_reason: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default, alias = "file")]
+    pub file_path: Option<String>,
+    #[serde(default, alias = "line")]
+    pub line_number: Option<u32>,
+    #[serde(default)]
+    pub code_snippet: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ReviewIssue {
     pub severity: String, // "critical" | "major" | "minor" | "suggestion"
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub line: Option<u32>,
     pub description: String,
 }
@@ -396,7 +419,7 @@ pub struct CompleteReviewRequest {
     pub decision: String, // "approved" | "needs_changes" | "escalate"
     pub summary: Option<String>,
     pub feedback: Option<String>,
-    pub issues: Option<Vec<ReviewIssue>>,
+    pub issues: Option<Vec<ReviewIssueRequest>>,
     pub escalation_reason: Option<String>,
     pub scope_drift_classification: Option<String>,
     pub scope_drift_notes: Option<String>,
