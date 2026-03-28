@@ -10,6 +10,8 @@ use tauri::Emitter;
 use tracing::error;
 
 use crate::application::{CreateProposalOptions, TaskSchedulerService, UpdateProposalOptions, UpdateSource};
+use crate::application::task_cleanup_service::TaskCleanupService;
+use crate::http_server::handlers::ideation::stop_verification_children;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::entities::{IdeationSessionId, Priority, TaskProposalId};
 use crate::http_server::helpers::{
@@ -227,6 +229,40 @@ pub async fn finalize_proposals(
                 tracing::warn!("Failed to emit execution:queue_changed event: {}", e);
             }
         }
+
+        // Async agent cleanup — unlike apply.rs (external HTTP accept where the caller is NOT
+        // the agent), here the caller IS the ideation agent via the MCP tool path. Stopping
+        // synchronously would kill the MCP server stdio child before the HTTP response is
+        // relayed back to the agent. We spawn a background task with a 200ms delay to ensure
+        // the response traverses the multi-hop path (Axum → socket → ralphx-mcp-server →
+        // stdio → agent) before pkill fires.
+        let session_id_for_cleanup = req.session_id.clone();
+        let app_state_for_cleanup = Arc::clone(&state.app_state);
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+            let task_cleanup = TaskCleanupService::new(
+                Arc::clone(&app_state_for_cleanup.task_repo),
+                Arc::clone(&app_state_for_cleanup.project_repo),
+                Arc::clone(&app_state_for_cleanup.running_agent_registry),
+                None,
+            )
+            .with_interactive_process_registry(Arc::clone(
+                &app_state_for_cleanup.interactive_process_registry,
+            ));
+            let stopped = task_cleanup
+                .stop_ideation_session_agent(&session_id_for_cleanup)
+                .await;
+            if !stopped {
+                tracing::warn!(
+                    session_id = %session_id_for_cleanup,
+                    "finalize_proposals cleanup: no running process found for accepted session"
+                );
+            }
+            // Stop and archive any running verification child agents (best-effort).
+            stop_verification_children(&session_id_for_cleanup, &app_state_for_cleanup)
+                .await
+                .ok();
+        });
     }
 
     // Trigger scheduler to pick up newly Ready tasks (ready_settle_ms delay)
