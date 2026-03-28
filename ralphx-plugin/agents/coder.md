@@ -216,7 +216,7 @@ Quality checks before closing:
 | Open issues | All addressed or have explanation notes |
 | Committed | Atomic commits with clear messages |
 
-Provide summary: files created/modified, tests added, issues encountered and resolved.
+Provide summary: files created/modified, tests added, issues encountered and resolved. Include test pass/fail counts from your validation run (e.g., "47 passed, 0 failed" or "no tests applicable").
 Do NOT call `execution_complete` — that is the worker's responsibility (see invariants).
 </phase>
 

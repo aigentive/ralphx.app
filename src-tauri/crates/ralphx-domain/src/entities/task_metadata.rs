@@ -677,6 +677,73 @@ pub enum StopRetryingReason {
     ManualStop,
 }
 
+/// Validation cache metadata stored in tasks.metadata
+/// Stores test execution results + commit SHA captured at execution completion.
+/// Used by reviewer and merger agents to skip redundant test runs when SHA hasn't changed.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ValidationCacheMetadata {
+    /// Schema version for future compatibility
+    pub version: u32,
+    /// HEAD commit SHA at time of capture (from git rev-parse HEAD on task branch)
+    pub commit_sha: String,
+    /// Whether any tests were run during execution
+    pub tests_ran: bool,
+    /// Whether all tests passed (only meaningful when tests_ran=true)
+    pub tests_passed: bool,
+    /// Brief summary of test results (e.g., "6758 passed, 0 failed")
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub test_summary: Option<String>,
+    /// When this cache entry was captured
+    pub captured_at: DateTime<Utc>,
+    /// Which handler captured this entry (e.g., "execution_complete")
+    pub captured_by: String,
+}
+
+impl ValidationCacheMetadata {
+    /// Parse metadata from task's metadata JSON string
+    /// Returns Ok(Some(metadata)) if validation_cache key exists and is valid
+    /// Returns Ok(None) if validation_cache key doesn't exist
+    /// Returns Err if JSON is invalid or validation_cache value can't be parsed
+    pub fn from_task_metadata(
+        metadata_json: Option<&str>,
+    ) -> Result<Option<Self>, serde_json::Error> {
+        let Some(json_str) = metadata_json else {
+            return Ok(None);
+        };
+
+        let value: serde_json::Value = serde_json::from_str(json_str)?;
+
+        if let Some(validation_cache) = value.get("validation_cache") {
+            let cache: ValidationCacheMetadata =
+                serde_json::from_value(validation_cache.clone())?;
+            Ok(Some(cache))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Update task's metadata JSON string with this validation cache metadata
+    /// Preserves other keys in the metadata object (merge_recovery, execution_recovery, etc.)
+    /// Returns updated JSON string
+    pub fn update_task_metadata(
+        &self,
+        existing_metadata: Option<&str>,
+    ) -> Result<String, serde_json::Error> {
+        let mut metadata_obj = if let Some(json_str) = existing_metadata {
+            serde_json::from_str::<serde_json::Value>(json_str)
+                .unwrap_or_else(|_| serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+
+        if let Some(obj) = metadata_obj.as_object_mut() {
+            obj.insert("validation_cache".to_string(), serde_json::to_value(self)?);
+        }
+
+        serde_json::to_string(&metadata_obj)
+    }
+}
+
 #[cfg(test)]
 #[path = "task_metadata_tests.rs"]
 mod tests;

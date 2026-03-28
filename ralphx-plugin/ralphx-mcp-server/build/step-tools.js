@@ -179,6 +179,25 @@ export const STEP_TOOLS = [
                     type: "string",
                     description: "Optional summary of work completed",
                 },
+                test_result: {
+                    type: "object",
+                    description: "Optional test execution results. Include when tests were run during task execution.",
+                    properties: {
+                        tests_ran: {
+                            type: "boolean",
+                            description: "Whether any tests were executed",
+                        },
+                        tests_passed: {
+                            type: "boolean",
+                            description: "Whether all executed tests passed",
+                        },
+                        test_summary: {
+                            type: "string",
+                            description: "Optional human-readable summary of test results (e.g., '42 passed, 0 failed')",
+                        },
+                    },
+                    required: ["tests_ran", "tests_passed"],
+                },
             },
             required: ["task_id"],
         },

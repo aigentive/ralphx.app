@@ -1353,9 +1353,22 @@ impl From<crate::application::chat_service::CachedStreamingTask> for ActiveStrea
 // Request/Response Types - Execution Complete
 // ============================================================================
 
+/// Optional test result reported by the worker agent at execution completion.
+/// Used to populate the validation cache in tasks.metadata.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestResultInput {
+    pub tests_ran: bool,
+    pub tests_passed: bool,
+    pub test_summary: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExecutionCompleteRequest {
     pub summary: Option<String>,
+    /// Optional test results for validation cache. When absent, no cache entry is created.
+    pub test_result: Option<TestResultInput>,
 }
 
 #[derive(Debug, Serialize)]

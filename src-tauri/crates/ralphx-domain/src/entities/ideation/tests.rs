@@ -1460,21 +1460,27 @@ fn business_value_factor_max_score_constant() {
 
 #[test]
 fn business_value_factor_critical_keywords_exist() {
-    assert!(!BusinessValueFactor::CRITICAL_KEYWORDS.is_empty());
+    #[allow(clippy::const_is_empty)]
+    let not_empty = !BusinessValueFactor::CRITICAL_KEYWORDS.is_empty();
+    assert!(not_empty);
     assert!(BusinessValueFactor::CRITICAL_KEYWORDS.contains(&"urgent"));
     assert!(BusinessValueFactor::CRITICAL_KEYWORDS.contains(&"blocker"));
 }
 
 #[test]
 fn business_value_factor_high_keywords_exist() {
-    assert!(!BusinessValueFactor::HIGH_KEYWORDS.is_empty());
+    #[allow(clippy::const_is_empty)]
+    let not_empty = !BusinessValueFactor::HIGH_KEYWORDS.is_empty();
+    assert!(not_empty);
     assert!(BusinessValueFactor::HIGH_KEYWORDS.contains(&"important"));
     assert!(BusinessValueFactor::HIGH_KEYWORDS.contains(&"mvp"));
 }
 
 #[test]
 fn business_value_factor_low_keywords_exist() {
-    assert!(!BusinessValueFactor::LOW_KEYWORDS.is_empty());
+    #[allow(clippy::const_is_empty)]
+    let not_empty = !BusinessValueFactor::LOW_KEYWORDS.is_empty();
+    assert!(not_empty);
     assert!(BusinessValueFactor::LOW_KEYWORDS.contains(&"optional"));
     assert!(BusinessValueFactor::LOW_KEYWORDS.contains(&"future"));
 }
@@ -1616,7 +1622,9 @@ fn user_hint_factor_max_score_constant() {
 
 #[test]
 fn user_hint_factor_urgency_hints_exist() {
-    assert!(!UserHintFactor::URGENCY_HINTS.is_empty());
+    #[allow(clippy::const_is_empty)]
+    let not_empty = !UserHintFactor::URGENCY_HINTS.is_empty();
+    assert!(not_empty);
     assert!(UserHintFactor::URGENCY_HINTS.contains(&"urgent"));
     assert!(UserHintFactor::URGENCY_HINTS.contains(&"asap"));
 }
@@ -1876,6 +1884,7 @@ fn message_role_deserializes_from_json() {
 #[test]
 fn message_role_clone_works() {
     let role = MessageRole::Orchestrator;
+    #[allow(clippy::clone_on_copy)]
     let cloned = role.clone();
     assert_eq!(role, cloned);
 }

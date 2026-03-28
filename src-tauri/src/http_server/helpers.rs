@@ -7,12 +7,13 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::application::{AppState, CreateProposalOptions, UpdateProposalOptions, UpdateSource};
+use crate::application::git_service::GitService;
 use crate::commands::ideation_commands::{apply_proposals_core, is_local_proposal, ApplyProposalsInput, TaskProposalResponse};
 use crate::domain::services::{check_proposal_verification_gate, ProposalOperation};
 use crate::domain::entities::{
     Artifact, ArtifactContent, ArtifactSummary, ArtifactType, Complexity, IdeationSession,
     IdeationSessionId, IdeationSessionStatus, InternalStatus, Priority, ProposalCategory,
-    TaskContext, TaskId, TaskProposal, TaskProposalId,
+    TaskContext, TaskId, TaskProposal, TaskProposalId, ValidationCacheData, ValidationCacheMetadata,
 };
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::sqlite::{
@@ -1099,7 +1100,10 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
         context_hints.push("No additional context artifacts found - proceed with task description and acceptance criteria".to_string());
     }
 
-    // 10. Return TaskContext
+    // 10. Compute validation cache hint (if cache present in metadata)
+    let validation_cache = compute_validation_cache(&task, &mut context_hints).await;
+
+    // 11. Return TaskContext
     let task_branch = task.task_branch.clone();
     let worktree_path = task.worktree_path.clone();
     Ok(TaskContext {
@@ -1115,5 +1119,111 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
         tier,
         task_branch,
         worktree_path,
+        validation_cache,
+    })
+}
+
+/// Pure function to compute the validation hint and human-readable message from a cache entry
+/// and the current HEAD SHA.
+///
+/// No git calls, no side effects — fully unit-testable.
+///
+/// Returns `(validation_hint, hint_message)` where `validation_hint` is one of:
+/// - `"skip_tests"` — tests passed on the same SHA
+/// - `"skip_test_validation"` — no tests ran at execution time
+/// - `"run_tests"` — SHA mismatch, tests failed, or cache is otherwise stale
+pub fn compute_validation_hint(
+    cache: &ValidationCacheMetadata,
+    current_sha: &str,
+) -> (String, String) {
+    if current_sha != cache.commit_sha {
+        (
+            "run_tests".to_string(),
+            format!(
+                "Cache stale (SHA changed from {} to {}). Run tests normally.",
+                &cache.commit_sha[..8.min(cache.commit_sha.len())],
+                &current_sha[..8.min(current_sha.len())]
+            ),
+        )
+    } else if !cache.tests_ran {
+        (
+            "skip_test_validation".to_string(),
+            format!(
+                "No tests were run during execution (commit {}). Skip test validation.",
+                &cache.commit_sha[..8.min(cache.commit_sha.len())]
+            ),
+        )
+    } else if cache.tests_passed {
+        (
+            "skip_tests".to_string(),
+            format!(
+                "Tests passed on commit {}. Skip test re-run.",
+                &cache.commit_sha[..8.min(cache.commit_sha.len())]
+            ),
+        )
+    } else {
+        // tests_ran=true but tests_passed=false → must re-run
+        (
+            "run_tests".to_string(),
+            format!(
+                "Tests failed on commit {}. Run tests normally.",
+                &cache.commit_sha[..8.min(cache.commit_sha.len())]
+            ),
+        )
+    }
+}
+
+/// Parse validation cache from task metadata, compute hint by comparing HEAD SHA.
+/// Returns None if no cache exists or worktree_path is missing.
+/// Also appends a human-readable hint to context_hints when cache is available.
+async fn compute_validation_cache(
+    task: &crate::domain::entities::Task,
+    context_hints: &mut Vec<String>,
+) -> Option<ValidationCacheData> {
+    // Parse cache from metadata
+    let cache = match ValidationCacheMetadata::from_task_metadata(task.metadata.as_deref()) {
+        Ok(Some(c)) => c,
+        Ok(None) => return None,
+        Err(e) => {
+            tracing::warn!(
+                "Failed to parse validation_cache from task {} metadata: {}",
+                task.id,
+                e
+            );
+            return None;
+        }
+    };
+
+    // Compute current HEAD SHA to compare against cached SHA
+    let worktree_path = task.worktree_path.as_deref()?;
+    let path = std::path::Path::new(worktree_path);
+    let current_sha = match GitService::get_head_sha(path).await {
+        Ok(sha) => sha,
+        Err(e) => {
+            tracing::warn!(
+                "Failed to get HEAD SHA for task {} (skipping validation hint): {}",
+                task.id,
+                e
+            );
+            return None;
+        }
+    };
+
+    // Compute hint based on SHA comparison and test results
+    let (validation_hint, hint_message) = compute_validation_hint(&cache, &current_sha);
+
+    context_hints.push(format!(
+        "VALIDATION CACHE: {} — {}",
+        validation_hint, hint_message
+    ));
+
+    Some(ValidationCacheData {
+        commit_sha: cache.commit_sha,
+        tests_ran: cache.tests_ran,
+        tests_passed: cache.tests_passed,
+        test_summary: cache.test_summary,
+        captured_at: cache.captured_at,
+        validation_hint,
+        hint_message,
     })
 }

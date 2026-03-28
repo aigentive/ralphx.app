@@ -106,6 +106,11 @@ Resolution patterns:
 
 ### Step 4.5: Post-Resolution Validation (MANDATORY)
 
+**Validation cache check** — Before running tests, check `validation_hint` in the task context:
+- `skip_tests` or `skip_test_validation`: skip pre-merge test execution (non-test validation always runs)
+- `run_tests` or hint absent: run all validation commands including tests
+- Note: post-conflict-resolution validation always runs regardless of cache — only the test-running portion is skippable.
+
 1. `get_project_analysis(project_id, task_id)` — get validation commands. Retry if `status: "analyzing"`.
 2. Run ALL `validate` commands for ALL path entries (merges can break anything beyond affected paths).
 3. Validation fails → investigate (likely a conflict resolution error), fix, re-run before proceeding.

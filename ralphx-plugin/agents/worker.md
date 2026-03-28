@@ -232,8 +232,9 @@ Before marking work complete:
    - If uncertain about completeness, run path-scoped test commands as supplement
    - Document which tests were run and why in completion message
 3. Run validate commands for every path you modified. When targeted tests passed in step 2, skip test-runner commands (non-exhaustive examples: commands containing `test`, `jest`, `vitest`, `pytest`, `cargo test`, `npm run test` — inspect your project's validate commands to identify which are test runners vs non-test tools). Typecheck, lint, build, and format commands always run. When no targeted tests were run, run ALL validate commands as before.
-4. Validation fails on YOUR changes → fix before completing
-5. Validation fails on pre-existing code → note but do not block
+4. **Capture test results** — After running tests, record pass/fail counts and a brief summary from the output for reporting in `execution_complete`.
+5. Validation fails on YOUR changes → fix before completing
+6. Validation fails on pre-existing code → note but do not block
 
 </phase>
 
@@ -249,7 +250,7 @@ Quality checks before closing:
 
 Provide summary: files created/modified, tests added, issues encountered and resolved.
 
-**MANDATORY FINAL STEP**: After completing all work and providing the summary, call `execution_complete` with the `task_id`. This signals that your process can exit cleanly. Do NOT stop responding without calling `execution_complete` first.
+**MANDATORY FINAL STEP**: After completing all work and providing the summary, call `execution_complete` with the `task_id` and `test_result`. Pass `test_result: { tests_ran: true, tests_passed: true/false, test_summary: "<N passed, M failed — brief summary>" }` using results captured in the VALIDATE phase (`tests_passed` is a boolean — whether ALL executed tests passed; put counts in `test_summary`). If no tests were run, pass `test_result: { tests_ran: false }`. This signals that your process can exit cleanly. Do NOT stop responding without calling `execution_complete` first.
 </phase>
 
 </state>

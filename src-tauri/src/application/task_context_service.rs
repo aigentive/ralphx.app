@@ -209,6 +209,7 @@ impl TaskContextService {
             tier,
             task_branch,
             worktree_path,
+            validation_cache: None,
         })
     }
 

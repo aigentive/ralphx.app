@@ -3,10 +3,11 @@ use ralphx_lib::application::{
     AppState, InteractiveProcessKey, TeamService, TeamStateTracker,
 };
 use ralphx_lib::commands::ExecutionState;
-use ralphx_lib::domain::entities::{ProjectId, Task, TaskStep};
+use ralphx_lib::domain::entities::{ProjectId, Task, TaskStep, ValidationCacheMetadata};
 use ralphx_lib::http_server::handlers::*;
+use ralphx_lib::http_server::helpers::get_task_context_impl;
 use ralphx_lib::http_server::project_scope::ProjectScope;
-use ralphx_lib::http_server::types::HttpServerState;
+use ralphx_lib::http_server::types::{ExecutionCompleteRequest, HttpServerState, TestResultInput};
 use std::sync::Arc;
 
 async fn setup_test_state() -> HttpServerState {
@@ -203,6 +204,7 @@ async fn test_execution_complete_removes_ipr_entry() {
 
     let req = ExecutionCompleteRequest {
         summary: Some("All done".to_string()),
+        test_result: None,
     };
     let result = execution_complete_http(
         State(state.clone()),
@@ -234,7 +236,7 @@ async fn test_execution_complete_task_not_found_returns_404() {
     let result = execution_complete_http(
         State(state.clone()),
         Path("non-existent-task-id".to_string()),
-        Json(ExecutionCompleteRequest { summary: None }),
+        Json(ExecutionCompleteRequest { summary: None, test_result: None }),
     )
     .await;
 
@@ -262,7 +264,7 @@ async fn test_execution_complete_no_ipr_entry_is_idempotent() {
     let result = execution_complete_http(
         State(state.clone()),
         Path(task_id.as_str().to_string()),
-        Json(ExecutionCompleteRequest { summary: None }),
+        Json(ExecutionCompleteRequest { summary: None, test_result: None }),
     )
     .await;
 
@@ -295,7 +297,7 @@ async fn test_execution_complete_double_call_idempotent() {
     let result1 = execution_complete_http(
         State(state.clone()),
         Path(task_id.as_str().to_string()),
-        Json(ExecutionCompleteRequest { summary: None }),
+        Json(ExecutionCompleteRequest { summary: None, test_result: None }),
     )
     .await;
     assert!(result1.is_ok(), "first call should succeed");
@@ -304,7 +306,7 @@ async fn test_execution_complete_double_call_idempotent() {
     let result2 = execution_complete_http(
         State(state.clone()),
         Path(task_id.as_str().to_string()),
-        Json(ExecutionCompleteRequest { summary: None }),
+        Json(ExecutionCompleteRequest { summary: None, test_result: None }),
     )
     .await;
     assert!(result2.is_ok(), "second call should also succeed (idempotent)");
@@ -753,4 +755,204 @@ async fn test_complete_step_partial_done_keeps_ipr() {
         .remove(&key)
         .await;
     let _ = child.kill().await;
+}
+
+// ============================================================================
+// Validation cache integration tests
+// ============================================================================
+
+/// Helper: create a temp git repo with one commit and return (TempDir, commit_sha)
+fn create_temp_git_repo() -> (tempfile::TempDir, String) {
+    let tmp_dir = tempfile::tempdir().expect("failed to create temp dir");
+    let repo_path = tmp_dir.path();
+
+    let run_git = |args: &[&str]| {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(repo_path)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "test@test.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "test@test.com")
+            .output()
+            .expect("git command failed")
+    };
+
+    run_git(&["init", "-b", "main"]);
+    run_git(&["config", "user.email", "test@test.com"]);
+    run_git(&["config", "user.name", "Test"]);
+    std::fs::write(repo_path.join("README.md"), "test").unwrap();
+    run_git(&["add", "."]);
+    run_git(&["commit", "-m", "init"]);
+
+    let sha_output = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(repo_path)
+        .output()
+        .expect("git rev-parse failed");
+    let sha = String::from_utf8(sha_output.stdout)
+        .unwrap()
+        .trim()
+        .to_string();
+
+    (tmp_dir, sha)
+}
+
+#[tokio::test]
+async fn test_execution_complete_stores_validation_cache_tests_passed() {
+    let (tmp_dir, expected_sha) = create_temp_git_repo();
+    let repo_path = tmp_dir.path().to_str().unwrap().to_string();
+
+    let state = setup_test_state().await;
+
+    // Create a task with worktree_path pointing to the git repo
+    let project_id = ProjectId::new();
+    let mut task = Task::new(project_id, "Validation Cache Test Task".to_string());
+    let task_id = task.id.clone();
+    task.worktree_path = Some(repo_path.clone());
+    state.app_state.task_repo.create(task).await.unwrap();
+
+    // Call execution_complete_http with test_result (tests passed)
+    let req = ExecutionCompleteRequest {
+        summary: Some("All done".to_string()),
+        test_result: Some(TestResultInput {
+            tests_ran: true,
+            tests_passed: true,
+            test_summary: Some("42 passed, 0 failed".to_string()),
+        }),
+    };
+    let response = execution_complete_http(
+        State(state.clone()),
+        Path(task_id.as_str().to_string()),
+        Json(req),
+    )
+    .await
+    .unwrap();
+    assert!(response.0.success, "execution_complete should succeed");
+
+    // Verify metadata stored in DB
+    let updated_task = state
+        .app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert!(
+        updated_task.metadata.is_some(),
+        "task metadata should have been written"
+    );
+
+    let cache =
+        ValidationCacheMetadata::from_task_metadata(updated_task.metadata.as_deref())
+            .unwrap()
+            .expect("validation_cache key should be in metadata");
+    assert!(cache.tests_ran);
+    assert!(cache.tests_passed);
+    assert_eq!(cache.test_summary.as_deref(), Some("42 passed, 0 failed"));
+    assert_eq!(cache.captured_by, "execution_complete");
+    assert_eq!(cache.commit_sha, expected_sha, "stored SHA should match HEAD");
+
+    // Call get_task_context_impl and verify validation_cache returned with skip_tests hint
+    let context = get_task_context_impl(&state.app_state, &task_id)
+        .await
+        .expect("get_task_context_impl should succeed");
+    let vc = context
+        .validation_cache
+        .expect("validation_cache should be present in task context");
+    assert_eq!(
+        vc.validation_hint, "skip_tests",
+        "hint should be skip_tests when tests passed on same SHA"
+    );
+    assert!(
+        vc.hint_message.contains("Tests passed"),
+        "hint_message should mention 'Tests passed', got: {}",
+        vc.hint_message
+    );
+    assert!(vc.tests_ran);
+    assert!(vc.tests_passed);
+    assert_eq!(vc.test_summary.as_deref(), Some("42 passed, 0 failed"));
+}
+
+#[tokio::test]
+async fn test_execution_complete_stores_validation_cache_no_tests_ran() {
+    let (tmp_dir, _) = create_temp_git_repo();
+    let repo_path = tmp_dir.path().to_str().unwrap().to_string();
+
+    let state = setup_test_state().await;
+
+    let project_id = ProjectId::new();
+    let mut task = Task::new(project_id, "No Tests Task".to_string());
+    let task_id = task.id.clone();
+    task.worktree_path = Some(repo_path.clone());
+    state.app_state.task_repo.create(task).await.unwrap();
+
+    // tests_ran=false — no tests in this task
+    let req = ExecutionCompleteRequest {
+        summary: None,
+        test_result: Some(TestResultInput {
+            tests_ran: false,
+            tests_passed: false,
+            test_summary: None,
+        }),
+    };
+    let response = execution_complete_http(
+        State(state.clone()),
+        Path(task_id.as_str().to_string()),
+        Json(req),
+    )
+    .await
+    .unwrap();
+    assert!(response.0.success);
+
+    let context = get_task_context_impl(&state.app_state, &task_id)
+        .await
+        .expect("get_task_context_impl should succeed");
+    let vc = context
+        .validation_cache
+        .expect("validation_cache should be present");
+    assert_eq!(
+        vc.validation_hint, "skip_test_validation",
+        "hint should be skip_test_validation when no tests ran"
+    );
+    assert!(!vc.tests_ran);
+}
+
+#[tokio::test]
+async fn test_execution_complete_without_test_result_leaves_no_cache() {
+    let (tmp_dir, _) = create_temp_git_repo();
+    let repo_path = tmp_dir.path().to_str().unwrap().to_string();
+
+    let state = setup_test_state().await;
+
+    let project_id = ProjectId::new();
+    let mut task = Task::new(project_id, "No Cache Task".to_string());
+    let task_id = task.id.clone();
+    task.worktree_path = Some(repo_path.clone());
+    state.app_state.task_repo.create(task).await.unwrap();
+
+    // No test_result — backward-compatible case
+    let req = ExecutionCompleteRequest {
+        summary: Some("done".to_string()),
+        test_result: None,
+    };
+    let response = execution_complete_http(
+        State(state.clone()),
+        Path(task_id.as_str().to_string()),
+        Json(req),
+    )
+    .await
+    .unwrap();
+    assert!(response.0.success);
+
+    // Context should have no validation_cache when no test_result was provided
+    let context = get_task_context_impl(&state.app_state, &task_id)
+        .await
+        .expect("get_task_context_impl should succeed");
+    assert!(
+        context.validation_cache.is_none(),
+        "validation_cache should be None when execution_complete had no test_result"
+    );
 }

@@ -132,6 +132,11 @@ Start with `get_review_notes(task_id)`:
 </state>
 
 <section name="validation-rules">
+**Validation cache check** — Before running any tests, check `validation_hint` in the task context (`get_task_context`):
+- `skip_tests`: code unchanged since last passing run — skip test execution, proceed to code review only
+- `skip_test_validation`: no tests existed at execution time — skip test validation entirely
+- `run_tests` or hint absent: run tests normally per commands below
+
 1. Call `get_project_analysis(project_id, task_id)` to get path-scoped validate commands
 2. For each path modified by the worker, run the corresponding validate commands:
    - Test commands: First identify and run only test files affected by the changes. If targeted tests pass, skip full test suite. If no targeted tests identified, fall back to test-runner commands from validate array.

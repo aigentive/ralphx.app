@@ -20,6 +20,7 @@ fn test_task_context_creation() {
         tier: None,
         task_branch: None,
         worktree_path: None,
+        validation_cache: None,
     };
 
     assert_eq!(context.task.id, task.id);
@@ -145,6 +146,7 @@ fn test_task_context_with_full_context() {
         tier: Some(2),
         task_branch: Some("ralphx/test-project/task-abc123".to_string()),
         worktree_path: None,
+        validation_cache: None,
     };
 
     assert_eq!(context.task.id, task.id);

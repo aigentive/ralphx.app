@@ -366,6 +366,29 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
     async fn touch_updated_at(&self, _session_id: &str) -> AppResult<()> {
         Ok(())
     }
+
+    async fn list_active_verification_children(&self) -> AppResult<Vec<IdeationSession>> {
+        Ok(Vec::new())
+    }
+
+    async fn set_pending_initial_prompt(
+        &self,
+        _session_id: &str,
+        _prompt: Option<String>,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn claim_pending_session_for_project(
+        &self,
+        _project_id: &str,
+    ) -> AppResult<Option<(String, String)>> {
+        Ok(None)
+    }
+
+    async fn list_projects_with_pending_sessions(&self) -> AppResult<Vec<String>> {
+        Ok(Vec::new())
+    }
 }
 
 fn create_test_session(project_id: &ProjectId) -> IdeationSession {
@@ -403,6 +426,7 @@ fn create_test_session(project_id: &ProjectId) -> IdeationSession {
         external_activity_phase: None,
         external_last_read_message_id: None,
         dependencies_acknowledged: false,
+        pending_initial_prompt: None,
     }
 }
 

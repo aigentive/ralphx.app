@@ -7,9 +7,11 @@ use tauri::Emitter;
 use tracing::error;
 
 use super::*;
+use crate::application::git_service::GitService;
 use crate::application::interactive_process_registry::InteractiveProcessKey;
 use crate::domain::entities::{
     StepProgressSummary, Task, TaskId, TaskStep, TaskStepId, TaskStepStatus,
+    ValidationCacheMetadata,
 };
 use crate::http_server::project_scope::{ProjectScope, ProjectScopeGuard};
 
@@ -649,8 +651,8 @@ pub async fn execution_complete_http(
 ) -> Result<Json<ExecutionCompleteResponse>, StatusCode> {
     let task_id = TaskId::from_string(task_id_str.clone());
 
-    // Verify task exists
-    state
+    // Fetch task (needed for worktree_path and metadata update)
+    let mut task = state
         .app_state
         .task_repo
         .get_by_id(&task_id)
@@ -666,6 +668,64 @@ pub async fn execution_complete_http(
         task_id_str,
         req.summary
     );
+
+    // If test_result provided, capture HEAD SHA and store validation cache in metadata
+    if let Some(ref test_result) = req.test_result {
+        if let Some(ref worktree_path) = task.worktree_path {
+            let path = std::path::Path::new(worktree_path);
+            match GitService::get_head_sha(path).await {
+                Ok(commit_sha) => {
+                    let cache = ValidationCacheMetadata {
+                        version: 1,
+                        commit_sha,
+                        tests_ran: test_result.tests_ran,
+                        tests_passed: test_result.tests_passed,
+                        test_summary: test_result.test_summary.clone(),
+                        captured_at: chrono::Utc::now(),
+                        captured_by: "execution_complete".to_string(),
+                    };
+                    match cache.update_task_metadata(task.metadata.as_deref()) {
+                        Ok(new_metadata) => {
+                            task.metadata = Some(new_metadata);
+                            if let Err(e) = state.app_state.task_repo.update(&task).await {
+                                tracing::warn!(
+                                    "Failed to store validation cache for task {}: {}",
+                                    task_id_str,
+                                    e
+                                );
+                            } else {
+                                tracing::info!(
+                                    "Validation cache stored for task {} (tests_ran={}, tests_passed={})",
+                                    task_id_str,
+                                    test_result.tests_ran,
+                                    test_result.tests_passed
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to serialize validation cache for task {}: {}",
+                                task_id_str,
+                                e
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to get HEAD SHA for task {} (validation cache not stored): {}",
+                        task_id_str,
+                        e
+                    );
+                }
+            }
+        } else {
+            tracing::warn!(
+                "No worktree_path for task {} — validation cache not stored",
+                task_id_str
+            );
+        }
+    }
 
     // Close stdin via IPR — agent gets EOF and exits gracefully.
     // State transition happens in handle_stream_success when the process exits.

@@ -1485,3 +1485,198 @@ fn test_auto_recovery_count_independent_of_events() {
         "After 2 recoveries, auto_recovery_count >= MAX_AUTO_RECOVERIES (2)"
     );
 }
+
+// =============================================================================
+// ValidationCacheMetadata tests
+// =============================================================================
+
+#[test]
+fn validation_cache_metadata_from_task_metadata_none_when_null() {
+    let result = ValidationCacheMetadata::from_task_metadata(None);
+    assert!(result.is_ok());
+    assert!(result.unwrap().is_none());
+}
+
+#[test]
+fn validation_cache_metadata_from_task_metadata_none_when_key_missing() {
+    let json = r#"{"merge_recovery": {"version": 1, "events": [], "last_state": "succeeded", "circuit_breaker_active": false}}"#;
+    let result = ValidationCacheMetadata::from_task_metadata(Some(json));
+    assert!(result.is_ok());
+    assert!(result.unwrap().is_none());
+}
+
+#[test]
+fn validation_cache_metadata_from_task_metadata_parses_valid_entry() {
+    let json = r#"{
+        "validation_cache": {
+            "version": 1,
+            "commit_sha": "abc123def456",
+            "tests_ran": true,
+            "tests_passed": true,
+            "test_summary": "42 passed, 0 failed",
+            "captured_at": "2026-03-28T00:00:00Z",
+            "captured_by": "execution_complete"
+        }
+    }"#;
+    let result = ValidationCacheMetadata::from_task_metadata(Some(json));
+    assert!(result.is_ok());
+    let cache = result.unwrap().expect("should have validation_cache");
+    assert_eq!(cache.version, 1);
+    assert_eq!(cache.commit_sha, "abc123def456");
+    assert!(cache.tests_ran);
+    assert!(cache.tests_passed);
+    assert_eq!(cache.test_summary.as_deref(), Some("42 passed, 0 failed"));
+    assert_eq!(cache.captured_by, "execution_complete");
+}
+
+#[test]
+fn validation_cache_metadata_from_task_metadata_tests_ran_false() {
+    let json = r#"{
+        "validation_cache": {
+            "version": 1,
+            "commit_sha": "abc123",
+            "tests_ran": false,
+            "tests_passed": false,
+            "captured_at": "2026-03-28T00:00:00Z",
+            "captured_by": "execution_complete"
+        }
+    }"#;
+    let result = ValidationCacheMetadata::from_task_metadata(Some(json));
+    let cache = result.unwrap().expect("should have validation_cache");
+    assert!(!cache.tests_ran);
+    assert!(!cache.tests_passed);
+    assert!(cache.test_summary.is_none());
+}
+
+#[test]
+fn validation_cache_metadata_update_task_metadata_preserves_other_keys() {
+    use chrono::Utc;
+
+    let existing = r#"{"merge_recovery": {"version": 1, "events": [], "last_state": "succeeded", "circuit_breaker_active": false}, "execution_recovery": {"version": 1, "events": [], "last_state": "succeeded", "stop_retrying": false, "auto_recovery_count": 0}}"#;
+
+    let cache = ValidationCacheMetadata {
+        version: 1,
+        commit_sha: "deadbeef".to_string(),
+        tests_ran: true,
+        tests_passed: true,
+        test_summary: Some("10 passed".to_string()),
+        captured_at: Utc::now(),
+        captured_by: "execution_complete".to_string(),
+    };
+
+    let result = cache.update_task_metadata(Some(existing));
+    assert!(result.is_ok());
+    let updated_json = result.unwrap();
+    let value: serde_json::Value = serde_json::from_str(&updated_json).unwrap();
+
+    // All three keys must be present
+    assert!(value.get("merge_recovery").is_some(), "merge_recovery must be preserved");
+    assert!(value.get("execution_recovery").is_some(), "execution_recovery must be preserved");
+    assert!(value.get("validation_cache").is_some(), "validation_cache must be added");
+
+    let vc = value.get("validation_cache").unwrap();
+    assert_eq!(vc["commit_sha"], "deadbeef");
+    assert_eq!(vc["tests_ran"], true);
+    assert_eq!(vc["tests_passed"], true);
+}
+
+#[test]
+fn validation_cache_metadata_update_task_metadata_on_empty() {
+    use chrono::Utc;
+
+    let cache = ValidationCacheMetadata {
+        version: 1,
+        commit_sha: "cafe1234".to_string(),
+        tests_ran: false,
+        tests_passed: false,
+        test_summary: None,
+        captured_at: Utc::now(),
+        captured_by: "execution_complete".to_string(),
+    };
+
+    let result = cache.update_task_metadata(None);
+    assert!(result.is_ok());
+    let value: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
+    assert!(value.get("validation_cache").is_some());
+    assert_eq!(value["validation_cache"]["commit_sha"], "cafe1234");
+    // test_summary should be omitted when None (skip_serializing_if)
+    assert!(value["validation_cache"].get("test_summary").is_none());
+}
+
+#[test]
+fn validation_cache_metadata_round_trip_serialization() {
+    use chrono::Utc;
+
+    let original = ValidationCacheMetadata {
+        version: 1,
+        commit_sha: "f00dbadc0de".to_string(),
+        tests_ran: true,
+        tests_passed: false,
+        test_summary: Some("3 passed, 2 failed".to_string()),
+        captured_at: Utc::now(),
+        captured_by: "execution_complete".to_string(),
+    };
+
+    let json = serde_json::to_string(&original).unwrap();
+    let parsed: ValidationCacheMetadata = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.commit_sha, original.commit_sha);
+    assert_eq!(parsed.tests_ran, original.tests_ran);
+    assert_eq!(parsed.tests_passed, original.tests_passed);
+    assert_eq!(parsed.test_summary, original.test_summary);
+    assert_eq!(parsed.captured_by, original.captured_by);
+    assert_eq!(parsed.version, original.version);
+}
+
+#[test]
+fn validation_cache_metadata_update_task_metadata_preserves_auto_retry_count_keys() {
+    use chrono::Utc;
+
+    // auto_retry_count_* are top-level keys written by the reconciler.
+    // update_task_metadata must NOT clobber them.
+    let existing = r#"{
+        "auto_retry_count_executing": 2,
+        "auto_retry_count_reviewing": 1,
+        "merge_recovery": {"version": 1, "events": [], "last_state": "succeeded", "circuit_breaker_active": false}
+    }"#;
+
+    let cache = ValidationCacheMetadata {
+        version: 1,
+        commit_sha: "abc123".to_string(),
+        tests_ran: true,
+        tests_passed: true,
+        test_summary: None,
+        captured_at: Utc::now(),
+        captured_by: "execution_complete".to_string(),
+    };
+
+    let result = cache.update_task_metadata(Some(existing));
+    assert!(result.is_ok());
+    let value: serde_json::Value = serde_json::from_str(&result.unwrap()).unwrap();
+
+    assert_eq!(value["auto_retry_count_executing"], 2, "auto_retry_count_executing must be preserved");
+    assert_eq!(value["auto_retry_count_reviewing"], 1, "auto_retry_count_reviewing must be preserved");
+    assert!(value.get("merge_recovery").is_some(), "merge_recovery must be preserved");
+    assert!(value.get("validation_cache").is_some(), "validation_cache must be added");
+    assert_eq!(value["validation_cache"]["commit_sha"], "abc123");
+}
+
+#[test]
+fn validation_cache_metadata_version_is_one() {
+    use chrono::Utc;
+
+    let cache = ValidationCacheMetadata {
+        version: 1,
+        commit_sha: "sha123".to_string(),
+        tests_ran: true,
+        tests_passed: true,
+        test_summary: None,
+        captured_at: Utc::now(),
+        captured_by: "execution_complete".to_string(),
+    };
+    assert_eq!(cache.version, 1);
+
+    // Verify version survives JSON round-trip
+    let json_str = serde_json::to_string(&cache).unwrap();
+    let parsed: ValidationCacheMetadata = serde_json::from_str(&json_str).unwrap();
+    assert_eq!(parsed.version, 1);
+}

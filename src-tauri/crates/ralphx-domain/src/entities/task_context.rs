@@ -1,3 +1,5 @@
+use chrono::{DateTime, Utc};
+
 use super::{ArtifactId, ArtifactType, InternalStatus, Task, TaskId, TaskProposalId, TaskStep};
 use serde::{Deserialize, Serialize};
 
@@ -47,6 +49,10 @@ pub struct TaskContext {
     /// Worktree path for this task (Worktree git mode only).
     /// When set, agents should work exclusively within this directory.
     pub worktree_path: Option<String>,
+
+    /// Validation cache from last execution (if available).
+    /// Backend pre-computes a validation_hint so agents don't compare SHAs themselves.
+    pub validation_cache: Option<ValidationCacheData>,
 }
 
 /// Summary of a task proposal for context purposes
@@ -84,6 +90,31 @@ pub struct ArtifactSummary {
     pub current_version: u32,
     /// First ~500 chars of content as preview
     pub content_preview: String,
+}
+
+/// Lightweight validation cache view for TaskContext responses.
+/// Subset of ValidationCacheMetadata with a pre-computed hint so agents
+/// never need to compare SHAs themselves — they follow the hint only.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ValidationCacheData {
+    /// HEAD commit SHA when cache was captured
+    pub commit_sha: String,
+    /// Whether any tests were run during execution
+    pub tests_ran: bool,
+    /// Whether all tests passed (only meaningful when tests_ran=true)
+    pub tests_passed: bool,
+    /// Brief test result summary (e.g., "6758 passed, 0 failed")
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub test_summary: Option<String>,
+    /// When this cache entry was captured
+    pub captured_at: DateTime<Utc>,
+    /// Pre-computed hint for agents:
+    /// "skip_tests"         — tests passed on same SHA, skip test re-run
+    /// "skip_test_validation" — no tests existed at execution time
+    /// "run_tests"          — SHA mismatch, cache missing, or tests failed
+    pub validation_hint: String,
+    /// Human-readable explanation of the hint
+    pub hint_message: String,
 }
 
 #[cfg(test)]
