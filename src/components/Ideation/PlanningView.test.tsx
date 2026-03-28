@@ -365,12 +365,10 @@ describe("PlanningView", () => {
     });
   });
 
-  it("shows empty-state component when there are no proposals", async () => {
-    const user = userEvent.setup();
+  it("hides proposals tab when there are no proposals", () => {
     render(<PlanningView {...defaultProps} proposals={[]} />);
-    // ProposalsEmptyState now lives in the Proposals tab
-    await user.click(screen.getByTestId("tab-proposals"));
-    expect(screen.getByTestId("proposals-empty-state")).toBeInTheDocument();
+    // Proposals tab is hidden when there are no proposals
+    expect(screen.queryByTestId("tab-proposals")).not.toBeInTheDocument();
   });
 
   it("renders start-session panel when there is no active session", async () => {

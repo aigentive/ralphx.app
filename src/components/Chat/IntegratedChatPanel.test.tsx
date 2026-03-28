@@ -566,6 +566,127 @@ describe("IntegratedChatPanel", () => {
     });
   });
 
+  // ============================================================================
+  // Agent-status-aware mode flags (execution panel routing fix)
+  // ============================================================================
+  // Proof obligation: when agent is alive but task status has transitioned,
+  // mode flags must stay active so messages route to the correct context.
+  describe("Agent-status-aware mode flags (execution panel routing fix)", () => {
+    it("keeps isExecutionMode true when execution agent is running but status is pending_review", () => {
+      // Simulate: worker called execution_complete → status = pending_review
+      // but execution agent still alive in store (not yet exited)
+      mockTasks = [{ id: "task-1", internalStatus: "pending_review" }];
+
+      act(() => {
+        // Execution agent still running (key present in agentStatus)
+        useChatStore.getState().setAgentRunning("task_execution:task-1", true);
+        // Also set current store key so isAgentActive = true (badge renders activity)
+        useChatStore.getState().setAgentRunning("task:task-1", true);
+      });
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      // isExecutionMode = true via agent override → agentType = AGENT_WORKER
+      // isAgentActive = true → badge renders "Worker running..."
+      expect(screen.getByText("Worker running...")).toBeInTheDocument();
+    });
+
+    it("falls back to status-based routing when execution agent exits", () => {
+      // Same status transition but execution agent has already exited.
+      // pending_review is NOT in EXECUTION_STATUSES, so isExecutionMode = false.
+      // pending_review IS in ALL_REVIEW_STATUSES, so isReviewMode = true via status.
+      mockTasks = [{ id: "task-1", internalStatus: "pending_review" }];
+
+      act(() => {
+        // Only current context running — execution agent key is absent
+        useChatStore.getState().setAgentRunning("task:task-1", true);
+      });
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      // isExecutionMode = false (execution agent gone) → falls back to status routing
+      // isReviewMode = true (pending_review in ALL_REVIEW_STATUSES) → agentType = AGENT_REVIEWER
+      expect(screen.queryByText("Worker running...")).not.toBeInTheDocument();
+      expect(screen.getByText("Reviewing...")).toBeInTheDocument();
+    });
+
+    it("blocks execution agent override in history mode (!taskHistoryState guard)", () => {
+      // History mode: stale agentStatus must NOT override mode flags
+      mockTasks = [{ id: "task-1", internalStatus: "pending_review" }];
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("task_execution:task-1", true);
+        useChatStore.getState().setAgentRunning("task:task-1", true);
+        useUiStore.setState({
+          taskHistoryState: {
+            status: "pending_review",
+            conversationId: "conv-1",
+            agentRunId: null,
+            timestamp: null,
+          },
+        });
+      });
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      // isHistoryMode = true → isAgentActive = false → no activity badge text
+      // !taskHistoryState guard = false → agent override is blocked
+      expect(screen.queryByText("Worker running...")).not.toBeInTheDocument();
+      expect(screen.queryByText("Agent responding...")).not.toBeInTheDocument();
+    });
+
+    it("keeps isReviewMode true when review agent is running but status transitioned away", () => {
+      // Simulate: review agent still alive but status = revision_needed (not in ALL_REVIEW_STATUSES)
+      mockTasks = [{ id: "task-1", internalStatus: "revision_needed" }];
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("review:task-1", true);
+        useChatStore.getState().setAgentRunning("task:task-1", true);
+      });
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      // isReviewMode = true via agent override → agentType = AGENT_REVIEWER
+      // isAgentActive = true → badge renders "Reviewing..."
+      expect(screen.getByText("Reviewing...")).toBeInTheDocument();
+    });
+
+    it("falls back when review agent exits and status is not a review status", () => {
+      // revision_needed is not in ALL_REVIEW_STATUSES, review agent absent
+      mockTasks = [{ id: "task-1", internalStatus: "revision_needed" }];
+
+      act(() => {
+        useChatStore.getState().setAgentRunning("task:task-1", true);
+      });
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      // isReviewMode = false → agentType falls through to "agent"
+      expect(screen.queryByText("Reviewing...")).not.toBeInTheDocument();
+      expect(screen.getByText("Agent responding...")).toBeInTheDocument();
+    });
+  });
+
   describe("sortedMessages — always sorted regardless of streaming state", () => {
     // Verifies fix for Task #2: the guard `if (isAgentRunning || isSending) return [...messagesData]`
     // was removed. Messages are now ALWAYS sorted by createdAt with stable secondary sort by id.

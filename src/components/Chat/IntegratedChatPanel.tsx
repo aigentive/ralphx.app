@@ -17,6 +17,7 @@ import {
   useChatStore,
   selectQueuedMessages,
   selectAgentStatus,
+  selectIsAgentRunning,
   selectIsSending,
   selectToolCallStartTimes,
   selectLastAgentEventTimestamp,
@@ -146,21 +147,36 @@ export function IntegratedChatPanel({
   // Determine effective status - use historical status in history mode, otherwise current status
   const effectiveStatus = taskHistoryState?.status ?? selectedTask?.internalStatus;
 
+  // Agent-status-aware overrides: keep mode active while agent is still running,
+  // even if task status has already transitioned
+  const executionKey = selectedTaskId ? buildStoreKey("task_execution", selectedTaskId) : "";
+  const executionAgentRunning = useChatStore(selectIsAgentRunning(executionKey));
+  const reviewKey = selectedTaskId ? buildStoreKey("review", selectedTaskId) : "";
+  const reviewAgentRunning = useChatStore(selectIsAgentRunning(reviewKey));
+  const mergeKey = selectedTaskId ? buildStoreKey("merge", selectedTaskId) : "";
+  const mergeAgentRunning = useChatStore(selectIsAgentRunning(mergeKey));
+
   // Execution states: worker agent is running (only when NOT in ideation mode)
-  const isExecutionMode = !ideationSessionId && effectiveStatus
-    ? (EXECUTION_STATUSES as readonly string[]).includes(effectiveStatus)
-    : false;
+  // Agent-status override is gated on !taskHistoryState: in history mode, no agent
+  // is running so the override is always false, but the explicit guard prevents
+  // stale agentStatus entries from activating mode flags for historical contexts.
+  const isExecutionMode = !ideationSessionId && !!selectedTaskId && (
+    (effectiveStatus ? (EXECUTION_STATUSES as readonly string[]).includes(effectiveStatus) : false)
+    || (!taskHistoryState && executionAgentRunning)
+  );
 
   // Review states: reviewer agent conversation (only when NOT in ideation mode)
   // Include 'approved' so historical view loads the reviewer's conversation
-  const isReviewMode = !ideationSessionId && effectiveStatus
-    ? (ALL_REVIEW_STATUSES as readonly string[]).includes(effectiveStatus) || effectiveStatus === "approved"
-    : false;
+  const isReviewMode = !ideationSessionId && !!selectedTaskId && (
+    (effectiveStatus ? ((ALL_REVIEW_STATUSES as readonly string[]).includes(effectiveStatus) || effectiveStatus === "approved") : false)
+    || (!taskHistoryState && reviewAgentRunning)
+  );
 
   // Merge states: merger agent conversation (only when NOT in ideation mode)
-  const isMergeMode = !ideationSessionId && effectiveStatus
-    ? (MERGE_STATUSES as readonly string[]).includes(effectiveStatus)
-    : false;
+  const isMergeMode = !ideationSessionId && !!selectedTaskId && (
+    (effectiveStatus ? (MERGE_STATUSES as readonly string[]).includes(effectiveStatus) : false)
+    || (!taskHistoryState && mergeAgentRunning)
+  );
 
   // Use extracted context management hook
   const {
