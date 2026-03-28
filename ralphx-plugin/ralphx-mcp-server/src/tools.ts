@@ -1832,6 +1832,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     ];
     const IDEATION_SPECIALIST_ENRICHMENT_TOOLS = [
       "create_team_artifact",
+      "get_team_artifacts",
       "get_session_plan",
       "get_artifact",
     ];
