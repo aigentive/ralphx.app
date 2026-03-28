@@ -31,7 +31,9 @@ use ralphx_lib::domain::review::ReviewSettings;
 use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::helpers::get_task_context_impl;
 use ralphx_lib::http_server::project_scope::ProjectScope;
-use ralphx_lib::http_server::types::{HttpServerState, ReviewIssueRequest};
+use ralphx_lib::http_server::types::{
+    CreateChildSessionRequest, HttpServerState, ReviewIssueRequest,
+};
 use std::sync::Arc;
 use support::real_git_repo::setup_real_git_repo;
 
@@ -609,12 +611,130 @@ async fn test_complete_review_allows_unrelated_drift_escalation_after_revision_b
         scope_drift_notes: Some("Escalation is now allowed because revise budget is exhausted.".to_string()),
     };
 
-    let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
-    assert!(
-        result.is_ok(),
-        "escalation should be allowed after revision budget exhaustion, got: {:?}",
-        result
+    let result = complete_review(State(state.clone()), ProjectScope(None), Json(req)).await;
+    let response = result.expect("escalation should be allowed after revision budget exhaustion").0;
+    let followup_session_id = response
+        .followup_session_id
+        .clone()
+        .expect("exhausted unrelated drift should spawn a follow-up session");
+
+    let child_id = ralphx_lib::domain::entities::IdeationSessionId::from_string(followup_session_id);
+    let child = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&child_id)
+        .await
+        .unwrap()
+        .expect("follow-up session must exist");
+    assert_eq!(child.parent_session_id, task.ideation_session_id);
+    assert_eq!(
+        child.source_task_id.as_ref().map(|id| id.as_str()),
+        Some(task.id.as_str())
     );
+    assert_eq!(child.source_context_type.as_deref(), Some("review"));
+    assert_eq!(child.spawn_reason.as_deref(), Some("out_of_scope_failure"));
+}
+
+#[tokio::test]
+async fn test_complete_review_reuses_existing_unrelated_drift_followup_session() {
+    let (state, task) = setup_review_scope_drift_state().await;
+
+    state
+        .app_state
+        .review_settings_repo
+        .update_settings(&ReviewSettings {
+            max_revision_cycles: 1,
+            ..ReviewSettings::default()
+        })
+        .await
+        .expect("review settings update should succeed");
+
+    let prior_note = ReviewNote::with_content(
+        task.id.clone(),
+        ReviewerType::Ai,
+        ReviewOutcome::ChangesRequested,
+        Some("Previous revise round".to_string()),
+        Some("Already sent back once".to_string()),
+        None,
+    );
+    state
+        .app_state
+        .review_repo
+        .add_note(&prior_note)
+        .await
+        .expect("prior review note should persist");
+
+    let existing_req = CreateChildSessionRequest {
+        parent_session_id: task
+            .ideation_session_id
+            .as_ref()
+            .expect("task should have ideation session")
+            .as_str()
+            .to_string(),
+        title: Some("Existing unrelated drift follow-up".to_string()),
+        description: None,
+        inherit_context: true,
+        initial_prompt: None,
+        source_task_id: Some(task.id.as_str().to_string()),
+        source_context_type: Some("review".to_string()),
+        source_context_id: Some("review-existing".to_string()),
+        spawn_reason: Some("out_of_scope_failure".to_string()),
+        team_mode: None,
+        team_config: None,
+        purpose: Some("general".to_string()),
+        is_external_trigger: false,
+    };
+    let existing_response = create_child_session(State(state.clone()), Json(existing_req))
+        .await
+        .expect("existing follow-up creation should succeed")
+        .0;
+
+    let req = CompleteReviewRequest {
+        task_id: task.id.as_str().to_string(),
+        decision: "escalate".to_string(),
+        summary: Some("Still blocked by unrelated drift".to_string()),
+        feedback: Some("The branch keeps reintroducing unrelated scope drift.".to_string()),
+        issues: Some(vec![ReviewIssueRequest {
+            severity: "major".to_string(),
+            title: Some("feature.rs is outside task scope".to_string()),
+            step_id: None,
+            no_step_reason: Some("Scope drift spans the task branch".to_string()),
+            description: Some("Repeated revise rounds did not remove the unrelated change.".to_string()),
+            category: Some("quality".to_string()),
+            file_path: Some("src/feature.rs".to_string()),
+            line_number: Some(1),
+            code_snippet: None,
+        }]),
+        escalation_reason: Some("Revision budget exhausted for unrelated scope drift".to_string()),
+        scope_drift_classification: Some("unrelated_drift".to_string()),
+        scope_drift_notes: Some("Escalation is now allowed because revise budget is exhausted.".to_string()),
+    };
+
+    let response = complete_review(State(state.clone()), ProjectScope(None), Json(req))
+        .await
+        .expect("escalation should reuse existing follow-up")
+        .0;
+
+    assert_eq!(
+        response.followup_session_id.as_deref(),
+        Some(existing_response.session_id.as_str())
+    );
+
+    let children = state
+        .app_state
+        .ideation_session_repo
+        .get_children(task.ideation_session_id.as_ref().unwrap())
+        .await
+        .unwrap();
+    let followups: Vec<_> = children
+        .into_iter()
+        .filter(|session| {
+            session.source_task_id.as_ref().map(|id| id.as_str()) == Some(task.id.as_str())
+                && session.source_context_type.as_deref() == Some("review")
+                && session.spawn_reason.as_deref() == Some("out_of_scope_failure")
+        })
+        .collect();
+    assert_eq!(followups.len(), 1, "review should reuse existing follow-up");
 }
 
 #[tokio::test]

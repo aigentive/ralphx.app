@@ -451,6 +451,8 @@ pub struct CompleteReviewResponse {
     pub new_status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fix_task_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub followup_session_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

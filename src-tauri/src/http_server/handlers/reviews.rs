@@ -19,9 +19,10 @@ use crate::domain::state_machine::transition_handler::{
     deferred_merge_cleanup, set_no_code_changes_metadata, set_pending_cleanup_metadata,
 };
 use crate::domain::tools::complete_review::ReviewToolOutcome;
+use crate::http_server::handlers::session_linking::create_child_session_impl;
 use crate::http_server::helpers::get_task_context_impl;
 use crate::http_server::project_scope::{ProjectScope, ProjectScopeGuard};
-use crate::http_server::types::ReviewIssueRequest;
+use crate::http_server::types::{CreateChildSessionRequest, ReviewIssueRequest};
 use std::sync::Arc;
 
 pub async fn complete_review(
@@ -307,6 +308,20 @@ pub async fn complete_review(
 
     // For now, we don't create fix tasks automatically - that can be added later
     let fix_task_id: Option<TaskId> = None;
+    let followup_session_id = maybe_spawn_unrelated_drift_followup(
+        &state,
+        &task,
+        &review,
+        &task_context,
+        outcome,
+        scope_drift_classification,
+        revision_count,
+        &review_settings,
+        req.summary.as_deref(),
+        req.feedback.as_deref(),
+        req.escalation_reason.as_deref(),
+    )
+    .await;
 
     // 6. Trigger state transition via TaskTransitionService
     // Create scheduler for auto-scheduling next Ready task when this one exits Reviewing
@@ -594,9 +609,15 @@ pub async fn complete_review(
     // 9. Return response
     Ok(Json(CompleteReviewResponse {
         success: true,
-        message: "Review submitted successfully".to_string(),
+        message: match &followup_session_id {
+            Some(session_id) => format!(
+                "Review submitted successfully. Follow-up ideation session created: {session_id}"
+            ),
+            None => "Review submitted successfully".to_string(),
+        },
         new_status: new_status.as_str().to_string(),
         fix_task_id: fix_task_id.map(|id| id.as_str().to_string()),
+        followup_session_id,
     }))
 }
 
@@ -664,6 +685,175 @@ fn scope_drift_classification_to_str(
         ScopeDriftClassification::PlanCorrection => "plan_correction".to_string(),
         ScopeDriftClassification::UnrelatedDrift => "unrelated_drift".to_string(),
     }
+}
+
+async fn maybe_spawn_unrelated_drift_followup(
+    state: &HttpServerState,
+    task: &crate::domain::entities::Task,
+    review: &Review,
+    task_context: &crate::domain::entities::TaskContext,
+    outcome: ReviewToolOutcome,
+    scope_drift_classification: Option<ScopeDriftClassification>,
+    revision_count: u32,
+    review_settings: &crate::domain::review::ReviewSettings,
+    summary: Option<&str>,
+    feedback: Option<&str>,
+    escalation_reason: Option<&str>,
+) -> Option<String> {
+    if !matches!(outcome, ReviewToolOutcome::Escalate) {
+        return None;
+    }
+    if !matches!(
+        scope_drift_classification,
+        Some(ScopeDriftClassification::UnrelatedDrift)
+    ) {
+        return None;
+    }
+    if !review_settings.exceeded_max_revisions(revision_count) {
+        return None;
+    }
+
+    let parent_session_id = match task.ideation_session_id.clone() {
+        Some(session_id) => session_id,
+        None => {
+            tracing::warn!(
+                task_id = %task.id.as_str(),
+                "Cannot auto-create follow-up session for unrelated drift: task has no ideation session"
+            );
+            return None;
+        }
+    };
+
+    match find_existing_unrelated_drift_followup(state, &parent_session_id, &task.id).await {
+        Ok(Some(existing_id)) => return Some(existing_id),
+        Ok(None) => {}
+        Err(e) => {
+            tracing::warn!(
+                task_id = %task.id.as_str(),
+                error = %e,
+                "Failed to check for existing unrelated-drift follow-up session"
+            );
+        }
+    }
+
+    let title = format!("Follow-up: {}", task.title);
+    let prompt = build_unrelated_drift_followup_prompt(
+        task,
+        task_context,
+        summary,
+        feedback,
+        escalation_reason,
+        revision_count,
+        review_settings.max_revision_cycles,
+    );
+
+    let request = CreateChildSessionRequest {
+        parent_session_id: parent_session_id.as_str().to_string(),
+        title: Some(title),
+        description: Some(
+            "Separate follow-up spawned automatically because repeated revise cycles could not resolve unrelated scope drift in the original task."
+                .to_string(),
+        ),
+        inherit_context: true,
+        initial_prompt: Some(prompt),
+        team_mode: None,
+        team_config: None,
+        purpose: Some("general".to_string()),
+        is_external_trigger: false,
+        source_task_id: Some(task.id.as_str().to_string()),
+        source_context_type: Some("review".to_string()),
+        source_context_id: Some(review.id.as_str().to_string()),
+        spawn_reason: Some("out_of_scope_failure".to_string()),
+    };
+
+    match create_child_session_impl(state, request).await {
+        Ok(response) => Some(response.session_id),
+        Err((status, body)) => {
+            tracing::warn!(
+                task_id = %task.id.as_str(),
+                status = %status,
+                body = %body.0,
+                "Failed to auto-create follow-up session for unrelated scope drift"
+            );
+            None
+        }
+    }
+}
+
+async fn find_existing_unrelated_drift_followup(
+    state: &HttpServerState,
+    parent_session_id: &crate::domain::entities::IdeationSessionId,
+    task_id: &TaskId,
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    let children = state
+        .app_state
+        .ideation_session_repo
+        .get_children(parent_session_id)
+        .await?;
+
+    Ok(children
+        .into_iter()
+        .find(|session| {
+            session.archived_at.is_none()
+                && session.source_task_id.as_ref() == Some(task_id)
+                && session.source_context_type.as_deref() == Some("review")
+                && session.spawn_reason.as_deref() == Some("out_of_scope_failure")
+        })
+        .map(|session| session.id.as_str().to_string()))
+}
+
+fn build_unrelated_drift_followup_prompt(
+    task: &crate::domain::entities::Task,
+    task_context: &crate::domain::entities::TaskContext,
+    summary: Option<&str>,
+    feedback: Option<&str>,
+    escalation_reason: Option<&str>,
+    revision_count: u32,
+    max_revision_cycles: u32,
+) -> String {
+    let planned_paths = task_context
+        .source_proposal
+        .as_ref()
+        .map(|proposal| proposal.affected_paths.clone())
+        .unwrap_or_default();
+
+    format!(
+        "This ideation follow-up was spawned automatically from AI review because task '{title}' \
+could not be kept within scope after {revision_count}/{max_revision_cycles} revise cycles.\n\n\
+Source task id: {task_id}\n\
+Reason: unrelated out-of-scope drift blocked clean approval and merge.\n\
+Review summary: {summary}\n\
+Review feedback: {feedback}\n\
+Escalation reason: {escalation_reason}\n\
+Planned scope: {planned_scope}\n\
+Out-of-scope files: {out_of_scope}\n\
+Actual changed files: {actual_changed}\n\n\
+Your job is to create isolated follow-up work that addresses the blocker separately from the \
+original accepted session. Do not mutate the accepted parent session; instead propose standalone \
+follow-up tasks for the unrelated work needed to resolve this blocker cleanly.",
+        title = task.title,
+        revision_count = revision_count,
+        max_revision_cycles = max_revision_cycles,
+        task_id = task.id.as_str(),
+        summary = summary.unwrap_or("(none)"),
+        feedback = feedback.unwrap_or("(none)"),
+        escalation_reason = escalation_reason.unwrap_or("(none)"),
+        planned_scope = if planned_paths.is_empty() {
+            "(none recorded)".to_string()
+        } else {
+            planned_paths.join(", ")
+        },
+        out_of_scope = if task_context.out_of_scope_files.is_empty() {
+            "(none)".to_string()
+        } else {
+            task_context.out_of_scope_files.join(", ")
+        },
+        actual_changed = if task_context.actual_changed_files.is_empty() {
+            "(none)".to_string()
+        } else {
+            task_context.actual_changed_files.join(", ")
+        },
+    )
 }
 
 const DEFAULT_REVIEW_ISSUE_TITLE: &str = "Review issue";
@@ -936,6 +1126,7 @@ pub async fn approve_task(
         message: "Task approved and complete".to_string(),
         new_status: "approved".to_string(),
         fix_task_id: None,
+        followup_session_id: None,
     }))
 }
 
@@ -1038,5 +1229,6 @@ pub async fn request_task_changes(
         message: "Changes requested. Task will be re-executed with your feedback.".to_string(),
         new_status: "revision_needed".to_string(),
         fix_task_id: None,
+        followup_session_id: None,
     }))
 }

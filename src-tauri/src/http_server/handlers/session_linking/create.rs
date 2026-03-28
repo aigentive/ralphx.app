@@ -157,10 +157,10 @@ async fn spawn_child_orchestration(
     }
 }
 
-pub async fn create_child_session(
-    State(state): State<HttpServerState>,
-    Json(req): Json<CreateChildSessionRequest>,
-) -> Result<Json<CreateChildSessionResponse>, JsonError> {
+pub(crate) async fn create_child_session_impl(
+    state: &HttpServerState,
+    req: CreateChildSessionRequest,
+) -> Result<CreateChildSessionResponse, JsonError> {
     let parent_id = IdeationSessionId::from_string(req.parent_session_id.clone());
     let verify_cfg = verification_config();
     let mut verification_generation = None;
@@ -212,7 +212,7 @@ pub async fn create_child_session(
 
     if req.purpose.as_deref() == Some("verification") {
         verification_generation =
-            initialize_verification_state(&state, &parent_id, &parent).await?;
+            initialize_verification_state(state, &parent_id, &parent).await?;
     }
 
     let (resolved_team_mode, resolved_team_config_json) = if let Some(mode) = &req.team_mode {
@@ -311,7 +311,7 @@ pub async fn create_child_session(
             error!("Failed to create child session: {}", e);
             if let Some(current_generation) = verification_generation {
                 rollback_verification_state(
-                    &state,
+                    state,
                     &parent_id,
                     current_generation,
                     "child DB insert failure",
@@ -350,7 +350,7 @@ pub async fn create_child_session(
         })?;
 
     let parent_context = if req.inherit_context {
-        Some(load_parent_context(&state, &parent).await)
+        Some(load_parent_context(state, &parent).await)
     } else {
         None
     };
@@ -368,7 +368,7 @@ pub async fn create_child_session(
 
     let orchestration_triggered = if let Some(ref prompt) = effective_initial_prompt {
         spawn_child_orchestration(
-            &state,
+            state,
             &created_session,
             &child_session_str,
             prompt,
@@ -382,7 +382,7 @@ pub async fn create_child_session(
             false
         } else {
             spawn_child_orchestration(
-                &state,
+                state,
                 &created_session,
                 &child_session_str,
                 description,
@@ -440,7 +440,7 @@ pub async fn create_child_session(
         .as_ref()
         .and_then(|json_str| serde_json::from_str(json_str).ok());
 
-    Ok(Json(CreateChildSessionResponse {
+    Ok(CreateChildSessionResponse {
         session_id: child_session_str,
         parent_session_id: parent_session_str,
         title,
@@ -454,5 +454,13 @@ pub async fn create_child_session(
         team_config,
         generation: verification_generation,
         pending_initial_prompt: persisted_pending_prompt,
-    }))
+    })
+}
+
+pub async fn create_child_session(
+    State(state): State<HttpServerState>,
+    Json(req): Json<CreateChildSessionRequest>,
+) -> Result<Json<CreateChildSessionResponse>, JsonError> {
+    let response = create_child_session_impl(&state, req).await?;
+    Ok(Json(response))
 }
