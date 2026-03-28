@@ -312,7 +312,7 @@ describe("PlanningView", () => {
     mockSetIsPlanExpanded.mockClear();
     mockIsPlanExpanded = false;
     // Reset proposal store state between tests
-    useProposalStore.setState({ lastProposalAddedAt: null });
+    useProposalStore.setState({ lastProposalAddedAt: {} });
   });
 
   it("renders the main view and active-session layout", () => {
@@ -668,7 +668,7 @@ describe("PlanningView", () => {
       mockSetIsPlanExpanded.mockClear(); // clear calls from initial render
       // Simulate a new proposal arriving
       act(() => {
-        useProposalStore.setState({ lastProposalAddedAt: Date.now() });
+        useProposalStore.setState({ lastProposalAddedAt: { "session-1": Date.now() } });
       });
       // Old behavior (auto-collapse) should NOT happen
       expect(mockSetIsPlanExpanded).not.toHaveBeenCalledWith(false);
@@ -689,7 +689,7 @@ describe("PlanningView", () => {
       useIdeationStore.setState({ setActiveIdeationTab: spySetActiveIdeationTab });
       render(<PlanningView {...defaultProps} />);
       act(() => {
-        useProposalStore.setState({ lastProposalAddedAt: Date.now() });
+        useProposalStore.setState({ lastProposalAddedAt: { "session-1": Date.now() } });
       });
       expect(spySetActiveIdeationTab).toHaveBeenCalledWith("session-1", "proposals");
       // Restore original function to avoid affecting other tests

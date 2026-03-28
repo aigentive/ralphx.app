@@ -37,10 +37,10 @@ describe("proposalStore", () => {
       proposals: {},
       isLoading: false,
       error: null,
-      lastProposalAddedAt: null,
-      lastDependencyRefreshRequestedAt: null,
-      lastProposalUpdatedAt: null,
-      lastUpdatedProposalId: null,
+      lastProposalAddedAt: {},
+      lastDependencyRefreshRequestedAt: {},
+      lastProposalUpdatedAt: {},
+      lastUpdatedProposalId: {},
     });
   });
 
@@ -135,19 +135,30 @@ describe("proposalStore", () => {
     });
 
     it("updates lastProposalAddedAt timestamp when adding proposal", () => {
-      const proposal = createTestProposal({ id: "proposal-1" });
+      const proposal = createTestProposal({ id: "proposal-1", sessionId: "session-1" });
 
-      // Initially null
-      expect(useProposalStore.getState().lastProposalAddedAt).toBeNull();
+      // Initially no entry for session-1
+      expect(useProposalStore.getState().lastProposalAddedAt["session-1"]).toBeUndefined();
 
       const beforeAdd = Date.now();
       useProposalStore.getState().addProposal(proposal);
       const afterAdd = Date.now();
 
       const state = useProposalStore.getState();
-      expect(state.lastProposalAddedAt).not.toBeNull();
-      expect(state.lastProposalAddedAt).toBeGreaterThanOrEqual(beforeAdd);
-      expect(state.lastProposalAddedAt).toBeLessThanOrEqual(afterAdd);
+      const timestamp = state.lastProposalAddedAt["session-1"];
+      expect(timestamp).toBeDefined();
+      expect(timestamp).toBeGreaterThanOrEqual(beforeAdd);
+      expect(timestamp).toBeLessThanOrEqual(afterAdd);
+    });
+
+    it("session isolation: adding to session-A does not affect session-B timestamp", () => {
+      const proposalA = createTestProposal({ id: "proposal-a", sessionId: "session-A" });
+
+      useProposalStore.getState().addProposal(proposalA);
+
+      const state = useProposalStore.getState();
+      expect(state.lastProposalAddedAt["session-A"]).toBeDefined();
+      expect(state.lastProposalAddedAt["session-B"]).toBeUndefined();
     });
   });
 
@@ -233,6 +244,18 @@ describe("proposalStore", () => {
 
       const state = useProposalStore.getState();
       expect(Object.keys(state.proposals)).toHaveLength(1);
+    });
+
+    it("sets lastDependencyRefreshRequestedAt[sessionId] using sessionId captured before delete", () => {
+      const proposal = createTestProposal({ id: "proposal-1", sessionId: "session-A" });
+      useProposalStore.setState({ proposals: { "proposal-1": proposal } });
+
+      useProposalStore.getState().removeProposal("proposal-1");
+
+      const state = useProposalStore.getState();
+      // sessionId captured before deletion — must be keyed by "session-A", not undefined
+      expect(state.lastDependencyRefreshRequestedAt["session-A"]).toBeDefined();
+      expect(state.lastDependencyRefreshRequestedAt["undefined"]).toBeUndefined();
     });
   });
 
@@ -323,10 +346,10 @@ describe("selectors", () => {
       proposals: {},
       isLoading: false,
       error: null,
-      lastProposalAddedAt: null,
-      lastDependencyRefreshRequestedAt: null,
-      lastProposalUpdatedAt: null,
-      lastUpdatedProposalId: null,
+      lastProposalAddedAt: {},
+      lastDependencyRefreshRequestedAt: {},
+      lastProposalUpdatedAt: {},
+      lastUpdatedProposalId: {},
     });
   });
 

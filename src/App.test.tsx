@@ -268,10 +268,10 @@ function resetStores() {
     proposals: {},
     isLoading: false,
     error: null,
-    lastProposalAddedAt: null,
-    lastDependencyRefreshRequestedAt: null,
-    lastProposalUpdatedAt: null,
-    lastUpdatedProposalId: null,
+    lastProposalAddedAt: {},
+    lastDependencyRefreshRequestedAt: {},
+    lastProposalUpdatedAt: {},
+    lastUpdatedProposalId: {},
   });
 
   useProjectStore.setState({

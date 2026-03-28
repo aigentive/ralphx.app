@@ -20,14 +20,14 @@ interface ProposalState {
   isLoading: boolean;
   /** Error message, or null if no error */
   error: string | null;
-  /** Timestamp when last proposal was added (for triggering UI effects) */
-  lastProposalAddedAt: number | null;
-  /** Timestamp when proposal content changed (dependency refresh hint) */
-  lastDependencyRefreshRequestedAt: number | null;
-  /** Timestamp when a proposal was last updated */
-  lastProposalUpdatedAt: number | null;
-  /** ID of the last updated proposal */
-  lastUpdatedProposalId: string | null;
+  /** Timestamp when last proposal was added, keyed by sessionId */
+  lastProposalAddedAt: Record<string, number>;
+  /** Timestamp when proposal content changed (dependency refresh hint), keyed by sessionId */
+  lastDependencyRefreshRequestedAt: Record<string, number>;
+  /** Timestamp when a proposal was last updated, keyed by sessionId */
+  lastProposalUpdatedAt: Record<string, number>;
+  /** ID of the last updated proposal, keyed by sessionId */
+  lastUpdatedProposalId: Record<string, string>;
 }
 
 // ============================================================================
@@ -63,10 +63,10 @@ export const useProposalStore = create<ProposalState & ProposalActions>()(
     proposals: {},
     isLoading: false,
     error: null,
-    lastProposalAddedAt: null,
-    lastDependencyRefreshRequestedAt: null,
-    lastProposalUpdatedAt: null,
-    lastUpdatedProposalId: null,
+    lastProposalAddedAt: {},
+    lastDependencyRefreshRequestedAt: {},
+    lastProposalUpdatedAt: {},
+    lastUpdatedProposalId: {},
 
     // Actions
     setProposals: (proposals) =>
@@ -77,14 +77,15 @@ export const useProposalStore = create<ProposalState & ProposalActions>()(
     addProposal: (proposal) =>
       set((state) => {
         state.proposals[proposal.id] = proposal;
-        state.lastProposalAddedAt = Date.now();
-        state.lastDependencyRefreshRequestedAt = Date.now();
+        state.lastProposalAddedAt[proposal.sessionId] = Date.now();
+        state.lastDependencyRefreshRequestedAt[proposal.sessionId] = Date.now();
       }),
 
     updateProposal: (proposalId, changes) =>
       set((state) => {
         const proposal = state.proposals[proposalId];
         if (proposal) {
+          const sessionId = proposal.sessionId;
           const contentFieldsChanged = [
             "title",
             "description",
@@ -93,18 +94,20 @@ export const useProposalStore = create<ProposalState & ProposalActions>()(
             "category",
           ].some((field) => Object.prototype.hasOwnProperty.call(changes, field));
           Object.assign(proposal, changes);
-          state.lastProposalUpdatedAt = Date.now();
-          state.lastUpdatedProposalId = proposalId;
+          state.lastProposalUpdatedAt[sessionId] = Date.now();
+          state.lastUpdatedProposalId[sessionId] = proposalId;
           if (contentFieldsChanged) {
-            state.lastDependencyRefreshRequestedAt = Date.now();
+            state.lastDependencyRefreshRequestedAt[sessionId] = Date.now();
           }
         }
       }),
 
     removeProposal: (proposalId) =>
       set((state) => {
+        const sessionId = state.proposals[proposalId]?.sessionId;
         delete state.proposals[proposalId];
-        state.lastDependencyRefreshRequestedAt = Date.now();
+        if (!sessionId) return;
+        state.lastDependencyRefreshRequestedAt[sessionId] = Date.now();
       }),
 
     reorder: (proposalIds) =>

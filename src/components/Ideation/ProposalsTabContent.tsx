@@ -96,9 +96,9 @@ export function ProposalsTabContent({
   const planArtifact = useIdeationStore((state) => state.planArtifact);
   const syncNotification = useIdeationStore((state) => state.syncNotification);
 
-  const lastProposalAddedAt = useProposalStore((state) => state.lastProposalAddedAt);
-  const lastProposalUpdatedAt = useProposalStore((state) => state.lastProposalUpdatedAt);
-  const lastUpdatedProposalId = useProposalStore((state) => state.lastUpdatedProposalId);
+  const lastProposalAddedAt = useProposalStore((state) => state.lastProposalAddedAt[session.id] ?? null);
+  const lastProposalUpdatedAt = useProposalStore((state) => state.lastProposalUpdatedAt[session.id] ?? null);
+  const lastUpdatedProposalId = useProposalStore((state) => state.lastUpdatedProposalId[session.id] ?? null);
 
   // Auto-scroll to bottom when a new proposal is added
   useLayoutEffect(() => {
@@ -106,6 +106,7 @@ export function ProposalsTabContent({
     if (lastScrollSessionIdRef.current !== currentSessionId) {
       lastScrollSessionIdRef.current = currentSessionId;
       lastScrollProposalAddedAtRef.current = null;
+      lastScrollProposalUpdatedAtRef.current = null;
       if (proposalsScrollRef.current) {
         proposalsScrollRef.current.scrollTo({ top: 0, behavior: "auto" });
       }

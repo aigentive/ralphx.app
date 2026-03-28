@@ -175,7 +175,7 @@ export function PlanningView({
 
   const lastDependencyFetchRef = useRef<boolean>(false);
   const lastDependencyToastAtRef = useRef<number | null>(null);
-  const lastDependencyRefreshRequestedAt = useProposalStore((state) => state.lastDependencyRefreshRequestedAt);
+  const lastDependencyRefreshRequestedAt = useProposalStore((state) => session?.id ? (state.lastDependencyRefreshRequestedAt[session.id] ?? null) : null);
 
   // Read-only mode: plans that are not active are read-only
   const isReadOnly = session?.status !== "active";
@@ -576,7 +576,7 @@ export function PlanningView({
   }, [planArtifact, proposals.length, isPlanExpanded, setIsPlanExpanded, isSessionLoading]);
 
   // Switch to Proposals tab when new proposal arrives
-  const lastProposalAddedAt = useProposalStore((state) => state.lastProposalAddedAt);
+  const lastProposalAddedAt = useProposalStore((state) => session?.id ? (state.lastProposalAddedAt[session.id] ?? null) : null);
   const prevProposalAddedAtRef = useRef(lastProposalAddedAt);
   useEffect(() => {
     const changed = lastProposalAddedAt !== prevProposalAddedAtRef.current;
@@ -607,6 +607,8 @@ export function PlanningView({
       lastSessionIdRef.current = session.id;
       autoOpenedPlanRef.current = false;
       userOverrideRef.current = false;
+      prevProposalAddedAtRef.current = lastProposalAddedAt;
+      lastDependencyToastAtRef.current = null;
       setIsPlanExpanded(!!session.planArtifactId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
