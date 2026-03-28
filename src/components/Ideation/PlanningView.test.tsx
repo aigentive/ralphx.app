@@ -365,10 +365,12 @@ describe("PlanningView", () => {
     });
   });
 
-  it("hides proposals tab when there are no proposals", () => {
+  it("always shows proposals tab, hides count badge when empty", () => {
     render(<PlanningView {...defaultProps} proposals={[]} />);
-    // Proposals tab is hidden when there are no proposals
-    expect(screen.queryByTestId("tab-proposals")).not.toBeInTheDocument();
+    // Proposals tab is always visible
+    expect(screen.queryByTestId("tab-proposals")).toBeInTheDocument();
+    // Count badge is not shown when there are no proposals
+    expect(screen.queryByTestId("tab-proposals-count")).not.toBeInTheDocument();
   });
 
   it("renders start-session panel when there is no active session", async () => {

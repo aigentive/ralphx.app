@@ -34,7 +34,8 @@ import type { Task } from "@/types/task";
 import type { ContextType } from "@/types/chat-conversation";
 import { ALL_REVIEW_STATUSES, EXECUTION_STATUSES, MERGE_STATUSES } from "@/types/status";
 import { AGENT_WORKER, AGENT_REVIEWER } from "@/constants/agents";
-import { StatusActivityBadge, type AgentType } from "./StatusActivityBadge";
+import { type AgentType } from "./StatusActivityBadge";
+import { ChatSessionToolbar } from "./ChatSessionToolbar";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
@@ -102,6 +103,8 @@ interface IntegratedChatPanelProps {
   autoFocusInput?: boolean;
   /** Whether this panel is currently visible (used in dual-panel mode to suppress toasts on hidden panel) */
   isVisible?: boolean;
+  /** Back navigation action rendered in the toolbar (e.g. "Back to Plan") */
+  toolbarBackAction?: { label: string; icon?: React.ReactNode; onClick: () => void };
 }
 
 export function IntegratedChatPanel({
@@ -114,6 +117,7 @@ export function IntegratedChatPanel({
   onClose,
   autoFocusInput = true,
   isVisible = true,
+  toolbarBackAction,
 }: IntegratedChatPanelProps) {
   const bus = useEventBus();
   const queryClient = useQueryClient();
@@ -790,16 +794,6 @@ export function IntegratedChatPanel({
           >
             {headerContent ?? <ContextIndicator context={chatContext} isExecutionMode={isExecutionMode} isReviewMode={isReviewMode} />}
 
-            {/* Unified status + activity badge */}
-            <StatusActivityBadge
-              isAgentActive={isAgentActive}
-              agentType={agentType}
-              contextType={currentContextType as ContextType}
-              contextId={ideationSessionId || selectedTaskId || null}
-              agentStatus={isHistoryMode ? "idle" : agentStatus}
-              storeKey={storeContextKey}
-            />
-
             {/* Conversation Selector */}
             <ConversationSelector
               contextType={
@@ -823,6 +817,17 @@ export function IntegratedChatPanel({
               isLoading={conversations.isLoading}
             />
           </div>
+
+          {/* Session Toolbar — always rendered for layout stability; houses StatusActivityBadge + optional back action */}
+          <ChatSessionToolbar
+            isAgentActive={isAgentActive}
+            agentType={agentType}
+            contextType={currentContextType as ContextType}
+            contextId={ideationSessionId || selectedTaskId || null}
+            agentStatus={isHistoryMode ? "idle" : agentStatus}
+            storeKey={storeContextKey}
+            {...(toolbarBackAction !== undefined ? { backAction: toolbarBackAction } : {})}
+          />
 
           {/* Team Context Bar (team mode only) */}
           {isTeamActive && teammates.length > 0 && (

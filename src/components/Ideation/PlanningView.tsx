@@ -623,12 +623,6 @@ export function PlanningView({
     setActiveIdeationTab(session.id, tab);
   }, [session, setActiveIdeationTab]);
 
-  // Fall back to plan tab if proposals tab is active but all proposals are deleted
-  useEffect(() => {
-    if (activeTab === 'proposals' && proposals.length === 0 && session) {
-      handleTabChange('plan');
-    }
-  }, [proposals.length, activeTab, session, handleTabChange]);
 
   const handleVerificationTabClick = useCallback(async () => {
     if (!session) return;
@@ -914,18 +908,18 @@ export function PlanningView({
                           )}
                         </button>
                       )}
-                      {proposals.length > 0 && (
-                        <button
-                          onClick={() => handleTabChange('proposals')}
-                          className="relative h-full px-3 text-[12px] font-medium transition-colors duration-150 flex items-center gap-1.5"
-                          style={{
-                            color: activeTab === "proposals"
-                              ? "hsl(220 10% 90%)"
-                              : "hsl(220 10% 50%)",
-                          }}
-                          data-testid="tab-proposals"
-                        >
-                          Proposals
+                      <button
+                        onClick={() => handleTabChange('proposals')}
+                        className="relative h-full px-3 text-[12px] font-medium transition-colors duration-150 flex items-center gap-1.5"
+                        style={{
+                          color: activeTab === "proposals"
+                            ? "hsl(220 10% 90%)"
+                            : "hsl(220 10% 50%)",
+                        }}
+                        data-testid="tab-proposals"
+                      >
+                        Proposals
+                        {proposals.length > 0 && (
                           <span
                             className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
                             style={{
@@ -939,14 +933,14 @@ export function PlanningView({
                           >
                             {proposals.length}
                           </span>
-                          {activeTab === "proposals" && (
-                            <span
-                              className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
-                              style={{ background: "hsl(14 100% 60%)" }}
-                            />
-                          )}
-                        </button>
-                      )}
+                        )}
+                        {activeTab === "proposals" && (
+                          <span
+                            className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
+                            style={{ background: "hsl(14 100% 60%)" }}
+                          />
+                        )}
+                      </button>
                       {teamArtifacts.length > 0 && (
                         <button
                           onClick={() => handleTabChange('research')}
@@ -1101,6 +1095,7 @@ export function PlanningView({
                     emptyState={verificationChildStatus?.pending_initial_prompt ? <WaitingForCapacityState /> : <ConversationEmptyState />}
                     showHelperTextAlways={true}
                     isVisible={isVerificationTabActive}
+                    toolbarBackAction={{ label: 'Plan', icon: <ArrowLeft className="w-3 h-3" />, onClick: () => setActiveIdeationTab(session.id, 'plan') }}
                     headerContent={
                       <div className="flex items-center gap-2 min-w-0 flex-1">
                         <ShieldCheck className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(38 100% 60%)" }} />
@@ -1112,28 +1107,6 @@ export function PlanningView({
                             {session.title || "Untitled"}
                           </span>
                         </div>
-                        <button
-                          onClick={() => setActiveIdeationTab(session.id, 'plan')}
-                          className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium shrink-0 transition-colors duration-150"
-                          style={{
-                            color: "hsl(220 10% 55%)",
-                            background: "hsla(220 10% 100% / 0.04)",
-                            border: "1px solid hsla(220 10% 100% / 0.08)",
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = "hsla(220 10% 100% / 0.08)";
-                            e.currentTarget.style.color = "hsl(220 10% 80%)";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = "hsla(220 10% 100% / 0.04)";
-                            e.currentTarget.style.color = "hsl(220 10% 55%)";
-                          }}
-                          data-testid="back-to-plan-button"
-                          title="Back to plan"
-                        >
-                          <ArrowLeft className="w-3 h-3" />
-                          Plan
-                        </button>
                       </div>
                     }
                   />
