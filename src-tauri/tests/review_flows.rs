@@ -971,6 +971,8 @@ fn test_complete_review_input_escalate_requires_reason() {
         issues: vec![],
         fix_description: None,
         escalation_reason: None, // Missing!
+        scope_drift_classification: None,
+        scope_drift_notes: None,
     };
 
     assert!(

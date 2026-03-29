@@ -4,10 +4,12 @@ pub struct RealGitRepo {
 }
 
 impl RealGitRepo {
+    #[allow(dead_code)]
     pub fn path(&self) -> &std::path::Path {
         self.dir.path()
     }
 
+    #[allow(dead_code)]
     pub fn path_string(&self) -> String {
         self.dir.path().to_string_lossy().to_string()
     }

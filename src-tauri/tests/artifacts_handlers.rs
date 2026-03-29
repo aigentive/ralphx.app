@@ -946,6 +946,7 @@ async fn test_link_proposals_to_plan_batch_25() {
             target_project: None,
             migrated_from_session_id: None,
             migrated_from_proposal_id: None,
+            affected_paths: None,
         };
         let saved = state
             .app_state
@@ -1393,6 +1394,7 @@ async fn test_update_plan_artifact_batch_updates_linked_proposals() {
             target_project: None,
             migrated_from_session_id: None,
             migrated_from_proposal_id: None,
+            affected_paths: None,
         };
         let saved = state
             .app_state
@@ -2213,6 +2215,7 @@ async fn test_edit_plan_artifact_batch_updates_linked_proposals() {
             target_project: None,
             migrated_from_session_id: None,
             migrated_from_proposal_id: None,
+            affected_paths: None,
         };
         let saved = state.app_state.task_proposal_repo.create(proposal).await.unwrap();
         proposal_ids.push(saved.id.as_str().to_string());
