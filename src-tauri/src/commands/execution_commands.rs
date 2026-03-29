@@ -23,6 +23,7 @@ use crate::domain::entities::{
     app_state::ExecutionHaltMode, task_step::StepProgressSummary, types::IdeationSessionId,
 };
 use crate::domain::execution::ExecutionSettings;
+use crate::domain::execution::{ScopedExecutionSubject, count_execution_status};
 use crate::domain::services::QueueKey;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::transition_handler::get_trigger_origin;
@@ -146,10 +147,7 @@ pub async fn get_execution_status(
     execution_state.set_running_count(active_count);
     let global_running_count = active_count;
 
-    let mut running_count = 0u32;
-    let mut total_project_active = 0u32;
-    let mut ideation_active = 0u32;
-    let mut ideation_idle = 0u32;
+    let mut scoped_subjects = Vec::new();
     for (key, _) in registry_entries {
         let context_type = match ChatContextType::from_str(&key.context_type) {
             Ok(value) => value,
@@ -178,12 +176,10 @@ pub async fn get_execution_status(
                 }
             }
             let slot_key = format!("{}/{}", key.context_type, key.context_id);
-            if execution_state.is_interactive_idle(&slot_key) {
-                ideation_idle += 1;
-            } else {
-                ideation_active += 1;
-                total_project_active += 1;
-            }
+            scoped_subjects.push(ScopedExecutionSubject::Ideation {
+                project_id: session.project_id,
+                is_idle: execution_state.is_interactive_idle(&slot_key),
+            });
             continue;
         }
 
@@ -193,21 +189,13 @@ pub async fn get_execution_status(
             _ => continue,
         };
 
-        if let Some(pid) = &effective_project_id {
-            if task.project_id != *pid {
-                continue;
-            }
-        }
-
-        // Skip entries whose task status doesn't match the expected running
-        // status for this context type (e.g., Failed task with TaskExecution entry)
-        if !context_matches_running_status_for_gc(context_type, task.internal_status) {
-            continue;
-        }
-
-        running_count += 1;
-        total_project_active += 1;
+        scoped_subjects.push(ScopedExecutionSubject::Task {
+            context_type,
+            project_id: task.project_id,
+            status: task.internal_status,
+        });
     }
+    let counts = count_execution_status(scoped_subjects, effective_project_id.as_ref());
 
     // Count sessions waiting for ideation capacity (have pending_initial_prompt set).
     let ideation_waiting = match &effective_project_id {
@@ -227,14 +215,14 @@ pub async fn get_execution_status(
     Ok(ExecutionStatusResponse {
         is_paused: execution_state.is_paused(),
         halt_mode: execution_halt_mode_str(halt_mode).to_string(),
-        running_count,
+        running_count: counts.running_count,
         max_concurrent,
         global_max_concurrent: global_max,
         queued_count,
         queued_message_count,
         can_start_task: !execution_state.is_paused()
             && !execution_state.is_provider_blocked()
-            && total_project_active < max_concurrent
+            && counts.total_project_active < max_concurrent
             && global_running_count < global_max,
         provider_blocked: execution_state.is_provider_blocked(),
         provider_blocked_until: if blocked_until > 0 {
@@ -242,8 +230,8 @@ pub async fn get_execution_status(
         } else {
             None
         },
-        ideation_active,
-        ideation_idle,
+        ideation_active: counts.ideation_active,
+        ideation_idle: counts.ideation_idle,
         ideation_waiting,
         ideation_max_project: execution_state.project_ideation_max(),
         ideation_max_global: execution_state.global_ideation_max(),

@@ -1,4 +1,5 @@
 use super::*;
+use crate::domain::execution::context_matches_running_status;
 
 /// A single running process with enriched data
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,14 +50,7 @@ pub fn context_matches_running_status_for_gc(
     context_type: ChatContextType,
     status: InternalStatus,
 ) -> bool {
-    match context_type {
-        ChatContextType::TaskExecution => {
-            status == InternalStatus::Executing || status == InternalStatus::ReExecuting
-        }
-        ChatContextType::Review => status == InternalStatus::Reviewing,
-        ChatContextType::Merge => status == InternalStatus::Merging,
-        ChatContextType::Task | ChatContextType::Ideation | ChatContextType::Project => false,
-    }
+    context_matches_running_status(context_type, status)
 }
 
 pub(super) async fn prune_stale_execution_registry_entries(
