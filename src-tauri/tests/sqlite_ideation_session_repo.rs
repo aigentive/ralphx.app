@@ -1432,7 +1432,7 @@ async fn test_get_group_counts_empty_project() {
     create_test_project(&db, &project_id, "Test Project", "/test/path");
 
     let repo = SqliteIdeationSessionRepository::new(db.new_connection());
-    let counts = repo.get_group_counts(&project_id).await.unwrap();
+    let counts = repo.get_group_counts(&project_id, None).await.unwrap();
 
     assert_eq!(counts.drafts, 0);
     assert_eq!(counts.in_progress, 0);
@@ -1453,7 +1453,7 @@ async fn test_get_group_counts_active_sessions_drafts() {
     repo.create(s1).await.unwrap();
     repo.create(s2).await.unwrap();
 
-    let counts = repo.get_group_counts(&project_id).await.unwrap();
+    let counts = repo.get_group_counts(&project_id, None).await.unwrap();
 
     assert_eq!(counts.drafts, 2);
     assert_eq!(counts.in_progress, 0);
@@ -1481,7 +1481,7 @@ async fn test_get_group_counts_accepted_with_active_tasks_in_progress() {
     // Add an executing task (active status — not idle, not terminal)
     create_task_in_db(&shared, "task-001", project_id.as_str(), &session_id, "executing").await;
 
-    let counts = repo.get_group_counts(&project_id).await.unwrap();
+    let counts = repo.get_group_counts(&project_id, None).await.unwrap();
 
     assert_eq!(counts.drafts, 0);
     assert_eq!(counts.in_progress, 1);
@@ -1508,7 +1508,7 @@ async fn test_get_group_counts_accepted_with_all_terminal_tasks_done() {
     // All tasks are terminal
     create_task_in_db(&shared, "task-002", project_id.as_str(), &session_id, "merged").await;
 
-    let counts = repo.get_group_counts(&project_id).await.unwrap();
+    let counts = repo.get_group_counts(&project_id, None).await.unwrap();
 
     assert_eq!(counts.drafts, 0);
     assert_eq!(counts.in_progress, 0);
@@ -1533,7 +1533,7 @@ async fn test_get_group_counts_accepted_no_tasks_accepted() {
     update_session_status(&shared, &session_id, "accepted").await;
 
     // No tasks — falls into accepted sub-group
-    let counts = repo.get_group_counts(&project_id).await.unwrap();
+    let counts = repo.get_group_counts(&project_id, None).await.unwrap();
 
     assert_eq!(counts.drafts, 0);
     assert_eq!(counts.in_progress, 0);
@@ -1561,7 +1561,7 @@ async fn test_get_group_counts_accepted_with_mix_active_and_idle() {
     create_task_in_db(&shared, "task-003", project_id.as_str(), &session_id, "executing").await;
     create_task_in_db(&shared, "task-004", project_id.as_str(), &session_id, "backlog").await;
 
-    let counts = repo.get_group_counts(&project_id).await.unwrap();
+    let counts = repo.get_group_counts(&project_id, None).await.unwrap();
 
     assert_eq!(counts.in_progress, 1, "Session with active tasks should be in_progress");
     assert_eq!(counts.accepted, 0);
@@ -1607,7 +1607,7 @@ async fn test_get_group_counts_multiple_groups_simultaneously() {
     update_session_status(&shared, &done_id, "accepted").await;
     create_task_in_db(&shared, "task-006", project_id.as_str(), &done_id, "approved").await;
 
-    let counts = repo.get_group_counts(&project_id).await.unwrap();
+    let counts = repo.get_group_counts(&project_id, None).await.unwrap();
 
     assert_eq!(counts.drafts, 1);
     assert_eq!(counts.in_progress, 1);
@@ -1631,7 +1631,7 @@ async fn test_get_group_counts_archived() {
 
     update_session_status(&shared, &session_id, "archived").await;
 
-    let counts = repo.get_group_counts(&project_id).await.unwrap();
+    let counts = repo.get_group_counts(&project_id, None).await.unwrap();
 
     assert_eq!(counts.archived, 1);
     assert_eq!(counts.drafts, 0);
@@ -1654,7 +1654,7 @@ async fn test_list_by_group_pagination_first_page() {
     }
 
     let (sessions, total) = repo
-        .list_by_group(&project_id, "drafts", 0, 20)
+        .list_by_group(&project_id, "drafts", 0, 20, None)
         .await
         .unwrap();
 
@@ -1671,7 +1671,7 @@ async fn test_list_by_group_empty_group() {
     let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let (sessions, total) = repo
-        .list_by_group(&project_id, "drafts", 0, 20)
+        .list_by_group(&project_id, "drafts", 0, 20, None)
         .await
         .unwrap();
 
@@ -1688,7 +1688,7 @@ async fn test_list_by_group_invalid_group_returns_error() {
     let repo = SqliteIdeationSessionRepository::new(db.new_connection());
 
     let result = repo
-        .list_by_group(&project_id, "nonexistent_group", 0, 20)
+        .list_by_group(&project_id, "nonexistent_group", 0, 20, None)
         .await;
 
     assert!(result.is_err());
@@ -1727,7 +1727,7 @@ async fn test_list_by_group_sort_order_updated_at_desc() {
     }
 
     let (sessions, _) = repo
-        .list_by_group(&project_id, "drafts", 0, 20)
+        .list_by_group(&project_id, "drafts", 0, 20, None)
         .await
         .unwrap();
 
@@ -1761,7 +1761,7 @@ async fn test_list_by_group_progress_data_for_accepted_subgroups() {
     create_task_in_db(&shared, "task-p3", project_id.as_str(), &session_id, "merged").await;
 
     let (sessions, total) = repo
-        .list_by_group(&project_id, "in_progress", 0, 20)
+        .list_by_group(&project_id, "in_progress", 0, 20, None)
         .await
         .unwrap();
 
@@ -1807,7 +1807,7 @@ async fn test_list_by_group_parent_title_resolved() {
     }
 
     let (sessions, _) = repo
-        .list_by_group(&project_id, "drafts", 0, 20)
+        .list_by_group(&project_id, "drafts", 0, 20, None)
         .await
         .unwrap();
 
@@ -1976,7 +1976,7 @@ async fn test_list_by_group_excludes_verification_sessions_and_counts_children()
 
     // List drafts group (active sessions)
     let (sessions, total) = repo
-        .list_by_group(&project_id, "drafts", 0, 50)
+        .list_by_group(&project_id, "drafts", 0, 50, None)
         .await
         .unwrap();
 
@@ -2033,7 +2033,7 @@ async fn test_get_group_counts_excludes_verification_sessions() {
         .build();
     repo.create(verification_session).await.unwrap();
 
-    let counts = repo.get_group_counts(&project_id).await.unwrap();
+    let counts = repo.get_group_counts(&project_id, None).await.unwrap();
 
     // Only 2 general sessions should appear as drafts
     assert_eq!(counts.drafts, 2, "Drafts count must exclude verification sessions");
@@ -2812,7 +2812,7 @@ async fn test_list_has_pending_prompt_false_for_accepted() {
     }
 
     let (sessions, _) = repo
-        .list_by_group(&project_id, "accepted", 0, 20)
+        .list_by_group(&project_id, "accepted", 0, 20, None)
         .await
         .unwrap();
 
@@ -2845,7 +2845,7 @@ async fn test_list_has_pending_prompt_true_for_active() {
         .unwrap();
 
     let (sessions, _) = repo
-        .list_by_group(&project_id, "drafts", 0, 20)
+        .list_by_group(&project_id, "drafts", 0, 20, None)
         .await
         .unwrap();
 
@@ -2906,7 +2906,7 @@ async fn test_list_by_group_with_blocker_fingerprint_keeps_parent_title_and_prog
     .await;
 
     let (sessions, _) = repo
-        .list_by_group(&project_id, "done", 0, 20)
+        .list_by_group(&project_id, "done", 0, 20, None)
         .await
         .unwrap();
 
@@ -2928,4 +2928,203 @@ async fn test_list_by_group_with_blocker_fingerprint_keeps_parent_title_and_prog
     assert_eq!(progress.total, 1);
     assert_eq!(progress.active, 0);
     assert_eq!(progress.idle, 0);
+}
+
+// ==================== SEARCH FILTERING TESTS ====================
+
+#[tokio::test]
+async fn test_get_group_counts_search_filters_by_title_substring() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let s1 = create_test_session(&project_id, Some("Auth refactor"));
+    let s2 = create_test_session(&project_id, Some("Dashboard redesign"));
+    let s3 = create_test_session(&project_id, Some("Auth improvements"));
+    repo.create(s1).await.unwrap();
+    repo.create(s2).await.unwrap();
+    repo.create(s3).await.unwrap();
+
+    let counts = repo.get_group_counts(&project_id, Some("auth")).await.unwrap();
+    // Only the 2 "Auth*" sessions should be counted in drafts
+    assert_eq!(counts.drafts, 2);
+
+    let counts_dash = repo.get_group_counts(&project_id, Some("Dashboard")).await.unwrap();
+    assert_eq!(counts_dash.drafts, 1);
+}
+
+#[tokio::test]
+async fn test_get_group_counts_search_case_insensitive() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let s1 = create_test_session(&project_id, Some("Auth Refactor"));
+    repo.create(s1).await.unwrap();
+
+    // All variants of casing should match
+    let counts_lower = repo.get_group_counts(&project_id, Some("auth")).await.unwrap();
+    let counts_upper = repo.get_group_counts(&project_id, Some("AUTH")).await.unwrap();
+    let counts_mixed = repo.get_group_counts(&project_id, Some("Auth")).await.unwrap();
+
+    assert_eq!(counts_lower.drafts, 1, "lowercase search should match");
+    assert_eq!(counts_upper.drafts, 1, "uppercase search should match");
+    assert_eq!(counts_mixed.drafts, 1, "mixed-case search should match");
+}
+
+#[tokio::test]
+async fn test_get_group_counts_empty_search_returns_all() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let s1 = create_test_session(&project_id, Some("Alpha"));
+    let s2 = create_test_session(&project_id, Some("Beta"));
+    repo.create(s1).await.unwrap();
+    repo.create(s2).await.unwrap();
+
+    // Empty string search = no filter = same as None
+    let counts_empty = repo.get_group_counts(&project_id, Some("")).await.unwrap();
+    let counts_none = repo.get_group_counts(&project_id, None).await.unwrap();
+
+    assert_eq!(counts_empty.drafts, counts_none.drafts, "empty search = no filter");
+    assert_eq!(counts_empty.drafts, 2);
+}
+
+#[tokio::test]
+async fn test_get_group_counts_search_no_match_returns_zeros() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let s1 = create_test_session(&project_id, Some("Alpha"));
+    repo.create(s1).await.unwrap();
+
+    let counts = repo.get_group_counts(&project_id, Some("nonexistent")).await.unwrap();
+    assert_eq!(counts.drafts, 0);
+    assert_eq!(counts.archived, 0);
+}
+
+#[tokio::test]
+async fn test_list_by_group_search_filters_results() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let s1 = create_test_session(&project_id, Some("Auth refactor"));
+    let s2 = create_test_session(&project_id, Some("Dashboard redesign"));
+    let s3 = create_test_session(&project_id, Some("Auth improvements"));
+    repo.create(s1).await.unwrap();
+    repo.create(s2).await.unwrap();
+    repo.create(s3).await.unwrap();
+
+    let (sessions, total) = repo
+        .list_by_group(&project_id, "drafts", 0, 20, Some("auth"))
+        .await
+        .unwrap();
+
+    assert_eq!(total, 2, "total should reflect filtered count");
+    assert_eq!(sessions.len(), 2);
+    for s in &sessions {
+        let title = s.session.title.as_deref().unwrap_or("");
+        assert!(
+            title.to_lowercase().contains("auth"),
+            "session title '{}' should contain 'auth'",
+            title
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_list_by_group_search_case_insensitive() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let s1 = create_test_session(&project_id, Some("UPPER CASE TITLE"));
+    repo.create(s1).await.unwrap();
+
+    let (sessions_lower, _) = repo
+        .list_by_group(&project_id, "drafts", 0, 20, Some("upper case"))
+        .await
+        .unwrap();
+    assert_eq!(sessions_lower.len(), 1, "lowercase search should match uppercase title");
+
+    let (sessions_upper, _) = repo
+        .list_by_group(&project_id, "drafts", 0, 20, Some("UPPER CASE"))
+        .await
+        .unwrap();
+    assert_eq!(sessions_upper.len(), 1, "uppercase search should match uppercase title");
+}
+
+#[tokio::test]
+async fn test_list_by_group_empty_search_returns_all() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let s1 = create_test_session(&project_id, Some("Alpha"));
+    let s2 = create_test_session(&project_id, Some("Beta"));
+    repo.create(s1).await.unwrap();
+    repo.create(s2).await.unwrap();
+
+    let (sessions_empty, total_empty) = repo
+        .list_by_group(&project_id, "drafts", 0, 20, Some(""))
+        .await
+        .unwrap();
+    let (sessions_none, total_none) = repo
+        .list_by_group(&project_id, "drafts", 0, 20, None)
+        .await
+        .unwrap();
+
+    assert_eq!(total_empty, total_none, "empty search = no filter");
+    assert_eq!(sessions_empty.len(), sessions_none.len());
+    assert_eq!(total_empty, 2);
+}
+
+#[tokio::test]
+async fn test_list_by_group_search_special_chars_treated_literally() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    // Create a session whose title contains a literal `%` character
+    let s_percent = create_test_session(&project_id, Some("100% complete"));
+    // Create a session whose title contains a literal `_` character
+    let s_underscore = create_test_session(&project_id, Some("task_cleanup plan"));
+    // A session that would match if `%` were treated as wildcard (any chars)
+    let s_other = create_test_session(&project_id, Some("other session"));
+    repo.create(s_percent).await.unwrap();
+    repo.create(s_underscore).await.unwrap();
+    repo.create(s_other).await.unwrap();
+
+    // Search for literal `%` — should only match `100% complete`
+    let (percent_results, percent_total) = repo
+        .list_by_group(&project_id, "drafts", 0, 20, Some("%"))
+        .await
+        .unwrap();
+    assert_eq!(percent_total, 1, "% should be treated literally, matching only '100% complete'");
+    assert_eq!(
+        percent_results[0].session.title.as_deref(),
+        Some("100% complete")
+    );
+
+    // Search for literal `_` — should only match `task_cleanup plan`
+    let (underscore_results, underscore_total) = repo
+        .list_by_group(&project_id, "drafts", 0, 20, Some("_"))
+        .await
+        .unwrap();
+    assert_eq!(underscore_total, 1, "_ should be treated literally, matching only 'task_cleanup plan'");
+    assert_eq!(
+        underscore_results[0].session.title.as_deref(),
+        Some("task_cleanup plan")
+    );
 }

@@ -609,10 +609,11 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
     async fn get_group_counts(
         &self,
         project_id: &ProjectId,
+        search: Option<&str>,
     ) -> crate::error::AppResult<
         crate::domain::repositories::ideation_session_repository::SessionGroupCounts,
     > {
-        self.inner.get_group_counts(project_id).await
+        self.inner.get_group_counts(project_id, search).await
     }
 
     async fn list_by_group(
@@ -621,11 +622,12 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
         group: &str,
         offset: u32,
         limit: u32,
+        search: Option<&str>,
     ) -> crate::error::AppResult<(
         Vec<crate::domain::repositories::ideation_session_repository::IdeationSessionWithProgress>,
         u32,
     )> {
-        self.inner.list_by_group(project_id, group, offset, limit).await
+        self.inner.list_by_group(project_id, group, offset, limit, search).await
     }
 
     fn set_expected_proposal_count_sync(

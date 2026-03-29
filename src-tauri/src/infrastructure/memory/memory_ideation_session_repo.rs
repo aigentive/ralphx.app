@@ -466,7 +466,11 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         Ok(sessions)
     }
 
-    async fn get_group_counts(&self, project_id: &ProjectId) -> AppResult<SessionGroupCounts> {
+    async fn get_group_counts(
+        &self,
+        project_id: &ProjectId,
+        _search: Option<&str>,
+    ) -> AppResult<SessionGroupCounts> {
         use crate::domain::entities::ideation::SessionPurpose;
         let sessions = self.sessions.read().unwrap();
         // Exclude verification child sessions from counts
@@ -505,6 +509,7 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         group: &str,
         offset: u32,
         limit: u32,
+        _search: Option<&str>,
     ) -> AppResult<(Vec<IdeationSessionWithProgress>, u32)> {
         // Validate group
         if !matches!(group, "drafts" | "in_progress" | "accepted" | "done" | "archived") {

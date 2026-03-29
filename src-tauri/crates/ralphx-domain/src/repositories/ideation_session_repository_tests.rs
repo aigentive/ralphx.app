@@ -266,7 +266,11 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
         Ok(sessions)
     }
 
-    async fn get_group_counts(&self, _project_id: &ProjectId) -> AppResult<SessionGroupCounts> {
+    async fn get_group_counts(
+        &self,
+        _project_id: &ProjectId,
+        _search: Option<&str>,
+    ) -> AppResult<SessionGroupCounts> {
         unimplemented!()
     }
 
@@ -276,6 +280,7 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
         _group: &str,
         _offset: u32,
         _limit: u32,
+        _search: Option<&str>,
     ) -> AppResult<(Vec<IdeationSessionWithProgress>, u32)> {
         unimplemented!()
     }

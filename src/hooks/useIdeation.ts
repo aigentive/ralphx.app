@@ -23,8 +23,8 @@ export const ideationKeys = {
   sessionDetails: () => [...ideationKeys.sessions(), "detail"] as const,
   sessionDetail: (sessionId: string) => [...ideationKeys.sessionDetails(), sessionId] as const,
   sessionWithData: (sessionId: string) => [...ideationKeys.sessionDetail(sessionId), "with-data"] as const,
-  sessionGroupCounts: (projectId: string) => [...ideationKeys.sessions(), "counts", projectId] as const,
-  sessionsByGroup: (projectId: string, group: string) => [...ideationKeys.sessions(), "group", projectId, group] as const,
+  sessionGroupCounts: (projectId: string, search?: string) => [...ideationKeys.sessions(), "counts", projectId, ...(search ? [search] : [])] as const,
+  sessionsByGroup: (projectId: string, group: string, search?: string) => [...ideationKeys.sessions(), "group", projectId, group, ...(search ? [search] : [])] as const,
   proposals: () => [...ideationKeys.all, "proposals"] as const,
 };
 
@@ -220,10 +220,13 @@ interface ResetAndReacceptInput {
  * @param projectId - The project ID to fetch counts for
  * @returns TanStack Query result with SessionGroupCounts
  */
-export function useSessionGroupCounts(projectId: string) {
+export function useSessionGroupCounts(projectId: string, search?: string) {
   return useQuery<SessionGroupCounts>({
-    queryKey: ideationKeys.sessionGroupCounts(projectId),
-    queryFn: () => invoke<SessionGroupCounts>("get_session_group_counts", { projectId }),
+    queryKey: ideationKeys.sessionGroupCounts(projectId, search),
+    queryFn: () => invoke<SessionGroupCounts>("get_session_group_counts", {
+      projectId,
+      ...(search ? { search } : {}),
+    }),
     enabled: Boolean(projectId),
     staleTime: 30_000, // 30s — counts change less frequently
   });

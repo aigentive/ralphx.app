@@ -947,11 +947,24 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
             .await
     }
 
-    async fn get_group_counts(&self, project_id: &ProjectId) -> AppResult<SessionGroupCounts> {
+    async fn get_group_counts(
+        &self,
+        project_id: &ProjectId,
+        search: Option<&str>,
+    ) -> AppResult<SessionGroupCounts> {
         let project_id = project_id.as_str().to_string();
+        // Normalize empty string to None
+        let search = search.filter(|s| !s.is_empty()).map(|s| {
+            format!("%{}%", s.replace('%', "\\%").replace('_', "\\_"))
+        });
         self.db
             .run(move |conn| {
-                let row = conn.query_row(
+                let search_clause = if search.is_some() {
+                    " AND s.title LIKE ?2 ESCAPE '\\' COLLATE NOCASE"
+                } else {
+                    ""
+                };
+                let sql = format!(
                     "SELECT \
                       COALESCE(SUM(CASE WHEN s.status = 'active' THEN 1 ELSE 0 END), 0) as drafts, \
                       COALESCE(SUM(CASE WHEN s.status = 'archived' THEN 1 ELSE 0 END), 0) as archived, \
@@ -969,9 +982,11 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                       THEN 1 ELSE 0 END), 0) as done \
                     FROM ideation_sessions s \
                     WHERE s.project_id = ?1 \
-                      AND (s.session_purpose IS NULL OR s.session_purpose = 'general')",
-                    [&project_id],
-                    |row| {
+                      AND (s.session_purpose IS NULL OR s.session_purpose = 'general'){}",
+                    search_clause
+                );
+                let row = if let Some(ref pattern) = search {
+                    conn.query_row(&sql, rusqlite::params![project_id, pattern], |row| {
                         let drafts: u32 = row.get::<_, i64>(0)? as u32;
                         let archived: u32 = row.get::<_, i64>(1)? as u32;
                         let total_accepted: u32 = row.get::<_, i64>(2)? as u32;
@@ -985,8 +1000,24 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                             done,
                             archived,
                         })
-                    },
-                )?;
+                    })?
+                } else {
+                    conn.query_row(&sql, [&project_id], |row| {
+                        let drafts: u32 = row.get::<_, i64>(0)? as u32;
+                        let archived: u32 = row.get::<_, i64>(1)? as u32;
+                        let total_accepted: u32 = row.get::<_, i64>(2)? as u32;
+                        let in_progress: u32 = row.get::<_, i64>(3)? as u32;
+                        let done: u32 = row.get::<_, i64>(4)? as u32;
+                        let accepted = total_accepted.saturating_sub(in_progress).saturating_sub(done);
+                        Ok(SessionGroupCounts {
+                            drafts,
+                            in_progress,
+                            accepted,
+                            done,
+                            archived,
+                        })
+                    })?
+                };
                 Ok(row)
             })
             .await
@@ -998,9 +1029,14 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         group: &str,
         offset: u32,
         limit: u32,
+        search: Option<&str>,
     ) -> AppResult<(Vec<IdeationSessionWithProgress>, u32)> {
         let project_id = project_id.as_str().to_string();
         let group = group.to_string();
+        // Normalize empty string to None
+        let search = search.filter(|s| !s.is_empty()).map(|s| {
+            format!("%{}%", s.replace('%', "\\%").replace('_', "\\_"))
+        });
 
         self.db
             .run(move |conn| {
@@ -1041,21 +1077,42 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                     }
                 };
 
+                // Optional search filter appended after base WHERE clause
+                let search_clause = if search.is_some() {
+                    " AND s.title LIKE ?4 ESCAPE '\\' COLLATE NOCASE"
+                } else {
+                    ""
+                };
+
                 let include_progress = matches!(group.as_str(), "in_progress" | "accepted" | "done");
 
-                // Count query
-                let count_sql = format!(
-                    "SELECT COUNT(*) FROM ideation_sessions s WHERE {}",
-                    where_clause
-                );
-                let total: u32 = conn.query_row(&count_sql, [&project_id], |row| {
-                    row.get::<_, i64>(0)
-                })? as u32;
+                // Count query (?1 = project_id, ?2 = search pattern when present)
+                let count_sql = if search.is_some() {
+                    format!(
+                        "SELECT COUNT(*) FROM ideation_sessions s WHERE {} AND s.title LIKE ?2 ESCAPE '\\' COLLATE NOCASE",
+                        where_clause
+                    )
+                } else {
+                    format!(
+                        "SELECT COUNT(*) FROM ideation_sessions s WHERE {}",
+                        where_clause
+                    )
+                };
+                let total: u32 = if let Some(ref pattern) = search {
+                    conn.query_row(&count_sql, rusqlite::params![project_id, pattern], |row| {
+                        row.get::<_, i64>(0)
+                    })? as u32
+                } else {
+                    conn.query_row(&count_sql, [&project_id], |row| {
+                        row.get::<_, i64>(0)
+                    })? as u32
+                };
 
                 // Data query with LEFT JOIN for parent title and correlated subqueries for progress.
                 // SESSION_COLUMNS are selected first, followed by:
                 // parent_session_title, active_count, done_count, total_count,
                 // verification_child_count, has_pending_prompt.
+                // Params: ?1=project_id, ?2=offset, ?3=limit, ?4=search_pattern (when present)
                 let data_sql = if include_progress {
                     format!(
                         "SELECT s.id, s.project_id, s.title, s.title_source, s.status, s.plan_artifact_id, \
@@ -1078,10 +1135,10 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                          (s.pending_initial_prompt IS NOT NULL AND s.status = 'active') as has_pending_prompt \
                          FROM ideation_sessions s \
                          LEFT JOIN ideation_sessions parent ON s.parent_session_id = parent.id \
-                         WHERE {} \
+                         WHERE {}{} \
                          ORDER BY s.updated_at DESC \
                          LIMIT ?3 OFFSET ?2",
-                        where_clause
+                        where_clause, search_clause
                     )
                 } else {
                     format!(
@@ -1101,53 +1158,58 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                          (s.pending_initial_prompt IS NOT NULL AND s.status = 'active') as has_pending_prompt \
                          FROM ideation_sessions s \
                          LEFT JOIN ideation_sessions parent ON s.parent_session_id = parent.id \
-                         WHERE {} \
+                         WHERE {}{} \
                          ORDER BY s.updated_at DESC \
                          LIMIT ?3 OFFSET ?2",
-                        where_clause
+                        where_clause, search_clause
                     )
                 };
 
+                let row_mapper = |row: &rusqlite::Row<'_>| {
+                    let session = IdeationSession::from_row(row)?;
+                    let parent_session_title: Option<String> = row.get(39)?;
+                    let active_count: Option<i64> = row.get(40)?;
+                    let done_count: Option<i64> = row.get(41)?;
+                    let total_count: Option<i64> = row.get(42)?;
+                    let verification_child_count: i64 = row.get(43)?;
+                    let has_pending_prompt: bool = row.get::<_, bool>(44)?;
+
+                    let progress = if let (Some(active), Some(done_ct), Some(total)) =
+                        (active_count, done_count, total_count)
+                    {
+                        let active = active as u32;
+                        let done_ct = done_ct as u32;
+                        let total = total as u32;
+                        let idle = total.saturating_sub(active).saturating_sub(done_ct);
+                        Some(SessionProgress {
+                            idle,
+                            active,
+                            done: done_ct,
+                            total,
+                        })
+                    } else {
+                        None
+                    };
+
+                    Ok(IdeationSessionWithProgress {
+                        session,
+                        progress,
+                        parent_session_title,
+                        verification_child_count: verification_child_count as u32,
+                        has_pending_prompt,
+                    })
+                };
+
                 let mut stmt = conn.prepare(&data_sql)?;
-                let sessions = stmt
-                    .query_map(
-                        rusqlite::params![project_id, offset, limit],
-                        |row| {
-                            let session = IdeationSession::from_row(row)?;
-                            let parent_session_title: Option<String> = row.get(39)?;
-                            let active_count: Option<i64> = row.get(40)?;
-                            let done_count: Option<i64> = row.get(41)?;
-                            let total_count: Option<i64> = row.get(42)?;
-                            let verification_child_count: i64 = row.get(43)?;
-                            let has_pending_prompt: bool = row.get::<_, bool>(44)?;
-
-                            let progress = if let (Some(active), Some(done_ct), Some(total)) =
-                                (active_count, done_count, total_count)
-                            {
-                                let active = active as u32;
-                                let done_ct = done_ct as u32;
-                                let total = total as u32;
-                                let idle = total.saturating_sub(active).saturating_sub(done_ct);
-                                Some(SessionProgress {
-                                    idle,
-                                    active,
-                                    done: done_ct,
-                                    total,
-                                })
-                            } else {
-                                None
-                            };
-
-                            Ok(IdeationSessionWithProgress {
-                                session,
-                                progress,
-                                parent_session_title,
-                                verification_child_count: verification_child_count as u32,
-                                has_pending_prompt,
-                            })
-                        },
-                    )?
-                    .collect::<Result<Vec<_>, _>>()?;
+                let sessions: Vec<IdeationSessionWithProgress> = if let Some(ref pattern) = search {
+                    stmt
+                        .query_map(rusqlite::params![project_id, offset, limit, pattern], row_mapper)?
+                        .collect::<Result<Vec<_>, _>>()?
+                } else {
+                    stmt
+                        .query_map(rusqlite::params![project_id, offset, limit], row_mapper)?
+                        .collect::<Result<Vec<_>, _>>()?
+                };
 
                 Ok((sessions, total))
             })

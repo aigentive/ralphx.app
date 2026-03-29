@@ -54,16 +54,18 @@ export function flattenSessionPages(
 export function useInfiniteSessionsQuery(
   projectId: string,
   group: SessionGroupKey,
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean; search?: string }
 ) {
+  const search = options?.search;
   return useInfiniteQuery<SessionListResponse, Error>({
-    queryKey: ideationKeys.sessionsByGroup(projectId, group),
+    queryKey: ideationKeys.sessionsByGroup(projectId, group, search),
     queryFn: ({ pageParam = 0 }) =>
       invoke<SessionListResponse>("list_sessions_by_group", {
         projectId,
         group,
         offset: pageParam as number,
         limit: PAGE_SIZE,
+        ...(search ? { search } : {}),
       }),
     getNextPageParam: (lastPage) =>
       lastPage.hasMore ? lastPage.offset + lastPage.sessions.length : undefined,

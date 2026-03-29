@@ -618,15 +618,17 @@ pub async fn get_child_sessions(
 ///
 /// Returns counts for: drafts (active sessions), in_progress (accepted + has active tasks),
 /// accepted (accepted + no active tasks), done (accepted + all tasks terminal), archived.
+/// Optional `search` filters by case-insensitive title substring match.
 #[tauri::command]
 pub async fn get_session_group_counts(
     project_id: String,
+    search: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<SessionGroupCountsResponse, String> {
     let project_id = crate::domain::entities::ProjectId::from_string(project_id);
     let counts = state
         .ideation_session_repo
-        .get_group_counts(&project_id)
+        .get_group_counts(&project_id, search.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -643,12 +645,14 @@ pub async fn get_session_group_counts(
 ///
 /// Valid groups: "drafts", "in_progress", "accepted", "done", "archived".
 /// Returns sessions with server-computed progress data and parent session title.
+/// Optional `search` filters by case-insensitive title substring match.
 #[tauri::command]
 pub async fn list_sessions_by_group(
     project_id: String,
     group: String,
     offset: Option<u32>,
     limit: Option<u32>,
+    search: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<SessionListResponse, String> {
     // Validate group early for a clear error message
@@ -668,7 +672,7 @@ pub async fn list_sessions_by_group(
 
     let (sessions, total) = state
         .ideation_session_repo
-        .list_by_group(&project_id, &group, offset, limit)
+        .list_by_group(&project_id, &group, offset, limit, search.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 

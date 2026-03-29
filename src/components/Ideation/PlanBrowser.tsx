@@ -15,6 +15,9 @@ import {
   ChevronLeft,
   MessageSquare,
   Plus,
+  Search,
+  X,
+  Loader2,
   Sparkles,
   Pencil,
   Zap,
@@ -25,11 +28,10 @@ import {
 import type { IdeationSessionWithProgress } from "@/types/ideation";
 import { ideationApi } from "@/api/ideation";
 import { PlanItem } from "./PlanItem";
-import { SessionGroupHeader } from "./SessionGroupHeader";
-import { SessionGroupSkeleton } from "./SessionGroupSkeleton";
-import { GROUP_KEY_TO_API, type SessionGroup } from "./planBrowserUtils";
+import type { SessionGroup } from "./planBrowserUtils";
+import { GroupSection } from "./GroupSection";
 import { useSessionGroupCounts } from "@/hooks/useIdeation";
-import { useInfiniteSessionsQuery, flattenSessionPages } from "@/hooks/useInfiniteSessionsQuery";
+import { usePlanBrowserSearch } from "@/hooks/usePlanBrowserSearch";
 
 // ============================================================================
 // Types
@@ -65,129 +67,6 @@ const GROUP_CONFIG: {
 ];
 
 // ============================================================================
-// Per-Group Section Component
-// ============================================================================
-
-interface GroupSectionProps {
-  groupKey: SessionGroup;
-  projectId: string;
-  isOpen: boolean;
-  onToggle: (open: boolean) => void;
-  icon: typeof Pencil;
-  label: string;
-  accentColor?: string;
-  count: number;
-  renderItem: (plan: IdeationSessionWithProgress, group: SessionGroup) => React.ReactNode;
-}
-
-function GroupSection({
-  groupKey,
-  projectId,
-  isOpen,
-  onToggle,
-  icon,
-  label,
-  accentColor,
-  count,
-  renderItem,
-}: GroupSectionProps) {
-  const apiKey = GROUP_KEY_TO_API[groupKey];
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading,
-  } = useInfiniteSessionsQuery(projectId, apiKey, { enabled: isOpen });
-
-  const sessions = flattenSessionPages(data);
-
-  // Intersection observer for infinite scroll
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const fetchNextPageRef = useRef(fetchNextPage);
-  const hasNextPageRef = useRef(hasNextPage);
-  useEffect(() => {
-    fetchNextPageRef.current = fetchNextPage;
-    hasNextPageRef.current = hasNextPage;
-  }, [fetchNextPage, hasNextPage]);
-
-  useEffect(() => {
-    if (!sentinelRef.current || !isOpen) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const first = entries[0];
-        // Guard: skip if sidebar container is hidden (display: none) — avoids burst
-        // fetchNextPage() calls when display toggles from none to visible
-        if (!first?.isIntersecting || !hasNextPageRef.current || isFetchingNextPage) return;
-        const parentContainer = sentinelRef.current?.closest("[data-testid='plan-browser']");
-        if (parentContainer) {
-          const style = window.getComputedStyle(parentContainer);
-          if (style.display === "none") return;
-        }
-        fetchNextPageRef.current();
-      },
-      { threshold: 0.1 }
-    );
-
-    observer.observe(sentinelRef.current);
-    return () => observer.disconnect();
-  }, [isOpen, isFetchingNextPage]);
-
-  if (count === 0) return null;
-
-  // Drafts group renders flat (no collapsible header)
-  if (groupKey === "drafts") {
-    return (
-      <div className="space-y-1">
-        {isLoading ? (
-          <SessionGroupSkeleton count={Math.min(count, 3)} />
-        ) : (
-          <>
-            {sessions.map((plan) => renderItem(plan, groupKey))}
-            {hasNextPage && (
-              <div ref={sentinelRef} className="h-2" />
-            )}
-            {isFetchingNextPage && (
-              <SessionGroupSkeleton count={1} />
-            )}
-          </>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <SessionGroupHeader
-      icon={icon}
-      label={label}
-      count={count}
-      isOpen={isOpen}
-      onToggle={onToggle}
-      {...(accentColor != null && { accentColor })}
-    >
-      {isOpen && (
-        <>
-          {isLoading ? (
-            <SessionGroupSkeleton count={Math.min(count, 3)} />
-          ) : (
-            <>
-              {sessions.map((plan) => renderItem(plan, groupKey))}
-              {hasNextPage && (
-                <div ref={sentinelRef} className="h-2" />
-              )}
-              {isFetchingNextPage && (
-                <SessionGroupSkeleton count={1} />
-              )}
-            </>
-          )}
-        </>
-      )}
-    </SessionGroupHeader>
-  );
-}
-
-// ============================================================================
 // Component
 // ============================================================================
 
@@ -202,12 +81,6 @@ export function PlanBrowser({
   width = 340,
   onCollapse,
 }: PlanBrowserProps) {
-  const { data: counts } = useSessionGroupCounts(projectId);
-
-  const totalCount = counts
-    ? counts.drafts + counts.inProgress + counts.accepted + counts.done + counts.archived
-    : 0;
-
   // Default expand state: all collapsed except In Progress (if count > 0)
   const [groupOpen, setGroupOpen] = useState<Record<SessionGroup, boolean>>(() => ({
     drafts: true, // always show drafts flat (no header toggle)
@@ -216,6 +89,23 @@ export function PlanBrowser({
     done: false,
     archived: false,
   }));
+
+  const {
+    searchTerm,
+    debouncedSearch,
+    isSearchActive,
+    isSearchLoading: isDebouncePending,
+    handleSearchChange,
+    handleSearchClear,
+  } = usePlanBrowserSearch(groupOpen, setGroupOpen);
+
+  const { data: counts, isFetching: isCountsFetching } = useSessionGroupCounts(projectId, debouncedSearch || undefined);
+
+  const isSearchLoading = isDebouncePending || (isSearchActive && isCountsFetching);
+
+  const totalCount = counts
+    ? counts.drafts + counts.inProgress + counts.accepted + counts.done + counts.archived
+    : 0;
 
   // Open In Progress automatically once counts load and inProgress > 0
   const countsLoadedRef = useRef(false);
@@ -228,10 +118,33 @@ export function PlanBrowser({
     }
   }, [counts]);
 
+  // Auto-expand groups with matches, auto-collapse empty groups during active search
+  useEffect(() => {
+    if (!counts || !isSearchActive) return;
+
+    const groupKeyToCount: Record<SessionGroup, number> = {
+      drafts: counts.drafts,
+      "in-progress": counts.inProgress,
+      accepted: counts.accepted,
+      done: counts.done,
+      archived: counts.archived,
+    };
+
+    setGroupOpen((prev) => {
+      const next = { ...prev };
+      for (const groupKey of Object.keys(groupKeyToCount) as SessionGroup[]) {
+        const count = groupKeyToCount[groupKey];
+        next[groupKey] = count > 0;
+      }
+      return next;
+    });
+  }, [counts, isSearchActive]);
+
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Keep a ref to editingTitle so confirm/keydown handlers don't close over stale state
   const editingTitleRef = useRef(editingTitle);
@@ -341,6 +254,14 @@ export function PlanBrowser({
   ]);
 
   const hasAnySessions = totalCount > 0;
+  const isEmptySearchResult = isSearchActive && totalCount === 0;
+
+  // Accessible result count announcement
+  const resultCountText = isSearchActive
+    ? totalCount === 0
+      ? "No sessions match"
+      : `${totalCount} ${totalCount === 1 ? "session" : "sessions"} found`
+    : "";
 
   return (
     <div
@@ -422,7 +343,7 @@ export function PlanBrowser({
           {/* New Plan Button - flat Tahoe style */}
           <Button
             onClick={onNewPlan}
-            className="w-full h-9 text-[13px] font-medium tracking-[-0.01em] border-0 transition-colors duration-150"
+            className="w-full h-9 text-[13px] font-medium tracking-[-0.01em] border-0 transition-colors duration-150 mb-2"
             style={{
               background: "hsl(14 100% 60%)",
               color: "white",
@@ -437,11 +358,76 @@ export function PlanBrowser({
             <Plus className="w-4 h-4 mr-1.5" strokeWidth={2.5} />
             New Plan
           </Button>
+
+          {/* Search Input - Tahoe glass style */}
+          <div
+            className="relative flex items-center"
+            style={{
+              background: "hsla(220 10% 100% / 0.04)",
+              border: "1px solid hsla(220 10% 100% / 0.08)",
+              borderRadius: "6px",
+            }}
+          >
+            <Search
+              className="absolute left-2.5 w-3.5 h-3.5 pointer-events-none"
+              style={{ color: "hsl(220 10% 40%)" }}
+            />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchTerm}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="Search sessions..."
+              aria-label="Search sessions"
+              className="w-full h-8 pl-8 pr-8 text-[12px] bg-transparent outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
+              style={{
+                color: "hsl(220 10% 90%)",
+                caretColor: "hsl(14 100% 60%)",
+              }}
+            />
+            {/* Right side: spinner or clear button */}
+            <div className="absolute right-2 flex items-center">
+              {isSearchLoading ? (
+                <Loader2
+                  className="w-3.5 h-3.5 animate-spin"
+                  style={{ color: "hsl(220 10% 40%)" }}
+                />
+              ) : searchTerm !== "" ? (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  onClick={() => {
+                    handleSearchClear();
+                    searchInputRef.current?.focus();
+                  }}
+                  className="w-4 h-4 flex items-center justify-center rounded-sm transition-colors duration-100"
+                  style={{ color: "hsl(220 10% 50%)" }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = "hsl(220 10% 80%)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = "hsl(220 10% 50%)";
+                  }}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Accessible live region for result count */}
+          <div
+            aria-live="polite"
+            aria-atomic="true"
+            className="sr-only"
+          >
+            {resultCountText}
+          </div>
         </div>
 
         {/* Plan List */}
         <div className="flex-1 overflow-y-auto px-2 py-2">
-          {!hasAnySessions ? (
+          {!hasAnySessions && !isSearchActive ? (
             <div className="flex flex-col items-center justify-center h-full px-4 text-center">
               <div
                 className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3"
@@ -457,6 +443,24 @@ export function PlanBrowser({
               </p>
               <p className="text-[11px] mt-1" style={{ color: "hsl(220 10% 50%)" }}>
                 Start your first brainstorm
+              </p>
+            </div>
+          ) : isEmptySearchResult ? (
+            <div className="flex flex-col items-center justify-center h-full px-4 text-center">
+              <div
+                className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3"
+                style={{
+                  background: "hsla(220 10% 100% / 0.03)",
+                  border: "1px solid hsla(220 10% 100% / 0.06)",
+                }}
+              >
+                <Search className="w-5 h-5" style={{ color: "hsl(220 10% 50%)" }} />
+              </div>
+              <p className="text-[13px] font-medium" style={{ color: "hsl(220 10% 70%)" }}>
+                No sessions match
+              </p>
+              <p className="text-[11px] mt-1" style={{ color: "hsl(220 10% 50%)" }}>
+                Try a different search term
               </p>
             </div>
           ) : (
@@ -484,6 +488,7 @@ export function PlanBrowser({
                     icon={icon}
                     label={label}
                     count={count}
+                    search={debouncedSearch}
                     {...(accentColor != null && { accentColor })}
                     renderItem={renderPlanItem}
                   />

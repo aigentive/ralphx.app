@@ -59,8 +59,8 @@ vi.mock("@/hooks/useIdeation", () => ({
     sessions: () => ["ideation", "sessions"],
     sessionList: (projectId: string) => ["ideation", "sessions", "list", projectId],
     sessionWithData: (sessionId: string) => ["ideation", "sessions", "detail", sessionId, "with-data"],
-    sessionGroupCounts: (projectId: string) => ["ideation", "sessions", "counts", projectId],
-    sessionsByGroup: (projectId: string, group: string) => ["ideation", "sessions", "group", projectId, group],
+    sessionGroupCounts: (projectId: string, search?: string) => ["ideation", "sessions", "counts", projectId, ...(search ? [search] : [])],
+    sessionsByGroup: (projectId: string, group: string, search?: string) => ["ideation", "sessions", "group", projectId, group, ...(search ? [search] : [])],
     proposals: () => ["ideation", "proposals"],
   },
 }));

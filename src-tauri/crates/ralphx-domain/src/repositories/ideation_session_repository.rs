@@ -234,10 +234,18 @@ pub trait IdeationSessionRepository: Send + Sync {
     /// Get counts of sessions in each display group for a project.
     /// Groups: drafts (active), in_progress (accepted+active tasks), accepted (accepted+no active tasks+not all done),
     /// done (accepted+all tasks terminal), archived.
-    async fn get_group_counts(&self, project_id: &ProjectId) -> AppResult<SessionGroupCounts>;
+    /// When `search` is Some, counts reflect only sessions whose title contains the substring
+    /// (case-insensitive). Empty string is normalized to None (no filter).
+    async fn get_group_counts(
+        &self,
+        project_id: &ProjectId,
+        search: Option<&str>,
+    ) -> AppResult<SessionGroupCounts>;
 
     /// List sessions in a specific display group with pagination.
     /// group must be one of: "drafts", "in_progress", "accepted", "done", "archived"
+    /// When `search` is Some, results are filtered by case-insensitive title substring match.
+    /// Empty string is normalized to None (no filter).
     /// Returns (sessions_with_progress, total_count).
     async fn list_by_group(
         &self,
@@ -245,6 +253,7 @@ pub trait IdeationSessionRepository: Send + Sync {
         group: &str,
         offset: u32,
         limit: u32,
+        search: Option<&str>,
     ) -> AppResult<(Vec<IdeationSessionWithProgress>, u32)>;
 
     /// Set expected_proposal_count on a session (set-once: fails if already set to a different value).
