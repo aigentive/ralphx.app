@@ -25,7 +25,8 @@ use crate::domain::entities::{
 use crate::domain::execution::ExecutionSettings;
 use crate::domain::execution::{ScopedExecutionSubject, count_execution_status};
 use crate::domain::execution::{
-    build_running_ideation_session, build_running_process, elapsed_seconds_for_status,
+    ExecutionStatusInput, build_execution_status_response, build_running_ideation_session,
+    build_running_process, elapsed_seconds_for_status,
 };
 use crate::domain::services::QueueKey;
 use crate::domain::state_machine::services::TaskScheduler;
@@ -214,8 +215,7 @@ pub async fn get_execution_status(
     let global_max = execution_state.global_max_concurrent();
     let halt_mode = load_execution_halt_mode(&app_state).await?;
 
-    let blocked_until = execution_state.provider_blocked_until_epoch();
-    Ok(ExecutionStatusResponse {
+    Ok(build_execution_status_response(ExecutionStatusInput {
         is_paused: execution_state.is_paused(),
         halt_mode: execution_halt_mode_str(halt_mode).to_string(),
         running_count: counts.running_count,
@@ -223,22 +223,16 @@ pub async fn get_execution_status(
         global_max_concurrent: global_max,
         queued_count,
         queued_message_count,
-        can_start_task: !execution_state.is_paused()
-            && !execution_state.is_provider_blocked()
-            && counts.total_project_active < max_concurrent
-            && global_running_count < global_max,
         provider_blocked: execution_state.is_provider_blocked(),
-        provider_blocked_until: if blocked_until > 0 {
-            Some(blocked_until)
-        } else {
-            None
-        },
+        provider_blocked_until_epoch: execution_state.provider_blocked_until_epoch(),
+        total_project_active: counts.total_project_active,
+        global_running_count,
         ideation_active: counts.ideation_active,
         ideation_idle: counts.ideation_idle,
         ideation_waiting,
         ideation_max_project: execution_state.project_ideation_max(),
         ideation_max_global: execution_state.global_ideation_max(),
-    })
+    }))
 }
 
 /// Pause execution (stops picking up new tasks and transitions running tasks to Paused)

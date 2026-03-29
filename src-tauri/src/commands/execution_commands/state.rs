@@ -546,50 +546,7 @@ impl Default for ExecutionState {
     }
 }
 
-/// Response for execution status queries
-#[derive(Debug, Serialize)]
-pub struct ExecutionStatusResponse {
-    /// Whether execution is paused
-    pub is_paused: bool,
-    /// Current halt mode for the global execution bar
-    pub halt_mode: String,
-    /// Number of currently running tasks
-    pub running_count: u32,
-    /// Maximum concurrent tasks allowed (per-project)
-    pub max_concurrent: u32,
-    /// Global maximum concurrent tasks across all projects (Phase 82)
-    pub global_max_concurrent: u32,
-    /// Number of tasks queued (ready to execute)
-    pub queued_count: u32,
-    /// Number of queued agent messages held by pause/capacity barriers
-    pub queued_message_count: u32,
-    /// Whether new tasks can be started
-    pub can_start_task: bool,
-    /// Whether a provider rate limit is currently blocking all spawns
-    pub provider_blocked: bool,
-    /// Epoch seconds when the provider rate limit expires (0 = no limit)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider_blocked_until: Option<u64>,
-    /// Currently generating ideation sessions (consuming slots)
-    pub ideation_active: u32,
-    /// Ideation sessions in waiting_for_input state (NOT consuming slots)
-    pub ideation_idle: u32,
-    /// Sessions with pending_initial_prompt set (queued, waiting for capacity)
-    pub ideation_waiting: u32,
-    /// Per-project maximum concurrent ideation sessions
-    pub ideation_max_project: u32,
-    /// Global maximum concurrent ideation sessions across all projects
-    pub ideation_max_global: u32,
-}
-
-/// Response for pause/resume/stop commands
-#[derive(Debug, Serialize)]
-pub struct ExecutionCommandResponse {
-    /// Whether the command succeeded
-    pub success: bool,
-    /// Current execution status after the command
-    pub status: ExecutionStatusResponse,
-}
+pub use crate::domain::execution::{ExecutionCommandResponse, ExecutionStatusResponse};
 
 /// Response for execution settings queries
 #[derive(Debug, Serialize)]
