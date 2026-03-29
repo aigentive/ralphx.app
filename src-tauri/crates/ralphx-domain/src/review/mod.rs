@@ -9,6 +9,7 @@ pub mod complete_review;
 pub mod complete_policy;
 pub mod complete_result;
 pub mod complete_support;
+pub mod merge_backstop;
 pub mod review_points;
 pub mod scope_drift;
 
@@ -36,6 +37,7 @@ pub use complete_support::{
     build_unrelated_drift_followup_prompt, parse_review_issue, parse_review_issues,
     ParsedReviewIssue, RawReviewIssueInput,
 };
+pub use merge_backstop::{evaluate_merge_scope_backstop, MergeScopeBackstopViolation};
 pub use review_points::{
     get_review_point_type, is_complex_task, is_destructive_task, should_auto_insert_review_point,
     ReviewPointConfig, ReviewPointType,

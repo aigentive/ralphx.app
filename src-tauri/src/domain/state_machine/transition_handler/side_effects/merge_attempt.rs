@@ -1,6 +1,6 @@
 use super::*;
 use crate::domain::entities::ReviewScopeMetadata;
-use crate::domain::review::compute_scope_drift;
+use crate::domain::review::{evaluate_merge_scope_backstop, MergeScopeBackstopViolation};
 use crate::domain::state_machine::{State, TransitionHandler};
 use crate::domain::state_machine::transition_handler::{BranchPair, ProjectCtx, TaskCore, cleanup_helpers, merge_coordination, merge_helpers};
 
@@ -951,62 +951,7 @@ impl<'a> TransitionHandler<'a> {
         };
 
         let diff = GitService::get_diff_stats_between(&repo_path, target_branch, source_branch).await?;
-        let (_, current_out_of_scope_files) =
-            compute_scope_drift(&diff.changed_files, &review_scope.planned_paths);
-
-        if current_out_of_scope_files.is_empty() {
-            return Ok(None);
-        }
-
-        let violation = match review_scope.drift_classification.as_deref() {
-            None => Some(MergeScopeBackstopViolation {
-                reason: format!(
-                    "Task branch still contains scope expansion at merge time, but review never recorded a drift classification: {}",
-                    current_out_of_scope_files.join(", ")
-                ),
-                out_of_scope_files: current_out_of_scope_files,
-            }),
-            Some("unrelated_drift") => Some(MergeScopeBackstopViolation {
-                reason: format!(
-                    "Task branch still contains unrelated scope drift at merge time: {}",
-                    current_out_of_scope_files.join(", ")
-                ),
-                out_of_scope_files: current_out_of_scope_files,
-            }),
-            Some("adjacent_scope_expansion") | Some("plan_correction") => {
-                let reviewed = review_scope
-                    .reviewed_out_of_scope_files
-                    .iter()
-                    .cloned()
-                    .collect::<std::collections::HashSet<_>>();
-                let unreviewed = current_out_of_scope_files
-                    .iter()
-                    .filter(|path| !reviewed.contains(*path))
-                    .cloned()
-                    .collect::<Vec<_>>();
-
-                if unreviewed.is_empty() {
-                    None
-                } else {
-                    Some(MergeScopeBackstopViolation {
-                        reason: format!(
-                            "Task branch introduced new out-of-scope files after review without fresh classification: {}",
-                            unreviewed.join(", ")
-                        ),
-                        out_of_scope_files: unreviewed,
-                    })
-                }
-            }
-            Some(other) => Some(MergeScopeBackstopViolation {
-                reason: format!(
-                    "Task branch has unsupported review scope drift classification '{}' at merge time",
-                    other
-                ),
-                out_of_scope_files: current_out_of_scope_files,
-            }),
-        };
-
-        Ok(violation)
+        Ok(evaluate_merge_scope_backstop(&review_scope, &diff.changed_files))
     }
 
     async fn route_merge_scope_violation_to_revision(
@@ -1056,10 +1001,4 @@ impl<'a> TransitionHandler<'a> {
             }
         }
     }
-}
-
-#[derive(Debug)]
-struct MergeScopeBackstopViolation {
-    reason: String,
-    out_of_scope_files: Vec<String>,
 }
