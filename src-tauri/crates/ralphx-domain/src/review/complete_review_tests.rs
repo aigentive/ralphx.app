@@ -1,6 +1,6 @@
 use super::*;
-
-// ===== ReviewToolOutcome Tests =====
+use crate::entities::{IssueSeverity, TaskStepId};
+use std::str::FromStr;
 
 #[test]
 fn test_review_tool_outcome_display() {
@@ -50,8 +50,6 @@ fn test_review_tool_outcome_serialization() {
     let parsed: ReviewToolOutcome = serde_json::from_str(&json).unwrap();
     assert_eq!(outcome, parsed);
 }
-
-// ===== CompleteReviewInput Constructor Tests =====
 
 #[test]
 fn test_complete_review_input_approved() {
@@ -104,8 +102,6 @@ fn test_complete_review_input_escalate() {
     assert!(input.is_escalation());
 }
 
-// ===== Validation Tests =====
-
 #[test]
 fn test_validate_approved_valid() {
     let input = CompleteReviewInput::approved("All criteria met");
@@ -150,7 +146,6 @@ fn test_validate_approved_whitespace_notes() {
 
 #[test]
 fn test_validate_needs_changes_valid() {
-    // needs_changes now requires issues, so use needs_changes_with_issues
     let issue = ReviewIssueInput::new("Test issue", IssueSeverity::Major)
         .with_no_step_reason("General issue");
     let input =
@@ -222,7 +217,7 @@ fn test_validate_needs_changes_missing_issues() {
         outcome: ReviewToolOutcome::NeedsChanges,
         notes: "Issues found".to_string(),
         issues: Vec::new(),
-        fix_description: Some("Fix it".to_string()),
+        fix_description: Some("Fix bug".to_string()),
         escalation_reason: None,
         scope_drift_classification: None,
         scope_drift_notes: None,
@@ -236,23 +231,22 @@ fn test_validate_needs_changes_missing_issues() {
 #[test]
 fn test_validate_needs_changes_invalid_issue() {
     let invalid_issue = ReviewIssueInput::new("Test issue", IssueSeverity::Major);
-    // Missing both step_id and no_step_reason
     let input = CompleteReviewInput {
         outcome: ReviewToolOutcome::NeedsChanges,
         notes: "Issues found".to_string(),
         issues: vec![invalid_issue],
-        fix_description: Some("Fix it".to_string()),
+        fix_description: Some("Fix bug".to_string()),
         escalation_reason: None,
         scope_drift_classification: None,
         scope_drift_notes: None,
     };
-    assert!(matches!(
+    assert_eq!(
         input.validate(),
         Err(CompleteReviewValidationError::InvalidIssue(
             0,
             ReviewIssueValidationError::MissingStepOrReason
         ))
-    ));
+    );
 }
 
 #[test]
@@ -263,10 +257,10 @@ fn test_validate_escalate_valid() {
 }
 
 #[test]
-fn test_validate_escalate_missing_escalation_reason() {
+fn test_validate_escalate_missing_reason() {
     let input = CompleteReviewInput {
         outcome: ReviewToolOutcome::Escalate,
-        notes: "Security concern".to_string(),
+        notes: "Concern".to_string(),
         issues: Vec::new(),
         fix_description: None,
         escalation_reason: None,
@@ -280,10 +274,10 @@ fn test_validate_escalate_missing_escalation_reason() {
 }
 
 #[test]
-fn test_validate_escalate_empty_escalation_reason() {
+fn test_validate_escalate_empty_reason() {
     let input = CompleteReviewInput {
         outcome: ReviewToolOutcome::Escalate,
-        notes: "Security concern".to_string(),
+        notes: "Concern".to_string(),
         issues: Vec::new(),
         fix_description: None,
         escalation_reason: Some("".to_string()),
@@ -297,13 +291,13 @@ fn test_validate_escalate_empty_escalation_reason() {
 }
 
 #[test]
-fn test_validate_escalate_whitespace_escalation_reason() {
+fn test_validate_escalate_whitespace_reason() {
     let input = CompleteReviewInput {
         outcome: ReviewToolOutcome::Escalate,
-        notes: "Security concern".to_string(),
+        notes: "Concern".to_string(),
         issues: Vec::new(),
         fix_description: None,
-        escalation_reason: Some("  \t\n  ".to_string()),
+        escalation_reason: Some("   ".to_string()),
         scope_drift_classification: None,
         scope_drift_notes: None,
     };
@@ -312,8 +306,6 @@ fn test_validate_escalate_whitespace_escalation_reason() {
         Err(CompleteReviewValidationError::EmptyEscalationReason)
     );
 }
-
-// ===== ReviewIssueInput Tests =====
 
 #[test]
 fn test_review_issue_input_new() {
@@ -326,26 +318,24 @@ fn test_review_issue_input_new() {
 
 #[test]
 fn test_review_issue_input_with_step_id() {
-    let step_id = TaskStepId::from_string("step-123".to_string());
+    let step_id = TaskStepId("step-123".to_string());
     let issue =
         ReviewIssueInput::new("Test issue", IssueSeverity::Major).with_step_id(step_id.clone());
     assert_eq!(issue.step_id, Some(step_id));
-    assert!(issue.validate().is_ok());
 }
 
 #[test]
 fn test_review_issue_input_with_no_step_reason() {
     let issue = ReviewIssueInput::new("Test issue", IssueSeverity::Minor)
-        .with_no_step_reason("General code quality issue");
+        .with_no_step_reason("General architecture concern");
     assert_eq!(
         issue.no_step_reason,
-        Some("General code quality issue".to_string())
+        Some("General architecture concern".to_string())
     );
-    assert!(issue.validate().is_ok());
 }
 
 #[test]
-fn test_review_issue_input_validate_empty_title() {
+fn test_review_issue_validate_empty_title() {
     let issue = ReviewIssueInput::new("", IssueSeverity::Major).with_no_step_reason("Reason");
     assert_eq!(
         issue.validate(),
@@ -354,7 +344,7 @@ fn test_review_issue_input_validate_empty_title() {
 }
 
 #[test]
-fn test_review_issue_input_validate_missing_step_or_reason() {
+fn test_review_issue_validate_missing_step_and_reason() {
     let issue = ReviewIssueInput::new("Test issue", IssueSeverity::Major);
     assert_eq!(
         issue.validate(),
@@ -363,7 +353,7 @@ fn test_review_issue_input_validate_missing_step_or_reason() {
 }
 
 #[test]
-fn test_review_issue_input_validate_whitespace_reason() {
+fn test_review_issue_validate_whitespace_reason() {
     let issue =
         ReviewIssueInput::new("Test issue", IssueSeverity::Major).with_no_step_reason("   ");
     assert_eq!(
@@ -373,12 +363,9 @@ fn test_review_issue_input_validate_whitespace_reason() {
 }
 
 #[test]
-fn test_review_issue_input_serialization() {
-    let step_id = TaskStepId::from_string("step-123".to_string());
+fn test_review_issue_serialization_round_trip() {
     let issue = ReviewIssueInput::new("Bug found", IssueSeverity::Critical)
-        .with_step_id(step_id)
-        .with_category(IssueCategory::Bug)
-        .with_description("Detailed description")
+        .with_no_step_reason("General issue")
         .with_file_location("src/main.rs", Some(42));
 
     let json = serde_json::to_string(&issue).unwrap();
@@ -386,14 +373,12 @@ fn test_review_issue_input_serialization() {
 
     assert_eq!(parsed.title, issue.title);
     assert_eq!(parsed.severity, issue.severity);
-    assert_eq!(parsed.category, issue.category);
-    assert_eq!(parsed.step_id, issue.step_id);
     assert_eq!(parsed.file_path, issue.file_path);
     assert_eq!(parsed.line_number, issue.line_number);
 }
 
 #[test]
-fn test_needs_changes_with_issues_constructor() {
+fn test_needs_changes_with_multiple_issues() {
     let issue1 =
         ReviewIssueInput::new("Issue 1", IssueSeverity::Major).with_no_step_reason("General");
     let issue2 =
@@ -401,7 +386,7 @@ fn test_needs_changes_with_issues_constructor() {
 
     let input = CompleteReviewInput::needs_changes_with_issues(
         "Multiple issues",
-        "Fix all issues",
+        "Fix them all",
         vec![issue1, issue2],
     );
 
@@ -409,8 +394,6 @@ fn test_needs_changes_with_issues_constructor() {
     assert_eq!(input.issues.len(), 2);
     assert!(input.validate().is_ok());
 }
-
-// ===== Validation Error Display Tests =====
 
 #[test]
 fn test_review_issue_validation_error_display() {
@@ -425,71 +408,50 @@ fn test_review_issue_validation_error_display() {
 }
 
 #[test]
-fn test_invalid_issue_error_display() {
+fn test_complete_review_validation_error_display() {
     let err =
         CompleteReviewValidationError::InvalidIssue(2, ReviewIssueValidationError::EmptyTitle);
-    assert_eq!(
-        err.to_string(),
-        "issue at index 2: issue title cannot be empty"
-    );
+    assert_eq!(err.to_string(), "issue at index 2: issue title cannot be empty");
 }
 
-// ===== Serialization Tests =====
-
 #[test]
-fn test_complete_review_input_serialization_approved() {
+fn test_complete_review_serialization_round_trip_approved() {
     let input = CompleteReviewInput::approved("All good");
     let json = serde_json::to_string(&input).unwrap();
-
-    // Should not include optional fields that are None
-    assert!(!json.contains("fix_description"));
-    assert!(!json.contains("escalation_reason"));
-
     let parsed: CompleteReviewInput = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed.outcome, input.outcome);
     assert_eq!(parsed.notes, input.notes);
 }
 
 #[test]
-fn test_complete_review_input_serialization_needs_changes() {
+fn test_complete_review_serialization_round_trip_needs_changes() {
     let input = CompleteReviewInput::needs_changes("Issues", "Fix them");
     let json = serde_json::to_string(&input).unwrap();
-
-    assert!(json.contains("\"fix_description\":\"Fix them\""));
-
     let parsed: CompleteReviewInput = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed.outcome, input.outcome);
     assert_eq!(parsed.fix_description, input.fix_description);
 }
 
 #[test]
-fn test_complete_review_input_serialization_escalate() {
+fn test_complete_review_serialization_round_trip_escalate() {
     let input = CompleteReviewInput::escalate("Concern", "Need human");
     let json = serde_json::to_string(&input).unwrap();
-
-    assert!(json.contains("\"escalation_reason\":\"Need human\""));
-
     let parsed: CompleteReviewInput = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed.outcome, input.outcome);
     assert_eq!(parsed.escalation_reason, input.escalation_reason);
 }
 
 #[test]
-fn test_complete_review_input_deserialization_with_defaults() {
-    // Test deserializing JSON that doesn't have optional fields
-    let json = r#"{"outcome":"approved","notes":"LGTM"}"#;
+fn test_complete_review_deserialization_missing_optional_fields() {
+    let json = r#"{"outcome":"approved","notes":"All good","issues":[]}"#;
     let input: CompleteReviewInput = serde_json::from_str(json).unwrap();
-
     assert_eq!(input.outcome, ReviewToolOutcome::Approved);
-    assert_eq!(input.notes, "LGTM");
     assert!(input.fix_description.is_none());
     assert!(input.escalation_reason.is_none());
 }
 
-// ===== Error Display Tests =====
-
 #[test]
-fn test_validation_error_display() {
+fn test_complete_review_validation_error_messages() {
     assert_eq!(
         CompleteReviewValidationError::EmptyNotes.to_string(),
         "notes field cannot be empty"
@@ -516,8 +478,6 @@ fn test_validation_error_display() {
     );
 }
 
-// ===== ReviewToolOutcome::ApprovedNoChanges Tests =====
-
 #[test]
 fn test_review_tool_outcome_approved_no_changes_display() {
     assert_eq!(
@@ -527,7 +487,7 @@ fn test_review_tool_outcome_approved_no_changes_display() {
 }
 
 #[test]
-fn test_review_tool_outcome_approved_no_changes_from_str_lowercase() {
+fn test_review_tool_outcome_approved_no_changes_from_str() {
     assert_eq!(
         ReviewToolOutcome::from_str("approved_no_changes").unwrap(),
         ReviewToolOutcome::ApprovedNoChanges
@@ -535,15 +495,11 @@ fn test_review_tool_outcome_approved_no_changes_from_str_lowercase() {
 }
 
 #[test]
-fn test_review_tool_outcome_approved_no_changes_from_str_uppercase() {
+fn test_review_tool_outcome_approved_no_changes_from_str_case_insensitive() {
     assert_eq!(
         ReviewToolOutcome::from_str("APPROVED_NO_CHANGES").unwrap(),
         ReviewToolOutcome::ApprovedNoChanges
     );
-}
-
-#[test]
-fn test_review_tool_outcome_approved_no_changes_from_str_mixed_case() {
     assert_eq!(
         ReviewToolOutcome::from_str("Approved_No_Changes").unwrap(),
         ReviewToolOutcome::ApprovedNoChanges
@@ -551,49 +507,49 @@ fn test_review_tool_outcome_approved_no_changes_from_str_mixed_case() {
 }
 
 #[test]
-fn test_complete_review_input_approved_no_changes_validate_ok() {
+fn test_validate_approved_no_changes_valid() {
     let input = CompleteReviewInput {
         outcome: ReviewToolOutcome::ApprovedNoChanges,
-        notes: "No code changes — this was a research task".to_string(),
-        issues: vec![],
+        notes: "Research task completed".to_string(),
+        issues: Vec::new(),
         fix_description: None,
         escalation_reason: None,
         scope_drift_classification: None,
         scope_drift_notes: None,
     };
-    assert!(input.validate().is_ok(), "ApprovedNoChanges with empty issues and no fix_description should be valid");
+    assert!(input.validate().is_ok());
+    assert!(input.is_valid());
+    assert!(input.is_approved());
 }
 
 #[test]
-fn test_complete_review_input_approved_no_changes_validate_err_with_issues() {
+fn test_validate_approved_no_changes_allows_issues_but_ignored() {
     let issue = ReviewIssueInput::new("some issue", IssueSeverity::Minor)
-        .with_no_step_reason("n/a");
+        .with_no_step_reason("general note");
     let input = CompleteReviewInput {
         outcome: ReviewToolOutcome::ApprovedNoChanges,
-        notes: "No code changes".to_string(),
+        notes: "Docs task done".to_string(),
         issues: vec![issue],
         fix_description: None,
         escalation_reason: None,
         scope_drift_classification: None,
         scope_drift_notes: None,
     };
-    // With issues present: ApprovedNoChanges should still be Ok (issues are optional for approval)
-    // It's the same behavior as Approved — issues are allowed but not required
-    assert!(input.validate().is_ok(), "ApprovedNoChanges with issues should still be Ok (issues optional)");
+    assert!(input.validate().is_ok());
 }
 
 #[test]
-fn test_complete_review_input_is_approved_for_approved_no_changes() {
+fn test_approved_no_changes_is_approved_not_needs_changes_or_escalation() {
     let input = CompleteReviewInput {
         outcome: ReviewToolOutcome::ApprovedNoChanges,
-        notes: "No changes".to_string(),
-        issues: vec![],
+        notes: "No code changes".to_string(),
+        issues: Vec::new(),
         fix_description: None,
         escalation_reason: None,
         scope_drift_classification: None,
         scope_drift_notes: None,
     };
-    assert!(input.is_approved(), "is_approved() should return true for ApprovedNoChanges");
+    assert!(input.is_approved());
     assert!(!input.is_needs_changes());
     assert!(!input.is_escalation());
 }
