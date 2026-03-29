@@ -9,8 +9,8 @@ use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 
 use crate::domain::entities::{
-    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, VerificationMetadata,
-    VerificationStatus,
+    AcceptanceStatus, IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
+    VerificationMetadata, VerificationStatus,
 };
 use crate::domain::repositories::ideation_session_repository::{
     IdeationSessionWithProgress, SessionGroupCounts, SessionProgress,
@@ -40,7 +40,7 @@ const SESSION_COLUMNS: &str = "id, project_id, title, title_source, status, plan
     expected_proposal_count, auto_accept_status, auto_accept_started_at, \
     api_key_id, idempotency_key, external_activity_phase, external_last_read_message_id, \
     dependencies_acknowledged, pending_initial_prompt, source_task_id, source_context_type, \
-    source_context_id, spawn_reason, blocker_fingerprint";
+    source_context_id, spawn_reason, blocker_fingerprint, acceptance_status";
 // TERMINAL: tasks that have reached a final state
 const _TERMINAL_STATUSES: &[&str] = &["approved", "merged", "failed", "cancelled", "stopped"];
 // ACTIVE: any status NOT in IDLE or TERMINAL (catch-all, matches categorizeStatus() logic)
@@ -1587,6 +1587,69 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                     |row| row.get(0),
                 )?;
                 Ok(count as u32)
+            })
+            .await
+    }
+
+    async fn update_acceptance_status(
+        &self,
+        session_id: &IdeationSessionId,
+        expected_current: Option<AcceptanceStatus>,
+        new_status: Option<AcceptanceStatus>,
+    ) -> AppResult<bool> {
+        let session_id_str = session_id.as_str().to_string();
+        let expected_str: Option<String> = expected_current.map(|s| s.to_string());
+        let new_str: Option<String> = new_status.map(|s| s.to_string());
+        self.db
+            .run(move |conn| {
+                let rows_affected = if let Some(ref expected) = expected_str {
+                    conn.execute(
+                        "UPDATE ideation_sessions \
+                         SET acceptance_status = ?1, \
+                             updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now') \
+                         WHERE id = ?2 AND acceptance_status = ?3",
+                        rusqlite::params![new_str, session_id_str, expected],
+                    )
+                    .map_err(|e| AppError::Database(e.to_string()))?
+                } else {
+                    conn.execute(
+                        "UPDATE ideation_sessions \
+                         SET acceptance_status = ?1, \
+                             updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now') \
+                         WHERE id = ?2 AND acceptance_status IS NULL",
+                        rusqlite::params![new_str, session_id_str],
+                    )
+                    .map_err(|e| AppError::Database(e.to_string()))?
+                };
+                Ok(rows_affected > 0)
+            })
+            .await
+    }
+
+    async fn get_sessions_with_pending_acceptance(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>> {
+        let project_id_str = project_id.to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn
+                    .prepare(&format!(
+                        "SELECT {SESSION_COLUMNS} FROM ideation_sessions \
+                         WHERE project_id = ?1 \
+                           AND status = 'active' \
+                           AND acceptance_status = 'pending' \
+                         ORDER BY updated_at DESC",
+                    ))
+                    .map_err(|e| AppError::Database(e.to_string()))?;
+                let sessions = stmt
+                    .query_map(rusqlite::params![project_id_str], |row| {
+                        IdeationSession::from_row(row)
+                    })
+                    .map_err(|e| AppError::Database(e.to_string()))?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| AppError::Database(e.to_string()))?;
+                Ok(sessions)
             })
             .await
     }

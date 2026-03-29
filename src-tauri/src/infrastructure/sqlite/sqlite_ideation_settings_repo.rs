@@ -30,7 +30,8 @@ impl SqliteIdeationSettingsRepository {
 pub fn get_settings_sync(conn: &Connection) -> AppResult<IdeationSettings> {
     let result = conn.query_row(
         "SELECT plan_mode, require_plan_approval, suggest_plans_for_complex, auto_link_proposals,
-                require_verification_for_accept, require_verification_for_proposals
+                require_verification_for_accept, require_verification_for_proposals,
+                require_accept_for_finalize
          FROM ideation_settings WHERE id = 1
          LIMIT 1",
         [],
@@ -41,6 +42,7 @@ pub fn get_settings_sync(conn: &Connection) -> AppResult<IdeationSettings> {
             let auto_link_proposals: i64 = row.get(3)?;
             let require_verification_for_accept: i64 = row.get(4)?;
             let require_verification_for_proposals: i64 = row.get(5)?;
+            let require_accept_for_finalize: Option<i64> = row.get(6)?;
 
             let plan_mode = match plan_mode_str.as_str() {
                 "required" => IdeationPlanMode::Required,
@@ -56,6 +58,9 @@ pub fn get_settings_sync(conn: &Connection) -> AppResult<IdeationSettings> {
                 auto_link_proposals: auto_link_proposals != 0,
                 require_verification_for_accept: require_verification_for_accept != 0,
                 require_verification_for_proposals: require_verification_for_proposals != 0,
+                require_accept_for_finalize: require_accept_for_finalize
+                    .map(|v| v != 0)
+                    .unwrap_or(false),
             })
         },
     );
@@ -98,6 +103,7 @@ impl IdeationSettingsRepository for SqliteIdeationSettingsRepository {
                  auto_link_proposals = ?4,
                  require_verification_for_accept = ?5,
                  require_verification_for_proposals = ?6,
+                 require_accept_for_finalize = ?7,
                  updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
              WHERE id = 1",
                     rusqlite::params![
@@ -107,6 +113,7 @@ impl IdeationSettingsRepository for SqliteIdeationSettingsRepository {
                         settings.auto_link_proposals as i64,
                         settings.require_verification_for_accept as i64,
                         settings.require_verification_for_proposals as i64,
+                        settings.require_accept_for_finalize as i64,
                     ],
                 )?;
 

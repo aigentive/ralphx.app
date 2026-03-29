@@ -9,8 +9,8 @@ use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 
 use crate::domain::entities::{
-    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, SessionOrigin,
-    VerificationMetadata, VerificationStatus,
+    AcceptanceStatus, IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
+    SessionOrigin, VerificationMetadata, VerificationStatus,
 };
 use crate::domain::repositories::ideation_session_repository::{
     IdeationSessionWithProgress, SessionGroupCounts,
@@ -859,6 +859,43 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
             })
             .count() as u32;
         Ok(count)
+    }
+
+    async fn update_acceptance_status(
+        &self,
+        session_id: &IdeationSessionId,
+        expected_current: Option<AcceptanceStatus>,
+        new_status: Option<AcceptanceStatus>,
+    ) -> AppResult<bool> {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(session) = sessions.get_mut(session_id.as_str()) {
+            if session.acceptance_status == expected_current {
+                session.acceptance_status = new_status;
+                session.updated_at = Utc::now();
+                return Ok(true);
+            }
+            return Ok(false);
+        }
+        Err(AppError::NotFound(format!(
+            "Session {} not found",
+            session_id.as_str()
+        )))
+    }
+
+    async fn get_sessions_with_pending_acceptance(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>> {
+        let sessions = self.sessions.read().unwrap();
+        Ok(sessions
+            .values()
+            .filter(|s| {
+                s.project_id.to_string() == project_id.to_string()
+                    && s.status == IdeationSessionStatus::Active
+                    && s.acceptance_status == Some(AcceptanceStatus::Pending)
+            })
+            .cloned()
+            .collect())
     }
 }
 

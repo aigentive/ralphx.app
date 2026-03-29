@@ -130,9 +130,17 @@ pub async fn create_task_proposal(
 
 pub async fn finalize_proposals(
     State(state): State<HttpServerState>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<FinalizeProposalsRequest>,
 ) -> Result<Json<FinalizeProposalsResponse>, JsonError> {
-    let response = finalize_proposals_impl(&state.app_state, &req.session_id)
+    // Detect external request by header
+    let is_external = headers
+        .get(crate::http_server::handlers::external_auth::EXTERNAL_MCP_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v == "1")
+        .unwrap_or(false);
+
+    let response = finalize_proposals_impl(&state.app_state, &req.session_id, is_external)
         .await
         .map_err(|e| {
             error!("Failed to finalize proposals for session {}: {}", req.session_id, e);

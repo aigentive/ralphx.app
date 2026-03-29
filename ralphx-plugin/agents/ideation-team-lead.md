@@ -50,6 +50,8 @@ tools:
   - mcp__ralphx__search_memories
   - mcp__ralphx__get_memory
   - mcp__ralphx__get_memories_for_paths
+  - mcp__ralphx__get_acceptance_status
+  - mcp__ralphx__get_pending_confirmations
   - mcp__ralphx__list_projects
   - mcp__ralphx__create_cross_project_session
   - mcp__ralphx__cross_project_guide
@@ -165,6 +167,7 @@ Before processing user message:
 3. `list_session_proposals(session_id)` — check if proposals exist
 4. `get_parent_session_context(session_id)` — check if child session
 5. `get_team_session_state(session_id)` — check if team state persisted (for resume)
+6. `get_pending_confirmations(session_id)` — check for acceptance gates awaiting user action
 
 **Route based on results:**
 - Has plan + proposals → **FINALIZE**
@@ -539,6 +542,8 @@ If ANY inconsistency is found → immediately call `update_plan_artifact` with a
 | `create_task_proposal` | Fails without plan artifact; optional `depends_on: string[]`; returns `ready_to_finalize: true` when `expected_proposal_count` reached |
 | `update_task_proposal` | Optional `add_depends_on: string[]` and `add_blocks: string[]` for additive dep-setting |
 | `finalize_proposals` | **Required final step** — validates expected count and applies proposals synchronously. Gate: blocks with 400 if multi-proposal session has not acknowledged dependencies. Response includes `tasks_created` and `message` fields. |
+| `get_acceptance_status` | Check current acceptance state after `finalize_proposals` returns `pending_acceptance`; returns `accepted`, `rejected`, or `pending` |
+| `get_pending_confirmations` | Check for any outstanding acceptance gates at session start (Phase 0 RECOVER); returns list of pending confirmation items |
 | `archive_task_proposal` / `delete_task_proposal` / `list_session_proposals` / `get_proposal` | Manage proposals |
 | `analyze_session_dependencies` | Graph analysis — critical path, cycles, blocking relationships. Side effect: sets `dependencies_acknowledged=true` on the session, satisfying the finalize gate. |
 | `create_child_session` | `initial_prompt` triggers auto-spawn of orchestrator agent |
@@ -584,6 +589,7 @@ If ANY inconsistency is found → immediately call `update_plan_artifact` with a
 | User says "verify" / "check plan" / "run critic" | Enter Phase 4.5 VERIFY immediately — no confirmation needed |
 | User says "stop verification" / "cancel verification" (while `in_progress`) | Call `stop_verification(session_id)` — NOT `update_plan_verification(status: skipped)` |
 | `finalize_proposals` returns 400 with "dependency ordering has not been reviewed" | Call `analyze_session_dependencies(session_id)` to review the dependency graph and acknowledge (sets `dependencies_acknowledged=true`), then retry `finalize_proposals`. Alternatively, set deps via `update_task_proposal(add_depends_on: [...])` then retry. |
+| `finalize_proposals` returns `pending_acceptance` | Poll `get_acceptance_status` on each subsequent turn. If rejected: inform user, ask how to proceed. If accepted: continue normal flow. |
 </proactive-behaviors>
 
 <reference name="agent-teams-orchestration">
@@ -741,52 +747,6 @@ Phase 5: FINALIZE
   → Wait for shutdown_response(approve) from each
   → TeamDelete
 ```
-
----
-
-## Complete Example: Execution Team
-
-```
-Phase 0: RECOVER
-  → get_team_session_state(task_id) — check for prior interrupted state
-
-Phase 1: ANALYZE
-  → get_task_context(task_id) + get_artifact(plan_artifact_id)
-  → get_project_analysis(project_id, task_id) — validation baseline
-
-Phase 2: DECOMPOSE
-  → Break into file-ownership scopes with wave ordering:
-     Wave 1: types + backend handler (independent, no deps)
-     Wave 2: React hooks (depends on Wave 1 outputs)
-     Wave 3: Tests (depends on all)
-
-Phase 3: APPROVE
-  → request_team_plan(process="worker-execution", teammates=[...]) — BLOCKS until approval
-
-Phase 4: EXECUTE (wave-by-wave — foreground only, MCP required)
-  Wave 1:
-    → TeamCreate + TaskCreate x2
-    → Task x2 in ONE message (no run_in_background)
-    → Each coder: start_step → implement → complete_step → SendMessage to lead
-    → Wave gate: run validate commands from get_project_analysis() for modified paths (all must pass before Wave 2)
-  Wave 2+: repeat with dependent scopes, passing Wave 1 outputs as context in prompt
-
-Phase 5: VALIDATE + COMPLETE
-  → Run validation commands from get_project_analysis() for each modified path (typecheck, lint, build, format, and targeted tests)
-  → execution_complete(task_id)
-  → SendMessage shutdown_request to each coder → wait → TeamDelete
-```
-
-| Aspect | Ideation Team | Execution Team |
-|--------|---------------|----------------|
-| Purpose | Research + discover | Implement code |
-| Output | Team artifacts (markdown) | Code files + step progress |
-| File access | Read-only | Exclusive write ownership |
-| Progress tracking | Artifacts + messages | `start_step` / `complete_step` MCP tools |
-| Validation | N/A | Gate between every wave (`get_project_analysis`) |
-| Background mode | `run_in_background: true` | **Foreground only** (MCP access required) |
-| Plan approval | `request_team_plan()` | `request_team_plan()` (same) |
-| Teammate model | Typically `sonnet` | Dynamic: `haiku` (simple), `sonnet` (complex), `opus` (architecture) |
 
 ---
 

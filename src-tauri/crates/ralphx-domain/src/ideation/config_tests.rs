@@ -38,6 +38,7 @@ fn test_ideation_settings_serialization() {
         auto_link_proposals: false,
         require_verification_for_accept: false,
         require_verification_for_proposals: false,
+        require_accept_for_finalize: false,
     };
 
     let json = serde_json::to_string(&settings).unwrap();

@@ -624,6 +624,49 @@ pub enum VerificationError {
 
 // ---------------------------------------------------------------------------
 
+/// Status of user acceptance for the finalize confirmation gate
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AcceptanceStatus {
+    /// Proposals have been validated but not yet applied, awaiting user confirmation
+    Pending,
+    /// User has accepted the proposals, apply_proposals_core will be called
+    Accepted,
+    /// User has rejected the proposals, acceptance_status will be reset to null
+    Rejected,
+}
+
+impl Default for AcceptanceStatus {
+    fn default() -> Self {
+        Self::Pending
+    }
+}
+
+impl std::fmt::Display for AcceptanceStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AcceptanceStatus::Pending => write!(f, "pending"),
+            AcceptanceStatus::Accepted => write!(f, "accepted"),
+            AcceptanceStatus::Rejected => write!(f, "rejected"),
+        }
+    }
+}
+
+impl FromStr for AcceptanceStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pending" => Ok(AcceptanceStatus::Pending),
+            "accepted" => Ok(AcceptanceStatus::Accepted),
+            "rejected" => Ok(AcceptanceStatus::Rejected),
+            _ => Err(format!("unknown acceptance status: '{s}'")),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 /// Helper function to parse datetime strings from SQLite
 pub fn parse_datetime_helper(s: String) -> DateTime<Utc> {
     // Try RFC3339 first (our preferred format)

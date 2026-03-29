@@ -42,6 +42,8 @@ interface ProposalsToolbarProps {
   analysisTimedOut?: boolean;
   /** Session for verification gate — blocks accept when verification is required */
   session?: Pick<IdeationSessionResponse, "verificationStatus" | "verificationInProgress"> | null;
+  /** True when agent-initiated finalization is pending user confirmation */
+  isPendingAcceptance?: boolean;
 }
 
 // ============================================================================
@@ -57,6 +59,7 @@ export function ProposalsToolbar({
   onAnalyzeDependencies,
   analysisTimedOut = false,
   session = null,
+  isPendingAcceptance = false,
 }: ProposalsToolbarProps) {
   const totalCount = proposals.length;
   const validation = useDependencyGraphValidation(proposals, graph);
@@ -65,7 +68,8 @@ export function ProposalsToolbar({
     totalCount > 0 &&
     !isReadOnly &&
     validation.isComplete &&
-    verificationGate.canAccept;
+    verificationGate.canAccept &&
+    !isPendingAcceptance;
   const showAnalyzeButton = totalCount >= 2 && onAnalyzeDependencies && !isReadOnly;
   const acceptLabel = analysisTimedOut ? "Accept without dependencies" : `Accept Plan (${totalCount})`;
   const verificationBlocked = !isReadOnly && !verificationGate.canAccept && totalCount > 0;
@@ -173,6 +177,23 @@ export function ProposalsToolbar({
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
                 {validation.message}
+              </TooltipContent>
+            </Tooltip>
+          )}
+
+          {/* Pending acceptance warning */}
+          {isPendingAcceptance && !isReadOnly && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center px-1">
+                  <AlertCircle
+                    className="w-4 h-4"
+                    style={{ color: "hsl(40 90% 55%)" }}
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                Waiting for agent-initiated confirmation
               </TooltipContent>
             </Tooltip>
           )}

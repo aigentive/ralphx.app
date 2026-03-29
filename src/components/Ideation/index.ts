@@ -1,4 +1,5 @@
 export { AcceptModal } from "./AcceptModal";
+export { FinalizeConfirmationDialog } from "./FinalizeConfirmationDialog";
 // Backward compatibility alias
 export { AcceptModal as ApplyModal } from "./AcceptModal";
 export { DependencyVisualization } from "./DependencyVisualization";

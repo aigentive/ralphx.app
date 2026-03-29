@@ -6,6 +6,7 @@ import { useIdeationStore } from "@/stores/ideationStore";
 import { PlanDisplay } from "./PlanDisplay";
 import type { TeamMetadata } from "./PlanDisplay";
 import { AcceptedSessionBanner } from "./AcceptedSessionBanner";
+import { PendingAcceptanceBanner } from "./PendingAcceptanceBanner";
 import { PlanEmptyState } from "./PlanEmptyState";
 import { ExportPlanDialog } from "./ExportPlanDialog";
 import { chatApi } from "@/api/chat";
@@ -73,6 +74,11 @@ export function PlanTabContent({
           convertedAt={session.convertedAt}
           onViewWork={onViewWork}
         />
+      )}
+
+      {/* Pending acceptance banner — shown after agent-initiated finalization gate */}
+      {session.acceptanceStatus === "pending" && (
+        <PendingAcceptanceBanner sessionId={session.id} />
       )}
 
       {/* Import status notification */}

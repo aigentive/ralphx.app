@@ -34,6 +34,9 @@ pub struct IdeationSettings {
     /// If true, plans must be verified (or skipped) before proposals can be created
     #[serde(default)]
     pub require_verification_for_proposals: bool,
+    /// If true, finalize_proposals pauses for human acceptance before applying proposals
+    #[serde(default)]
+    pub require_accept_for_finalize: bool,
 }
 
 impl Default for IdeationSettings {
@@ -45,6 +48,7 @@ impl Default for IdeationSettings {
             auto_link_proposals: true,
             require_verification_for_accept: false, // Opt-in feature
             require_verification_for_proposals: false, // Opt-in feature
+            require_accept_for_finalize: false, // Opt-in feature
         }
     }
 }

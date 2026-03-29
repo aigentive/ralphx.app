@@ -27,6 +27,7 @@ fn settings_with_required(required: bool) -> IdeationSettings {
         auto_link_proposals: false,
         require_verification_for_accept: required,
         require_verification_for_proposals: false,
+        require_accept_for_finalize: false,
     }
 }
 
@@ -131,6 +132,7 @@ fn proposal_gate_settings(enabled: bool) -> IdeationSettings {
         auto_link_proposals: false,
         require_verification_for_accept: false,
         require_verification_for_proposals: enabled,
+        require_accept_for_finalize: false,
     }
 }
 

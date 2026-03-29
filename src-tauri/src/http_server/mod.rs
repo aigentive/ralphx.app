@@ -179,6 +179,23 @@ pub async fn start_http_server(
             "/api/ideation/sessions/:id/stop-verification",
             post(stop_verification),
         )
+        // Acceptance gate tools (user confirmation for require_accept_for_finalize)
+        .route(
+            "/api/ideation/sessions/:id/accept-finalize",
+            post(accept_finalize),
+        )
+        .route(
+            "/api/ideation/sessions/:id/reject-finalize",
+            post(reject_finalize),
+        )
+        .route(
+            "/api/ideation/sessions/:id/acceptance-status",
+            get(get_acceptance_status),
+        )
+        .route(
+            "/api/ideation/pending-confirmations",
+            get(get_pending_confirmations),
+        )
         // Child session tools (orchestrator-ideation + ideation-team-lead + plan-verifier agents)
         .route(
             "/api/ideation/sessions/:id/child-status",

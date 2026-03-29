@@ -771,6 +771,22 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
     ) -> crate::error::AppResult<u32> {
         self.inner.count_pending_sessions_for_project(project_id).await
     }
+
+    async fn update_acceptance_status(
+        &self,
+        session_id: &crate::domain::entities::IdeationSessionId,
+        expected_current: Option<crate::domain::entities::AcceptanceStatus>,
+        new_status: Option<crate::domain::entities::AcceptanceStatus>,
+    ) -> crate::error::AppResult<bool> {
+        self.inner.update_acceptance_status(session_id, expected_current, new_status).await
+    }
+
+    async fn get_sessions_with_pending_acceptance(
+        &self,
+        project_id: &ProjectId,
+    ) -> crate::error::AppResult<Vec<IdeationSession>> {
+        self.inner.get_sessions_with_pending_acceptance(project_id).await
+    }
 }
 
 #[tokio::test]

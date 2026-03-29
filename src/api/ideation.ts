@@ -656,4 +656,51 @@ export const ideationApi = {
       );
     },
   },
+
+  /**
+   * Acceptance gate operations (HTTP endpoints at :3847)
+   */
+  acceptance: {
+    /**
+     * Accept the pending finalize confirmation for a session.
+     * Atomically transitions acceptance_status Pending → Accepted, then creates tasks.
+     */
+    accept: async (sessionId: string): Promise<{ status: string; sessionId: string }> => {
+      const res = await fetch(
+        `http://localhost:3847/api/ideation/sessions/${sessionId}/accept-finalize`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId }),
+        }
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+        throw new Error((body as { error?: string }).error ?? `Accept failed: ${res.status}`);
+      }
+      const data = await res.json() as { status: string; session_id: string };
+      return { status: data.status, sessionId: data.session_id };
+    },
+
+    /**
+     * Reject the pending finalize confirmation for a session.
+     * Resets acceptance_status to null, allowing the agent to re-finalize.
+     */
+    reject: async (sessionId: string): Promise<{ status: string; sessionId: string }> => {
+      const res = await fetch(
+        `http://localhost:3847/api/ideation/sessions/${sessionId}/reject-finalize`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId }),
+        }
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+        throw new Error((body as { error?: string }).error ?? `Reject failed: ${res.status}`);
+      }
+      const data = await res.json() as { status: string; session_id: string };
+      return { status: data.status, sessionId: data.session_id };
+    },
+  },
 } as const;

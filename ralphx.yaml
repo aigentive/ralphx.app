@@ -483,6 +483,9 @@ agents:
         search_memories,
         get_memory,
         get_memories_for_paths,
+        # acceptance gate tools
+        get_acceptance_status,
+        get_pending_confirmations,
         # cross-project tools
         list_projects,
         create_cross_project_session,
@@ -920,6 +923,9 @@ agents:
         search_memories,
         get_memory,
         get_memories_for_paths,
+        # acceptance gate tools
+        get_acceptance_status,
+        get_pending_confirmations,
         # cross-project tools
         list_projects,
         create_cross_project_session,

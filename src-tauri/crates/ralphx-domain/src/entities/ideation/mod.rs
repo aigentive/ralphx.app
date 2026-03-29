@@ -133,6 +133,10 @@ pub struct IdeationSession {
     /// Set when spawn_child_orchestration fails due to ideation capacity limits.
     /// Cleared to NULL by the drain service after successful launch.
     pub pending_initial_prompt: Option<String>,
+    /// Acceptance status for the finalize confirmation gate.
+    /// None = gate not triggered. Some(Pending) = awaiting user confirmation.
+    /// Some(Accepted) = user accepted. Some(Rejected) = user rejected.
+    pub acceptance_status: Option<AcceptanceStatus>,
 }
 
 /// Builder for creating IdeationSession instances
@@ -177,6 +181,7 @@ pub struct IdeationSessionBuilder {
     external_last_read_message_id: Option<String>,
     dependencies_acknowledged: Option<bool>,
     pending_initial_prompt: Option<String>,
+    acceptance_status: Option<AcceptanceStatus>,
 }
 
 impl IdeationSessionBuilder {
@@ -395,6 +400,12 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set the acceptance status for the finalize confirmation gate
+    pub fn acceptance_status(mut self, status: AcceptanceStatus) -> Self {
+        self.acceptance_status = Some(status);
+        self
+    }
+
     /// Build the IdeationSession
     /// Panics if project_id is not set
     pub fn build(self) -> IdeationSession {
@@ -439,6 +450,7 @@ impl IdeationSessionBuilder {
             external_last_read_message_id: self.external_last_read_message_id,
             dependencies_acknowledged: self.dependencies_acknowledged.unwrap_or(false),
             pending_initial_prompt: self.pending_initial_prompt,
+            acceptance_status: self.acceptance_status,
         }
     }
 }
@@ -642,6 +654,11 @@ impl IdeationSession {
             pending_initial_prompt: row
                 .get::<_, Option<String>>("pending_initial_prompt")
                 .unwrap_or(None),
+            acceptance_status: row
+                .get::<_, Option<String>>("acceptance_status")
+                .unwrap_or(None)
+                .as_deref()
+                .and_then(|s| s.parse().ok()),
         })
     }
 

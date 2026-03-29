@@ -480,6 +480,22 @@ impl IdeationSessionRepository for MockSessionRepository {
     ) -> AppResult<u32> {
         Ok(0)
     }
+
+    async fn update_acceptance_status(
+        &self,
+        _session_id: &ralphx_lib::domain::entities::IdeationSessionId,
+        _expected_current: Option<ralphx_lib::domain::entities::AcceptanceStatus>,
+        _new_status: Option<ralphx_lib::domain::entities::AcceptanceStatus>,
+    ) -> AppResult<bool> {
+        Ok(false)
+    }
+
+    async fn get_sessions_with_pending_acceptance(
+        &self,
+        _project_id: &ralphx_lib::domain::entities::ProjectId,
+    ) -> AppResult<Vec<ralphx_lib::domain::entities::IdeationSession>> {
+        Ok(vec![])
+    }
 }
 
 struct MockProposalRepository {

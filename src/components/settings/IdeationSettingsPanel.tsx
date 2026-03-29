@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
 import { useIdeationSettings } from "@/hooks/useIdeationSettings";
+import { useUiStore } from "@/stores/uiStore";
 import type { IdeationPlanMode } from "@/types/ideation-config";
 
 // ============================================================================
@@ -145,6 +146,8 @@ const PLAN_MODE_OPTIONS: {
 
 export function IdeationSettingsPanel() {
   const { settings, updateSettings, isUpdating } = useIdeationSettings();
+  const autoAcceptPlans = useUiStore((s) => s.autoAcceptPlans);
+  const setAutoAcceptPlans = useUiStore((s) => s.setAutoAcceptPlans);
 
   const handlePlanModeChange = (mode: string) => {
     updateSettings({
@@ -171,6 +174,13 @@ export function IdeationSettingsPanel() {
     updateSettings({
       ...settings,
       autoLinkProposals: checked,
+    });
+  };
+
+  const handleRequireAcceptForFinalizeChange = (checked: boolean) => {
+    updateSettings({
+      ...settings,
+      requireAcceptForFinalize: checked,
     });
   };
 
@@ -261,6 +271,26 @@ export function IdeationSettingsPanel() {
           checked={settings.autoLinkProposals}
           disabled={isUpdating}
           onChange={handleAutoLinkProposalsChange}
+        />
+
+        {/* Require agent confirmation before finalizing proposals */}
+        <CheckboxSettingRow
+          id="require-accept-for-finalize"
+          label="Require confirmation before finalizing"
+          description="Pause finalize_proposals for user Accept/Reject before tasks are created"
+          checked={settings.requireAcceptForFinalize}
+          disabled={isUpdating}
+          onChange={handleRequireAcceptForFinalizeChange}
+        />
+
+        {/* Auto-accept all finalization dialogs (in-memory only) */}
+        <CheckboxSettingRow
+          id="auto-accept-plans"
+          label="Auto-accept ideation plans"
+          description="Automatically accept all pending finalize confirmations without showing the dialog (resets on app restart)"
+          checked={autoAcceptPlans}
+          disabled={false}
+          onChange={setAutoAcceptPlans}
         />
       </div>
     </Card>

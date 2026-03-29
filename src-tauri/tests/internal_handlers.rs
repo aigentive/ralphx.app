@@ -681,7 +681,7 @@ async fn test_all_foreign_finalize_transitions_session_to_accepted() {
     state.app_state.task_proposal_repo.create(p3).await.unwrap();
 
     // Call finalize_proposals_impl — accessible via the handlers::* glob re-export
-    let result = finalize_proposals_impl(&state.app_state, &session_id).await;
+    let result = finalize_proposals_impl(&state.app_state, &session_id, false).await;
 
     assert!(result.is_ok(), "finalize_proposals_impl should succeed: {:?}", result.err());
     let response = result.unwrap();
@@ -767,7 +767,7 @@ async fn test_migrate_then_finalize_target_session_accepted() {
 
     // finalize_proposals_impl sees all proposals as local → calls apply_proposals_core
     // → session converts to Accepted
-    let response = finalize_proposals_impl(&app_state, &target_id).await.unwrap();
+    let response = finalize_proposals_impl(&app_state, &target_id, false).await.unwrap();
     assert_eq!(
         response.session_status, "accepted",
         "All proposals local (target_project cleared) — session should transition to Accepted"

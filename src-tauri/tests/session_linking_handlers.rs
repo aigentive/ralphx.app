@@ -53,6 +53,7 @@ fn make_session(team_mode: Option<&str>) -> IdeationSession {
         external_last_read_message_id: None,
         dependencies_acknowledged: false,
         pending_initial_prompt: None,
+        acceptance_status: None,
     }
 }
 
@@ -141,6 +142,7 @@ mod verification_init_tests {
             external_last_read_message_id: None,
             dependencies_acknowledged: false,
             pending_initial_prompt: None,
+            acceptance_status: None,
         }
     }
 

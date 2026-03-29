@@ -11,10 +11,10 @@ use crate::application::git_service::GitService;
 use crate::commands::ideation_commands::{apply_proposals_core, is_local_proposal, ApplyProposalsInput, TaskProposalResponse};
 use crate::domain::services::{check_proposal_verification_gate, ProposalOperation};
 use crate::domain::entities::{
-    Artifact, ArtifactContent, ArtifactSummary, ArtifactType, Complexity, IdeationSession,
-    IdeationSessionId, IdeationSessionStatus, InternalStatus, Priority, ProposalCategory,
-    ScopeDriftStatus, TaskContext, TaskId, TaskProposal, TaskProposalId, ValidationCacheData,
-    ValidationCacheMetadata,
+    AcceptanceStatus, Artifact, ArtifactContent, ArtifactSummary, ArtifactType, Complexity,
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, InternalStatus, Priority,
+    ProposalCategory, ScopeDriftStatus, SessionOrigin, TaskContext, TaskId, TaskProposal,
+    TaskProposalId, ValidationCacheData, ValidationCacheMetadata,
 };
 use crate::domain::review::{compute_out_of_scope_blocker_fingerprint, compute_scope_drift};
 use crate::error::{AppError, AppResult};
@@ -799,6 +799,7 @@ pub async fn archive_proposal_impl(
 pub async fn finalize_proposals_impl(
     state: &AppState,
     session_id: &str,
+    is_external: bool,
 ) -> AppResult<crate::http_server::types::FinalizeProposalsResponse> {
     // Fetch session and validate it is Active
     let session_id_typed = IdeationSessionId::from_string(session_id.to_string());
@@ -873,6 +874,51 @@ pub async fn finalize_proposals_impl(
         )));
     }
 
+    // ─── Acceptance Gate ───────────────────────────────────────────────────────
+    // If require_accept_for_finalize is enabled AND this is not an external request,
+    // pause here and wait for user confirmation.
+    // Bypass if: (a) is_external HTTP header present, or (b) session was created externally.
+    if !is_external && session.origin != SessionOrigin::External {
+        let ideation_settings = state
+            .ideation_settings_repo
+            .get_settings()
+            .await
+            .unwrap_or_default();
+        if ideation_settings.require_accept_for_finalize {
+            // Set acceptance_status to Pending (CAS: only if currently None)
+            state
+                .ideation_session_repo
+                .update_acceptance_status(&session_id_typed, None, Some(AcceptanceStatus::Pending))
+                .await?;
+
+            // Emit Tauri event to notify frontend
+            if let Some(ref handle) = state.app_handle {
+                let _ = handle.emit(
+                    "ideation:finalize_pending_confirmation",
+                    serde_json::json!({
+                        "sessionId": session_id,
+                        "sessionTitle": session.title,
+                    }),
+                );
+            }
+
+            return Ok(crate::http_server::types::FinalizeProposalsResponse {
+                created_task_ids: vec![],
+                dependencies_created: 0,
+                tasks_created: 0,
+                message: Some("Waiting for user confirmation to apply proposals".to_string()),
+                session_status: "active".to_string(),
+                execution_plan_id: None,
+                warnings: vec![],
+                project_id: session.project_id.to_string(),
+                skipped_foreign_count: count_foreign,
+                any_ready_tasks: false,
+                status: "pending_acceptance".to_string(),
+            });
+        }
+    }
+    // ─── End Acceptance Gate ────────────────────────────────────────────────────
+
     // Short-circuit if no local proposals — all have been migrated to foreign projects
     if count_local == 0 {
         // All proposals are foreign (migrated) — transition session to Accepted
@@ -894,6 +940,7 @@ pub async fn finalize_proposals_impl(
             project_id: session.project_id.to_string(),
             skipped_foreign_count: count_foreign,
             any_ready_tasks: false,
+            status: "success".to_string(),
         });
     }
 
@@ -928,7 +975,63 @@ pub async fn finalize_proposals_impl(
         project_id: result.project_id,
         skipped_foreign_count: count_foreign,
         any_ready_tasks: result.any_ready_tasks,
+        status: "success".to_string(),
     })
+}
+
+/// Apply proposals core for an already-validated session.
+///
+/// Used by `accept_finalize` to execute the finalization after user confirmation.
+/// Looks up the session and its active local proposals, then calls `apply_proposals_core`.
+///
+/// # Errors
+/// - `AppError::NotFound` if session or project not found
+/// - Errors from `apply_proposals_core`
+pub async fn apply_proposals_core_for_session(
+    state: &AppState,
+    session_id: &str,
+) -> AppResult<()> {
+    let session_id_typed = IdeationSessionId::from_string(session_id.to_string());
+
+    let session = state
+        .ideation_session_repo
+        .get_by_id(&session_id_typed)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Session {} not found", session_id)))?;
+
+    let project = state
+        .project_repo
+        .get_by_id(&session.project_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Project {} not found", session.project_id)))?;
+
+    let all_proposals = state
+        .task_proposal_repo
+        .get_by_session(&session_id_typed)
+        .await?;
+    let active_proposals: Vec<_> = all_proposals
+        .into_iter()
+        .filter(|p| p.archived_at.is_none())
+        .collect();
+
+    let project_dir = std::fs::canonicalize(&project.working_directory)
+        .unwrap_or_else(|_| PathBuf::from(&project.working_directory));
+
+    let proposal_ids: Vec<String> = active_proposals
+        .into_iter()
+        .filter(|p| is_local_proposal(p, &project_dir))
+        .map(|p| p.id.as_str().to_string())
+        .collect();
+
+    let input = ApplyProposalsInput {
+        session_id: session_id.to_string(),
+        proposal_ids,
+        target_column: "auto".to_string(),
+        base_branch_override: None,
+    };
+
+    apply_proposals_core(state, input).await?;
+    Ok(())
 }
 
 // ============================================================================

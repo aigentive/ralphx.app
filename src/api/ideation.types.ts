@@ -29,6 +29,7 @@ export interface IdeationSessionResponse {
   blockerFingerprint?: string | null;
   inheritedPlanArtifactId?: string | null;
   sessionPurpose: "general" | "verification";
+  acceptanceStatus: "pending" | "accepted" | "rejected" | null;
 }
 
 export interface VerificationStatusResponse {

@@ -687,6 +687,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const { session_id, message } = args;
             result = await callTauri(`ideation/sessions/${session_id}/message`, { message });
         }
+        else if (name === "get_acceptance_status") {
+            // GET /api/ideation/sessions/:id/acceptance-status
+            const { session_id } = args;
+            result = await callTauriGet(`ideation/sessions/${session_id}/acceptance-status`);
+        }
+        else if (name === "get_pending_confirmations") {
+            // GET /api/ideation/pending-confirmations?project_id=xxx
+            const projectId = RALPHX_PROJECT_ID;
+            if (!projectId) {
+                throw new Error("RALPHX_PROJECT_ID is not set — cannot query pending confirmations");
+            }
+            result = await callTauriGet(`ideation/pending-confirmations?project_id=${encodeURIComponent(projectId)}`);
+        }
         else if (name === "delete_task_proposal") {
             // Alias for archive_task_proposal — no /api/delete_task_proposal route exists in backend
             const { proposal_id } = args;

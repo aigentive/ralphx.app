@@ -10,7 +10,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEventBus } from "@/providers/EventProvider";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useChatStore } from "@/stores/chatStore";
+import { useUiStore } from "@/stores/uiStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
+import { ideationApi } from "@/api/ideation";
 import { ideationKeys } from "./useIdeation";
 import { dependencyKeys } from "./useDependencyGraph";
 import { taskKeys } from "./useTasks";
@@ -79,6 +81,15 @@ const SessionAcceptedEventSchema = z.object({
 });
 
 /**
+ * Schema for finalize pending confirmation event
+ * (emitted when require_accept_for_finalize gate is active)
+ */
+const FinalizePendingConfirmationEventSchema = z.object({
+  sessionId: z.string(),
+  sessionTitle: z.string().nullable(),
+});
+
+/**
  * Hook to listen for ideation events from the backend
  *
  * Listens to 'ideation:session_title_updated' events and updates the
@@ -99,6 +110,9 @@ export function useIdeationEvents() {
   const setVerificationNotification = useIdeationStore((s) => s.setVerificationNotification);
   const setActiveVerificationChildId = useIdeationStore((s) => s.setActiveVerificationChildId);
   const setLastVerificationChildId = useIdeationStore((s) => s.setLastVerificationChildId);
+  const enqueuePendingConfirmation = useUiStore((s) => s.enqueuePendingConfirmation);
+  const autoAcceptPlans = useUiStore((s) => s.autoAcceptPlans);
+  const autoAcceptSessions = useUiStore((s) => s.autoAcceptSessions);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -264,8 +278,55 @@ export function useIdeationEvents() {
       })
     );
 
+    // Listen for agent-initiated finalization awaiting user confirmation
+    unsubscribes.push(
+      bus.subscribe<unknown>("ideation:finalize_pending_confirmation", (payload) => {
+        logger.debug("[IdeationEvents] Received ideation:finalize_pending_confirmation:", payload);
+        const parsed = FinalizePendingConfirmationEventSchema.safeParse(payload);
+
+        if (!parsed.success) {
+          console.error(
+            "Invalid ideation:finalize_pending_confirmation event:",
+            parsed.error.message
+          );
+          return;
+        }
+
+        const { sessionId } = parsed.data;
+
+        // Check auto-accept: global or per-session — if on, bypass dialog entirely
+        if (autoAcceptPlans || autoAcceptSessions.has(sessionId)) {
+          logger.debug("[IdeationEvents] Auto-accepting finalize for session:", sessionId);
+          ideationApi.acceptance.accept(sessionId).then(() => {
+            // Mirror useAcceptFinalize.onSuccess query invalidations
+            queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
+            queryClient.invalidateQueries({ queryKey: ideationKeys.sessionWithData(sessionId) });
+            queryClient.invalidateQueries({ queryKey: taskKeys.all });
+            queryClient.invalidateQueries({ queryKey: proposalKeys.list(sessionId) });
+            queryClient.invalidateQueries({ queryKey: ["plan-branch"] });
+          }).catch((err: Error) => {
+            logger.warn("[IdeationEvents] Auto-accept failed, falling back to dialog:", err.message);
+            // Fall back to showing the dialog on auto-accept failure
+            enqueuePendingConfirmation(sessionId);
+            queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
+            queryClient.invalidateQueries({ queryKey: ideationKeys.sessionWithData(sessionId) });
+          });
+          return;
+        }
+
+        // Enqueue session for confirmation dialog; dialog shows first item in queue
+        enqueuePendingConfirmation(sessionId);
+
+        // Refresh session so acceptance_status reflects pending
+        queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
+        queryClient.invalidateQueries({
+          queryKey: ideationKeys.sessionWithData(sessionId),
+        });
+      })
+    );
+
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, updateSession, setVerificationNotification, setActiveVerificationChildId, setLastVerificationChildId, queryClient]);
+  }, [bus, updateSession, setVerificationNotification, setActiveVerificationChildId, setLastVerificationChildId, enqueuePendingConfirmation, autoAcceptPlans, autoAcceptSessions, queryClient]);
 }

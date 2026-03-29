@@ -52,6 +52,7 @@ function ensureMockData(): void {
     verificationInProgress: false,
     gapScore: null,
     sessionPurpose: "general",
+    acceptanceStatus: null,
   };
   mockSessions.set(session.id, session);
 
@@ -110,6 +111,7 @@ export const mockIdeationApi = {
         verificationInProgress: false,
         gapScore: null,
         sessionPurpose: "general",
+        acceptanceStatus: null,
       };
       mockSessions.set(session.id, session);
       return session;
@@ -198,6 +200,7 @@ export const mockIdeationApi = {
         verificationInProgress: false,
         gapScore: null,
         sessionPurpose: "general",
+        acceptanceStatus: null,
       };
       mockSessions.set(childSession.id, childSession);
 
@@ -435,6 +438,7 @@ export const mockIdeationApi = {
         requirePlanApproval: false,
         suggestPlansForComplex: true,
         autoLinkProposals: true,
+        requireAcceptForFinalize: false,
       };
     },
 

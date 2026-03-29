@@ -27,6 +27,7 @@ async fn test_update_settings() {
         auto_link_proposals: false,
         require_verification_for_accept: false,
         require_verification_for_proposals: false,
+        require_accept_for_finalize: false,
     };
 
     let updated = repo.update_settings(&new_settings).await.unwrap();
@@ -122,6 +123,7 @@ async fn test_update_overrides_previous_update() {
         auto_link_proposals: false,
         require_verification_for_accept: false,
         require_verification_for_proposals: false,
+        require_accept_for_finalize: false,
     })
     .await
     .unwrap();
@@ -133,6 +135,7 @@ async fn test_update_overrides_previous_update() {
         auto_link_proposals: true,
         require_verification_for_accept: false,
         require_verification_for_proposals: false,
+        require_accept_for_finalize: false,
     })
     .await
     .unwrap();
@@ -159,6 +162,7 @@ async fn test_boolean_fields_toggle_independently() {
         auto_link_proposals: false,
         require_verification_for_accept: false,
         require_verification_for_proposals: false,
+        require_accept_for_finalize: false,
     })
     .await
     .unwrap();
@@ -176,6 +180,7 @@ async fn test_boolean_fields_toggle_independently() {
         auto_link_proposals: true,
         require_verification_for_accept: false,
         require_verification_for_proposals: false,
+        require_accept_for_finalize: false,
     })
     .await
     .unwrap();

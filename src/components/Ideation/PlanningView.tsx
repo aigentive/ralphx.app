@@ -394,7 +394,7 @@ export function PlanningView({
     if (latestId) {
       setLastVerificationChildId(session.id, latestId);
     }
-  }, [session?.id, latestVerificationChildId, lastVerificationChildId, setLastVerificationChildId]);
+  }, [session?.id, verificationChildren?.length, latestVerificationChildId, lastVerificationChildId, setLastVerificationChildId]);
 
   // Reset to plan tab when switching sessions
   const prevSessionIdRef = useRef<string | null>(null);

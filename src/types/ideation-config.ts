@@ -31,6 +31,7 @@ export const IdeationSettingsSchema = z.object({
   requirePlanApproval: z.boolean(),
   suggestPlansForComplex: z.boolean(),
   autoLinkProposals: z.boolean(),
+  requireAcceptForFinalize: z.boolean(),
 });
 
 export type IdeationSettings = z.infer<typeof IdeationSettingsSchema>;
@@ -43,6 +44,7 @@ export const defaultIdeationSettings: IdeationSettings = {
   requirePlanApproval: false,
   suggestPlansForComplex: true,
   autoLinkProposals: true,
+  requireAcceptForFinalize: false,
 };
 
 // ============================================================================
@@ -57,6 +59,7 @@ export const IdeationSettingsResponseSchema = z.object({
   require_plan_approval: z.boolean(),
   suggest_plans_for_complex: z.boolean(),
   auto_link_proposals: z.boolean(),
+  require_accept_for_finalize: z.boolean(),
 });
 
 export type IdeationSettingsResponse = z.infer<typeof IdeationSettingsResponseSchema>;

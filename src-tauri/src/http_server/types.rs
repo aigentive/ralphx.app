@@ -168,6 +168,49 @@ pub struct FinalizeProposalsResponse {
     /// Whether any tasks were created in Ready status — used to guard scheduler trigger.
     #[serde(default)]
     pub any_ready_tasks: bool,
+    /// Finalization result status: "success" or "pending_acceptance"
+    pub status: String,
+}
+
+/// Request to accept a pending finalize confirmation
+#[derive(Debug, Deserialize)]
+pub struct AcceptFinalizeRequest {
+    pub session_id: String,
+}
+
+/// Request to reject a pending finalize confirmation
+#[derive(Debug, Deserialize)]
+pub struct RejectFinalizeRequest {
+    pub session_id: String,
+}
+
+/// Response from accept/reject finalize
+#[derive(Debug, Serialize)]
+pub struct AcceptanceActionResponse {
+    /// "accepted" or "rejected"
+    pub status: String,
+    pub session_id: String,
+}
+
+/// Response for get_acceptance_status
+#[derive(Debug, Serialize)]
+pub struct AcceptanceStatusResponse {
+    pub session_id: String,
+    /// "pending", "accepted", "rejected", or null
+    pub acceptance_status: Option<String>,
+}
+
+/// Response for get_pending_confirmations
+#[derive(Debug, Serialize)]
+pub struct PendingConfirmationsResponse {
+    pub sessions: Vec<PendingConfirmationItem>,
+}
+
+/// One item in the pending confirmations list
+#[derive(Debug, Serialize)]
+pub struct PendingConfirmationItem {
+    pub session_id: String,
+    pub session_title: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

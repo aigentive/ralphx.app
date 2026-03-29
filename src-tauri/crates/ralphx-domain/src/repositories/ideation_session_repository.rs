@@ -8,8 +8,8 @@ use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 
 use crate::domain::entities::{
-    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, VerificationMetadata,
-    VerificationStatus,
+    AcceptanceStatus, IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
+    VerificationMetadata, VerificationStatus,
 };
 use crate::error::AppResult;
 
@@ -420,6 +420,29 @@ pub trait IdeationSessionRepository: Send + Sync {
         &self,
         project_id: &ProjectId,
     ) -> AppResult<u32>;
+
+    /// Set `acceptance_status` on a session using Compare-And-Swap (CAS).
+    ///
+    /// Only updates if the current `acceptance_status` matches `expected_current`.
+    /// Returns `true` if the update was applied, `false` if the CAS check failed
+    /// (concurrent modification).
+    ///
+    /// Pass `expected_current = None` to only update when acceptance_status IS NULL.
+    async fn update_acceptance_status(
+        &self,
+        session_id: &IdeationSessionId,
+        expected_current: Option<AcceptanceStatus>,
+        new_status: Option<AcceptanceStatus>,
+    ) -> AppResult<bool>;
+
+    /// Return all active sessions (status = Active) for a project that have
+    /// `acceptance_status = 'pending'`.
+    ///
+    /// Used by `get_pending_confirmations` HTTP handler.
+    async fn get_sessions_with_pending_acceptance(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>>;
 }
 
 #[cfg(test)]

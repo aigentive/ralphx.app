@@ -280,6 +280,12 @@ interface UiState {
   sessionByProject: Record<string, string | null>;
   /** Cached UI feature flags (fetched once at startup, defaults to all-enabled) */
   featureFlags: FeatureFlags;
+  /** Queue of session IDs awaiting finalization confirmation (first = active dialog) */
+  pendingConfirmationQueue: string[];
+  /** Global auto-accept: bypass confirmation dialog for all sessions (in-memory, resets on restart) */
+  autoAcceptPlans: boolean;
+  /** Per-session auto-accept: bypass confirmation for specific sessions (in-memory, resets on restart) */
+  autoAcceptSessions: Set<string>;
 }
 
 // ============================================================================
@@ -404,6 +410,18 @@ interface UiActions {
   setFeatureFlags: (flags: FeatureFlags) => void;
   /** Atomically navigate to kanban view and select the given task */
   navigateToTask: (taskId: string) => void;
+  /** Enqueue a session ID for finalization confirmation (deduplicates) */
+  enqueuePendingConfirmation: (sessionId: string) => void;
+  /** Remove the first item from the confirmation queue (after dialog resolves) */
+  dequeueConfirmation: () => void;
+  /** Remove a specific session from the queue (e.g., on background auto-accept) */
+  removeFromConfirmationQueue: (sessionId: string) => void;
+  /** Set global auto-accept toggle */
+  setAutoAcceptPlans: (value: boolean) => void;
+  /** Add a session to per-session auto-accept set */
+  addAutoAcceptSession: (sessionId: string) => void;
+  /** Remove a session from per-session auto-accept set */
+  removeAutoAcceptSession: (sessionId: string) => void;
 }
 
 // ============================================================================
@@ -461,6 +479,9 @@ export const useUiStore = create<UiState & UiActions>()(
     viewByProject: loadViewByProject(),
     sessionByProject: loadSessionByProject(),
     featureFlags: ALL_ENABLED_FLAGS,
+    pendingConfirmationQueue: [],
+    autoAcceptPlans: false,
+    autoAcceptSessions: new Set<string>(),
 
     // Actions
     toggleSidebar: () =>
@@ -855,6 +876,40 @@ export const useUiStore = create<UiState & UiActions>()(
         state.graphSelection = { kind: "task", id: taskId };
       });
     },
+
+    enqueuePendingConfirmation: (sessionId) =>
+      set((state) => {
+        if (!state.pendingConfirmationQueue.includes(sessionId)) {
+          state.pendingConfirmationQueue.push(sessionId);
+        }
+      }),
+
+    dequeueConfirmation: () =>
+      set((state) => {
+        state.pendingConfirmationQueue.shift();
+      }),
+
+    removeFromConfirmationQueue: (sessionId) =>
+      set((state) => {
+        state.pendingConfirmationQueue = state.pendingConfirmationQueue.filter(
+          (id) => id !== sessionId
+        );
+      }),
+
+    setAutoAcceptPlans: (value) =>
+      set((state) => {
+        state.autoAcceptPlans = value;
+      }),
+
+    addAutoAcceptSession: (sessionId) =>
+      set((state) => {
+        state.autoAcceptSessions.add(sessionId);
+      }),
+
+    removeAutoAcceptSession: (sessionId) =>
+      set((state) => {
+        state.autoAcceptSessions.delete(sessionId);
+      }),
   }))
 );
 

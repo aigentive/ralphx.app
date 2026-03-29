@@ -329,6 +329,7 @@ async fn test_proposals_ready_and_session_accepted_emit_events() {
 
     let result = finalize_proposals(
         State(state),
+        axum::http::HeaderMap::new(),
         Json(FinalizeProposalsRequest {
             session_id: session_id.as_str().to_string(),
         }),
@@ -413,6 +414,7 @@ async fn test_session_accepted_emits_event_when_proposals_applied() {
 
     let result = finalize_proposals(
         State(state),
+        axum::http::HeaderMap::new(),
         Json(FinalizeProposalsRequest {
             session_id: session_id.as_str().to_string(),
         }),

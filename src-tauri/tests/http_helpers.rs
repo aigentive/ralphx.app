@@ -1773,7 +1773,7 @@ async fn test_finalize_blocked_by_verification_gate() {
     }
 
     // Explicitly call finalize_proposals — must fail with validation error
-    let result = finalize_proposals_impl(&state, session.id.as_str()).await;
+    let result = finalize_proposals_impl(&state, session.id.as_str(), false).await;
 
     assert!(result.is_err(), "finalize_proposals must fail when verification gate blocks acceptance");
     let err = result.unwrap_err();
@@ -1809,7 +1809,7 @@ async fn test_finalize_rejects_feature_without_affected_paths() {
         .await
         .expect("proposal creation should still succeed");
 
-    let result = finalize_proposals_impl(&state, session.id.as_str()).await;
+    let result = finalize_proposals_impl(&state, session.id.as_str(), false).await;
 
     assert!(result.is_err(), "finalize must reject feature proposals without scope");
     match result.unwrap_err() {
@@ -1840,7 +1840,7 @@ async fn test_finalize_allows_research_without_affected_paths() {
         .await
         .expect("proposal creation should succeed");
 
-    let response = finalize_proposals_impl(&state, session.id.as_str())
+    let response = finalize_proposals_impl(&state, session.id.as_str(), false)
         .await
         .expect("research proposal should finalize without affected_paths");
 
@@ -1860,7 +1860,7 @@ async fn test_finalize_allows_design_without_affected_paths() {
         .await
         .expect("proposal creation should succeed");
 
-    let response = finalize_proposals_impl(&state, session.id.as_str())
+    let response = finalize_proposals_impl(&state, session.id.as_str(), false)
         .await
         .expect("design proposal should finalize without affected_paths");
 
@@ -1916,7 +1916,7 @@ async fn test_finalize_ignores_foreign_feature_without_affected_paths() {
         .await
         .expect("proposal creation should succeed");
 
-    let response = finalize_proposals_impl(&state, session_id.as_str())
+    let response = finalize_proposals_impl(&state, session_id.as_str(), false)
         .await
         .expect("foreign implementation proposal should not block source-session finalize");
 

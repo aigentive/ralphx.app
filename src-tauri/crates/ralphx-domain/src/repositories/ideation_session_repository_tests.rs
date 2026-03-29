@@ -409,6 +409,22 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
     ) -> AppResult<u32> {
         Ok(0)
     }
+
+    async fn update_acceptance_status(
+        &self,
+        _session_id: &IdeationSessionId,
+        _expected_current: Option<crate::domain::entities::AcceptanceStatus>,
+        _new_status: Option<crate::domain::entities::AcceptanceStatus>,
+    ) -> AppResult<bool> {
+        Ok(true)
+    }
+
+    async fn get_sessions_with_pending_acceptance(
+        &self,
+        _project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(vec![])
+    }
 }
 
 fn create_test_session(project_id: &ProjectId) -> IdeationSession {
@@ -452,6 +468,7 @@ fn create_test_session(project_id: &ProjectId) -> IdeationSession {
         external_last_read_message_id: None,
         dependencies_acknowledged: false,
         pending_initial_prompt: None,
+        acceptance_status: None,
     }
 }
 

@@ -15,7 +15,7 @@ import { ExecutionControlBar } from "@/components/execution/ExecutionControlBar"
 import { ChatPanel } from "@/components/Chat/ChatPanel";
 import { KanbanSplitLayout, Navigation } from "@/components/layout";
 import { PermissionDialog } from "@/components/PermissionDialog";
-import { IdeationView, ProposalEditModal } from "@/components/Ideation";
+import { IdeationView, ProposalEditModal, FinalizeConfirmationDialog } from "@/components/Ideation";
 import { ProposalDetailSheet } from "@/components/Ideation/ProposalDetailSheet";
 import type { ProposalDetailEnrichment } from "@/components/Ideation/ProposalDetailSheet";
 import { ExtensibilityView } from "@/components/ExtensibilityView";
@@ -1217,6 +1217,9 @@ function AppContent() {
 
       {/* Permission Dialog - Global UI-based permission approval */}
       <PermissionDialog />
+
+      {/* Finalize Confirmation Dialog - Agent-initiated plan acceptance gate */}
+      <FinalizeConfirmationDialog />
 
       {/* Proposal Edit Modal - Edit ideation proposals */}
       <ProposalEditModal

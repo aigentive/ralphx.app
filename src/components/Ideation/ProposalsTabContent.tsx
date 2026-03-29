@@ -179,6 +179,7 @@ export function ProposalsTabContent({
           onClearAll={onClearAll}
           onAcceptPlan={onAcceptPlan}
           session={session}
+          isPendingAcceptance={session.acceptanceStatus === "pending"}
         />
       )}
 

@@ -67,6 +67,7 @@ export function transformSession(raw: z.infer<typeof IdeationSessionResponseSche
     spawnReason: raw.spawn_reason ?? null,
     blockerFingerprint: raw.blocker_fingerprint ?? null,
     sessionPurpose: raw.session_purpose ?? "general",
+    acceptanceStatus: raw.acceptance_status ?? null,
   };
 }
 
@@ -206,6 +207,7 @@ export function transformIdeationSettings(raw: IdeationSettingsResponse): Ideati
     requirePlanApproval: raw.require_plan_approval,
     suggestPlansForComplex: raw.suggest_plans_for_complex,
     autoLinkProposals: raw.auto_link_proposals,
+    requireAcceptForFinalize: raw.require_accept_for_finalize,
   };
 }
 

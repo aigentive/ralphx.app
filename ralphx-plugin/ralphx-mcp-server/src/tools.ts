@@ -268,7 +268,8 @@ export const ALL_TOOLS: Tool[] = [
     description:
       "Signal that all proposals and dependencies are complete. Validates expected count and applies all proposals to create tasks. Call this AFTER all create_task_proposal and update_task_proposal calls are done. " +
       "Gate: blocks with 400 if a multi-proposal session has not acknowledged dependencies (call analyze_session_dependencies, or set deps via create_task_proposal(depends_on) / update_task_proposal(add_depends_on/add_blocks)). " +
-      "Response includes tasks_created (number of tasks created) and message (null on success, error detail on gate block).",
+      "Response includes tasks_created (number of tasks created), message (null on success, error detail on gate block), and status (\"success\" when tasks were created normally, \"pending_acceptance\" when the confirmation gate is active and user must accept before tasks are created). " +
+      "When status is \"pending_acceptance\": no tasks have been created yet — poll get_acceptance_status on each subsequent turn to check if user has accepted or rejected.",
     inputSchema: {
       type: "object",
       properties: {
@@ -278,6 +279,39 @@ export const ALL_TOOLS: Tool[] = [
         },
       },
       required: ["session_id"],
+    },
+  },
+
+  // ========================================================================
+  // ACCEPTANCE GATE TOOLS (orchestrator-ideation and ideation-team-lead only)
+  // ========================================================================
+  {
+    name: "get_acceptance_status",
+    description:
+      "Get the current acceptance_status for an ideation session. Use this to poll whether the user has accepted or rejected a pending finalize confirmation. " +
+      "Call this on each subsequent turn after finalize_proposals returns status=\"pending_acceptance\". " +
+      "Response includes session_id and acceptance_status (null = no pending confirmation, \"pending\" = waiting for user, \"accepted\" = user accepted — tasks were created, \"rejected\" = user rejected — you may re-finalize).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: {
+          type: "string",
+          description: "The ideation session ID to check acceptance status for",
+        },
+      },
+      required: ["session_id"],
+    },
+  },
+  {
+    name: "get_pending_confirmations",
+    description:
+      "Get all ideation sessions that have a pending acceptance confirmation for the active project. " +
+      "Use this at startup (Phase 0 RECOVER) to check if any sessions are awaiting user confirmation before proceeding. " +
+      "Response includes a sessions array with session_id and session_title for each pending session.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
     },
   },
 
@@ -1633,6 +1667,9 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "search_memories",
     "get_memory",
     "get_memories_for_paths",
+    // acceptance gate tools
+    "get_acceptance_status",
+    "get_pending_confirmations",
     // cross-project tools
     "list_projects",
     "create_cross_project_session",
@@ -1898,6 +1935,9 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "search_memories",
     "get_memory",
     "get_memories_for_paths",
+    // Acceptance gate tools
+    "get_acceptance_status",
+    "get_pending_confirmations",
     // Cross-project tools
     "list_projects",
     "create_cross_project_session",

@@ -636,6 +636,91 @@ describe('revert_and_skip tool', () => {
 });
 
 // ===========================================================================
+// get_acceptance_status + get_pending_confirmations tool definitions + allowlist
+// ===========================================================================
+
+describe('acceptance gate tools', () => {
+  const allTools = getAllTools();
+
+  describe('get_acceptance_status', () => {
+    const tool = allTools.find((t) => t.name === 'get_acceptance_status');
+
+    it('should exist in ALL_TOOLS', () => {
+      expect(tool).toBeDefined();
+    });
+
+    it('should have correct inputSchema with required session_id', () => {
+      expect(tool?.inputSchema).toBeDefined();
+      expect(tool?.inputSchema.type).toBe('object');
+      expect(tool?.inputSchema.properties).toHaveProperty('session_id');
+      expect(tool?.inputSchema.required).toContain('session_id');
+    });
+
+    it('should be in TOOL_ALLOWLIST for orchestrator-ideation', () => {
+      expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION]).toContain('get_acceptance_status');
+    });
+
+    it('should be in TOOL_ALLOWLIST for ideation-team-lead', () => {
+      expect(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]).toContain('get_acceptance_status');
+    });
+
+    it('should NOT be in TOOL_ALLOWLIST for orchestrator-ideation-readonly', () => {
+      expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).not.toContain('get_acceptance_status');
+    });
+
+    it('should be returned by getFilteredTools for orchestrator-ideation', () => {
+      setAgentType(ORCHESTRATOR_IDEATION);
+      const toolNames = getFilteredTools().map((t) => t.name);
+      expect(toolNames).toContain('get_acceptance_status');
+    });
+
+    it('should be returned by getFilteredTools for ideation-team-lead', () => {
+      setAgentType(IDEATION_TEAM_LEAD);
+      const toolNames = getFilteredTools().map((t) => t.name);
+      expect(toolNames).toContain('get_acceptance_status');
+    });
+  });
+
+  describe('get_pending_confirmations', () => {
+    const tool = allTools.find((t) => t.name === 'get_pending_confirmations');
+
+    it('should exist in ALL_TOOLS', () => {
+      expect(tool).toBeDefined();
+    });
+
+    it('should have an object inputSchema with no required fields', () => {
+      expect(tool?.inputSchema).toBeDefined();
+      expect(tool?.inputSchema.type).toBe('object');
+      expect(tool?.inputSchema.required).toEqual([]);
+    });
+
+    it('should be in TOOL_ALLOWLIST for orchestrator-ideation', () => {
+      expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION]).toContain('get_pending_confirmations');
+    });
+
+    it('should be in TOOL_ALLOWLIST for ideation-team-lead', () => {
+      expect(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]).toContain('get_pending_confirmations');
+    });
+
+    it('should NOT be in TOOL_ALLOWLIST for orchestrator-ideation-readonly', () => {
+      expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).not.toContain('get_pending_confirmations');
+    });
+
+    it('should be returned by getFilteredTools for orchestrator-ideation', () => {
+      setAgentType(ORCHESTRATOR_IDEATION);
+      const toolNames = getFilteredTools().map((t) => t.name);
+      expect(toolNames).toContain('get_pending_confirmations');
+    });
+
+    it('should be returned by getFilteredTools for ideation-team-lead', () => {
+      setAgentType(IDEATION_TEAM_LEAD);
+      const toolNames = getFilteredTools().map((t) => t.name);
+      expect(toolNames).toContain('get_pending_confirmations');
+    });
+  });
+});
+
+// ===========================================================================
 // Specialist / Critic / Advocate TOOL_ALLOWLIST assertions + YAML parity
 // ===========================================================================
 

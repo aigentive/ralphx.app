@@ -416,6 +416,22 @@ impl IdeationSessionRepository for MockSessionRepository {
     ) -> AppResult<u32> {
         Ok(0)
     }
+
+    async fn update_acceptance_status(
+        &self,
+        _session_id: &IdeationSessionId,
+        _expected_current: Option<AcceptanceStatus>,
+        _new_status: Option<AcceptanceStatus>,
+    ) -> AppResult<bool> {
+        Ok(true)
+    }
+
+    async fn get_sessions_with_pending_acceptance(
+        &self,
+        _project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(vec![])
+    }
 }
 
 struct MockProposalRepository {

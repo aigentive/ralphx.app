@@ -193,6 +193,7 @@ mod tests {
             external_last_read_message_id: None,
             dependencies_acknowledged: false,
             pending_initial_prompt: None,
+            acceptance_status: None,
         }
     }
 

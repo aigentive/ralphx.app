@@ -81,6 +81,7 @@ fn make_external_session(
         external_last_read_message_id: None,
         dependencies_acknowledged: false,
         pending_initial_prompt: None,
+        acceptance_status: None,
     }
 }
 
@@ -685,6 +686,7 @@ async fn c4_finalize_proposals_links_all_proposals_to_tasks() {
         external_last_read_message_id: None,
         dependencies_acknowledged: false,
         pending_initial_prompt: None,
+        acceptance_status: None,
     };
     state.ideation_session_repo.create(session).await.unwrap();
 
@@ -734,7 +736,7 @@ async fn c4_finalize_proposals_links_all_proposals_to_tasks() {
         .unwrap();
 
     // Call finalize_proposals_impl — the auto-accept entry point
-    let result = finalize_proposals_impl(&state, session_id.as_str()).await;
+    let result = finalize_proposals_impl(&state, session_id.as_str(), false).await;
     assert!(
         result.is_ok(),
         "finalize_proposals_impl must succeed, got: {:?}",
@@ -850,6 +852,7 @@ async fn c4_count_mismatch_prevents_finalize_and_leaves_no_orphans() {
         external_last_read_message_id: None,
         dependencies_acknowledged: false,
         pending_initial_prompt: None,
+        acceptance_status: None,
     };
     state.ideation_session_repo.create(session).await.unwrap();
 
@@ -907,7 +910,7 @@ async fn c4_count_mismatch_prevents_finalize_and_leaves_no_orphans() {
     }
 
     // finalize_proposals_impl must fail due to count mismatch
-    let result = finalize_proposals_impl(&state, session_id.as_str()).await;
+    let result = finalize_proposals_impl(&state, session_id.as_str(), false).await;
     assert!(
         result.is_err(),
         "finalize_proposals_impl must fail when proposal count doesn't match expected"
@@ -1076,6 +1079,7 @@ fn make_c5_session(
         external_last_read_message_id: None,
         dependencies_acknowledged: false,
         pending_initial_prompt: None,
+        acceptance_status: None,
     }
 }
 
@@ -1149,7 +1153,7 @@ async fn c5a_finalize_local_only_regression() {
         .await
         .unwrap();
 
-    let result = finalize_proposals_impl(&state, session_id.as_str()).await;
+    let result = finalize_proposals_impl(&state, session_id.as_str(), false).await;
     assert!(
         result.is_ok(),
         "C5a: finalize must succeed for all-local proposals, got: {:?}",
@@ -1213,7 +1217,7 @@ async fn c5b_finalize_mixed_local_and_foreign() {
         .await
         .unwrap();
 
-    let result = finalize_proposals_impl(&state, session_id.as_str()).await;
+    let result = finalize_proposals_impl(&state, session_id.as_str(), false).await;
     assert!(
         result.is_ok(),
         "C5b: finalize must succeed for mixed proposals, got: {:?}",
@@ -1294,7 +1298,7 @@ async fn c5c_finalize_all_foreign_creates_nothing() {
 
     // No need to call set_dependencies_acknowledged — short-circuit happens before the gate
 
-    let result = finalize_proposals_impl(&state, session_id.as_str()).await;
+    let result = finalize_proposals_impl(&state, session_id.as_str(), false).await;
     assert!(
         result.is_ok(),
         "C5c: finalize must succeed even when all proposals are foreign, got: {:?}",
@@ -1386,7 +1390,7 @@ async fn c5d_expected_count_uses_total_including_foreign() {
             .await
             .unwrap();
 
-        let result = finalize_proposals_impl(&state, session_id.as_str()).await;
+        let result = finalize_proposals_impl(&state, session_id.as_str(), false).await;
         assert!(
             result.is_ok(),
             "C5d-A: finalize must succeed when total count (2+1=3) matches expected=3, got: {:?}",
@@ -1442,7 +1446,7 @@ async fn c5d_expected_count_uses_total_including_foreign() {
         );
         state.task_proposal_repo.create(foreign).await.unwrap();
 
-        let result = finalize_proposals_impl(&state, session_id.as_str()).await;
+        let result = finalize_proposals_impl(&state, session_id.as_str(), false).await;
         assert!(
             result.is_err(),
             "C5d-B: finalize must fail when total count (1+1=2) mismatches expected=3"
@@ -1516,7 +1520,7 @@ async fn c5e_path_canonicalization_trailing_slash() {
         .await
         .unwrap();
 
-    let result = finalize_proposals_impl(&state, session_id.as_str()).await;
+    let result = finalize_proposals_impl(&state, session_id.as_str(), false).await;
     assert!(
         result.is_ok(),
         "C5e: finalize must succeed with canonicalized trailing-slash path, got: {:?}",
