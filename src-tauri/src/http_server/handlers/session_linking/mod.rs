@@ -10,7 +10,7 @@ use tracing::error;
 use crate::application::chat_service::{ChatService, ClaudeChatService};
 use crate::domain::entities::{
     ChatContextType, IdeationSession, IdeationSessionId, IdeationSessionStatus, SessionLink,
-    SessionOrigin, SessionPurpose, SessionRelationship, VerificationStatus,
+    SessionPurpose, SessionRelationship, VerificationStatus,
 };
 use crate::domain::services::{emit_verification_started, emit_verification_status_changed};
 use crate::infrastructure::agents::claude::{

@@ -1,5 +1,5 @@
 use super::*;
-use crate::domain::entities::TaskId;
+use crate::domain::entities::{build_child_session, matching_blocker_followup_session, ChildSessionDraftInput, TaskId};
 use crate::http_server::helpers::get_task_context_impl;
 
 async fn initialize_verification_state(
@@ -164,11 +164,11 @@ async fn find_existing_blocker_followup(
             )
         })?;
 
-    Ok(children.into_iter().find(|session| {
-        session.archived_at.is_none()
-            && session.source_task_id.as_ref().map(|id| id.as_str()) == Some(source_task_id)
-            && session.blocker_fingerprint.as_deref() == Some(blocker_fingerprint)
-    }))
+    Ok(matching_blocker_followup_session(
+        &children,
+        source_task_id,
+        blocker_fingerprint,
+    ))
 }
 
 async fn resolve_blocker_fingerprint(
@@ -219,7 +219,39 @@ async fn spawn_child_orchestration(
         )
         .await
     {
-        Ok(_) => true,
+        Ok(send_result) => {
+            if send_result.queued_as_pending {
+                tracing::info!(
+                    session_id = child_session_str,
+                    "Child session launch deferred because ideation capacity is full"
+                );
+                if let Some(current_generation) = verification_generation.take() {
+                    rollback_verification_state(
+                        state,
+                        parent_id,
+                        current_generation,
+                        "capacity-deferred spawn",
+                    );
+                }
+                if created_session.session_purpose == SessionPurpose::Verification {
+                    let child_id_obj = IdeationSessionId::from_string(child_session_str.to_string());
+                    if let Err(archive_err) = state
+                        .app_state
+                        .ideation_session_repo
+                        .update_status(&child_id_obj, IdeationSessionStatus::Archived)
+                        .await
+                    {
+                        error!(
+                            "Failed to archive verification child session {} after capacity-deferred spawn: {}",
+                            child_session_str, archive_err
+                        );
+                    }
+                }
+                false
+            } else {
+                true
+            }
+        }
         Err(e) => {
             error!("{error_context} {}: {}", child_session_str, e);
             if let Some(current_generation) = verification_generation.take() {
@@ -346,75 +378,28 @@ pub(crate) async fn create_child_session_impl(
         resolved_team_mode.as_ref(),
         resolved_team_config_json.as_ref(),
     );
-    let inherited_source_project_id = parent.source_project_id.clone();
-    let inherited_source_session_id = parent.source_session_id.clone();
-
-    let child_session = IdeationSession {
-        id: IdeationSessionId::new(),
-        project_id: parent.project_id.clone(),
-        title: req.title.clone(),
-        status: IdeationSessionStatus::Active,
-        plan_artifact_id: None,
-        inherited_plan_artifact_id: if req.inherit_context {
-            parent.plan_artifact_id.clone()
-        } else {
-            None
+    let purpose = req
+        .purpose
+        .as_deref()
+        .and_then(|purpose| purpose.parse::<SessionPurpose>().ok())
+        .unwrap_or_default();
+    let child_session = build_child_session(
+        parent_id.clone(),
+        &parent,
+        ChildSessionDraftInput {
+            title: req.title.clone(),
+            inherit_context: req.inherit_context,
+            team_mode,
+            team_config_json,
+            source_task_id: req.source_task_id.clone(),
+            source_context_type: req.source_context_type.clone(),
+            source_context_id: req.source_context_id.clone(),
+            spawn_reason: req.spawn_reason.clone(),
+            blocker_fingerprint: req.blocker_fingerprint.clone(),
+            purpose,
+            is_external_trigger: req.is_external_trigger,
         },
-        seed_task_id: None,
-        parent_session_id: Some(parent_id.clone()),
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        archived_at: None,
-        converted_at: None,
-        team_mode,
-        team_config_json,
-        title_source: None,
-        verification_status: VerificationStatus::default(),
-        verification_in_progress: false,
-        verification_metadata: None,
-        verification_generation: 0,
-        source_project_id: inherited_source_project_id,
-        source_session_id: inherited_source_session_id,
-        source_task_id: req
-            .source_task_id
-            .as_ref()
-            .map(|id| TaskId::from_string(id.clone())),
-        source_context_type: req.source_context_type.clone(),
-        source_context_id: req.source_context_id.clone(),
-        spawn_reason: req.spawn_reason.clone(),
-        blocker_fingerprint: req.blocker_fingerprint.clone(),
-        session_purpose: req
-            .purpose
-            .as_deref()
-            .and_then(|purpose| purpose.parse::<SessionPurpose>().ok())
-            .unwrap_or_default(),
-        cross_project_checked: true,
-        plan_version_last_read: None,
-        origin: {
-            let purpose = req
-                .purpose
-                .as_deref()
-                .and_then(|p| p.parse::<SessionPurpose>().ok())
-                .unwrap_or_default();
-            if purpose == SessionPurpose::Verification {
-                // Verification children are system artifacts; inherit parent origin.
-                parent.origin
-            } else if req.is_external_trigger {
-                SessionOrigin::External
-            } else {
-                SessionOrigin::Internal
-            }
-        },
-        expected_proposal_count: None,
-        auto_accept_status: None,
-        auto_accept_started_at: None,
-        api_key_id: None,
-        idempotency_key: None,
-        external_activity_phase: None,
-        external_last_read_message_id: None,
-        dependencies_acknowledged: false,
-        pending_initial_prompt: None,
-    };
+    );
 
     let child_id = child_session.id.clone();
     let child_session_str = child_id.as_str().to_string();

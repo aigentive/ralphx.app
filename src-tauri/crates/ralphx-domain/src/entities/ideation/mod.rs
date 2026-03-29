@@ -9,6 +9,7 @@
 
 mod assessment;
 mod chat;
+mod child_session;
 mod graph;
 mod proposal;
 pub mod session_context;
@@ -21,6 +22,7 @@ mod tests;
 // Re-export public types
 pub use assessment::*;
 pub use chat::*;
+pub use child_session::*;
 pub use graph::*;
 pub use proposal::TaskProposal;
 pub use session_context::*;

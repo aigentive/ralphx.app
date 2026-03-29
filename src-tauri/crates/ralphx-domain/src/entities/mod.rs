@@ -56,8 +56,9 @@ pub use chat_attachment::{ChatAttachment, ChatAttachmentId};
 pub use chat_conversation::{ChatContextType, ChatConversation, ChatConversationId};
 pub use execution_plan::{ExecutionPlan, ExecutionPlanStatus, ParseExecutionPlanStatusError};
 pub use ideation::{
-    BusinessValueFactor, ChatMessage, Complexity, ComplexityFactor, CriticalPathFactor,
-    DependencyFactor, DependencyGraph, DependencyGraphEdge, DependencyGraphNode, IdeationSession,
+    build_child_session, matching_blocker_followup_session, BusinessValueFactor, ChatMessage,
+    ChildSessionDraftInput, Complexity, ComplexityFactor, CriticalPathFactor, DependencyFactor,
+    DependencyGraph, DependencyGraphEdge, DependencyGraphNode, IdeationSession,
     IdeationSessionBuilder, IdeationSessionStatus, MessageRole, ParseComplexityError,
     ParseIdeationSessionStatusError, ParseMessageRoleError, ParsePriorityError,
     ParseProposalCategoryError, ParseProposalStatusError, ParseVerificationStatusError, Priority,
