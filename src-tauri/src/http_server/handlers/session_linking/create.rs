@@ -1,5 +1,6 @@
 use super::*;
 use crate::domain::entities::TaskId;
+use crate::http_server::helpers::get_task_context_impl;
 
 async fn initialize_verification_state(
     state: &HttpServerState,
@@ -170,6 +171,35 @@ async fn find_existing_blocker_followup(
     }))
 }
 
+async fn resolve_blocker_fingerprint(
+    state: &HttpServerState,
+    req: &CreateChildSessionRequest,
+) -> Result<Option<String>, JsonError> {
+    if let Some(blocker_fingerprint) = &req.blocker_fingerprint {
+        return Ok(Some(blocker_fingerprint.clone()));
+    }
+
+    if req.spawn_reason.as_deref() != Some("out_of_scope_failure") {
+        return Ok(None);
+    }
+
+    let Some(source_task_id) = req.source_task_id.as_ref() else {
+        return Ok(None);
+    };
+
+    let task_id = TaskId::from_string(source_task_id.clone());
+    let task_context = get_task_context_impl(&state.app_state, &task_id)
+        .await
+        .map_err(|e| {
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to resolve blocker fingerprint from task context: {}", e),
+            )
+        })?;
+
+    Ok(task_context.out_of_scope_blocker_fingerprint)
+}
+
 async fn spawn_child_orchestration(
     state: &HttpServerState,
     created_session: &IdeationSession,
@@ -218,11 +248,12 @@ async fn spawn_child_orchestration(
 
 pub(crate) async fn create_child_session_impl(
     state: &HttpServerState,
-    req: CreateChildSessionRequest,
+    mut req: CreateChildSessionRequest,
 ) -> Result<CreateChildSessionResponse, JsonError> {
     let parent_id = IdeationSessionId::from_string(req.parent_session_id.clone());
     let verify_cfg = verification_config();
     let mut verification_generation = None;
+    req.blocker_fingerprint = resolve_blocker_fingerprint(state, &req).await?;
 
     let parent = state
         .app_state

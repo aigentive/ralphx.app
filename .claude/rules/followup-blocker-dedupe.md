@@ -1,6 +1,6 @@
 ---
 paths:
-  - "src-tauri/src/http_server/handlers/reviews.rs"
+  - "src-tauri/src/http_server/handlers/reviews/**/*.rs"
   - "src-tauri/src/http_server/handlers/session_linking/*.rs"
   - "src-tauri/src/http_server/helpers.rs"
   - "src-tauri/src/infrastructure/sqlite/sqlite_ideation_session_repo.rs"
@@ -121,7 +121,7 @@ When a new blocker class needs dedupe:
 | Component | Path |
 |---|---|
 | Task context fingerprint + existing follow-ups | `src-tauri/src/http_server/helpers.rs` |
-| Review exhausted-drift auto-follow-up | `src-tauri/src/http_server/handlers/reviews.rs` |
+| Review exhausted-drift auto-follow-up | `src-tauri/src/http_server/handlers/reviews/complete.rs` |
 | Child-session idempotent reuse | `src-tauri/src/http_server/handlers/session_linking/create.rs` |
 | Follow-up provenance + fingerprint fields | `src-tauri/crates/ralphx-domain/src/entities/ideation/mod.rs` |
 | Follow-up persistence | `src-tauri/src/infrastructure/sqlite/sqlite_ideation_session_repo.rs` |
