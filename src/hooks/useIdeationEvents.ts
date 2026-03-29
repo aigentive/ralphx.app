@@ -62,6 +62,8 @@ const ChildSessionCreatedEventSchema = z.object({
   parentSessionId: z.string(),
   title: z.string(),
   purpose: z.enum(['general', 'verification']).optional(),
+  orchestrationTriggered: z.boolean().optional(),
+  pendingInitialPrompt: z.string().nullable().optional(),
 });
 
 /**
@@ -108,6 +110,7 @@ export function useIdeationEvents() {
   const bus = useEventBus();
   const updateSession = useIdeationStore((s) => s.updateSession);
   const setVerificationNotification = useIdeationStore((s) => s.setVerificationNotification);
+  const clearVerificationNotification = useIdeationStore((s) => s.clearVerificationNotification);
   const setActiveVerificationChildId = useIdeationStore((s) => s.setActiveVerificationChildId);
   const setLastVerificationChildId = useIdeationStore((s) => s.setLastVerificationChildId);
   const enqueuePendingConfirmation = useUiStore((s) => s.enqueuePendingConfirmation);
@@ -260,13 +263,32 @@ export function useIdeationEvents() {
 
         // Track verification children in the store for notification display
         if (parsed.data.purpose === 'verification') {
-          setVerificationNotification(parsed.data.parentSessionId, parsed.data.sessionId);
-          setActiveVerificationChildId(parsed.data.parentSessionId, parsed.data.sessionId);
+          const orchestrationTriggered = parsed.data.orchestrationTriggered ?? true;
+          updateSession(parsed.data.parentSessionId, {
+            verificationInProgress: orchestrationTriggered,
+          });
           setLastVerificationChildId(parsed.data.parentSessionId, parsed.data.sessionId);
-          // Synthetic "generating" status on parent while verification child is running
-          const parentKey = buildStoreKey('ideation', parsed.data.parentSessionId);
-          useChatStore.getState().setAgentStatus(parentKey, 'generating');
-          useChatStore.getState().updateLastAgentEvent(parentKey);
+          if (orchestrationTriggered) {
+            setVerificationNotification(parsed.data.parentSessionId, parsed.data.sessionId);
+            setActiveVerificationChildId(parsed.data.parentSessionId, parsed.data.sessionId);
+            // Synthetic "generating" status on parent while verification child is running
+            const parentKey = buildStoreKey('ideation', parsed.data.parentSessionId);
+            useChatStore.getState().setAgentStatus(parentKey, 'generating');
+            useChatStore.getState().updateLastAgentEvent(parentKey);
+          } else {
+            clearVerificationNotification(parsed.data.parentSessionId);
+            setActiveVerificationChildId(parsed.data.parentSessionId, null);
+          }
+
+          queryClient.invalidateQueries({
+            queryKey: ["childSessions", parsed.data.parentSessionId, "verification"],
+          });
+          queryClient.invalidateQueries({
+            queryKey: ["verification", parsed.data.parentSessionId],
+          });
+          queryClient.invalidateQueries({
+            queryKey: ideationKeys.sessionWithData(parsed.data.parentSessionId),
+          });
         }
 
         // Emit a local event for UI components to handle
@@ -328,5 +350,5 @@ export function useIdeationEvents() {
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, updateSession, setVerificationNotification, setActiveVerificationChildId, setLastVerificationChildId, enqueuePendingConfirmation, autoAcceptPlans, autoAcceptSessions, queryClient]);
+  }, [bus, updateSession, setVerificationNotification, clearVerificationNotification, setActiveVerificationChildId, setLastVerificationChildId, enqueuePendingConfirmation, autoAcceptPlans, autoAcceptSessions, queryClient]);
 }

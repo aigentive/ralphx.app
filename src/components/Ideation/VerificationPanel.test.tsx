@@ -155,6 +155,31 @@ describe("VerificationPanel — page-load hydration", () => {
     expect(screen.getByTestId("verify-first-button")).toBeInTheDocument();
   });
 
+  it("does not show empty state when verification data is missing but a verification child session already exists", async () => {
+    const { useQuery } = await import("@tanstack/react-query");
+    const childSession = {
+      id: "child-run-1",
+      sessionPurpose: "verification",
+      createdAt: "2026-01-01T00:00:00Z",
+    };
+    vi.mocked(useQuery)
+      .mockReturnValueOnce({ data: null } as unknown as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({ data: [childSession] } as unknown as ReturnType<typeof useQuery>);
+
+    mockStoreState = {
+      ...mockStoreState,
+      lastVerificationChildId: { "session-1": "child-run-1" },
+    };
+
+    const { VerificationPanel } = await import("./VerificationPanel");
+    render(<VerificationPanel session={baseSession} />);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("verification-empty-state")).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId("verification-panel-content")).toBeInTheDocument();
+  });
+
   it("shows empty state for session with no plan artifact and does not show Verify First button", async () => {
     const { useQuery } = await import("@tanstack/react-query");
     vi.mocked(useQuery)

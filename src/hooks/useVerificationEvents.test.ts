@@ -415,6 +415,10 @@ describe("useVerificationEvents — race condition fix", () => {
       (call) => JSON.stringify(call[0]) === JSON.stringify({ queryKey: ["verification", SESSION_ID] })
     );
     expect(verificationInvalidation).toBeDefined();
+    const childSessionsInvalidation = mockInvalidateQueries.mock.calls.find(
+      (call) => JSON.stringify(call[0]) === JSON.stringify({ queryKey: ["childSessions", SESSION_ID, "verification"] })
+    );
+    expect(childSessionsInvalidation).toBeDefined();
   });
 
   it("(11) fast path skips verification invalidateQueries when generation is unchanged", async () => {

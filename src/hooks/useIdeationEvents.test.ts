@@ -19,6 +19,8 @@ const chatStoreMocks = vi.hoisted(() => ({
 }));
 
 const ideationStoreMocks = vi.hoisted(() => ({
+  updateSession: vi.fn(),
+  clearVerificationNotification: vi.fn(),
   setVerificationNotification: vi.fn(),
   setActiveVerificationChildId: vi.fn(),
   setLastVerificationChildId: vi.fn(),
@@ -67,7 +69,8 @@ vi.mock("@tanstack/react-query", () => ({
 vi.mock("@/stores/ideationStore", () => ({
   useIdeationStore: (selector: (s: object) => unknown) =>
     selector({
-      updateSession: vi.fn(),
+      updateSession: ideationStoreMocks.updateSession,
+      clearVerificationNotification: ideationStoreMocks.clearVerificationNotification,
       setVerificationNotification: ideationStoreMocks.setVerificationNotification,
       setActiveVerificationChildId: ideationStoreMocks.setActiveVerificationChildId,
       setLastVerificationChildId: ideationStoreMocks.setLastVerificationChildId,
@@ -205,6 +208,8 @@ describe("useIdeationEvents — parent synthetic status during verification", ()
     mockInvalidateQueries.mockClear();
     chatStoreMocks.setAgentStatus.mockClear();
     chatStoreMocks.updateLastAgentEvent.mockClear();
+    ideationStoreMocks.updateSession.mockClear();
+    ideationStoreMocks.clearVerificationNotification.mockClear();
     ideationStoreMocks.setVerificationNotification.mockClear();
     ideationStoreMocks.setActiveVerificationChildId.mockClear();
     ideationStoreMocks.setLastVerificationChildId.mockClear();
@@ -233,6 +238,38 @@ describe("useIdeationEvents — parent synthetic status during verification", ()
       "parent-session-456",
       "child-session-123"
     );
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["childSessions", "parent-session-456", "verification"],
+    });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["verification", "parent-session-456"],
+    });
+  });
+
+  it("does not show verification-started state when verification child launch is deferred", () => {
+    renderHook(() => useIdeationEvents());
+
+    act(() => {
+      fireEvent("ideation:child_session_created", {
+        sessionId: "verification-child-queued",
+        parentSessionId: "parent-session-456",
+        title: "Auto-verification",
+        purpose: "verification",
+        orchestrationTriggered: false,
+        pendingInitialPrompt: "verify",
+      });
+    });
+
+    expect(ideationStoreMocks.setVerificationNotification).not.toHaveBeenCalled();
+    expect(ideationStoreMocks.setActiveVerificationChildId).toHaveBeenCalledWith("parent-session-456", null);
+    expect(ideationStoreMocks.setLastVerificationChildId).toHaveBeenCalledWith(
+      "parent-session-456",
+      "verification-child-queued"
+    );
+    expect(ideationStoreMocks.updateSession).toHaveBeenCalledWith("parent-session-456", {
+      verificationInProgress: false,
+    });
+    expect(ideationStoreMocks.clearVerificationNotification).toHaveBeenCalledWith("parent-session-456");
   });
 
   it("(4) non-verification child session does NOT set parent agentStatus", () => {

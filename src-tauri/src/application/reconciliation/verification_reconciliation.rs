@@ -525,6 +525,13 @@ impl VerificationReconciliationService {
 
         // Archive parentless orphans
         for child in &no_parent {
+            if child.pending_initial_prompt.is_some() {
+                tracing::debug!(
+                    child_session_id = %child.id.as_str(),
+                    "archive_resolved_parent_orphans: preserving queued verification child with no parent archive decision"
+                );
+                continue;
+            }
             tracing::info!(
                 child_session_id = %child.id.as_str(),
                 "archive_resolved_parent_orphans: archiving verification child with no parent"
@@ -561,6 +568,14 @@ impl VerificationReconciliationService {
 
             if should_archive {
                 for child in group {
+                    if child.pending_initial_prompt.is_some() {
+                        tracing::debug!(
+                            child_session_id = %child.id.as_str(),
+                            parent_id = %parent_id_str,
+                            "archive_resolved_parent_orphans: preserving queued verification child"
+                        );
+                        continue;
+                    }
                     tracing::info!(
                         child_session_id = %child.id.as_str(),
                         parent_id = %parent_id_str,

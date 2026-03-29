@@ -74,15 +74,15 @@ pub(crate) async fn create_verification_child_session(
                     session_id = child_session_str,
                     "Verification child launch deferred because ideation capacity is full"
                 );
-                if let Err(archive_err) = state
+                if let Err(persist_err) = state
                     .app_state
                     .ideation_session_repo
-                    .update_status(&child_id, IdeationSessionStatus::Archived)
+                    .set_pending_initial_prompt(&child_session_str, Some(description.to_string()))
                     .await
                 {
                     error!(
-                        "Failed to archive verification child session {} after capacity-deferred spawn: {}",
-                        child_session_str, archive_err
+                        "Failed to persist pending_initial_prompt for capacity-deferred verification child {}: {}",
+                        child_session_str, persist_err
                     );
                 }
                 false
@@ -122,7 +122,9 @@ pub(crate) async fn create_verification_child_session(
                 "sessionId": child_session_str,
                 "parentSessionId": parent_session_str,
                 "title": session_title,
-                "purpose": "verification"
+                "purpose": "verification",
+                "orchestrationTriggered": orchestration_triggered,
+                "pendingInitialPrompt": if orchestration_triggered { serde_json::Value::Null } else { serde_json::json!(description) }
             }),
         );
     }
@@ -203,7 +205,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_verification_child_deferred_capacity_returns_false_and_archives_child() {
+    async fn test_verification_child_deferred_capacity_returns_false_and_keeps_child_queued() {
         let state = setup_sqlite_state().await;
         saturate_ideation_capacity(&state);
 
@@ -239,7 +241,11 @@ mod tests {
         assert_eq!(children.len(), 1, "one child row should have been created");
         let child = &children[0];
         assert_eq!(child.session_purpose, SessionPurpose::Verification);
-        assert_eq!(child.status, IdeationSessionStatus::Archived);
+        assert_eq!(child.status, IdeationSessionStatus::Active);
+        assert_eq!(
+            child.pending_initial_prompt.as_deref(),
+            Some("Run verification round loop")
+        );
         assert_eq!(child.origin, SessionOrigin::External);
         assert_eq!(child.source_project_id.as_deref(), Some("source-project"));
         assert_eq!(child.source_session_id.as_deref(), Some("source-session"));

@@ -449,6 +449,10 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   const gapScore = verificationData?.gapScore ?? (session.gapScore != null ? session.gapScore : undefined);
   const hasGaps = gaps.length > 0;
   const hasRounds = rounds.length > 0;
+  const hasVerificationRunEvidence =
+    childSessions.length > 0 ||
+    activeVerificationChildId != null ||
+    lastVerificationChildId != null;
 
   const isVerified = verificationStatus === "verified" || verificationStatus === "imported_verified";
   const isSkipped = verificationStatus === "skipped";
@@ -473,7 +477,7 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
 
   // ── Empty state ──────────────────────────────────────────────────────────
 
-  if (verificationStatus === "unverified" && !hasRounds) {
+  if (verificationStatus === "unverified" && !hasRounds && !hasVerificationRunEvidence) {
     return (
       <div
         data-testid="verification-empty-state"

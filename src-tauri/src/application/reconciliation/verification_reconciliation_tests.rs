@@ -2322,6 +2322,36 @@ async fn test_archive_resolved_parent_orphans_skips_when_parent_active() {
 }
 
 #[tokio::test]
+async fn test_archive_resolved_parent_orphans_preserves_queued_verification_child() {
+    let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    let mut parent = IdeationSession::new(project_id.clone());
+    parent.verification_in_progress = false;
+    parent.verification_status = VerificationStatus::Unverified;
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    let mut child = IdeationSession::new(project_id);
+    child.session_purpose = crate::domain::entities::SessionPurpose::Verification;
+    child.parent_session_id = Some(parent_id.clone());
+    child.pending_initial_prompt = Some("queued verify".to_string());
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let svc = make_service(repo.clone(), default_config());
+    svc.archive_resolved_parent_orphans().await;
+
+    let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_ne!(
+        child_after.status,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+        "queued verification child must remain active for drain/hydration"
+    );
+    assert_eq!(child_after.pending_initial_prompt.as_deref(), Some("queued verify"));
+}
+
+#[tokio::test]
 async fn test_archive_resolved_parent_orphans_archives_when_parent_not_found() {
     let repo = Arc::new(crate::infrastructure::memory::MemoryIdeationSessionRepository::new());
     let project_id = ProjectId::new();

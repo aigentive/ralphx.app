@@ -786,6 +786,61 @@ mod verification_init_tests {
         assert_eq!(child.source_session_id.as_deref(), Some("master-session"));
     }
 
+    #[tokio::test]
+    async fn test_verification_child_capacity_deferred_stays_active_with_pending_prompt() {
+        let state = setup_sqlite_state().await;
+        saturate_ideation_capacity(&state);
+
+        let parent = make_parent_session(Some(ArtifactId::new()));
+        let parent_id = parent.id.clone();
+        state
+            .app_state
+            .ideation_session_repo
+            .create(parent)
+            .await
+            .unwrap();
+
+        let req = make_verification_request(&parent_id);
+        let response = create_child_session(State(state.clone()), Json(req))
+            .await
+            .expect("Verification child creation should succeed")
+            .0;
+
+        assert!(!response.orchestration_triggered);
+        assert!(
+            response.pending_initial_prompt.is_some(),
+            "verification child should surface pending prompt when queued"
+        );
+
+        let child_id = IdeationSessionId::from_string(response.session_id);
+        let child = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&child_id)
+            .await
+            .unwrap()
+            .expect("Verification child must exist");
+
+        assert_eq!(child.status, IdeationSessionStatus::Active);
+        assert_eq!(
+            child.pending_initial_prompt,
+            response.pending_initial_prompt,
+            "verification child pending prompt should persist for drain and hydration"
+        );
+
+        let parent_after = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&parent_id)
+            .await
+            .unwrap()
+            .expect("Parent session must still exist");
+        assert!(
+            !parent_after.verification_in_progress,
+            "capacity-deferred verification must roll parent back out of in-progress"
+        );
+    }
+
     // When spawn fails for a non-verification child with initial_prompt, the handler must
     // persist the prompt to pending_initial_prompt and surface it in the response.
     #[tokio::test]

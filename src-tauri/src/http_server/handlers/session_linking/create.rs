@@ -146,6 +146,13 @@ fn build_child_session_response(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChildOrchestrationResult {
+    Started,
+    DeferredCapacity,
+    Failed,
+}
+
 async fn find_existing_blocker_followup(
     state: &HttpServerState,
     parent_id: &IdeationSessionId,
@@ -208,7 +215,7 @@ async fn spawn_child_orchestration(
     parent_id: &IdeationSessionId,
     verification_generation: &mut Option<i32>,
     error_context: &'static str,
-) -> bool {
+) -> ChildOrchestrationResult {
     let chat_service = build_ideation_chat_service(state, created_session);
     match chat_service
         .send_message(
@@ -233,23 +240,9 @@ async fn spawn_child_orchestration(
                         "capacity-deferred spawn",
                     );
                 }
-                if created_session.session_purpose == SessionPurpose::Verification {
-                    let child_id_obj = IdeationSessionId::from_string(child_session_str.to_string());
-                    if let Err(archive_err) = state
-                        .app_state
-                        .ideation_session_repo
-                        .update_status(&child_id_obj, IdeationSessionStatus::Archived)
-                        .await
-                    {
-                        error!(
-                            "Failed to archive verification child session {} after capacity-deferred spawn: {}",
-                            child_session_str, archive_err
-                        );
-                    }
-                }
-                false
+                ChildOrchestrationResult::DeferredCapacity
             } else {
-                true
+                ChildOrchestrationResult::Started
             }
         }
         Err(e) => {
@@ -273,7 +266,7 @@ async fn spawn_child_orchestration(
                     );
                 }
             }
-            false
+            ChildOrchestrationResult::Failed
         }
     }
 }
@@ -469,7 +462,7 @@ pub(crate) async fn create_child_session_impl(
         &parent_session_str,
     );
 
-    let orchestration_triggered = if let Some(ref prompt) = effective_initial_prompt {
+    let orchestration_result = if let Some(ref prompt) = effective_initial_prompt {
         spawn_child_orchestration(
             state,
             &created_session,
@@ -482,7 +475,7 @@ pub(crate) async fn create_child_session_impl(
         .await
     } else if let Some(ref description) = effective_description {
         if description.trim().is_empty() {
-            false
+            ChildOrchestrationResult::Failed
         } else {
             spawn_child_orchestration(
                 state,
@@ -496,14 +489,14 @@ pub(crate) async fn create_child_session_impl(
             .await
         }
     } else {
-        false
+        ChildOrchestrationResult::Failed
     };
+    let orchestration_triggered = orchestration_result == ChildOrchestrationResult::Started;
 
-    // When spawn failed for a non-verification child, persist the effective prompt so the
+    // When launch is deferred because capacity is full, persist the effective prompt so the
     // drain service can auto-launch the session once a slot frees up.
-    // Verification children: archived on spawn failure (not deferred).
     let persisted_pending_prompt =
-        if !orchestration_triggered && created_session.session_purpose != SessionPurpose::Verification {
+        if orchestration_result == ChildOrchestrationResult::DeferredCapacity {
             let effective_prompt_for_defer = effective_initial_prompt
                 .clone()
                 .or_else(|| effective_description.clone().filter(|d| !d.trim().is_empty()));
@@ -530,10 +523,14 @@ pub(crate) async fn create_child_session_impl(
             "sessionId": child_session_str,
             "parentSessionId": parent_session_str,
             "title": title,
-            "purpose": created_session.session_purpose.to_string()
+            "purpose": created_session.session_purpose.to_string(),
+            "orchestrationTriggered": orchestration_triggered
         });
         if let Some(ref prompt) = req.initial_prompt {
             event_payload["initialPrompt"] = serde_json::json!(prompt);
+        }
+        if let Some(ref pending_prompt) = persisted_pending_prompt {
+            event_payload["pendingInitialPrompt"] = serde_json::json!(pending_prompt);
         }
         let _ = app_handle.emit("ideation:child_session_created", event_payload);
     }
