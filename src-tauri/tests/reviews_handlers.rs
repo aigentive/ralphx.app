@@ -802,6 +802,137 @@ async fn test_complete_review_requires_issues_for_unrelated_drift_needs_changes(
     }
 }
 
+#[tokio::test]
+async fn test_unrelated_drift_revise_first_then_followup_after_budget_exhausted() {
+    let (state, task) = setup_review_scope_drift_state().await;
+
+    state
+        .app_state
+        .review_settings_repo
+        .update_settings(&ReviewSettings {
+            max_revision_cycles: 1,
+            ..ReviewSettings::default()
+        })
+        .await
+        .expect("review settings update should succeed");
+
+    let revise_req = CompleteReviewRequest {
+        task_id: task.id.as_str().to_string(),
+        decision: "needs_changes".to_string(),
+        summary: Some("Remove unrelated scope drift".to_string()),
+        feedback: Some("Revise the branch so only scoped files remain.".to_string()),
+        issues: Some(vec![ReviewIssueRequest {
+            severity: "major".to_string(),
+            title: Some("feature.rs is outside task scope".to_string()),
+            step_id: None,
+            no_step_reason: Some(
+                "Scope drift spans the task branch, not a single execution step".to_string(),
+            ),
+            description: Some(
+                "Remove the unrelated feature.rs change from this task branch.".to_string(),
+            ),
+            category: Some("quality".to_string()),
+            file_path: Some("feature.rs".to_string()),
+            line_number: Some(1),
+            code_snippet: None,
+        }]),
+        escalation_reason: None,
+        scope_drift_classification: Some("unrelated_drift".to_string()),
+        scope_drift_notes: Some("Send the task back through revise before escalating.".to_string()),
+    };
+
+    let revise_response = complete_review(
+        State(state.clone()),
+        ProjectScope(None),
+        Json(revise_req),
+    )
+    .await
+    .expect("first unrelated drift review should go through revise")
+    .0;
+    assert_eq!(revise_response.new_status, "revision_needed");
+    assert!(
+        revise_response.followup_session_id.is_none(),
+        "revise-first path must not spawn a follow-up session immediately"
+    );
+
+    let review_issues = state
+        .app_state
+        .review_issue_repo
+        .get_by_task_id(&task.id)
+        .await
+        .expect("review issues should load");
+    assert_eq!(
+        review_issues.len(),
+        1,
+        "revise-first path should persist a structured issue for the worker"
+    );
+
+    let mut reviewing_task = state
+        .app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should still exist");
+    reviewing_task.internal_status = InternalStatus::Reviewing;
+    state
+        .app_state
+        .task_repo
+        .update(&reviewing_task)
+        .await
+        .expect("task should be reset to reviewing for the next review round");
+
+    let escalate_req = CompleteReviewRequest {
+        task_id: task.id.as_str().to_string(),
+        decision: "escalate".to_string(),
+        summary: Some("Repeated revise cycle still drifted".to_string()),
+        feedback: Some("The branch keeps reintroducing unrelated scope drift.".to_string()),
+        issues: Some(vec![ReviewIssueRequest {
+            severity: "major".to_string(),
+            title: Some("feature.rs is outside task scope".to_string()),
+            step_id: None,
+            no_step_reason: Some("Repeated revise cycle could not isolate the branch".to_string()),
+            description: Some(
+                "This unrelated change should be handled in a follow-up session.".to_string(),
+            ),
+            category: Some("quality".to_string()),
+            file_path: Some("feature.rs".to_string()),
+            line_number: Some(1),
+            code_snippet: None,
+        }]),
+        escalation_reason: Some("Revision budget exhausted for unrelated scope drift".to_string()),
+        scope_drift_classification: Some("unrelated_drift".to_string()),
+        scope_drift_notes: Some(
+            "Spawn follow-up after revise-first budget is exhausted.".to_string(),
+        ),
+    };
+
+    let escalate_response = complete_review(
+        State(state.clone()),
+        ProjectScope(None),
+        Json(escalate_req),
+    )
+    .await
+    .expect("exhausted unrelated drift should escalate after revise-first")
+    .0;
+
+    let followup_session_id = escalate_response
+        .followup_session_id
+        .clone()
+        .expect("follow-up session should be created after revision budget exhaustion");
+    let child_id = ralphx_lib::domain::entities::IdeationSessionId::from_string(followup_session_id);
+    let child = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&child_id)
+        .await
+        .unwrap()
+        .expect("follow-up session must exist");
+    assert_eq!(child.parent_session_id, task.ideation_session_id);
+    assert_eq!(child.source_context_type.as_deref(), Some("review"));
+    assert_eq!(child.spawn_reason.as_deref(), Some("out_of_scope_failure"));
+}
+
 // ============================================================================
 // IPR (Interactive Process Registry) exit signal tests for complete_review
 // ============================================================================
