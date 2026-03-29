@@ -10,8 +10,9 @@
 use std::sync::Arc;
 
 use crate::domain::entities::{
-    ArtifactSummary, ScopeDriftStatus, StepProgressSummary, Task, TaskContext,
-    TaskDependencySummary, TaskId, TaskProposalSummary,
+    create_artifact_content_preview, generate_task_context_hints, ArtifactSummary,
+    ScopeDriftStatus, StepProgressSummary, Task, TaskContext, TaskDependencySummary, TaskId,
+    TaskProposalSummary,
 };
 use crate::domain::repositories::{
     ArtifactRepository, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
@@ -98,7 +99,7 @@ impl TaskContextService {
         let plan_artifact = if let Some(artifact_id) = &task.plan_artifact_id {
             match self.artifact_repo.get_by_id(artifact_id).await? {
                 Some(artifact) => {
-                    let content_preview = Self::create_content_preview(&artifact);
+                    let content_preview = create_artifact_content_preview(&artifact);
                     Some(ArtifactSummary {
                         id: artifact.id.clone(),
                         title: artifact.name.clone(),
@@ -119,7 +120,7 @@ impl TaskContextService {
             related
                 .into_iter()
                 .map(|artifact| {
-                    let content_preview = Self::create_content_preview(&artifact);
+                    let content_preview = create_artifact_content_preview(&artifact);
                     ArtifactSummary {
                         id: artifact.id.clone(),
                         title: artifact.name.clone(),
@@ -188,7 +189,7 @@ impl TaskContextService {
         };
 
         // 9. Generate context_hints based on what's available
-        let context_hints = self.generate_context_hints(
+        let context_hints = generate_task_context_hints(
             &task,
             source_proposal.is_some(),
             plan_artifact.is_some(),
@@ -221,116 +222,6 @@ impl TaskContextService {
             out_of_scope_blocker_fingerprint: None,
             followup_sessions: Vec::new(),
         })
-    }
-
-    /// Create a 500-character preview of artifact content
-    fn create_content_preview(artifact: &crate::domain::entities::Artifact) -> String {
-        use crate::domain::entities::ArtifactContent;
-
-        let full_content = match &artifact.content {
-            ArtifactContent::Inline { text } => text.clone(),
-            ArtifactContent::File { path } => {
-                // For file-based artifacts, we can't read the file here
-                // Return a message indicating it's a file
-                format!("[File artifact at: {}]", path)
-            }
-        };
-
-        // Take first 500 chars (char-boundary safe)
-        if full_content.chars().count() <= 500 {
-            full_content
-        } else {
-            let truncated: String = full_content.chars().take(500).collect();
-            format!("{truncated}...")
-        }
-    }
-
-    /// Generate context hints for the worker based on available context
-    fn generate_context_hints(
-        &self,
-        task: &Task,
-        has_proposal: bool,
-        has_plan: bool,
-        related_count: usize,
-        step_count: usize,
-        blocked_by: &[TaskDependencySummary],
-        blocks: &[TaskDependencySummary],
-    ) -> Vec<String> {
-        let mut hints = Vec::new();
-
-        // CRITICAL: Dependency hints come first - worker must check these before starting
-        if !blocked_by.is_empty() {
-            let incomplete: Vec<_> = blocked_by
-                .iter()
-                .filter(|b| {
-                    !matches!(
-                        b.internal_status,
-                        crate::domain::entities::InternalStatus::Approved
-                    )
-                })
-                .collect();
-            if !incomplete.is_empty() {
-                let names: Vec<_> = incomplete.iter().map(|t| t.title.as_str()).collect();
-                hints.push(format!(
-                    "BLOCKED: Task cannot proceed - waiting for: {}",
-                    names.join(", ")
-                ));
-            } else {
-                hints.push("All blocking tasks completed - ready to execute".to_string());
-            }
-        }
-
-        if !blocks.is_empty() {
-            let names: Vec<_> = blocks.iter().map(|t| t.title.as_str()).collect();
-            hints.push(format!(
-                "Downstream impact: completing this task unblocks: {}",
-                names.join(", ")
-            ));
-        }
-
-        // CRITICAL: Branch safety hint — agents must stay on their assigned branch
-        if let Some(ref branch) = task.task_branch {
-            hints.push(format!(
-                "GIT BRANCH: You are on branch '{}'. Do NOT checkout other branches (especially main/master). All work must stay on this branch.",
-                branch
-            ));
-        }
-
-        if has_proposal {
-            hints.push(
-                "Task was created from ideation proposal - check acceptance criteria".to_string(),
-            );
-        }
-
-        if has_plan {
-            hints.push("Implementation plan available - use get_artifact to read full plan before starting".to_string());
-        }
-
-        if related_count > 0 {
-            hints.push(format!(
-                "{} related artifact{} found - may contain useful context",
-                related_count,
-                if related_count == 1 { "" } else { "s" }
-            ));
-        }
-
-        if step_count > 0 {
-            hints.push(format!(
-                "Task has {} step{} defined - use get_task_steps to see them",
-                step_count,
-                if step_count == 1 { "" } else { "s" }
-            ));
-        }
-
-        if task.description.is_some() {
-            hints.push("Task has description with additional details".to_string());
-        }
-
-        if hints.is_empty() {
-            hints.push("No additional context artifacts found - proceed with task description and acceptance criteria".to_string());
-        }
-
-        hints
     }
 }
 

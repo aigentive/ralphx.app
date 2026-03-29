@@ -1,6 +1,9 @@
 use chrono::{DateTime, Utc};
 
-use super::{ArtifactId, ArtifactType, InternalStatus, Task, TaskId, TaskProposalId, TaskStep};
+use super::{
+    Artifact, ArtifactContent, ArtifactId, ArtifactType, InternalStatus, Task, TaskId,
+    TaskProposalId, TaskStep,
+};
 use serde::{Deserialize, Serialize};
 
 use super::task_step::StepProgressSummary;
@@ -155,6 +158,102 @@ pub struct ValidationCacheData {
     pub validation_hint: String,
     /// Human-readable explanation of the hint
     pub hint_message: String,
+}
+
+/// Create a 500-character preview of artifact content for task context responses.
+pub fn create_artifact_content_preview(artifact: &Artifact) -> String {
+    let full_content = match &artifact.content {
+        ArtifactContent::Inline { text } => text.clone(),
+        ArtifactContent::File { path } => format!("[File artifact at: {}]", path),
+    };
+
+    if full_content.chars().count() <= 500 {
+        full_content
+    } else {
+        let truncated: String = full_content.chars().take(500).collect();
+        format!("{truncated}...")
+    }
+}
+
+/// Generate worker-facing hints from the currently available task context.
+pub fn generate_task_context_hints(
+    task: &Task,
+    has_proposal: bool,
+    has_plan: bool,
+    related_count: usize,
+    step_count: usize,
+    blocked_by: &[TaskDependencySummary],
+    blocks: &[TaskDependencySummary],
+) -> Vec<String> {
+    let mut hints = Vec::new();
+
+    if !blocked_by.is_empty() {
+        let incomplete: Vec<_> = blocked_by
+            .iter()
+            .filter(|b| !matches!(b.internal_status, InternalStatus::Approved))
+            .collect();
+        if !incomplete.is_empty() {
+            let names: Vec<_> = incomplete.iter().map(|task| task.title.as_str()).collect();
+            hints.push(format!(
+                "BLOCKED: Task cannot proceed - waiting for: {}",
+                names.join(", ")
+            ));
+        } else {
+            hints.push("All blocking tasks completed - ready to execute".to_string());
+        }
+    }
+
+    if !blocks.is_empty() {
+        let names: Vec<_> = blocks.iter().map(|task| task.title.as_str()).collect();
+        hints.push(format!(
+            "Downstream impact: completing this task unblocks: {}",
+            names.join(", ")
+        ));
+    }
+
+    if let Some(ref branch) = task.task_branch {
+        hints.push(format!(
+            "GIT BRANCH: You are on branch '{}'. Do NOT checkout other branches (especially main/master). All work must stay on this branch.",
+            branch
+        ));
+    }
+
+    if has_proposal {
+        hints.push("Task was created from ideation proposal - check acceptance criteria".to_string());
+    }
+
+    if has_plan {
+        hints.push("Implementation plan available - use get_artifact to read full plan before starting".to_string());
+    }
+
+    if related_count > 0 {
+        hints.push(format!(
+            "{} related artifact{} found - may contain useful context",
+            related_count,
+            if related_count == 1 { "" } else { "s" }
+        ));
+    }
+
+    if step_count > 0 {
+        hints.push(format!(
+            "Task has {} step{} defined - use get_task_steps to see them",
+            step_count,
+            if step_count == 1 { "" } else { "s" }
+        ));
+    }
+
+    if task.description.is_some() {
+        hints.push("Task has description with additional details".to_string());
+    }
+
+    if hints.is_empty() {
+        hints.push(
+            "No additional context artifacts found - proceed with task description and acceptance criteria"
+                .to_string(),
+        );
+    }
+
+    hints
 }
 
 #[cfg(test)]

@@ -1,7 +1,8 @@
 use super::*;
 use crate::domain::entities::{
-    Artifact, ArtifactId, ArtifactRelation, ArtifactRelationType, ArtifactType, InternalStatus,
-    Priority, ProjectId, ProposalCategory, TaskProposal, TaskProposalId, TaskStep, TaskStepId,
+    create_artifact_content_preview, Artifact, ArtifactId, ArtifactRelation,
+    ArtifactRelationType, ArtifactType, InternalStatus, Priority, ProjectId, ProposalCategory,
+    TaskProposal, TaskProposalId, TaskStep, TaskStepId,
 };
 use crate::domain::repositories::{
     ArtifactRepository, StateHistoryMetadata, TaskDependencyRepository, TaskProposalRepository,
@@ -749,12 +750,12 @@ async fn test_get_task_context_with_related_artifacts() {
 async fn test_content_preview_truncation() {
     let short_content = "Short content";
     let artifact = Artifact::new_inline("Test", ArtifactType::Specification, short_content, "user");
-    let preview = TaskContextService::create_content_preview(&artifact);
+    let preview = create_artifact_content_preview(&artifact);
     assert_eq!(preview, short_content);
 
     let long_content = "x".repeat(600);
     let artifact = Artifact::new_inline("Test", ArtifactType::Specification, long_content, "user");
-    let preview = TaskContextService::create_content_preview(&artifact);
+    let preview = create_artifact_content_preview(&artifact);
     assert_eq!(preview.len(), 503); // 500 + "..."
     assert!(preview.ends_with("..."));
 }

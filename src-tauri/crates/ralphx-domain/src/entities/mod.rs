@@ -100,8 +100,9 @@ pub use review_issue::{
 pub use status::{InternalStatus, ParseInternalStatusError};
 pub use task::{Task, TaskCategory};
 pub use task_context::{
-    ArtifactSummary, FollowupSessionSummary, ScopeDriftStatus, TaskContext,
-    TaskDependencySummary, TaskProposalSummary, ValidationCacheData,
+    create_artifact_content_preview, generate_task_context_hints, ArtifactSummary,
+    FollowupSessionSummary, ScopeDriftStatus, TaskContext, TaskDependencySummary,
+    TaskProposalSummary, ValidationCacheData,
 };
 pub use task_metadata::{
     ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,

@@ -1,6 +1,6 @@
 use super::*;
 use crate::entities::{
-    ArtifactId, InternalStatus, ProjectId, Task, TaskId, TaskProposalId,
+    Artifact, ArtifactId, ArtifactType, InternalStatus, ProjectId, Task, TaskId, TaskProposalId,
 };
 
 #[test]
@@ -211,4 +211,92 @@ fn test_serialization() {
     let deserialized: ArtifactSummary = serde_json::from_str(&json).unwrap();
     assert_eq!(deserialized.title, summary.title);
     assert_eq!(deserialized.artifact_type, summary.artifact_type);
+}
+
+#[test]
+fn test_create_artifact_content_preview_handles_inline_and_file_content() {
+    let inline_artifact = Artifact::new_inline(
+        "Inline",
+        ArtifactType::Specification,
+        "Short content",
+        "user",
+    );
+    assert_eq!(
+        create_artifact_content_preview(&inline_artifact),
+        "Short content"
+    );
+
+    let long_artifact = Artifact::new_inline(
+        "Long",
+        ArtifactType::Specification,
+        "x".repeat(600),
+        "user",
+    );
+    let long_preview = create_artifact_content_preview(&long_artifact);
+    assert_eq!(long_preview.len(), 503);
+    assert!(long_preview.ends_with("..."));
+
+    let file_artifact = Artifact::new_file(
+        "File",
+        ArtifactType::Specification,
+        "/tmp/plan.md",
+        "user",
+    );
+    assert_eq!(
+        create_artifact_content_preview(&file_artifact),
+        "[File artifact at: /tmp/plan.md]"
+    );
+}
+
+#[test]
+fn test_generate_task_context_hints_prioritizes_dependency_and_branch_context() {
+    let mut task = Task::new(ProjectId::new(), "Complex Task".to_string());
+    task.set_description(Some("Task with details".to_string()));
+    task.task_branch = Some("ralphx/project/task-123".to_string());
+
+    let blocked_by = vec![
+        TaskDependencySummary {
+            id: TaskId::new(),
+            title: "Prepare API".to_string(),
+            internal_status: InternalStatus::Approved,
+        },
+        TaskDependencySummary {
+            id: TaskId::new(),
+            title: "Apply schema".to_string(),
+            internal_status: InternalStatus::Executing,
+        },
+    ];
+    let blocks = vec![TaskDependencySummary {
+        id: TaskId::new(),
+        title: "Render UI".to_string(),
+        internal_status: InternalStatus::Blocked,
+    }];
+
+    let hints = generate_task_context_hints(&task, true, true, 2, 3, &blocked_by, &blocks);
+
+    assert_eq!(
+        hints.first().map(String::as_str),
+        Some("BLOCKED: Task cannot proceed - waiting for: Apply schema")
+    );
+    assert!(hints.iter().any(|hint| hint.contains("Downstream impact")));
+    assert!(hints.iter().any(|hint| hint.contains("GIT BRANCH")));
+    assert!(hints.iter().any(|hint| hint.contains("acceptance criteria")));
+    assert!(hints.iter().any(|hint| hint.contains("Implementation plan available")));
+    assert!(hints.iter().any(|hint| hint.contains("2 related artifacts")));
+    assert!(hints.iter().any(|hint| hint.contains("3 steps")));
+    assert!(hints.iter().any(|hint| hint.contains("description")));
+}
+
+#[test]
+fn test_generate_task_context_hints_falls_back_when_context_is_empty() {
+    let task = Task::new(ProjectId::new(), "Simple Task".to_string());
+    let hints = generate_task_context_hints(&task, false, false, 0, 0, &[], &[]);
+
+    assert_eq!(
+        hints,
+        vec![
+            "No additional context artifacts found - proceed with task description and acceptance criteria"
+                .to_string()
+        ]
+    );
 }
