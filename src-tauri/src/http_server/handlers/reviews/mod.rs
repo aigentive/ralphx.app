@@ -9,9 +9,8 @@ use tauri::Emitter;
 use super::*;
 use crate::application::{GitService, TaskSchedulerService, TaskTransitionService};
 use crate::domain::entities::{
-    ActivityEvent, ActivityEventRole, ActivityEventType, InternalStatus, Review,
-    ReviewIssue as ReviewNoteIssue, ReviewIssueEntity, ReviewNote, ReviewOutcome,
-    ReviewScopeMetadata, ReviewerType, TaskId,
+    InternalStatus, Review, ReviewIssue as ReviewNoteIssue, ReviewIssueEntity, ReviewNote,
+    ReviewOutcome, ReviewerType, TaskId,
 };
 use crate::domain::services::running_agent_registry::RunningAgentKey;
 use crate::domain::state_machine::services::TaskScheduler;
@@ -19,8 +18,11 @@ use crate::domain::state_machine::transition_handler::{
     deferred_merge_cleanup, set_no_code_changes_metadata, set_pending_cleanup_metadata,
 };
 use crate::domain::review::{
-    build_unrelated_drift_followup_prompt, compute_out_of_scope_blocker_fingerprint,
-    parse_review_decision, parse_review_issues, review_outcome_for_tool,
+    apply_review_outcome, approved_no_changes_target_status, approved_target_status,
+    build_followup_activity_event, build_unrelated_drift_followup_draft,
+    complete_review_response_message, matching_unrelated_drift_followup_session_id,
+    parse_review_decision, parse_review_issues, review_note_content,
+    should_spawn_unrelated_drift_followup, update_review_scope_metadata,
     validate_complete_review_policy, RawReviewIssueInput,
 };
 use crate::domain::tools::complete_review::{ReviewToolOutcome, ScopeDriftClassification};

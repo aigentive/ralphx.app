@@ -91,24 +91,7 @@ pub async fn complete_review(
         .unwrap_or_else(|| Review::new(task.project_id.clone(), task_id.clone(), ReviewerType::Ai));
 
     // 5. Process the review result based on outcome
-    let review_outcome = review_outcome_for_tool(outcome);
-
-    // Update review status
-    match outcome {
-        ReviewToolOutcome::Approved => {
-            review.approve(feedback.clone());
-        }
-        // Phase 3 will implement the full approved_no_changes path (skip merge pipeline)
-        ReviewToolOutcome::ApprovedNoChanges => {
-            review.approve(feedback.clone());
-        }
-        ReviewToolOutcome::NeedsChanges => {
-            review.request_changes(feedback.clone().unwrap_or_default());
-        }
-        ReviewToolOutcome::Escalate => {
-            review.reject(feedback.clone().unwrap_or_default());
-        }
-    }
+    let review_outcome = apply_review_outcome(&mut review, outcome, feedback.clone());
 
     // Save review
     if is_new_review {
@@ -188,11 +171,11 @@ pub async fn complete_review(
     // Create review note for history.
     // For escalations, prefer escalation_reason over generic feedback so the
     // frontend EscalatedTaskDetail can display a precise reason.
-    let note_content = if matches!(outcome, ReviewToolOutcome::Escalate) {
-        req.escalation_reason.clone().or_else(|| req.feedback.clone())
-    } else {
-        req.feedback.clone()
-    };
+    let note_content = review_note_content(
+        outcome,
+        req.feedback.as_deref(),
+        req.escalation_reason.as_deref(),
+    );
     // Legitimate AI decision via MCP tool — agent deliberately called complete_review. Do NOT change to System.
     let mut review_note = ReviewNote::with_content(
         task_id.clone(),
@@ -337,11 +320,7 @@ pub async fn complete_review(
                 .map(|s| s.require_human_review)
                 .unwrap_or(false);
 
-            let target_status = if require_human {
-                InternalStatus::ReviewPassed // Wait for human approval
-            } else {
-                InternalStatus::Approved // Auto-approve, skip human step
-            };
+            let target_status = approved_target_status(require_human);
 
             transition_service
                 .transition_task(&task_id, target_status.clone())
@@ -424,11 +403,7 @@ pub async fn complete_review(
 
             if has_code_changes {
                 // Fall back to standard Approved flow (reviewer decision treated as regular Approved)
-                let target_status = if require_human {
-                    InternalStatus::ReviewPassed
-                } else {
-                    InternalStatus::Approved
-                };
+                let target_status = approved_target_status(require_human);
                 transition_service
                     .transition_task(&task_id, target_status.clone())
                     .await
@@ -458,11 +433,7 @@ pub async fn complete_review(
                     .await
                     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-                let target_status = if require_human {
-                    InternalStatus::ReviewPassed
-                } else {
-                    InternalStatus::Merged
-                };
+                let target_status = approved_no_changes_target_status(require_human);
 
                 transition_service
                     .transition_task(&task_id, target_status.clone())
@@ -548,12 +519,7 @@ pub async fn complete_review(
     // 9. Return response
     Ok(Json(CompleteReviewResponse {
         success: true,
-        message: match &followup_session_id {
-            Some(session_id) => format!(
-                "Review submitted successfully. Follow-up ideation session created: {session_id}"
-            ),
-            None => "Review submitted successfully".to_string(),
-        },
+        message: complete_review_response_message(followup_session_id.as_deref()),
         new_status: new_status.as_str().to_string(),
         fix_task_id: fix_task_id.map(|id| id.as_str().to_string()),
         followup_session_id,
@@ -567,30 +533,13 @@ async fn persist_review_scope_snapshot(
     scope_drift_classification: Option<ScopeDriftClassification>,
     scope_drift_notes: Option<String>,
 ) -> Result<(), (StatusCode, String)> {
-    let planned_paths = task_context
-        .source_proposal
-        .as_ref()
-        .map(|proposal| proposal.affected_paths.clone())
-        .unwrap_or_default();
-
-    let updated_metadata = if planned_paths.is_empty() {
-        ReviewScopeMetadata::clear_from_task_metadata(task.metadata.as_deref())
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    } else {
-        let review_scope = ReviewScopeMetadata::new(
-            planned_paths,
-            task_context.out_of_scope_files.clone(),
-            scope_drift_classification.map(|classification| classification.to_string()),
-            scope_drift_notes,
-        );
-        Some(
-            review_scope
-                .update_task_metadata(task.metadata.as_deref())
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
-        )
-    };
-
-    task.metadata = updated_metadata;
+    task.metadata = update_review_scope_metadata(
+        task.metadata.as_deref(),
+        task_context,
+        scope_drift_classification,
+        scope_drift_notes,
+    )
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     state
         .app_state
         .task_repo
@@ -607,30 +556,19 @@ async fn persist_followup_activity_event(
     followup_session_id: Option<&str>,
     review_note_id: &str,
 ) {
-    let Some(followup_session_id) = followup_session_id else {
+    let Some(event) = build_followup_activity_event(
+        task_id.clone(),
+        new_status,
+        followup_session_id,
+        review_note_id,
+    ) else {
         return;
     };
-
-    let metadata = serde_json::json!({
-        "followupSessionId": followup_session_id,
-        "reviewNoteId": review_note_id,
-        "spawnReason": "out_of_scope_failure",
-        "sourceContextType": "review",
-    });
-
-    let event = ActivityEvent::new_task_event(
-        task_id.clone(),
-        ActivityEventType::System,
-        "Linked follow-up ideation session to handle unresolved unrelated scope drift separately.",
-    )
-    .with_role(ActivityEventRole::System)
-    .with_status(new_status)
-    .with_metadata(metadata.to_string());
 
     if let Err(error) = state.app_state.activity_event_repo.save(event).await {
         tracing::warn!(
             task_id = task_id.as_str(),
-            %followup_session_id,
+            followup_session_id = %followup_session_id.unwrap_or_default(),
             %error,
             "Failed to persist follow-up activity event after review escalation"
         );
@@ -650,16 +588,12 @@ async fn maybe_spawn_unrelated_drift_followup(
     feedback: Option<&str>,
     escalation_reason: Option<&str>,
 ) -> Option<String> {
-    if !matches!(outcome, ReviewToolOutcome::Escalate) {
-        return None;
-    }
-    if !matches!(
+    if !should_spawn_unrelated_drift_followup(
+        outcome,
         scope_drift_classification,
-        Some(ScopeDriftClassification::UnrelatedDrift)
+        revision_count,
+        review_settings,
     ) {
-        return None;
-    }
-    if !review_settings.exceeded_max_revisions(revision_count) {
         return None;
     }
 
@@ -674,14 +608,21 @@ async fn maybe_spawn_unrelated_drift_followup(
         }
     };
 
-    let blocker_fingerprint =
-        compute_out_of_scope_blocker_fingerprint(&task.id, &task_context.out_of_scope_files);
+    let draft = build_unrelated_drift_followup_draft(
+        task,
+        task_context,
+        summary,
+        feedback,
+        escalation_reason,
+        revision_count,
+        review_settings,
+    );
 
     match find_existing_unrelated_drift_followup(
         state,
         &parent_session_id,
         &task.id,
-        blocker_fingerprint.as_deref(),
+        draft.blocker_fingerprint.as_deref(),
     )
     .await
     {
@@ -696,26 +637,12 @@ async fn maybe_spawn_unrelated_drift_followup(
         }
     }
 
-    let title = format!("Follow-up: {}", task.title);
-    let prompt = build_unrelated_drift_followup_prompt(
-        task,
-        task_context,
-        summary,
-        feedback,
-        escalation_reason,
-        revision_count,
-        review_settings.max_revision_cycles,
-    );
-
     let request = CreateChildSessionRequest {
         parent_session_id: parent_session_id.as_str().to_string(),
-        title: Some(title),
-        description: Some(
-            "Separate follow-up spawned automatically because repeated revise cycles could not resolve unrelated scope drift in the original task."
-                .to_string(),
-        ),
+        title: Some(draft.title),
+        description: Some(draft.description),
         inherit_context: true,
-        initial_prompt: Some(prompt),
+        initial_prompt: Some(draft.prompt),
         team_mode: None,
         team_config: None,
         purpose: Some("general".to_string()),
@@ -724,7 +651,7 @@ async fn maybe_spawn_unrelated_drift_followup(
         source_context_type: Some("review".to_string()),
         source_context_id: Some(review.id.as_str().to_string()),
         spawn_reason: Some("out_of_scope_failure".to_string()),
-        blocker_fingerprint,
+        blocker_fingerprint: draft.blocker_fingerprint,
     };
 
     match create_child_session_impl(state, request).await {
@@ -753,20 +680,9 @@ async fn find_existing_unrelated_drift_followup(
         .get_children(parent_session_id)
         .await?;
 
-    Ok(children
-        .into_iter()
-        .find(|session| {
-            session.archived_at.is_none()
-                && session.source_task_id.as_ref() == Some(task_id)
-                && match blocker_fingerprint {
-                    Some(fingerprint) => {
-                        session.blocker_fingerprint.as_deref() == Some(fingerprint)
-                    }
-                    None => {
-                        session.source_context_type.as_deref() == Some("review")
-                            && session.spawn_reason.as_deref() == Some("out_of_scope_failure")
-                    }
-                }
-        })
-        .map(|session| session.id.as_str().to_string()))
+    Ok(matching_unrelated_drift_followup_session_id(
+        &children,
+        task_id,
+        blocker_fingerprint,
+    ))
 }
