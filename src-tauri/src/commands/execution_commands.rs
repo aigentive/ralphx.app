@@ -24,6 +24,9 @@ use crate::domain::entities::{
 };
 use crate::domain::execution::ExecutionSettings;
 use crate::domain::execution::{ScopedExecutionSubject, count_execution_status};
+use crate::domain::execution::{
+    build_running_ideation_session, build_running_process, elapsed_seconds_for_status,
+};
 use crate::domain::services::QueueKey;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::transition_handler::get_trigger_origin;
@@ -1327,22 +1330,15 @@ pub async fn get_running_processes(
                         continue;
                     }
                 }
-                let elapsed_seconds = {
-                    let now = chrono::Utc::now();
-                    let elapsed = now.signed_duration_since(session.created_at);
-                    Some(elapsed.num_seconds())
-                };
+                let now = chrono::Utc::now();
                 let slot_key = format!("ideation/{}", session_id_str);
                 let is_generating = !execution_state.is_interactive_idle(&slot_key);
-                ideation_sessions.push(RunningIdeationSession {
-                    session_id: session_id_str,
-                    title: session
-                        .title
-                        .unwrap_or_else(|| "Untitled Session".to_string()),
-                    elapsed_seconds,
-                    team_mode: session.team_mode,
+                ideation_sessions.push(build_running_ideation_session(
+                    session_id_str,
+                    &session,
                     is_generating,
-                });
+                    now,
+                ));
             }
             continue;
         }
@@ -1397,28 +1393,18 @@ pub async fn get_running_processes(
             .await
             .map_err(|e| e.to_string())?;
 
-        let elapsed_seconds = history
-            .iter()
-            .rev()
-            .find(|t| t.to == task.internal_status)
-            .map(|transition| {
-                let now = chrono::Utc::now();
-                let elapsed = now.signed_duration_since(transition.timestamp);
-                elapsed.num_seconds()
-            });
+        let elapsed_seconds =
+            elapsed_seconds_for_status(&history, task.internal_status, chrono::Utc::now());
 
         // Get trigger origin
         let trigger_origin = get_trigger_origin(&task);
 
-        processes.push(RunningProcess {
-            task_id: task_id_str,
-            title: task.title.clone(),
-            internal_status: task.internal_status.as_str().to_string(),
+        processes.push(build_running_process(
+            &task,
             step_progress,
             elapsed_seconds,
             trigger_origin,
-            task_branch: task.task_branch.clone(),
-        });
+        ));
     }
 
     Ok(RunningProcessesResponse {

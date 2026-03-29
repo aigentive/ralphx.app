@@ -1,49 +1,8 @@
 use super::*;
 use crate::domain::execution::context_matches_running_status;
-
-/// A single running process with enriched data
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RunningProcess {
-    /// Task ID
-    pub task_id: String,
-    /// Task title
-    pub title: String,
-    /// Current internal status
-    pub internal_status: String,
-    /// Step progress summary (if steps exist)
-    pub step_progress: Option<StepProgressSummary>,
-    /// Elapsed time in seconds since entering current status
-    pub elapsed_seconds: Option<i64>,
-    /// Trigger origin (scheduler, revision, recovery, retry, qa)
-    pub trigger_origin: Option<String>,
-    /// Task branch name
-    pub task_branch: Option<String>,
-}
-
-/// A running ideation session with enriched data
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RunningIdeationSession {
-    /// Session ID
-    pub session_id: String,
-    /// Session title
-    pub title: String,
-    /// Elapsed time in seconds since session was created
-    pub elapsed_seconds: Option<i64>,
-    /// Team mode (solo, research, debate)
-    pub team_mode: Option<String>,
-    /// Whether the agent is actively generating (false = idle between turns)
-    pub is_generating: bool,
-}
-
-/// Response for get_running_processes
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RunningProcessesResponse {
-    /// List of running processes
-    pub processes: Vec<RunningProcess>,
-    /// List of running ideation sessions
-    pub ideation_sessions: Vec<RunningIdeationSession>,
-}
-
+pub use crate::domain::execution::{
+    RunningIdeationSession, RunningProcess, RunningProcessesResponse,
+};
 
 #[doc(hidden)]
 pub fn context_matches_running_status_for_gc(
