@@ -73,6 +73,16 @@ pub async fn update_execution_settings(
     let old_max = execution_state.max_concurrent();
     let new_max = input.max_concurrent_tasks;
 
+    // Read old project_ideation_max from DB before persisting.
+    // ExecutionState.project_ideation_max() is a single global AtomicU32 that may reflect
+    // a different project's value, so we read from DB for the accurate per-project comparison.
+    let old_project_ideation_max = app_state
+        .execution_settings_repo
+        .get_settings(project_id.as_ref())
+        .await
+        .map(|s| s.project_ideation_max)
+        .unwrap_or(input.project_ideation_max); // if read fails, assume unchanged → no drain
+
     // Build domain settings from input
     let settings = ExecutionSettings {
         max_concurrent_tasks: input.max_concurrent_tasks,
@@ -100,6 +110,52 @@ pub async fn update_execution_settings(
                 project_id.clone(),
             )
             .await;
+        }
+    }
+
+    // Sync ExecutionState project_ideation_max (per-project setting reflected in global atomic)
+    execution_state.set_project_ideation_max(updated.project_ideation_max);
+
+    // If project_ideation_max increased and we have a project scope, wake queued sessions.
+    // DB is already persisted above so PendingSessionDrainService will see the new capacity.
+    if updated.project_ideation_max > old_project_ideation_max {
+        if let Some(ref pid) = project_id {
+            let mut svc = ClaudeChatService::new(
+                Arc::clone(&app_state.chat_message_repo),
+                Arc::clone(&app_state.chat_attachment_repo),
+                Arc::clone(&app_state.artifact_repo),
+                Arc::clone(&app_state.chat_conversation_repo),
+                Arc::clone(&app_state.agent_run_repo),
+                Arc::clone(&app_state.project_repo),
+                Arc::clone(&app_state.task_repo),
+                Arc::clone(&app_state.task_dependency_repo),
+                Arc::clone(&app_state.ideation_session_repo),
+                Arc::clone(&app_state.activity_event_repo),
+                Arc::clone(&app_state.message_queue),
+                Arc::clone(&app_state.running_agent_registry),
+                Arc::clone(&app_state.memory_event_repo),
+            )
+            .with_execution_state(Arc::clone(&execution_state))
+            .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo));
+            if let Some(ref ah) = app_state.app_handle {
+                svc = svc.with_app_handle(ah.clone());
+            }
+            let chat_svc: Arc<dyn ChatService> = Arc::new(svc);
+
+            let drain = Arc::new(
+                crate::application::pending_session_drain::PendingSessionDrainService::new(
+                    Arc::clone(&app_state.ideation_session_repo),
+                    Arc::clone(&app_state.task_repo),
+                    Arc::clone(&app_state.execution_settings_repo),
+                    Arc::clone(&execution_state),
+                    Arc::clone(&app_state.running_agent_registry),
+                    chat_svc,
+                ),
+            );
+            let project_id_str = pid.0.clone();
+            tokio::spawn(async move {
+                drain.try_drain_pending_for_project(&project_id_str).await;
+            });
         }
     }
 
