@@ -1544,6 +1544,11 @@ impl<R: Runtime> TaskTransitionService<R> {
             .as_str()
             .map(|s| s.to_owned());
         let reviewing_origin = freshness_origin.as_deref() == Some("reviewing");
+        let has_merge_conflict_evidence = task_meta_val["conflict_markers_detected"]
+            .as_bool()
+            .unwrap_or(false)
+            || task_meta_val["source_update_conflict"].as_bool().unwrap_or(false)
+            || task_meta_val["plan_update_conflict"].as_bool().unwrap_or(false);
 
         // Step 2: Conditional increment — only for the conflict marker scan path
         // (which doesn't call ensure_branches_fresh and never sets
@@ -1570,7 +1575,7 @@ impl<R: Runtime> TaskTransitionService<R> {
 
         // Step 3: Cap enforcement — >= 5 during review → escalate to Failed.
         const FRESHNESS_RETRY_LIMIT: u32 = 5;
-        if reviewing_origin && conflict_count >= FRESHNESS_RETRY_LIMIT {
+        if reviewing_origin && !has_merge_conflict_evidence && conflict_count >= FRESHNESS_RETRY_LIMIT {
             tracing::warn!(
                 task_id = task_id.as_str(),
                 conflict_count = conflict_count,
@@ -1603,7 +1608,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             return;
         }
 
-        let (target_state, corrective_status, to_str) = if reviewing_origin {
+        let (target_state, corrective_status, to_str) = if reviewing_origin && !has_merge_conflict_evidence {
             (State::PendingReview, InternalStatus::PendingReview, "pending_review")
         } else {
             (State::Merging, InternalStatus::Merging, "merging")
@@ -1691,8 +1696,10 @@ impl<R: Runtime> TaskTransitionService<R> {
             )
             .await
         {
-            let reason = if reviewing_origin {
+            let reason = if reviewing_origin && !has_merge_conflict_evidence {
                 "BranchFreshnessConflict during review — re-queuing for review"
+            } else if reviewing_origin {
+                "BranchFreshnessConflict during review — routing to merge resolution"
             } else {
                 "BranchFreshnessConflict during on_enter"
             };
@@ -1712,9 +1719,10 @@ impl<R: Runtime> TaskTransitionService<R> {
                 );
             }
 
-            // Step 8: Conditional merger spawn — only for non-reviewing origin
-            // (Merging routing). Reviewing origin parks in PendingReview.
-            if reviewing_origin {
+            // Step 8: Conditional merger spawn — generic review-origin freshness conflicts
+            // park in PendingReview, but actual merge-conflict evidence must route through
+            // Merging so the merger agent can resolve the conflict.
+            if reviewing_origin && !has_merge_conflict_evidence {
                 tracing::info!(
                     task_id = task_id.as_str(),
                     "Parked task in PendingReview after review-origin freshness conflict; skipping immediate re-entry to Reviewing"
