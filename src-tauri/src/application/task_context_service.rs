@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use crate::domain::entities::{
     create_artifact_content_preview, generate_task_context_hints, ArtifactSummary,
-    ScopeDriftStatus, StepProgressSummary, Task, TaskContext, TaskDependencySummary, TaskId,
+    ScopeDriftStatus, StepProgressSummary, TaskContext, TaskDependencySummary, TaskId,
     TaskProposalSummary,
 };
 use crate::domain::repositories::{
