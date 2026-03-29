@@ -9,8 +9,7 @@ use tauri::Emitter;
 use super::*;
 use crate::application::{GitService, TaskSchedulerService, TaskTransitionService};
 use crate::domain::entities::{
-    InternalStatus, Review, ReviewIssue as ReviewNoteIssue, ReviewIssueEntity, ReviewNote,
-    ReviewOutcome, ReviewerType, TaskId,
+    InternalStatus, Review, ReviewNote, ReviewOutcome, ReviewerType, TaskId,
 };
 use crate::domain::services::running_agent_registry::RunningAgentKey;
 use crate::domain::state_machine::services::TaskScheduler;
@@ -20,8 +19,9 @@ use crate::domain::state_machine::transition_handler::{
 use crate::domain::review::{
     apply_review_outcome, approved_no_changes_target_status, approved_target_status,
     build_followup_activity_event, build_unrelated_drift_followup_draft,
-    complete_review_response_message, matching_unrelated_drift_followup_session_id,
-    parse_review_decision, parse_review_issues, review_note_content,
+    build_review_issue_entities, build_review_note_issues, complete_review_response_message,
+    matching_unrelated_drift_followup_session_id, parse_review_decision, parse_review_issues,
+    review_note_content,
     should_spawn_unrelated_drift_followup, update_review_scope_metadata,
     validate_complete_review_policy, RawReviewIssueInput,
 };

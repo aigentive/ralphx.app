@@ -136,20 +136,7 @@ pub async fn complete_review(
         .transpose()
         .map_err(|msg| (StatusCode::BAD_REQUEST, msg))?;
 
-    let domain_issues = parsed_issues.as_ref().map(|issues| {
-        issues
-            .iter()
-            .map(|issue| ReviewNoteIssue {
-                severity: issue.severity.to_db_string().to_string(),
-                file: issue.file_path.clone(),
-                line: issue.line_number,
-                description: issue
-                    .description
-                    .clone()
-                    .unwrap_or_else(|| issue.title.clone()),
-            })
-            .collect()
-    });
+    let domain_issues = parsed_issues.as_ref().map(|issues| build_review_note_issues(issues));
 
     // For now, we don't create fix tasks automatically - that can be added later
     let fix_task_id: Option<TaskId> = None;
@@ -209,27 +196,11 @@ pub async fn complete_review(
                 state
                     .app_state
                     .review_issue_repo
-                    .bulk_create(
-                        issues
-                            .into_iter()
-                            .map(|issue| {
-                                let mut entity = ReviewIssueEntity::new(
-                                    review_note.id.clone(),
-                                    task_id.clone(),
-                                    issue.title,
-                                    issue.severity,
-                                );
-                                entity.description = issue.description;
-                                entity.category = issue.category;
-                                entity.step_id = issue.step_id;
-                                entity.no_step_reason = issue.no_step_reason;
-                                entity.file_path = issue.file_path;
-                                entity.line_number = issue.line_number;
-                                entity.code_snippet = issue.code_snippet;
-                                entity
-                            })
-                            .collect(),
-                    )
+                    .bulk_create(build_review_issue_entities(
+                        issues,
+                        review_note.id.clone(),
+                        task_id.clone(),
+                    ))
                     .await
                     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             }

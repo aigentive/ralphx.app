@@ -3,6 +3,7 @@
 
 pub mod config;
 pub mod complete_followup;
+pub mod complete_issues;
 pub mod complete_review;
 pub mod complete_policy;
 pub mod complete_result;
@@ -16,6 +17,7 @@ pub use complete_followup::{
     matching_unrelated_drift_followup_session_id, should_spawn_unrelated_drift_followup,
     update_review_scope_metadata, UnrelatedDriftFollowupDraft,
 };
+pub use complete_issues::{build_review_issue_entities, build_review_note_issues};
 pub use complete_review::{
     CompleteReviewInput, CompleteReviewValidationError, ParseReviewToolOutcomeError,
     ReviewIssueInput, ReviewIssueValidationError, ReviewToolOutcome,
