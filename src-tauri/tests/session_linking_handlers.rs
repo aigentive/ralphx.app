@@ -142,6 +142,13 @@ mod verification_init_tests {
         }
     }
 
+    fn make_imported_parent_session(plan_artifact_id: Option<ArtifactId>) -> IdeationSession {
+        let mut session = make_parent_session(plan_artifact_id);
+        session.source_project_id = Some("master-proj".to_string());
+        session.source_session_id = Some("master-session".to_string());
+        session
+    }
+
     fn make_verification_request(parent_id: &IdeationSessionId) -> CreateChildSessionRequest {
         CreateChildSessionRequest {
             parent_session_id: parent_id.as_str().to_string(),
@@ -604,6 +611,91 @@ mod verification_init_tests {
         assert_eq!(child.source_context_type.as_deref(), Some("task_execution"));
         assert_eq!(child.source_context_id.as_deref(), Some("task-123"));
         assert_eq!(child.spawn_reason.as_deref(), Some("out_of_scope_failure"));
+    }
+
+    #[tokio::test]
+    async fn test_followup_inherits_cross_project_lineage_from_parent() {
+        let state = setup_sqlite_state().await;
+
+        let parent = make_imported_parent_session(None);
+        let parent_id = parent.id.clone();
+        let parent_project_id = parent.project_id.clone();
+        state
+            .app_state
+            .ideation_session_repo
+            .create(parent)
+            .await
+            .unwrap();
+
+        let req = CreateChildSessionRequest {
+            parent_session_id: parent_id.as_str().to_string(),
+            title: Some("Imported follow-up".to_string()),
+            description: None,
+            inherit_context: true,
+            initial_prompt: None,
+            source_task_id: Some("task-456".to_string()),
+            source_context_type: Some("review".to_string()),
+            source_context_id: Some("review-456".to_string()),
+            spawn_reason: Some("out_of_scope_failure".to_string()),
+            team_mode: None,
+            team_config: None,
+            purpose: None,
+            is_external_trigger: false,
+        };
+
+        let response = create_child_session(State(state.clone()), Json(req))
+            .await
+            .expect("Child session creation should succeed")
+            .0;
+
+        let child_id = IdeationSessionId::from_string(response.session_id);
+        let child = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&child_id)
+            .await
+            .unwrap()
+            .expect("Child session must exist");
+
+        assert_eq!(child.parent_session_id, Some(parent_id));
+        assert_eq!(child.project_id, parent_project_id);
+        assert_eq!(child.source_project_id.as_deref(), Some("master-proj"));
+        assert_eq!(child.source_session_id.as_deref(), Some("master-session"));
+    }
+
+    #[tokio::test]
+    async fn test_verification_child_inherits_cross_project_lineage_from_parent() {
+        let state = setup_sqlite_state().await;
+
+        let parent = make_imported_parent_session(Some(ArtifactId::new()));
+        let parent_id = parent.id.clone();
+        let parent_project_id = parent.project_id.clone();
+        state
+            .app_state
+            .ideation_session_repo
+            .create(parent)
+            .await
+            .unwrap();
+
+        let req = make_verification_request(&parent_id);
+        let response = create_child_session(State(state.clone()), Json(req))
+            .await
+            .expect("Verification child creation should succeed")
+            .0;
+
+        let child_id = IdeationSessionId::from_string(response.session_id);
+        let child = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&child_id)
+            .await
+            .unwrap()
+            .expect("Verification child must exist");
+
+        assert_eq!(child.parent_session_id, Some(parent_id));
+        assert_eq!(child.project_id, parent_project_id);
+        assert_eq!(child.source_project_id.as_deref(), Some("master-proj"));
+        assert_eq!(child.source_session_id.as_deref(), Some("master-session"));
     }
 
     // When spawn fails for a non-verification child with initial_prompt, the handler must

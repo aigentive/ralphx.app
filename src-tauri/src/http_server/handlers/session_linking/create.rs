@@ -231,6 +231,8 @@ pub(crate) async fn create_child_session_impl(
         resolved_team_mode.as_ref(),
         resolved_team_config_json.as_ref(),
     );
+    let inherited_source_project_id = parent.source_project_id.clone();
+    let inherited_source_session_id = parent.source_session_id.clone();
 
     let child_session = IdeationSession {
         id: IdeationSessionId::new(),
@@ -256,8 +258,8 @@ pub(crate) async fn create_child_session_impl(
         verification_in_progress: false,
         verification_metadata: None,
         verification_generation: 0,
-        source_project_id: None,
-        source_session_id: None,
+        source_project_id: inherited_source_project_id,
+        source_session_id: inherited_source_session_id,
         source_task_id: req
             .source_task_id
             .as_ref()
