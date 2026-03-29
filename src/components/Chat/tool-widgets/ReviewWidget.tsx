@@ -233,7 +233,7 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
 
         {/* Issue count or summary */}
         <span
-          className={`${compact ? "text-[11px]" : "text-xs"} truncate flex-1 min-w-0`}
+          className={`${compact ? "text-[11px]" : "text-xs"} truncate flex-1 min-w-[80px]`}
           style={{ color: hasError ? "hsl(0, 70%, 75%)" : "hsl(220, 10%, 70%)" }}
         >
           {issues.length > 0
@@ -258,7 +258,7 @@ function CompleteReviewCard({ toolCall, className = "", compact = false }: ToolC
               event.stopPropagation();
               navigateToIdeationSession(followupSessionId);
             }}
-            className={`${compact ? "text-[9px]" : "text-[10px]"} flex items-center gap-1 px-1.5 py-0.5 rounded transition-opacity hover:opacity-80`}
+            className={`${compact ? "text-[9px]" : "text-[10px]"} flex items-center gap-1 px-1.5 py-0.5 rounded transition-opacity hover:opacity-80 flex-shrink-0`}
             style={{
               backgroundColor: "hsla(14, 100%, 60%, 0.12)",
               color: "hsl(14, 100%, 68%)",
@@ -447,7 +447,7 @@ function GetReviewNotesCard({ toolCall, className = "", compact = false }: ToolC
         )}
 
         <span
-          className={`${compact ? "text-[11px]" : "text-xs"} flex-1 min-w-0`}
+          className={`${compact ? "text-[11px]" : "text-xs"} flex-1 min-w-[80px] break-words`}
           style={{ color: "hsl(220, 10%, 75%)" }}
         >
           {reviews.length} review note{reviews.length !== 1 ? "s" : ""}
