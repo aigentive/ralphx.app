@@ -475,7 +475,10 @@ pub async fn process_stream_background<R: Runtime>(
                     &chat_message_repo, &assistant_message_id,
                     &processor.response_text, &processor.tool_calls, &processor.content_blocks,
                 ).await;
-                return Err(StreamError::Cancelled { turns_finalized });
+                return Err(StreamError::Cancelled {
+                    turns_finalized,
+                    completion_tool_called: completion_signal_tracker.was_called(),
+                });
             }
             read_result = timeout(timeout_config.line_read_timeout, lines.next_line()) => {
                 match read_result {
@@ -1927,7 +1930,10 @@ pub async fn process_stream_background<R: Runtime>(
     // Err(Cancelled). If the token is cancelled, always return Cancelled —
     // unless this was a silent interactive exit (already handled above).
     if cancellation_token.is_cancelled() && !silent_interactive_exit {
-        return Err(StreamError::Cancelled { turns_finalized });
+        return Err(StreamError::Cancelled {
+            turns_finalized,
+            completion_tool_called: completion_signal_tracker.was_called(),
+        });
     }
 
     tracing::debug!(

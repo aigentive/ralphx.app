@@ -603,9 +603,12 @@ fn test_cancelled_with_turns_takes_success_path_not_error_path() {
 
     // turns_finalized > 0 → agent completed at least one turn before cancellation
     // → handle_stream_error calls handle_stream_success + emits run_completed
-    let cancelled_with_turns = StreamError::Cancelled { turns_finalized: 2 };
+    let cancelled_with_turns = StreamError::Cancelled {
+        turns_finalized: 2,
+        completion_tool_called: false,
+    };
     let goes_to_success_path = match &cancelled_with_turns {
-        StreamError::Cancelled { turns_finalized } => *turns_finalized > 0,
+        StreamError::Cancelled { turns_finalized, .. } => *turns_finalized > 0,
         _ => false,
     };
     assert!(
@@ -624,14 +627,176 @@ fn test_cancelled_with_turns_takes_success_path_not_error_path() {
 
     // turns_finalized == 0 → genuine user-stop or system cancel before any turn completed
     // → handle_stream_error emits agent:stopped (not run_completed)
-    let cancelled_no_turns = StreamError::Cancelled { turns_finalized: 0 };
+    let cancelled_no_turns = StreamError::Cancelled {
+        turns_finalized: 0,
+        completion_tool_called: false,
+    };
     let goes_to_stop_path = match &cancelled_no_turns {
-        StreamError::Cancelled { turns_finalized } => *turns_finalized == 0,
+        StreamError::Cancelled { turns_finalized, .. } => *turns_finalized == 0,
         _ => false,
     };
     assert!(
         goes_to_stop_path,
         "Cancelled{{turns_finalized:0}} → must take stop path (agent:stopped, not run_completed)"
+    );
+}
+
+// ========================================
+// Cancelled handler: real handle_stream_error path exercise
+// ========================================
+//
+// These tests call the real `handle_stream_error` function using memory repos
+// (from AppState::new_test()) and assert the execution slot count after return.
+// They guard the routing logic introduced in sub-branches A and B of the Cancelled handler.
+//
+// Key invariants:
+// - Sub-branch B (completion_tool_called=true, turns_finalized=0): slot NOT re-incremented
+//   because TurnComplete never fired, so there was no prior slot decrement to compensate for.
+// - Sub-branch A (turns_finalized>0): slot IS re-incremented
+//   because TurnComplete fired earlier and decremented the slot.
+// - [Agent stopped] (turns_finalized=0, completion_tool_called=false): slot NOT touched.
+
+/// Helper that calls handle_stream_error with the given Cancelled variant and
+/// returns (recovery_spawned, running_count_after). Uses Ideation context and
+/// memory repos so the Cancelled handler paths can exercise without side effects.
+async fn invoke_handle_stream_error_cancelled(
+    cancelled: &StreamError,
+) -> (bool, u32) {
+    let state = AppState::new_test();
+    let exec = Arc::new(ExecutionState::new());
+    let execution_state = Some(Arc::clone(&exec));
+
+    let conversation_id = ChatConversationId::new();
+    let context_id = "test-session-id";
+    let event_ctx = crate::application::chat_service::event_context(
+        &conversation_id,
+        &ChatContextType::Ideation,
+        context_id,
+    );
+    let cli_path = std::path::Path::new("/tmp/claude");
+    let plugin_dir = std::path::Path::new("/tmp/plugin");
+    let working_dir = std::path::Path::new("/tmp");
+
+    let recovery_spawned = handle_stream_error::<MockRuntime>(
+        "cancelled",
+        Some(cancelled),
+        ChatContextType::Ideation,
+        context_id,
+        conversation_id,
+        "run-id-1",
+        "msg-id-1",
+        &event_ctx,
+        None,                    // stored_session_id
+        false,                   // is_retry_attempt
+        None,                    // user_message_content
+        None,                    // conversation
+        None,                    // resolved_project_id
+        cli_path,
+        plugin_dir,
+        working_dir,
+        &state.chat_message_repo,
+        &state.chat_attachment_repo,
+        &state.artifact_repo,
+        &state.chat_conversation_repo,
+        &state.agent_run_repo,
+        &state.task_repo,
+        &state.task_dependency_repo,
+        &state.project_repo,
+        &state.ideation_session_repo,
+        &None,                   // task_proposal_repo — not used in Cancelled path
+        &state.activity_event_repo,
+        &state.message_queue,
+        &state.running_agent_registry,
+        &state.memory_event_repo,
+        &execution_state,
+        &None,                   // question_state — not used in Cancelled path
+        &None,                   // plan_branch_repo — not used for Ideation
+        &None,                   // execution_settings_repo — not used for Ideation
+        &None::<tauri::AppHandle<MockRuntime>>,
+        None,                    // agent_name
+        false,                   // team_mode
+        None,                    // run_chain_id
+        &None,                   // interactive_process_registry
+        &None,                   // review_repo
+        &None,                   // task_step_repo
+    )
+    .await;
+
+    (recovery_spawned, exec.running_count())
+}
+
+/// Sub-branch B: Cancelled { turns_finalized: 0, completion_tool_called: true }
+/// → success path taken; execution slot must NOT be re-incremented.
+///
+/// Rationale: TurnComplete never fired (cleanup raced ahead of it), so the slot
+/// was never decremented by that event. Re-incrementing here would cause a slot
+/// leak that makes the system believe an agent is still running.
+#[tokio::test]
+async fn test_handle_stream_error_cancelled_completion_tool_called_skips_slot_reincrement() {
+    let cancelled = StreamError::Cancelled {
+        turns_finalized: 0,
+        completion_tool_called: true,
+    };
+    let (recovery_spawned, count_after) = invoke_handle_stream_error_cancelled(&cancelled).await;
+
+    assert!(
+        !recovery_spawned,
+        "Sub-branch B must return false (success path, no retry)"
+    );
+    assert_eq!(
+        count_after,
+        0,
+        "completion_tool_called=true path must skip slot re-increment (TurnComplete never fired)"
+    );
+}
+
+/// Regression guard: Cancelled { turns_finalized: 0, completion_tool_called: false }
+/// → [Agent stopped] path taken; execution slot must NOT be incremented.
+///
+/// Manual user-stop must never be silently promoted to a success path.
+/// This test ensures the new completion_tool_called guard does not broaden the
+/// success condition beyond its intended scope.
+#[tokio::test]
+async fn test_handle_stream_error_cancelled_false_completion_takes_agent_stopped_path() {
+    let cancelled = StreamError::Cancelled {
+        turns_finalized: 0,
+        completion_tool_called: false,
+    };
+    let (recovery_spawned, count_after) = invoke_handle_stream_error_cancelled(&cancelled).await;
+
+    assert!(
+        !recovery_spawned,
+        "[Agent stopped] path must return false"
+    );
+    assert_eq!(
+        count_after,
+        0,
+        "User-stop path must NOT touch the execution slot"
+    );
+}
+
+/// Sub-branch A: Cancelled { turns_finalized: 1, completion_tool_called: true }
+/// → success path taken; execution slot IS re-incremented.
+///
+/// TurnComplete fired (turns_finalized=1) so it already decremented the slot once.
+/// Sub-branch A compensates with a re-increment before calling handle_stream_success.
+/// This regression guard ensures that path is unchanged by the new completion_tool_called field.
+#[tokio::test]
+async fn test_handle_stream_error_cancelled_turns_finalized_re_increments_slot() {
+    let cancelled = StreamError::Cancelled {
+        turns_finalized: 1,
+        completion_tool_called: true,
+    };
+    let (recovery_spawned, count_after) = invoke_handle_stream_error_cancelled(&cancelled).await;
+
+    assert!(
+        !recovery_spawned,
+        "Sub-branch A must return false (success path, no retry)"
+    );
+    assert_eq!(
+        count_after,
+        1,
+        "turns_finalized>0 path must re-increment slot once to compensate for TurnComplete's decrement"
     );
 }
 

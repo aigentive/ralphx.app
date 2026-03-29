@@ -267,7 +267,13 @@ pub enum StreamError {
     /// `turns_finalized` tracks how many interactive turns completed before cancellation.
     /// When > 0, the agent completed normally and the cancellation path should still
     /// transition the task (e.g., Executing → PendingReview).
-    Cancelled { turns_finalized: usize },
+    /// `completion_tool_called` indicates the agent called `execution_complete` (or equivalent
+    /// completion MCP tool) before the stream was cancelled, meaning the work is done and the
+    /// handler should route to the success path rather than the cancelled path.
+    Cancelled {
+        turns_finalized: usize,
+        completion_tool_called: bool,
+    },
     /// Provider/API error that is potentially recoverable (rate limits, server errors, etc.).
     /// Task should be paused rather than failed, and auto-resumed when conditions improve.
     ProviderError {
@@ -323,7 +329,14 @@ impl std::fmt::Display for StreamError {
                     context_type
                 )
             }
-            Self::Cancelled { .. } => write!(f, "Agent run was cancelled"),
+            Self::Cancelled {
+                completion_tool_called,
+                ..
+            } => write!(
+                f,
+                "Agent run was cancelled (completion_tool_called={})",
+                completion_tool_called
+            ),
             Self::ProviderError {
                 category, message, ..
             } => write!(f, "Provider error ({}): {}", category, message),
@@ -370,7 +383,10 @@ impl StreamError {
     /// `Paused` for recoverable provider errors (rate limits, server errors, etc.).
     pub fn suggested_task_status(&self) -> Option<InternalStatus> {
         match self {
-            Self::Cancelled { .. } => Some(InternalStatus::Cancelled),
+            Self::Cancelled {
+                completion_tool_called: _,
+                ..
+            } => Some(InternalStatus::Cancelled),
             Self::ProviderError { .. } => Some(InternalStatus::Paused),
             Self::Timeout { .. }
             | Self::ParseStall { .. }

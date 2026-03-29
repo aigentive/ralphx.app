@@ -776,7 +776,11 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     task_step_repo: &Option<Arc<dyn TaskStepRepository>>,
 ) -> bool {
     // Handle cancellation — distinguish "cancelled after normal completion" from "user stop"
-    if let Some(StreamError::Cancelled { turns_finalized }) = stream_error {
+    if let Some(StreamError::Cancelled {
+        turns_finalized,
+        completion_tool_called,
+    }) = stream_error
+    {
         if *turns_finalized > 0 {
             // Agent completed at least one turn (TurnComplete received) before the
             // prune engine or other system cancellation killed the stream. The work
@@ -856,7 +860,74 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
             return false;
         }
 
-        // turns_finalized == 0: genuine user-initiated stop or system cancel before completion
+        // Sub-branch B: completion tool was called but TurnComplete never arrived.
+        // This happens when finalize_proposals (or equivalent) calls execution_complete
+        // and the 200ms cleanup delay fires running_agent_registry.stop() before the
+        // TurnComplete event is emitted. The agent finished its work — treat as success.
+        if *completion_tool_called {
+            debug_assert!(
+                matches!(context_type, ChatContextType::Ideation),
+                "completion_tool_called=true with turns_finalized=0 is only expected for Ideation context; got {:?}",
+                context_type
+            );
+            tracing::info!(
+                conversation_id = conversation_id.as_str(),
+                context_type = %context_type,
+                context_id,
+                "[LIFECYCLE] Cancelled+completion_tool_called=true+turns_finalized=0 — routing to success path"
+            );
+            let _ = agent_run_repo
+                .complete(&AgentRunId::from_string(agent_run_id))
+                .await;
+
+            // Skip execution slot re-increment: no TurnComplete was fired, so no prior
+            // decrement happened that we need to compensate for.
+
+            handle_stream_success(
+                context_type,
+                context_id,
+                true, // effective_has_output: completion tool was called → agent produced output
+                false, // execution_slot_held=false: no TurnComplete decrement to compensate
+                execution_state,
+                task_repo,
+                task_dependency_repo,
+                project_repo,
+                chat_message_repo,
+                chat_attachment_repo,
+                conversation_repo,
+                agent_run_repo,
+                ideation_session_repo,
+                activity_event_repo,
+                message_queue,
+                running_agent_registry,
+                memory_event_repo,
+                plan_branch_repo,
+                task_step_repo,
+                execution_settings_repo,
+                app_handle,
+                interactive_process_registry,
+                review_repo,
+            )
+            .await;
+
+            // Emit run_completed to reset frontend from "generating" → "idle".
+            if let Some(ref handle) = app_handle {
+                let _ = handle.emit(
+                    "agent:run_completed",
+                    AgentRunCompletedPayload {
+                        conversation_id: conversation_id.as_str().to_string(),
+                        context_type: context_type.to_string(),
+                        context_id: context_id.to_string(),
+                        claude_session_id: stored_session_id.map(|s| s.to_string()),
+                        run_chain_id: run_chain_id.clone(),
+                    },
+                );
+            }
+            return false;
+        }
+
+        // turns_finalized == 0 && !completion_tool_called: genuine user-initiated stop or
+        // system cancel before completion.
         tracing::info!(
             conversation_id = conversation_id.as_str(),
             context_type = %context_type,

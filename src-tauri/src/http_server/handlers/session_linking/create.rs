@@ -440,7 +440,7 @@ pub(crate) async fn create_child_session_impl(
             error!("Failed to create session link: {}", e);
             if let Some(current_generation) = verification_generation {
                 rollback_verification_state(
-                    &state,
+                    state,
                     &parent_id,
                     current_generation,
                     "link creation failure",
