@@ -22,6 +22,11 @@ import {
   IDEATION_SPECIALIST_BACKEND,
   IDEATION_SPECIALIST_FRONTEND,
   IDEATION_SPECIALIST_INFRA,
+  IDEATION_SPECIALIST_CODE_QUALITY,
+  IDEATION_SPECIALIST_PROMPT_QUALITY,
+  IDEATION_SPECIALIST_INTENT,
+  IDEATION_SPECIALIST_PIPELINE_SAFETY,
+  IDEATION_SPECIALIST_STATE_MACHINE,
   IDEATION_CRITIC,
   IDEATION_ADVOCATE,
 } from '../agentNames.js';
@@ -635,21 +640,31 @@ describe('revert_and_skip tool', () => {
 // ===========================================================================
 
 describe('TOOL_ALLOWLIST specialist entries', () => {
-  const specialists = [
+  const artifactSpecialists = [
+    IDEATION_SPECIALIST_BACKEND,
+    IDEATION_SPECIALIST_FRONTEND,
+    IDEATION_SPECIALIST_INFRA,
+    IDEATION_SPECIALIST_CODE_QUALITY,
+    IDEATION_SPECIALIST_PROMPT_QUALITY,
+    IDEATION_SPECIALIST_INTENT,
+    IDEATION_SPECIALIST_PIPELINE_SAFETY,
+    IDEATION_SPECIALIST_STATE_MACHINE,
+  ] as const;
+  const parentContextSpecialists = [
     IDEATION_SPECIALIST_BACKEND,
     IDEATION_SPECIALIST_FRONTEND,
     IDEATION_SPECIALIST_INFRA,
   ] as const;
 
-  it.each(specialists)('%s should include create_team_artifact', (agent) => {
+  it.each(artifactSpecialists)('%s should include create_team_artifact', (agent) => {
     expect(TOOL_ALLOWLIST[agent]).toContain('create_team_artifact');
   });
 
-  it.each(specialists)('%s should include get_team_artifacts', (agent) => {
+  it.each(artifactSpecialists)('%s should include get_team_artifacts', (agent) => {
     expect(TOOL_ALLOWLIST[agent]).toContain('get_team_artifacts');
   });
 
-  it.each(specialists)('%s should include get_parent_session_context', (agent) => {
+  it.each(parentContextSpecialists)('%s should include get_parent_session_context', (agent) => {
     expect(TOOL_ALLOWLIST[agent]).toContain('get_parent_session_context');
   });
 

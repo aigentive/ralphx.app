@@ -859,9 +859,13 @@ fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
     let audited_agents = [
         (
             "ideation-specialist-code-quality",
-            vec!["create_team_artifact", "get_session_plan", "get_artifact"],
             vec![
+                "create_team_artifact",
                 "get_team_artifacts",
+                "get_session_plan",
+                "get_artifact",
+            ],
+            vec![
                 "list_session_proposals",
                 "get_proposal",
                 "get_parent_session_context",
@@ -872,9 +876,13 @@ fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
         ),
         (
             "ideation-specialist-prompt-quality",
-            vec!["create_team_artifact", "get_session_plan", "get_artifact"],
             vec![
+                "create_team_artifact",
                 "get_team_artifacts",
+                "get_session_plan",
+                "get_artifact",
+            ],
+            vec![
                 "list_session_proposals",
                 "get_proposal",
                 "get_parent_session_context",
@@ -885,9 +893,13 @@ fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
         ),
         (
             "ideation-specialist-pipeline-safety",
-            vec!["create_team_artifact", "get_session_plan", "get_artifact"],
             vec![
+                "create_team_artifact",
                 "get_team_artifacts",
+                "get_session_plan",
+                "get_artifact",
+            ],
+            vec![
                 "list_session_proposals",
                 "get_proposal",
                 "get_parent_session_context",
@@ -898,9 +910,13 @@ fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
         ),
         (
             "ideation-specialist-state-machine",
-            vec!["create_team_artifact", "get_session_plan", "get_artifact"],
             vec![
+                "create_team_artifact",
                 "get_team_artifacts",
+                "get_session_plan",
+                "get_artifact",
+            ],
+            vec![
                 "list_session_proposals",
                 "get_proposal",
                 "get_parent_session_context",
@@ -913,6 +929,7 @@ fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
             "ideation-specialist-intent",
             vec![
                 "create_team_artifact",
+                "get_team_artifacts",
                 "get_session_plan",
                 "get_artifact",
                 "get_session_messages",
@@ -921,7 +938,6 @@ fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
                 "get_memories_for_paths",
             ],
             vec![
-                "get_team_artifacts",
                 "list_session_proposals",
                 "get_proposal",
                 "get_parent_session_context",
