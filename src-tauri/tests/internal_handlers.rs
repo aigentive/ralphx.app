@@ -746,7 +746,8 @@ async fn test_migrate_then_finalize_target_session_accepted() {
     app_state.ideation_session_repo.create(dst).await.unwrap();
 
     // Proposal targeting proj-dst — before fix this would stay foreign after migration
-    let p = make_proposal_with_target(&source_sid, "Cross-project Feature", "proj-dst");
+    let mut p = make_proposal_with_target(&source_sid, "Cross-project Feature", "proj-dst");
+    p.affected_paths = Some(r#"["src-tauri/src/http_server"]"#.to_string());
     app_state.task_proposal_repo.create(p).await.unwrap();
 
     // Migrate to target session

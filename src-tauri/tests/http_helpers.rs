@@ -1847,6 +1847,84 @@ async fn test_finalize_allows_research_without_affected_paths() {
     assert_eq!(response.tasks_created, 1);
 }
 
+#[tokio::test]
+async fn test_finalize_allows_design_without_affected_paths() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+
+    let mut options = make_proposal_options("Design Spike", Some(1));
+    options.category = ProposalCategory::Design;
+    options.affected_paths = None;
+
+    create_proposal_impl(&state, session.id.clone(), options)
+        .await
+        .expect("proposal creation should succeed");
+
+    let response = finalize_proposals_impl(&state, session.id.as_str())
+        .await
+        .expect("design proposal should finalize without affected_paths");
+
+    assert_eq!(response.tasks_created, 1);
+}
+
+#[tokio::test]
+async fn test_finalize_ignores_foreign_feature_without_affected_paths() {
+    let state = AppState::new_sqlite_test();
+    let project_id = ProjectId::new();
+    let project = ralphx_lib::domain::entities::Project::new(
+        "Foreign Scope Source".to_string(),
+        "/tmp/source-project".to_string(),
+    );
+    let mut project = project;
+    project.id = project_id.clone();
+    state.project_repo.create(project).await.unwrap();
+
+    let artifact = Artifact::new_inline(
+        "Cross-project plan",
+        ArtifactType::Specification,
+        "# Source plan",
+        "test",
+    );
+    let artifact_id = artifact.id.clone();
+    state.artifact_repo.create(artifact).await.unwrap();
+
+    let session = IdeationSession::builder()
+        .project_id(project_id)
+        .title("Cross-project source session")
+        .plan_artifact_id(artifact_id)
+        .cross_project_checked(true)
+        .expected_proposal_count(1)
+        .build();
+    let session_id = session.id.clone();
+    state.ideation_session_repo.create(session).await.unwrap();
+
+    let options = CreateProposalOptions {
+        title: "Foreign feature without local scope".to_string(),
+        description: None,
+        category: ProposalCategory::Feature,
+        suggested_priority: Priority::Medium,
+        steps: None,
+        acceptance_criteria: None,
+        affected_paths: None,
+        estimated_complexity: None,
+        target_project: Some("/tmp/other-project".to_string()),
+        depends_on: vec![],
+        expected_proposal_count: Some(1),
+    };
+
+    create_proposal_impl(&state, session_id.clone(), options)
+        .await
+        .expect("proposal creation should succeed");
+
+    let response = finalize_proposals_impl(&state, session_id.as_str())
+        .await
+        .expect("foreign implementation proposal should not block source-session finalize");
+
+    assert_eq!(response.session_status, "accepted");
+    assert_eq!(response.tasks_created, 0);
+    assert_eq!(response.skipped_foreign_count, 1);
+}
+
 // Scenario 28: No gating when expected_proposal_count is omitted (backward compatibility).
 #[tokio::test]
 async fn test_no_gating_when_count_omitted() {
