@@ -2879,7 +2879,6 @@ async fn test_list_by_group_with_blocker_fingerprint_keeps_parent_title_and_prog
         .project_id(project_id.clone())
         .title("Follow-up Session")
         .parent_session_id(parent_id.clone())
-        .source_task_id(TaskId::new())
         .source_context_type("review".to_string())
         .source_context_id("rev-1".to_string())
         .spawn_reason("out_of_scope_failure".to_string())
@@ -2889,18 +2888,22 @@ async fn test_list_by_group_with_blocker_fingerprint_keeps_parent_title_and_prog
     let child_id = child.id.clone();
     repo.create(child).await.unwrap();
 
-    let task1 = Task::new(project_id.clone(), "Merged task".to_string())
-        .with_ideation_session(parent_id.clone())
-        .with_internal_status(InternalStatus::Merged);
-    let task2 = Task::new(project_id.clone(), "Approved task".to_string())
-        .with_ideation_session(child_id.clone())
-        .with_internal_status(InternalStatus::Approved);
-
-    {
-        let conn = shared.lock().await;
-        insert_test_task(&conn, &task1);
-        insert_test_task(&conn, &task2);
-    }
+    create_task_in_db(
+        &shared,
+        &IdeationSessionId::new().to_string(),
+        project_id.as_str(),
+        parent_id.as_str(),
+        "merged",
+    )
+    .await;
+    create_task_in_db(
+        &shared,
+        &IdeationSessionId::new().to_string(),
+        project_id.as_str(),
+        child_id.as_str(),
+        "approved",
+    )
+    .await;
 
     let (sessions, _) = repo
         .list_by_group(&project_id, "done", 0, 20)
