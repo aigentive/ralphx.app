@@ -1,6 +1,8 @@
 // complete_review tool input schema for the reviewer agent
 // This defines the structure the AI reviewer uses to report review outcomes
 
+pub use crate::domain::review::ScopeDriftClassification;
+
 use crate::domain::entities::{IssueCategory, IssueSeverity, TaskStepId};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -22,18 +24,6 @@ pub enum ReviewToolOutcome {
     NeedsChanges,
     /// Needs human review (security-sensitive, design decision, unclear requirements)
     Escalate,
-}
-
-/// Reviewer classification for detected scope expansion.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ScopeDriftClassification {
-    /// Scope expanded into nearby files/surfaces that were reasonably adjacent.
-    AdjacentScopeExpansion,
-    /// Scope expanded because the original plan needed correction to be valid.
-    PlanCorrection,
-    /// Scope expanded into unrelated drift that should not be silently approved.
-    UnrelatedDrift,
 }
 
 impl std::fmt::Display for ReviewToolOutcome {

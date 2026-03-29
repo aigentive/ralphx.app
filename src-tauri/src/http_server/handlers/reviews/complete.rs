@@ -36,9 +36,9 @@ pub async fn complete_review(
     let scope_drift_classification = req
         .scope_drift_classification
         .as_deref()
-        .map(parse_scope_drift_classification)
+        .map(str::parse::<ScopeDriftClassification>)
         .transpose()
-        .map_err(|msg| (StatusCode::BAD_REQUEST, msg))?;
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let prior_review_notes = state
         .app_state
         .review_repo
@@ -627,7 +627,7 @@ async fn persist_review_scope_snapshot(
         let review_scope = ReviewScopeMetadata::new(
             planned_paths,
             task_context.out_of_scope_files.clone(),
-            scope_drift_classification.map(scope_drift_classification_to_str),
+            scope_drift_classification.map(|classification| classification.to_string()),
             scope_drift_notes,
         );
         Some(
@@ -684,32 +684,6 @@ async fn persist_followup_activity_event(
     }
 }
 
-fn parse_scope_drift_classification(
-    value: &str,
-) -> Result<ScopeDriftClassification, String> {
-    match value {
-        "adjacent_scope_expansion" => Ok(ScopeDriftClassification::AdjacentScopeExpansion),
-        "plan_correction" => Ok(ScopeDriftClassification::PlanCorrection),
-        "unrelated_drift" => Ok(ScopeDriftClassification::UnrelatedDrift),
-        other => Err(format!(
-            "Invalid scope_drift_classification: '{}'. Expected 'adjacent_scope_expansion', 'plan_correction', or 'unrelated_drift'",
-            other
-        )),
-    }
-}
-
-fn scope_drift_classification_to_str(
-    classification: ScopeDriftClassification,
-) -> String {
-    match classification {
-        ScopeDriftClassification::AdjacentScopeExpansion => {
-            "adjacent_scope_expansion".to_string()
-        }
-        ScopeDriftClassification::PlanCorrection => "plan_correction".to_string(),
-        ScopeDriftClassification::UnrelatedDrift => "unrelated_drift".to_string(),
-    }
-}
-
 async fn maybe_spawn_unrelated_drift_followup(
     state: &HttpServerState,
     task: &crate::domain::entities::Task,
@@ -748,7 +722,7 @@ async fn maybe_spawn_unrelated_drift_followup(
     };
 
     let blocker_fingerprint =
-        compute_out_of_scope_blocker_fingerprint(task, &task_context.out_of_scope_files);
+        compute_out_of_scope_blocker_fingerprint(&task.id, &task_context.out_of_scope_files);
 
     match find_existing_unrelated_drift_followup(
         state,

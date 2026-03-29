@@ -1,5 +1,6 @@
 use super::*;
 use crate::domain::entities::ReviewScopeMetadata;
+use crate::domain::review::compute_scope_drift;
 use crate::domain::state_machine::{State, TransitionHandler};
 use crate::domain::state_machine::transition_handler::{BranchPair, ProjectCtx, TaskCore, cleanup_helpers, merge_coordination, merge_helpers};
 
@@ -950,11 +951,8 @@ impl<'a> TransitionHandler<'a> {
         };
 
         let diff = GitService::get_diff_stats_between(&repo_path, target_branch, source_branch).await?;
-        let current_out_of_scope_files = diff
-            .changed_files
-            .into_iter()
-            .filter(|path| !matches_planned_scope(path, &review_scope.planned_paths))
-            .collect::<Vec<_>>();
+        let (_, current_out_of_scope_files) =
+            compute_scope_drift(&diff.changed_files, &review_scope.planned_paths);
 
         if current_out_of_scope_files.is_empty() {
             return Ok(None);
@@ -1064,22 +1062,4 @@ impl<'a> TransitionHandler<'a> {
 struct MergeScopeBackstopViolation {
     reason: String,
     out_of_scope_files: Vec<String>,
-}
-
-fn matches_planned_scope(path: &str, planned_scope: &[String]) -> bool {
-    let normalized_path = normalize_scope_path(path);
-    planned_scope.iter().any(|entry| {
-        let normalized_entry = normalize_scope_path(entry);
-        normalized_path == normalized_entry
-            || normalized_path
-                .strip_prefix(&normalized_entry)
-                .is_some_and(|rest| rest.starts_with('/'))
-    })
-}
-
-fn normalize_scope_path(path: &str) -> String {
-    path.trim()
-        .trim_start_matches("./")
-        .trim_matches('/')
-        .to_string()
 }

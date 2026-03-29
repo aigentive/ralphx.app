@@ -6,8 +6,6 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use sha2::{Digest, Sha256};
-
 use crate::application::{AppState, CreateProposalOptions, UpdateProposalOptions, UpdateSource};
 use crate::application::git_service::GitService;
 use crate::commands::ideation_commands::{apply_proposals_core, is_local_proposal, ApplyProposalsInput, TaskProposalResponse};
@@ -18,6 +16,7 @@ use crate::domain::entities::{
     ScopeDriftStatus, TaskContext, TaskId, TaskProposal, TaskProposalId, ValidationCacheData,
     ValidationCacheMetadata,
 };
+use crate::domain::review::{compute_out_of_scope_blocker_fingerprint, compute_scope_drift};
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::sqlite::{
     SqliteArtifactRepository as ArtifactRepo, SqliteIdeationSessionRepository as SessionRepo,
@@ -1188,7 +1187,7 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
     // 10. Compute validation cache hint (if cache present in metadata)
     let validation_cache = compute_validation_cache(&task, &mut context_hints).await;
     let out_of_scope_blocker_fingerprint =
-        compute_out_of_scope_blocker_fingerprint(&task, &out_of_scope_files);
+        compute_out_of_scope_blocker_fingerprint(&task.id, &out_of_scope_files);
     let followup_sessions = load_task_followup_sessions(state, &task).await?;
 
     // 11. Return TaskContext
@@ -1214,34 +1213,6 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
         out_of_scope_blocker_fingerprint,
         followup_sessions,
     })
-}
-
-pub fn compute_out_of_scope_blocker_fingerprint(
-    task: &crate::domain::entities::Task,
-    out_of_scope_files: &[String],
-) -> Option<String> {
-    if out_of_scope_files.is_empty() {
-        return None;
-    }
-
-    let mut normalized_paths: Vec<&str> = out_of_scope_files
-        .iter()
-        .map(String::as_str)
-        .filter(|path| !path.trim().is_empty())
-        .collect();
-    if normalized_paths.is_empty() {
-        return None;
-    }
-
-    normalized_paths.sort_unstable();
-    normalized_paths.dedup();
-
-    let mut hasher = Sha256::new();
-    hasher.update(task.id.as_str().as_bytes());
-    hasher.update(b"\n");
-    hasher.update(normalized_paths.join("\n").as_bytes());
-    let hash = format!("{:x}", hasher.finalize());
-    Some(format!("ood:{}:{}", task.id.as_str(), &hash[..12]))
 }
 
 async fn load_task_followup_sessions(
@@ -1296,16 +1267,8 @@ async fn compute_task_scope_drift(
 
     let diff = GitService::get_diff_stats(&repo_path, &base_branch).await?;
     let changed_files = diff.changed_files;
-    let out_of_scope_files = changed_files
-        .iter()
-        .filter(|path| !matches_planned_scope(path, &proposal.affected_paths))
-        .cloned()
-        .collect::<Vec<_>>();
-    let status = if out_of_scope_files.is_empty() {
-        ScopeDriftStatus::WithinScope
-    } else {
-        ScopeDriftStatus::ScopeExpansion
-    };
+    let (status, out_of_scope_files) =
+        compute_scope_drift(&changed_files, &proposal.affected_paths);
     Ok((changed_files, status, out_of_scope_files))
 }
 
@@ -1349,24 +1312,6 @@ async fn resolve_task_context_base_branch(
         .get_by_id(&task.project_id)
         .await?
         .map(|project| project.base_branch_or_default().to_string()))
-}
-
-fn matches_planned_scope(path: &str, planned_scope: &[String]) -> bool {
-    let normalized_path = normalize_scope_path(path);
-    planned_scope.iter().any(|entry| {
-        let normalized_entry = normalize_scope_path(entry);
-        normalized_path == normalized_entry
-            || normalized_path
-                .strip_prefix(&normalized_entry)
-                .is_some_and(|rest| rest.starts_with('/'))
-    })
-}
-
-fn normalize_scope_path(path: &str) -> String {
-    path.trim()
-        .trim_start_matches("./")
-        .trim_matches('/')
-        .to_string()
 }
 
 /// Pure function to compute the validation hint and human-readable message from a cache entry
