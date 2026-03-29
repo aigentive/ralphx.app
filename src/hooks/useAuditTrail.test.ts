@@ -328,6 +328,35 @@ describe("useAuditTrail", () => {
     expect(result.current.entries[0]!.followupSessionId).toBe("session-123");
   });
 
+  it("maps follow-up session id from activity metadata into audit entries", async () => {
+    mockGetStateHistory.mockResolvedValue([]);
+    mockGetStateTransitions.mockResolvedValue([]);
+    mockListTaskEvents.mockResolvedValue({
+      events: [
+        createMockActivityEvent({
+          id: "evt-followup",
+          eventType: "system",
+          role: "system",
+          content: "Linked follow-up ideation session",
+          metadata: JSON.stringify({ followupSessionId: "session-456" }),
+        }),
+      ],
+      cursor: null,
+      hasMore: false,
+    });
+
+    const { result } = renderHook(() => useAuditTrail("task-1"), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.entries).toHaveLength(1);
+    expect(result.current.entries[0]!.followupSessionId).toBe("session-456");
+  });
+
   it("maps review note with only summary (no notes) to description", async () => {
     const reviewNote = createMockReviewNote({
       id: "note-50",

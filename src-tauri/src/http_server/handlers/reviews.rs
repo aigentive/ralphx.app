@@ -8,9 +8,9 @@ use tauri::Emitter;
 use super::*;
 use crate::application::{GitService, TaskSchedulerService, TaskTransitionService};
 use crate::domain::entities::{
-    IssueCategory, IssueSeverity, InternalStatus, Review, ReviewIssue as ReviewNoteIssue,
-    ReviewIssueEntity, ReviewNote, ReviewOutcome, ReviewScopeMetadata, ReviewerType,
-    ScopeDriftStatus, TaskId, TaskStepId,
+    ActivityEvent, ActivityEventRole, ActivityEventType, IssueCategory, IssueSeverity,
+    InternalStatus, Review, ReviewIssue as ReviewNoteIssue, ReviewIssueEntity, ReviewNote,
+    ReviewOutcome, ReviewScopeMetadata, ReviewerType, ScopeDriftStatus, TaskId, TaskStepId,
 };
 use crate::domain::services::running_agent_registry::RunningAgentKey;
 use crate::domain::tools::complete_review::ScopeDriftClassification;
@@ -281,6 +281,7 @@ pub async fn complete_review(
         .add_note(&review_note)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let review_note_id = review_note.id.clone();
 
     persist_review_scope_snapshot(
         &state,
@@ -566,6 +567,15 @@ pub async fn complete_review(
         }
     };
 
+    persist_followup_activity_event(
+        &state,
+        &task_id,
+        new_status.clone(),
+        followup_session_id.as_deref(),
+        review_note_id.as_str(),
+    )
+    .await;
+
     // 7. Emit events
     if let Some(app_handle) = &state.app_state.app_handle {
         let _ = app_handle.emit(
@@ -660,6 +670,43 @@ async fn persist_review_scope_snapshot(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(())
+}
+
+async fn persist_followup_activity_event(
+    state: &HttpServerState,
+    task_id: &TaskId,
+    new_status: InternalStatus,
+    followup_session_id: Option<&str>,
+    review_note_id: &str,
+) {
+    let Some(followup_session_id) = followup_session_id else {
+        return;
+    };
+
+    let metadata = serde_json::json!({
+        "followupSessionId": followup_session_id,
+        "reviewNoteId": review_note_id,
+        "spawnReason": "out_of_scope_failure",
+        "sourceContextType": "review",
+    });
+
+    let event = ActivityEvent::new_task_event(
+        task_id.clone(),
+        ActivityEventType::System,
+        "Linked follow-up ideation session to handle unresolved unrelated scope drift separately.",
+    )
+    .with_role(ActivityEventRole::System)
+    .with_status(new_status)
+    .with_metadata(metadata.to_string());
+
+    if let Err(error) = state.app_state.activity_event_repo.save(event).await {
+        tracing::warn!(
+            task_id = task_id.as_str(),
+            %followup_session_id,
+            %error,
+            "Failed to persist follow-up activity event after review escalation"
+        );
+    }
 }
 
 fn parse_scope_drift_classification(

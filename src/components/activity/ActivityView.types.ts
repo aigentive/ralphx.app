@@ -8,7 +8,15 @@ import type { AgentMessageEvent } from "@/types/events";
 // Filter Types
 // ============================================================================
 
-export type MessageTypeFilter = "all" | "thinking" | "tool_call" | "tool_result" | "text" | "error";
+export type ActivityMessageType = AgentMessageEvent["type"] | "system";
+export type MessageTypeFilter =
+  | "all"
+  | "thinking"
+  | "tool_call"
+  | "tool_result"
+  | "text"
+  | "error"
+  | "system";
 
 /** View mode: real-time (Zustand) vs historical (database) */
 export type ViewMode = "realtime" | "historical";
@@ -30,7 +38,7 @@ export interface CopiedState {
  */
 export interface UnifiedActivityMessage {
   id: string;
-  type: AgentMessageEvent["type"];
+  type: ActivityMessageType;
   content: string;
   timestamp: number;
   metadata?: Record<string, unknown> | undefined;
@@ -51,6 +59,7 @@ export const MESSAGE_TYPES: { key: MessageTypeFilter; label: string }[] = [
   { key: "tool_result", label: "Results" },
   { key: "text", label: "Text" },
   { key: "error", label: "Errors" },
+  { key: "system", label: "System" },
 ];
 
 // Status options for filtering (aligned with internal status values)

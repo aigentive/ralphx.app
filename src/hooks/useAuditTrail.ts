@@ -220,6 +220,17 @@ function mapActivityToAuditEntry(event: ActivityEventResponse): AuditEntry {
     system: "System",
     user: "User",
   };
+  let followupSessionId: string | undefined;
+  if (event.metadata) {
+    try {
+      const parsed = JSON.parse(event.metadata) as Record<string, unknown>;
+      if (typeof parsed.followupSessionId === "string") {
+        followupSessionId = parsed.followupSessionId;
+      }
+    } catch {
+      // Keep raw metadata for display even when it is not valid JSON.
+    }
+  }
 
   return {
     id: `activity-${event.id}`,
@@ -230,6 +241,7 @@ function mapActivityToAuditEntry(event: ActivityEventResponse): AuditEntry {
     description: event.content,
     metadata: event.metadata ?? undefined,
     status: event.internalStatus ?? undefined,
+    followupSessionId,
   };
 }
 

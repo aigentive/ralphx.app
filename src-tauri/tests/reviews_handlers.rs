@@ -24,8 +24,9 @@ use ralphx_lib::application::{
 };
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
-    IdeationSession, InternalStatus, Priority, Project, ProjectId, ProposalCategory, ReviewNote,
-    ReviewOutcome, ReviewScopeMetadata, ReviewerType, Task, TaskProposal,
+    ActivityEventRole, ActivityEventType, IdeationSession, InternalStatus, Priority, Project,
+    ProjectId, ProposalCategory, ReviewNote, ReviewOutcome, ReviewScopeMetadata, ReviewerType,
+    Task, TaskProposal,
 };
 use ralphx_lib::domain::review::ReviewSettings;
 use ralphx_lib::http_server::handlers::*;
@@ -633,6 +634,41 @@ async fn test_complete_review_allows_unrelated_drift_escalation_after_revision_b
     );
     assert_eq!(child.source_context_type.as_deref(), Some("review"));
     assert_eq!(child.spawn_reason.as_deref(), Some("out_of_scope_failure"));
+
+    let activity_events = state
+        .app_state
+        .activity_event_repo
+        .list_by_task_id(&task.id, None, 100, None)
+        .await
+        .expect("activity events should load");
+    let followup_event = activity_events
+        .events
+        .iter()
+        .find(|event| {
+            event.event_type == ActivityEventType::System
+                && event.role == ActivityEventRole::System
+                && event.content.contains("follow-up ideation session")
+        })
+        .expect("follow-up escalation should persist a system activity event");
+    let metadata: serde_json::Value = serde_json::from_str(
+        followup_event
+            .metadata
+            .as_deref()
+            .expect("follow-up activity event should include metadata"),
+    )
+    .expect("follow-up activity metadata should parse");
+    assert_eq!(
+        metadata
+            .get("followupSessionId")
+            .and_then(serde_json::Value::as_str),
+        Some(child_id.as_str())
+    );
+    assert_eq!(
+        metadata
+            .get("spawnReason")
+            .and_then(serde_json::Value::as_str),
+        Some("out_of_scope_failure")
+    );
 }
 
 #[tokio::test]

@@ -8,7 +8,8 @@ export type ActivityEventType =
   | "tool_call"
   | "tool_result"
   | "text"
-  | "error";
+  | "error"
+  | "system";
 
 /**
  * Activity event role values

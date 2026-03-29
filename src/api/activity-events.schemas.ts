@@ -11,6 +11,7 @@ export const ActivityEventTypeValues = [
   "tool_result",
   "text",
   "error",
+  "system",
 ] as const;
 
 /**

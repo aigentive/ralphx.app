@@ -4,13 +4,14 @@
 
 import type { AgentMessageEvent } from "@/types/events";
 import type { ActivityEventResponse } from "@/api/activity-events.types";
-import type { UnifiedActivityMessage } from "./ActivityView.types";
+import type { ActivityMessageType, UnifiedActivityMessage } from "./ActivityView.types";
 import {
   Brain,
   Terminal,
   CheckCircle,
   MessageSquare,
   AlertCircle,
+  Settings,
 } from "lucide-react";
 import { createElement } from "react";
 
@@ -18,7 +19,7 @@ import { createElement } from "react";
 // Icon & Color Utilities
 // ============================================================================
 
-export function getMessageIcon(type: AgentMessageEvent["type"]) {
+export function getMessageIcon(type: ActivityMessageType) {
   switch (type) {
     case "thinking":
       return createElement(Brain, { className: "w-4 h-4 thinking-icon" });
@@ -30,10 +31,12 @@ export function getMessageIcon(type: AgentMessageEvent["type"]) {
       return createElement(MessageSquare, { className: "w-4 h-4" });
     case "error":
       return createElement(AlertCircle, { className: "w-4 h-4" });
+    case "system":
+      return createElement(Settings, { className: "w-4 h-4" });
   }
 }
 
-export function getMessageColor(type: AgentMessageEvent["type"]) {
+export function getMessageColor(type: ActivityMessageType) {
   switch (type) {
     case "thinking":
       return "var(--text-muted)";
@@ -45,10 +48,12 @@ export function getMessageColor(type: AgentMessageEvent["type"]) {
       return "var(--text-secondary)";
     case "error":
       return "var(--status-error)";
+    case "system":
+      return "var(--accent-primary)";
   }
 }
 
-export function getMessageBgColor(type: AgentMessageEvent["type"]) {
+export function getMessageBgColor(type: ActivityMessageType) {
   switch (type) {
     case "thinking":
       return "rgba(128, 128, 128, 0.08)";
@@ -60,6 +65,8 @@ export function getMessageBgColor(type: AgentMessageEvent["type"]) {
       return "rgba(128, 128, 128, 0.04)";
     case "error":
       return "rgba(239, 68, 68, 0.1)";
+    case "system":
+      return "rgba(255, 107, 53, 0.08)";
   }
 }
 
@@ -349,7 +356,7 @@ export function toUnifiedMessage(event: ActivityEventResponse): UnifiedActivityM
 
   return {
     id: event.id,
-    type: event.eventType as AgentMessageEvent["type"],
+    type: event.eventType,
     content: event.content,
     timestamp: new Date(event.createdAt).getTime(),
     metadata: parsedMetadata,

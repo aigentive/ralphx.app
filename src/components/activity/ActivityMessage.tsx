@@ -30,6 +30,7 @@ import {
 } from "./ActivityView.utils";
 import { ActivityContext } from "./ActivityContext";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
+import { navigateToIdeationSession } from "@/lib/navigation";
 
 export interface ActivityMessageProps {
   message: UnifiedActivityMessage;
@@ -50,6 +51,8 @@ export function ActivityMessage({
   const hasDetails = type === "tool_call" || type === "tool_result" || metadata;
   const rawToolName = getToolName(content);
   const toolName = rawToolName ? cleanToolName(rawToolName) : null;
+  const followupSessionId =
+    typeof metadata?.followupSessionId === "string" ? metadata.followupSessionId : null;
 
   // Smart content rendering based on event type
   const renderedContent = useMemo(() => {
@@ -138,6 +141,36 @@ export function ActivityMessage({
         );
       }
 
+      case "system": {
+        const truncatedContent = !isExpanded && content.length > 200 ? content.slice(0, 200) + "..." : content;
+        return (
+          <div className="mt-1 space-y-2">
+            <div className="text-sm text-[var(--text-primary)] prose-sm prose-invert max-w-none">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={markdownComponents}
+              >
+                {truncatedContent}
+              </ReactMarkdown>
+            </div>
+            {followupSessionId && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-[11px] border-[var(--border-subtle)] bg-[var(--bg-base)] hover:bg-[var(--bg-hover)]"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  navigateToIdeationSession(followupSessionId);
+                }}
+              >
+                Open Follow-up
+              </Button>
+            )}
+          </div>
+        );
+      }
+
       case "text":
       default: {
         // Render text messages as markdown (same as thinking blocks)
@@ -164,7 +197,7 @@ export function ActivityMessage({
         );
       }
     }
-  }, [type, content, metadata, isExpanded]);
+  }, [type, content, metadata, isExpanded, followupSessionId]);
 
   const handleCopy = useCallback(
     (e: React.MouseEvent) => {

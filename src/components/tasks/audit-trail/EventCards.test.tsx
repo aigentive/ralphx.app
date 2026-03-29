@@ -284,6 +284,23 @@ describe("ReviewEventCard", () => {
     expect(mockNavigateToIdeationSession).toHaveBeenCalledWith("session-followup-1");
   });
 
+  it("shows activity follow-up session link and navigates to ideation", async () => {
+    render(
+      <EventCard
+        entry={makeEntry({
+          source: "activity",
+          type: "system",
+          actor: "System",
+          description: "Linked follow-up ideation session",
+          followupSessionId: "session-followup-2",
+        })}
+      />
+    );
+    expect(screen.getByText(/Follow-up: session-followup-2/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Open/i }));
+    expect(mockNavigateToIdeationSession).toHaveBeenCalledWith("session-followup-2");
+  });
+
   it("shows timestamp", () => {
     render(
       <EventCard
