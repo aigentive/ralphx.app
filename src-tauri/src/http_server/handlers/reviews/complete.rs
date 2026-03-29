@@ -45,10 +45,7 @@ pub async fn complete_review(
         .get_notes_by_task_id(&task_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let revision_count = prior_review_notes
-        .iter()
-        .filter(|note| note.outcome == ReviewOutcome::ChangesRequested)
-        .count() as u32;
+    let revision_count = count_revision_cycles(&prior_review_notes);
     let review_settings = state
         .app_state
         .review_settings_repo
@@ -81,14 +78,8 @@ pub async fn complete_review(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Find the most recent pending review, or None if none exists
-    let existing_review = reviews
-        .into_iter()
-        .find(|r| r.status == crate::domain::entities::ReviewStatus::Pending);
-
-    let is_new_review = existing_review.is_none();
-    let mut review = existing_review
-        .unwrap_or_else(|| Review::new(task.project_id.clone(), task_id.clone(), ReviewerType::Ai));
+    let (is_new_review, mut review) =
+        pending_review_or_new(reviews, task.project_id.clone(), task_id.clone());
 
     // 5. Process the review result based on outcome
     let review_outcome = apply_review_outcome(&mut review, outcome, feedback.clone());
@@ -164,15 +155,14 @@ pub async fn complete_review(
         req.escalation_reason.as_deref(),
     );
     // Legitimate AI decision via MCP tool — agent deliberately called complete_review. Do NOT change to System.
-    let mut review_note = ReviewNote::with_content(
+    let review_note = build_ai_review_note(
         task_id.clone(),
-        ReviewerType::Ai,
         review_outcome,
         req.summary.clone(),
         note_content,
         domain_issues,
+        followup_session_id.clone(),
     );
-    review_note.followup_session_id = followup_session_id.clone();
     state
         .app_state
         .review_repo

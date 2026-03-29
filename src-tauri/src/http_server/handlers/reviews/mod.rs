@@ -18,10 +18,11 @@ use crate::domain::state_machine::transition_handler::{
 };
 use crate::domain::review::{
     apply_review_outcome, approved_no_changes_target_status, approved_target_status,
-    build_followup_activity_event, build_unrelated_drift_followup_draft,
-    build_review_issue_entities, build_review_note_issues, complete_review_response_message,
+    build_ai_review_note, build_followup_activity_event,
+    build_unrelated_drift_followup_draft, build_review_issue_entities,
+    build_review_note_issues, complete_review_response_message, count_revision_cycles,
     matching_unrelated_drift_followup_session_id, parse_review_decision, parse_review_issues,
-    review_note_content,
+    pending_review_or_new, review_note_content,
     should_spawn_unrelated_drift_followup, update_review_scope_metadata,
     validate_complete_review_policy, RawReviewIssueInput,
 };
