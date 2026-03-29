@@ -285,6 +285,34 @@ describe("PlanItem", () => {
       expect(spinner).toBeInTheDocument();
       expect(spinner).toHaveStyle({ color: "hsl(14 100% 60%)" });
     });
+
+    it("shows 'Verifying...' when verificationInProgress=true even with agent idle (DB-backed signal)", () => {
+      // agent is idle (no agentStatus entry), but DB says verification is running
+      renderItem({
+        group: "drafts",
+        plan: createSession({ verificationInProgress: true }),
+      });
+      expect(screen.getByText("Verifying...")).toBeInTheDocument();
+      expect(screen.queryByText("Agent working...")).not.toBeInTheDocument();
+    });
+
+    it("shows blue spinner when verificationInProgress=true and agent is idle", () => {
+      renderItem({
+        group: "drafts",
+        plan: createSession({ verificationInProgress: true }),
+      });
+      const spinner = document.querySelector(".animate-spin");
+      expect(spinner).toBeInTheDocument();
+      expect(spinner).toHaveStyle({ color: "hsl(217 91% 60%)" });
+    });
+
+    it("shows 'Verifying...' for in-progress group with null progress when verificationInProgress=true", () => {
+      renderItem({
+        group: "in-progress",
+        plan: createSession({ status: "accepted", progress: null, verificationInProgress: true }),
+      });
+      expect(screen.getByText("Verifying...")).toBeInTheDocument();
+    });
   });
 
   describe("muted styling for done/archived groups", () => {

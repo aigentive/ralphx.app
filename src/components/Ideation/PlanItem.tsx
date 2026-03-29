@@ -137,7 +137,7 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
         className="flex flex-col gap-0.5 text-[10px]"
         style={{ color: "hsl(220 10% 45%)" }}
       >
-        <ActivityIndicator isActive={isIdeationActive} isWaiting={isIdeationWaiting} label={activityLabel} color={activityColor} />
+        <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} label={activityLabel} color={activityColor} />
         <div className="flex items-center gap-1">
           <CornerDownRight className="w-2.5 h-2.5" />
           <span className="truncate">Follow-up of: {parentSessionTitle}</span>
@@ -153,8 +153,8 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
           className="flex items-center gap-1 text-[10px]"
           style={{ color: "hsl(220 10% 45%)" }}
         >
-          {(isIdeationActive || isIdeationWaiting) ? (
-            <ActivityIndicator isActive={isIdeationActive} isWaiting={isIdeationWaiting} label={activityLabel} color={activityColor} />
+          {(isIdeationActive || isIdeationWaiting || isVerifying) ? (
+            <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} label={activityLabel} color={activityColor} />
           ) : (
             <>
               <Clock className="w-2.5 h-2.5" />
@@ -166,10 +166,10 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
 
     case "in-progress":
       if (!progress) {
-        if (isIdeationActive || isIdeationWaiting) {
+        if (isIdeationActive || isIdeationWaiting || isVerifying) {
           return (
             <span className="text-[10px]">
-              <ActivityIndicator isActive={isIdeationActive} isWaiting={isIdeationWaiting} label={activityLabel} color={activityColor} />
+              <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} label={activityLabel} color={activityColor} />
             </span>
           );
         }
@@ -177,7 +177,7 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
       }
       return (
         <div className="flex items-center gap-1 text-[10px]">
-          <ActivityIndicator isActive={isIdeationActive} isWaiting={isIdeationWaiting} label={activityLabel ?? "Agent working"} separator="·" color={activityColor} />
+          <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} label={activityLabel ?? "Agent working"} separator="·" color={activityColor} />
           <span style={{ color: "hsl(145 70% 50%)" }}>
             {progress.done}/{progress.total} done
           </span>
@@ -198,7 +198,7 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
           className="flex items-center gap-1 text-[10px]"
           style={{ color: "hsl(220 10% 45%)" }}
         >
-          <ActivityIndicator isActive={isIdeationActive} isWaiting={isIdeationWaiting} separator="·" label={activityLabel} color={activityColor} />
+          <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} separator="·" label={activityLabel} color={activityColor} />
           <span>{progress?.total ?? 0} {(progress?.total ?? 0) === 1 ? "task" : "tasks"}</span>
           {plan.convertedAt && (
             <>
@@ -215,7 +215,7 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
           className="flex items-center gap-1 text-[10px]"
           style={{ color: "hsl(220 10% 40%)" }}
         >
-          <ActivityIndicator isActive={isIdeationActive} isWaiting={isIdeationWaiting} separator="·" label={activityLabel} color={activityColor} />
+          <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} separator="·" label={activityLabel} color={activityColor} />
           <CircleCheck className="w-2.5 h-2.5" style={{ color: "hsl(145 70% 40%)" }} />
           <span>Completed</span>
         </div>
@@ -227,7 +227,7 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
           className="flex items-center gap-1 text-[10px]"
           style={{ color: "hsl(220 10% 40%)" }}
         >
-          <ActivityIndicator isActive={isIdeationActive} isWaiting={isIdeationWaiting} separator="·" label={activityLabel} color={activityColor} />
+          <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} separator="·" label={activityLabel} color={activityColor} />
           {plan.archivedAt ? (
             <span>Archived {formatDate(plan.archivedAt)}</span>
           ) : (
@@ -335,7 +335,7 @@ export const PlanItem = memo(function PlanItem({
   const isIdeationActive = agentStatus === "generating";
   const isIdeationWaiting = agentStatus === "waiting_for_input";
   const activeVerificationChildId = useIdeationStore(state => state.activeVerificationChildId[plan.id]);
-  const isVerifying = isIdeationActive && !!activeVerificationChildId;
+  const isVerifying = (plan.verificationInProgress ?? false) || !!activeVerificationChildId;
 
   // Internal stable handlers — bind planId so parent callbacks stay stable
   const handleClick = useCallback(() => {
@@ -418,7 +418,7 @@ export const PlanItem = memo(function PlanItem({
               : "1px solid hsla(220 10% 100% / 0.06)",
           }}
         >
-          {isIdeationActive ? (
+          {(isIdeationActive || isVerifying) ? (
             <Loader2
               className="w-3 h-3 animate-spin"
               style={{ color: isVerifying ? VERIFYING_COLOR : ACCENT_COLOR }}

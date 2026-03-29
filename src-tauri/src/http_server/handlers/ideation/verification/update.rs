@@ -353,15 +353,31 @@ pub async fn update_plan_verification(
 
     // Condition 6: reviewing with gaps → needs_revision (auto-override, placed after convergence
     // checks so convergence always takes priority). Triggers on ANY gap severity.
+    // Rule A: do NOT force effective_in_progress = false here — the verification loop is still
+    // active when there is no convergence_reason. Preserve the caller's in_progress value.
+    // The terminal convergence guard below handles the in_progress reset for terminal states.
     // TODO: Extract auto-transition logic to domain service state machine
     if new_status == VerificationStatus::Reviewing && !metadata.current_gaps.is_empty() {
         new_status = VerificationStatus::NeedsRevision;
-        effective_in_progress = false;
         tracing::info!(
             session_id = %session_id,
             gap_count = metadata.current_gaps.len(),
             "Server-side auto-transition: reviewing with gaps → NeedsRevision"
         );
+    }
+
+    // Terminal convergence guard (Rule B): after all convergence evaluation and auto-transition
+    // logic completes, force effective_in_progress = false whenever the session has reached a
+    // terminal state. This catches auto-convergence paths (conditions 1–4, ~lines 287/297/313/335)
+    // that override status to Verified without explicitly resetting in_progress, as well as any
+    // path where the orchestrator provides a convergence_reason.
+    if metadata.convergence_reason.is_some()
+        || matches!(
+            new_status,
+            VerificationStatus::Verified | VerificationStatus::Skipped
+        )
+    {
+        effective_in_progress = false;
     }
 
     let current_gap_score = gap_score(&metadata.current_gaps);

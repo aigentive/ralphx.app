@@ -604,7 +604,8 @@ async fn test_condition6_reviewing_critical_gaps_overrides_to_needs_revision() {
 
     let resp = result.0;
     assert_eq!(resp.status, "needs_revision", "critical gaps → needs_revision");
-    assert!(!resp.in_progress, "in_progress must be false after condition 6 override");
+    // Rule A: in_progress is preserved from the caller (true) — loop is still active (no convergence_reason)
+    assert!(resp.in_progress, "in_progress preserved: non-terminal, caller sent true");
 }
 
 /// Condition 6 test 2: reviewing + medium-only gaps → overridden to needs_revision (any severity)
@@ -640,7 +641,8 @@ async fn test_condition6_reviewing_medium_gaps_overrides_to_needs_revision() {
 
     let resp = result.0;
     assert_eq!(resp.status, "needs_revision", "medium gaps → needs_revision (any severity)");
-    assert!(!resp.in_progress, "in_progress must be false");
+    // Rule A: in_progress is preserved from the caller (true) — loop is still active (no convergence_reason)
+    assert!(resp.in_progress, "in_progress preserved: non-terminal, caller sent true");
 }
 
 /// Condition 6 test 3: reviewing + gaps + max_rounds convergence → verified (convergence wins)
@@ -746,6 +748,177 @@ async fn test_condition6_reviewing_in_progress_false_with_gaps_overrides_to_need
         "condition 6 fires regardless of requested in_progress value"
     );
     assert!(!resp.in_progress, "in_progress remains false");
+}
+
+/// Rule A: reviewing + gaps + in_progress=true + no convergence_reason → in_progress preserved as true.
+///
+/// The verifier loop is still active mid-round — verification_in_progress must remain 1 in DB.
+/// The split-brain bug was that condition 6 used to force effective_in_progress=false here,
+/// making the UI think verification had stopped even while the verifier was still running.
+#[tokio::test]
+async fn test_rule_a_non_terminal_preserves_in_progress_true() {
+    let state = setup_test_state().await;
+    let session = IdeationSession::new(ProjectId::new());
+    let session_id_obj = session.id.clone();
+    let session_id_str = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let result = update_plan_verification(
+        State(state.clone()),
+        Path(session_id_str),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: Some(2),
+            gaps: Some(vec![VerificationGapRequest {
+                severity: "high".to_string(),
+                category: "security".to_string(),
+                description: "Auth token not validated on write paths".to_string(),
+                why_it_matters: None,
+                source: None,
+            }]),
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await
+    .expect("handler must succeed");
+
+    let resp = result.0;
+    assert_eq!(resp.status, "needs_revision", "gaps → condition 6 overrides to needs_revision");
+    // Rule A: in_progress is preserved (not forced to false) — no convergence_reason means loop is active
+    assert!(resp.in_progress, "Rule A: in_progress must be preserved as true (non-terminal)");
+
+    // Verify DB: verification_in_progress = 1
+    let saved = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_obj)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        saved.verification_in_progress,
+        "DB: verification_in_progress must be 1 — loop is still active"
+    );
+}
+
+/// Rule B: convergence_reason present → terminal guard forces in_progress=false.
+///
+/// Covers auto-convergence paths (conditions 1–4) that set convergence_reason without
+/// explicitly resetting effective_in_progress. Uses max_rounds server-side trigger.
+#[tokio::test]
+async fn test_rule_b_terminal_guard_max_rounds_forces_in_progress_false() {
+    let state = setup_test_state().await;
+    let session = IdeationSession::new(ProjectId::new());
+    let session_id_obj = session.id.clone();
+    let session_id_str = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    // max_rounds=3, round=3 → server-side condition 3 fires: new_status=Verified, convergence_reason="max_rounds"
+    // Terminal guard then fires (convergence_reason.is_some()) → effective_in_progress=false
+    let result = update_plan_verification(
+        State(state.clone()),
+        Path(session_id_str),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true, // caller sends true — terminal guard must override to false
+            round: Some(3),
+            gaps: Some(vec![VerificationGapRequest {
+                severity: "high".to_string(),
+                category: "scalability".to_string(),
+                description: "No horizontal scaling plan".to_string(),
+                why_it_matters: None,
+                source: None,
+            }]),
+            convergence_reason: None,
+            max_rounds: Some(3),
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await
+    .expect("handler must succeed");
+
+    let resp = result.0;
+    assert_eq!(resp.status, "verified", "max_rounds convergence → verified");
+    assert_eq!(resp.convergence_reason.as_deref(), Some("max_rounds"), "convergence_reason set");
+    // Rule B: terminal guard forces in_progress=false even though caller sent true
+    assert!(!resp.in_progress, "Rule B: terminal guard must force in_progress=false on convergence");
+
+    // Verify DB: verification_in_progress = 0
+    let saved = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_obj)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        !saved.verification_in_progress,
+        "DB: verification_in_progress must be 0 after max_rounds convergence"
+    );
+}
+
+/// Rule B: explicit verified + convergence_reason=zero_blocking → in_progress forced to false.
+///
+/// Covers the orchestrator path where it directly sends status=verified with a convergence_reason.
+/// The terminal guard must set verification_in_progress=0 in DB.
+#[tokio::test]
+async fn test_rule_b_terminal_guard_zero_blocking_verified_forces_in_progress_false() {
+    let state = setup_test_state().await;
+    let session = IdeationSession::new(ProjectId::new());
+    let session_id_obj = session.id.clone();
+    let session_id_str = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    // Put session in NeedsRevision (simulating prior reviewing→needs_revision cycle)
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&session_id_obj, VerificationStatus::NeedsRevision, true, None)
+        .await
+        .unwrap();
+
+    // Orchestrator sends: status=verified + convergence_reason=zero_blocking + in_progress=true
+    // Terminal guard must override in_progress to false (matches!(new_status, Verified))
+    let result = update_plan_verification(
+        State(state.clone()),
+        Path(session_id_str),
+        Json(UpdateVerificationRequest {
+            status: "verified".to_string(),
+            in_progress: true, // caller sends true — terminal guard must override to false
+            round: None,
+            gaps: None,
+            convergence_reason: Some("zero_blocking".to_string()),
+            max_rounds: None,
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await
+    .expect("handler must succeed");
+
+    let resp = result.0;
+    assert_eq!(resp.status, "verified");
+    assert_eq!(resp.convergence_reason.as_deref(), Some("zero_blocking"));
+    // Rule B: terminal guard forces in_progress=false (new_status == Verified)
+    assert!(!resp.in_progress, "Rule B: terminal guard must force in_progress=false for verified status");
+
+    // Verify DB: verification_in_progress = 0
+    let saved = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_obj)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        !saved.verification_in_progress,
+        "DB: verification_in_progress must be 0 after zero_blocking convergence"
+    );
 }
 
 // ── needs_revision → verified transition tests ──
