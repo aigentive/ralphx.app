@@ -3,6 +3,7 @@
 
 pub mod config;
 pub mod complete_review;
+pub mod complete_policy;
 pub mod complete_support;
 pub mod review_points;
 pub mod scope_drift;
@@ -11,6 +12,10 @@ pub use config::ReviewSettings;
 pub use complete_review::{
     CompleteReviewInput, CompleteReviewValidationError, ParseReviewToolOutcomeError,
     ReviewIssueInput, ReviewIssueValidationError, ReviewToolOutcome,
+};
+pub use complete_policy::{
+    parse_review_decision, review_outcome_for_tool, validate_complete_review_policy,
+    CompleteReviewPolicyError, ParseReviewDecisionError,
 };
 pub use complete_support::{
     build_unrelated_drift_followup_prompt, parse_review_issue, parse_review_issues,

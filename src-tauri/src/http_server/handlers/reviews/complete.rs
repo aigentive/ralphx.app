@@ -56,77 +56,19 @@ pub async fn complete_review(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    if matches!(
-        task_context.scope_drift_status,
-        ScopeDriftStatus::ScopeExpansion
-    ) && scope_drift_classification.is_none()
-    {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            format!(
-                "Scope drift classification required when changed files exceed planned scope: {}",
-                task_context.out_of_scope_files.join(", ")
-            ),
-        ));
-    }
-
-    // 2. Parse and map decision to ReviewToolOutcome
-    let outcome = match req.decision.as_str() {
-        "approved" => ReviewToolOutcome::Approved,
-        "approved_no_changes" => ReviewToolOutcome::ApprovedNoChanges,
-        "needs_changes" => ReviewToolOutcome::NeedsChanges,
-        "escalate" => ReviewToolOutcome::Escalate,
-        _ => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                format!(
-                    "Invalid decision: '{}'. Expected 'approved', 'approved_no_changes', \
-                     'needs_changes', or 'escalate'",
-                    req.decision
-                ),
-            ))
-        }
-    };
-
-    if matches!(
+    // 2. Parse and validate decision policy
+    let outcome = parse_review_decision(&req.decision)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    validate_complete_review_policy(
+        task_context.scope_drift_status.clone(),
+        &task_context.out_of_scope_files,
+        scope_drift_classification,
         outcome,
-        ReviewToolOutcome::Approved | ReviewToolOutcome::ApprovedNoChanges
-    ) && matches!(
-        scope_drift_classification,
-        Some(ScopeDriftClassification::UnrelatedDrift)
-    ) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Cannot approve task with unrelated scope drift; request changes or escalate instead"
-                .to_string(),
-        ));
-    }
-
-    if matches!(
-        scope_drift_classification,
-        Some(ScopeDriftClassification::UnrelatedDrift)
-    ) {
-        if matches!(outcome, ReviewToolOutcome::Escalate)
-            && !review_settings.exceeded_max_revisions(revision_count)
-        {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                format!(
-                    "Unrelated scope drift must go back through revise while revision budget remains ({revision_count}/{max_revisions} used). Use needs_changes with structured issues first, then escalate only if repeated revise cycles fail.",
-                    max_revisions = review_settings.max_revision_cycles
-                ),
-            ));
-        }
-
-        if matches!(outcome, ReviewToolOutcome::NeedsChanges)
-            && req.issues.as_ref().map_or(true, |issues| issues.is_empty())
-        {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "Needs-changes for unrelated scope drift requires at least one structured issue so the worker can revise the branch cleanly.".to_string(),
-            ));
-        }
-    }
+        revision_count,
+        &review_settings,
+        req.issues.as_ref().map_or(0, Vec::len),
+    )
+    .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 
     // 3. Get feedback - stored separately from issues now
     let feedback = req.feedback.clone();
@@ -149,13 +91,7 @@ pub async fn complete_review(
         .unwrap_or_else(|| Review::new(task.project_id.clone(), task_id.clone(), ReviewerType::Ai));
 
     // 5. Process the review result based on outcome
-    let review_outcome = match outcome {
-        ReviewToolOutcome::Approved => ReviewOutcome::Approved,
-        // Phase 3 will implement the full approved_no_changes path (skip merge pipeline)
-        ReviewToolOutcome::ApprovedNoChanges => ReviewOutcome::ApprovedNoChanges,
-        ReviewToolOutcome::NeedsChanges => ReviewOutcome::ChangesRequested,
-        ReviewToolOutcome::Escalate => ReviewOutcome::Rejected,
-    };
+    let review_outcome = review_outcome_for_tool(outcome);
 
     // Update review status
     match outcome {
