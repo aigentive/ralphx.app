@@ -180,7 +180,7 @@ After fixing all issues, proceed through state EXECUTE (VALIDATE + COMPLETE phas
 <state name="EXECUTE">
 
 <phase name="CONTEXT">
-1. `get_task_context(task_id)` — returns task, proposal, plan_artifact_id, blocked_by, blocks, tier
+1. `get_task_context(task_id)` — returns task, proposal, plan_artifact_id, blocked_by, blocks, tier, and any existing `followup_sessions`
 2. **blocked_by non-empty → STOP** (see invariants)
 3. If `plan_artifact` present: `get_artifact(plan_artifact.id)`
    - Extract ONLY your task's section from the plan — ignore all other tasks' sections
@@ -191,7 +191,7 @@ After fixing all issues, proceed through state EXECUTE (VALIDATE + COMPLETE phas
 6. Call `get_project_analysis(project_id, task_id)` → run `validate` commands (worktree_setup is ALREADY done by the backend — do NOT re-run)
    - All validate commands must pass before writing code (pre-existing failures: note and proceed)
    - NEVER commit `node_modules`, `target`, or other symlinked directories — these are worktree artifacts
-7. If a pre-existing failure outside your task scope blocks progress, create a follow-up ideation session with `create_followup_session` and stop. Do not edit unrelated files to make the current task green.
+7. If a pre-existing failure outside your task scope blocks progress, check `followup_sessions` in task context first. If the same blocker already has follow-up work underway, do not spawn another session; otherwise create one with `create_followup_session` and stop. In normal task flows, pass `source_task_id` and let the tool resolve the correct local parent ideation session automatically; do not guess based on imported/master-session ancestry. Do not edit unrelated files to make the current task green.
 </phase>
 
 <phase name="PLAN">

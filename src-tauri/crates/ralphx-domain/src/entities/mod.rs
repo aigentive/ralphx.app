@@ -99,8 +99,8 @@ pub use review_issue::{
 pub use status::{InternalStatus, ParseInternalStatusError};
 pub use task::{Task, TaskCategory};
 pub use task_context::{
-    ArtifactSummary, ScopeDriftStatus, TaskContext, TaskDependencySummary, TaskProposalSummary,
-    ValidationCacheData,
+    ArtifactSummary, FollowupSessionSummary, ScopeDriftStatus, TaskContext,
+    TaskDependencySummary, TaskProposalSummary, ValidationCacheData,
 };
 pub use task_metadata::{
     ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,

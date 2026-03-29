@@ -1185,6 +1185,7 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
 
     // 10. Compute validation cache hint (if cache present in metadata)
     let validation_cache = compute_validation_cache(&task, &mut context_hints).await;
+    let followup_sessions = load_task_followup_sessions(state, &task).await?;
 
     // 11. Return TaskContext
     let task_branch = task.task_branch.clone();
@@ -1206,7 +1207,30 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
         actual_changed_files,
         scope_drift_status,
         out_of_scope_files,
+        followup_sessions,
     })
+}
+
+async fn load_task_followup_sessions(
+    state: &AppState,
+    task: &crate::domain::entities::Task,
+) -> AppResult<Vec<crate::domain::entities::FollowupSessionSummary>> {
+    let Some(session_id) = &task.ideation_session_id else {
+        return Ok(Vec::new());
+    };
+
+    let children = state.ideation_session_repo.get_children(session_id).await?;
+    Ok(children
+        .into_iter()
+        .filter(|session| session.source_task_id.as_ref() == Some(&task.id))
+        .map(|session| crate::domain::entities::FollowupSessionSummary {
+            id: session.id.as_str().to_string(),
+            title: session.title.clone(),
+            status: session.status.to_string(),
+            source_context_type: session.source_context_type.clone(),
+            spawn_reason: session.spawn_reason.clone(),
+        })
+        .collect())
 }
 
 async fn compute_task_scope_drift(

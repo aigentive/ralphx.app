@@ -470,8 +470,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         else if (name === "create_followup_session") {
             // POST /api/create_child_session with first-class execution/review provenance
             const { source_ideation_session_id, title, description, inherit_context, initial_prompt, source_task_id, source_context_type, source_context_id, spawn_reason, } = args;
+            let resolvedParentSessionId = source_ideation_session_id;
+            if (!resolvedParentSessionId && source_task_id) {
+                const taskContext = await callTauriGet(`task_context/${source_task_id}`);
+                resolvedParentSessionId = taskContext.task?.ideation_session_id ?? undefined;
+            }
+            if (!resolvedParentSessionId) {
+                throw new Error("create_followup_session requires either source_ideation_session_id or a source_task_id that belongs to an ideation-backed task");
+            }
             result = await callTauri("create_child_session", {
-                parent_session_id: source_ideation_session_id,
+                parent_session_id: resolvedParentSessionId,
                 title,
                 description,
                 inherit_context,

@@ -74,6 +74,9 @@ pub struct TaskContext {
 
     /// Changed files outside the proposal's declared coarse scope.
     pub out_of_scope_files: Vec<String>,
+
+    /// Follow-up ideation sessions already linked to this task.
+    pub followup_sessions: Vec<FollowupSessionSummary>,
 }
 
 /// Summary of a task proposal for context purposes
@@ -113,6 +116,16 @@ pub struct ArtifactSummary {
     pub current_version: u32,
     /// First ~500 chars of content as preview
     pub content_preview: String,
+}
+
+/// Lightweight summary of a follow-up ideation session linked to a task.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FollowupSessionSummary {
+    pub id: String,
+    pub title: Option<String>,
+    pub status: String,
+    pub source_context_type: Option<String>,
+    pub spawn_reason: Option<String>,
 }
 
 /// Lightweight validation cache view for TaskContext responses.

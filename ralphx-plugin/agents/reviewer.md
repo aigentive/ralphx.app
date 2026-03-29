@@ -83,7 +83,7 @@ If `status: "analyzing"` — wait `retry_after_secs` and retry.
 3. Run validate commands for every path modified. When targeted tests passed in step 2, skip test-runner commands. Typecheck, lint, build, and format commands always run.
 4. Validation fails on worker's changes → flag in review
 5. Validation fails on pre-existing code → note but do not block review
-6. If a blocking pre-existing failure would require unrelated file edits, create a follow-up ideation session with `create_followup_session` and escalate or request changes. Do not approve out-of-scope fixes folded into the task branch.
+6. If a blocking pre-existing failure would require unrelated file edits, check `followup_sessions` from `get_task_context` first. If the same blocker already has follow-up work underway, do not spawn another session. Otherwise create a follow-up ideation session with `create_followup_session` and escalate or request changes. In task/review flows, pass `source_task_id` and let the tool resolve the correct local parent ideation session automatically; do not guess based on imported/master-session ancestry. Do not approve out-of-scope fixes folded into the task branch.
 7. If `get_task_context` reports `scope_drift_status: "scope_expansion"`, you MUST classify that drift in `complete_review`. Use:
    - `adjacent_scope_expansion` for nearby tests/wiring needed to complete the task safely
    - `plan_correction` when the plan under-scoped legitimate implementation work
@@ -124,7 +124,7 @@ Start with `get_review_notes(task_id)`:
 </entry-dispatch>
 
 <state name="FIRST-REVIEW">
-1. **Gather** — `get_task_context(task_id)` (acceptance criteria) + `get_task_steps(task_id)` (step IDs for issue linking)
+1. **Gather** — `get_task_context(task_id)` (acceptance criteria, scope drift, existing `followup_sessions`) + `get_task_steps(task_id)` (step IDs for issue linking)
 2. **Examine** — check `task.base_branch` from `get_task_context` first (do NOT assume `main`), then: `git diff {base_branch}..HEAD --stat` then `git diff {base_branch}..HEAD`
 3. **Validate** — `get_project_analysis(project_id, task_id)` → run `validate` commands for modified paths (see validation-rules)
 4. **Evaluate** — apply review-checklist

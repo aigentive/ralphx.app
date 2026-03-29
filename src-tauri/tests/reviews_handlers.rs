@@ -127,6 +127,53 @@ async fn setup_review_scope_drift_state() -> (HttpServerState, Task) {
     (state, task)
 }
 
+#[tokio::test]
+async fn test_get_task_context_includes_existing_task_followup_sessions() {
+    let (state, task) = setup_review_scope_drift_state().await;
+    let parent_session_id = task
+        .ideation_session_id
+        .as_ref()
+        .expect("fixture task should have ideation session")
+        .as_str()
+        .to_string();
+
+    let response = create_child_session(
+        State(state.clone()),
+        Json(CreateChildSessionRequest {
+            parent_session_id,
+            title: Some("Out-of-scope blocker follow-up".to_string()),
+            description: Some("Track existing unrelated blocker".to_string()),
+            inherit_context: false,
+            initial_prompt: Some("Investigate the blocker autonomously.".to_string()),
+            source_task_id: Some(task.id.as_str().to_string()),
+            source_context_type: Some("task_execution".to_string()),
+            source_context_id: Some(task.id.as_str().to_string()),
+            spawn_reason: Some("out_of_scope_failure".to_string()),
+            team_mode: None,
+            team_config: None,
+            purpose: Some("follow_up".to_string()),
+            is_external_trigger: false,
+        }),
+    )
+    .await
+    .expect("child session should be created");
+    let response = response.0;
+
+    let context = get_task_context_impl(&state.app_state, &task.id)
+        .await
+        .expect("task context should load");
+
+    assert_eq!(context.followup_sessions.len(), 1);
+    let followup = &context.followup_sessions[0];
+    assert_eq!(followup.id, response.session_id);
+    assert_eq!(
+        followup.title.as_deref(),
+        Some("Out-of-scope blocker follow-up")
+    );
+    assert_eq!(followup.source_context_type.as_deref(), Some("task_execution"));
+    assert_eq!(followup.spawn_reason.as_deref(), Some("out_of_scope_failure"));
+}
+
 /// Create a task with the given status in the state's task repo.
 async fn seed_task_with_status(state: &HttpServerState, status: InternalStatus) -> Task {
     let project_id = ProjectId::new();

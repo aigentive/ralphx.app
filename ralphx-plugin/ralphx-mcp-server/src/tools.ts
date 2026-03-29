@@ -417,13 +417,15 @@ export const ALL_TOOLS: Tool[] = [
     name: "create_followup_session",
     description:
       "Create a new follow-up ideation session linked to an existing ideation session and stamped with first-class execution/review provenance. " +
-      "Use this when you hit an out-of-scope blocker or need to spin out follow-up work without mutating the accepted parent session.",
+      "Use this when you hit an out-of-scope blocker or need to spin out follow-up work without mutating the accepted parent session. " +
+      "In task/review flows, prefer passing source_task_id and let the tool resolve the correct local parent session automatically.",
     inputSchema: {
       type: "object",
       properties: {
         source_ideation_session_id: {
           type: "string",
-          description: "The accepted ideation session to follow up from. This becomes the parent_session_id for inherited context.",
+          description:
+            "Optional explicit ideation session to follow up from. When omitted and source_task_id is provided, the tool resolves the correct local parent session from the task automatically.",
         },
         title: {
           type: "string",
@@ -459,7 +461,6 @@ export const ALL_TOOLS: Tool[] = [
         },
       },
       required: [
-        "source_ideation_session_id",
         "title",
         "source_context_type",
         "source_context_id",

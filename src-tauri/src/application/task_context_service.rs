@@ -218,6 +218,7 @@ impl TaskContextService {
             actual_changed_files: Vec::new(),
             scope_drift_status: ScopeDriftStatus::Unbounded,
             out_of_scope_files: Vec::new(),
+            followup_sessions: Vec::new(),
         })
     }
 
