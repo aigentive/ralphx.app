@@ -2,7 +2,7 @@ use super::*;
 use crate::domain::entities::{
     create_artifact_content_preview, Artifact, ArtifactId, ArtifactRelation,
     ArtifactRelationType, ArtifactType, InternalStatus, Priority, ProjectId, ProposalCategory,
-    TaskProposal, TaskProposalId, TaskStep, TaskStepId,
+    Task, TaskProposal, TaskProposalId, TaskStep, TaskStepId,
 };
 use crate::domain::repositories::{
     ArtifactRepository, StateHistoryMetadata, TaskDependencyRepository, TaskProposalRepository,

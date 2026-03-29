@@ -1672,14 +1672,15 @@ async fn test_freshness_conflict_at_cap_during_review_routes_to_failed() {
     assert_eq!(history[0].trigger, "system");
 }
 
-/// Regression: a review-origin freshness conflict must not immediately re-enter the
-/// PendingReview -> Reviewing auto-transition loop within the same transition call.
+/// Regression: a review-origin freshness conflict with real merge-conflict evidence must
+/// hand off to the merge pipeline instead of looping back through PendingReview.
 ///
 /// Before the fix, transition_task(PendingReview) on a task with conflict markers in the
 /// review worktree would churn Reviewing <-> PendingReview repeatedly until the retry cap
-/// or scheduler interference. The task must now park in PendingReview and wait for recovery.
+/// or scheduler interference. The task must now route into Merging so the merger agent can
+/// resolve the conflict.
 #[tokio::test]
-async fn test_review_origin_freshness_conflict_parks_in_pending_review_without_loop() {
+async fn test_review_origin_freshness_conflict_routes_to_merging_without_loop() {
     let app_state = AppState::new_test();
     let service = build_test_service(&app_state);
 
@@ -1740,22 +1741,22 @@ async fn test_review_origin_freshness_conflict_parks_in_pending_review_without_l
         .expect("task must exist");
     assert_eq!(
         stored.internal_status,
-        InternalStatus::PendingReview,
-        "Task must park in PendingReview after review-origin freshness conflict"
+        InternalStatus::Merging,
+        "Task must route to Merging after review-origin freshness conflict with merge markers"
     );
 
     let history = app_state.task_repo.get_status_history(&task_id).await.unwrap();
     assert_eq!(
         history.len(),
         3,
-        "Expected exactly QaPassed->PendingReview, PendingReview->Reviewing, Reviewing->PendingReview"
+        "Expected exactly QaPassed->PendingReview, PendingReview->Reviewing, Reviewing->Merging"
     );
     assert_eq!(history[0].from, InternalStatus::QaPassed);
     assert_eq!(history[0].to, InternalStatus::PendingReview);
     assert_eq!(history[1].from, InternalStatus::PendingReview);
     assert_eq!(history[1].to, InternalStatus::Reviewing);
     assert_eq!(history[2].from, InternalStatus::Reviewing);
-    assert_eq!(history[2].to, InternalStatus::PendingReview);
+    assert_eq!(history[2].to, InternalStatus::Merging);
     assert!(
         history.iter().all(|entry| entry.to != InternalStatus::Failed),
         "Task must not churn into Failed while handling a single review-origin freshness conflict"
