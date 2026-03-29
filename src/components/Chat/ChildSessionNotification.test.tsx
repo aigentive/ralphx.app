@@ -21,6 +21,7 @@ let mockVerificationNotifications: Record<string, string> = {};
 let mockSessionState: MockSessionState | null = null;
 const mockSetActiveIdeationTab = vi.fn();
 const mockSetActiveVerificationChildId = vi.fn();
+const mockSetLastVerificationChildId = vi.fn();
 const mockClearVerificationNotification = vi.fn();
 
 vi.mock("@/stores/ideationStore", () => ({
@@ -29,6 +30,7 @@ vi.mock("@/stores/ideationStore", () => ({
       verificationNotifications: mockVerificationNotifications,
       setActiveIdeationTab: mockSetActiveIdeationTab,
       setActiveVerificationChildId: mockSetActiveVerificationChildId,
+      setLastVerificationChildId: mockSetLastVerificationChildId,
       clearVerificationNotification: mockClearVerificationNotification,
       sessions: mockSessionState
         ? { "session-1": mockSessionState }
@@ -102,6 +104,7 @@ describe("ChildSessionNotification — verification notification", () => {
     fireEvent.click(screen.getByTestId("view-verification-button"));
     expect(mockSetActiveIdeationTab).toHaveBeenCalledWith(SESSION_ID, "verification");
     expect(mockSetActiveVerificationChildId).toHaveBeenCalledWith(SESSION_ID, CHILD_ID);
+    expect(mockSetLastVerificationChildId).toHaveBeenCalledWith(SESSION_ID, CHILD_ID);
   });
 });
 

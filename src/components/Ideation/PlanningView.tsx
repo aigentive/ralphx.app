@@ -359,11 +359,6 @@ export function PlanningView({
   );
 
   // Poll status for verification child and direct child session views to detect pending_initial_prompt
-  const { data: verificationChildStatus } = useChildSessionStatus(lastVerificationChildId);
-  // Poll for the current session unconditionally — works for both child and top-level sessions.
-  // The hook's historyMode guard will disable polling if the session is idle with no pending prompt.
-  const { data: currentSessionStatus } = useChildSessionStatus(session?.id);
-
   // Eagerly fetch verification child sessions so lastVerificationChildId is populated
   // before the user clicks the Verification tab (eliminates cold-start flash of parent chat)
   const { data: verificationChildren } = useQuery({
@@ -373,33 +368,45 @@ export function PlanningView({
     staleTime: 30_000,
   });
 
+  const latestVerificationChildId = useMemo(() => {
+    if (!verificationChildren?.length) return null;
+    const sorted = [...verificationChildren].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    return sorted[0]?.id ?? null;
+  }, [verificationChildren]);
+
+  const verificationChatSessionId =
+    lastVerificationChildId ?? activeVerificationChildId ?? latestVerificationChildId ?? null;
+
+  const { data: verificationChildStatus } = useChildSessionStatus(verificationChatSessionId);
+  // Poll for the current session unconditionally — works for both child and top-level sessions.
+  // The hook's historyMode guard will disable polling if the session is idle with no pending prompt.
+  const { data: currentSessionStatus } = useChildSessionStatus(session?.id);
+
   // Pre-populate lastVerificationChildId from eager query result.
   // Only sets if store field is null (avoids overwriting event-driven updates).
   useEffect(() => {
     if (!session?.id || !verificationChildren?.length) return;
     if (lastVerificationChildId) return;
 
-    const sorted = [...verificationChildren].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-    const latestId = sorted[0]?.id;
+    const latestId = latestVerificationChildId;
     if (latestId) {
       setLastVerificationChildId(session.id, latestId);
     }
-  }, [session?.id, verificationChildren, lastVerificationChildId, setLastVerificationChildId]);
+  }, [session?.id, latestVerificationChildId, lastVerificationChildId, setLastVerificationChildId]);
 
   // Reset to plan tab when switching sessions
   const prevSessionIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!session?.id) return;
     if (prevSessionIdRef.current !== null && prevSessionIdRef.current !== session.id) {
-      // Session changed — reset new session to plan tab
+      // Session changed — reset new session to plan tab, but preserve
+      // per-session verification routing state so coming back stays reliable.
       setActiveIdeationTab(session.id, 'plan');
-      setActiveVerificationChildId(session.id, null);
-      setLastVerificationChildId(session.id, null);
     }
     prevSessionIdRef.current = session.id;
-  }, [session?.id, setActiveIdeationTab, setActiveVerificationChildId, setLastVerificationChildId]);
+  }, [session?.id, setActiveIdeationTab]);
 
   const isVerificationTabActive = activeTab === 'verification';
 
@@ -663,9 +670,18 @@ export function PlanningView({
     if (!session) return;
     setActiveIdeationTab(session.id, 'verification');
 
+    if (verificationChatSessionId) {
+      if (!lastVerificationChildId) {
+        setLastVerificationChildId(session.id, verificationChatSessionId);
+      }
+      if (isVerificationActive && !activeVerificationChildId) {
+        setActiveVerificationChildId(session.id, verificationChatSessionId);
+      }
+    }
+
     // If child ID already preloaded (set by event handler), skip async fetch
     // But allow refetch when verification is actively running (state may have changed)
-    if ((activeVerificationChildId || lastVerificationChildId) && !isVerificationActive) return;
+    if (verificationChatSessionId && !isVerificationActive) return;
 
     // Fetch the latest verification child session
     try {
@@ -688,7 +704,16 @@ export function PlanningView({
       console.error('Verification tab: failed to fetch child sessions', err);
       // Tab switches regardless — child panel stays hidden until child exists
     }
-  }, [session, activeVerificationChildId, lastVerificationChildId, isVerificationActive, setActiveIdeationTab, setActiveVerificationChildId, setLastVerificationChildId]);
+  }, [
+    session,
+    activeVerificationChildId,
+    lastVerificationChildId,
+    verificationChatSessionId,
+    isVerificationActive,
+    setActiveIdeationTab,
+    setActiveVerificationChildId,
+    setLastVerificationChildId,
+  ]);
 
   return (
     <>
@@ -1228,7 +1253,7 @@ export function PlanningView({
               {/* Parent chat panel — always mounted, hidden when showing verification child */}
               <div
                 className="flex flex-col flex-1"
-                style={{ display: (!isVerificationTabActive || !lastVerificationChildId) ? 'flex' : 'none' }}
+                style={{ display: (!isVerificationTabActive || !verificationChatSessionId) ? 'flex' : 'none' }}
               >
                 <IntegratedChatPanel
                   key={session.id}
@@ -1236,7 +1261,7 @@ export function PlanningView({
                   ideationSessionId={session.id}
                   emptyState={currentSessionStatus?.pending_initial_prompt ? <WaitingForCapacityState pendingInitialPrompt={currentSessionStatus.pending_initial_prompt} projectId={session.projectId} /> : <ConversationEmptyState />}
                   showHelperTextAlways={true}
-                  isVisible={!isVerificationTabActive || !lastVerificationChildId}
+                  isVisible={!isVerificationTabActive || !verificationChatSessionId}
                   headerContent={
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <MessageSquare className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(220 10% 50%)" }} />
@@ -1246,7 +1271,7 @@ export function PlanningView({
                 />
               </div>
               {/* Verification child chat panel — mounted only when child session exists */}
-              {lastVerificationChildId && (
+              {verificationChatSessionId && (
                 <div
                   className="flex flex-col flex-1"
                   style={{
@@ -1255,9 +1280,9 @@ export function PlanningView({
                   }}
                 >
                   <IntegratedChatPanel
-                    key={lastVerificationChildId}
+                    key={verificationChatSessionId}
                     projectId={session.projectId}
-                    ideationSessionId={lastVerificationChildId!}
+                    ideationSessionId={verificationChatSessionId}
                     emptyState={verificationChildStatus?.pending_initial_prompt ? <WaitingForCapacityState pendingInitialPrompt={verificationChildStatus.pending_initial_prompt} projectId={session.projectId} /> : <ConversationEmptyState />}
                     showHelperTextAlways={true}
                     isVisible={isVerificationTabActive}

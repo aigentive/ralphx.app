@@ -830,14 +830,38 @@ describe("PlanningView", () => {
       expect(screen.getAllByText("Verification").length).toBeGreaterThanOrEqual(1);
     });
 
-    it("clears lastVerificationChildId alongside activeVerificationChildId on session switch", () => {
-      const originalFn = useIdeationStore.getState().setLastVerificationChildId;
-      const spySetLastVerificationChildId = vi.fn(originalFn);
-      useIdeationStore.setState({ setLastVerificationChildId: spySetLastVerificationChildId });
+    it("renders IntegratedChatPanel for verification child when activeVerificationChildId is set and lastVerificationChildId is null", () => {
+      useIdeationStore.setState({
+        lastVerificationChildId: { "session-1": null },
+        activeVerificationChildId: { "session-1": "child-session-42" },
+        activeIdeationTab: { "session-1": "verification" },
+      });
 
-      const { rerender } = render(<PlanningView {...defaultProps} />);
+      render(
+        <PlanningView
+          {...defaultProps}
+          session={{ ...mockSession, verificationStatus: "reviewing", verificationInProgress: true }}
+        />
+      );
 
-      // Switch to a different session — triggers cleanup effect
+      const panels = screen.getAllByTestId("integrated-chat-panel");
+      expect(panels.length).toBe(2);
+      expect(screen.getAllByText("Verification").length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("preserves verification child routing across session switches", async () => {
+      const user = userEvent.setup();
+      const verificationSession = { ...mockSession, verificationStatus: "verified" as const };
+      useIdeationStore.setState({
+        lastVerificationChildId: { "session-1": "child-session-99" },
+        activeVerificationChildId: { "session-1": null },
+        activeIdeationTab: { "session-1": "plan" },
+      });
+
+      const { rerender } = render(
+        <PlanningView {...defaultProps} session={verificationSession} />
+      );
+
       const sessionTwo = { ...mockSession, id: "session-2" };
       rerender(
         <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -845,10 +869,17 @@ describe("PlanningView", () => {
         </QueryClientProvider>
       );
 
-      expect(spySetLastVerificationChildId).toHaveBeenCalledWith("session-2", null);
+      rerender(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <PlanningView {...defaultProps} session={verificationSession} />
+        </QueryClientProvider>
+      );
 
-      // Restore original
-      useIdeationStore.setState({ setLastVerificationChildId: originalFn });
+      await user.click(screen.getByTestId("tab-verification"));
+
+      const panels = screen.getAllByTestId("integrated-chat-panel");
+      expect(panels.length).toBe(2);
+      expect(useIdeationStore.getState().lastVerificationChildId["session-1"]).toBe("child-session-99");
     });
   });
 

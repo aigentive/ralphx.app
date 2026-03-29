@@ -28,6 +28,7 @@ export function ChildSessionNotification({
   const verificationChildId = useIdeationStore((s) => s.verificationNotifications[sessionId]);
   const setActiveIdeationTab = useIdeationStore((s) => s.setActiveIdeationTab);
   const setActiveVerificationChildId = useIdeationStore((s) => s.setActiveVerificationChildId);
+  const setLastVerificationChildId = useIdeationStore((s) => s.setLastVerificationChildId);
   const clearVerificationNotification = useIdeationStore((s) => s.clearVerificationNotification);
 
   // Reactive selector — re-evaluates when session verification state changes in the store
@@ -67,6 +68,7 @@ export function ChildSessionNotification({
   const handleViewVerification = () => {
     setActiveIdeationTab(sessionId, 'verification');
     setActiveVerificationChildId(sessionId, verificationChildId ?? null);
+    setLastVerificationChildId(sessionId, verificationChildId ?? null);
   };
 
   return (
