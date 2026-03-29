@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { useEventBus } from "@/providers/EventProvider";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useChatStore } from "@/stores/chatStore";
+import { useUiStore } from "@/stores/uiStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
 import { navigateToIdeationSession } from "@/lib/navigation";
 import { ideationKeys } from "./useIdeation";
@@ -35,6 +36,8 @@ import type { VerificationStatus, VerificationGap } from "@/types/ideation";
 import type { VerificationStatusResponse } from "@/api/ideation.types";
 import { PlanVerificationStatusChangedSchema } from "@/types/events";
 import type { EventVerificationGap } from "@/types/events";
+import { verificationApi } from "@/api/verification";
+import { PendingVerificationEventSchema } from "@/types/verification-config";
 export type { PlanVerificationStatusChangedEvent, PlanVerificationStatusChangedPayload } from "@/types/events";
 
 // ============================================================================
@@ -59,6 +62,8 @@ export function useVerificationEvents() {
   const updateSession = useIdeationStore((s) => s.updateSession);
   const clearVerificationNotification = useIdeationStore((s) => s.clearVerificationNotification);
   const queryClient = useQueryClient();
+  const enqueuePendingVerification = useUiStore((s) => s.enqueuePendingVerification);
+  const autoAcceptVerificationSessions = useUiStore((s) => s.autoAcceptVerificationSessions);
 
   useEffect(() => {
     logger.debug("[VerificationEvents] Setting up plan_verification:status_changed listener");
@@ -155,10 +160,45 @@ export function useVerificationEvents() {
       })
     );
 
+    unsubscribes.push(
+      bus.subscribe<unknown>("verification:pending_confirmation", (payload) => {
+        logger.debug("[VerificationEvents] Received verification:pending_confirmation:", payload);
+
+        const parsed = PendingVerificationEventSchema.safeParse(payload);
+        if (!parsed.success) {
+          logger.debug(
+            "[VerificationEvents] Invalid verification:pending_confirmation event:",
+            parsed.error.message
+          );
+          return;
+        }
+
+        const { session_id: sessionId } = parsed.data;
+
+        // Auto-accept: if session is in auto-accept set, confirm without showing dialog
+        if (autoAcceptVerificationSessions.has(sessionId)) {
+          logger.debug("[VerificationEvents] Auto-accepting verification for session:", sessionId);
+          verificationApi.confirm(sessionId, []).catch((err: Error) => {
+            logger.warn("[VerificationEvents] Auto-accept verification failed, showing dialog:", err.message);
+            // Fall back to dialog on auto-accept failure
+            enqueuePendingVerification(sessionId);
+          });
+          return;
+        }
+
+        // Enqueue session for confirmation dialog
+        enqueuePendingVerification(sessionId);
+
+        // Refresh session data
+        queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
+        queryClient.invalidateQueries({ queryKey: ideationKeys.sessionWithData(sessionId) });
+      })
+    );
+
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, updateSession, clearVerificationNotification, queryClient]);
+  }, [bus, updateSession, clearVerificationNotification, queryClient, enqueuePendingVerification, autoAcceptVerificationSessions]);
 }
 
 // ============================================================================

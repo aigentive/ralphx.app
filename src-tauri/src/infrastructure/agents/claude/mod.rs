@@ -22,8 +22,8 @@ pub use agent_config::{
     supervisor_runtime_config, team_constraints_config, ui_feature_flags_config,
     validate_external_mcp_config, verification_config, AgentConfig, AllRuntimeConfig,
     ExecutionDefaultsConfig, ExternalMcpConfig, GitRuntimeConfig, LimitsConfig,
-    ReconciliationConfig, SchedulerConfig, StreamTimeoutsConfig, SupervisorRuntimeConfig,
-    UiFeatureFlagsConfig, VerificationConfig,
+    ReconciliationConfig, SchedulerConfig, SpecialistEntry, StreamTimeoutsConfig,
+    SupervisorRuntimeConfig, UiFeatureFlagsConfig, VerificationConfig,
 };
 pub use claude_code_client::kill_all_tracked_processes;
 pub use claude_code_client::ClaudeCodeClient;

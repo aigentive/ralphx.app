@@ -72,6 +72,24 @@ pub fn emit_verification_started<R: Runtime>(
     );
 }
 
+/// Emits `verification:pending_confirmation` event when a plan needs user confirmation before verification.
+///
+/// This is emitted after a plan artifact is saved for UI sessions, signaling the frontend
+/// to show the VerificationConfirmDialog with the specialist selection checkboxes.
+pub fn emit_verification_pending_confirmation<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    session_id: &str,
+    session_title: &str,
+    plan_artifact_id: &str,
+) {
+    let payload = serde_json::json!({
+        "session_id": session_id,
+        "session_title": session_title,
+        "plan_artifact_id": plan_artifact_id,
+    });
+    let _ = app_handle.emit("verification:pending_confirmation", payload);
+}
+
 /// Build the canonical JSON payload. Extracted so it can be tested without a real AppHandle.
 pub fn build_verification_payload(
     session_id: &str,

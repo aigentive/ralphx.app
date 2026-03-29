@@ -196,6 +196,27 @@ pub async fn start_http_server(
             "/api/ideation/pending-confirmations",
             get(get_pending_confirmations),
         )
+        // Verification confirmation endpoints (UI-session gate)
+        .route(
+            "/api/verification/confirm",
+            post(confirm_verification),
+        )
+        .route(
+            "/api/verification/dismiss",
+            post(dismiss_verification),
+        )
+        .route(
+            "/api/verification/auto-accept",
+            post(set_auto_accept_verification),
+        )
+        .route(
+            "/api/verification/specialists",
+            get(get_verification_specialists),
+        )
+        .route(
+            "/api/verification/confirmation-status/:session_id",
+            get(get_confirmation_status),
+        )
         // Child session tools (orchestrator-ideation + ideation-team-lead + plan-verifier agents)
         .route(
             "/api/ideation/sessions/:id/child-status",
@@ -410,6 +431,21 @@ pub async fn start_http_server(
                 .allow_methods(Any)
                 .allow_headers(Any),
         );
+
+    // TTL sweeper: remove PendingVerification entries older than 10 minutes.
+    // Spawned here (async context) per CLAUDE.md Rule #17 — NOT in AppState constructor.
+    {
+        let pending_verifications = Arc::clone(&state.app_state.pending_verifications);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(300)); // every 5 minutes
+            loop {
+                interval.tick().await;
+                let cutoff = chrono::Utc::now() - chrono::Duration::minutes(10);
+                let mut map = pending_verifications.lock().await;
+                map.retain(|_, v| v.created_at > cutoff);
+            }
+        });
+    }
 
     let app = Router::new()
         .merge(internal_routes)

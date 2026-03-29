@@ -21,6 +21,21 @@ pub struct AllRuntimeConfig {
     pub ui_feature_flags: super::ui_config::UiFeatureFlagsConfig,
 }
 
+/// A specialist agent entry in the verification pipeline.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct SpecialistEntry {
+    /// Unique agent name (matches ralphx.yaml agent name, e.g. "ideation-specialist-code-quality").
+    pub name: String,
+    /// Human-readable display name shown in the UI.
+    pub display_name: String,
+    /// Brief description of what this specialist analyzes.
+    pub description: String,
+    /// When this specialist is dispatched: "pre_round" (once before the loop) or "per_round" (each round).
+    pub dispatch_mode: String,
+    /// Whether this specialist is selected by default in the confirmation dialog.
+    pub enabled_by_default: bool,
+}
+
 /// Configuration for the plan verification feature.
 ///
 /// All fields required in ralphx.yaml under `ideation.verification:`.
@@ -48,6 +63,10 @@ pub struct VerificationConfig {
     /// seconds, a later retry supersedes it and starts fresh. Default: 30s.
     #[serde(default = "default_accept_stale_execution_plan_secs")]
     pub accept_stale_execution_plan_secs: u64,
+    /// Specialist agents available in the verification pipeline.
+    /// Loaded from `verification.specialists` in `ralphx.yaml`.
+    #[serde(default)]
+    pub specialists: Vec<SpecialistEntry>,
 }
 
 fn default_auto_verify_stale_secs() -> u64 {
@@ -81,6 +100,7 @@ impl Default for VerificationConfig {
             reconciliation_interval_secs: 300,     // 5 minutes
             auto_verify_stale_secs: 600,           // 10 minutes
             accept_stale_execution_plan_secs: 30,  // 30 seconds
+            specialists: vec![],
         }
     }
 }

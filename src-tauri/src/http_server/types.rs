@@ -1705,6 +1705,71 @@ pub struct RevertAndSkipRequest {
     pub plan_version_to_restore: String,
 }
 
+// ============================================================================
+// Request/Response Types - Verification Confirmation (Wave 2)
+// ============================================================================
+
+/// POST /api/verification/confirm — trigger verification with optional specialist exclusions.
+#[derive(Debug, Deserialize)]
+pub struct ConfirmVerificationRequest {
+    pub session_id: String,
+    /// Agent names to exclude from this verification run (e.g. ["ideation-specialist-ux"]).
+    /// Empty list = all specialists enabled.
+    #[serde(default)]
+    pub disabled_specialists: Vec<String>,
+}
+
+/// POST /api/verification/dismiss — remove a pending verification entry.
+#[derive(Debug, Deserialize)]
+pub struct DismissVerificationRequest {
+    pub session_id: String,
+}
+
+/// POST /api/verification/auto-accept — toggle per-session auto-accept.
+#[derive(Debug, Deserialize)]
+pub struct AutoAcceptVerificationRequest {
+    pub session_id: String,
+    pub enabled: bool,
+}
+
+/// Generic OK response for verification mutation endpoints.
+#[derive(Debug, Serialize)]
+pub struct VerificationActionResponse {
+    pub status: String,
+}
+
+/// One specialist entry in the GET /api/verification/specialists response.
+#[derive(Debug, Clone, Serialize)]
+pub struct SpecialistEntryResponse {
+    pub name: String,
+    pub display_name: String,
+    pub description: String,
+    pub dispatch_mode: String,
+    pub enabled_by_default: bool,
+}
+
+/// Response for GET /api/verification/specialists.
+#[derive(Debug, Serialize)]
+pub struct SpecialistsResponse {
+    pub specialists: Vec<SpecialistEntryResponse>,
+}
+
+/// Response for GET /api/verification/confirmation-status/{session_id}.
+/// status: "pending" | "not_applicable"
+#[derive(Debug, Serialize)]
+pub struct ConfirmationStatusResponse {
+    pub session_id: String,
+    /// "pending" when a PendingVerification entry exists for this session.
+    /// "not_applicable" when no entry exists.
+    pub status: String,
+    /// Only present when status == "pending"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_artifact_id: Option<String>,
+    /// Only present when status == "pending"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub available_specialists: Option<Vec<SpecialistEntryResponse>>,
+}
+
 #[cfg(test)]
 mod http_error_tests {
     use super::*;

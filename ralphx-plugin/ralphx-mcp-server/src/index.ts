@@ -849,6 +849,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         throw new Error("RALPHX_PROJECT_ID is not set — cannot query pending confirmations");
       }
       result = await callTauriGet(`ideation/pending-confirmations?project_id=${encodeURIComponent(projectId)}`);
+    } else if (name === "get_verification_confirmation_status") {
+      // GET /api/verification/confirmation-status/{session_id}
+      const { session_id } = args as { session_id: string };
+      result = await callTauriGet(`verification/confirmation-status/${encodeURIComponent(session_id)}`);
     } else if (name === "delete_task_proposal") {
       // Alias for archive_task_proposal — no /api/delete_task_proposal route exists in backend
       const { proposal_id } = args as { proposal_id: string };

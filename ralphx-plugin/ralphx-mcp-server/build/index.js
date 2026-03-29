@@ -700,6 +700,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             }
             result = await callTauriGet(`ideation/pending-confirmations?project_id=${encodeURIComponent(projectId)}`);
         }
+        else if (name === "get_verification_confirmation_status") {
+            // GET /api/verification/confirmation-status/{session_id}
+            const { session_id } = args;
+            result = await callTauriGet(`verification/confirmation-status/${encodeURIComponent(session_id)}`);
+        }
         else if (name === "delete_task_proposal") {
             // Alias for archive_task_proposal — no /api/delete_task_proposal route exists in backend
             const { proposal_id } = args;

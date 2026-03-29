@@ -316,6 +316,28 @@ export const ALL_TOOLS: Tool[] = [
   },
 
   // ========================================================================
+  // VERIFICATION CONFIRMATION STATUS (orchestrator-ideation and ideation-team-lead only)
+  // ========================================================================
+  {
+    name: "get_verification_confirmation_status",
+    description:
+      "Check whether the user has confirmed, rejected, or is still pending confirmation for plan verification. " +
+      "Call this after `create_plan_artifact` to detect whether the user has acted on the verification confirmation dialog. " +
+      "Response includes status: \"pending\" (user hasn't responded yet), \"accepted\" (user confirmed — verification will start), " +
+      "\"rejected\" (user dismissed — session stays Unverified), or \"not_applicable\" (external session or no pending confirmation exists).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: {
+          type: "string",
+          description: "The ideation session ID to check verification confirmation status for",
+        },
+      },
+      required: ["session_id"],
+    },
+  },
+
+  // ========================================================================
   // QUESTION TOOLS (orchestrator-ideation agent — inline AskUserQuestion)
   // ========================================================================
   {
@@ -1670,6 +1692,8 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     // acceptance gate tools
     "get_acceptance_status",
     "get_pending_confirmations",
+    // verification confirmation status
+    "get_verification_confirmation_status",
     // cross-project tools
     "list_projects",
     "create_cross_project_session",
@@ -1938,6 +1962,8 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     // Acceptance gate tools
     "get_acceptance_status",
     "get_pending_confirmations",
+    // Verification confirmation status
+    "get_verification_confirmation_status",
     // Cross-project tools
     "list_projects",
     "create_cross_project_session",

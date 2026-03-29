@@ -6,7 +6,18 @@ pub(crate) async fn create_verification_child_session(
     parent_session_id: &str,
     description: &str,
     title: &str,
+    disabled_specialists: &[String],
 ) -> Result<bool, String> {
+    let effective_description = if disabled_specialists.is_empty() {
+        description.to_string()
+    } else {
+        format!(
+            "{}\nDISABLED_SPECIALISTS: {}",
+            description,
+            disabled_specialists.join(", ")
+        )
+    };
+
     let parent_id = IdeationSessionId::from_string(parent_session_id.to_string());
 
     let parent = state
@@ -63,7 +74,7 @@ pub(crate) async fn create_verification_child_session(
         .send_message(
             ChatContextType::Ideation,
             &child_session_str,
-            description,
+            effective_description.as_str(),
             Default::default(),
         )
         .await
@@ -77,7 +88,7 @@ pub(crate) async fn create_verification_child_session(
                 if let Err(persist_err) = state
                     .app_state
                     .ideation_session_repo
-                    .set_pending_initial_prompt(&child_session_str, Some(description.to_string()))
+                    .set_pending_initial_prompt(&child_session_str, Some(effective_description.clone()))
                     .await
                 {
                     error!(
@@ -223,6 +234,7 @@ mod tests {
             parent_id.as_str(),
             "Run verification round loop",
             "Auto-verification",
+            &[],
         )
         .await
         .expect("verification child creation should still succeed");

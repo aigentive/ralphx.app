@@ -17,7 +17,7 @@ pub use team_config::{
 
 pub use runtime_config::{
     validate_external_mcp_config, AllRuntimeConfig, ExternalMcpConfig, GitRuntimeConfig,
-    LimitsConfig, ReconciliationConfig, SchedulerConfig, StreamTimeoutsConfig,
+    LimitsConfig, ReconciliationConfig, SchedulerConfig, SpecialistEntry, StreamTimeoutsConfig,
     SupervisorRuntimeConfig, VerificationConfig,
 };
 

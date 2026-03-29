@@ -1,8 +1,10 @@
 // Application state container for dependency injection
 // Holds repository trait objects that can be swapped for testing
 
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
+use chrono::{DateTime, Utc};
 use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
 
@@ -66,7 +68,18 @@ use crate::infrastructure::sqlite::{
     SqliteTaskStepRepository, SqliteTeamMessageRepository, SqliteTeamSessionRepository,
     SqliteWebhookRegistrationRepository, SqliteWorkflowRepository,
 };
+use crate::infrastructure::agents::claude::SpecialistEntry;
 use crate::infrastructure::{ClaudeCodeClient, GhCliGithubService, MockAgenticClient};
+
+/// In-memory state for a plan verification that is awaiting user confirmation.
+#[derive(Debug, Clone)]
+pub struct PendingVerification {
+    pub session_id: String,
+    pub session_title: String,
+    pub plan_artifact_id: String,
+    pub available_specialists: Vec<SpecialistEntry>,
+    pub created_at: DateTime<Utc>,
+}
 
 /// Application state container for dependency injection
 /// Holds repository trait objects that can be swapped for testing vs production
@@ -186,6 +199,11 @@ pub struct AppState {
     /// Constructed ONCE in lib.rs and Arc-cloned into both AppState instances.
     /// None in test constructors.
     pub webhook_publisher: Option<Arc<dyn crate::domain::state_machine::services::WebhookPublisher>>,
+    /// Pending verification confirmations awaiting user input. Keyed by session_id.
+    /// Ephemeral — lost on app restart. TTL sweep removes stale entries.
+    pub pending_verifications: Arc<Mutex<HashMap<String, PendingVerification>>>,
+    /// Sessions where user has enabled auto-accept for verification. Ephemeral.
+    pub auto_accept_sessions: Arc<Mutex<HashSet<String>>>,
 }
 
 impl AppState {
@@ -375,6 +393,8 @@ impl AppState {
             running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(Arc::clone(&shared_conn))),
             webhook_registration_repo: Arc::new(SqliteWebhookRegistrationRepository::from_shared(Arc::clone(&shared_conn))),
             webhook_publisher: None,
+            pending_verifications: Arc::new(Mutex::new(HashMap::new())),
+            auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),
@@ -387,253 +407,17 @@ impl AppState {
         let path = PathBuf::from(db_path);
         let conn = open_connection(&path)?;
         run_migrations(&conn)?;
-
         let shared_conn = Arc::new(Mutex::new(conn));
-
-        // Create repositories that are used by services
-        let task_repo: Arc<dyn TaskRepository> =
-            Arc::new(SqliteTaskRepository::from_shared(Arc::clone(&shared_conn)));
-        let task_proposal_repo: Arc<dyn TaskProposalRepository> = Arc::new(
-            SqliteTaskProposalRepository::from_shared(Arc::clone(&shared_conn)),
-        );
-        let artifact_repo: Arc<dyn ArtifactRepository> = Arc::new(
-            SqliteArtifactRepository::from_shared(Arc::clone(&shared_conn)),
-        );
-
-        // Chat attachment repository
-        let chat_attachment_repo: Arc<dyn ChatAttachmentRepository> = Arc::new(
-            SqliteChatAttachmentRepository::from_shared(Arc::clone(&shared_conn)),
-        );
-        let attachment_storage_path = app_handle
-            .path()
-            .app_data_dir()
-            .unwrap_or_else(|_| PathBuf::from("."));
-
-        let gh_svc: Arc<dyn GithubServiceTrait> = Arc::new(GhCliGithubService::new());
-
-        Ok(Self {
-            task_repo: Arc::clone(&task_repo),
-            task_step_repo: Arc::new(SqliteTaskStepRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            project_repo: Arc::new(SqliteProjectRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            api_key_repo: Arc::new(SqliteApiKeyRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            agent_profile_repo: Arc::new(SqliteAgentProfileRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            task_qa_repo: Arc::new(SqliteTaskQARepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            review_repo: Arc::new(SqliteReviewRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            review_settings_repo: Arc::new(SqliteReviewSettingsRepository::from_shared(
-                Arc::clone(&shared_conn),
-            )),
-            review_issue_repo: Arc::new(SqliteReviewIssueRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            agent_client: Arc::new(ClaudeCodeClient::new()),
-            qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
-            execution_settings_repo: Arc::new(SqliteExecutionSettingsRepository::from_shared(
-                Arc::clone(&shared_conn),
-            )),
-            global_execution_settings_repo: Arc::new(
-                SqliteGlobalExecutionSettingsRepository::from_shared(Arc::clone(&shared_conn)),
-            ),
-            ideation_session_repo: Arc::new(SqliteIdeationSessionRepository::from_shared(
-                Arc::clone(&shared_conn),
-            )),
-            ideation_settings_repo: Arc::new(SqliteIdeationSettingsRepository::from_shared(
-                Arc::clone(&shared_conn),
-            )),
-            session_link_repo: Arc::new(SqliteSessionLinkRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            task_proposal_repo: Arc::clone(&task_proposal_repo),
-            proposal_dependency_repo: Arc::new(SqliteProposalDependencyRepository::from_shared(
-                Arc::clone(&shared_conn),
-            )),
-            chat_message_repo: Arc::new(SqliteChatMessageRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            chat_conversation_repo: Arc::new(SqliteChatConversationRepository::from_shared(
-                Arc::clone(&shared_conn),
-            )),
-            agent_run_repo: Arc::new(SqliteAgentRunRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            activity_event_repo: Arc::new(SqliteActivityEventRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            task_dependency_repo: Arc::new(SqliteTaskDependencyRepository::from_shared(
-                Arc::clone(&shared_conn),
-            )),
-            // Extensibility repositories
-            workflow_repo: Arc::new(SqliteWorkflowRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            artifact_repo: Arc::clone(&artifact_repo),
-            artifact_bucket_repo: Arc::new(SqliteArtifactBucketRepository::from_shared(
-                Arc::clone(&shared_conn),
-            )),
-            artifact_flow_repo: Arc::new(SqliteArtifactFlowRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            process_repo: Arc::new(SqliteProcessRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            methodology_repo: Arc::new(SqliteMethodologyRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            plan_branch_repo: Arc::new(SqlitePlanBranchRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            plan_selection_stats_repo: Arc::new(SqlitePlanSelectionStatsRepository::from_shared(
-                Arc::clone(&shared_conn),
-            )),
-            app_state_repo: Arc::new(SqliteAppStateRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            active_plan_repo: Arc::new(SqliteActivePlanRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            memory_entry_repo: Arc::new(SqliteMemoryEntryRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            memory_event_repo: Arc::new(SqliteMemoryEventRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            memory_archive_repo: Arc::new(SqliteMemoryArchiveRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            team_session_repo: Arc::new(SqliteTeamSessionRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            team_message_repo: Arc::new(SqliteTeamMessageRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            execution_plan_repo: Arc::new(SqliteExecutionPlanRepository::from_shared(Arc::clone(
-                &shared_conn,
-            ))),
-            chat_attachment_repo,
-            attachment_storage_path,
-            permission_state: Arc::new(PermissionState::with_repo(Arc::new(
-                SqlitePermissionRepository::from_shared(Arc::clone(&shared_conn)),
-            ))),
-            question_state: Arc::new(QuestionState::with_repo(Arc::new(
-                SqliteQuestionRepository::from_shared(Arc::clone(&shared_conn)),
-            ))),
-            message_queue: Arc::new(MessageQueue::new()),
-            db: crate::infrastructure::sqlite::DbConnection::from_shared(Arc::clone(&shared_conn)),
-            external_events_repo: Arc::new(SqliteExternalEventsRepository::from_shared(
-                Arc::clone(&shared_conn),
-            )),
-            github_service: Some(Arc::clone(&gh_svc)),
-            pr_poller_registry: Arc::new(PrPollerRegistry::new(
-                Some(gh_svc),
-                Arc::new(crate::infrastructure::sqlite::SqlitePlanBranchRepository::from_shared(
-                    Arc::clone(&shared_conn),
-                )),
-            )),
-            running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(Arc::clone(&shared_conn))),
-            webhook_registration_repo: Arc::new(SqliteWebhookRegistrationRepository::from_shared(Arc::clone(&shared_conn))),
-            webhook_publisher: None,
-
-            streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
-            interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),
-            app_handle: Some(app_handle),
-        })
+        Self::build_from_shared_conn(app_handle, shared_conn)
     }
 
     /// Create AppState for testing with in-memory repositories
     /// No AppHandle is provided - event emission is disabled in tests
     pub fn new_test() -> Self {
-        let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
-        let task_proposal_repo: Arc<dyn TaskProposalRepository> =
-            Arc::new(MemoryTaskProposalRepository::new());
-        let artifact_repo: Arc<dyn ArtifactRepository> = Arc::new(MemoryArtifactRepository::new());
-
-        // Chat attachment repository for tests
-        let chat_attachment_repo: Arc<dyn ChatAttachmentRepository> =
-            Arc::new(MemoryChatAttachmentRepository::new());
-        let attachment_storage_path = std::env::temp_dir();
-
-        Self {
-            task_repo: Arc::clone(&task_repo),
-            task_step_repo: Arc::new(MemoryTaskStepRepository::new()),
-            project_repo: Arc::new(MemoryProjectRepository::new()),
-            api_key_repo: Arc::new(MemoryApiKeyRepository::new()),
-            agent_profile_repo: Arc::new(MemoryAgentProfileRepository::new()),
-            task_qa_repo: Arc::new(MemoryTaskQARepository::new()),
-            review_repo: Arc::new(MemoryReviewRepository::new()),
-            review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
-            review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
-            agent_client: Arc::new(MockAgenticClient::new()),
-            qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
-            execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
-            global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
-            ideation_session_repo: Arc::new(MemoryIdeationSessionRepository::new()),
-            ideation_settings_repo: Arc::new(MemoryIdeationSettingsRepository::new()),
-            session_link_repo: Arc::new(MemorySessionLinkRepository::new()),
-            task_proposal_repo: Arc::clone(&task_proposal_repo),
-            proposal_dependency_repo: Arc::new(MemoryProposalDependencyRepository::new()),
-            chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),
-            chat_conversation_repo: Arc::new(MemoryChatConversationRepository::new()),
-            agent_run_repo: Arc::new(MemoryAgentRunRepository::new()),
-            activity_event_repo: Arc::new(MemoryActivityEventRepository::new()),
-            task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
-            // Extensibility repositories
-            workflow_repo: Arc::new(MemoryWorkflowRepository::new()),
-            artifact_repo: Arc::clone(&artifact_repo),
-            artifact_bucket_repo: Arc::new(MemoryArtifactBucketRepository::new()),
-            artifact_flow_repo: Arc::new(MemoryArtifactFlowRepository::new()),
-            process_repo: Arc::new(MemoryProcessRepository::new()),
-            methodology_repo: Arc::new(MemoryMethodologyRepository::new()),
-            plan_branch_repo: Arc::new(MemoryPlanBranchRepository::new()),
-            plan_selection_stats_repo: Arc::new(MemoryPlanSelectionStatsRepository::new()),
-            app_state_repo: Arc::new(MemoryAppStateRepository::new()),
-            active_plan_repo: Arc::new(MemoryActivePlanRepository::new()),
-            memory_entry_repo: Arc::new(InMemoryMemoryEntryRepository::new()),
-            memory_event_repo: Arc::new(InMemoryMemoryEventRepository::new()),
-            memory_archive_repo: Arc::new(SqliteMemoryArchiveRepository::new(
-                open_connection(&PathBuf::from(":memory:"))
-                    .expect("Failed to create in-memory connection"),
-            )),
-            team_session_repo: Arc::new(MemoryTeamSessionRepository::new()),
-            team_message_repo: Arc::new(MemoryTeamMessageRepository::new()),
-            execution_plan_repo: Arc::new(MemoryExecutionPlanRepository::new()),
-            chat_attachment_repo,
-            attachment_storage_path,
-            permission_state: Arc::new(PermissionState::with_repo(Arc::new(
-                MemoryPermissionRepository::new(),
-            ))),
-            question_state: Arc::new(QuestionState::with_repo(Arc::new(
-                MemoryQuestionRepository::new(),
-            ))),
-            message_queue: Arc::new(MessageQueue::new()),
-            db: crate::infrastructure::sqlite::DbConnection::new(
-                open_connection(&std::path::PathBuf::from(":memory:"))
-                    .expect("Failed to create in-memory connection for db field"),
-            ),
-            external_events_repo: Arc::new(MemoryExternalEventsRepository::new()),
-            running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
-            webhook_registration_repo: Arc::new(MemoryWebhookRegistrationRepository::new()),
-            webhook_publisher: None,
-
-            streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
-            interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),
-            app_handle: None,
-            github_service: None,
-            pr_poller_registry: Arc::new(PrPollerRegistry::new(
-                None,
-                Arc::new(MemoryPlanBranchRepository::new()),
-            )),
-        }
+        Self::with_repos(
+            Arc::new(MemoryTaskRepository::new()),
+            Arc::new(MemoryProjectRepository::new()),
+        )
     }
 
     /// Create AppState for handler tests that need SQLite-backed artifact/session/proposal repos.
@@ -720,6 +504,8 @@ impl AppState {
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             webhook_registration_repo: Arc::new(MemoryWebhookRegistrationRepository::new()),
             webhook_publisher: None,
+            pending_verifications: Arc::new(Mutex::new(HashMap::new())),
+            auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(
@@ -815,6 +601,8 @@ impl AppState {
             running_agent_registry: registry,
             webhook_registration_repo: Arc::new(MemoryWebhookRegistrationRepository::new()),
             webhook_publisher: None,
+            pending_verifications: Arc::new(Mutex::new(HashMap::new())),
+            auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(
@@ -926,6 +714,8 @@ impl AppState {
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             webhook_registration_repo: Arc::new(MemoryWebhookRegistrationRepository::new()),
             webhook_publisher: None,
+            pending_verifications: Arc::new(Mutex::new(HashMap::new())),
+            auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(
@@ -1016,6 +806,8 @@ impl AppState {
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             webhook_registration_repo: Arc::new(MemoryWebhookRegistrationRepository::new()),
             webhook_publisher: None,
+            pending_verifications: Arc::new(Mutex::new(HashMap::new())),
+            auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),

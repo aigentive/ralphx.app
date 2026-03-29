@@ -95,6 +95,7 @@ pub async fn trigger_verification_http(
         &session_id,
         &description,
         &title,
+        &[],
     )
     .await
     {

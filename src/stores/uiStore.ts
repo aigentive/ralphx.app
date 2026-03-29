@@ -286,6 +286,10 @@ interface UiState {
   autoAcceptPlans: boolean;
   /** Per-session auto-accept: bypass confirmation for specific sessions (in-memory, resets on restart) */
   autoAcceptSessions: Set<string>;
+  /** Queue of session IDs awaiting verification confirmation (first = active dialog) */
+  pendingVerificationQueue: string[];
+  /** Per-session auto-accept verification: bypass confirmation for specific sessions (in-memory, resets on restart) */
+  autoAcceptVerificationSessions: Set<string>;
 }
 
 // ============================================================================
@@ -422,6 +426,16 @@ interface UiActions {
   addAutoAcceptSession: (sessionId: string) => void;
   /** Remove a session from per-session auto-accept set */
   removeAutoAcceptSession: (sessionId: string) => void;
+  /** Enqueue a session ID for verification confirmation (deduplicates) */
+  enqueuePendingVerification: (sessionId: string) => void;
+  /** Remove the first item from the verification queue (after dialog resolves) */
+  dequeueVerification: () => void;
+  /** Remove a specific session from the verification queue */
+  removeFromVerificationQueue: (sessionId: string) => void;
+  /** Add session to auto-accept verification set */
+  addAutoAcceptVerificationSession: (sessionId: string) => void;
+  /** Remove session from auto-accept verification set */
+  removeAutoAcceptVerificationSession: (sessionId: string) => void;
 }
 
 // ============================================================================
@@ -482,6 +496,8 @@ export const useUiStore = create<UiState & UiActions>()(
     pendingConfirmationQueue: [],
     autoAcceptPlans: false,
     autoAcceptSessions: new Set<string>(),
+    pendingVerificationQueue: [],
+    autoAcceptVerificationSessions: new Set<string>(),
 
     // Actions
     toggleSidebar: () =>
@@ -909,6 +925,35 @@ export const useUiStore = create<UiState & UiActions>()(
     removeAutoAcceptSession: (sessionId) =>
       set((state) => {
         state.autoAcceptSessions.delete(sessionId);
+      }),
+
+    enqueuePendingVerification: (sessionId) =>
+      set((state) => {
+        if (!state.pendingVerificationQueue.includes(sessionId)) {
+          state.pendingVerificationQueue.push(sessionId);
+        }
+      }),
+
+    dequeueVerification: () =>
+      set((state) => {
+        state.pendingVerificationQueue.shift();
+      }),
+
+    removeFromVerificationQueue: (sessionId) =>
+      set((state) => {
+        state.pendingVerificationQueue = state.pendingVerificationQueue.filter(
+          (id) => id !== sessionId
+        );
+      }),
+
+    addAutoAcceptVerificationSession: (sessionId) =>
+      set((state) => {
+        state.autoAcceptVerificationSessions.add(sessionId);
+      }),
+
+    removeAutoAcceptVerificationSession: (sessionId) =>
+      set((state) => {
+        state.autoAcceptVerificationSessions.delete(sessionId);
       }),
   }))
 );

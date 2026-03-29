@@ -10,59 +10,69 @@ pub async fn create_plan_artifact(
     let cfg = verification_config();
     let auto_verify_enabled = cfg.auto_verify;
 
-    let (session_id, created, auto_verify_generation, project_id) = state
-        .app_state
-        .db
-        .run_transaction(move |conn| {
-            let sid = IdeationSessionId::from_string(session_id_str);
+    // Check in-memory auto-accept state BEFORE the transaction (async lock)
+    let is_auto_accept = {
+        let auto_accept = state.app_state.auto_accept_sessions.lock().await;
+        auto_accept.contains(&session_id_str)
+    };
 
-            let session = SessionRepo::get_by_id_sync(conn, sid.as_str())?
-                .ok_or_else(|| AppError::NotFound(format!("Session {} not found", sid)))?;
+    let (session_id, created, auto_verify_generation, project_id, session_origin, session_title) =
+        state
+            .app_state
+            .db
+            .run_transaction(move |conn| {
+                let sid = IdeationSessionId::from_string(session_id_str);
 
-            let auto_verify_enabled =
-                auto_verify_enabled || session.origin == SessionOrigin::External;
+                let session = SessionRepo::get_by_id_sync(conn, sid.as_str())?
+                    .ok_or_else(|| AppError::NotFound(format!("Session {} not found", sid)))?;
 
-            crate::http_server::helpers::assert_session_mutable(&session)?;
+                let is_external = session.origin == SessionOrigin::External;
+                let should_auto_verify =
+                    auto_verify_enabled || is_external || is_auto_accept;
 
-            let bucket_id = ArtifactBucketId::from_string("prd-library");
-            let artifact = Artifact {
-                id: ArtifactId::new(),
-                artifact_type: ArtifactType::Specification,
-                name: title,
-                content: ArtifactContent::inline(&content),
-                metadata: ArtifactMetadata::new("orchestrator").with_version(1),
-                derived_from: vec![],
-                bucket_id: Some(bucket_id),
-                archived_at: None,
-            };
+                crate::http_server::helpers::assert_session_mutable(&session)?;
 
-            let created = if let Some(existing_plan_id) = &session.plan_artifact_id {
-                let prev_id = existing_plan_id.as_str().to_string();
-                ArtifactRepo::create_with_previous_version_sync(conn, artifact, &prev_id)?
-            } else {
-                ArtifactRepo::create_sync(conn, artifact)?
-            };
+                let bucket_id = ArtifactBucketId::from_string("prd-library");
+                let artifact = Artifact {
+                    id: ArtifactId::new(),
+                    artifact_type: ArtifactType::Specification,
+                    name: title,
+                    content: ArtifactContent::inline(&content),
+                    metadata: ArtifactMetadata::new("orchestrator").with_version(1),
+                    derived_from: vec![],
+                    bucket_id: Some(bucket_id),
+                    archived_at: None,
+                };
 
-            SessionRepo::update_plan_artifact_id_sync(
-                conn,
-                sid.as_str(),
-                Some(created.id.as_str()),
-            )?;
-            SessionRepo::update_plan_version_last_read_sync(conn, sid.as_str(), 1)?;
+                let created = if let Some(existing_plan_id) = &session.plan_artifact_id {
+                    let prev_id = existing_plan_id.as_str().to_string();
+                    ArtifactRepo::create_with_previous_version_sync(conn, artifact, &prev_id)?
+                } else {
+                    ArtifactRepo::create_sync(conn, artifact)?
+                };
 
-            let auto_verify_generation = if auto_verify_enabled {
-                SessionRepo::trigger_auto_verify_sync(conn, sid.as_str())?
-            } else {
-                None
-            };
+                SessionRepo::update_plan_artifact_id_sync(
+                    conn,
+                    sid.as_str(),
+                    Some(created.id.as_str()),
+                )?;
+                SessionRepo::update_plan_version_last_read_sync(conn, sid.as_str(), 1)?;
 
-            Ok((sid, created, auto_verify_generation, session.project_id.clone()))
-        })
-        .await
-        .map_err(|e| {
-            error!("create_plan_artifact transaction failed: {}", e);
-            map_app_err(e)
-        })?;
+                let auto_verify_generation = if should_auto_verify {
+                    SessionRepo::trigger_auto_verify_sync(conn, sid.as_str())?
+                } else {
+                    None
+                };
+
+                let session_title = session.title.clone();
+                let session_origin = session.origin.clone();
+                Ok((sid, created, auto_verify_generation, session.project_id.clone(), session_origin, session_title))
+            })
+            .await
+            .map_err(|e| {
+                error!("create_plan_artifact transaction failed: {}", e);
+                map_app_err(e)
+            })?;
 
     if let Some(app_handle) = &state.app_state.app_handle {
         let content_text = match &created.content {
@@ -134,6 +144,7 @@ pub async fn create_plan_artifact(
             session_id.as_str(),
             &description,
             &title,
+            &[],
         )
         .await
         {
@@ -197,6 +208,29 @@ pub async fn create_plan_artifact(
                     );
                 }
             }
+        }
+    } else if session_origin != SessionOrigin::External {
+        // UI session without auto-verify: insert PendingVerification and emit confirmation event
+        let cfg = verification_config();
+        let pending = crate::application::app_state::PendingVerification {
+            session_id: session_id.as_str().to_string(),
+            session_title: session_title.clone().unwrap_or_default(),
+            plan_artifact_id: created.id.as_str().to_string(),
+            available_specialists: cfg.specialists.clone(),
+            created_at: chrono::Utc::now(),
+        };
+        {
+            let mut pending_verifications =
+                state.app_state.pending_verifications.lock().await;
+            pending_verifications.insert(session_id.as_str().to_string(), pending);
+        }
+        if let Some(app_handle) = &state.app_state.app_handle {
+            crate::domain::services::emit_verification_pending_confirmation(
+                app_handle,
+                session_id.as_str(),
+                &session_title.unwrap_or_default(),
+                created.id.as_str(),
+            );
         }
     }
 

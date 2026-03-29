@@ -29,6 +29,7 @@ import { ideationApi, type SessionWithDataResponse } from "@/api/ideation";
 import { ideationKeys } from "@/hooks/useIdeation";
 import { chatApi } from "@/api/chat";
 import { useIdeationStore } from "@/stores/ideationStore";
+import { useUiStore } from "@/stores/uiStore";
 import type { IdeationSession, VerificationStatus } from "@/types/ideation";
 
 // ============================================================================
@@ -278,6 +279,7 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   const setLastVerificationChildId = useIdeationStore(
     (s) => s.setLastVerificationChildId
   );
+  const enqueuePendingVerification = useUiStore((s) => s.enqueuePendingVerification);
 
   const verificationStatus = session.verificationStatus ?? "unverified";
   const hasPlan = !!session.planArtifactId;
@@ -394,14 +396,9 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
 
   // ── Action handlers ──────────────────────────────────────────────────────
 
-  const handleTriggerVerification = useCallback(async () => {
-    try {
-      await chatApi.sendAgentMessage("ideation", session.id, "verify");
-    } catch (err) {
-      console.error("Failed to trigger verification:", err);
-      toast.error("Failed to start verification");
-    }
-  }, [session.id]);
+  const handleTriggerVerification = useCallback(() => {
+    enqueuePendingVerification(session.id);
+  }, [session.id, enqueuePendingVerification]);
 
   const handleSkipVerification = useCallback(async () => {
     queryClient.setQueryData<SessionWithDataResponse | null>(

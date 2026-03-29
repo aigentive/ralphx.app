@@ -42,6 +42,7 @@ tools:
   - mcp__ralphx__get_memories_for_paths
   - mcp__ralphx__get_acceptance_status
   - mcp__ralphx__get_pending_confirmations
+  - mcp__ralphx__get_verification_confirmation_status
   - mcp__ralphx__list_projects
   - mcp__ralphx__create_cross_project_session
   - mcp__ralphx__cross_project_guide
@@ -213,6 +214,14 @@ After calling `create_plan_artifact`, ALWAYS:
    - `in_progress: true` → "Plan created. Auto-verification is running (round {current_round}/{max_rounds}). Results will appear automatically when complete."
    - `status` is unset/null → "Plan created. Ready to verify this plan with adversarial critique? Or proceed to task proposals?"
 3. Do NOT suggest "Ready to verify?" or "Run critic?" when `in_progress: true` — verification is ALREADY running
+
+### Verification Confirmation Status Check
+
+After `create_plan_artifact` returns, call `get_verification_confirmation_status(session_id)` to detect whether the user has confirmed or rejected the verification confirmation dialog:
+- `pending` — user has not responded yet; inform: "Waiting for your confirmation on the verification dialog."
+- `accepted` — user confirmed; verification will start automatically (do not call `create_child_session` manually)
+- `rejected` — user dismissed the dialog; session stays Unverified; inform user and offer to proceed to proposals or re-verify later
+- `not_applicable` — external session or no confirmation pending; proceed normally
 
 ### Phase 3.5 VERIFY — Detailed Instructions
 
@@ -461,6 +470,7 @@ Plan archetypes: Phase-driven (temporal dependencies): N phases → waves → wa
 | `finalize_proposals` | **Required final step** — call after all proposals and dependency updates complete; validates expected count and applies proposals synchronously. Gate: blocks with 400 if multi-proposal session has not acknowledged dependencies. Response includes `tasks_created` and `message` fields. |
 | `get_acceptance_status` | Check current acceptance state after `finalize_proposals` returns `pending_acceptance`; returns `accepted`, `rejected`, or `pending` |
 | `get_pending_confirmations` | Check for any outstanding acceptance gates at session start (Phase 0 RECOVER); returns list of pending confirmation items |
+| `get_verification_confirmation_status` | Check whether user has confirmed/rejected/is pending the verification confirmation dialog after `create_plan_artifact`; returns `pending`, `accepted`, `rejected`, or `not_applicable` |
 | `delete_task_proposal` / `list_session_proposals` / `get_proposal` | Manage proposals |
 | `analyze_session_dependencies` | Graph analysis — critical path, cycles, blocking relationships. Side effect: sets `dependencies_acknowledged=true` on the session, satisfying the finalize gate. |
 | `create_child_session` | `initial_prompt` triggers auto-spawn of orchestrator agent |
@@ -509,6 +519,7 @@ If ANY inconsistency is found → immediately call `update_plan_artifact` with a
 | Incoming message contains `<auto-propose>` | Skip CONFIRM gate (Phase 4); proceed directly to Phase 5 PROPOSE — automated external session trigger per rule 7.6 |
 | `finalize_proposals` returns 400 with "dependency ordering has not been reviewed" | Call `analyze_session_dependencies(session_id)` to review the dependency graph and acknowledge (sets `dependencies_acknowledged=true`), then retry `finalize_proposals`. Alternatively, set deps via `update_task_proposal(add_depends_on: [...])` then retry. |
 | `finalize_proposals` returns `pending_acceptance` | Poll `get_acceptance_status` on each subsequent turn. If rejected: inform user, ask how to proceed. If accepted: continue normal flow. |
+| `create_plan_artifact` returns | Call `get_verification_confirmation_status(session_id)` to detect user confirmation state. `pending` → inform user dialog is waiting. `accepted` → verification starts automatically. `rejected` → inform user, session stays Unverified. `not_applicable` → proceed normally. |
 | `create_task_proposal` returns 400 with "plan verification has not been run" | Proposal verification gate blocked the create. Options: (1) run Phase 3.5 VERIFY, (2) call `update_plan_verification(status: "skipped", convergence_reason: "user_skipped")` to skip, then retry. Inform user which option was taken. |
 | `create_task_proposal` returns 400 with "verification is in progress" | Gate blocked during active verification round. Wait for the round to complete or skip verification before creating proposals. |
 | `create_task_proposal` returns 400 with "unresolved gap(s)" | Gate blocked due to `NeedsRevision`. Update plan via `update_plan_artifact` to address gaps, then re-run verification before creating proposals. |

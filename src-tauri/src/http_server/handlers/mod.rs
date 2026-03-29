@@ -21,6 +21,7 @@ pub mod session_linking;
 pub mod steps;
 pub mod tasks;
 pub mod teams;
+pub mod verification;
 pub mod worker;
 
 pub use api_keys::*;
@@ -43,6 +44,7 @@ pub use session_linking::*;
 pub use steps::*;
 pub use tasks::*;
 pub use teams::*;
+pub use verification::*;
 pub use worker::*;
 
 // Re-export parent types and helpers for handlers to use

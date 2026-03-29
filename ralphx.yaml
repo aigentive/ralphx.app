@@ -269,6 +269,24 @@ ideation:
     # accept-plan retry self-heal — supersede orphaned execution plans with no tasks/links after this many seconds
     # Env: RALPHX_VERIFICATION_ACCEPT_STALE_EXECUTION_PLAN_SECS
     accept_stale_execution_plan_secs: 30
+    # Specialist agents available in the verification pipeline.
+    # Shown as checkboxes in the VerificationConfirmDialog.
+    specialists:
+      - name: "ideation-specialist-code-quality"
+        display_name: "Code Quality"
+        description: "Analyzes code paths for complexity, DRY violations, and extract opportunities"
+        dispatch_mode: "pre_round"
+        enabled_by_default: true
+      - name: "ideation-specialist-ux"
+        display_name: "UX/UI Analysis"
+        description: "Verifies UI flows, screen inventory, and wireframe patterns"
+        dispatch_mode: "per_round"
+        enabled_by_default: true
+      - name: "ideation-specialist-prompt-quality"
+        display_name: "Prompt Quality"
+        description: "Reviews agent prompts for token efficiency, scoping, and anti-bloat"
+        dispatch_mode: "per_round"
+        enabled_by_default: true
 
 # ── External MCP server ────────────────────────────────────────────────────
 # Controls the optional external MCP server spawned by the backend.
@@ -486,6 +504,8 @@ agents:
         # acceptance gate tools
         get_acceptance_status,
         get_pending_confirmations,
+        # verification confirmation status
+        get_verification_confirmation_status,
         # cross-project tools
         list_projects,
         create_cross_project_session,
@@ -926,6 +946,8 @@ agents:
         # acceptance gate tools
         get_acceptance_status,
         get_pending_confirmations,
+        # verification confirmation status
+        get_verification_confirmation_status,
         # cross-project tools
         list_projects,
         create_cross_project_session,
