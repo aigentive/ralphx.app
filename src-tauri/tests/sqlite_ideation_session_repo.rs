@@ -2859,3 +2859,70 @@ async fn test_list_has_pending_prompt_true_for_active() {
         "has_pending_prompt must be true for active sessions with pending_initial_prompt set"
     );
 }
+
+/// Regression guard: follow-up provenance columns after blocker_fingerprint must not
+/// corrupt parent_session_title/progress mapping in list_by_group.
+#[tokio::test]
+async fn test_list_by_group_with_blocker_fingerprint_keeps_parent_title_and_progress_aligned() {
+    let (_db, shared, repo) = setup_shared_test_db();
+    let project_id = ProjectId::new();
+    {
+        let conn = shared.lock().await;
+        insert_test_project(&conn, &project_id, "Test Project", "/test/path");
+    }
+
+    let parent = create_test_session(&project_id, Some("Parent Session Title"));
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    let child = IdeationSession::builder()
+        .project_id(project_id.clone())
+        .title("Follow-up Session")
+        .parent_session_id(parent_id.clone())
+        .source_task_id(TaskId::new())
+        .source_context_type("review".to_string())
+        .source_context_id("rev-1".to_string())
+        .spawn_reason("out_of_scope_failure".to_string())
+        .blocker_fingerprint("ood:task-1:deadbeef".to_string())
+        .status(IdeationSessionStatus::Accepted)
+        .build();
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let task1 = Task::new(project_id.clone(), "Merged task".to_string())
+        .with_ideation_session(parent_id.clone())
+        .with_internal_status(InternalStatus::Merged);
+    let task2 = Task::new(project_id.clone(), "Approved task".to_string())
+        .with_ideation_session(child_id.clone())
+        .with_internal_status(InternalStatus::Approved);
+
+    {
+        let conn = shared.lock().await;
+        insert_test_task(&conn, &task1);
+        insert_test_task(&conn, &task2);
+    }
+
+    let (sessions, _) = repo
+        .list_by_group(&project_id, "done", 0, 20)
+        .await
+        .unwrap();
+
+    let found = sessions
+        .iter()
+        .find(|s| s.session.id == child_id)
+        .expect("child session must appear in done group");
+
+    assert_eq!(
+        found.parent_session_title.as_deref(),
+        Some("Parent Session Title"),
+        "parent_session_title must stay aligned after follow-up provenance columns"
+    );
+    let progress = found
+        .progress
+        .as_ref()
+        .expect("done group should include progress");
+    assert_eq!(progress.done, 1);
+    assert_eq!(progress.total, 1);
+    assert_eq!(progress.active, 0);
+    assert_eq!(progress.idle, 0);
+}

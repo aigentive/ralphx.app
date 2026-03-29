@@ -1114,12 +1114,12 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                         rusqlite::params![project_id, offset, limit],
                         |row| {
                             let session = IdeationSession::from_row(row)?;
-                            let parent_session_title: Option<String> = row.get(38)?;
-                            let active_count: Option<i64> = row.get(39)?;
-                            let done_count: Option<i64> = row.get(40)?;
-                            let total_count: Option<i64> = row.get(41)?;
-                            let verification_child_count: i64 = row.get(42)?;
-                            let has_pending_prompt: bool = row.get::<_, bool>(43)?;
+                            let parent_session_title: Option<String> = row.get(39)?;
+                            let active_count: Option<i64> = row.get(40)?;
+                            let done_count: Option<i64> = row.get(41)?;
+                            let total_count: Option<i64> = row.get(42)?;
+                            let verification_child_count: i64 = row.get(43)?;
+                            let has_pending_prompt: bool = row.get::<_, bool>(44)?;
 
                             let progress = if let (Some(active), Some(done_ct), Some(total)) =
                                 (active_count, done_count, total_count)
