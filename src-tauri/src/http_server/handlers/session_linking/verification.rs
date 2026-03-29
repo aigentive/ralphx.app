@@ -42,6 +42,7 @@ pub(crate) async fn create_verification_child_session(
         source_context_type: None,
         source_context_id: None,
         spawn_reason: None,
+        blocker_fingerprint: None,
         session_purpose: SessionPurpose::Verification,
         cross_project_checked: true,
         plan_version_last_read: None,

@@ -111,6 +111,65 @@ fn build_effective_prompts(
     (effective_initial_prompt, effective_description)
 }
 
+fn build_child_session_response(
+    session: &IdeationSession,
+    parent_id: &IdeationSessionId,
+    req: &CreateChildSessionRequest,
+    parent_context: Option<ParentContextResponse>,
+    orchestration_triggered: bool,
+    generation: Option<i32>,
+    pending_initial_prompt: Option<String>,
+) -> CreateChildSessionResponse {
+    let team_config = session
+        .team_config_json
+        .as_ref()
+        .and_then(|json_str| serde_json::from_str(json_str).ok());
+
+    CreateChildSessionResponse {
+        session_id: session.id.as_str().to_string(),
+        parent_session_id: parent_id.as_str().to_string(),
+        title: session
+            .title
+            .clone()
+            .unwrap_or_else(|| "Child Session".to_string()),
+        status: session.status.to_string(),
+        created_at: session.created_at.to_rfc3339(),
+        inherited_plan_id: session.inherited_plan_artifact_id.as_ref().map(ToString::to_string),
+        initial_prompt: req.initial_prompt.clone(),
+        parent_context,
+        orchestration_triggered,
+        team_mode: session.team_mode.clone(),
+        team_config,
+        generation,
+        pending_initial_prompt,
+    }
+}
+
+async fn find_existing_blocker_followup(
+    state: &HttpServerState,
+    parent_id: &IdeationSessionId,
+    source_task_id: &str,
+    blocker_fingerprint: &str,
+) -> Result<Option<IdeationSession>, JsonError> {
+    let children = state
+        .app_state
+        .ideation_session_repo
+        .get_children(parent_id)
+        .await
+        .map_err(|e| {
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to inspect existing child sessions: {}", e),
+            )
+        })?;
+
+    Ok(children.into_iter().find(|session| {
+        session.archived_at.is_none()
+            && session.source_task_id.as_ref().map(|id| id.as_str()) == Some(source_task_id)
+            && session.blocker_fingerprint.as_deref() == Some(blocker_fingerprint)
+    }))
+}
+
 async fn spawn_child_orchestration(
     state: &HttpServerState,
     created_session: &IdeationSession,
@@ -185,6 +244,31 @@ pub(crate) async fn create_child_session_impl(
             error!("Parent session {} not found", parent_id.as_str());
             json_error(StatusCode::NOT_FOUND, "Parent session not found")
         })?;
+
+    if let (Some(source_task_id), Some(blocker_fingerprint)) = (
+        req.source_task_id.as_deref(),
+        req.blocker_fingerprint.as_deref(),
+    ) {
+        if let Some(existing_session) =
+            find_existing_blocker_followup(state, &parent_id, source_task_id, blocker_fingerprint)
+                .await?
+        {
+            let parent_context = if req.inherit_context {
+                Some(load_parent_context(state, &parent).await)
+            } else {
+                None
+            };
+            return Ok(build_child_session_response(
+                &existing_session,
+                &parent_id,
+                &req,
+                parent_context,
+                false,
+                None,
+                existing_session.pending_initial_prompt.clone(),
+            ));
+        }
+    }
 
     let ancestor_chain = state
         .app_state
@@ -267,6 +351,7 @@ pub(crate) async fn create_child_session_impl(
         source_context_type: req.source_context_type.clone(),
         source_context_id: req.source_context_id.clone(),
         spawn_reason: req.spawn_reason.clone(),
+        blocker_fingerprint: req.blocker_fingerprint.clone(),
         session_purpose: req
             .purpose
             .as_deref()
@@ -437,26 +522,15 @@ pub(crate) async fn create_child_session_impl(
         let _ = app_handle.emit("ideation:child_session_created", event_payload);
     }
 
-    let team_config = created_session
-        .team_config_json
-        .as_ref()
-        .and_then(|json_str| serde_json::from_str(json_str).ok());
-
-    Ok(CreateChildSessionResponse {
-        session_id: child_session_str,
-        parent_session_id: parent_session_str,
-        title,
-        status: created_session.status.to_string(),
-        created_at: created_session.created_at.to_rfc3339(),
-        inherited_plan_id: created_session.inherited_plan_artifact_id.map(|id| id.to_string()),
-        initial_prompt: req.initial_prompt.clone(),
+    Ok(build_child_session_response(
+        &created_session,
+        &parent_id,
+        &req,
         parent_context,
         orchestration_triggered,
-        team_mode: created_session.team_mode.clone(),
-        team_config,
-        generation: verification_generation,
-        pending_initial_prompt: persisted_pending_prompt,
-    })
+        verification_generation,
+        persisted_pending_prompt,
+    ))
 }
 
 pub async fn create_child_session(

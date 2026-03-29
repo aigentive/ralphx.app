@@ -968,6 +968,8 @@ pub struct CreateChildSessionRequest {
     pub source_context_id: Option<String>,
     /// Why this follow-up was spawned (out_of_scope_failure, review_followup, etc.).
     pub spawn_reason: Option<String>,
+    /// Stable dedupe key for a blocker targeted by this follow-up session.
+    pub blocker_fingerprint: Option<String>,
 }
 
 /// Team configuration input for create_child_session

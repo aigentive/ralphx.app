@@ -24,6 +24,7 @@ fn test_task_context_creation() {
         actual_changed_files: vec![],
         scope_drift_status: ScopeDriftStatus::Unbounded,
         out_of_scope_files: vec![],
+        out_of_scope_blocker_fingerprint: None,
         followup_sessions: vec![],
     };
 
@@ -159,12 +160,14 @@ fn test_task_context_with_full_context() {
         ],
         scope_drift_status: ScopeDriftStatus::WithinScope,
         out_of_scope_files: vec![],
+        out_of_scope_blocker_fingerprint: Some("ood:task-123:abc123def456".to_string()),
         followup_sessions: vec![FollowupSessionSummary {
             id: "sess-1".to_string(),
             title: Some("Follow-up".to_string()),
             status: "active".to_string(),
             source_context_type: Some("review".to_string()),
             spawn_reason: Some("out_of_scope_failure".to_string()),
+            blocker_fingerprint: Some("ood:task-123:abc123def456".to_string()),
         }],
     };
 
@@ -182,6 +185,10 @@ fn test_task_context_with_full_context() {
     assert_eq!(context.blocks.len(), 1);
     assert_eq!(context.blocks[0].title, "Add UI Components");
     assert_eq!(context.tier, Some(2));
+    assert_eq!(
+        context.out_of_scope_blocker_fingerprint.as_deref(),
+        Some("ood:task-123:abc123def456")
+    );
     assert_eq!(context.followup_sessions.len(), 1);
 }
 

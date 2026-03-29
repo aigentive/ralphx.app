@@ -469,11 +469,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         else if (name === "create_followup_session") {
             // POST /api/create_child_session with first-class execution/review provenance
-            const { source_ideation_session_id, title, description, inherit_context, initial_prompt, source_task_id, source_context_type, source_context_id, spawn_reason, } = args;
+            const { source_ideation_session_id, title, description, inherit_context, initial_prompt, source_task_id, source_context_type, source_context_id, spawn_reason, blocker_fingerprint, } = args;
             let resolvedParentSessionId = source_ideation_session_id;
+            let resolvedBlockerFingerprint = blocker_fingerprint;
             if (!resolvedParentSessionId && source_task_id) {
                 const taskContext = await callTauriGet(`task_context/${source_task_id}`);
                 resolvedParentSessionId = taskContext.task?.ideation_session_id ?? undefined;
+                if (!resolvedBlockerFingerprint && spawn_reason === "out_of_scope_failure") {
+                    resolvedBlockerFingerprint = taskContext.out_of_scope_blocker_fingerprint ?? undefined;
+                }
             }
             if (!resolvedParentSessionId) {
                 throw new Error("create_followup_session requires either source_ideation_session_id or a source_task_id that belongs to an ideation-backed task");
@@ -488,6 +492,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 source_context_type,
                 source_context_id,
                 spawn_reason,
+                blocker_fingerprint: resolvedBlockerFingerprint,
             });
         }
         else if (name === "get_parent_session_context") {

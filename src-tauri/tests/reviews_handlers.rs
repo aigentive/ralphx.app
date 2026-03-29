@@ -149,6 +149,7 @@ async fn test_get_task_context_includes_existing_task_followup_sessions() {
             source_context_type: Some("task_execution".to_string()),
             source_context_id: Some(task.id.as_str().to_string()),
             spawn_reason: Some("out_of_scope_failure".to_string()),
+            blocker_fingerprint: None,
             team_mode: None,
             team_config: None,
             purpose: Some("follow_up".to_string()),
@@ -163,6 +164,7 @@ async fn test_get_task_context_includes_existing_task_followup_sessions() {
         .await
         .expect("task context should load");
 
+    assert!(context.out_of_scope_blocker_fingerprint.is_some());
     assert_eq!(context.followup_sessions.len(), 1);
     let followup = &context.followup_sessions[0];
     assert_eq!(followup.id, response.session_id);
@@ -172,6 +174,10 @@ async fn test_get_task_context_includes_existing_task_followup_sessions() {
     );
     assert_eq!(followup.source_context_type.as_deref(), Some("task_execution"));
     assert_eq!(followup.spawn_reason.as_deref(), Some("out_of_scope_failure"));
+    assert_eq!(
+        followup.blocker_fingerprint.as_deref(),
+        context.out_of_scope_blocker_fingerprint.as_deref()
+    );
 }
 
 /// Create a task with the given status in the state's task repo.
@@ -747,6 +753,14 @@ async fn test_complete_review_reuses_existing_unrelated_drift_followup_session()
         .await
         .expect("prior review note should persist");
 
+    let task_context = get_task_context_impl(&state.app_state, &task.id)
+        .await
+        .expect("task context should load");
+    let blocker_fingerprint = task_context
+        .out_of_scope_blocker_fingerprint
+        .clone()
+        .expect("scope drift fixture should compute blocker fingerprint");
+
     let existing_req = CreateChildSessionRequest {
         parent_session_id: task
             .ideation_session_id
@@ -759,9 +773,10 @@ async fn test_complete_review_reuses_existing_unrelated_drift_followup_session()
         inherit_context: true,
         initial_prompt: None,
         source_task_id: Some(task.id.as_str().to_string()),
-        source_context_type: Some("review".to_string()),
-        source_context_id: Some("review-existing".to_string()),
-        spawn_reason: Some("out_of_scope_failure".to_string()),
+        source_context_type: Some("task_execution".to_string()),
+        source_context_id: Some(task.id.as_str().to_string()),
+        spawn_reason: Some("worker_blocker_followup".to_string()),
+        blocker_fingerprint: Some(blocker_fingerprint),
         team_mode: None,
         team_config: None,
         purpose: Some("general".to_string()),
@@ -809,12 +824,15 @@ async fn test_complete_review_reuses_existing_unrelated_drift_followup_session()
         .get_children(task.ideation_session_id.as_ref().unwrap())
         .await
         .unwrap();
+    let expected_fingerprint = task_context
+        .out_of_scope_blocker_fingerprint
+        .as_deref()
+        .expect("task context should expose blocker fingerprint");
     let followups: Vec<_> = children
         .into_iter()
         .filter(|session| {
             session.source_task_id.as_ref().map(|id| id.as_str()) == Some(task.id.as_str())
-                && session.source_context_type.as_deref() == Some("review")
-                && session.spawn_reason.as_deref() == Some("out_of_scope_failure")
+                && session.blocker_fingerprint.as_deref() == Some(expected_fingerprint)
         })
         .collect();
     assert_eq!(followups.len(), 1, "review should reuse existing follow-up");

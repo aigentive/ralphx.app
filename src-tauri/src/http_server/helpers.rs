@@ -6,6 +6,8 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use sha2::{Digest, Sha256};
+
 use crate::application::{AppState, CreateProposalOptions, UpdateProposalOptions, UpdateSource};
 use crate::application::git_service::GitService;
 use crate::commands::ideation_commands::{apply_proposals_core, is_local_proposal, ApplyProposalsInput, TaskProposalResponse};
@@ -1185,6 +1187,8 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
 
     // 10. Compute validation cache hint (if cache present in metadata)
     let validation_cache = compute_validation_cache(&task, &mut context_hints).await;
+    let out_of_scope_blocker_fingerprint =
+        compute_out_of_scope_blocker_fingerprint(&task, &out_of_scope_files);
     let followup_sessions = load_task_followup_sessions(state, &task).await?;
 
     // 11. Return TaskContext
@@ -1207,8 +1211,37 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
         actual_changed_files,
         scope_drift_status,
         out_of_scope_files,
+        out_of_scope_blocker_fingerprint,
         followup_sessions,
     })
+}
+
+pub fn compute_out_of_scope_blocker_fingerprint(
+    task: &crate::domain::entities::Task,
+    out_of_scope_files: &[String],
+) -> Option<String> {
+    if out_of_scope_files.is_empty() {
+        return None;
+    }
+
+    let mut normalized_paths: Vec<&str> = out_of_scope_files
+        .iter()
+        .map(String::as_str)
+        .filter(|path| !path.trim().is_empty())
+        .collect();
+    if normalized_paths.is_empty() {
+        return None;
+    }
+
+    normalized_paths.sort_unstable();
+    normalized_paths.dedup();
+
+    let mut hasher = Sha256::new();
+    hasher.update(task.id.as_str().as_bytes());
+    hasher.update(b"\n");
+    hasher.update(normalized_paths.join("\n").as_bytes());
+    let hash = format!("{:x}", hasher.finalize());
+    Some(format!("ood:{}:{}", task.id.as_str(), &hash[..12]))
 }
 
 async fn load_task_followup_sessions(
@@ -1229,6 +1262,7 @@ async fn load_task_followup_sessions(
             status: session.status.to_string(),
             source_context_type: session.source_context_type.clone(),
             spawn_reason: session.spawn_reason.clone(),
+            blocker_fingerprint: session.blocker_fingerprint.clone(),
         })
         .collect())
 }

@@ -26,6 +26,7 @@ export interface IdeationSessionResponse {
   sourceContextType?: string | null;
   sourceContextId?: string | null;
   spawnReason?: string | null;
+  blockerFingerprint?: string | null;
   inheritedPlanArtifactId?: string | null;
   sessionPurpose: "general" | "verification";
 }

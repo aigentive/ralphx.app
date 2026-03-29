@@ -24,13 +24,13 @@ use super::DbConnection;
 // IDLE: tasks that haven't started yet
 const _IDLE_STATUSES: &[&str] = &["backlog", "ready", "blocked"];
 
-/// All 38 SELECT columns for IdeationSession — single source of truth (DRY).
+/// All 39 SELECT columns for IdeationSession — single source of truth (DRY).
 /// Must be kept in sync with IdeationSession::from_row column names.
 /// Column order: id(0)..origin(24), expected_proposal_count(25), auto_accept_status(26),
 /// auto_accept_started_at(27), api_key_id(28), idempotency_key(29),
 /// external_activity_phase(30), external_last_read_message_id(31), dependencies_acknowledged(32),
 /// pending_initial_prompt(33), source_task_id(34), source_context_type(35),
-/// source_context_id(36), spawn_reason(37)
+/// source_context_id(36), spawn_reason(37), blocker_fingerprint(38)
 const SESSION_COLUMNS: &str = "id, project_id, title, title_source, status, plan_artifact_id, \
     inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
     updated_at, archived_at, converted_at, team_mode, team_config_json, \
@@ -40,7 +40,7 @@ const SESSION_COLUMNS: &str = "id, project_id, title, title_source, status, plan
     expected_proposal_count, auto_accept_status, auto_accept_started_at, \
     api_key_id, idempotency_key, external_activity_phase, external_last_read_message_id, \
     dependencies_acknowledged, pending_initial_prompt, source_task_id, source_context_type, \
-    source_context_id, spawn_reason";
+    source_context_id, spawn_reason, blocker_fingerprint";
 // TERMINAL: tasks that have reached a final state
 const _TERMINAL_STATUSES: &[&str] = &["approved", "merged", "failed", "cancelled", "stopped"];
 // ACTIVE: any status NOT in IDLE or TERMINAL (catch-all, matches categorizeStatus() logic)
@@ -89,8 +89,8 @@ impl SqliteIdeationSessionRepository {
               verification_status, source_project_id, source_session_id, session_purpose, \
               cross_project_checked, origin, api_key_id, idempotency_key, \
               external_activity_phase, external_last_read_message_id, dependencies_acknowledged, \
-              pending_initial_prompt, source_task_id, source_context_type, source_context_id, spawn_reason) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31)",
+              pending_initial_prompt, source_task_id, source_context_type, source_context_id, spawn_reason, blocker_fingerprint) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32)",
             rusqlite::params![
                 session.id.as_str(),
                 session.project_id.as_str(),
@@ -123,6 +123,7 @@ impl SqliteIdeationSessionRepository {
                 session.source_context_type.as_deref(),
                 session.source_context_id.as_deref(),
                 session.spawn_reason.as_deref(),
+                session.blocker_fingerprint.as_deref(),
             ],
         )?;
         Ok(session.clone())
@@ -1066,7 +1067,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                          s.expected_proposal_count, s.auto_accept_status, s.auto_accept_started_at, \
                          s.api_key_id, s.idempotency_key, s.external_activity_phase, s.external_last_read_message_id, \
                          s.dependencies_acknowledged, s.pending_initial_prompt, s.source_task_id, s.source_context_type, \
-                         s.source_context_id, s.spawn_reason, \
+                         s.source_context_id, s.spawn_reason, s.blocker_fingerprint, \
                          parent.title as parent_session_title, \
                          (SELECT COUNT(*) FROM tasks t WHERE t.ideation_session_id = s.id \
                            AND t.internal_status NOT IN ('backlog','ready','blocked','approved','merged','failed','cancelled','stopped')) as active_count, \
@@ -1093,7 +1094,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                          s.expected_proposal_count, s.auto_accept_status, s.auto_accept_started_at, \
                          s.api_key_id, s.idempotency_key, s.external_activity_phase, s.external_last_read_message_id, \
                          s.dependencies_acknowledged, s.pending_initial_prompt, s.source_task_id, s.source_context_type, \
-                         s.source_context_id, s.spawn_reason, \
+                         s.source_context_id, s.spawn_reason, s.blocker_fingerprint, \
                          parent.title as parent_session_title, \
                          NULL as active_count, NULL as done_count, NULL as total_count, \
                          (SELECT COUNT(*) FROM ideation_sessions vc WHERE vc.parent_session_id = s.id AND vc.session_purpose = 'verification') as verification_child_count, \

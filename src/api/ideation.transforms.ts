@@ -65,6 +65,7 @@ export function transformSession(raw: z.infer<typeof IdeationSessionResponseSche
     sourceContextType: raw.source_context_type ?? null,
     sourceContextId: raw.source_context_id ?? null,
     spawnReason: raw.spawn_reason ?? null,
+    blockerFingerprint: raw.blocker_fingerprint ?? null,
     sessionPurpose: raw.session_purpose ?? "general",
   };
 }

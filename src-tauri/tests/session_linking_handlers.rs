@@ -39,6 +39,7 @@ fn make_session(team_mode: Option<&str>) -> IdeationSession {
         source_context_type: None,
         source_context_id: None,
         spawn_reason: None,
+        blocker_fingerprint: None,
         session_purpose: Default::default(),
         cross_project_checked: true,
         plan_version_last_read: None,
@@ -126,6 +127,7 @@ mod verification_init_tests {
             source_context_type: None,
             source_context_id: None,
             spawn_reason: None,
+            blocker_fingerprint: None,
             session_purpose: Default::default(),
             cross_project_checked: true,
             plan_version_last_read: None,
@@ -160,6 +162,7 @@ mod verification_init_tests {
             source_context_type: None,
             source_context_id: None,
             spawn_reason: None,
+            blocker_fingerprint: None,
             team_mode: None,
             team_config: None,
             purpose: Some("verification".to_string()),
@@ -492,6 +495,7 @@ mod verification_init_tests {
             source_context_type: None,
             source_context_id: None,
             spawn_reason: None,
+            blocker_fingerprint: None,
             team_mode: None,
             team_config: None,
             purpose: Some("verification".to_string()),
@@ -583,6 +587,7 @@ mod verification_init_tests {
             source_context_type: Some("task_execution".to_string()),
             source_context_id: Some("task-123".to_string()),
             spawn_reason: Some("out_of_scope_failure".to_string()),
+            blocker_fingerprint: Some("ood:task-123:abc123def456".to_string()),
             team_mode: None,
             team_config: None,
             purpose: None,
@@ -611,6 +616,86 @@ mod verification_init_tests {
         assert_eq!(child.source_context_type.as_deref(), Some("task_execution"));
         assert_eq!(child.source_context_id.as_deref(), Some("task-123"));
         assert_eq!(child.spawn_reason.as_deref(), Some("out_of_scope_failure"));
+        assert_eq!(
+            child.blocker_fingerprint.as_deref(),
+            Some("ood:task-123:abc123def456")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_followup_creation_reuses_existing_blocker_fingerprint_across_contexts() {
+        let state = setup_sqlite_state().await;
+
+        let parent = make_parent_session(None);
+        let parent_id = parent.id.clone();
+        state
+            .app_state
+            .ideation_session_repo
+            .create(parent)
+            .await
+            .unwrap();
+
+        let initial = CreateChildSessionRequest {
+            parent_session_id: parent_id.as_str().to_string(),
+            title: Some("Worker blocker follow-up".to_string()),
+            description: None,
+            inherit_context: true,
+            initial_prompt: None,
+            source_task_id: Some("task-789".to_string()),
+            source_context_type: Some("task_execution".to_string()),
+            source_context_id: Some("task-789".to_string()),
+            spawn_reason: Some("worker_blocker_followup".to_string()),
+            blocker_fingerprint: Some("ood:task-789:112233445566".to_string()),
+            team_mode: None,
+            team_config: None,
+            purpose: None,
+            is_external_trigger: false,
+        };
+
+        let initial_response = create_child_session(State(state.clone()), Json(initial))
+            .await
+            .expect("initial follow-up creation should succeed")
+            .0;
+
+        let duplicate = CreateChildSessionRequest {
+            parent_session_id: parent_id.as_str().to_string(),
+            title: Some("Reviewer blocker follow-up".to_string()),
+            description: Some("Should reuse existing blocker session".to_string()),
+            inherit_context: true,
+            initial_prompt: Some("Investigate again".to_string()),
+            source_task_id: Some("task-789".to_string()),
+            source_context_type: Some("review".to_string()),
+            source_context_id: Some("review-789".to_string()),
+            spawn_reason: Some("out_of_scope_failure".to_string()),
+            blocker_fingerprint: Some("ood:task-789:112233445566".to_string()),
+            team_mode: None,
+            team_config: None,
+            purpose: None,
+            is_external_trigger: false,
+        };
+
+        let duplicate_response = create_child_session(State(state.clone()), Json(duplicate))
+            .await
+            .expect("duplicate follow-up request should reuse existing session")
+            .0;
+
+        assert_eq!(duplicate_response.session_id, initial_response.session_id);
+
+        let children = state
+            .app_state
+            .ideation_session_repo
+            .get_children(&parent_id)
+            .await
+            .unwrap();
+        let matching: Vec<_> = children
+            .into_iter()
+            .filter(|session| {
+                session.source_task_id.as_ref().map(|id| id.as_str()) == Some("task-789")
+                    && session.blocker_fingerprint.as_deref()
+                        == Some("ood:task-789:112233445566")
+            })
+            .collect();
+        assert_eq!(matching.len(), 1, "same blocker should not create duplicates");
     }
 
     #[tokio::test]
@@ -637,6 +722,7 @@ mod verification_init_tests {
             source_context_type: Some("review".to_string()),
             source_context_id: Some("review-456".to_string()),
             spawn_reason: Some("out_of_scope_failure".to_string()),
+            blocker_fingerprint: Some("ood:task-456:def456abc123".to_string()),
             team_mode: None,
             team_config: None,
             purpose: None,
@@ -726,6 +812,7 @@ mod verification_init_tests {
             source_context_type: None,
             source_context_id: None,
             spawn_reason: None,
+            blocker_fingerprint: None,
             team_mode: None,
             team_config: None,
             purpose: None, // non-verification
@@ -789,6 +876,7 @@ mod verification_init_tests {
             source_context_type: None,
             source_context_id: None,
             spawn_reason: None,
+            blocker_fingerprint: None,
             team_mode: None,
             team_config: None,
             purpose: None, // non-verification
@@ -849,6 +937,7 @@ mod verification_init_tests {
             source_context_type: None,
             source_context_id: None,
             spawn_reason: None,
+            blocker_fingerprint: None,
             team_mode: None,
             team_config: None,
             purpose: None,
@@ -897,6 +986,7 @@ mod verification_init_tests {
             source_context_type: None,
             source_context_id: None,
             spawn_reason: None,
+            blocker_fingerprint: None,
             team_mode: None,
             team_config: None,
             purpose: Some("verification".to_string()),

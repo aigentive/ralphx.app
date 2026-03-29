@@ -65,6 +65,7 @@ async fn create_accepted_session(
         source_context_type: None,
         source_context_id: None,
         spawn_reason: None,
+        blocker_fingerprint: None,
         session_purpose: Default::default(),
         cross_project_checked: false,
         plan_version_last_read: None,

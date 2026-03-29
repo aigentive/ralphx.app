@@ -35,6 +35,7 @@ export const IdeationSessionResponseSchema = z.object({
   source_context_type: z.string().nullable().optional(),
   source_context_id: z.string().nullable().optional(),
   spawn_reason: z.string().nullable().optional(),
+  blocker_fingerprint: z.string().nullable().optional(),
   inherited_plan_artifact_id: z.string().nullable().optional(),
   session_purpose: z.enum(["general", "verification"]).optional(),
 });

@@ -575,6 +575,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         source_context_type,
         source_context_id,
         spawn_reason,
+        blocker_fingerprint,
       } = args as {
         source_ideation_session_id?: string;
         title: string;
@@ -585,13 +586,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         source_context_type: string;
         source_context_id: string;
         spawn_reason: string;
+        blocker_fingerprint?: string;
       };
       let resolvedParentSessionId = source_ideation_session_id;
+      let resolvedBlockerFingerprint = blocker_fingerprint;
       if (!resolvedParentSessionId && source_task_id) {
         const taskContext = await callTauriGet(`task_context/${source_task_id}`) as {
           task?: { ideation_session_id?: string | null };
+          out_of_scope_blocker_fingerprint?: string | null;
         };
         resolvedParentSessionId = taskContext.task?.ideation_session_id ?? undefined;
+        if (!resolvedBlockerFingerprint && spawn_reason === "out_of_scope_failure") {
+          resolvedBlockerFingerprint = taskContext.out_of_scope_blocker_fingerprint ?? undefined;
+        }
       }
       if (!resolvedParentSessionId) {
         throw new Error(
@@ -608,6 +615,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         source_context_type,
         source_context_id,
         spawn_reason,
+        blocker_fingerprint: resolvedBlockerFingerprint,
       });
     } else if (name === "get_parent_session_context") {
       // GET /api/parent_session_context/:session_id

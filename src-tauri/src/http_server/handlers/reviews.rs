@@ -20,7 +20,9 @@ use crate::domain::state_machine::transition_handler::{
 };
 use crate::domain::tools::complete_review::ReviewToolOutcome;
 use crate::http_server::handlers::session_linking::create_child_session_impl;
-use crate::http_server::helpers::get_task_context_impl;
+use crate::http_server::helpers::{
+    compute_out_of_scope_blocker_fingerprint, get_task_context_impl,
+};
 use crate::http_server::project_scope::{ProjectScope, ProjectScopeGuard};
 use crate::http_server::types::{CreateChildSessionRequest, ReviewIssueRequest};
 use std::sync::Arc;
@@ -772,7 +774,17 @@ async fn maybe_spawn_unrelated_drift_followup(
         }
     };
 
-    match find_existing_unrelated_drift_followup(state, &parent_session_id, &task.id).await {
+    let blocker_fingerprint =
+        compute_out_of_scope_blocker_fingerprint(task, &task_context.out_of_scope_files);
+
+    match find_existing_unrelated_drift_followup(
+        state,
+        &parent_session_id,
+        &task.id,
+        blocker_fingerprint.as_deref(),
+    )
+    .await
+    {
         Ok(Some(existing_id)) => return Some(existing_id),
         Ok(None) => {}
         Err(e) => {
@@ -812,6 +824,7 @@ async fn maybe_spawn_unrelated_drift_followup(
         source_context_type: Some("review".to_string()),
         source_context_id: Some(review.id.as_str().to_string()),
         spawn_reason: Some("out_of_scope_failure".to_string()),
+        blocker_fingerprint,
     };
 
     match create_child_session_impl(state, request).await {
@@ -832,6 +845,7 @@ async fn find_existing_unrelated_drift_followup(
     state: &HttpServerState,
     parent_session_id: &crate::domain::entities::IdeationSessionId,
     task_id: &TaskId,
+    blocker_fingerprint: Option<&str>,
 ) -> Result<Option<String>, Box<dyn std::error::Error>> {
     let children = state
         .app_state
@@ -844,8 +858,15 @@ async fn find_existing_unrelated_drift_followup(
         .find(|session| {
             session.archived_at.is_none()
                 && session.source_task_id.as_ref() == Some(task_id)
-                && session.source_context_type.as_deref() == Some("review")
-                && session.spawn_reason.as_deref() == Some("out_of_scope_failure")
+                && match blocker_fingerprint {
+                    Some(fingerprint) => {
+                        session.blocker_fingerprint.as_deref() == Some(fingerprint)
+                    }
+                    None => {
+                        session.source_context_type.as_deref() == Some("review")
+                            && session.spawn_reason.as_deref() == Some("out_of_scope_failure")
+                    }
+                }
         })
         .map(|session| session.id.as_str().to_string()))
 }

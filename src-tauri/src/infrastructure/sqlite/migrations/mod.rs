@@ -112,6 +112,7 @@ mod v20260327233752_pending_initial_prompt;
 mod v20260325131500_execution_ideation_allocation_settings;
 mod v20260328194000_ideation_followup_provenance;
 mod v20260329103000_review_note_followup_session;
+mod v20260329113000_ideation_blocker_fingerprint;
 
 #[cfg(test)]
 mod tests;
@@ -237,12 +238,14 @@ mod v20260327233752_pending_initial_prompt_tests;
 mod v20260328194000_ideation_followup_provenance_tests;
 #[cfg(test)]
 mod v20260329103000_review_note_followup_session_tests;
+#[cfg(test)]
+mod v20260329113000_ideation_blocker_fingerprint_tests;
 mod v20260328210000_proposal_affected_paths;
 #[cfg(test)]
 mod v20260328210000_proposal_affected_paths_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i64 = 20260329103000;
+pub const SCHEMA_VERSION: i64 = 20260329113000;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -691,6 +694,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 20260329103000,
         name: "review_note_followup_session",
         migrate: v20260329103000_review_note_followup_session::migrate,
+    },
+    Migration {
+        version: 20260329113000,
+        name: "ideation_blocker_fingerprint",
+        migrate: v20260329113000_ideation_blocker_fingerprint::migrate,
     },
 ];
 

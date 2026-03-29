@@ -90,6 +90,8 @@ pub struct IdeationSession {
     pub source_context_id: Option<String>,
     /// Reason this session was spawned (out_of_scope_failure, review_followup, etc.)
     pub spawn_reason: Option<String>,
+    /// Stable dedupe key for a specific blocker carried by this follow-up session.
+    pub blocker_fingerprint: Option<String>,
     /// Purpose of this session: General (default) or Verification (plan-verifier child)
     #[serde(default)]
     pub session_purpose: SessionPurpose,
@@ -159,6 +161,7 @@ pub struct IdeationSessionBuilder {
     source_context_type: Option<String>,
     source_context_id: Option<String>,
     spawn_reason: Option<String>,
+    blocker_fingerprint: Option<String>,
     session_purpose: Option<SessionPurpose>,
     cross_project_checked: Option<bool>,
     plan_version_last_read: Option<i32>,
@@ -318,6 +321,12 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set the blocker fingerprint
+    pub fn blocker_fingerprint(mut self, blocker_fingerprint: impl Into<String>) -> Self {
+        self.blocker_fingerprint = Some(blocker_fingerprint.into());
+        self
+    }
+
     /// Set the session purpose
     pub fn session_purpose(mut self, session_purpose: SessionPurpose) -> Self {
         self.session_purpose = Some(session_purpose);
@@ -414,6 +423,7 @@ impl IdeationSessionBuilder {
             source_context_type: self.source_context_type,
             source_context_id: self.source_context_id,
             spawn_reason: self.spawn_reason,
+            blocker_fingerprint: self.blocker_fingerprint,
             session_purpose: self.session_purpose.unwrap_or_default(),
             cross_project_checked: self.cross_project_checked.unwrap_or(false),
             plan_version_last_read: self.plan_version_last_read,
@@ -575,6 +585,9 @@ impl IdeationSession {
                 .unwrap_or(None),
             spawn_reason: row
                 .get::<_, Option<String>>("spawn_reason")
+                .unwrap_or(None),
+            blocker_fingerprint: row
+                .get::<_, Option<String>>("blocker_fingerprint")
                 .unwrap_or(None),
             session_purpose: row
                 .get::<_, Option<String>>("session_purpose")

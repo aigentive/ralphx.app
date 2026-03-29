@@ -107,6 +107,7 @@ export const IdeationSessionSchema = z.object({
   sourceContextType: z.string().nullable().optional(),
   sourceContextId: z.string().nullable().optional(),
   spawnReason: z.string().nullable().optional(),
+  blockerFingerprint: z.string().nullable().optional(),
   sessionPurpose: z.enum(["general", "verification"]).default("general"),
 });
 

@@ -73,6 +73,7 @@ pub struct IdeationSessionResponse {
     pub source_context_type: Option<String>,
     pub source_context_id: Option<String>,
     pub spawn_reason: Option<String>,
+    pub blocker_fingerprint: Option<String>,
     pub session_purpose: String,
     pub cross_project_checked: bool,
 }
@@ -111,6 +112,7 @@ impl From<IdeationSession> for IdeationSessionResponse {
             source_context_type: session.source_context_type,
             source_context_id: session.source_context_id,
             spawn_reason: session.spawn_reason,
+            blocker_fingerprint: session.blocker_fingerprint,
             session_purpose: session.session_purpose.to_string(),
             cross_project_checked: session.cross_project_checked,
         }

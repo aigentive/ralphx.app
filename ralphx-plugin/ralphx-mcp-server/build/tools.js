@@ -401,6 +401,10 @@ export const ALL_TOOLS = [
                     type: "string",
                     description: "Reason for spawning the follow-up session, for example out_of_scope_failure.",
                 },
+                blocker_fingerprint: {
+                    type: "string",
+                    description: "Optional stable dedupe key for the blocker. In out-of-scope drift flows the tool can derive this automatically from source_task_id task context.",
+                },
             },
             required: [
                 "title",

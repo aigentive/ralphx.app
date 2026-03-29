@@ -191,7 +191,7 @@ After fixing all issues, proceed through state EXECUTE (VALIDATE + COMPLETE phas
 6. Call `get_project_analysis(project_id, task_id)` → run `validate` commands (worktree_setup is ALREADY done by the backend — do NOT re-run)
    - All validate commands must pass before writing code (pre-existing failures: note and proceed)
    - NEVER commit `node_modules`, `target`, or other symlinked directories — these are worktree artifacts
-7. If a pre-existing failure outside your task scope blocks progress, check `followup_sessions` in task context first. If the same blocker already has follow-up work underway, do not spawn another session; otherwise create one with `create_followup_session` and stop. In normal task flows, pass `source_task_id` and let the tool resolve the correct local parent ideation session automatically; do not guess based on imported/master-session ancestry. Do not edit unrelated files to make the current task green.
+7. If a pre-existing failure outside your task scope blocks progress, check `followup_sessions` in task context first. If the same blocker already has follow-up work underway, do not spawn another session; otherwise create one with `create_followup_session` and stop. In normal task flows, pass `source_task_id` and let the tool resolve the correct local parent ideation session and blocker fingerprint automatically; do not guess based on imported/master-session ancestry. Do not edit unrelated files to make the current task green.
 </phase>
 
 <phase name="PLAN">

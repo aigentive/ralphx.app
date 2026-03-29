@@ -75,6 +75,9 @@ pub struct TaskContext {
     /// Changed files outside the proposal's declared coarse scope.
     pub out_of_scope_files: Vec<String>,
 
+    /// Stable fingerprint for the current task's out-of-scope blocker, when available.
+    pub out_of_scope_blocker_fingerprint: Option<String>,
+
     /// Follow-up ideation sessions already linked to this task.
     pub followup_sessions: Vec<FollowupSessionSummary>,
 }
@@ -126,6 +129,7 @@ pub struct FollowupSessionSummary {
     pub status: String,
     pub source_context_type: Option<String>,
     pub spawn_reason: Option<String>,
+    pub blocker_fingerprint: Option<String>,
 }
 
 /// Lightweight validation cache view for TaskContext responses.
