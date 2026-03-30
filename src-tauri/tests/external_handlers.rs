@@ -1956,12 +1956,19 @@ async fn test_external_apply_proposals_project_scope_enforced() {
 #[tokio::test]
 async fn test_external_apply_proposals_unrestricted_scope_allowed() {
     // Unrestricted scope (no X-RalphX-Project-Scope header) allows all projects
-    let state = setup_test_state().await;
+    let state = setup_sqlite_test_state().await;
     let (_, session_id) = setup_session(&state, "proj-unrestricted", "Unrestricted").await;
+    let session_id_typed = IdeationSessionId::from_string(session_id.clone());
+    let created = state
+        .app_state
+        .task_proposal_repo
+        .create(make_proposal(session_id_typed, "Scoped Proposal"))
+        .await
+        .unwrap();
 
     let req = ExternalApplyProposalsRequest {
         session_id,
-        proposal_ids: vec![],
+        proposal_ids: vec![created.id.as_str().to_string()],
         target_column: "auto".to_string(),
         base_branch_override: None,
     };
@@ -1973,12 +1980,19 @@ async fn test_external_apply_proposals_unrestricted_scope_allowed() {
 #[tokio::test]
 async fn test_external_apply_proposals_correct_scope_allowed() {
     // Scoped key can apply proposals when it has access to the session's project
-    let state = setup_test_state().await;
+    let state = setup_sqlite_test_state().await;
     let (project_id, session_id) = setup_session(&state, "proj-scoped-ok", "Scoped OK").await;
+    let session_id_typed = IdeationSessionId::from_string(session_id.clone());
+    let created = state
+        .app_state
+        .task_proposal_repo
+        .create(make_proposal(session_id_typed, "Scoped Proposal"))
+        .await
+        .unwrap();
 
     let req = ExternalApplyProposalsRequest {
         session_id,
-        proposal_ids: vec![],
+        proposal_ids: vec![created.id.as_str().to_string()],
         target_column: "auto".to_string(),
         base_branch_override: None,
     };
@@ -1997,7 +2011,7 @@ async fn test_external_apply_proposals_correct_scope_allowed() {
 async fn test_external_apply_proposals_creates_tasks_from_proposals() {
     // Full apply: multi-proposal sessions must acknowledge dependency ordering first.
     // This mirrors the real flow after analyze_session_dependencies or explicit dependency edits.
-    let state = setup_test_state().await;
+    let state = setup_sqlite_test_state().await;
     let (_, session_id) = setup_session(&state, "proj-full-apply", "Full Apply").await;
 
     let session_id_typed = IdeationSessionId::from_string(session_id.clone());
@@ -2087,11 +2101,6 @@ async fn test_external_apply_proposals_blocks_unacknowledged_multi_proposal_sess
             .contains("dependency ordering has not been reviewed")
     );
 }
-
-// Note: Tests for "blocked when unverified", "allowed when verified", "allowed when skipped"
-// require Wave 1 schema migration (`v57_plan_verification.rs`) to add verification_status
-// to ideation_sessions. check_verification_gate() is currently a stub (allows all sessions).
-// See: src-tauri/src/domain/services/verification_gate.rs
 
 // ============================================================================
 // list_ideation_sessions_http
