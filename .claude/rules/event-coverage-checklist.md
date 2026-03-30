@@ -1,3 +1,18 @@
+---
+paths:
+  - "src/components/**"
+  - "src/hooks/**"
+  - "src/stores/**"
+  - "src/lib/chat-context-registry.ts"
+  - "src/types/chat-conversation.ts"
+  - "src-tauri/src/commands/**"
+  - "src-tauri/src/application/chat_service/**"
+  - "src-tauri/src/application/task_transition_service.rs"
+  - "src-tauri/src/http_server/**"
+  - "ralphx-plugin/agents/**"
+  - "ralphx-plugin/ralphx-mcp-server/src/**"
+---
+
 > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
 
 # Event Coverage Checklist
