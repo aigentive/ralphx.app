@@ -39,7 +39,7 @@ use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ArtifactRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
-    IdeationSessionRepository,
+    IdeationEffortSettingsRepository, IdeationSessionRepository,
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
     StateHistoryMetadata, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
     TaskStepRepository,
@@ -352,6 +352,7 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     task_repo: Arc<dyn TaskRepository>,
     task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+    ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     activity_event_repo: Arc<dyn ActivityEventRepository>,
     message_queue: Arc<MessageQueue>,
@@ -419,6 +420,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             task_repo,
             task_dependency_repo,
             execution_settings_repo: None,
+            ideation_effort_settings_repo: None,
             ideation_session_repo,
             activity_event_repo,
             message_queue,
@@ -449,6 +451,14 @@ impl<R: Runtime> ClaudeChatService<R> {
         repo: Arc<dyn ExecutionSettingsRepository>,
     ) -> Self {
         self.execution_settings_repo = Some(repo);
+        self
+    }
+
+    pub fn with_ideation_effort_settings_repo(
+        mut self,
+        repo: Arc<dyn IdeationEffortSettingsRepository>,
+    ) -> Self {
+        self.ideation_effort_settings_repo = Some(repo);
         self
     }
 
@@ -810,6 +820,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             Arc::clone(&self.artifact_repo),
             session_messages,
             total_available,
+            None, // effort_override: callers pre-resolve if needed
         )
         .await
         .map_err(ChatServiceError::SpawnFailed)
@@ -826,6 +837,7 @@ impl<R: Runtime> ClaudeChatService<R> {
         session_messages: &[crate::domain::entities::ChatMessage],
         total_available: usize,
         is_external_mcp: bool,
+        effort_override: Option<&str>,
     ) -> Result<crate::infrastructure::agents::claude::SpawnableCommand, ChatServiceError> {
         chat_service_context::build_interactive_command(
             &self.cli_path,
@@ -841,6 +853,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             session_messages,
             total_available,
             is_external_mcp,
+            effort_override,
         )
         .await
         .map_err(ChatServiceError::SpawnFailed)
@@ -1591,6 +1604,31 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             cli_path = %self.cli_path.display(),
             "chat_service.send_message building interactive command"
         );
+        // 7b-pre. Pre-resolve effort for ideation contexts from DB settings.
+        // For non-ideation contexts (or when ideation_effort_settings_repo is not set),
+        // pass None to let the YAML-based resolver handle it.
+        let resolved_effort: Option<String> = if context_type == ChatContextType::Ideation {
+            if let Some(ref repo) = self.ideation_effort_settings_repo {
+                let team_mode_val = self.team_mode.load(Ordering::Relaxed);
+                let agent_name = chat_service_helpers::resolve_agent_with_team_mode(
+                    &context_type,
+                    entity_status.as_deref(),
+                    team_mode_val,
+                );
+                let effort = crate::infrastructure::agents::claude::resolve_ideation_effort(
+                    agent_name,
+                    project_id.as_deref(),
+                    repo.as_ref(),
+                )
+                .await;
+                Some(effort)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         // Fetch recent session messages for Ideation context ONLY when spawning a new process.
         // The agent has no prior context at spawn time, so we inject the history into the prompt.
         // For non-ideation contexts and already-running agents (IPR path above), we pass empty slice.
@@ -1627,6 +1665,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 &session_messages,
                 session_total,
                 options.is_external_mcp,
+                resolved_effort.as_deref(),
             )
             .await
         {

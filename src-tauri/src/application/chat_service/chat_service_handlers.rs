@@ -1080,6 +1080,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             Arc::clone(artifact_repo),
                             &[], // retry path — no session history injection needed
                             0,   // total_available: not needed here — session_messages is empty
+                            None, // effort_override: recovery retry uses default
                         )
                         .await
                         {

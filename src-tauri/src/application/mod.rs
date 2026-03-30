@@ -9,6 +9,7 @@ pub mod chat_service;
 pub mod dependency_service;
 pub mod event_cleanup_service;
 pub mod execution_settings_bootstrap;
+pub mod ideation_effort_bootstrap;
 pub mod diff_service;
 pub mod git_service;
 pub mod ideation_service;

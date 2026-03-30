@@ -16,6 +16,7 @@ pub mod memory_chat_message_repo;
 pub mod memory_execution_plan_repo;
 pub mod memory_external_events_repo;
 pub mod memory_execution_settings_repo;
+pub mod memory_ideation_effort_settings_repo;
 pub mod memory_ideation_session_repo;
 pub mod memory_ideation_settings_repo;
 pub mod memory_memory_archive_job_repo;
@@ -61,6 +62,7 @@ pub use memory_external_events_repo::MemoryExternalEventsRepository;
 pub use memory_execution_settings_repo::{
     MemoryExecutionSettingsRepository, MemoryGlobalExecutionSettingsRepository,
 };
+pub use memory_ideation_effort_settings_repo::MemoryIdeationEffortSettingsRepository;
 pub use memory_ideation_session_repo::MemoryIdeationSessionRepository;
 pub use memory_ideation_settings_repo::MemoryIdeationSettingsRepository;
 pub use memory_memory_archive_job_repo::InMemoryMemoryArchiveJobRepository;

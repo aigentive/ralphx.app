@@ -326,6 +326,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 Arc::clone(task_repo),
                 &[], // queue resume path — session history not injected here
                 0,   // total_available: not needed here — session_messages is empty
+                None, // effort_override: queue resume uses default
             )
             .await
             {

@@ -858,6 +858,7 @@ async fn test_build_command_with_team_mode_true() {
         artifact_repo,
         &[],
         0,
+        None, // effort_override
     )
     .await;
 
@@ -891,6 +892,7 @@ async fn test_build_command_with_team_mode_false() {
         artifact_repo,
         &[],
         0,
+        None, // effort_override
     )
     .await;
 
@@ -974,6 +976,7 @@ async fn test_build_resume_command_with_team_mode() {
         task_repo.clone(),
         &[],
         0,
+        None, // effort_override
     )
     .await;
 
@@ -994,6 +997,7 @@ async fn test_build_resume_command_with_team_mode() {
         task_repo,
         &[],
         0,
+        None, // effort_override
     )
     .await;
 

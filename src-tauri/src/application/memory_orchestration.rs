@@ -320,6 +320,7 @@ async fn spawn_memory_maintainer(
         Some("ralphx:memory-maintainer"),
         None,
         working_directory,
+        None, // effort_override: memory pipelines use default
     )?;
 
     cmd.env("RALPHX_CONVERSATION_ID", &conv_id_str);
@@ -372,6 +373,7 @@ async fn spawn_memory_capture(
         Some("ralphx:memory-capture"),
         None,
         working_directory,
+        None, // effort_override: memory pipelines use default
     )?;
 
     cmd.env("RALPHX_CONVERSATION_ID", &conv_id_str);

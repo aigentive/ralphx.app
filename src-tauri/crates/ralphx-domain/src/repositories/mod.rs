@@ -17,6 +17,7 @@ pub mod execution_plan_repository;
 pub mod external_events_repository;
 pub mod execution_settings_repository;
 pub mod ideation_session_repository;
+pub mod ideation_effort_settings_repository;
 pub mod ideation_settings_repository;
 pub mod memory_archive_job_repository;
 pub mod memory_archive_repository;
@@ -64,6 +65,7 @@ pub use external_events_repository::{ExternalEventRecord, ExternalEventsReposito
 pub use ideation_session_repository::{
     IdeationSessionRepository, IdeationSessionWithProgress, SessionGroupCounts, SessionProgress,
 };
+pub use ideation_effort_settings_repository::IdeationEffortSettingsRepository;
 pub use ideation_settings_repository::IdeationSettingsRepository;
 pub use memory_archive_job_repository::MemoryArchiveJobRepository;
 pub use memory_archive_repository::MemoryArchiveRepository;

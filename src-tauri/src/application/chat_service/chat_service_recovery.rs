@@ -134,6 +134,7 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
         artifact_repo,
         &[], // recovery path already builds its own bootstrap_prompt with history
         0,   // total_available: not needed here — session_messages is empty
+        None, // effort_override: recovery uses default
     )
     .await
     {

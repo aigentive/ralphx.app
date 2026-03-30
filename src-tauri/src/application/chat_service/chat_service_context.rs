@@ -880,6 +880,46 @@ pub async fn format_attachments_for_agent(
     Ok(output)
 }
 
+/// Apply the standard set of RalphX env vars to a spawnable command.
+///
+/// Deduplicates the identical env-var setup block that previously appeared in
+/// `build_command`, `build_interactive_command`, and `build_resume_command`.
+fn apply_ralphx_env_vars(
+    cmd: &mut SpawnableCommand,
+    agent_name: &str,
+    context_type: ChatContextType,
+    context_id: &str,
+    project_id: Option<&str>,
+    team_mode: bool,
+    lead_session_id: Option<&str>,
+) {
+    cmd.env("RALPHX_AGENT_TYPE", mcp_agent_type(agent_name));
+    cmd.env("RALPHX_CONTEXT_TYPE", &context_type.to_string());
+    cmd.env("RALPHX_CONTEXT_ID", context_id);
+    match context_type {
+        ChatContextType::Task
+        | ChatContextType::TaskExecution
+        | ChatContextType::Review
+        | ChatContextType::Merge => {
+            cmd.env("RALPHX_TASK_ID", context_id);
+        }
+        _ => {}
+    }
+    if let Some(pid) = project_id {
+        cmd.env("RALPHX_PROJECT_ID", pid);
+    }
+    // Enable agent teams feature for team lead (without CLAUDECODE which triggers nesting protection).
+    // CLAUDECODE=1 is only set on teammate processes spawned via spawn_teammate_interactive().
+    if team_mode {
+        cmd.env("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
+    }
+    // Pass the lead agent's Claude session ID so the MCP server can forward it
+    // to the backend for teammate spawns (avoids unreliable config file reads).
+    if let Some(session_id) = lead_session_id {
+        cmd.env("RALPHX_LEAD_SESSION_ID", session_id);
+    }
+}
+
 /// Create a spawnable Claude CLI command.
 ///
 /// `entity_status` is optional and enables dynamic agent resolution based on state.
@@ -887,6 +927,8 @@ pub async fn format_attachments_for_agent(
 /// `team_mode` enables agent teams feature by setting CLAUDECODE=1 and CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1.
 /// `session_messages` is injected into the prompt for Ideation context only; pass `&[]` for other contexts.
 /// `total_available` is the true DB count of session messages (from `count_by_session`); pass `0` when `session_messages` is empty.
+/// `effort_override` is an optional model effort level (e.g. `"low"`, `"medium"`, `"high"`) forwarded to
+/// `build_base_cli_command`. Pass `None` to use the project/global default.
 pub async fn build_command(
     cli_path: &Path,
     plugin_dir: &Path,
@@ -900,6 +942,7 @@ pub async fn build_command(
     artifact_repo: Arc<dyn ArtifactRepository>,
     session_messages: &[ChatMessage],
     total_available: usize,
+    effort_override: Option<&str>,
 ) -> Result<SpawnableCommand, String> {
     // Compute agent_name using the resolution system (context type + optional status + team mode)
     let agent_name =
@@ -971,43 +1014,18 @@ pub async fn build_command(
         Some(agent_name),
         resume_session.as_deref(),
         working_directory,
+        effort_override,
     )?;
 
-    // Add env vars for agent/task/project scope
-    spawnable.env("RALPHX_AGENT_TYPE", mcp_agent_type(agent_name));
-    spawnable.env(
-        "RALPHX_CONTEXT_TYPE",
-        &conversation.context_type.to_string(),
+    apply_ralphx_env_vars(
+        &mut spawnable,
+        agent_name,
+        conversation.context_type,
+        &conversation.context_id,
+        project_id,
+        team_mode,
+        conversation.claude_session_id.as_deref(),
     );
-    spawnable.env("RALPHX_CONTEXT_ID", &conversation.context_id);
-    match conversation.context_type {
-        ChatContextType::Task
-        | ChatContextType::TaskExecution
-        | ChatContextType::Review
-        | ChatContextType::Merge => {
-            spawnable.env("RALPHX_TASK_ID", &conversation.context_id);
-        }
-        _ => {}
-    }
-    if let Some(pid) = project_id {
-        spawnable.env("RALPHX_PROJECT_ID", pid);
-    }
-
-    // Enable agent teams feature for team lead (without CLAUDECODE which triggers nesting protection).
-    // CLAUDECODE=1 is only set on teammate processes spawned via spawn_teammate_interactive().
-    if team_mode {
-        spawnable.env("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
-        // TODO: restore --permission-mode delegate once supported again.
-        // Removed because newer Claude CLI versions no longer accept 'delegate' as a valid value.
-        // Valid choices are: acceptEdits, bypassPermissions, default, dontAsk, plan.
-        // spawnable.arg("--permission-mode").arg("delegate");
-    }
-
-    // Pass the lead agent's Claude session ID so the MCP server can forward it
-    // to the backend for teammate spawns (avoids unreliable config file reads).
-    if let Some(ref session_id) = conversation.claude_session_id {
-        spawnable.env("RALPHX_LEAD_SESSION_ID", session_id);
-    }
 
     Ok(spawnable)
 }
@@ -1019,6 +1037,7 @@ pub async fn build_command(
 /// on the returned `SpawnableCommand` to get a `(Child, ChildStdin)` pair.
 /// `session_messages` is injected into the prompt for Ideation context only; pass `&[]` for other contexts.
 /// `total_available` is the true DB count of session messages (from `count_by_session`); pass `0` when `session_messages` is empty.
+/// `effort_override` is an optional model effort level forwarded to `build_base_cli_command`. Pass `None` for default.
 pub async fn build_interactive_command(
     cli_path: &Path,
     plugin_dir: &Path,
@@ -1033,6 +1052,7 @@ pub async fn build_interactive_command(
     session_messages: &[ChatMessage],
     total_available: usize,
     is_external_mcp: bool,
+    effort_override: Option<&str>,
 ) -> Result<SpawnableCommand, String> {
     let agent_name =
         resolve_agent_with_team_mode(&conversation.context_type, entity_status, team_mode);
@@ -1072,35 +1092,18 @@ pub async fn build_interactive_command(
         resume_session,
         working_directory,
         is_external_mcp,
+        effort_override,
     )?;
 
-    // Same env vars as build_command()
-    spawnable.env("RALPHX_AGENT_TYPE", mcp_agent_type(agent_name));
-    spawnable.env(
-        "RALPHX_CONTEXT_TYPE",
-        &conversation.context_type.to_string(),
+    apply_ralphx_env_vars(
+        &mut spawnable,
+        agent_name,
+        conversation.context_type,
+        &conversation.context_id,
+        project_id,
+        team_mode,
+        conversation.claude_session_id.as_deref(),
     );
-    spawnable.env("RALPHX_CONTEXT_ID", &conversation.context_id);
-    match conversation.context_type {
-        ChatContextType::Task
-        | ChatContextType::TaskExecution
-        | ChatContextType::Review
-        | ChatContextType::Merge => {
-            spawnable.env("RALPHX_TASK_ID", &conversation.context_id);
-        }
-        _ => {}
-    }
-    if let Some(pid) = project_id {
-        spawnable.env("RALPHX_PROJECT_ID", pid);
-    }
-
-    if team_mode {
-        spawnable.env("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
-    }
-
-    if let Some(ref session_id) = conversation.claude_session_id {
-        spawnable.env("RALPHX_LEAD_SESSION_ID", session_id);
-    }
 
     Ok(spawnable)
 }
@@ -1155,6 +1158,7 @@ pub async fn get_entity_status_for_resume(
 /// `team_mode` enables agent teams feature by setting CLAUDECODE=1 and CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1.
 /// `session_messages` is injected for Ideation context; pass `&[]` for other contexts.
 /// `total_available` is the true DB count of session messages (from `count_by_session`); pass `0` when `session_messages` is empty.
+/// `effort_override` is an optional model effort level forwarded to `build_base_cli_command`. Pass `None` for default.
 pub async fn build_resume_command(
     cli_path: &Path,
     plugin_dir: &Path,
@@ -1171,6 +1175,7 @@ pub async fn build_resume_command(
     task_repo: Arc<dyn TaskRepository>,
     session_messages: &[ChatMessage],
     total_available: usize,
+    effort_override: Option<&str>,
 ) -> Result<SpawnableCommand, String> {
     // Fetch entity status for status-aware agent resolution
     let entity_status =
@@ -1199,38 +1204,19 @@ pub async fn build_resume_command(
         Some(agent_name),
         Some(session_id),
         working_directory,
+        effort_override,
     )?;
 
-    spawnable.env("RALPHX_AGENT_TYPE", mcp_agent_type(agent_name));
-    spawnable.env("RALPHX_CONTEXT_TYPE", &context_type.to_string());
-    spawnable.env("RALPHX_CONTEXT_ID", context_id);
-    match context_type {
-        ChatContextType::Task
-        | ChatContextType::TaskExecution
-        | ChatContextType::Review
-        | ChatContextType::Merge => {
-            spawnable.env("RALPHX_TASK_ID", context_id);
-        }
-        _ => {}
-    }
-    if let Some(pid) = project_id {
-        spawnable.env("RALPHX_PROJECT_ID", pid);
-    }
-
-    // Enable agent teams feature for team lead (without CLAUDECODE which triggers nesting protection).
-    // CLAUDECODE=1 is only set on teammate processes spawned via spawn_teammate_interactive().
-    if team_mode {
-        spawnable.env("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
-        // TODO: restore --permission-mode delegate once supported again.
-        // Removed because newer Claude CLI versions no longer accept 'delegate' as a valid value.
-        // Valid choices are: acceptEdits, bypassPermissions, default, dontAsk, plan.
-        // spawnable.arg("--permission-mode").arg("delegate");
-    }
-
-    // Pass the lead agent's Claude session ID so the MCP server can forward it
-    // to the backend for teammate spawns (avoids unreliable config file reads).
     // In resume flow, session_id IS the Claude session ID.
-    spawnable.env("RALPHX_LEAD_SESSION_ID", session_id);
+    apply_ralphx_env_vars(
+        &mut spawnable,
+        agent_name,
+        context_type,
+        context_id,
+        project_id,
+        team_mode,
+        Some(session_id),
+    );
 
     Ok(spawnable)
 }

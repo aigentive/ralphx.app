@@ -4,6 +4,7 @@
 mod agent_config;
 pub mod agent_names;
 mod claude_code_client;
+pub mod effort_resolver;
 pub mod node_utils;
 mod stream_processor;
 
@@ -37,6 +38,9 @@ pub use stream_processor::{
     AssistantContent, AssistantMessage, ContentBlock, ContentBlockItem, ContentDelta, DiffContext,
     ParsedLine, StreamEvent, StreamMessage, StreamProcessor, StreamResult, ToolCall, ToolCallStats,
 };
+
+// Re-export effort resolver helpers for use by services
+pub use effort_resolver::{effort_bucket_for_agent, resolve_ideation_effort};
 
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
@@ -133,6 +137,7 @@ pub fn build_base_cli_command(
     plugin_dir: &Path,
     agent_type: Option<&str>,
     is_external_mcp: bool,
+    effort_override: Option<&str>,
 ) -> Result<Command, String> {
     ensure_claude_spawn_allowed()?;
     sanitize_claude_user_state();
@@ -198,9 +203,16 @@ pub fn build_base_cli_command(
         }
     }
 
-    // Effort level for this agent
-    let effort = resolve_effort(agent_type);
-    cmd.args(["--effort", &effort]);
+    // Effort level for this agent — use explicit override when provided, otherwise resolve from config.
+    let effort_resolved;
+    let effort = match effort_override {
+        Some(e) => e,
+        None => {
+            effort_resolved = resolve_effort(agent_type);
+            &effort_resolved
+        }
+    };
+    cmd.args(["--effort", effort]);
 
     // If agent_type is provided, create a dynamic MCP config that passes it
     // to the MCP server via CLI args (since env vars don't propagate to MCP servers).
@@ -892,8 +904,9 @@ pub fn build_spawnable_command(
     agent: Option<&str>,
     resume_session: Option<&str>,
     working_directory: &Path,
+    effort_override: Option<&str>,
 ) -> Result<SpawnableCommand, String> {
-    let mut cmd = build_base_cli_command(cli_path, plugin_dir, agent, false)?;
+    let mut cmd = build_base_cli_command(cli_path, plugin_dir, agent, false, effort_override)?;
     let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session, false);
     configure_spawn(&mut cmd, working_directory, stdin_prompt.is_some());
     Ok(SpawnableCommand { cmd, stdin_prompt })
@@ -915,8 +928,9 @@ pub fn build_spawnable_interactive_command(
     resume_session: Option<&str>,
     working_directory: &Path,
     is_external_mcp: bool,
+    effort_override: Option<&str>,
 ) -> Result<SpawnableCommand, String> {
-    let mut cmd = build_base_cli_command(cli_path, plugin_dir, agent, is_external_mcp)?;
+    let mut cmd = build_base_cli_command(cli_path, plugin_dir, agent, is_external_mcp, effort_override)?;
     // interactive=true: no -p flag; prompt stored in stdin_prompt for spawn_interactive()
     let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session, true);
     configure_spawn(&mut cmd, working_directory, true);
@@ -1158,6 +1172,7 @@ mod tests {
             None,
             None,
             Path::new("/tmp"),
+            None,
         );
         // In test env, ensure_claude_spawn_allowed() returns Err
         assert!(result.is_err(), "should be blocked in test environment");
@@ -1178,6 +1193,7 @@ mod tests {
             None,
             Path::new("/tmp"),
             false,
+            None,
         );
         assert!(result.is_err(), "should be blocked in test environment");
     }
@@ -1201,6 +1217,7 @@ mod tests {
             Path::new("/fake/plugin"),
             None,
             true, // is_external_mcp=true
+            None,
         );
         assert!(result.is_err(), "should be blocked in test environment");
         assert!(
@@ -1217,6 +1234,7 @@ mod tests {
             Path::new("/fake/plugin"),
             None,
             false, // is_external_mcp=false
+            None,
         );
         assert!(result.is_err(), "should be blocked in test environment");
     }
