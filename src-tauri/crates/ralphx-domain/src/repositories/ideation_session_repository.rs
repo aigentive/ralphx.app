@@ -9,7 +9,7 @@ use rusqlite::Connection;
 
 use crate::domain::entities::{
     AcceptanceStatus, IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
-    VerificationMetadata, VerificationStatus,
+    VerificationConfirmationStatus, VerificationMetadata, VerificationStatus,
 };
 use crate::error::AppResult;
 
@@ -440,6 +440,25 @@ pub trait IdeationSessionRepository: Send + Sync {
     ///
     /// Used by `get_pending_confirmations` HTTP handler.
     async fn get_sessions_with_pending_acceptance(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>>;
+
+    /// Set (or clear) `verification_confirmation_status` on a session.
+    ///
+    /// Pass `Some(status)` to set the status; pass `None` to clear it (set to NULL).
+    /// Updates `updated_at` to the current UTC timestamp.
+    async fn set_verification_confirmation_status(
+        &self,
+        session_id: &IdeationSessionId,
+        status: Option<VerificationConfirmationStatus>,
+    ) -> AppResult<()>;
+
+    /// Return all sessions for a project that have
+    /// `verification_confirmation_status = 'pending'`.
+    ///
+    /// Used by handlers that poll for sessions awaiting post-verification user confirmation.
+    async fn get_pending_verification_confirmations(
         &self,
         project_id: &ProjectId,
     ) -> AppResult<Vec<IdeationSession>>;

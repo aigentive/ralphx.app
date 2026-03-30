@@ -1,0 +1,48 @@
+use super::*;
+
+/// Handle a failed verification agent spawn: reset auto-verify state and emit status-changed event.
+///
+/// Called from both `create_plan_artifact` and `confirm_verification` when
+/// `create_verification_child_session` returns `Ok(false)` or `Err(e)`.
+pub async fn handle_verification_spawn_failure(
+    state: &HttpServerState,
+    session_id: &IdeationSessionId,
+    generation: i32,
+    error: Option<&str>,
+) {
+    if let Some(msg) = error {
+        error!(
+            "Verifier spawn failed for session {}: {}",
+            session_id.as_str(),
+            msg
+        );
+    } else {
+        tracing::warn!(
+            "Verification agent failed to spawn for session {}",
+            session_id.as_str()
+        );
+    }
+    let sid_str = session_id.as_str().to_string();
+    if let Err(reset_err) = state
+        .app_state
+        .db
+        .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &sid_str))
+        .await
+    {
+        error!(
+            "Failed to reset auto-verify state for session {} after spawn failure: {}",
+            session_id.as_str(),
+            reset_err
+        );
+    } else if let Some(app_handle) = &state.app_state.app_handle {
+        emit_verification_status_changed(
+            app_handle,
+            session_id.as_str(),
+            VerificationStatus::Unverified,
+            false,
+            None,
+            Some("spawn_failed"),
+            Some(generation),
+        );
+    }
+}

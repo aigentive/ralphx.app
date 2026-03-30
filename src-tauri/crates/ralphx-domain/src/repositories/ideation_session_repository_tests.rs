@@ -425,6 +425,21 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
     ) -> AppResult<Vec<IdeationSession>> {
         Ok(vec![])
     }
+
+    async fn set_verification_confirmation_status(
+        &self,
+        _session_id: &IdeationSessionId,
+        _status: Option<VerificationConfirmationStatus>,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn get_pending_verification_confirmations(
+        &self,
+        _project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(vec![])
+    }
 }
 
 fn create_test_session(project_id: &ProjectId) -> IdeationSession {
@@ -469,6 +484,7 @@ fn create_test_session(project_id: &ProjectId) -> IdeationSession {
         dependencies_acknowledged: false,
         pending_initial_prompt: None,
         acceptance_status: None,
+        verification_confirmation_status: None,
     }
 }
 

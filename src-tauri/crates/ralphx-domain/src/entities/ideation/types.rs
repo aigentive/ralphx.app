@@ -667,6 +667,51 @@ impl FromStr for AcceptanceStatus {
 
 // ---------------------------------------------------------------------------
 
+/// Status of user confirmation for the plan verification gate.
+/// Tracks whether the user has acknowledged and confirmed the verified plan
+/// before proceeding to proposal creation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VerificationConfirmationStatus {
+    /// Plan has been verified but user has not yet confirmed
+    Pending,
+    /// User has accepted the verified plan and confirmed proceeding
+    Accepted,
+    /// User has rejected the verified plan
+    Rejected,
+}
+
+impl Default for VerificationConfirmationStatus {
+    fn default() -> Self {
+        Self::Pending
+    }
+}
+
+impl std::fmt::Display for VerificationConfirmationStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VerificationConfirmationStatus::Pending => write!(f, "pending"),
+            VerificationConfirmationStatus::Accepted => write!(f, "accepted"),
+            VerificationConfirmationStatus::Rejected => write!(f, "rejected"),
+        }
+    }
+}
+
+impl FromStr for VerificationConfirmationStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pending" => Ok(VerificationConfirmationStatus::Pending),
+            "accepted" => Ok(VerificationConfirmationStatus::Accepted),
+            "rejected" => Ok(VerificationConfirmationStatus::Rejected),
+            _ => Err(format!("unknown verification confirmation status: '{s}'")),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 /// Helper function to parse datetime strings from SQLite
 pub fn parse_datetime_helper(s: String) -> DateTime<Utc> {
     // Try RFC3339 first (our preferred format)

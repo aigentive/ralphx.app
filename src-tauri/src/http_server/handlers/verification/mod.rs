@@ -5,7 +5,9 @@ use axum::{
 };
 use tracing::error;
 
-use crate::domain::entities::{IdeationSessionId, VerificationStatus};
+use crate::domain::entities::{
+    IdeationSessionId, ProjectId, VerificationConfirmationStatus, VerificationStatus,
+};
 use crate::domain::services::{emit_verification_started, emit_verification_status_changed};
 use crate::error::AppError;
 use crate::infrastructure::agents::claude::verification_config;
@@ -13,20 +15,25 @@ use crate::infrastructure::sqlite::SqliteIdeationSessionRepository as SessionRep
 
 use super::super::types::{
     AutoAcceptVerificationRequest, ConfirmVerificationRequest, ConfirmationStatusResponse,
-    DismissVerificationRequest, HttpError, HttpServerState, SpecialistEntryResponse,
-    SpecialistsResponse, VerificationActionResponse,
+    DismissVerificationRequest, HttpError, HttpServerState,
+    PendingVerificationConfirmationItem, PendingVerificationConfirmationsResponse,
+    SpecialistEntryResponse, SpecialistsResponse, VerificationActionResponse,
 };
 
 mod auto_accept;
 mod confirmation_status;
 mod confirm;
 mod dismiss;
+mod helpers;
+mod pending_confirmations;
 mod specialist_registry;
 
 pub use auto_accept::set_auto_accept_verification;
 pub use confirmation_status::get_confirmation_status;
 pub use confirm::confirm_verification;
 pub use dismiss::dismiss_verification;
+pub use helpers::handle_verification_spawn_failure as handle_spawn_failure;
+pub use pending_confirmations::get_pending_verification_confirmations;
 pub use specialist_registry::get_verification_specialists;
 
 /// Map an AppError to an HttpError for verification handler responses.

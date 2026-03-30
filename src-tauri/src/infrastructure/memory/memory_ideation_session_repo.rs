@@ -10,7 +10,7 @@ use rusqlite::Connection;
 
 use crate::domain::entities::{
     AcceptanceStatus, IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
-    SessionOrigin, VerificationMetadata, VerificationStatus,
+    SessionOrigin, VerificationConfirmationStatus, VerificationMetadata, VerificationStatus,
 };
 use crate::domain::repositories::ideation_session_repository::{
     IdeationSessionWithProgress, SessionGroupCounts,
@@ -893,6 +893,35 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
                 s.project_id.to_string() == project_id.to_string()
                     && s.status == IdeationSessionStatus::Active
                     && s.acceptance_status == Some(AcceptanceStatus::Pending)
+            })
+            .cloned()
+            .collect())
+    }
+
+    async fn set_verification_confirmation_status(
+        &self,
+        session_id: &IdeationSessionId,
+        status: Option<VerificationConfirmationStatus>,
+    ) -> AppResult<()> {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(session) = sessions.get_mut(session_id.as_str()) {
+            session.verification_confirmation_status = status;
+            session.updated_at = Utc::now();
+        }
+        Ok(())
+    }
+
+    async fn get_pending_verification_confirmations(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>> {
+        let sessions = self.sessions.read().unwrap();
+        Ok(sessions
+            .values()
+            .filter(|s| {
+                s.project_id.to_string() == project_id.to_string()
+                    && s.verification_confirmation_status
+                        == Some(VerificationConfirmationStatus::Pending)
             })
             .cloned()
             .collect())

@@ -137,6 +137,10 @@ pub struct IdeationSession {
     /// None = gate not triggered. Some(Pending) = awaiting user confirmation.
     /// Some(Accepted) = user accepted. Some(Rejected) = user rejected.
     pub acceptance_status: Option<AcceptanceStatus>,
+    /// Verification confirmation status for the post-verification user confirmation gate.
+    /// None = gate not triggered. Some(Pending) = awaiting user confirmation.
+    /// Some(Accepted) = user confirmed the verified plan. Some(Rejected) = user rejected.
+    pub verification_confirmation_status: Option<VerificationConfirmationStatus>,
 }
 
 /// Builder for creating IdeationSession instances
@@ -182,6 +186,7 @@ pub struct IdeationSessionBuilder {
     dependencies_acknowledged: Option<bool>,
     pending_initial_prompt: Option<String>,
     acceptance_status: Option<AcceptanceStatus>,
+    verification_confirmation_status: Option<VerificationConfirmationStatus>,
 }
 
 impl IdeationSessionBuilder {
@@ -406,6 +411,15 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set the verification confirmation status for the post-verification user confirmation gate
+    pub fn verification_confirmation_status(
+        mut self,
+        status: VerificationConfirmationStatus,
+    ) -> Self {
+        self.verification_confirmation_status = Some(status);
+        self
+    }
+
     /// Build the IdeationSession
     /// Panics if project_id is not set
     pub fn build(self) -> IdeationSession {
@@ -451,6 +465,7 @@ impl IdeationSessionBuilder {
             dependencies_acknowledged: self.dependencies_acknowledged.unwrap_or(false),
             pending_initial_prompt: self.pending_initial_prompt,
             acceptance_status: self.acceptance_status,
+            verification_confirmation_status: self.verification_confirmation_status,
         }
     }
 }
@@ -656,6 +671,11 @@ impl IdeationSession {
                 .unwrap_or(None),
             acceptance_status: row
                 .get::<_, Option<String>>("acceptance_status")
+                .unwrap_or(None)
+                .as_deref()
+                .and_then(|s| s.parse().ok()),
+            verification_confirmation_status: row
+                .get::<_, Option<String>>("verification_confirmation_status")
                 .unwrap_or(None)
                 .as_deref()
                 .and_then(|s| s.parse().ok()),

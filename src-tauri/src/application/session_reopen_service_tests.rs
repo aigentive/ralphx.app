@@ -787,6 +787,21 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
     ) -> crate::error::AppResult<Vec<IdeationSession>> {
         self.inner.get_sessions_with_pending_acceptance(project_id).await
     }
+
+    async fn set_verification_confirmation_status(
+        &self,
+        session_id: &crate::domain::entities::IdeationSessionId,
+        status: Option<crate::domain::entities::VerificationConfirmationStatus>,
+    ) -> crate::error::AppResult<()> {
+        self.inner.set_verification_confirmation_status(session_id, status).await
+    }
+
+    async fn get_pending_verification_confirmations(
+        &self,
+        project_id: &ProjectId,
+    ) -> crate::error::AppResult<Vec<IdeationSession>> {
+        self.inner.get_pending_verification_confirmations(project_id).await
+    }
 }
 
 #[tokio::test]

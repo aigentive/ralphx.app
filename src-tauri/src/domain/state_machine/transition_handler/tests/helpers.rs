@@ -143,6 +143,7 @@ pub fn make_session_no_title(session_id: &str) -> IdeationSession {
         dependencies_acknowledged: false,
         pending_initial_prompt: None,
         acceptance_status: None,
+        verification_confirmation_status: None,
     }
 }
 
@@ -189,6 +190,7 @@ pub fn make_session_with_title_for_test(session_id: &str, title: &str) -> Ideati
         dependencies_acknowledged: false,
         pending_initial_prompt: None,
         acceptance_status: None,
+        verification_confirmation_status: None,
     }
 }
 

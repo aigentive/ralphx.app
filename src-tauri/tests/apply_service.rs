@@ -432,6 +432,21 @@ impl IdeationSessionRepository for MockSessionRepository {
     ) -> AppResult<Vec<IdeationSession>> {
         Ok(vec![])
     }
+
+    async fn set_verification_confirmation_status(
+        &self,
+        _session_id: &IdeationSessionId,
+        _status: Option<VerificationConfirmationStatus>,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn get_pending_verification_confirmations(
+        &self,
+        _project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(vec![])
+    }
 }
 
 struct MockProposalRepository {

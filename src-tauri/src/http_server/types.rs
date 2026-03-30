@@ -1755,12 +1755,15 @@ pub struct SpecialistsResponse {
 }
 
 /// Response for GET /api/verification/confirmation-status/{session_id}.
-/// status: "pending" | "not_applicable"
+/// status: "pending" | "accepted" | "rejected" | "not_applicable"
 #[derive(Debug, Serialize)]
 pub struct ConfirmationStatusResponse {
     pub session_id: String,
-    /// "pending" when a PendingVerification entry exists for this session.
-    /// "not_applicable" when no entry exists.
+    /// DB-backed status for this session's verification confirmation gate.
+    /// "pending"        — dialog should be shown to the user
+    /// "accepted"       — user confirmed; verification was triggered
+    /// "rejected"       — user dismissed; session stays Unverified
+    /// "not_applicable" — NULL in DB (external session, auto-verify, or no plan yet)
     pub status: String,
     /// Only present when status == "pending"
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1768,6 +1771,21 @@ pub struct ConfirmationStatusResponse {
     /// Only present when status == "pending"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub available_specialists: Option<Vec<SpecialistEntryResponse>>,
+}
+
+/// Response for GET /api/verification/pending-confirmations?project_id=X
+#[derive(Debug, Serialize)]
+pub struct PendingVerificationConfirmationsResponse {
+    pub sessions: Vec<PendingVerificationConfirmationItem>,
+}
+
+/// One item in the pending verification confirmations list
+#[derive(Debug, Clone, Serialize)]
+pub struct PendingVerificationConfirmationItem {
+    pub session_id: String,
+    pub session_title: Option<String>,
+    pub plan_artifact_id: Option<String>,
+    pub available_specialists: Vec<SpecialistEntryResponse>,
 }
 
 #[cfg(test)]

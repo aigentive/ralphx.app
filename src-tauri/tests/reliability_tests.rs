@@ -82,6 +82,7 @@ fn make_external_session(
         dependencies_acknowledged: false,
         pending_initial_prompt: None,
         acceptance_status: None,
+        verification_confirmation_status: None,
     }
 }
 
@@ -687,6 +688,7 @@ async fn c4_finalize_proposals_links_all_proposals_to_tasks() {
         dependencies_acknowledged: false,
         pending_initial_prompt: None,
         acceptance_status: None,
+        verification_confirmation_status: None,
     };
     state.ideation_session_repo.create(session).await.unwrap();
 
@@ -853,6 +855,7 @@ async fn c4_count_mismatch_prevents_finalize_and_leaves_no_orphans() {
         dependencies_acknowledged: false,
         pending_initial_prompt: None,
         acceptance_status: None,
+        verification_confirmation_status: None,
     };
     state.ideation_session_repo.create(session).await.unwrap();
 
@@ -1080,6 +1083,7 @@ fn make_c5_session(
         dependencies_acknowledged: false,
         pending_initial_prompt: None,
         acceptance_status: None,
+        verification_confirmation_status: None,
     }
 }
 

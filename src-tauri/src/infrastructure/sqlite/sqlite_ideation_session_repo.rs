@@ -10,7 +10,7 @@ use rusqlite::Connection;
 
 use crate::domain::entities::{
     AcceptanceStatus, IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
-    VerificationMetadata, VerificationStatus,
+    VerificationConfirmationStatus, VerificationMetadata, VerificationStatus,
 };
 use crate::domain::repositories::ideation_session_repository::{
     IdeationSessionWithProgress, SessionGroupCounts, SessionProgress,
@@ -24,13 +24,14 @@ use super::DbConnection;
 // IDLE: tasks that haven't started yet
 const _IDLE_STATUSES: &[&str] = &["backlog", "ready", "blocked"];
 
-/// All 39 SELECT columns for IdeationSession — single source of truth (DRY).
+/// All 41 SELECT columns for IdeationSession — single source of truth (DRY).
 /// Must be kept in sync with IdeationSession::from_row column names.
 /// Column order: id(0)..origin(24), expected_proposal_count(25), auto_accept_status(26),
 /// auto_accept_started_at(27), api_key_id(28), idempotency_key(29),
 /// external_activity_phase(30), external_last_read_message_id(31), dependencies_acknowledged(32),
 /// pending_initial_prompt(33), source_task_id(34), source_context_type(35),
-/// source_context_id(36), spawn_reason(37), blocker_fingerprint(38)
+/// source_context_id(36), spawn_reason(37), blocker_fingerprint(38), acceptance_status(39),
+/// verification_confirmation_status(40)
 const SESSION_COLUMNS: &str = "id, project_id, title, title_source, status, plan_artifact_id, \
     inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
     updated_at, archived_at, converted_at, team_mode, team_config_json, \
@@ -40,7 +41,8 @@ const SESSION_COLUMNS: &str = "id, project_id, title, title_source, status, plan
     expected_proposal_count, auto_accept_status, auto_accept_started_at, \
     api_key_id, idempotency_key, external_activity_phase, external_last_read_message_id, \
     dependencies_acknowledged, pending_initial_prompt, source_task_id, source_context_type, \
-    source_context_id, spawn_reason, blocker_fingerprint, acceptance_status";
+    source_context_id, spawn_reason, blocker_fingerprint, acceptance_status, \
+    verification_confirmation_status";
 // TERMINAL: tasks that have reached a final state
 const _TERMINAL_STATUSES: &[&str] = &["approved", "merged", "failed", "cancelled", "stopped"];
 // ACTIVE: any status NOT in IDLE or TERMINAL (catch-all, matches categorizeStatus() logic)
@@ -1639,6 +1641,55 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                          WHERE project_id = ?1 \
                            AND status = 'active' \
                            AND acceptance_status = 'pending' \
+                         ORDER BY updated_at DESC",
+                    ))
+                    .map_err(|e| AppError::Database(e.to_string()))?;
+                let sessions = stmt
+                    .query_map(rusqlite::params![project_id_str], |row| {
+                        IdeationSession::from_row(row)
+                    })
+                    .map_err(|e| AppError::Database(e.to_string()))?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| AppError::Database(e.to_string()))?;
+                Ok(sessions)
+            })
+            .await
+    }
+
+    async fn set_verification_confirmation_status(
+        &self,
+        session_id: &IdeationSessionId,
+        status: Option<VerificationConfirmationStatus>,
+    ) -> AppResult<()> {
+        let session_id_str = session_id.as_str().to_string();
+        let status_str: Option<String> = status.map(|s| s.to_string());
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE ideation_sessions \
+                     SET verification_confirmation_status = ?1, \
+                         updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now') \
+                     WHERE id = ?2",
+                    rusqlite::params![status_str, session_id_str],
+                )
+                .map_err(|e| AppError::Database(e.to_string()))?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn get_pending_verification_confirmations(
+        &self,
+        project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>> {
+        let project_id_str = project_id.to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn
+                    .prepare(&format!(
+                        "SELECT {SESSION_COLUMNS} FROM ideation_sessions \
+                         WHERE project_id = ?1 \
+                           AND verification_confirmation_status = 'pending' \
                          ORDER BY updated_at DESC",
                     ))
                     .map_err(|e| AppError::Database(e.to_string()))?;

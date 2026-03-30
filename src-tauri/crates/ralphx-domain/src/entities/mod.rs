@@ -64,8 +64,8 @@ pub use ideation::{
     ParseProposalCategoryError, ParseProposalStatusError, ParseVerificationStatusError, Priority,
     PriorityAssessment, PriorityAssessmentFactors, PriorityFactors, ProposalCategory,
     ProposalStatus, SessionLink, SessionOrigin, SessionPurpose, SessionRelationship, TaskProposal,
-    UserHintFactor, VerificationError, VerificationGap, VerificationMetadata, VerificationRound,
-    VerificationStatus,
+    UserHintFactor, VerificationConfirmationStatus, VerificationError, VerificationGap,
+    VerificationMetadata, VerificationRound, VerificationStatus,
 };
 pub use memory_archive::{
     ArchiveJobPayload, ArchiveJobStatus, ArchiveJobType, FullRebuildPayload, MemoryArchiveJob,

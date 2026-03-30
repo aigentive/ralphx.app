@@ -768,6 +768,7 @@ fn make_ideation_session(session_id: &str, project_id: &ProjectId) -> IdeationSe
         dependencies_acknowledged: false,
         pending_initial_prompt: None,
         acceptance_status: None,
+        verification_confirmation_status: None,
     }
 }
 

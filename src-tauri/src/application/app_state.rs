@@ -1,10 +1,9 @@
 // Application state container for dependency injection
 // Holds repository trait objects that can be swapped for testing
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
-use chrono::{DateTime, Utc};
 use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
 
@@ -68,18 +67,7 @@ use crate::infrastructure::sqlite::{
     SqliteTaskStepRepository, SqliteTeamMessageRepository, SqliteTeamSessionRepository,
     SqliteWebhookRegistrationRepository, SqliteWorkflowRepository,
 };
-use crate::infrastructure::agents::claude::SpecialistEntry;
 use crate::infrastructure::{ClaudeCodeClient, GhCliGithubService, MockAgenticClient};
-
-/// In-memory state for a plan verification that is awaiting user confirmation.
-#[derive(Debug, Clone)]
-pub struct PendingVerification {
-    pub session_id: String,
-    pub session_title: String,
-    pub plan_artifact_id: String,
-    pub available_specialists: Vec<SpecialistEntry>,
-    pub created_at: DateTime<Utc>,
-}
 
 /// Application state container for dependency injection
 /// Holds repository trait objects that can be swapped for testing vs production
@@ -199,9 +187,6 @@ pub struct AppState {
     /// Constructed ONCE in lib.rs and Arc-cloned into both AppState instances.
     /// None in test constructors.
     pub webhook_publisher: Option<Arc<dyn crate::domain::state_machine::services::WebhookPublisher>>,
-    /// Pending verification confirmations awaiting user input. Keyed by session_id.
-    /// Ephemeral — lost on app restart. TTL sweep removes stale entries.
-    pub pending_verifications: Arc<Mutex<HashMap<String, PendingVerification>>>,
     /// Sessions where user has enabled auto-accept for verification. Ephemeral.
     pub auto_accept_sessions: Arc<Mutex<HashSet<String>>>,
 }
@@ -397,7 +382,6 @@ impl AppState {
             running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(Arc::clone(&shared_conn))),
             webhook_registration_repo: Arc::new(SqliteWebhookRegistrationRepository::from_shared(Arc::clone(&shared_conn))),
             webhook_publisher: None,
-            pending_verifications: Arc::new(Mutex::new(HashMap::new())),
             auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
@@ -510,7 +494,6 @@ impl AppState {
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             webhook_registration_repo: Arc::new(MemoryWebhookRegistrationRepository::new()),
             webhook_publisher: None,
-            pending_verifications: Arc::new(Mutex::new(HashMap::new())),
             auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
@@ -608,7 +591,6 @@ impl AppState {
             running_agent_registry: registry,
             webhook_registration_repo: Arc::new(MemoryWebhookRegistrationRepository::new()),
             webhook_publisher: None,
-            pending_verifications: Arc::new(Mutex::new(HashMap::new())),
             auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
@@ -722,7 +704,6 @@ impl AppState {
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             webhook_registration_repo: Arc::new(MemoryWebhookRegistrationRepository::new()),
             webhook_publisher: None,
-            pending_verifications: Arc::new(Mutex::new(HashMap::new())),
             auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
@@ -814,7 +795,6 @@ impl AppState {
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             webhook_registration_repo: Arc::new(MemoryWebhookRegistrationRepository::new()),
             webhook_publisher: None,
-            pending_verifications: Arc::new(Mutex::new(HashMap::new())),
             auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),

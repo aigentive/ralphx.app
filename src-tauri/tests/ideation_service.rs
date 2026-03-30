@@ -496,6 +496,21 @@ impl IdeationSessionRepository for MockSessionRepository {
     ) -> AppResult<Vec<ralphx_lib::domain::entities::IdeationSession>> {
         Ok(vec![])
     }
+
+    async fn set_verification_confirmation_status(
+        &self,
+        _session_id: &ralphx_lib::domain::entities::IdeationSessionId,
+        _status: Option<ralphx_lib::domain::entities::VerificationConfirmationStatus>,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn get_pending_verification_confirmations(
+        &self,
+        _project_id: &ralphx_lib::domain::entities::ProjectId,
+    ) -> AppResult<Vec<ralphx_lib::domain::entities::IdeationSession>> {
+        Ok(vec![])
+    }
 }
 
 struct MockProposalRepository {

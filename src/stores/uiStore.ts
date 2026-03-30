@@ -436,6 +436,8 @@ interface UiActions {
   addAutoAcceptVerificationSession: (sessionId: string) => void;
   /** Remove session from auto-accept verification set */
   removeAutoAcceptVerificationSession: (sessionId: string) => void;
+  /** Hydrate verification queue from bootstrap API response (merge-dedup, NOT replace) */
+  hydrateVerificationQueue: (sessionIds: string[]) => void;
 }
 
 // ============================================================================
@@ -870,6 +872,8 @@ export const useUiStore = create<UiState & UiActions>()(
         state.activityFilter = { taskId: null, sessionId: null };
         state.graphRightPanelUserOpen = false;
         state.graphRightPanelCompactOpen = false;
+        // Clear stale verification queue entries — bootstrap will re-hydrate for new project
+        state.pendingVerificationQueue = [];
       }),
 
     cleanupProjectRoute: (projectId) =>
@@ -954,6 +958,15 @@ export const useUiStore = create<UiState & UiActions>()(
     removeAutoAcceptVerificationSession: (sessionId) =>
       set((state) => {
         state.autoAcceptVerificationSessions.delete(sessionId);
+      }),
+
+    hydrateVerificationQueue: (sessionIds) =>
+      set((state) => {
+        for (const sessionId of sessionIds) {
+          if (!state.pendingVerificationQueue.includes(sessionId)) {
+            state.pendingVerificationQueue.push(sessionId);
+          }
+        }
       }),
   }))
 );

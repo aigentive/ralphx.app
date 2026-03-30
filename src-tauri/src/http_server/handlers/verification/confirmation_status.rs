@@ -4,11 +4,20 @@ pub async fn get_confirmation_status(
     State(state): State<HttpServerState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<ConfirmationStatusResponse>, HttpError> {
-    let pending = state.app_state.pending_verifications.lock().await;
-    match pending.get(&session_id) {
-        Some(entry) => {
-            let available_specialists = entry
-                .available_specialists
+    let sid = IdeationSessionId::from_string(session_id.clone());
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&sid)
+        .await
+        .map_err(map_app_err_local)?
+        .ok_or_else(|| HttpError::from(StatusCode::NOT_FOUND))?;
+
+    match session.verification_confirmation_status {
+        Some(VerificationConfirmationStatus::Pending) => {
+            let cfg = verification_config();
+            let available_specialists = cfg
+                .specialists
                 .iter()
                 .map(|s| SpecialistEntryResponse {
                     name: s.name.clone(),
@@ -21,10 +30,24 @@ pub async fn get_confirmation_status(
             Ok(Json(ConfirmationStatusResponse {
                 session_id,
                 status: "pending".to_string(),
-                plan_artifact_id: Some(entry.plan_artifact_id.clone()),
+                plan_artifact_id: session
+                    .plan_artifact_id
+                    .map(|id| id.as_str().to_string()),
                 available_specialists: Some(available_specialists),
             }))
         }
+        Some(VerificationConfirmationStatus::Accepted) => Ok(Json(ConfirmationStatusResponse {
+            session_id,
+            status: "accepted".to_string(),
+            plan_artifact_id: None,
+            available_specialists: None,
+        })),
+        Some(VerificationConfirmationStatus::Rejected) => Ok(Json(ConfirmationStatusResponse {
+            session_id,
+            status: "rejected".to_string(),
+            plan_artifact_id: None,
+            available_specialists: None,
+        })),
         None => Ok(Json(ConfirmationStatusResponse {
             session_id,
             status: "not_applicable".to_string(),

@@ -4,9 +4,16 @@ pub async fn dismiss_verification(
     State(state): State<HttpServerState>,
     Json(req): Json<DismissVerificationRequest>,
 ) -> Result<Json<VerificationActionResponse>, HttpError> {
-    let mut pending = state.app_state.pending_verifications.lock().await;
-    // No-op if no pending entry exists
-    pending.remove(&req.session_id);
+    let session_id = IdeationSessionId::from_string(req.session_id);
+    state
+        .app_state
+        .ideation_session_repo
+        .set_verification_confirmation_status(
+            &session_id,
+            Some(VerificationConfirmationStatus::Rejected),
+        )
+        .await
+        .map_err(map_app_err_local)?;
     Ok(Json(VerificationActionResponse {
         status: "ok".to_string(),
     }))

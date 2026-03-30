@@ -1,4 +1,5 @@
 use super::*;
+use super::helpers::handle_verification_spawn_failure;
 
 pub async fn confirm_verification(
     State(state): State<HttpServerState>,
@@ -7,11 +8,17 @@ pub async fn confirm_verification(
     let session_id_str = req.session_id.clone();
     let disabled_specialists = req.disabled_specialists.clone();
 
-    // Remove pending confirmation entry (no-op if user-initiated path has no pending entry)
-    {
-        let mut pending = state.app_state.pending_verifications.lock().await;
-        pending.remove(&session_id_str);
-    }
+    // Set DB status to 'accepted' — marks that user has confirmed and verification is starting.
+    let session_id_for_status = IdeationSessionId::from_string(session_id_str.clone());
+    state
+        .app_state
+        .ideation_session_repo
+        .set_verification_confirmation_status(
+            &session_id_for_status,
+            Some(VerificationConfirmationStatus::Accepted),
+        )
+        .await
+        .map_err(map_app_err_local)?;
 
     let cfg = verification_config();
 
@@ -66,63 +73,10 @@ pub async fn confirm_verification(
     {
         Ok(true) => {}
         Ok(false) => {
-            tracing::warn!(
-                "Verification agent failed to spawn for session {}",
-                session_id.as_str()
-            );
-            let sid_str = session_id.as_str().to_string();
-            if let Err(reset_err) = state
-                .app_state
-                .db
-                .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &sid_str))
-                .await
-            {
-                error!(
-                    "Failed to reset auto-verify state for session {} after spawn failure: {}",
-                    session_id.as_str(),
-                    reset_err
-                );
-            } else if let Some(app_handle) = &state.app_state.app_handle {
-                emit_verification_status_changed(
-                    app_handle,
-                    session_id.as_str(),
-                    VerificationStatus::Unverified,
-                    false,
-                    None,
-                    Some("spawn_failed"),
-                    Some(generation),
-                );
-            }
+            handle_verification_spawn_failure(&state, &session_id, generation, None).await;
         }
         Err(e) => {
-            error!(
-                "Verifier spawn failed for session {}: {}",
-                session_id.as_str(),
-                e
-            );
-            let sid_str = session_id.as_str().to_string();
-            if let Err(reset_err) = state
-                .app_state
-                .db
-                .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &sid_str))
-                .await
-            {
-                error!(
-                    "Failed to reset auto-verify state for session {} after spawn failure: {}",
-                    session_id.as_str(),
-                    reset_err
-                );
-            } else if let Some(app_handle) = &state.app_state.app_handle {
-                emit_verification_status_changed(
-                    app_handle,
-                    session_id.as_str(),
-                    VerificationStatus::Unverified,
-                    false,
-                    None,
-                    Some("spawn_failed"),
-                    Some(generation),
-                );
-            }
+            handle_verification_spawn_failure(&state, &session_id, generation, Some(&e)).await;
         }
     }
 

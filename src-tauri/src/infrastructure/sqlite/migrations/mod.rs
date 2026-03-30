@@ -246,9 +246,12 @@ mod v20260328210000_proposal_affected_paths_tests;
 mod v20260329080000_acceptance_status;
 #[cfg(test)]
 mod v20260329080000_acceptance_status_tests;
+mod v20260330000000_verification_confirmation_status;
+#[cfg(test)]
+mod v20260330000000_verification_confirmation_status_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i64 = 20260329130000;
+pub const SCHEMA_VERSION: i64 = 20260330000000;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -707,6 +710,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 20260329130000,
         name: "acceptance_status",
         migrate: v20260329080000_acceptance_status::migrate,
+    },
+    Migration {
+        version: 20260330000000,
+        name: "verification_confirmation_status",
+        migrate: v20260330000000_verification_confirmation_status::migrate,
     },
 ];
 

@@ -150,79 +150,41 @@ pub async fn create_plan_artifact(
         {
             Ok(true) => {}
             Ok(false) => {
-                tracing::warn!(
-                    "Verification agent failed to spawn for session {}",
-                    session_id.as_str()
-                );
-                let sid_str = session_id.as_str().to_string();
-                if let Err(reset_err) = state
-                    .app_state
-                    .db
-                    .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &sid_str))
-                    .await
-                {
-                    error!(
-                        "Failed to reset auto-verify state for session {} after spawn failure: {}",
-                        session_id.as_str(),
-                        reset_err
-                    );
-                } else if let Some(app_handle) = &state.app_state.app_handle {
-                    emit_verification_status_changed(
-                        app_handle,
-                        session_id.as_str(),
-                        VerificationStatus::Unverified,
-                        false,
-                        None,
-                        Some("spawn_failed"),
-                        Some(generation),
-                    );
-                }
+                crate::http_server::handlers::verification::handle_spawn_failure(
+                    &state,
+                    &session_id,
+                    generation,
+                    None,
+                )
+                .await;
             }
             Err(e) => {
-                error!(
-                    "Auto-verifier spawn failed for session {}: {}",
-                    session_id.as_str(),
-                    e
-                );
-                let sid_str = session_id.as_str().to_string();
-                if let Err(reset_err) = state
-                    .app_state
-                    .db
-                    .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &sid_str))
-                    .await
-                {
-                    error!(
-                        "Failed to reset auto-verify state for session {} after spawn failure: {}",
-                        session_id.as_str(),
-                        reset_err
-                    );
-                } else if let Some(app_handle) = &state.app_state.app_handle {
-                    emit_verification_status_changed(
-                        app_handle,
-                        session_id.as_str(),
-                        VerificationStatus::Unverified,
-                        false,
-                        None,
-                        Some("spawn_failed"),
-                        Some(generation),
-                    );
-                }
+                crate::http_server::handlers::verification::handle_spawn_failure(
+                    &state,
+                    &session_id,
+                    generation,
+                    Some(&e),
+                )
+                .await;
             }
         }
     } else if session_origin != SessionOrigin::External {
-        // UI session without auto-verify: insert PendingVerification and emit confirmation event
-        let cfg = verification_config();
-        let pending = crate::application::app_state::PendingVerification {
-            session_id: session_id.as_str().to_string(),
-            session_title: session_title.clone().unwrap_or_default(),
-            plan_artifact_id: created.id.as_str().to_string(),
-            available_specialists: cfg.specialists.clone(),
-            created_at: chrono::Utc::now(),
-        };
+        // UI session without auto-verify: set DB status to 'pending' (D7: also resets 'rejected')
+        // and emit confirmation event so the UI shows the dialog immediately.
+        if let Err(e) = state
+            .app_state
+            .ideation_session_repo
+            .set_verification_confirmation_status(
+                &session_id,
+                Some(crate::domain::entities::VerificationConfirmationStatus::Pending),
+            )
+            .await
         {
-            let mut pending_verifications =
-                state.app_state.pending_verifications.lock().await;
-            pending_verifications.insert(session_id.as_str().to_string(), pending);
+            tracing::warn!(
+                error = %e,
+                "Failed to set verification_confirmation_status to pending for session {} (non-fatal)",
+                session_id.as_str()
+            );
         }
         if let Some(app_handle) = &state.app_state.app_handle {
             crate::domain::services::emit_verification_pending_confirmation(

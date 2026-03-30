@@ -29,6 +29,7 @@ import {
 import { useIdeationEvents } from "@/hooks/useIdeationEvents";
 import { usePlanArtifactEvents } from "@/hooks/useEvents.planArtifact";
 import { useVerificationEvents } from "@/hooks/useVerificationEvents";
+import { useVerificationBootstrap } from "@/hooks/useVerificationBootstrap";
 import { useFreshnessBlockedNotification } from "@/hooks/useFreshnessBlockedNotification";
 import { useGlobalAgentLifecycle } from "@/hooks/useGlobalAgentLifecycle";
 import { createEventBus, type EventBus } from "@/lib/event-bus";
@@ -85,6 +86,7 @@ function GlobalEventListeners({ children }: { children: ReactNode }) {
   useIdeationEvents(); // Listen to ideation events (session title updates)
   usePlanArtifactEvents(); // Listen to plan artifact events for real-time updates
   useVerificationEvents(); // Listen to plan verification status changes globally
+  useVerificationBootstrap(); // Hydrate pending verification confirmations on startup and project switch
   useFreshnessBlockedNotification(); // Show toast when task is freshness-blocked
   useGlobalAgentLifecycle(); // Global agent lifecycle → agentStatus for all sessions
 

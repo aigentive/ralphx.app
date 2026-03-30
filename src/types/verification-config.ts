@@ -50,6 +50,22 @@ export const PendingVerificationEventSchema = z.object({
 export type PendingVerificationEvent = z.infer<typeof PendingVerificationEventSchema>;
 
 // ============================================================================
+// Pending confirmations API response
+// ============================================================================
+
+export const PendingVerificationConfirmationItemSchema = z.object({
+  session_id: z.string(),
+  title: z.string(),
+  plan_artifact_id: z.string(),
+});
+
+export type PendingVerificationConfirmationItem = z.infer<typeof PendingVerificationConfirmationItemSchema>;
+
+export const PendingVerificationConfirmationsResponseSchema = z.array(PendingVerificationConfirmationItemSchema);
+
+export type PendingVerificationConfirmationsResponse = z.infer<typeof PendingVerificationConfirmationsResponseSchema>;
+
+// ============================================================================
 // Queue item (used in uiStore pendingVerificationQueue)
 // ============================================================================
 

@@ -4,8 +4,21 @@
  * Endpoints at :3847 backend. Follows same fetch pattern as ideation.ts acceptance section.
  */
 
-import { SpecialistsResponseSchema } from "@/types/verification-config";
-import type { SpecialistsResponse } from "@/types/verification-config";
+import { SpecialistsResponseSchema, PendingVerificationConfirmationsResponseSchema } from "@/types/verification-config";
+import type { SpecialistsResponse, PendingVerificationConfirmationsResponse } from "@/types/verification-config";
+
+// ============================================================================
+// Internal helper
+// ============================================================================
+
+async function verificationFetch<T>(url: string, init: RequestInit, label: string): Promise<T> {
+  const res = await fetch(url, init);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+    throw new Error((body as { error?: string }).error ?? `${label}: ${res.status}`);
+  }
+  return await res.json() as T;
+}
 
 export const verificationApi = {
   /**
@@ -14,16 +27,15 @@ export const verificationApi = {
    * and initiating fresh verification when no pending entry exists (user-initiated path).
    */
   confirm: async (sessionId: string, disabledSpecialists: string[]): Promise<{ status: string }> => {
-    const res = await fetch(`http://localhost:3847/api/verification/confirm`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: sessionId, disabled_specialists: disabledSpecialists }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-      throw new Error((body as { error?: string }).error ?? `Confirm verification failed: ${res.status}`);
-    }
-    return await res.json() as { status: string };
+    return verificationFetch(
+      `http://localhost:3847/api/verification/confirm`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, disabled_specialists: disabledSpecialists }),
+      },
+      "Confirm verification failed"
+    );
   },
 
   /**
@@ -31,16 +43,15 @@ export const verificationApi = {
    * No-op if no pending entry exists.
    */
   dismiss: async (sessionId: string): Promise<{ status: string }> => {
-    const res = await fetch(`http://localhost:3847/api/verification/dismiss`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: sessionId }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-      throw new Error((body as { error?: string }).error ?? `Dismiss verification failed: ${res.status}`);
-    }
-    return await res.json() as { status: string };
+    return verificationFetch(
+      `http://localhost:3847/api/verification/dismiss`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId }),
+      },
+      "Dismiss verification failed"
+    );
   },
 
   /**
@@ -48,16 +59,15 @@ export const verificationApi = {
    * Also tracked in uiStore for frontend-only auto-accept logic.
    */
   setAutoAccept: async (sessionId: string, enabled: boolean): Promise<{ status: string }> => {
-    const res = await fetch(`http://localhost:3847/api/verification/auto-accept`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: sessionId, enabled }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-      throw new Error((body as { error?: string }).error ?? `Set auto-accept failed: ${res.status}`);
-    }
-    return await res.json() as { status: string };
+    return verificationFetch(
+      `http://localhost:3847/api/verification/auto-accept`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, enabled }),
+      },
+      "Set auto-accept failed"
+    );
   },
 
   /**
@@ -70,5 +80,19 @@ export const verificationApi = {
       throw new Error(`Failed to get specialists: ${res.status}`);
     }
     return SpecialistsResponseSchema.parse(await res.json());
+  },
+
+  /**
+   * Get pending verification confirmations for a project.
+   * Returns sessions with verification_confirmation_status = 'pending'.
+   * Used by useVerificationBootstrap to hydrate the queue on startup and project switch.
+   */
+  getPendingVerificationConfirmations: async (projectId: string): Promise<PendingVerificationConfirmationsResponse> => {
+    const data = await verificationFetch<unknown>(
+      `http://localhost:3847/api/verification/pending-confirmations?project_id=${encodeURIComponent(projectId)}`,
+      {},
+      "Failed to get pending confirmations"
+    );
+    return PendingVerificationConfirmationsResponseSchema.parse(data);
   },
 } as const;

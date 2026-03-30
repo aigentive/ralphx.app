@@ -207,6 +207,7 @@ mod tests {
             dependencies_acknowledged: false,
             pending_initial_prompt: None,
             acceptance_status: None,
+            verification_confirmation_status: None,
         }
     }
 
