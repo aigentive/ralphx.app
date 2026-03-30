@@ -1,5 +1,5 @@
 use super::*;
-use super::helpers::handle_verification_spawn_failure;
+use super::helpers::spawn_verification_agent;
 
 pub async fn confirm_verification(
     State(state): State<HttpServerState>,
@@ -20,11 +20,9 @@ pub async fn confirm_verification(
         .await
         .map_err(map_app_err_local)?;
 
-    let cfg = verification_config();
-
     // Run transaction: verify session exists + trigger auto-verify
     let sid_clone = session_id_str.clone();
-    let (session_id, generation) = state
+    let (session_id, maybe_generation) = state
         .app_state
         .db
         .run_transaction(move |conn| {
@@ -33,13 +31,7 @@ pub async fn confirm_verification(
             let _session = SessionRepo::get_by_id_sync(conn, sid.as_str())?
                 .ok_or_else(|| AppError::NotFound(format!("Session {} not found", sid)))?;
 
-            let generation = SessionRepo::trigger_auto_verify_sync(conn, sid.as_str())?
-                .ok_or_else(|| {
-                    AppError::Infrastructure(
-                        "trigger_auto_verify_sync returned None — session may already be verifying"
-                            .to_string(),
-                    )
-                })?;
+            let generation = SessionRepo::trigger_auto_verify_sync(conn, sid.as_str())?;
 
             Ok((sid, generation))
         })
@@ -49,36 +41,28 @@ pub async fn confirm_verification(
             map_app_err_local(e)
         })?;
 
-    // Emit verification started event
-    if let Some(app_handle) = &state.app_state.app_handle {
-        emit_verification_started(app_handle, session_id.as_str(), generation, cfg.max_rounds);
-    }
-
-    // Build description (includes DISABLED_SPECIALISTS if any — injected by create_verification_child_session)
-    let description = format!(
-        "Run verification round loop. parent_session_id: {}, generation: {generation}, max_rounds: {}",
-        session_id.as_str(),
-        cfg.max_rounds
-    );
-    let title = format!("Auto-verification (gen {generation})");
-
-    match crate::http_server::handlers::session_linking::create_verification_child_session(
-        &state,
-        session_id.as_str(),
-        &description,
-        &title,
-        &disabled_specialists,
-    )
-    .await
-    {
-        Ok(true) => {}
-        Ok(false) => {
-            handle_verification_spawn_failure(&state, &session_id, generation, None).await;
+    // When trigger returns None, verification may already be running — check before erroring.
+    let generation = match maybe_generation {
+        Some(gen) => gen,
+        None => {
+            let vs = state
+                .app_state
+                .ideation_session_repo
+                .get_verification_status(&session_id)
+                .await
+                .map_err(map_app_err_local)?;
+            if matches!(vs, Some((_, true, _))) {
+                // Verification already running — idempotent success.
+                return Ok(Json(VerificationActionResponse {
+                    status: "ok".to_string(),
+                }));
+            }
+            error!("confirm_verification: trigger_auto_verify_sync returned None and verification is not running");
+            return Err(HttpError::from(StatusCode::INTERNAL_SERVER_ERROR));
         }
-        Err(e) => {
-            handle_verification_spawn_failure(&state, &session_id, generation, Some(&e)).await;
-        }
-    }
+    };
+
+    spawn_verification_agent(&state, &session_id, generation, &disabled_specialists).await;
 
     Ok(Json(VerificationActionResponse {
         status: "ok".to_string(),

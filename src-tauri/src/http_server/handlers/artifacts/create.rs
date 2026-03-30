@@ -16,7 +16,7 @@ pub async fn create_plan_artifact(
         auto_accept.contains(&session_id_str)
     };
 
-    let (session_id, created, auto_verify_generation, project_id, session_origin, session_title) =
+    let (session_id, created, auto_verify_generation, project_id, session_origin, session_title, should_auto_verify) =
         state
             .app_state
             .db
@@ -59,14 +59,21 @@ pub async fn create_plan_artifact(
                 SessionRepo::update_plan_version_last_read_sync(conn, sid.as_str(), 1)?;
 
                 let auto_verify_generation = if should_auto_verify {
-                    SessionRepo::trigger_auto_verify_sync(conn, sid.as_str())?
+                    let gen = SessionRepo::trigger_auto_verify_sync(conn, sid.as_str())?;
+                    if gen.is_some() {
+                        conn.execute(
+                            "UPDATE ideation_sessions SET verification_confirmation_status = NULL WHERE id = ?1",
+                            rusqlite::params![sid.as_str()],
+                        )?;
+                    }
+                    gen
                 } else {
                     None
                 };
 
                 let session_title = session.title.clone();
                 let session_origin = session.origin.clone();
-                Ok((sid, created, auto_verify_generation, session.project_id.clone(), session_origin, session_title))
+                Ok((sid, created, auto_verify_generation, session.project_id.clone(), session_origin, session_title, should_auto_verify))
             })
             .await
             .map_err(|e| {
@@ -129,43 +136,64 @@ pub async fn create_plan_artifact(
     }
 
     if let Some(generation) = auto_verify_generation {
-        let cfg = verification_config();
-        if let Some(app_handle) = &state.app_state.app_handle {
-            emit_verification_started(app_handle, session_id.as_str(), generation, cfg.max_rounds);
-        }
-        let title = format!("Auto-verification (gen {generation})");
-        let description = format!(
-            "Run verification round loop. parent_session_id: {}, generation: {generation}, max_rounds: {}",
-            session_id.as_str(),
-            cfg.max_rounds
-        );
-        match crate::http_server::handlers::session_linking::create_verification_child_session(
+        let spawned = crate::http_server::handlers::verification::spawn_verification_agent(
             &state,
-            session_id.as_str(),
-            &description,
-            &title,
+            &session_id,
+            generation,
             &[],
         )
-        .await
-        {
-            Ok(true) => {}
-            Ok(false) => {
-                crate::http_server::handlers::verification::handle_spawn_failure(
-                    &state,
+        .await;
+        if !spawned {
+            if let Err(e) = state
+                .app_state
+                .ideation_session_repo
+                .set_verification_confirmation_status(
                     &session_id,
-                    generation,
-                    None,
+                    Some(crate::domain::entities::VerificationConfirmationStatus::Pending),
                 )
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    error = %e,
+                    "Failed to re-set verification_confirmation_status to pending after spawn failure for session {} (non-fatal)",
+                    session_id.as_str()
+                );
+            }
+        }
+    } else if should_auto_verify {
+        // should_auto_verify=true but trigger returned None: session is already-verifying
+        // or has ImportedVerified status. Check which case for observability, then suppress
+        // dialog in either case — no pending_confirmation event for duplicate calls or
+        // pre-verified sessions.
+        match state
+            .app_state
+            .ideation_session_repo
+            .get_verification_status(&session_id)
+            .await
+        {
+            Ok(Some((status, verification_in_progress, _))) => {
+                if !verification_in_progress
+                    && !matches!(status, VerificationStatus::ImportedVerified)
+                {
+                    tracing::warn!(
+                        session_id = session_id.as_str(),
+                        ?status,
+                        "trigger_auto_verify_sync returned None unexpectedly (not in_progress, not ImportedVerified); suppressing dialog"
+                    );
+                }
+            }
+            Ok(None) => {
+                tracing::warn!(
+                    session_id = session_id.as_str(),
+                    "Session not found when checking verification status after trigger=None"
+                );
             }
             Err(e) => {
-                crate::http_server::handlers::verification::handle_spawn_failure(
-                    &state,
-                    &session_id,
-                    generation,
-                    Some(&e),
-                )
-                .await;
+                tracing::warn!(
+                    error = %e,
+                    session_id = session_id.as_str(),
+                    "Failed to fetch verification status after trigger=None (non-fatal)"
+                );
             }
         }
     } else if session_origin != SessionOrigin::External {

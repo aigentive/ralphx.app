@@ -33,6 +33,7 @@ pub use confirmation_status::get_confirmation_status;
 pub use confirm::confirm_verification;
 pub use dismiss::dismiss_verification;
 pub use helpers::handle_verification_spawn_failure as handle_spawn_failure;
+pub use helpers::spawn_verification_agent;
 pub use pending_confirmations::get_pending_verification_confirmations;
 pub use specialist_registry::get_verification_specialists;
 

@@ -21,6 +21,8 @@ export function useIdeationHandlers(
   const [isPlanExpanded, setIsPlanExpanded] = useState(false);
   const [importStatus, setImportStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isImportingRef = useRef<boolean>(false);
+  const importTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const updateSession = useIdeationStore((state) => state.updateSession);
 
   const handleArchive = useCallback(() => {
@@ -62,83 +64,63 @@ export function useIdeationHandlers(
 
   const handleImportPlan = useCallback(() => fileInputRef.current?.click(), []);
 
-  const handleFileSelected = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const importPlanContent = useCallback(async (title: string, content: string) => {
     if (!session) return;
+    if (isImportingRef.current) return;
+
+    isImportingRef.current = true;
+    try {
+      const apiResponse = await fetch("http://localhost:3847/api/create_plan_artifact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: session.id, title, content }),
+      });
+
+      if (!apiResponse.ok) throw new Error("Failed to import plan");
+
+      const data = await apiResponse.json();
+      if (data.id) {
+        await fetchPlanArtifact(data.id);
+        // Update session in store so planArtifactId persists across navigation
+        updateSession(session.id, { planArtifactId: data.id });
+        if (importTimeoutRef.current !== null) clearTimeout(importTimeoutRef.current);
+        setImportStatus({ type: "success", message: `Plan "${title}" imported successfully` });
+        importTimeoutRef.current = setTimeout(() => setImportStatus(null), 5000);
+
+        // Spawn session namer agent with plan content as context (fire-and-forget)
+        const contentPreview = content.slice(0, 500);
+        const context = `Plan imported: "${title}"\n\nContent preview:\n${contentPreview}`;
+        ideationApi.sessions.spawnSessionNamer(session.id, context).catch((err) => {
+          console.error("Failed to spawn session namer:", err);
+        });
+      }
+    } catch (error) {
+      console.error("Plan import error:", error);
+      if (importTimeoutRef.current !== null) clearTimeout(importTimeoutRef.current);
+      setImportStatus({ type: "error", message: error instanceof Error ? error.message : "Failed to import plan" });
+      importTimeoutRef.current = setTimeout(() => setImportStatus(null), 5000);
+    } finally {
+      isImportingRef.current = false;
+    }
+  }, [session, fetchPlanArtifact, updateSession]);
+
+  const handleFileSelected = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     try {
       const content = await file.text();
       const title = file.name.replace(/\.md$/, "").replace(/_/g, " ");
-
-      const apiResponse = await fetch("http://localhost:3847/api/create_plan_artifact", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: session.id, title, content }),
-      });
-
-      if (!apiResponse.ok) throw new Error("Failed to import plan");
-
-      const data = await apiResponse.json();
-      if (data.id) {
-        await fetchPlanArtifact(data.id);
-        // Update session in store so planArtifactId persists across navigation
-        updateSession(session.id, { planArtifactId: data.id });
-        setImportStatus({ type: "success", message: `Plan "${title}" imported successfully` });
-        setTimeout(() => setImportStatus(null), 5000);
-
-        // Spawn session namer agent with plan content as context (fire-and-forget)
-        const contentPreview = content.slice(0, 500);
-        const context = `Plan imported: "${title}"\n\nContent preview:\n${contentPreview}`;
-        ideationApi.sessions.spawnSessionNamer(session.id, context).catch((err) => {
-          console.error("Failed to spawn session namer:", err);
-        });
-      }
-    } catch (error) {
-      console.error("Plan import error:", error);
-      setImportStatus({ type: "error", message: error instanceof Error ? error.message : "Failed to import plan" });
-      setTimeout(() => setImportStatus(null), 5000);
+      await importPlanContent(title, content);
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [session, fetchPlanArtifact, updateSession]);
+  }, [importPlanContent]);
 
   // Handler for drag-and-drop file import (used with useFileDrop)
   const handleFileDrop = useCallback(async (file: File, content: string) => {
-    if (!session) return;
-
-    try {
-      const title = file.name.replace(/\.md$/, "").replace(/_/g, " ");
-
-      const apiResponse = await fetch("http://localhost:3847/api/create_plan_artifact", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: session.id, title, content }),
-      });
-
-      if (!apiResponse.ok) throw new Error("Failed to import plan");
-
-      const data = await apiResponse.json();
-      if (data.id) {
-        await fetchPlanArtifact(data.id);
-        // Update session in store so planArtifactId persists across navigation
-        updateSession(session.id, { planArtifactId: data.id });
-        setImportStatus({ type: "success", message: `Plan "${title}" imported successfully` });
-        setTimeout(() => setImportStatus(null), 5000);
-
-        // Spawn session namer agent with plan content as context (fire-and-forget)
-        const contentPreview = content.slice(0, 500);
-        const context = `Plan imported: "${title}"\n\nContent preview:\n${contentPreview}`;
-        ideationApi.sessions.spawnSessionNamer(session.id, context).catch((err) => {
-          console.error("Failed to spawn session namer:", err);
-        });
-      }
-    } catch (error) {
-      console.error("Plan import error:", error);
-      setImportStatus({ type: "error", message: error instanceof Error ? error.message : "Failed to import plan" });
-      setTimeout(() => setImportStatus(null), 5000);
-    }
-  }, [session, fetchPlanArtifact, updateSession]);
+    const title = file.name.replace(/\.md$/, "").replace(/_/g, " ");
+    await importPlanContent(title, content);
+  }, [importPlanContent]);
 
   return {
     highlightedProposalIds,
