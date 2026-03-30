@@ -4,12 +4,12 @@
 
 ## Priority Zero — Owner Strategy Alignment (NON-NEGOTIABLE)
 
-Before ANY user-facing content, documentation, UI copy, or messaging work, agents MUST read:
-- `@~/.ralphx/founder/founder-profile.md` — Owner vision and non-negotiables
-- `@~/.ralphx/strategy/project-goal-card.md` — Messaging architecture, positioning, ICPs, competitive landscape
-- `@~/.ralphx/strategy/project-metrics.md` — Verifiable project data points
+Before ANY user-facing content, documentation, UI copy, or messaging work, agents MUST load these on demand:
+- `~/.ralphx/founder/founder-profile.md` — Owner vision and non-negotiables
+- `~/.ralphx/strategy/project-goal-card.md` — Messaging architecture, positioning, ICPs, competitive landscape
+- `~/.ralphx/strategy/project-metrics.md` — Verifiable project data points
 
-These are the **owner's directives**. They override default agent judgment on messaging.
+These are the **owner's directives**. They override default agent judgment on messaging. Do not keep them as always-on `@` imports in project memory.
 
 ---
 
@@ -42,6 +42,7 @@ This is a **large codebase** (~100k+ lines across Rust backend + React frontend)
 | **Teammates are disposable, context is not** | Spawn cheap subagents liberally. Your context window is expensive — don't fill it with raw code. Have subagents summarize findings. |
 | **Research via agents, not yourself** | Before ANY implementation: spawn a research agent to gather context. Don't read the code yourself — get a summary back. |
 | **Memory files exist — use them** | Check your auto-memory `MEMORY.md` (at `~/.claude/projects/<project-slug>/memory/`) before exploring. Past findings are already there. |
+| **Always-on memory stays minimal** | Only universal invariants belong in always-loaded `CLAUDE.md` / unconditional `.claude/rules/*.md`. Specialized guidance → path-scoped rules, skills, or on-demand file reads. |
 
 ## Team Management
 > Apply whenever TeamCreate is available (includes delegate/team mode).

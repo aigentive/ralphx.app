@@ -1,3 +1,20 @@
+---
+paths:
+  - "src-tauri/src/domain/state_machine/**"
+  - "src-tauri/src/application/task_transition_service.rs"
+  - "src-tauri/src/application/task_scheduler_service.rs"
+  - "src-tauri/src/application/chat_service/**"
+  - "src-tauri/src/commands/**"
+  - "src-tauri/src/http_server/**"
+  - "src/hooks/useAgentEvents.ts"
+  - "src/components/Chat/**"
+  - "ralphx-plugin/agents/plan-verifier.md"
+  - "ralphx-plugin/agents/plan-critic-*.md"
+  - "ralphx-plugin/agents/ideation-team-lead.md"
+  - "ralphx-plugin/agents/orchestrator-ideation.md"
+  - "ralphx-plugin/agents/ideation-specialist-*.md"
+---
+
 > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
 
 # Synthetic Failure Archetype Reference

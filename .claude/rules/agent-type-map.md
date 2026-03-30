@@ -1,3 +1,20 @@
+---
+paths:
+  - "ralphx.yaml"
+  - "ralphx-plugin/agents/**"
+  - "ralphx-plugin/ralphx-mcp-server/src/**"
+  - "src-tauri/src/infrastructure/agents/**"
+  - "src-tauri/src/application/chat_service/**"
+  - "src-tauri/src/commands/execution_commands.rs"
+  - "src-tauri/src/commands/execution_commands/**"
+  - "src-tauri/src/domain/entities/chat_conversation.rs"
+  - "src/types/chat-conversation.ts"
+  - "src/lib/chat-context-registry.ts"
+  - "src/stores/chatStore.ts"
+  - "src/hooks/useAgentEvents.ts"
+  - "src/components/Chat/**"
+---
+
 # Agent Type Map
 
 > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
