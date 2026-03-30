@@ -5,10 +5,12 @@
  * - update_plan_verification: verification state (round, gaps, convergence)
  * - get_plan_verification: verification state reader
  * - get_child_session_status: child session status check
+ * - get_verification_confirmation_status: confirmation status for a session
+ * - get_pending_confirmations: pending confirmations count
  */
 
 import React from "react";
-import { ShieldCheck, GitBranch } from "lucide-react";
+import { ShieldCheck, GitBranch, Bell } from "lucide-react";
 import { InlineIndicator, Badge, WidgetRow } from "./shared";
 import {
   colors,
@@ -18,6 +20,7 @@ import {
   getBool,
   parseMcpToolResult,
   truncatedTitleStyle,
+  badgeStyles,
 } from "./shared.constants";
 import type { ToolCallWidgetProps, BadgeVariant } from "./shared.constants";
 
@@ -28,13 +31,17 @@ import type { ToolCallWidgetProps, BadgeVariant } from "./shared.constants";
 type VerificationTool =
   | "update_plan_verification"
   | "get_plan_verification"
-  | "get_child_session_status";
+  | "get_child_session_status"
+  | "get_verification_confirmation_status"
+  | "get_pending_confirmations";
 
 function getToolType(toolName: string): VerificationTool | null {
   const name = toolName.toLowerCase();
   if (name.includes("update_plan_verification")) return "update_plan_verification";
   if (name.includes("get_plan_verification")) return "get_plan_verification";
   if (name.includes("get_child_session_status")) return "get_child_session_status";
+  if (name.includes("get_verification_confirmation_status")) return "get_verification_confirmation_status";
+  if (name.includes("get_pending_confirmations")) return "get_pending_confirmations";
   return null;
 }
 
@@ -204,6 +211,57 @@ function ChildSessionStatus({ toolCall, compact }: ToolCallWidgetProps) {
   );
 }
 
+function VerificationConfirmationStatus({ toolCall, compact }: ToolCallWidgetProps) {
+  const parsed = parseMcpToolResult(toolCall.result);
+  const status = getString(parsed, "status");
+
+  if (!status) {
+    return (
+      <InlineIndicator
+        icon={<ShieldCheck size={11} style={{ color: colors.textMuted }} />}
+        text="Checking confirmation status..."
+      />
+    );
+  }
+
+  const variant: BadgeVariant = status === "pending" ? "accent" : "muted";
+  const label = status === "pending" ? "Pending" : status === "not_applicable" ? "N/A" : status;
+  const iconColor = badgeStyles[variant].color;
+
+  return (
+    <WidgetRow compact={compact}>
+      <ShieldCheck size={12} style={{ color: iconColor, flexShrink: 0 }} />
+      <Badge variant={variant} compact>{label}</Badge>
+    </WidgetRow>
+  );
+}
+
+function PendingConfirmations({ toolCall, compact }: ToolCallWidgetProps) {
+  const parsed = parseMcpToolResult(toolCall.result);
+  const sessions = getArray(parsed, "sessions");
+
+  if (!sessions) {
+    return (
+      <InlineIndicator
+        icon={<Bell size={11} style={{ color: colors.textMuted }} />}
+        text="Checking pending confirmations..."
+      />
+    );
+  }
+
+  const count = sessions.length;
+  const variant: BadgeVariant = count > 0 ? "accent" : "muted";
+  const label = count > 0 ? `${count} pending` : "No pending";
+  const iconColor = badgeStyles[variant].color;
+
+  return (
+    <WidgetRow compact={compact}>
+      <Bell size={12} style={{ color: iconColor, flexShrink: 0 }} />
+      <Badge variant={variant} compact>{label}</Badge>
+    </WidgetRow>
+  );
+}
+
 // ============================================================================
 // VerificationWidget (main component)
 // ============================================================================
@@ -218,6 +276,10 @@ export const VerificationWidget = React.memo(function VerificationWidget(props: 
       return <GetVerification {...props} />;
     case "get_child_session_status":
       return <ChildSessionStatus {...props} />;
+    case "get_verification_confirmation_status":
+      return <VerificationConfirmationStatus {...props} />;
+    case "get_pending_confirmations":
+      return <PendingConfirmations {...props} />;
     default:
       return <InlineIndicator text={props.toolCall.name} />;
   }

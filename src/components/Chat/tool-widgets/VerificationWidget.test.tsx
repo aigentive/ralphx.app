@@ -160,4 +160,82 @@ describe("VerificationWidget", () => {
       expect(screen.getByText("Idle")).toBeInTheDocument();
     });
   });
+
+  describe("VerificationConfirmationStatus (get_verification_confirmation_status)", () => {
+    it("shows loading state when result has no status", () => {
+      const toolCall = makeToolCall("mcp__ralphx__get_verification_confirmation_status", {
+        result: mcpWrap({}),
+      });
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("Checking confirmation status...")).toBeInTheDocument();
+    });
+
+    it("renders pending status badge", () => {
+      const toolCall = makeToolCall("mcp__ralphx__get_verification_confirmation_status", {
+        result: mcpWrap({ status: "pending" }),
+      });
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("Pending")).toBeInTheDocument();
+    });
+
+    it("renders not_applicable status badge as N/A", () => {
+      const toolCall = makeToolCall("mcp__ralphx__get_verification_confirmation_status", {
+        result: mcpWrap({ status: "not_applicable" }),
+      });
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("N/A")).toBeInTheDocument();
+    });
+
+    it("renders unknown status fallback with raw status text", () => {
+      const toolCall = makeToolCall("mcp__ralphx__get_verification_confirmation_status", {
+        result: mcpWrap({ status: "some_future_status" }),
+      });
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("some_future_status")).toBeInTheDocument();
+    });
+
+    it("shows loading state when result is undefined", () => {
+      const toolCall = makeToolCall("mcp__ralphx__get_verification_confirmation_status");
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("Checking confirmation status...")).toBeInTheDocument();
+    });
+  });
+
+  describe("PendingConfirmations (get_pending_confirmations)", () => {
+    it("shows loading state when result has no sessions", () => {
+      const toolCall = makeToolCall("mcp__ralphx__get_pending_confirmations", {
+        result: mcpWrap({}),
+      });
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("Checking pending confirmations...")).toBeInTheDocument();
+    });
+
+    it("renders 'No pending' badge when sessions is empty", () => {
+      const toolCall = makeToolCall("mcp__ralphx__get_pending_confirmations", {
+        result: mcpWrap({ sessions: [] }),
+      });
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("No pending")).toBeInTheDocument();
+    });
+
+    it("renders count badge when sessions are present", () => {
+      const toolCall = makeToolCall("mcp__ralphx__get_pending_confirmations", {
+        result: mcpWrap({
+          sessions: [
+            { session_id: "s1", session_title: "Session A" },
+            { session_id: "s2", session_title: "Session B" },
+            { session_id: "s3", session_title: null },
+          ],
+        }),
+      });
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("3 pending")).toBeInTheDocument();
+    });
+
+    it("shows loading state when result is undefined", () => {
+      const toolCall = makeToolCall("mcp__ralphx__get_pending_confirmations");
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("Checking pending confirmations...")).toBeInTheDocument();
+    });
+  });
 });
