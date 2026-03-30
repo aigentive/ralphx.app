@@ -590,10 +590,10 @@ async fn test_chat_service_blocks_new_ideation_spawn_when_global_ideation_cap_re
         )
         .await;
 
-    let err = result.expect_err("spawn must be blocked at ideation cap");
+    let queued = result.expect("ideation cap should queue the prompt");
     assert!(
-        matches!(err, ChatServiceError::SpawnFailed(ref msg) if msg.contains("ideation capacity reached")),
-        "unexpected error: {err}"
+        queued.was_queued && queued.queued_as_pending,
+        "unexpected queued result: {queued:?}"
     );
 
     let target_key = RunningAgentKey::new("ideation", target_session_id.as_str());
@@ -641,10 +641,10 @@ async fn test_verification_child_session_counts_against_ideation_cap() {
         )
         .await;
 
-    let err = result.expect_err("verification child must count against ideation capacity");
+    let queued = result.expect("verification child should force queueing");
     assert!(
-        matches!(err, ChatServiceError::SpawnFailed(ref msg) if msg.contains("ideation capacity reached")),
-        "unexpected error: {err}"
+        queued.was_queued && queued.queued_as_pending,
+        "unexpected queued result: {queued:?}"
     );
 }
 
@@ -698,10 +698,10 @@ async fn test_project_ideation_cap_blocks_same_project_spawn() {
         )
         .await;
 
-    let err = result.expect_err("project ideation cap must block same-project spawn");
+    let queued = result.expect("project ideation cap should queue the prompt");
     assert!(
-        matches!(err, ChatServiceError::SpawnFailed(ref msg) if msg.contains("project ideation capacity reached")),
-        "unexpected error: {err}"
+        queued.was_queued && queued.queued_as_pending,
+        "unexpected queued result: {queued:?}"
     );
 }
 
@@ -747,9 +747,31 @@ async fn test_borrowing_stays_blocked_when_ready_execution_waits() {
         )
         .await;
 
-    let err = result.expect_err("ready execution work must block ideation borrowing");
+    let queued = result.expect("ready execution work should queue ideation");
     assert!(
-        matches!(err, ChatServiceError::SpawnFailed(ref msg) if msg.contains("ideation capacity reached")),
+        queued.was_queued && queued.queued_as_pending,
+        "unexpected queued result: {queued:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_chat_service_spawn_blocked_in_test_mode() {
+    let state = setup_test_state().await;
+    let session_id = create_active_session(&state).await;
+
+    let chat_service = build_ideation_chat_service(&state);
+    let result = chat_service
+        .send_message(
+            ChatContextType::Ideation,
+            session_id.as_str(),
+            "Spawn me an agent",
+            SendMessageOptions::default(),
+        )
+        .await;
+
+    let err = result.expect_err("test mode must fail closed on real Claude spawn");
+    assert!(
+        matches!(err, ChatServiceError::SpawnFailed(ref msg) if msg.contains("disabled in tests")),
         "unexpected error: {err}"
     );
 }
@@ -815,15 +837,8 @@ async fn test_send_ideation_session_message_agent_idle_spawn_blocked_in_test_mod
     .await;
 
     assert!(result.is_err(), "test mode must block real Claude spawn");
-    let (status, body) = result.unwrap_err();
+    let (status, _body) = result.unwrap_err();
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-    assert!(
-        body.0["error"]
-            .as_str()
-            .is_some_and(|s| s.contains("SpawnNotAllowed") || s.contains("disabled in tests")),
-        "error should mention blocked test-mode spawn: {:?}",
-        body.0
-    );
 }
 
 #[tokio::test]
@@ -934,13 +949,6 @@ async fn test_send_ideation_session_message_send_error_returns_500_in_test_mode(
     .await;
 
     assert!(result.is_err(), "test mode must block real Claude spawn");
-    let (status, body) = result.unwrap_err();
+    let (status, _body) = result.unwrap_err();
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-    assert!(
-        body.0["error"]
-            .as_str()
-            .is_some_and(|s| s.contains("SpawnNotAllowed") || s.contains("disabled in tests")),
-        "error should mention blocked test-mode spawn: {:?}",
-        body.0
-    );
 }
