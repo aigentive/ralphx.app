@@ -299,3 +299,12 @@ fn extract_restart_note(metadata: Option<&str>) -> Option<String> {
         Some(note.to_string())
     }
 }
+
+/// Extract `preserve_steps` boolean from task metadata JSON.
+/// Returns `true` if the key exists and is `true`, `false` otherwise.
+fn extract_preserve_steps(metadata: Option<&str>) -> bool {
+    metadata
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+        .and_then(|v| v.get("preserve_steps")?.as_bool())
+        .unwrap_or(false)
+}

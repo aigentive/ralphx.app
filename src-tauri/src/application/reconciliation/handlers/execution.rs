@@ -18,6 +18,7 @@ use crate::domain::entities::{
     Task, TaskId,
 };
 use crate::domain::services::RunningAgentKey;
+use crate::domain::state_machine::transition_handler::metadata_builder::MetadataUpdate;
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
 use crate::infrastructure::agents::claude::reconciliation_config;
 
@@ -2099,6 +2100,15 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     );
                 }
 
+                // Set preserve_steps flag so on_enter skips step reset for manual restart
+                if let Err(e) = self.set_preserve_steps_metadata(&task).await {
+                    warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to set preserve_steps flag — steps will be reset on entry"
+                    );
+                }
+
                 // Transition Failed → Ready
                 info!(task_id = task.id.as_str(), "User manually restarting failed execution task");
                 if let Err(e) = self
@@ -2340,6 +2350,19 @@ impl<R: Runtime> ReconciliationRunner<R> {
         );
 
         Ok(())
+    }
+
+    /// Set `preserve_steps: true` in task metadata so `reset_stale_steps_on_entry()` skips the
+    /// step reset on the next entry into Executing/ReExecuting. One-shot flag — the on_enter
+    /// handler clears it after reading. Follows the existing `restart_note` pattern.
+    async fn set_preserve_steps_metadata(&self, task: &Task) -> Result<(), String> {
+        let updated = MetadataUpdate::new()
+            .with_bool("preserve_steps", true)
+            .merge_into(task.metadata.as_deref());
+        self.task_repo
+            .update_metadata(&task.id, Some(updated))
+            .await
+            .map_err(|e| e.to_string())
     }
 }
 

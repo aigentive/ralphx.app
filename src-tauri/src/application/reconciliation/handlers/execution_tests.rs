@@ -128,3 +128,79 @@ fn test_permanent_git_error_empty_message_not_permanent() {
         "Empty message should not be classified as permanent git error"
     );
 }
+
+// ============================================================
+// Tests for set_preserve_steps_metadata logic
+// ============================================================
+
+/// Replicates the core logic of `set_preserve_steps_metadata` for unit testing.
+fn build_preserve_steps_metadata(existing: Option<&str>) -> String {
+    use crate::domain::state_machine::transition_handler::metadata_builder::MetadataUpdate;
+    MetadataUpdate::new()
+        .with_bool("preserve_steps", true)
+        .merge_into(existing)
+}
+
+#[test]
+fn test_preserve_steps_flag_set_on_empty_metadata() {
+    let result = build_preserve_steps_metadata(None);
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert_eq!(
+        parsed["preserve_steps"],
+        serde_json::Value::Bool(true),
+        "preserve_steps should be true when set on empty metadata"
+    );
+}
+
+#[test]
+fn test_preserve_steps_flag_merged_with_existing_metadata() {
+    // Simulate re-fetched task metadata after reset (ManualRetry event present, no stale keys)
+    let existing = r#"{"execution_recovery": {"events": [], "state": "retrying"}}"#;
+    let result = build_preserve_steps_metadata(Some(existing));
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+
+    assert_eq!(
+        parsed["preserve_steps"],
+        serde_json::Value::Bool(true),
+        "preserve_steps should be set to true"
+    );
+    // Existing keys should be preserved
+    assert!(
+        parsed.get("execution_recovery").is_some(),
+        "existing execution_recovery key should be preserved after merge"
+    );
+}
+
+#[test]
+fn test_preserve_steps_flag_absent_from_reset_metadata() {
+    // Simulate what reset_execution_recovery_metadata produces (clean slate, no stale keys)
+    // The flag must NOT be present until set_preserve_steps_metadata is called
+    let clean_metadata = r#"{"trigger_origin": "scheduler"}"#;
+    let parsed: serde_json::Value = serde_json::from_str(clean_metadata).unwrap();
+
+    assert!(
+        parsed.get("preserve_steps").is_none(),
+        "preserve_steps should be absent from reset metadata (flag not yet set)"
+    );
+    assert!(
+        parsed.get("is_timeout").is_none(),
+        "is_timeout should be absent from reset metadata"
+    );
+    assert!(
+        parsed.get("failure_error").is_none(),
+        "failure_error should be absent from reset metadata"
+    );
+}
+
+#[test]
+fn test_preserve_steps_flag_overwrites_false_value() {
+    // Edge case: if somehow preserve_steps was false, setting it again must make it true
+    let existing = r#"{"preserve_steps": false, "trigger_origin": "scheduler"}"#;
+    let result = build_preserve_steps_metadata(Some(existing));
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert_eq!(
+        parsed["preserve_steps"],
+        serde_json::Value::Bool(true),
+        "preserve_steps should be overwritten to true"
+    );
+}

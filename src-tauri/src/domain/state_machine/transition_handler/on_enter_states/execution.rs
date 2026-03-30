@@ -184,6 +184,33 @@ impl<'a> TransitionHandler<'a> {
     }
 
     async fn reset_stale_steps_on_entry(&self, task_id_str: &str) {
+        // Check for preserve_steps flag (set by manual failed-task restart).
+        // On DB error or missing task, fall through to original reset behavior.
+        if let Some(ref task_repo) = self.machine.context.services.task_repo {
+            let task_id_typed = TaskId::from_string(task_id_str.to_string());
+            if let Ok(Some(task)) = task_repo.get_by_id(&task_id_typed).await {
+                if extract_preserve_steps(task.metadata.as_deref()) {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        "Preserving step states per manual restart flag"
+                    );
+                    // Clear the one-shot flag
+                    let cleared = MetadataUpdate::new()
+                        .with_null("preserve_steps")
+                        .merge_into(task.metadata.as_deref());
+                    let _ = task_repo.update_metadata(&task_id_typed, Some(cleared)).await;
+                    // Emit step:updated so the UI refreshes the preserved step timeline
+                    self.machine
+                        .context
+                        .services
+                        .event_emitter
+                        .emit("step:updated", task_id_str)
+                        .await;
+                    return;
+                }
+            }
+        }
+
         if let Some(ref step_repo) = self.machine.context.services.step_repo {
             let task_id_typed = TaskId::from_string(task_id_str.to_string());
             match step_repo.reset_all_to_pending(&task_id_typed).await {
