@@ -794,7 +794,7 @@ async fn test_chat_service_queues_new_ideation_message_when_execution_paused() {
 }
 
 #[tokio::test]
-async fn test_send_ideation_session_message_agent_idle_spawn_path_entered() {
+async fn test_send_ideation_session_message_agent_idle_spawn_blocked_in_test_mode() {
     let state = setup_test_state().await;
 
     let mut session = IdeationSessionBuilder::new()
@@ -814,17 +814,16 @@ async fn test_send_ideation_session_message_agent_idle_spawn_path_entered() {
     )
     .await;
 
-    match result {
-        Ok(Json(resp)) => assert_eq!(
-            resp.delivery_status, "spawned",
-            "agent idle → spawn path entered → delivery_status must be 'spawned'"
-        ),
-        Err((status, _)) => assert_eq!(
-            status,
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "agent idle → spawn failure must return 500"
-        ),
-    }
+    assert!(result.is_err(), "test mode must block real Claude spawn");
+    let (status, body) = result.unwrap_err();
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(
+        body.0["error"]
+            .as_str()
+            .is_some_and(|s| s.contains("SpawnNotAllowed") || s.contains("disabled in tests")),
+        "error should mention blocked test-mode spawn: {:?}",
+        body.0
+    );
 }
 
 #[tokio::test]
@@ -920,7 +919,7 @@ async fn test_send_ideation_session_message_too_long_returns_422() {
 }
 
 #[tokio::test]
-async fn test_send_ideation_session_message_send_error_returns_500() {
+async fn test_send_ideation_session_message_send_error_returns_500_in_test_mode() {
     let state = setup_test_state().await;
     let session_id = create_active_session(&state).await;
     let sid_str = session_id.as_str().to_string();
@@ -934,15 +933,14 @@ async fn test_send_ideation_session_message_send_error_returns_500() {
     )
     .await;
 
-    match result {
-        Ok(Json(resp)) => assert_eq!(
-            resp.delivery_status, "spawned",
-            "send_message Ok → must be 'spawned' (Claude CLI found)"
-        ),
-        Err((status, _)) => assert_eq!(
-            status,
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "send_message Err → 500 (not 'spawned' false positive)"
-        ),
-    }
+    assert!(result.is_err(), "test mode must block real Claude spawn");
+    let (status, body) = result.unwrap_err();
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(
+        body.0["error"]
+            .as_str()
+            .is_some_and(|s| s.contains("SpawnNotAllowed") || s.contains("disabled in tests")),
+        "error should mention blocked test-mode spawn: {:?}",
+        body.0
+    );
 }

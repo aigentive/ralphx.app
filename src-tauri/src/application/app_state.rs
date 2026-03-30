@@ -207,6 +207,10 @@ pub struct AppState {
 }
 
 impl AppState {
+    fn enable_claude_test_mode() {
+        std::env::set_var("RALPHX_TEST_MODE", "1");
+    }
+
     /// Create AppState for production use with SQLite repositories.
     /// Opens the database at the default path and runs migrations.
     pub fn new_production(app_handle: AppHandle) -> AppResult<Self> {
@@ -414,6 +418,7 @@ impl AppState {
     /// Create AppState for testing with in-memory repositories
     /// No AppHandle is provided - event emission is disabled in tests
     pub fn new_test() -> Self {
+        Self::enable_claude_test_mode();
         Self::with_repos(
             Arc::new(MemoryTaskRepository::new()),
             Arc::new(MemoryProjectRepository::new()),
@@ -428,6 +433,7 @@ impl AppState {
     /// in-memory implementations as in `new_test()`.
     #[doc(hidden)]
     pub fn new_sqlite_test() -> Self {
+        Self::enable_claude_test_mode();
         let conn = open_connection(&std::path::PathBuf::from(":memory:"))
             .expect("Failed to open in-memory SQLite for handler tests");
         run_migrations(&conn).expect("Failed to run migrations on in-memory test DB");
@@ -527,6 +533,7 @@ impl AppState {
     /// passing it here, so freeze-check tests can control the registry state.
     #[doc(hidden)]
     pub fn new_sqlite_test_with_registry(registry: Arc<MemoryRunningAgentRegistry>) -> Self {
+        Self::enable_claude_test_mode();
         let conn = open_connection(&std::path::PathBuf::from(":memory:"))
             .expect("Failed to open in-memory SQLite for handler tests");
         run_migrations(&conn).expect("Failed to run migrations on in-memory test DB");
@@ -630,6 +637,7 @@ impl AppState {
     /// - `plan_branch_repo`, `project_repo`, `db`
     #[doc(hidden)]
     pub fn new_sqlite_for_apply_test() -> Self {
+        Self::enable_claude_test_mode();
         let conn = open_connection(&std::path::PathBuf::from(":memory:"))
             .expect("Failed to open in-memory SQLite for apply_proposals_core tests");
         run_migrations(&conn).expect("Failed to run migrations on in-memory test DB");

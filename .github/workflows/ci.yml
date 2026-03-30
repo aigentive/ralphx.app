@@ -10,6 +10,8 @@ jobs:
   rust-tests:
     name: Rust Tests
     runs-on: macos-latest
+    env:
+      RALPHX_TEST_MODE: "1"
     steps:
       - uses: actions/checkout@v4
 
