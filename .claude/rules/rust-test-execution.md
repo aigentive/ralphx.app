@@ -95,6 +95,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --test review_service
 cargo test --manifest-path src-tauri/Cargo.toml --test apply_service
 cargo test --manifest-path src-tauri/Cargo.toml --test ideation_service
 cargo test --manifest-path src-tauri/Cargo.toml --test ideation_commands
+cargo test --manifest-path src-tauri/Cargo.toml --test ideation_model_override
 cargo test --manifest-path src-tauri/Cargo.toml --test task_cleanup_service
 cargo test --manifest-path src-tauri/Cargo.toml --test task_commands
 cargo test --manifest-path src-tauri/Cargo.toml --test sqlite_ideation_session_repo

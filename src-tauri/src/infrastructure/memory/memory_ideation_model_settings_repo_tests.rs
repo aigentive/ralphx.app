@@ -1,0 +1,109 @@
+use crate::domain::ideation::model_settings::ModelLevel;
+use crate::domain::repositories::IdeationModelSettingsRepository;
+use crate::infrastructure::memory::MemoryIdeationModelSettingsRepository;
+
+#[tokio::test]
+async fn test_upsert_and_get_global() {
+    let repo = MemoryIdeationModelSettingsRepository::new();
+    assert!(repo.get_global().await.unwrap().is_none());
+
+    let result = repo.upsert_global("sonnet", "opus").await.unwrap();
+    assert_eq!(result.primary_model, ModelLevel::Sonnet);
+    assert_eq!(result.verifier_model, ModelLevel::Opus);
+    assert!(result.project_id.is_none());
+
+    let fetched = repo.get_global().await.unwrap().unwrap();
+    assert_eq!(fetched.primary_model, ModelLevel::Sonnet);
+    assert_eq!(fetched.verifier_model, ModelLevel::Opus);
+}
+
+#[tokio::test]
+async fn test_upsert_and_get_project() {
+    let repo = MemoryIdeationModelSettingsRepository::new();
+
+    let result = repo
+        .upsert_for_project("proj-123", "opus", "haiku")
+        .await
+        .unwrap();
+    assert_eq!(result.primary_model, ModelLevel::Opus);
+    assert!(result.project_id.is_some());
+
+    let fetched = repo
+        .get_for_project("proj-123")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(fetched.primary_model, ModelLevel::Opus);
+    assert_eq!(fetched.verifier_model, ModelLevel::Haiku);
+
+    // Global is still empty
+    assert!(repo.get_global().await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn test_upsert_overwrites_existing() {
+    let repo = MemoryIdeationModelSettingsRepository::new();
+    repo.upsert_global("sonnet", "opus").await.unwrap();
+    repo.upsert_global("haiku", "inherit").await.unwrap();
+
+    let fetched = repo.get_global().await.unwrap().unwrap();
+    assert_eq!(fetched.primary_model, ModelLevel::Haiku);
+    assert_eq!(fetched.verifier_model, ModelLevel::Inherit);
+}
+
+#[tokio::test]
+async fn test_upsert_project_overwrites_existing() {
+    let repo = MemoryIdeationModelSettingsRepository::new();
+    repo.upsert_for_project("proj-abc", "sonnet", "opus")
+        .await
+        .unwrap();
+    repo.upsert_for_project("proj-abc", "haiku", "inherit")
+        .await
+        .unwrap();
+
+    let fetched = repo
+        .get_for_project("proj-abc")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(fetched.primary_model, ModelLevel::Haiku);
+    assert_eq!(fetched.verifier_model, ModelLevel::Inherit);
+}
+
+#[tokio::test]
+async fn test_get_missing_returns_none() {
+    let repo = MemoryIdeationModelSettingsRepository::new();
+    assert!(repo
+        .get_for_project("nonexistent")
+        .await
+        .unwrap()
+        .is_none());
+}
+
+#[tokio::test]
+async fn test_project_and_global_are_independent() {
+    let repo = MemoryIdeationModelSettingsRepository::new();
+    repo.upsert_global("sonnet", "opus").await.unwrap();
+    repo.upsert_for_project("proj-1", "haiku", "inherit")
+        .await
+        .unwrap();
+
+    let global = repo.get_global().await.unwrap().unwrap();
+    let project = repo
+        .get_for_project("proj-1")
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(global.primary_model, ModelLevel::Sonnet);
+    assert_eq!(project.primary_model, ModelLevel::Haiku);
+    assert!(global.project_id.is_none());
+    assert!(project.project_id.is_some());
+}
+
+#[tokio::test]
+async fn test_invalid_model_level_returns_error() {
+    let repo = MemoryIdeationModelSettingsRepository::new();
+    let result = repo.upsert_global("turbo", "opus").await;
+    assert!(result.is_err());
+}

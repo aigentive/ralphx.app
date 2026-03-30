@@ -1015,6 +1015,7 @@ pub async fn build_command(
         resume_session.as_deref(),
         working_directory,
         effort_override,
+        None, // model_override: non-ideation path; DB-resolved model injected separately
     )?;
 
     apply_ralphx_env_vars(
@@ -1038,6 +1039,7 @@ pub async fn build_command(
 /// `session_messages` is injected into the prompt for Ideation context only; pass `&[]` for other contexts.
 /// `total_available` is the true DB count of session messages (from `count_by_session`); pass `0` when `session_messages` is empty.
 /// `effort_override` is an optional model effort level forwarded to `build_base_cli_command`. Pass `None` for default.
+/// `model_override` is an optional model string pre-resolved from DB settings for Ideation contexts. Pass `None` for YAML default.
 pub async fn build_interactive_command(
     cli_path: &Path,
     plugin_dir: &Path,
@@ -1053,6 +1055,7 @@ pub async fn build_interactive_command(
     total_available: usize,
     is_external_mcp: bool,
     effort_override: Option<&str>,
+    model_override: Option<&str>,
 ) -> Result<SpawnableCommand, String> {
     let agent_name =
         resolve_agent_with_team_mode(&conversation.context_type, entity_status, team_mode);
@@ -1093,6 +1096,7 @@ pub async fn build_interactive_command(
         working_directory,
         is_external_mcp,
         effort_override,
+        model_override,
     )?;
 
     apply_ralphx_env_vars(
@@ -1205,6 +1209,7 @@ pub async fn build_resume_command(
         Some(session_id),
         working_directory,
         effort_override,
+        None, // model_override: non-ideation path; DB-resolved model injected separately
     )?;
 
     // In resume flow, session_id IS the Claude session ID.

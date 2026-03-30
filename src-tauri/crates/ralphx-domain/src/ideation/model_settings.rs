@@ -1,0 +1,102 @@
+use std::fmt;
+use std::str::FromStr;
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+use crate::entities::ProjectId;
+
+/// The model level for an ideation agent workflow.
+/// Maps to Claude's `--model` flag values.
+/// `Inherit` means "fall through to the next resolution level".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelLevel {
+    /// Use the next level in the resolution chain (YAML config or global default)
+    Inherit,
+    Sonnet,
+    Opus,
+    Haiku,
+}
+
+impl Default for ModelLevel {
+    fn default() -> Self {
+        Self::Inherit
+    }
+}
+
+impl fmt::Display for ModelLevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Inherit => write!(f, "inherit"),
+            Self::Sonnet => write!(f, "sonnet"),
+            Self::Opus => write!(f, "opus"),
+            Self::Haiku => write!(f, "haiku"),
+        }
+    }
+}
+
+impl FromStr for ModelLevel {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "inherit" => Ok(Self::Inherit),
+            "sonnet" => Ok(Self::Sonnet),
+            "opus" => Ok(Self::Opus),
+            "haiku" => Ok(Self::Haiku),
+            other => Err(format!(
+                "Invalid model level '{}'. Valid values: inherit, sonnet, opus, haiku",
+                other
+            )),
+        }
+    }
+}
+
+/// Which workflow bucket an ideation agent belongs to.
+/// Used to select the correct model setting column.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelBucket {
+    /// Primary ideation agents: orchestrator-ideation, ideation-team-lead,
+    /// ideation-team-member, orchestrator-ideation-readonly
+    Primary,
+    /// Verification agents: plan-verifier
+    Verifier,
+}
+
+/// Per-project or global ideation model settings row.
+/// `project_id IS NULL` = global row; `project_id = Some(...)` = per-project override.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IdeationModelSettings {
+    pub id: i64,
+    pub project_id: Option<ProjectId>,
+    pub primary_model: ModelLevel,
+    pub verifier_model: ModelLevel,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl IdeationModelSettings {
+    /// Return the model level for the given bucket.
+    pub fn model_for_bucket(&self, bucket: &ModelBucket) -> &ModelLevel {
+        match bucket {
+            ModelBucket::Primary => &self.primary_model,
+            ModelBucket::Verifier => &self.verifier_model,
+        }
+    }
+}
+
+/// Map an agent name to its `ModelBucket`, or `None` for non-ideation agents.
+pub fn model_bucket_for_agent(agent_name: &str) -> Option<ModelBucket> {
+    match agent_name {
+        "orchestrator-ideation"
+        | "ideation-team-lead"
+        | "ideation-team-member"
+        | "orchestrator-ideation-readonly" => Some(ModelBucket::Primary),
+        "plan-verifier" => Some(ModelBucket::Verifier),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+#[path = "model_settings_tests.rs"]
+mod tests;

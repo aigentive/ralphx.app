@@ -5,6 +5,7 @@ mod agent_config;
 pub mod agent_names;
 mod claude_code_client;
 pub mod effort_resolver;
+pub mod model_resolver;
 pub mod node_utils;
 mod stream_processor;
 
@@ -41,6 +42,9 @@ pub use stream_processor::{
 
 // Re-export effort resolver helpers for use by services
 pub use effort_resolver::{effort_bucket_for_agent, resolve_ideation_effort};
+
+// Re-export model resolver helpers for use by services
+pub use model_resolver::{resolve_ideation_model, ResolvedModel};
 
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
@@ -119,6 +123,19 @@ pub fn resolve_effort(agent_type: Option<&str>) -> String {
     }
 }
 
+/// Resolve the `--model` value for a given agent type.
+///
+/// Priority: `AgentConfig.model` > hardcoded default `"sonnet"`.
+/// Used as the YAML fallback layer (levels 3–4) in the ideation model resolution chain.
+pub fn resolve_model(agent_type: Option<&str>) -> String {
+    match agent_type {
+        Some(name) => get_agent_config(name)
+            .and_then(|c| c.model.clone())
+            .unwrap_or_else(|| "sonnet".to_string()),
+        None => "sonnet".to_string(),
+    }
+}
+
 /// Resolve the `--permission-mode` for a given agent type.
 ///
 /// Priority: `AgentConfig.permission_mode` > `ClaudeRuntimeConfig.permission_mode`
@@ -138,6 +155,7 @@ pub fn build_base_cli_command(
     agent_type: Option<&str>,
     is_external_mcp: bool,
     effort_override: Option<&str>,
+    model_override: Option<&str>,
 ) -> Result<Command, String> {
     ensure_claude_spawn_allowed()?;
     sanitize_claude_user_state();
@@ -213,6 +231,21 @@ pub fn build_base_cli_command(
         }
     };
     cmd.args(["--effort", effort]);
+
+    // Model for this agent — use explicit override when provided, otherwise resolve from agent config.
+    let model_resolved;
+    let model = match model_override {
+        Some(m) => Some(m),
+        None => {
+            model_resolved = agent_type
+                .and_then(|a| get_agent_config(a))
+                .and_then(|cfg| cfg.model.clone());
+            model_resolved.as_deref()
+        }
+    };
+    if let Some(m) = model {
+        cmd.args(["--model", m]);
+    }
 
     // If agent_type is provided, create a dynamic MCP config that passes it
     // to the MCP server via CLI args (since env vars don't propagate to MCP servers).
@@ -854,11 +887,6 @@ fn add_prompt_args(
             tracing::debug!(agent = agent_name, preapproved = %preapproved, "Agent pre-approved tools");
         }
 
-        // Agent-level model from ralphx.yaml
-        if let Some(agent_model) = get_agent_config(agent_name).and_then(|cfg| cfg.model.as_ref()) {
-            cmd.args(["--model", agent_model]);
-            tracing::debug!(agent = agent_name, model = %agent_model, "Applied agent model");
-        }
     }
 
     if interactive {
@@ -905,8 +933,10 @@ pub fn build_spawnable_command(
     resume_session: Option<&str>,
     working_directory: &Path,
     effort_override: Option<&str>,
+    model_override: Option<&str>,
 ) -> Result<SpawnableCommand, String> {
-    let mut cmd = build_base_cli_command(cli_path, plugin_dir, agent, false, effort_override)?;
+    let mut cmd =
+        build_base_cli_command(cli_path, plugin_dir, agent, false, effort_override, model_override)?;
     let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session, false);
     configure_spawn(&mut cmd, working_directory, stdin_prompt.is_some());
     Ok(SpawnableCommand { cmd, stdin_prompt })
@@ -929,8 +959,16 @@ pub fn build_spawnable_interactive_command(
     working_directory: &Path,
     is_external_mcp: bool,
     effort_override: Option<&str>,
+    model_override: Option<&str>,
 ) -> Result<SpawnableCommand, String> {
-    let mut cmd = build_base_cli_command(cli_path, plugin_dir, agent, is_external_mcp, effort_override)?;
+    let mut cmd = build_base_cli_command(
+        cli_path,
+        plugin_dir,
+        agent,
+        is_external_mcp,
+        effort_override,
+        model_override,
+    )?;
     // interactive=true: no -p flag; prompt stored in stdin_prompt for spawn_interactive()
     let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session, true);
     configure_spawn(&mut cmd, working_directory, true);
@@ -1173,6 +1211,7 @@ mod tests {
             None,
             Path::new("/tmp"),
             None,
+            None,
         );
         // In test env, ensure_claude_spawn_allowed() returns Err
         assert!(result.is_err(), "should be blocked in test environment");
@@ -1193,6 +1232,7 @@ mod tests {
             None,
             Path::new("/tmp"),
             false,
+            None,
             None,
         );
         assert!(result.is_err(), "should be blocked in test environment");
@@ -1218,6 +1258,7 @@ mod tests {
             None,
             true, // is_external_mcp=true
             None,
+            None,
         );
         assert!(result.is_err(), "should be blocked in test environment");
         assert!(
@@ -1234,6 +1275,7 @@ mod tests {
             Path::new("/fake/plugin"),
             None,
             false, // is_external_mcp=false
+            None,
             None,
         );
         assert!(result.is_err(), "should be blocked in test environment");

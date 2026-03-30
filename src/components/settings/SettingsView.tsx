@@ -29,6 +29,7 @@ import type {
 import { DEFAULT_PROJECT_SETTINGS } from "@/types/settings";
 import { IdeationSettingsPanel } from "./IdeationSettingsPanel";
 import { IdeationEffortSection } from "./IdeationEffortSection";
+import { IdeationModelSection } from "./IdeationModelSection";
 import { GitSettingsSection } from "./GitSettingsSection";
 import { GitHubSettingsSection } from "./GitHubSettingsSection";
 import { ProjectAnalysisSection } from "./ProjectAnalysisSection";
@@ -641,6 +642,7 @@ export function SettingsView({
           <ProjectAnalysisSection />
           <IdeationSettingsPanel />
           <IdeationEffortSection />
+          <IdeationModelSection />
           <ApiKeysSection />
         </div>
       </ScrollArea>

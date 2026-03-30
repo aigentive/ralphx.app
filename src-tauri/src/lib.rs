@@ -51,6 +51,7 @@ use crate::utils::redacting_writer::RedactingMakeWriter;
 use crate::infrastructure::{ExternalMcpHandle, ExternalMcpSupervisor};
 
 use application::ideation_effort_bootstrap::seed_ideation_effort_defaults;
+use application::ideation_model_bootstrap::seed_ideation_model_settings;
 use application::{
     load_or_seed_execution_settings_defaults, ChatResumptionRunner, ClaudeChatService,
     EventCleanupService, ReconciliationRunner, StartupJobRunner, TaskSchedulerService,
@@ -352,6 +353,17 @@ pub fn run() {
                 }
             });
 
+            // Seed ideation model defaults (idempotent — only seeds when no global row exists)
+            let init_model_repo = Arc::clone(&app_state.ideation_model_settings_repo);
+            tauri::async_runtime::block_on(async move {
+                match seed_ideation_model_settings(init_model_repo).await {
+                    Ok(_) => {
+                        tracing::debug!("Ideation model settings seeded (or already existed)");
+                    }
+                    Err(e) => tracing::warn!("Failed to seed ideation model settings: {}", e),
+                }
+            });
+
             // Expire stale pending questions/permissions from previous runs.
             // Must happen before the HTTP server starts accepting agent requests.
             {
@@ -470,6 +482,7 @@ pub fn run() {
             let startup_memory_entry_repo = Arc::clone(&app_state.memory_entry_repo);
             let startup_execution_settings_repo = Arc::clone(&app_state.execution_settings_repo);
             let startup_ideation_effort_settings_repo = Arc::clone(&app_state.ideation_effort_settings_repo);
+            let startup_ideation_model_settings_repo = Arc::clone(&app_state.ideation_model_settings_repo);
             let startup_interactive_process_registry = Arc::clone(&app_state.interactive_process_registry);
             let startup_review_repo = Arc::clone(&app_state.review_repo);
             let startup_external_events_repo = Arc::clone(&app_state.external_events_repo);
@@ -574,6 +587,7 @@ pub fn run() {
                 let recovery_cs_memory_event_repo = Arc::clone(&startup_memory_event_repo);
                 let recovery_cs_ipr = Arc::clone(&startup_interactive_process_registry);
                 let recovery_cs_ideation_effort_repo = Arc::clone(&startup_ideation_effort_settings_repo);
+                let recovery_cs_ideation_model_repo = Arc::clone(&startup_ideation_model_settings_repo);
 
                 // Clone task_dependency_repo for StartupJobRunner (before TaskTransitionService consumes it)
                 let startup_runner_task_dep_repo = Arc::clone(&startup_task_dependency_repo);
@@ -646,6 +660,7 @@ pub fn run() {
                     .with_execution_state(Arc::clone(&startup_execution_state))
                     .with_execution_settings_repo(Arc::clone(&startup_execution_settings_repo))
                     .with_ideation_effort_settings_repo(Arc::clone(&startup_ideation_effort_settings_repo))
+                    .with_ideation_model_settings_repo(Arc::clone(&startup_ideation_model_settings_repo))
                     .with_app_handle(recovery_chat_service_app_handle)
                     .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry)),
                 );
@@ -855,6 +870,7 @@ pub fn run() {
                             )
                             .with_execution_state(Arc::clone(&startup_execution_state))
                             .with_ideation_effort_settings_repo(recovery_cs_ideation_effort_repo)
+                            .with_ideation_model_settings_repo(recovery_cs_ideation_model_repo)
                             .with_app_handle(recovery_cs_app_handle.clone())
                             .with_interactive_process_registry(recovery_cs_ipr),
                         );
@@ -1210,6 +1226,9 @@ pub fn run() {
             // Ideation effort commands
             commands::ideation_commands::get_ideation_effort_settings,
             commands::ideation_commands::update_ideation_effort_settings,
+            // Ideation model commands
+            commands::ideation_commands::get_ideation_model_settings,
+            commands::ideation_commands::update_ideation_model_settings,
             // Ideation export/import commands
             commands::ideation_commands::export_ideation_session,
             commands::ideation_commands::import_ideation_session,

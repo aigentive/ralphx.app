@@ -39,7 +39,7 @@ use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ArtifactRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
-    IdeationEffortSettingsRepository, IdeationSessionRepository,
+    IdeationEffortSettingsRepository, IdeationModelSettingsRepository, IdeationSessionRepository,
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
     StateHistoryMetadata, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
     TaskStepRepository,
@@ -353,6 +353,7 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
     ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
+    ideation_model_settings_repo: Option<Arc<dyn IdeationModelSettingsRepository>>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     activity_event_repo: Arc<dyn ActivityEventRepository>,
     message_queue: Arc<MessageQueue>,
@@ -421,6 +422,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             task_dependency_repo,
             execution_settings_repo: None,
             ideation_effort_settings_repo: None,
+            ideation_model_settings_repo: None,
             ideation_session_repo,
             activity_event_repo,
             message_queue,
@@ -459,6 +461,14 @@ impl<R: Runtime> ClaudeChatService<R> {
         repo: Arc<dyn IdeationEffortSettingsRepository>,
     ) -> Self {
         self.ideation_effort_settings_repo = Some(repo);
+        self
+    }
+
+    pub fn with_ideation_model_settings_repo(
+        mut self,
+        repo: Arc<dyn IdeationModelSettingsRepository>,
+    ) -> Self {
+        self.ideation_model_settings_repo = Some(repo);
         self
     }
 
@@ -838,6 +848,7 @@ impl<R: Runtime> ClaudeChatService<R> {
         total_available: usize,
         is_external_mcp: bool,
         effort_override: Option<&str>,
+        model_override: Option<&str>,
     ) -> Result<crate::infrastructure::agents::claude::SpawnableCommand, ChatServiceError> {
         chat_service_context::build_interactive_command(
             &self.cli_path,
@@ -854,6 +865,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             total_available,
             is_external_mcp,
             effort_override,
+            model_override,
         )
         .await
         .map_err(ChatServiceError::SpawnFailed)
@@ -1629,6 +1641,31 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             None
         };
 
+        // 7b-pre2. Pre-resolve model for ideation contexts from DB settings.
+        // For non-ideation contexts (or when ideation_model_settings_repo is not set),
+        // pass None to let the YAML-based resolver handle it.
+        let resolved_model: Option<String> = if context_type == ChatContextType::Ideation {
+            if let Some(ref repo) = self.ideation_model_settings_repo {
+                let team_mode_val = self.team_mode.load(Ordering::Relaxed);
+                let agent_name = chat_service_helpers::resolve_agent_with_team_mode(
+                    &context_type,
+                    entity_status.as_deref(),
+                    team_mode_val,
+                );
+                let resolved = crate::infrastructure::agents::claude::resolve_ideation_model(
+                    agent_name,
+                    project_id.as_deref(),
+                    repo.as_ref(),
+                )
+                .await;
+                Some(resolved.model)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         // Fetch recent session messages for Ideation context ONLY when spawning a new process.
         // The agent has no prior context at spawn time, so we inject the history into the prompt.
         // For non-ideation contexts and already-running agents (IPR path above), we pass empty slice.
@@ -1666,6 +1703,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 session_total,
                 options.is_external_mcp,
                 resolved_effort.as_deref(),
+                resolved_model.as_deref(),
             )
             .await
         {

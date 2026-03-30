@@ -321,6 +321,7 @@ async fn spawn_memory_maintainer(
         None,
         working_directory,
         None, // effort_override: memory pipelines use default
+        None, // model_override: use agent config default
     )?;
 
     cmd.env("RALPHX_CONVERSATION_ID", &conv_id_str);
@@ -374,6 +375,7 @@ async fn spawn_memory_capture(
         None,
         working_directory,
         None, // effort_override: memory pipelines use default
+        None, // model_override: use agent config default
     )?;
 
     cmd.env("RALPHX_CONVERSATION_ID", &conv_id_str);

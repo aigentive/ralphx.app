@@ -252,9 +252,10 @@ mod v20260330000000_verification_confirmation_status_tests;
 mod v20260330000000_ideation_effort_settings;
 #[cfg(test)]
 mod v20260330000000_ideation_effort_settings_tests;
+mod v20260330000002_ideation_model_settings;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i64 = 20260330000001;
+pub const SCHEMA_VERSION: i64 = 20260330000002;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -723,6 +724,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 20260330000001,
         name: "ideation_effort_settings",
         migrate: v20260330000000_ideation_effort_settings::migrate,
+    },
+    Migration {
+        version: 20260330000002,
+        name: "ideation_model_settings",
+        migrate: v20260330000002_ideation_model_settings::migrate,
     },
 ];
 
