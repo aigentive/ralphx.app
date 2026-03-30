@@ -95,21 +95,19 @@ pub async fn get_ideation_messages_http(
         })
         .collect();
 
-    if session.origin == SessionOrigin::External {
-        if let Some(latest_msg) = messages.last() {
-            let latest_id = latest_msg.id.clone();
-            if let Err(e) = state
-                .app_state
-                .ideation_session_repo
-                .update_external_last_read_message_id(&session_id, &latest_id)
-                .await
-            {
-                error!(
-                    "Failed to update external_last_read_message_id for session {}: {}",
-                    session_id.as_str(),
-                    e
-                );
-            }
+    if let Some(latest_msg) = messages.last() {
+        let latest_id = latest_msg.id.clone();
+        if let Err(e) = state
+            .app_state
+            .ideation_session_repo
+            .update_external_last_read_message_id(&session_id, &latest_id)
+            .await
+        {
+            error!(
+                "Failed to update external_last_read_message_id for session {}: {}",
+                session_id.as_str(),
+                e
+            );
         }
     }
 

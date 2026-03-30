@@ -225,6 +225,30 @@ impl ChatMessageRepository for MemoryChatMessageRepository {
         Ok(count as u32)
     }
 
+    async fn count_unread_messages(
+        &self,
+        session_id: &str,
+        cursor_message_id: Option<&str>,
+    ) -> AppResult<i64> {
+        let messages = self.messages.read().unwrap();
+
+        let cursor_created_at = cursor_message_id
+            .and_then(|id| messages.get(id).map(|m| m.created_at));
+
+        let count = messages
+            .values()
+            .filter(|m| {
+                m.session_id.as_ref().map(|s| s.as_str()) == Some(session_id)
+                    && matches!(m.role, MessageRole::User | MessageRole::Orchestrator)
+                    && cursor_created_at
+                        .map(|cursor_ts| m.created_at > cursor_ts)
+                        .unwrap_or(true)
+            })
+            .count();
+
+        Ok(count as i64)
+    }
+
     async fn get_first_user_message_by_context(
         &self,
         context_type: &str,

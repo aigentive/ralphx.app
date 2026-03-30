@@ -838,6 +838,14 @@ impl ChatMessageRepository for MockMessageRepository {
         Ok(0)
     }
 
+    async fn count_unread_messages(
+        &self,
+        _session_id: &str,
+        _cursor_message_id: Option<&str>,
+    ) -> AppResult<i64> {
+        Ok(0)
+    }
+
     async fn get_first_user_message_by_context(
         &self,
         _context_type: &str,

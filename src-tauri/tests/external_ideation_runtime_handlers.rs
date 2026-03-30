@@ -334,7 +334,8 @@ async fn test_ideation_message_unread_returns_409() {
     assert_eq!(status, axum::http::StatusCode::CONFLICT);
     assert_eq!(body.0["error"], "unread_messages");
     assert_eq!(body.0["next_action"], "fetch_messages");
-    assert_eq!(body.0["unread_count"], 1u64);
+    // count_unread_messages counts both User + Orchestrator roles (2 messages created above)
+    assert_eq!(body.0["unread_count"], 2i64);
 }
 
 #[tokio::test]
@@ -409,11 +410,13 @@ async fn test_ideation_message_post_read_allowed() {
 }
 
 #[tokio::test]
-async fn test_ideation_message_internal_session_bypasses_guard() {
+async fn test_ideation_message_internal_session_is_now_guarded() {
+    // After removing the origin gate, Internal sessions are also subject to the unread guard.
     let state = setup_test_state().await;
     let (_, session_id_str) = setup_session(&state, "proj-rbw-internal", "RBW Internal").await;
     let session_id = IdeationSessionId::from_string(session_id_str.clone());
 
+    // Create an unread orchestrator message — cursor is NULL so it counts as unread
     state
         .app_state
         .chat_message_repo
@@ -425,21 +428,54 @@ async fn test_ideation_message_internal_session_bypasses_guard() {
     state
         .app_state
         .running_agent_registry
-        .register(agent_key, 99997, "conv3".to_string(), "run3".to_string(), None, None)
+        .register(
+            agent_key.clone(),
+            99997,
+            "conv3".to_string(),
+            "run3".to_string(),
+            None,
+            None,
+        )
         .await;
 
+    // First attempt: should be blocked with 409 because there's an unread message
     let result = ideation_message_http(
-        State(state),
+        State(state.clone()),
         unrestricted_scope(),
         Json(IdeationMessageRequest {
-            session_id: session_id_str,
+            session_id: session_id_str.clone(),
             message: "internal message".to_string(),
         }),
     )
     .await;
 
-    assert!(result.is_ok(), "internal session should bypass guard, got: {:?}", result.err());
-    let response = result.unwrap().0;
+    assert!(result.is_err(), "internal session should now be guarded when there are unread messages");
+    let (status, _) = result.unwrap_err();
+    assert_eq!(status, axum::http::StatusCode::CONFLICT);
+
+    // Read messages to advance cursor
+    let read_result = get_ideation_messages_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Path(session_id_str.clone()),
+        Query(GetIdeationMessagesQuery { limit: 50, offset: 0 }),
+    )
+    .await;
+    assert!(read_result.is_ok());
+
+    // Second attempt: should succeed now that cursor is up to date
+    let result2 = ideation_message_http(
+        State(state),
+        unrestricted_scope(),
+        Json(IdeationMessageRequest {
+            session_id: session_id_str,
+            message: "internal message after read".to_string(),
+        }),
+    )
+    .await;
+
+    assert!(result2.is_ok(), "message should be allowed after reading, got: {:?}", result2.err());
+    let response = result2.unwrap().0;
     assert_eq!(response.status, "queued");
 }
 
@@ -486,18 +522,21 @@ async fn test_get_ideation_messages_updates_external_read_cursor() {
 }
 
 #[tokio::test]
-async fn test_get_ideation_messages_internal_no_cursor_update() {
+async fn test_get_ideation_messages_internal_cursor_is_updated() {
+    // After removing the origin gate, cursor is updated for Internal sessions too.
     let state = setup_test_state().await;
     let (_, session_id_str) =
         setup_session(&state, "proj-cursor-internal", "Cursor Internal").await;
     let session_id = IdeationSessionId::from_string(session_id_str.clone());
 
-    state
+    let msg = ChatMessage::orchestrator_in_session(session_id.clone(), "agent response");
+    let created_msg = state
         .app_state
         .chat_message_repo
-        .create(ChatMessage::orchestrator_in_session(session_id.clone(), "agent response"))
+        .create(msg)
         .await
         .unwrap();
+    let expected_msg_id = created_msg.id.to_string();
 
     let result = get_ideation_messages_http(
         State(state.clone()),
@@ -516,9 +555,10 @@ async fn test_get_ideation_messages_internal_no_cursor_update() {
         .await
         .unwrap()
         .unwrap();
-    assert!(
-        session.external_last_read_message_id.is_none(),
-        "internal session cursor must remain None"
+    assert_eq!(
+        session.external_last_read_message_id.as_deref(),
+        Some(expected_msg_id.as_str()),
+        "internal session cursor must now be updated"
     );
 }
 
@@ -938,4 +978,230 @@ async fn test_ideation_message_no_running_agent_bypasses_queue_cap() {
             "no-agent path must never return 429 from queue cap guard"
         ),
     }
+}
+
+// --- Internal-origin session guard tests ---
+
+#[tokio::test]
+async fn test_ideation_message_internal_session_unread_user_message_returns_409() {
+    // Proof obligation #1: External agent messaging an Internal session with unread user messages
+    // → 409 CONFLICT. User messages from the UI must block the external agent.
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-int-user-msg", "Internal User Msg").await;
+    let session_id = IdeationSessionId::from_string(session_id_str.clone());
+
+    // Simulate a user message from the UI
+    state
+        .app_state
+        .chat_message_repo
+        .create(ChatMessage::user_in_session(session_id.clone(), "hello from UI"))
+        .await
+        .unwrap();
+
+    let result = ideation_message_http(
+        State(state),
+        unrestricted_scope(),
+        Json(IdeationMessageRequest {
+            session_id: session_id_str,
+            message: "agent reply".to_string(),
+        }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    let (status, body) = result.unwrap_err();
+    assert_eq!(status, axum::http::StatusCode::CONFLICT);
+    let obj = body.0.as_object().unwrap();
+    assert_eq!(obj["error"], "unread_messages");
+    assert_eq!(obj["unread_count"], 1);
+}
+
+#[tokio::test]
+async fn test_ideation_message_internal_empty_session_allows_send() {
+    // Proof obligation #6: Empty session (no messages) → allowed regardless of origin.
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-int-empty", "Internal Empty").await;
+
+    let result = ideation_message_http(
+        State(state),
+        unrestricted_scope(),
+        Json(IdeationMessageRequest {
+            session_id: session_id_str,
+            message: "first message".to_string(),
+        }),
+    )
+    .await;
+
+    // Empty session has 0 unread messages, so guard should pass.
+    // The send may succeed or fail for other reasons (agent not running etc.) but must NOT be 409.
+    match result {
+        Ok(_) => {}
+        Err((status, _)) => assert_ne!(
+            status,
+            axum::http::StatusCode::CONFLICT,
+            "empty session must not return 409"
+        ),
+    }
+}
+
+#[tokio::test]
+async fn test_ideation_message_system_role_does_not_trigger_guard() {
+    // Proof obligation / deadlock prevention: System-role messages (invisible to external agents
+    // via GET /messages) must NOT count as unread. If they did, agents could never unblock.
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-int-system", "Internal System").await;
+    let session_id = IdeationSessionId::from_string(session_id_str.clone());
+
+    // Create a system message (invisible to external agents)
+    state
+        .app_state
+        .chat_message_repo
+        .create(ChatMessage::system_in_session(session_id.clone(), "system context injection"))
+        .await
+        .unwrap();
+
+    let result = ideation_message_http(
+        State(state),
+        unrestricted_scope(),
+        Json(IdeationMessageRequest {
+            session_id: session_id_str,
+            message: "agent message after system injection".to_string(),
+        }),
+    )
+    .await;
+
+    // System message must NOT trigger the 409 guard.
+    match result {
+        Ok(_) => {}
+        Err((status, _)) => assert_ne!(
+            status,
+            axum::http::StatusCode::CONFLICT,
+            "system-role message must not count as unread"
+        ),
+    }
+}
+
+#[tokio::test]
+async fn test_pagination_offset_advances_cursor_to_page_boundary_only() {
+    // Proof obligation #7/#8: Reading with offset>0 → cursor only at page boundary.
+    // Reading with offset=0 → cursor at session's latest visible message.
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-int-pagination", "Internal Pagination").await;
+    let session_id = IdeationSessionId::from_string(session_id_str.clone());
+
+    // Create 3 messages with distinct timestamps to ensure ordering
+    let msg1 = state
+        .app_state
+        .chat_message_repo
+        .create(ChatMessage::orchestrator_in_session(session_id.clone(), "msg 1 oldest"))
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    let _msg2 = state
+        .app_state
+        .chat_message_repo
+        .create(ChatMessage::orchestrator_in_session(session_id.clone(), "msg 2 middle"))
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    let msg3 = state
+        .app_state
+        .chat_message_repo
+        .create(ChatMessage::orchestrator_in_session(session_id.clone(), "msg 3 newest"))
+        .await
+        .unwrap();
+
+    // Read with offset=1 (skip newest 1, i.e. skip msg3). Gets [msg1, msg2].
+    // Cursor advances to msg2 (last of the page). msg3 is still after cursor.
+    let _ = get_ideation_messages_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Path(session_id_str.clone()),
+        Query(GetIdeationMessagesQuery { limit: 50, offset: 1 }),
+    )
+    .await
+    .unwrap();
+
+    // Verify cursor is not at msg3 yet (it's at msg2, so msg3 is still "unread")
+    let session_after_partial_read = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(
+        session_after_partial_read
+            .external_last_read_message_id
+            .as_deref(),
+        Some(msg3.id.as_str()),
+        "cursor must not be at msg3 after reading with offset=1"
+    );
+    // After partial read, msg3 is still unread → guard triggers
+    let blocked = ideation_message_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Json(IdeationMessageRequest {
+            session_id: session_id_str.clone(),
+            message: "should be blocked".to_string(),
+        }),
+    )
+    .await;
+    assert!(
+        blocked.is_err(),
+        "guard should still trigger after offset=1 read, msg3 still unread"
+    );
+    let (status, _) = blocked.unwrap_err();
+    assert_eq!(status, axum::http::StatusCode::CONFLICT);
+
+    // Now read with offset=0 (gets all messages newest-first: msg3, msg2, msg1 → reversed: msg1,msg2,msg3)
+    // Cursor advances to msg3 (the last in the response = newest visible).
+    let _ = get_ideation_messages_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Path(session_id_str.clone()),
+        Query(GetIdeationMessagesQuery { limit: 50, offset: 0 }),
+    )
+    .await
+    .unwrap();
+
+    // Cursor should now be at msg3 → 0 unread → send allowed
+    let session_after_full_read = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        session_after_full_read
+            .external_last_read_message_id
+            .as_deref(),
+        Some(msg3.id.as_str()),
+        "cursor must advance to msg3 (newest) after offset=0 read"
+    );
+
+    // Now send is allowed
+    let allowed = ideation_message_http(
+        State(state),
+        unrestricted_scope(),
+        Json(IdeationMessageRequest {
+            session_id: session_id_str,
+            message: "should be allowed now".to_string(),
+        }),
+    )
+    .await;
+    match allowed {
+        Ok(_) => {}
+        Err((status, _)) => assert_ne!(
+            status,
+            axum::http::StatusCode::CONFLICT,
+            "send must be allowed after reading all messages with offset=0"
+        ),
+    }
+    let _ = msg1; // suppress unused warning
 }

@@ -282,6 +282,40 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
             .await
     }
 
+    async fn count_unread_messages(
+        &self,
+        session_id: &str,
+        cursor_message_id: Option<&str>,
+    ) -> AppResult<i64> {
+        let session_id = session_id.to_string();
+        let cursor_message_id = cursor_message_id.map(|s| s.to_string());
+        self.db
+            .run(move |conn| {
+                let count: i64 = if let Some(ref cursor) = cursor_message_id {
+                    conn.query_row(
+                        "SELECT COUNT(*) FROM chat_messages \
+                         WHERE session_id = ?1 \
+                         AND role IN ('user', 'orchestrator') \
+                         AND created_at > ( \
+                             SELECT created_at FROM chat_messages WHERE id = ?2 \
+                         )",
+                        rusqlite::params![session_id, cursor],
+                        |row| row.get(0),
+                    )?
+                } else {
+                    conn.query_row(
+                        "SELECT COUNT(*) FROM chat_messages \
+                         WHERE session_id = ?1 \
+                         AND role IN ('user', 'orchestrator')",
+                        rusqlite::params![session_id],
+                        |row| row.get(0),
+                    )?
+                };
+                Ok(count)
+            })
+            .await
+    }
+
     async fn get_first_user_message_by_context(
         &self,
         context_type: &str,

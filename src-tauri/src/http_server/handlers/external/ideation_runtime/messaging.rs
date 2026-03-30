@@ -84,39 +84,39 @@ pub async fn ideation_message_http(
         }
     };
 
-    if session.origin == SessionOrigin::External {
-        let last_read = session.external_last_read_message_id.as_deref();
-        match state
-            .app_state
-            .chat_message_repo
-            .count_unread_assistant_messages(&session_id_str, last_read)
-            .await
-        {
-            Ok(unread_count) if unread_count > 0 => {
-                return Err((
-                    StatusCode::CONFLICT,
-                    Json(serde_json::json!({
-                        "error": "unread_messages",
-                        "unread_count": unread_count,
-                        "hint": format!(
-                            "You have {} unread agent response(s). Call v1_get_ideation_messages to read them before sending another message.",
-                            unread_count
-                        ),
-                        "next_action": "fetch_messages"
-                    })),
-                ));
-            }
-            Ok(_) => {}
-            Err(e) => {
-                error!(
-                    "Failed to count unread messages for session {}: {}",
-                    session_id_str, e
-                );
-                return Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({"error": "Failed to check message read status"})),
-                ));
-            }
+    let last_read = session.external_last_read_message_id.as_deref();
+    match state
+        .app_state
+        .chat_message_repo
+        .count_unread_messages(&session_id_str, last_read)
+        .await
+    {
+        Ok(unread_count) if unread_count > 0 => {
+            return Err((
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({
+                    "error": "unread_messages",
+                    "unread_count": unread_count,
+                    "hint": format!(
+                        "You have {} unread message(s) (user or orchestrator) that you have not yet read. \
+Call v1_get_ideation_messages with offset=0 (default) to advance your read cursor to the latest message, \
+then retry sending.",
+                        unread_count
+                    ),
+                    "next_action": "fetch_messages"
+                })),
+            ));
+        }
+        Ok(_) => {}
+        Err(e) => {
+            error!(
+                "Failed to count unread messages for session {}: {}",
+                session_id_str, e
+            );
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "Failed to check message read status"})),
+            ));
         }
     }
 

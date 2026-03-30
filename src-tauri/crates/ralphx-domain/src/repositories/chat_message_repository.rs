@@ -86,6 +86,20 @@ pub trait ChatMessageRepository: Send + Sync {
         after_message_id: Option<&str>,
     ) -> AppResult<u32>;
 
+    /// Count User + Orchestrator messages in a session newer than the cursor message.
+    ///
+    /// Matches the role filter used by the GET /messages endpoint (User + Orchestrator only).
+    /// System, Worker, Reviewer, and Merger messages are excluded to prevent deadlock.
+    ///
+    /// Two branches:
+    /// - `cursor_message_id` is Some: counts messages created after the cursor's created_at
+    /// - `cursor_message_id` is None: counts ALL User + Orchestrator messages in the session
+    async fn count_unread_messages(
+        &self,
+        session_id: &str,
+        cursor_message_id: Option<&str>,
+    ) -> AppResult<i64>;
+
     /// Get the content of the first user message for a given context (context_type + context_id).
     ///
     /// Returns the content of the earliest user-role message for this context, or None if no
