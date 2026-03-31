@@ -36,8 +36,8 @@ export function useIdeationEffortSettings(projectId: string | null) {
     mutationFn: (updates: { primaryEffort?: string; verifierEffort?: string }) =>
       ideationEffortApi.update({ projectId, ...updates }),
     onMutate: async (updates) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey });
+      // Cancel outgoing refetches for all effort queries (prefix-level) to prevent stale refetch races
+      await queryClient.cancelQueries({ queryKey: ["ideation", "effort"] });
 
       // Snapshot previous value for rollback
       const previous =
@@ -55,10 +55,14 @@ export function useIdeationEffortSettings(projectId: string | null) {
       if (context?.previous) {
         queryClient.setQueryData(queryKey, context.previous);
       }
+      // Invalidate all effort queries so sibling "inherit" rows refetch from consistent state
+      void queryClient.invalidateQueries({ queryKey: ["ideation", "effort"] });
     },
     onSuccess: (updated) => {
       // Replace with server response (includes resolved effective values)
       queryClient.setQueryData(queryKey, updated);
+      // Invalidate all effort queries so sibling "inherit" rows get fresh effective values
+      void queryClient.invalidateQueries({ queryKey: ["ideation", "effort"] });
     },
   });
 
