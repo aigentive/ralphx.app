@@ -38,6 +38,7 @@ Thumbs.db
 *.swp
 *.swo
 *.local
+*.worktree_bak
 
 # Build outputs
 dist/
