@@ -69,6 +69,7 @@ BENIGN_PATH_PATTERNS = [
 
 # Paths that are generated artifacts or review snapshots and should be skipped.
 SKIP_PATH_PATTERNS = [
+    re.compile(r"^scripts/test_scan_history\.py$"),
     re.compile(r"(?:^|/)build(?:/|$)"),
     re.compile(r"(?:^|/)dist(?:/|$)"),
     re.compile(r"(?:^|/)screenshots/features/.+_mock-check\.md$"),

@@ -594,6 +594,7 @@ class TestPathAnnotation(unittest.TestCase):
         self.assertTrue(sh.is_likely_benign("ralphx-plugin/ralphx-mcp-server/src/__tests__/redact.test.ts"))
 
     def test_generated_and_mock_paths_skipped(self):
+        self.assertTrue(sh.should_skip_file("scripts/test_scan_history.py"))
         self.assertTrue(sh.should_skip_file("ralphx-plugin/ralphx-external-mcp/build/index.js"))
         self.assertTrue(
             sh.should_skip_file(
