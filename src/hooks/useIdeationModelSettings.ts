@@ -36,8 +36,8 @@ export function useIdeationModelSettings(projectId: string | null) {
     mutationFn: (updates: { primaryModel?: string; verifierModel?: string }) =>
       ideationModelApi.update({ projectId, ...updates }),
     onMutate: async (updates) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey });
+      // Cancel outgoing refetches for all model queries (prefix-level) to prevent stale refetch races
+      await queryClient.cancelQueries({ queryKey: ["ideation", "model"] });
 
       // Snapshot previous value for rollback
       const previous =
@@ -55,10 +55,14 @@ export function useIdeationModelSettings(projectId: string | null) {
       if (context?.previous) {
         queryClient.setQueryData(queryKey, context.previous);
       }
+      // Invalidate all model queries so sibling "inherit" rows refetch from consistent state
+      void queryClient.invalidateQueries({ queryKey: ["ideation", "model"] });
     },
     onSuccess: (updated) => {
       // Replace with server response (includes resolved effective values)
       queryClient.setQueryData(queryKey, updated);
+      // Invalidate all model queries so sibling "inherit" rows get fresh effective values
+      void queryClient.invalidateQueries({ queryKey: ["ideation", "model"] });
     },
   });
 
