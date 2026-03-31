@@ -31,15 +31,15 @@ pub struct IdeationModelResponse {
     /// Stored value for the verifier bucket (may be "inherit").
     pub verifier_model: String,
     /// Resolved effective model for the primary bucket (never "inherit").
-    pub effective_primary: String,
+    pub effective_primary_model: String,
     /// Resolved effective model for the verifier bucket (never "inherit").
-    pub effective_verifier: String,
-    /// Source label for how effective_primary was determined.
+    pub effective_verifier_model: String,
+    /// Source label for how effective_primary_model was determined.
     /// One of: "user" | "global" | "yaml" | "yaml_default"
-    pub primary_source: String,
-    /// Source label for how effective_verifier was determined.
+    pub primary_model_source: String,
+    /// Source label for how effective_verifier_model was determined.
     /// One of: "user" | "global" | "yaml" | "yaml_default"
-    pub verifier_source: String,
+    pub verifier_model_source: String,
 }
 
 // ============================================================================
@@ -159,10 +159,10 @@ pub async fn get_ideation_model_settings(
     Ok(IdeationModelResponse {
         primary_model: stored_primary,
         verifier_model: stored_verifier,
-        effective_primary,
-        effective_verifier,
-        primary_source,
-        verifier_source,
+        effective_primary_model: effective_primary,
+        effective_verifier_model: effective_verifier,
+        primary_model_source: primary_source,
+        verifier_model_source: verifier_source,
     })
 }
 

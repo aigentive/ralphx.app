@@ -84,6 +84,7 @@ interface EffortRowProps {
   onChange: (value: string) => void;
   effectiveValue: string;
   effectiveSource: string;
+  isPlaceholderData: boolean;
   isLast?: boolean;
 }
 
@@ -96,9 +97,10 @@ function EffortRow({
   onChange,
   effectiveValue,
   effectiveSource,
+  isPlaceholderData,
   isLast = false,
 }: EffortRowProps) {
-  const showHint = value === "inherit";
+  const showHint = value === "inherit" && !isPlaceholderData && !!effectiveValue;
 
   return (
     <div
@@ -167,7 +169,7 @@ function EffortRow({
 
 function GlobalEffortSubsection() {
   const [showError, setShowError] = useState(false);
-  const { settings, updateSettings, saveError } = useIdeationEffortSettings(null);
+  const { settings, isPlaceholderData, updateSettings, saveError } = useIdeationEffortSettings(null);
 
   const handlePrimaryChange = (value: string) => {
     setShowError(false);
@@ -203,6 +205,7 @@ function GlobalEffortSubsection() {
           onChange={handlePrimaryChange}
           effectiveValue={settings.effectivePrimary}
           effectiveSource={settings.primarySource}
+          isPlaceholderData={isPlaceholderData}
         />
         <EffortRow
           id="global-verifier-effort"
@@ -213,6 +216,7 @@ function GlobalEffortSubsection() {
           onChange={handleVerifierChange}
           effectiveValue={settings.effectiveVerifier}
           effectiveSource={settings.verifierSource}
+          isPlaceholderData={isPlaceholderData}
           isLast
         />
       </div>
@@ -234,7 +238,7 @@ function ProjectEffortSubsection({
   projectName,
 }: ProjectEffortSubsectionProps) {
   const [showError, setShowError] = useState(false);
-  const { settings, updateSettings, saveError } = useIdeationEffortSettings(projectId);
+  const { settings, isPlaceholderData, updateSettings, saveError } = useIdeationEffortSettings(projectId);
   const isDisabled = projectId === null;
 
   const handlePrimaryChange = (value: string) => {
@@ -283,6 +287,7 @@ function ProjectEffortSubsection({
           onChange={handlePrimaryChange}
           effectiveValue={settings.effectivePrimary}
           effectiveSource={settings.primarySource}
+          isPlaceholderData={isPlaceholderData}
         />
         <EffortRow
           id="project-verifier-effort"
@@ -293,6 +298,7 @@ function ProjectEffortSubsection({
           onChange={handleVerifierChange}
           effectiveValue={settings.effectiveVerifier}
           effectiveSource={settings.verifierSource}
+          isPlaceholderData={isPlaceholderData}
           isLast
         />
       </div>
