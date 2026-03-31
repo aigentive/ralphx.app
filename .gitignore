@@ -70,3 +70,6 @@ streams/hygiene/trigger
 
 # Secret scan output
 gitleaks-report.json
+
+# History scan reports
+reports/
