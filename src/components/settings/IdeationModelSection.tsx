@@ -79,6 +79,7 @@ interface ModelRowProps {
   onChange: (value: string) => void;
   effectiveValue: string;
   effectiveSource: string;
+  isPlaceholderData: boolean;
   isLast?: boolean;
 }
 
@@ -91,9 +92,10 @@ function ModelRow({
   onChange,
   effectiveValue,
   effectiveSource,
+  isPlaceholderData,
   isLast = false,
 }: ModelRowProps) {
-  const showHint = value === "inherit";
+  const showHint = value === "inherit" && !isPlaceholderData && !!effectiveValue;
 
   return (
     <div
@@ -162,7 +164,7 @@ function ModelRow({
 
 function GlobalModelSubsection() {
   const [showError, setShowError] = useState(false);
-  const { settings, updateSettings, saveError } = useIdeationModelSettings(null);
+  const { settings, isPlaceholderData, updateSettings, saveError } = useIdeationModelSettings(null);
 
   const handlePrimaryChange = (value: string) => {
     setShowError(false);
@@ -198,6 +200,7 @@ function GlobalModelSubsection() {
           onChange={handlePrimaryChange}
           effectiveValue={settings.effectivePrimaryModel}
           effectiveSource={settings.primaryModelSource}
+          isPlaceholderData={isPlaceholderData}
         />
         <ModelRow
           id="global-verifier-model"
@@ -208,6 +211,7 @@ function GlobalModelSubsection() {
           onChange={handleVerifierChange}
           effectiveValue={settings.effectiveVerifierModel}
           effectiveSource={settings.verifierModelSource}
+          isPlaceholderData={isPlaceholderData}
           isLast
         />
       </div>
@@ -229,7 +233,7 @@ function ProjectModelSubsection({
   projectName,
 }: ProjectModelSubsectionProps) {
   const [showError, setShowError] = useState(false);
-  const { settings, updateSettings, saveError } = useIdeationModelSettings(projectId);
+  const { settings, isPlaceholderData, updateSettings, saveError } = useIdeationModelSettings(projectId);
   const isDisabled = projectId === null;
 
   const handlePrimaryChange = (value: string) => {
@@ -278,6 +282,7 @@ function ProjectModelSubsection({
           onChange={handlePrimaryChange}
           effectiveValue={settings.effectivePrimaryModel}
           effectiveSource={settings.primaryModelSource}
+          isPlaceholderData={isPlaceholderData}
         />
         <ModelRow
           id="project-verifier-model"
@@ -288,6 +293,7 @@ function ProjectModelSubsection({
           onChange={handleVerifierChange}
           effectiveValue={settings.effectiveVerifierModel}
           effectiveSource={settings.verifierModelSource}
+          isPlaceholderData={isPlaceholderData}
           isLast
         />
       </div>

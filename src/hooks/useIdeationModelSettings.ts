@@ -65,6 +65,7 @@ export function useIdeationModelSettings(projectId: string | null) {
   return {
     settings: query.data ?? defaultIdeationModelSettings,
     isLoading: query.isLoading,
+    isPlaceholderData: query.isPlaceholderData,
     isError: query.isError,
     error: query.error,
     updateSettings: mutation.mutate,

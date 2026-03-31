@@ -25,10 +25,10 @@ export type IdeationModelResponse = z.infer<typeof IdeationModelResponseSchema>;
 export const defaultIdeationModelSettings: IdeationModelResponse = {
   primaryModel: "inherit",
   verifierModel: "inherit",
-  effectivePrimaryModel: "sonnet",
-  effectiveVerifierModel: "sonnet",
-  primaryModelSource: "yaml_default",
-  verifierModelSource: "yaml_default",
+  effectivePrimaryModel: "",
+  effectiveVerifierModel: "",
+  primaryModelSource: "",
+  verifierModelSource: "",
 };
 
 // ============================================================================

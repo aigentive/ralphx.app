@@ -25,10 +25,10 @@ export type IdeationEffortResponse = z.infer<typeof IdeationEffortResponseSchema
 export const defaultIdeationEffortSettings: IdeationEffortResponse = {
   primaryEffort: "inherit",
   verifierEffort: "inherit",
-  effectivePrimary: "inherit",
-  effectiveVerifier: "inherit",
-  primarySource: "yaml_default",
-  verifierSource: "yaml_default",
+  effectivePrimary: "",
+  effectiveVerifier: "",
+  primarySource: "",
+  verifierSource: "",
 };
 
 // ============================================================================
