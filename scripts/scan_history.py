@@ -67,6 +67,13 @@ BENIGN_PATH_PATTERNS = [
     re.compile(r"(?:^|/)examples?/"),
 ]
 
+# Paths that are generated artifacts or review snapshots and should be skipped.
+SKIP_PATH_PATTERNS = [
+    re.compile(r"(?:^|/)build(?:/|$)"),
+    re.compile(r"(?:^|/)dist(?:/|$)"),
+    re.compile(r"(?:^|/)screenshots/features/.+_mock-check\.md$"),
+]
+
 # Category names (order matters for report)
 CATEGORIES = [
     "Internal URLs",
@@ -245,6 +252,10 @@ def is_binary_extension(file_path: str) -> bool:
     return ext in BINARY_EXTENSIONS
 
 
+def should_skip_file(file_path: str) -> bool:
+    return any(pat.search(file_path) for pat in SKIP_PATH_PATTERNS)
+
+
 PLACEHOLDER_EMAIL_DOMAINS = {
     "example.com",
     "test.com",
@@ -306,6 +317,37 @@ def is_safe_public_author_email(email: str) -> bool:
 
 def should_cross_check_reachable(args: argparse.Namespace) -> bool:
     return args.branches == "all" and not args.since and not args.max_commits
+
+
+def should_ignore_internal_url_match(match_text: str, content: str) -> bool:
+    normalized = match_text.lower()
+    if normalized in {"settings.local", "claude.local"}:
+        return True
+    if normalized.startswith("localhost:") or normalized.startswith("127.0.0.1:"):
+        if "re.compile(" in content:
+            return True
+    return False
+
+
+def should_ignore_category_match(
+    category: str,
+    file_path: str,
+    match_text: str,
+    content: str,
+) -> bool:
+    if file_path == "scripts/scan_history.py" and "re.compile(" in content:
+        if category in {
+            "Internal URLs",
+            "Proprietary Comments",
+            "License Issues",
+            "Infrastructure Config",
+        }:
+            return True
+
+    if category == "Internal URLs" and should_ignore_internal_url_match(match_text, content):
+        return True
+
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -432,6 +474,8 @@ def stream_git_log(
             # --- Added diff lines only ---
             if in_diff and stripped.startswith("+") and not stripped.startswith("+++"):
                 if skip_binary_file:
+                    continue
+                if should_skip_file(current_file):
                     continue
                 content_line = stripped[1:]  # strip leading +
                 yield (ctx.sha, ctx.date, ctx.author, current_file, content_line, False)
@@ -597,6 +641,9 @@ def scan(args: argparse.Namespace) -> ScanResult:
 
     def process_line(sha: str, date: str, author: str, file_path: str,
                      content: str, is_commit_msg: bool) -> None:
+        if not is_commit_msg and should_skip_file(file_path):
+            return
+
         # Determine which categories to check
         if is_commit_msg:
             categories_to_check = ["Commit Messages"]
@@ -611,6 +658,8 @@ def scan(args: argparse.Namespace) -> ScanResult:
                 if m:
                     match_text = m.group(0)
                     if category == "Customer/Personal Data" and should_ignore_customer_email(match_text):
+                        continue
+                    if should_ignore_category_match(category, file_path, match_text, content):
                         continue
                     finding = Finding(
                         category=category,

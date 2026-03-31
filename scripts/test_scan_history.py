@@ -77,6 +77,10 @@ class TestInternalURLPatterns(unittest.TestCase):
     def test_no_false_positive_partial_internal_domain(self):
         self.assertFalse(self._match("internal.c"))
 
+    def test_known_local_config_name_ignored(self):
+        self.assertTrue(self._match("settings.local"))
+        self.assertTrue(sh.should_ignore_internal_url_match("settings.local", "settings.local"))
+
 
 class TestProprietaryCommentPatterns(unittest.TestCase):
     def setUp(self):
@@ -504,6 +508,30 @@ class TestDeduplication(unittest.TestCase):
         secret_findings = [f for f in result.findings if f.category == "Secrets & Credentials"]
         self.assertEqual(len(secret_findings), 1)
 
+    def test_skips_generated_build_artifacts(self):
+        fixture_content = [
+            ("sha0000000000000000000000000000000000001", "2024-01-01", "Alice",
+             "pkg/build/index.js", 'const url = "http://127.0.0.1:3847";', False),
+        ]
+        args = _make_args()
+        with patch.object(sh, "stream_git_log", return_value=iter(fixture_content)):
+            with patch.object(sh, "stream_author_metadata", return_value=iter(())):
+                result = sh.scan(args)
+
+        self.assertEqual(result.findings, [])
+
+    def test_skips_scanner_self_regex_matches(self):
+        fixture_content = [
+            ("sha0000000000000000000000000000000000001", "2024-01-01", "Alice",
+             "scripts/scan_history.py", 're.compile(r"APPLE_CERTIFICATE", re.IGNORECASE),', False),
+        ]
+        args = _make_args()
+        with patch.object(sh, "stream_git_log", return_value=iter(fixture_content)):
+            with patch.object(sh, "stream_author_metadata", return_value=iter(())):
+                result = sh.scan(args)
+
+        self.assertEqual(result.findings, [])
+
 
 class TestAuthorMetadata(unittest.TestCase):
     def test_personal_email_flagged(self):
@@ -565,9 +593,18 @@ class TestPathAnnotation(unittest.TestCase):
         self.assertTrue(sh.is_likely_benign("src-tauri/src/utils/secret_redactor_tests.rs"))
         self.assertTrue(sh.is_likely_benign("ralphx-plugin/ralphx-mcp-server/src/__tests__/redact.test.ts"))
 
+    def test_generated_and_mock_paths_skipped(self):
+        self.assertTrue(sh.should_skip_file("ralphx-plugin/ralphx-external-mcp/build/index.js"))
+        self.assertTrue(
+            sh.should_skip_file(
+                "screenshots/features/2026-02-07_phase85-visual-verification_mock-check.md"
+            )
+        )
+
     def test_production_code_not_annotated(self):
         self.assertFalse(sh.is_likely_benign("src/services/auth.ts"))
         self.assertFalse(sh.is_likely_benign("src-tauri/src/commands.rs"))
+        self.assertFalse(sh.should_skip_file("src/services/auth.ts"))
 
 
 # ---------------------------------------------------------------------------
