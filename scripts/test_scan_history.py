@@ -67,15 +67,15 @@ class TestInternalURLPatterns(unittest.TestCase):
     def test_dot_local(self):
         self.assertTrue(self._match("myserver.local"))
 
-    def test_known_port_3848(self):
-        self.assertTrue(self._match("connect to :3848"))
-
     def test_no_false_positive_plain_localhost(self):
         # localhost without port — should NOT match localhost:port pattern
         self.assertFalse(self._match("connect to localhost without port"))
 
     def test_no_false_positive_random_domain(self):
         self.assertFalse(self._match("https://www.example.com"))
+
+    def test_no_false_positive_partial_internal_domain(self):
+        self.assertFalse(self._match("internal.c"))
 
 
 class TestProprietaryCommentPatterns(unittest.TestCase):
@@ -104,6 +104,9 @@ class TestProprietaryCommentPatterns(unittest.TestCase):
         # Plain TODO without a phase/wp marker should NOT match TODO(WP...) pattern
         self.assertFalse(self._match("// TODO: fix this"))
 
+    def test_no_false_positive_internal_status(self):
+        self.assertFalse(self._match("TargetColumn::Todo => InternalStatus::Ready"))
+
 
 class TestCustomerDataPatterns(unittest.TestCase):
     def setUp(self):
@@ -123,6 +126,16 @@ class TestCustomerDataPatterns(unittest.TestCase):
 
     def test_no_test_email(self):
         self.assertFalse(self._match("user@test.com"))
+
+    def test_no_git_remote_email(self):
+        match = next((p.search("git@github.com:owner/repo.git") for p in self.pats if p.search("git@github.com:owner/repo.git")), None)
+        self.assertIsNotNone(match)
+        self.assertTrue(sh.should_ignore_customer_email(match.group(0)))
+
+    def test_no_noreply_email(self):
+        match = next((p.search("Co-Authored-By: Claude <noreply@anthropic.com>") for p in self.pats if p.search("Co-Authored-By: Claude <noreply@anthropic.com>")), None)
+        self.assertIsNotNone(match)
+        self.assertTrue(sh.should_ignore_customer_email(match.group(0)))
 
 
 class TestSecretsPatterns(unittest.TestCase):
@@ -209,6 +222,9 @@ class TestInfrastructurePatterns(unittest.TestCase):
     def test_no_wildcard_ip(self):
         self.assertFalse(self._match("listen 0.0.0.0"))
 
+    def test_no_svg_path_false_positive(self):
+        self.assertFalse(self._match('d="M16.2 10a6.2 6.2 0 01-.1 1.2l2.1 1.6"'))
+
 
 class TestInternalReferencesPatterns(unittest.TestCase):
     def setUp(self):
@@ -220,12 +236,6 @@ class TestInternalReferencesPatterns(unittest.TestCase):
     def test_jira_ref(self):
         self.assertTrue(self._match("See JIRA-1234 for context"))
 
-    def test_linear_ref(self):
-        self.assertTrue(self._match("discussed in Linear"))
-
-    def test_slack_ref(self):
-        self.assertTrue(self._match("mentioned in Slack"))
-
     def test_founder_path(self):
         self.assertTrue(self._match("load ~/.ralphx/founder/profile.md"))
 
@@ -234,6 +244,12 @@ class TestInternalReferencesPatterns(unittest.TestCase):
 
     def test_no_false_positive(self):
         self.assertFalse(self._match("regular comment without refs"))
+
+    def test_no_linear_false_positive(self):
+        self.assertFalse(self._match("Linear interpolate between two RGB colors."))
+
+    def test_no_slack_false_positive(self):
+        self.assertFalse(self._match("Follow Slack-style thread layout."))
 
 
 class TestCustomNamesPatterns(unittest.TestCase):
@@ -489,6 +505,43 @@ class TestDeduplication(unittest.TestCase):
         self.assertEqual(len(secret_findings), 1)
 
 
+class TestAuthorMetadata(unittest.TestCase):
+    def test_personal_email_flagged(self):
+        args = _make_args()
+        with patch.object(sh, "stream_git_log", return_value=iter(())):
+            with patch.object(sh, "stream_author_metadata", return_value=iter([
+                ("abc1234567890123456789012345678901234567", "2024-01-01", "Alice", "alice@example.org"),
+            ])):
+                result = sh.scan(args)
+
+        findings = [f for f in result.findings if f.category == "Author Metadata"]
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].match_text, "alice@example.org")
+
+    def test_github_noreply_not_flagged(self):
+        args = _make_args()
+        with patch.object(sh, "stream_git_log", return_value=iter(())):
+            with patch.object(sh, "stream_author_metadata", return_value=iter([
+                ("abc1234567890123456789012345678901234567", "2024-01-01", "Alice", "12345+alice@users.noreply.github.com"),
+            ])):
+                result = sh.scan(args)
+
+        findings = [f for f in result.findings if f.category == "Author Metadata"]
+        self.assertEqual(findings, [])
+
+    def test_invalid_author_email_flagged(self):
+        args = _make_args()
+        with patch.object(sh, "stream_git_log", return_value=iter(())):
+            with patch.object(sh, "stream_author_metadata", return_value=iter([
+                ("abc1234567890123456789012345678901234567", "2024-01-01", "Opus", "Opus 4.6"),
+            ])):
+                result = sh.scan(args)
+
+        findings = [f for f in result.findings if f.category == "Author Metadata"]
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].match_text, "Opus 4.6")
+
+
 # ---------------------------------------------------------------------------
 # Path annotation test
 # ---------------------------------------------------------------------------
@@ -507,6 +560,10 @@ class TestPathAnnotation(unittest.TestCase):
 
     def test_toml_annotated(self):
         self.assertTrue(sh.is_likely_benign("Cargo.toml"))
+
+    def test_rust_and_js_test_conventions_annotated(self):
+        self.assertTrue(sh.is_likely_benign("src-tauri/src/utils/secret_redactor_tests.rs"))
+        self.assertTrue(sh.is_likely_benign("ralphx-plugin/ralphx-mcp-server/src/__tests__/redact.test.ts"))
 
     def test_production_code_not_annotated(self):
         self.assertFalse(sh.is_likely_benign("src/services/auth.ts"))
@@ -551,6 +608,7 @@ class TestReportGeneration(unittest.TestCase):
         self.assertIn("## Summary by Category", report)
         self.assertIn("## Secrets & Credentials", report)
         self.assertIn("## Internal URLs", report)
+        self.assertIn("## Author Metadata", report)
 
     def test_report_balanced_code_fences(self):
         args = _make_args()
@@ -609,6 +667,18 @@ class TestReportGeneration(unittest.TestCase):
 
         self.assertIn("Skipped dangling commits", report)
         self.assertIn("abc123", report)
+
+    def test_report_notes_history_change(self):
+        args = _make_args()
+        result = sh.ScanResult(
+            findings=[],
+            commits_scanned=10,
+            reachable_commits_before=10,
+            reachable_commits_after=11,
+        )
+        report = sh.generate_report(result, args)
+
+        self.assertIn("Git history changed while the scan was running", report)
 
 
 # ---------------------------------------------------------------------------

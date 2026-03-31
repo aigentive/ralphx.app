@@ -51,7 +51,10 @@ BINARY_EXTENSIONS = frozenset({
 # Paths that indicate a finding is likely benign (test fixtures, example configs)
 BENIGN_PATH_PATTERNS = [
     re.compile(r"(?:^|/)tests?/"),
+    re.compile(r"(?:^|/)__tests?__(?:/|$)"),
     re.compile(r"(?:^|/)test_"),
+    re.compile(r"(?:^|/)[^/]+_tests?\.[A-Za-z0-9]+$"),
+    re.compile(r"(?:^|/)[^/]+_test\.[A-Za-z0-9]+$"),
     re.compile(r"\.test\.[a-z]+$"),
     re.compile(r"(?:^|/)fixtures?/"),
     re.compile(r"\.env\.example$"),
@@ -73,6 +76,7 @@ CATEGORIES = [
     "License Issues",
     "Infrastructure Config",
     "Internal References",
+    "Author Metadata",
     "Commit Messages",
 ]
 
@@ -105,6 +109,8 @@ class ScanResult:
     dangling_skipped: list[str] = field(default_factory=list)
     had_encoding_replacements: bool = False
     git_exit_code: int = 0
+    reachable_commits_before: int = -1
+    reachable_commits_after: int = -1
 
 
 # ---------------------------------------------------------------------------
@@ -119,22 +125,22 @@ def build_patterns(extra_names: list[str]) -> dict[str, list[re.Pattern]]:
     patterns["Internal URLs"] = [
         re.compile(r"localhost:\d{4,5}", re.IGNORECASE),
         re.compile(r"127\.0\.0\.1:\d{4,5}"),
-        re.compile(r"\bstaging\.[a-z0-9]", re.IGNORECASE),
-        re.compile(r"\binternal\.[a-z0-9]", re.IGNORECASE),
-        re.compile(r"\badmin\.[a-z0-9]", re.IGNORECASE),
+        re.compile(r"\bstaging\.[a-z0-9.-]+\.[a-z]{2,}\b", re.IGNORECASE),
+        re.compile(r"\binternal\.[a-z0-9.-]+\.[a-z]{2,}\b", re.IGNORECASE),
+        re.compile(r"\badmin\.[a-z0-9.-]+\.[a-z]{2,}\b", re.IGNORECASE),
         re.compile(r"[a-z0-9.-]+\.local\b", re.IGNORECASE),
-        # Known internal ports for RalphX
-        re.compile(r":3847\b"),
-        re.compile(r":3848\b"),
     ]
 
     # 2. Proprietary Comments
     patterns["Proprietary Comments"] = [
-        re.compile(r"TODO\s*\(\s*(?:Phase\s*\d+|WP\d+|D\d+|RC\d+)\s*\)", re.IGNORECASE),
-        re.compile(r"FIXME[^\n]*internal", re.IGNORECASE),
-        re.compile(r"HACK[^\n]*proprietary", re.IGNORECASE),
-        re.compile(r"TODO[^\n]*internal", re.IGNORECASE),
-        re.compile(r"NOTE[^\n]*proprietary", re.IGNORECASE),
+        re.compile(
+            r"^\s*(?://|#|/\*+|\*|<!--)\s*TODO\s*\(\s*(?:Phase\s*\d+|WP\d+|D\d+|RC\d+)\s*\)",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"^\s*(?://|#|/\*+|\*|<!--)\s*(?:FIXME|HACK|TODO|NOTE)\b[^\n]*\b(?:internal|proprietary)\b",
+            re.IGNORECASE,
+        ),
     ]
 
     # 3. Customer/Personal Data
@@ -182,7 +188,13 @@ def build_patterns(extra_names: list[str]) -> dict[str, list[re.Pattern]]:
         re.compile(r"APPLE_CERTIFICATE", re.IGNORECASE),
         re.compile(r"TAURI_SIGNING", re.IGNORECASE),
         # Hardcoded non-loopback IPs
-        re.compile(r"\b(?!127\.0\.0\.1|0\.0\.0\.0|255\.255\.255\.255)(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b"),
+        re.compile(
+            r"(?<![\d.])"
+            r"(?!127\.0\.0\.1(?!\d)|0\.0\.0\.0(?!\d)|255\.255\.255\.255(?!\d))"
+            r"(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}"
+            r"(?:25[0-5]|2[0-4]\d|[01]?\d\d?)"
+            r"(?![\d.])"
+        ),
         # Database connection strings
         re.compile(r"(?:postgres|mysql|mongodb|redis)://[^\s\"'<>]+", re.IGNORECASE),
         # Generic connection strings
@@ -192,8 +204,6 @@ def build_patterns(extra_names: list[str]) -> dict[str, list[re.Pattern]]:
     # 7. Internal References
     internal_patterns = [
         re.compile(r"\bJIRA-\d+\b"),
-        re.compile(r"\bLinear\b"),
-        re.compile(r"\bSlack\b"),
         re.compile(r"~/\.ralphx/founder/"),
         re.compile(r"~/\.ralphx/strategy/"),
         re.compile(r"founder-profile\.md"),
@@ -206,7 +216,10 @@ def build_patterns(extra_names: list[str]) -> dict[str, list[re.Pattern]]:
             internal_patterns.append(re.compile(re.escape(name.strip()), re.IGNORECASE))
     patterns["Internal References"] = internal_patterns
 
-    # 8. Commit Messages — same patterns applied to commit subject/body
+    # 8. Author Metadata
+    patterns["Author Metadata"] = []
+
+    # 9. Commit Messages — same patterns applied to commit subject/body
     # Build a combined set from categories 1-7 for commit message scanning
     commit_patterns: list[re.Pattern] = []
     for cat in [
@@ -230,6 +243,69 @@ def is_likely_benign(file_path: str) -> bool:
 def is_binary_extension(file_path: str) -> bool:
     ext = Path(file_path).suffix.lower()
     return ext in BINARY_EXTENSIONS
+
+
+PLACEHOLDER_EMAIL_DOMAINS = {
+    "example.com",
+    "test.com",
+    "foo.com",
+    "bar.com",
+    "localhost",
+}
+
+GIT_REMOTE_EMAIL_DOMAINS = {
+    "github.com",
+    "gitlab.com",
+    "bitbucket.org",
+}
+
+SAFE_PUBLIC_AUTHOR_EMAIL_PATTERNS = [
+    re.compile(r"^[0-9]+\+[^@]+@users\.noreply\.github\.com$", re.IGNORECASE),
+    re.compile(r"^[^@]+@users\.noreply\.github\.com$", re.IGNORECASE),
+]
+
+EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+
+
+def is_placeholder_email(email: str) -> bool:
+    local_part, _, domain = email.lower().partition("@")
+    if not local_part or not domain:
+        return False
+    if domain in PLACEHOLDER_EMAIL_DOMAINS:
+        return True
+    if domain.endswith(".test") or domain.endswith(".invalid"):
+        return True
+    return False
+
+
+def should_ignore_customer_email(email: str) -> bool:
+    local_part, _, domain = email.lower().partition("@")
+    if not local_part or not domain:
+        return True
+    if is_placeholder_email(email):
+        return True
+    if local_part == "git" and domain in GIT_REMOTE_EMAIL_DOMAINS:
+        return True
+    if domain.endswith(".noreply.github.com"):
+        return True
+    if email.lower() == "noreply@anthropic.com":
+        return True
+    if email.lower() == "t@t.com":
+        return True
+    return False
+
+
+def is_valid_email(email: str) -> bool:
+    return bool(EMAIL_PATTERN.fullmatch(email.strip()))
+
+
+def is_safe_public_author_email(email: str) -> bool:
+    normalized = email.strip()
+    return any(pat.fullmatch(normalized) for pat in SAFE_PUBLIC_AUTHOR_EMAIL_PATTERNS)
+
+
+def should_cross_check_reachable(args: argparse.Namespace) -> bool:
+    return args.branches == "all" and not args.since and not args.max_commits
 
 
 # ---------------------------------------------------------------------------
@@ -372,6 +448,55 @@ def stream_git_log(
         state.exit_code = proc.returncode
 
 
+def stream_author_metadata(args: argparse.Namespace) -> Iterator[tuple[str, str, str, str]]:
+    """Stream commit author metadata as (sha, date, author_name, author_email)."""
+    cmd = [
+        "git", "log",
+        "--date-order",
+        "--all",
+        "--format=commit %H%nauthor %an%nauthor-email %ae%ndate %ad%n",
+        "--date=iso-strict",
+    ]
+    if args.since:
+        cmd.extend(["--since", args.since])
+    if args.branches and args.branches != "all":
+        cmd = [c for c in cmd if c != "--all"]
+        cmd.extend(args.branches.split(","))
+    if args.max_commits:
+        cmd.extend(["--max-count", str(args.max_commits)])
+
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    sha = ""
+    author = ""
+    author_email = ""
+    date = ""
+
+    def flush() -> Iterator[tuple[str, str, str, str]]:
+        if sha:
+            yield (sha, date, author, author_email)
+
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.rstrip("\n")
+        if line.startswith("commit ") and len(line) == 47:
+            yield from flush()
+            sha = line[7:]
+            author = ""
+            author_email = ""
+            date = ""
+            continue
+        if line.startswith("author "):
+            author = line[7:]
+            continue
+        if line.startswith("author-email "):
+            author_email = line[13:]
+            continue
+        if line.startswith("date "):
+            date = line[5:25]
+            continue
+
+    yield from flush()
+
+
 def count_reachable_commits() -> int:
     """Run git rev-list --all --count for cross-check."""
     try:
@@ -464,6 +589,8 @@ def stream_dangling_commit(sha: str) -> Iterator[tuple[str, str, str, str, str, 
 
 def scan(args: argparse.Namespace) -> ScanResult:
     result = ScanResult()
+    if should_cross_check_reachable(args):
+        result.reachable_commits_before = count_reachable_commits()
     patterns = build_patterns(args.names.split(",") if args.names else [])
     seen: set[str] = set()  # deduplication set
     commits_seen: set[str] = set()
@@ -482,6 +609,9 @@ def scan(args: argparse.Namespace) -> ScanResult:
             for pat in patterns[category]:
                 m = pat.search(content)
                 if m:
+                    match_text = m.group(0)
+                    if category == "Customer/Personal Data" and should_ignore_customer_email(match_text):
+                        continue
                     finding = Finding(
                         category=category,
                         sha=sha,
@@ -489,7 +619,7 @@ def scan(args: argparse.Namespace) -> ScanResult:
                         author=author,
                         file_path=file_path,
                         line_content=content.strip(),
-                        match_text=m.group(0),
+                        match_text=match_text,
                         likely_benign=benign,
                     )
                     key = finding.dedup_key()
@@ -511,6 +641,35 @@ def scan(args: argparse.Namespace) -> ScanResult:
     result.git_exit_code = stream_state.exit_code
     result.had_encoding_replacements = stream_state.had_encoding_replacements
 
+    # --- Author metadata scan ---
+    for sha, date, author, author_email in stream_author_metadata(args):
+        normalized = author_email.strip()
+        if not normalized:
+            continue
+        if is_safe_public_author_email(normalized):
+            continue
+        if is_valid_email(normalized):
+            match_text = normalized
+            line_content = f"{author} <{normalized}>"
+        else:
+            match_text = normalized
+            line_content = f"{author} <{normalized}>"
+
+        finding = Finding(
+            category="Author Metadata",
+            sha=sha,
+            date=date,
+            author=author,
+            file_path="<author-metadata>",
+            line_content=line_content,
+            match_text=match_text,
+            likely_benign=False,
+        )
+        key = finding.dedup_key()
+        if key not in seen:
+            seen.add(key)
+            result.findings.append(finding)
+
     # --- Dangling scan ---
     if args.dangling:
         shas, truncated = get_dangling_shas(args.max_dangling)
@@ -530,6 +689,9 @@ def scan(args: argparse.Namespace) -> ScanResult:
                 print(f"[WARNING] {e}", file=sys.stderr)
                 result.dangling_skipped.append(sha)
 
+    if should_cross_check_reachable(args):
+        result.reachable_commits_after = count_reachable_commits()
+
     return result
 
 
@@ -547,10 +709,22 @@ def generate_report(result: ScanResult, args: argparse.Namespace) -> str:
     if args.dangling:
         lines.append(f"**Dangling commits scanned:** {result.dangling_scanned}  ")
 
-    reachable = count_reachable_commits()
-    if reachable >= 0 and not args.max_commits:
-        status = "✅" if result.commits_scanned == reachable else "⚠️"
-        lines.append(f"**Reachable commits (git rev-list):** {reachable} {status}  ")
+    if result.reachable_commits_before >= 0 and result.reachable_commits_after >= 0:
+        if result.reachable_commits_before != result.reachable_commits_after:
+            lines.append(
+                f"**Reachable commits (start -> end):** "
+                f"{result.reachable_commits_before} -> {result.reachable_commits_after} ⚠️  "
+            )
+            lines.append("> ⚠️ **NOTE:** Git history changed while the scan was running. "
+                         "Count mismatches may reflect concurrent commits, not a parser gap.")
+        else:
+            status = "✅" if result.commits_scanned == result.reachable_commits_after else "⚠️"
+            lines.append(f"**Reachable commits (git rev-list):** {result.reachable_commits_after} {status}  ")
+    else:
+        reachable = count_reachable_commits()
+        if reachable >= 0 and not args.max_commits:
+            status = "✅" if result.commits_scanned == reachable else "⚠️"
+            lines.append(f"**Reachable commits (git rev-list):** {reachable} {status}  ")
 
     lines.append(f"**Total findings:** {len(result.findings)}  ")
 
