@@ -255,6 +255,7 @@ pub async fn apply_proposals_core(
     let project_dir = std::fs::canonicalize(&project.working_directory)
         .unwrap_or_else(|_| std::path::PathBuf::from(&project.working_directory));
 
+    let total_count = proposals_to_apply.len();
     let proposals_to_apply: Vec<TaskProposal> = proposals_to_apply
         .into_iter()
         .filter(|p| {
@@ -270,6 +271,38 @@ pub async fn apply_proposals_core(
             }
         })
         .collect();
+
+    // All proposals were foreign — transition session to Accepted and return early.
+    if proposals_to_apply.is_empty() {
+        let foreign_skipped = total_count;
+        app_state
+            .ideation_session_repo
+            .update_status(&session_id, IdeationSessionStatus::Accepted)
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        return Ok(ApplyProposalsResult {
+            created_task_ids: vec![],
+            dependencies_created: 0,
+            tasks_created: 0,
+            message: Some(format!(
+                "No local proposals to finalize ({} foreign skipped). \
+                 Call migrate_proposals to move them to target sessions.",
+                foreign_skipped
+            )),
+            warnings: vec![],
+            session_converted: true,
+            execution_plan_id: None,
+            project_id: session.project_id.as_str().to_string(),
+            session_id: session_id.as_str().to_string(),
+            any_ready_tasks: false,
+            is_user_title: session
+                .title_source
+                .as_deref()
+                .map(|s| s == "user")
+                .unwrap_or(false),
+            proposal_titles: vec![],
+        });
+    }
 
     // ========================================================================
     // PRE-FETCH: Collect proposal deps (async) before entering the transaction

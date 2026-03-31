@@ -3014,3 +3014,97 @@ async fn test_apply_proposals_core_excludes_foreign_proposals() {
         "Foreign proposal must not have a task created for it"
     );
 }
+
+/// All-foreign session: when every proposal is foreign, apply_proposals_core returns
+/// tasks_created==0 with a "foreign skipped" message and transitions session to Accepted.
+#[tokio::test]
+async fn test_apply_proposals_core_all_foreign_returns_early() {
+    use ralphx_lib::domain::entities::{Project, ProposalCategory, Priority};
+
+    let state = setup_apply_test_state();
+
+    // Project with a known working directory
+    let project = Project::new("Local Project".to_string(), "/tmp/local-only".to_string());
+    let project = state
+        .project_repo
+        .create(project)
+        .await
+        .expect("Failed to create project");
+
+    let session = IdeationSession::new(project.id.clone());
+    let session = state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .expect("Failed to create session");
+
+    // Create 2 foreign proposals — both target a different project directory
+    let mut foreign1 = TaskProposal::new(
+        session.id.clone(),
+        "Foreign Task 1".to_string(),
+        ProposalCategory::Feature,
+        Priority::Medium,
+    );
+    foreign1.target_project = Some("/tmp/other-project".to_string());
+    let foreign1 = state
+        .task_proposal_repo
+        .create(foreign1)
+        .await
+        .expect("Failed to create foreign proposal 1");
+
+    let mut foreign2 = TaskProposal::new(
+        session.id.clone(),
+        "Foreign Task 2".to_string(),
+        ProposalCategory::Feature,
+        Priority::Medium,
+    );
+    foreign2.target_project = Some("/tmp/other-project".to_string());
+    let foreign2 = state
+        .task_proposal_repo
+        .create(foreign2)
+        .await
+        .expect("Failed to create foreign proposal 2");
+
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids: vec![
+            foreign1.id.as_str().to_string(),
+            foreign2.id.as_str().to_string(),
+        ],
+        target_column: "auto".to_string(),
+        base_branch_override: None,
+    };
+
+    let result = apply_proposals_core(&state, input)
+        .await
+        .expect("apply_proposals_core should succeed for all-foreign sessions");
+
+    // No tasks must be created
+    assert_eq!(result.tasks_created, 0, "All-foreign session must create 0 tasks");
+    assert!(
+        result.created_task_ids.is_empty(),
+        "created_task_ids must be empty for all-foreign session"
+    );
+
+    // Message must mention "foreign skipped"
+    let msg = result.message.expect("Expected a message for all-foreign early return");
+    assert!(
+        msg.contains("foreign skipped"),
+        "Message must contain 'foreign skipped', got: {msg}"
+    );
+
+    // Session must be transitioned to Accepted
+    let session_id_typed = IdeationSessionId::from_string(session.id.as_str().to_string());
+    let updated_session = state
+        .ideation_session_repo
+        .get_by_id(&session_id_typed)
+        .await
+        .expect("repo error")
+        .expect("Session must exist");
+
+    assert_eq!(
+        updated_session.status,
+        IdeationSessionStatus::Accepted,
+        "All-foreign session must transition to Accepted"
+    );
+}
