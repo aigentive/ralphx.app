@@ -54,6 +54,34 @@ pub async fn request_permission(
     Json(PermissionRequestResponse { request_id })
 }
 
+/// Remove the request from state and return the resolved decision on the success path.
+/// Does NOT emit `permission:expired` — expiry events are only for timeout/error paths.
+async fn remove_and_return(
+    state: &HttpServerState,
+    request_id: &str,
+    decision: PermissionDecision,
+) -> Result<Json<PermissionDecision>, StatusCode> {
+    state.app_state.permission_state.remove(request_id).await;
+    Ok(Json(decision))
+}
+
+/// Remove the request from state and emit `permission:expired` on all timeout/error paths.
+/// Returns `Err(code)` so callers can propagate it directly.
+pub(crate) async fn expire_permission_and_emit(
+    state: &HttpServerState,
+    request_id: &str,
+    code: StatusCode,
+) -> Result<Json<PermissionDecision>, StatusCode> {
+    state.app_state.permission_state.remove(request_id).await;
+    if let Some(ref app_handle) = state.app_state.app_handle {
+        let _ = app_handle.emit(
+            "permission:expired",
+            serde_json::json!({ "request_id": request_id }),
+        );
+    }
+    Err(code)
+}
+
 pub async fn await_permission(
     State(state): State<HttpServerState>,
     Path(request_id): Path<String>,
@@ -80,15 +108,13 @@ pub async fn await_permission(
         };
 
         if let Some(decision) = maybe_decision {
-            // Clean up
-            state.app_state.permission_state.remove(&request_id).await;
-            return Ok(Json(decision));
+            // Clean up — success path does not emit permission:expired
+            return remove_and_return(&state, &request_id, decision).await;
         }
 
         // Check timeout
         if start.elapsed() >= timeout {
-            state.app_state.permission_state.remove(&request_id).await;
-            return Err(StatusCode::REQUEST_TIMEOUT);
+            return expire_permission_and_emit(&state, &request_id, StatusCode::REQUEST_TIMEOUT).await;
         }
 
         // Wait for change with remaining timeout
@@ -97,13 +123,21 @@ pub async fn await_permission(
             Ok(Ok(())) => continue, // Value changed, loop again to check
             Ok(Err(_)) => {
                 // Channel closed
-                state.app_state.permission_state.remove(&request_id).await;
-                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+                return expire_permission_and_emit(
+                    &state,
+                    &request_id,
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )
+                .await;
             }
             Err(_) => {
                 // Timeout
-                state.app_state.permission_state.remove(&request_id).await;
-                return Err(StatusCode::REQUEST_TIMEOUT);
+                return expire_permission_and_emit(
+                    &state,
+                    &request_id,
+                    StatusCode::REQUEST_TIMEOUT,
+                )
+                .await;
             }
         }
     }
@@ -131,3 +165,7 @@ pub async fn resolve_permission(
         StatusCode::NOT_FOUND
     }
 }
+
+#[cfg(test)]
+#[path = "permissions_tests.rs"]
+mod tests;

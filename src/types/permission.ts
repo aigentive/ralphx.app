@@ -48,3 +48,11 @@ export const PermissionDecisionSchema = z.union([
 export function isPermissionRequest(value: unknown): value is PermissionRequest {
   return PermissionRequestSchema.safeParse(value).success;
 }
+
+/**
+ * Event emitted when a permission request has expired on the backend.
+ * The frontend should dismiss the corresponding dialog.
+ */
+export interface PermissionExpiredEvent {
+  request_id: string;
+}

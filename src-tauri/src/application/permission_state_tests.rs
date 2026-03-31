@@ -132,15 +132,16 @@ async fn test_register_and_resolve_permission() {
         context_type: None,
         context_id: None,
     };
-    let rx = state.register(info).await;
+    state.register(info).await;
 
-    // Verify it's in pending
-    {
+    // Verify it's in pending and subscribe to the channel
+    let rx = {
         let pending = state.pending.lock().await;
         assert!(pending.contains_key(&request_id));
         let request = pending.get(&request_id).unwrap();
         assert_eq!(request.info.tool_name, "Bash");
-    }
+        request.sender.subscribe()
+    };
 
     // Resolve with a decision
     let resolved = state

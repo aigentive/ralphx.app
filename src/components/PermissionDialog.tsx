@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useEventBus } from "@/providers/EventProvider";
 import { api } from "@/lib/tauri";
@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, Shield, Terminal } from "lucide-react";
 import { useTaskStore } from "@/stores/taskStore";
-import type { PermissionRequest } from "@/types/permission";
+import type { PermissionRequest, PermissionExpiredEvent } from "@/types/permission";
 
 /**
  * Global permission dialog for approving agent tool usage.
@@ -27,7 +27,11 @@ import type { PermissionRequest } from "@/types/permission";
  * - Calls `resolve_permission_request` Tauri command on decision
  * - Closing dialog is treated as "deny"
  * - Shows agent identity (agent type, context type, task name) when available
- * - Prevents double-submit with resolving state
+ * - Prevents double-submit with resolvingId state
+ * - Hydrates queue on mount from backend in-memory state (D7)
+ * - Removes expired requests via `permission:expired` event (D9)
+ * - Smart error handling: "not found" removes from queue, transport errors retry (D4)
+ * - Manual dismiss button for stale/stuck requests (D6)
  */
 
 const AGENT_BADGE_CONFIG: Record<string, { label: string; colorVar: string }> = {
@@ -48,16 +52,107 @@ const CONTEXT_LABEL_MAP: Record<string, string> = {
   project: "Project Chat",
 };
 
+type BufferedEvent =
+  | { type: "permission:request"; payload: PermissionRequest }
+  | { type: "permission:expired"; payload: PermissionExpiredEvent };
+
 export function PermissionDialog() {
   const [requests, setRequests] = useState<PermissionRequest[]>([]);
-  const [resolving, setResolving] = useState(false);
+  // D8: track WHICH request is being resolved, not just a boolean
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
   const eventBus = useEventBus();
   const currentRequest = requests[0];
 
-  // Listen to permission request events from backend
+  // Code quality #3: reactive task selector at component top level
+  const tasks = useTaskStore((state) => state.tasks);
+
+  // D7: hydration race guard refs
+  const hydratingRef = useRef(false);
+  const pendingEventsRef = useRef<BufferedEvent[]>([]);
+
+  // D7: Hydration on mount — seed queue from backend in-memory state
+  useEffect(() => {
+    hydratingRef.current = true;
+
+    api.permission.getPendingPermissions().then((pending) => {
+      // Snapshot IDs from hydration response
+      const snapshotIds = new Set(pending.map((r) => r.request_id));
+
+      setRequests((prev) => {
+        const existingIds = new Set(prev.map((r) => r.request_id));
+        const newRequests = pending.filter((r) => !existingIds.has(r.request_id));
+        return [...prev, ...newRequests];
+      });
+
+      // Replay buffered events in order
+      const buffered = pendingEventsRef.current;
+      pendingEventsRef.current = [];
+
+      for (const event of buffered) {
+        if (event.type === "permission:request") {
+          setRequests((prev) => {
+            if (prev.some((r) => r.request_id === event.payload.request_id)) return prev;
+            return [...prev, event.payload];
+          });
+        } else if (event.type === "permission:expired") {
+          const requestId = event.payload.request_id;
+          // Buffer replay: skip toast if request was never in the hydration snapshot
+          if (snapshotIds.has(requestId)) {
+            toast.info("Permission request timed out");
+          }
+          setRequests((prev) => prev.filter((r) => r.request_id !== requestId));
+        }
+      }
+
+      hydratingRef.current = false;
+    }).catch((err) => {
+      console.error("Failed to hydrate pending permissions:", err);
+      hydratingRef.current = false;
+      pendingEventsRef.current = [];
+    });
+  }, []);
+
+  // Listen to permission:request events from backend
   useEffect(() => {
     const unsubscribe = eventBus.subscribe<PermissionRequest>("permission:request", (payload) => {
-      setRequests((prev) => [...prev, payload]);
+      if (hydratingRef.current) {
+        pendingEventsRef.current.push({ type: "permission:request", payload });
+        return;
+      }
+      setRequests((prev) => {
+        // Dedupe by request_id
+        if (prev.some((r) => r.request_id === payload.request_id)) return prev;
+        return [...prev, payload];
+      });
+    });
+
+    return unsubscribe;
+  }, [eventBus]);
+
+  // D9: permission:expired event listener with D8 race guard
+  useEffect(() => {
+    const unsubscribe = eventBus.subscribe<PermissionExpiredEvent>("permission:expired", (payload) => {
+      if (hydratingRef.current) {
+        pendingEventsRef.current.push({ type: "permission:expired", payload });
+        return;
+      }
+
+      const expiredRequestId = payload.request_id;
+
+      // D8: if this request is currently being resolved, skip toast (resolve catch will handle it)
+      // but still schedule removal
+      setResolvingId((currentResolvingId) => {
+        if (currentResolvingId !== expiredRequestId) {
+          // Not the active request — show toast
+          toast.info("Permission request timed out");
+        }
+        return currentResolvingId;
+      });
+
+      // D9: defer queue removal via setTimeout to ensure toast renders before modal closes
+      setTimeout(() => {
+        setRequests((prev) => prev.filter((r) => r.request_id !== expiredRequestId));
+      }, 0);
     });
 
     return unsubscribe;
@@ -66,7 +161,8 @@ export function PermissionDialog() {
   const handleDecision = async (decision: "allow" | "deny") => {
     if (!currentRequest) return;
 
-    setResolving(true);
+    // D8: set resolvingId to current request's ID
+    setResolvingId(currentRequest.request_id);
     try {
       await api.permission.resolveRequest({
         requestId: currentRequest.request_id,
@@ -77,10 +173,27 @@ export function PermissionDialog() {
       setRequests((prev) => prev.slice(1));
     } catch (error) {
       console.error("Failed to resolve permission:", error);
-      toast.error("Failed to resolve permission request");
+      // D4: normalize error and split on "not found"
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("not found")) {
+        // Request was already expired/removed — remove from queue, show info
+        setRequests((prev) => prev.slice(1));
+        toast.info("Permission request expired");
+      } else {
+        // Transport or unexpected error — keep in queue for retry
+        toast.error("Failed to resolve permission request, please retry");
+      }
     } finally {
-      setResolving(false);
+      // D8: clear resolvingId on completion or error
+      setResolvingId(null);
     }
+  };
+
+  // D6: Dismiss removes from frontend queue only — no backend call
+  const handleDismiss = () => {
+    if (!currentRequest) return;
+    setRequests((prev) => prev.filter((r) => r.request_id !== currentRequest.request_id));
+    toast.info("Permission request dismissed");
   };
 
   // Dialog not visible when no requests
@@ -96,11 +209,18 @@ export function PermissionDialog() {
     Boolean(currentRequest.context_type) ||
     Boolean(currentRequest.task_id);
 
+  // Code quality #3: use reactive tasks selector from component top level
+  const taskTitle = currentRequest.task_id
+    ? (tasks[currentRequest.task_id]?.title ?? currentRequest.task_id.slice(0, 8))
+    : null;
+
   return (
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!resolving && !open) void handleDecision("deny");
+        // D8: guard uses resolvingId !== null
+        if (resolvingId !== null) return;
+        if (!open) void handleDecision("deny");
       }}
     >
       <DialogContent className="sm:max-w-[500px] max-h-[85vh] flex flex-col">
@@ -156,17 +276,11 @@ export function PermissionDialog() {
                 )}
               </div>
               {/* Task name row */}
-              {currentRequest.task_id && (() => {
-                const tasks = useTaskStore.getState().tasks;
-                const taskTitle =
-                  tasks[currentRequest.task_id]?.title ??
-                  currentRequest.task_id.slice(0, 8);
-                return (
-                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                    Task: {taskTitle}
-                  </p>
-                );
-              })()}
+              {taskTitle && (
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  Task: {taskTitle}
+                </p>
+              )}
             </div>
           )}
 
@@ -209,18 +323,30 @@ export function PermissionDialog() {
           )}
         </div>
 
-        <DialogFooter className="shrink-0">
+        {/* D6: Dismiss left-aligned, Deny+Allow right-aligned */}
+        <DialogFooter className="shrink-0 flex items-center justify-between sm:justify-between">
           <Button
-            variant="outline"
-            onClick={() => void handleDecision("deny")}
-            disabled={resolving}
+            variant="ghost"
+            className="text-sm"
+            style={{ color: "var(--text-muted)" }}
+            onClick={handleDismiss}
+            disabled={resolvingId !== null}
           >
-            Deny
+            Dismiss
           </Button>
-          <Button onClick={() => void handleDecision("allow")} disabled={resolving}>
-            <Shield className="h-4 w-4 mr-2" />
-            Allow
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => void handleDecision("deny")}
+              disabled={resolvingId !== null}
+            >
+              Deny
+            </Button>
+            <Button onClick={() => void handleDecision("allow")} disabled={resolvingId !== null}>
+              <Shield className="h-4 w-4 mr-2" />
+              Allow
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

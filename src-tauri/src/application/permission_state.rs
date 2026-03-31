@@ -8,6 +8,7 @@ use tokio::sync::{watch, Mutex};
 use tracing::{error, info};
 
 use crate::domain::repositories::PermissionRepository;
+use crate::error::AppResult;
 
 /// Permission decision made by the user in the UI
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,24 +73,25 @@ impl PermissionState {
         pending.values().map(|p| p.info.clone()).collect()
     }
 
+    /// Log a repo operation error without blocking the channel signaling path.
+    fn log_repo_err<T>(result: AppResult<T>, request_id: &str, context: &str) {
+        if let Err(e) = result {
+            error!("Failed to persist permission {} {}: {}", context, request_id, e);
+        }
+    }
+
     /// Register a new pending permission request
-    pub async fn register(
-        &self,
-        info: PendingPermissionInfo,
-    ) -> watch::Receiver<Option<PermissionDecision>> {
-        let (tx, rx) = watch::channel(None);
+    pub async fn register(&self, info: PendingPermissionInfo) {
+        let (tx, _rx) = watch::channel(None);
         let request_id = info.request_id.clone();
 
         // Fire-and-forget persist to repo
         if let Some(repo) = &self.repo {
-            if let Err(e) = repo.create_pending(&info).await {
-                error!("Failed to persist pending permission {}: {}", request_id, e);
-            }
+            Self::log_repo_err(repo.create_pending(&info).await, &request_id, "pending");
         }
 
         let request = PendingPermissionRequest { info, sender: tx };
         self.pending.lock().await.insert(request_id, request);
-        rx
     }
 
     /// Resolve a pending permission request with a decision
@@ -101,12 +103,7 @@ impl PermissionState {
 
             // Fire-and-forget persist to repo
             if let Some(repo) = &self.repo {
-                if let Err(e) = repo.resolve(request_id, &decision).await {
-                    error!(
-                        "Failed to persist permission resolution {}: {}",
-                        request_id, e
-                    );
-                }
+                Self::log_repo_err(repo.resolve(request_id, &decision).await, request_id, "resolution");
             }
 
             true
@@ -122,9 +119,7 @@ impl PermissionState {
         // Fire-and-forget persist to repo
         if removed {
             if let Some(repo) = &self.repo {
-                if let Err(e) = repo.remove(request_id).await {
-                    error!("Failed to persist permission removal {}: {}", request_id, e);
-                }
+                Self::log_repo_err(repo.remove(request_id).await, request_id, "removal");
             }
         }
 
