@@ -2,7 +2,7 @@
  * Drag-drop validation logic for the kanban board
  *
  * Supports both column-level and group-level validation for multi-state columns.
- * See specs/plans/review_system.md for the group locking rules.
+ * Group locking is enforced here for the review-related workflow columns.
  */
 
 import type { Task } from "@/types/task";

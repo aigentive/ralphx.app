@@ -7,7 +7,7 @@
  * - Layout direction (TB ↔ LR)
  * - Functions to filter nodes/edges based on selections
  *
- * @see specs/plans/task_graph_view.md section "Task E.4"
+ * Keeps task graph filter state and grouping behavior in one place.
  */
 
 import { useState, useCallback, useMemo } from "react";

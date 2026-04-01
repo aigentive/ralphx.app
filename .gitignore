@@ -47,6 +47,7 @@ build/
 out/
 /target/
 /librust_out.rlib
+screenshots/
 
 # Rust/Tauri
 src-tauri/target

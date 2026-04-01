@@ -5,7 +5,7 @@
  * filter by event type (status changes, plan events) and by status category
  * (execution, reviews, escalations, QA, merge, etc.).
  *
- * @see specs/plans/task_graph_view.md section "Task D.6"
+ * Shared filtering helpers for the task graph execution timeline.
  */
 
 import type { TimelineEvent, TimelineEventType } from "@/api/task-graph.types";

@@ -4,7 +4,7 @@
  * Fetches task execution timeline events for a project using the Tauri API
  * with automatic caching, refetching, and real-time updates.
  *
- * @see specs/plans/task_graph_view.md section "Task D.4"
+ * Provides the query layer behind the task graph execution timeline.
  */
 
 import { useQuery, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";

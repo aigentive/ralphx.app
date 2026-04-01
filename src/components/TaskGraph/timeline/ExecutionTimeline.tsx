@@ -8,7 +8,7 @@
  * - Real-time updates via useExecutionTimeline hook
  * - Collapsible panel
  *
- * @see specs/plans/task_graph_view.md section "Task D.4" and "Execution Timeline Panel"
+ * Mirrors the execution timeline behavior implemented for the task graph view.
  */
 
 import { memo, useState, useCallback, useMemo } from "react";

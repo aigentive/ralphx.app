@@ -8,7 +8,7 @@
  * - Layout direction toggle (TB ↔ LR)
  * - Grouping options (by plan, tier, status, none)
  *
- * @see specs/plans/task_graph_view.md section "Task E.3" and "Filtering & Grouping"
+ * Houses the filtering and grouping controls used by the task graph.
  */
 
 import { memo, useState, useCallback } from "react";

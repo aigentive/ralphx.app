@@ -8,7 +8,7 @@
  * - Status color indicator using nodeStyles
  * - Clickable area for node interaction
  *
- * @see specs/plans/task_graph_view.md section "Task D.3"
+ * Renders a single task graph timeline event with node-aware styling.
  */
 
 import { memo, useCallback, useMemo } from "react";
