@@ -128,7 +128,7 @@ validate, and report. Keep file ownership boundaries clear to avoid parallel wri
 response. One Task call per response = sequential (silent anti-pattern). Up to 3 concurrent coders.
 Background subagents (`run_in_background: true`) CANNOT use MCP tools — coders MUST run in foreground.
 <reference name="task-tool-parallel-dispatch">
-<!-- source: docs/claude-code/task-tool-parallel-dispatch.md -->
+<!-- source: ai-docs/claude-code/task-tool-parallel-dispatch.md -->
 
 | Style | Mechanic | Result |
 |-------|----------|--------|

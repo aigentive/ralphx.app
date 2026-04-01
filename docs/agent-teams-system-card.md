@@ -1222,13 +1222,13 @@ env CLAUDECODE=1 \
 
 | Document | Location | Content |
 |----------|----------|---------|
-| Claude Code Agent Teams | `docs/claude-code/agent-teams.md` | Official agent teams documentation |
-| Claude Code Subagents | `docs/claude-code/sub-agents.md` | Subagent configuration |
-| Claude Code Hooks | `docs/claude-code/hooks.md` | Hook reference |
-| Claude Code CLI | `docs/claude-code/cli-reference.md` | CLI flags and commands |
+| Claude Code Agent Teams | `ai-docs/claude-code/agent-teams.md` | Official-doc stub for agent teams behavior |
+| Claude Code Subagents | `ai-docs/claude-code/sub-agents.md` | Official-doc stub for subagent configuration |
+| Claude Code Hooks | `ai-docs/claude-code/hooks.md` | Official-doc stub for hook reference |
+| Claude Code CLI | `ai-docs/claude-code/cli-reference.md` | Official-doc stub for CLI flags and commands |
 | RalphX Spawning System | `docs/architecture/claude-spawning-system.md` | Full CLI spawning pipeline |
-| Claude Code Settings | `docs/claude-code/settings.md` | Configuration scopes |
-| Claude Code Plugins | `docs/claude-code/plugins.md` | Plugin system |
+| Claude Code Settings | `ai-docs/claude-code/settings.md` | Official-doc stub for configuration scopes |
+| Claude Code Plugins | `ai-docs/claude-code/plugins.md` | Official-doc stub for plugin system |
 | RalphX Agent Catalog | `docs/architecture/agent-catalog.md` | All 20 RalphX agents |
 | RalphX Task State Machine | `.claude/rules/task-state-machine.md` | 24-state lifecycle |
 | RalphX Task Execution Agents | `.claude/rules/task-execution-agents.md` | Agent trigger/flow rules |

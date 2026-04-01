@@ -82,7 +82,7 @@ Decompose your **single task** into 1-3 waves of parallel coder work:
 | Create-before-modify | New files first, modifications after — crash safety |
 | Atomic sub-scopes | Each coder scope must be independently testable |
 | 1-3 coders per wave | Max 3 concurrent coders; prefer fewer if coupling is high |
-| Parallel dispatch | ALL coder Task calls for a wave MUST be in a SINGLE response — see `docs/claude-code/task-tool-parallel-dispatch.md` |
+| Parallel dispatch | ALL coder Task calls for a wave MUST be in a SINGLE response — see `ai-docs/claude-code/task-tool-parallel-dispatch.md` |
 | Task boundary | Sub-scopes MUST be within your task — never include other tasks' work |
 
 ### Example: Task "Add caching to API responses"
@@ -151,4 +151,4 @@ Wave 1 coders complete
 | Building dependency graphs that span multiple tasks | Cross-task orchestration is the coordinator's job | Build dependencies only within your task |
 | Delegating 3+ coders covering all plan waves | This means you've adopted coordinator identity | Delegate coders only for sub-scopes of YOUR task |
 | Reading the orchestration system card | That card teaches plan-level coordination | Use THIS card for task-level execution |
-| Dispatching coders one-at-a-time across responses | Each response blocks → sequential execution | Put ALL coder Task calls for a wave in a SINGLE response. See `docs/claude-code/task-tool-parallel-dispatch.md` |
+| Dispatching coders one-at-a-time across responses | Each response blocks → sequential execution | Put ALL coder Task calls for a wave in a SINGLE response. See `ai-docs/claude-code/task-tool-parallel-dispatch.md` |

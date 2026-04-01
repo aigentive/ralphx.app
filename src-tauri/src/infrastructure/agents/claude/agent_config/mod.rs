@@ -141,7 +141,7 @@ struct ClaudeRuntimeConfigRaw {
     /// Named claude settings profiles passed via --settings.
     #[serde(default)]
     settings_profiles: HashMap<String, serde_json::Value>,
-    /// Optional settings passed to claude CLI via --settings (see docs/claude-code/settings.md).
+    /// Optional settings passed to claude CLI via --settings (see ai-docs/claude-code/settings.md).
     /// Legacy field kept for backwards compatibility when profiles are not configured.
     settings: Option<serde_json::Value>,
     #[serde(default)]

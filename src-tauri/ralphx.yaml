@@ -49,7 +49,7 @@
 #   `default`, `acceptEdits`, `plan`, `delegate`, `dontAsk`, `bypassPermissions`.
 # - setting_sources:
 #   Optional setting sources passed to `--setting-sources` as a comma list.
-#   Valid values: `user`, `project`, `local` (see docs/claude-code/cli-reference.md).
+#   Valid values: `user`, `project`, `local` (see ai-docs/claude-code/cli-reference.md).
 #   Omit to use Claude CLI defaults.
 # - dangerously_skip_permissions:
 #   If true, adds `--dangerously-skip-permissions`. Keep false by default.
@@ -400,7 +400,7 @@ claude:
   dangerously_skip_permissions: false
   permission_prompt_tool: permission_request
   append_system_prompt_file: true
-  # Passed to claude CLI via --settings (JSON). See docs/claude-code/settings.md.
+  # Passed to claude CLI via --settings (JSON). See ai-docs/claude-code/settings.md.
   settings_profile: default
   settings_profile_defaults:
     permissions:
