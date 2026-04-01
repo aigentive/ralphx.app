@@ -23,6 +23,8 @@ ralphx/
 ├─ frontend/              # Frontend project root (Vite/React) → frontend/src/CLAUDE.md
 │  ├─ src/                # Frontend app code
 │  └─ tests/              # Frontend/Vitest/Playwright tests
+├─ plugins/
+│  └─ shared/             # Shared Claude Code plugin for external RalphX agents
 ├─ src-tauri/             # Backend (Rust/Tauri) → src-tauri/CLAUDE.md
 │  └─ ralphx.db           # SQLite (dev)
 ├─ ralphx-plugin/         # Claude plugin (agents/skills/hooks)

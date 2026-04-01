@@ -17,13 +17,13 @@ This plugin teaches external Claude Code agents **judgment** for navigating the 
 Clone or access the RalphX repository, then load the plugin directly:
 
 ```bash
-claude --plugin-dir ./ralphx-shared-plugin
+claude --plugin-dir ./plugins/shared
 ```
 
 Load alongside other plugins:
 
 ```bash
-claude --plugin-dir ./ralphx-shared-plugin --plugin-dir ./other-plugin
+claude --plugin-dir ./plugins/shared --plugin-dir ./other-plugin
 ```
 
 To pick up changes without restarting:
@@ -156,4 +156,4 @@ Each reference file has a `<!-- Source: path | Last synced: date -->` comment at
 2. Check event count in `events.ts` (`RalphXEvent` discriminated union) matches `reference/event-catalog.md`
 3. Verify all `v1_*` tool references in decision trees and playbooks still exist
 4. Run `claude plugin validate .` to check structure
-5. Test locally: `claude --plugin-dir ./ralphx-shared-plugin`, run `/ralphx-shared-plugin:ralphx-swe`, verify skill appears in `/help`
+5. Test locally: `claude --plugin-dir ./plugins/shared`, run `/ralphx-shared-plugin:ralphx-swe`, verify skill appears in `/help`

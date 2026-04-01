@@ -70,6 +70,7 @@ When working in `src-tauri/`, also follow:
 | Root cleanup | Remove stale root artifacts and reduce visible clutter | Completed | `rollback_backup.json` and empty `.config/` removed; local generated dirs now live under `.artifacts/`; `.cursor/` intentionally kept at root |
 | Artifact strategy | Move generated local outputs under `.artifacts/` while keeping Playwright visual baselines tracked in-repo | Completed | `logs/`, `reports/`, `screenshots/`, and `backups/` moved under `.artifacts/`; frontend visual baselines stay in `frontend/tests/visual/snapshots/` |
 | Asset publishing pipeline | Split ignored source captures from tracked public assets, move asset tooling under `assets/scripts/`, and add reusable compression/publish commands | Completed | `assets/raw/` is now gitignored source, `assets/public/` is the tracked publish set, `assets/scripts/` owns framing/diagram/compression, and `.claude/rules/assets.md` holds the workflow |
+| Plugin namespace cleanup | Move the shared plugin under `plugins/shared` now; keep the heavier `ralphx-plugin` move as a later dedicated refactor | Completed | `ralphx-shared-plugin/` now lives at `plugins/shared/`; plugin name/namespace stays `ralphx-shared-plugin` for marketplace and slash-command stability |
 | Validation | Re-run targeted frontend and Tauri-facing checks after rewiring completes | Completed | `npm --prefix frontend run typecheck`, `npm --prefix frontend run lint`, and `npm --prefix frontend run tauri build -- --help` succeeded |
 
 ## Cross-Session Tracker Notes
