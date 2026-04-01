@@ -229,7 +229,6 @@ cargo test --package ralphx --lib -- chat_session_recovery
 
 ## Related Documentation
 
-- [Manual Testing Guide](../testing/session-recovery-manual-test.md) - Testing procedures
 
 ## Feedback
 
