@@ -346,7 +346,7 @@ This document specifies test cases for the new team coordination tools and agent
 
 ### Test ideation-team-lead access:
 ```bash
-cd ralphx-plugin/ralphx-mcp-server
+cd plugins/app/ralphx-mcp-server
 RALPHX_AGENT_TYPE=ideation-team-lead node build/index.js --agent-type=ideation-team-lead
 # Send list_tools request via stdio
 # Verify all 6 team coordination tools are present
@@ -354,7 +354,7 @@ RALPHX_AGENT_TYPE=ideation-team-lead node build/index.js --agent-type=ideation-t
 
 ### Test ideation-team-member limited access:
 ```bash
-cd ralphx-plugin/ralphx-mcp-server
+cd plugins/app/ralphx-mcp-server
 RALPHX_AGENT_TYPE=ideation-team-member node build/index.js --agent-type=ideation-team-member
 # Send list_tools request via stdio
 # Verify create_team_artifact and get_team_artifacts present
@@ -363,7 +363,7 @@ RALPHX_AGENT_TYPE=ideation-team-member node build/index.js --agent-type=ideation
 
 ### Test env var override:
 ```bash
-cd ralphx-plugin/ralphx-mcp-server
+cd plugins/app/ralphx-mcp-server
 RALPHX_AGENT_TYPE=ideation-team-member \
 RALPHX_ALLOWED_MCP_TOOLS=get_session_plan,create_team_artifact \
 node build/index.js --agent-type=ideation-team-member
@@ -373,7 +373,7 @@ node build/index.js --agent-type=ideation-team-member
 
 ### Test input schema validation:
 ```bash
-cd ralphx-plugin/ralphx-mcp-server
+cd plugins/app/ralphx-mcp-server
 RALPHX_AGENT_TYPE=ideation-team-lead node build/index.js --agent-type=ideation-team-lead
 # Send request_team_plan with missing process field
 # Verify schema validation error
@@ -385,12 +385,12 @@ RALPHX_AGENT_TYPE=ideation-team-lead node build/index.js --agent-type=ideation-t
 
 Authorization is enforced at THREE layers (defense in depth):
 
-1. **MCP Server TOOL_ALLOWLIST** (ralphx-plugin/ralphx-mcp-server/src/tools.ts)
+1. **MCP Server TOOL_ALLOWLIST** (plugins/app/ralphx-mcp-server/src/tools.ts)
    - Hard-coded mapping of agent types to allowed tool names
    - Added 3 new agent types: ideation-team-lead, ideation-team-member, worker-team-member
    - RALPHX_ALLOWED_MCP_TOOLS env var overrides hardcoded allowlist if set
 
-2. **MCP Server Request Handler** (ralphx-plugin/ralphx-mcp-server/src/index.ts)
+2. **MCP Server Request Handler** (plugins/app/ralphx-mcp-server/src/index.ts)
    - Routes 6 new team tools to Tauri backend
    - Input schema validation handled by MCP SDK
 
@@ -409,9 +409,9 @@ All three layers MUST agree for a tool call to succeed.
 
 ## Related Files
 
-- `ralphx-plugin/ralphx-mcp-server/src/tools.ts` - TOOL_ALLOWLIST + new tool definitions
-- `ralphx-plugin/ralphx-mcp-server/src/index.ts` - Request handler with new tool routing
-- `ralphx-plugin/ralphx-mcp-server/src/agentNames.ts` - New agent type constants
-- `ralphx-plugin/agents/ideation-team-lead.md` - Team lead system prompt
-- `ralphx-plugin/agents/worker-team.md` - Worker team system prompt
-- `ralphx-plugin/agents/ideation-specialist-*.md` - Optional specialist templates
+- `plugins/app/ralphx-mcp-server/src/tools.ts` - TOOL_ALLOWLIST + new tool definitions
+- `plugins/app/ralphx-mcp-server/src/index.ts` - Request handler with new tool routing
+- `plugins/app/ralphx-mcp-server/src/agentNames.ts` - New agent type constants
+- `plugins/app/agents/ideation-team-lead.md` - Team lead system prompt
+- `plugins/app/agents/worker-team.md` - Worker team system prompt
+- `plugins/app/agents/ideation-specialist-*.md` - Optional specialist templates

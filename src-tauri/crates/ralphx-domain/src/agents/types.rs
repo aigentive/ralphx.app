@@ -73,7 +73,7 @@ pub struct AgentConfig {
     pub prompt: String,
     /// Working directory for the agent
     pub working_directory: PathBuf,
-    /// Optional plugin directory for agent/skill discovery (e.g., "./ralphx-plugin")
+    /// Optional plugin directory for agent/skill discovery (e.g., "./plugins/app")
     pub plugin_dir: Option<PathBuf>,
     /// Optional agent name to use (resolved via plugin_dir)
     pub agent: Option<String>,
@@ -93,7 +93,7 @@ impl Default for AgentConfig {
             role: AgentRole::Worker,
             prompt: String::new(),
             working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-            plugin_dir: Some(PathBuf::from("./ralphx-plugin")),
+            plugin_dir: Some(PathBuf::from("./plugins/app")),
             agent: None,
             model: None,
             max_tokens: None,

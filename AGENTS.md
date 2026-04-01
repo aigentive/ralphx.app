@@ -71,7 +71,19 @@ When working in `src-tauri/`, also follow:
 | Artifact strategy | Move generated local outputs under `.artifacts/` while keeping Playwright visual baselines tracked in-repo | Completed | `logs/`, `reports/`, `screenshots/`, and `backups/` moved under `.artifacts/`; frontend visual baselines stay in `frontend/tests/visual/snapshots/` |
 | Asset publishing pipeline | Split ignored source captures from tracked public assets, move asset tooling under `assets/scripts/`, and add reusable compression/publish commands | Completed | `assets/raw/` is now gitignored source, `assets/public/` is the tracked publish set, `assets/scripts/` owns framing/diagram/compression, and `.claude/rules/assets.md` holds the workflow |
 | Plugin namespace cleanup | Move the shared plugin under `plugins/shared` now; keep the heavier `ralphx-plugin` move as a later dedicated refactor | Completed | `ralphx-shared-plugin/` now lives at `plugins/shared/`; plugin name/namespace stays `ralphx-shared-plugin` for marketplace and slash-command stability |
+| App plugin migration plan | Move the app plugin from `ralphx-plugin/` to `plugins/app/` without breaking runtime plugin discovery, packaging, or docs | Completed | Runtime fallback landed first, then the tree/config/docs/release path move landed with targeted validation |
 | Validation | Re-run targeted frontend and Tauri-facing checks after rewiring completes | Completed | `npm --prefix frontend run typecheck`, `npm --prefix frontend run lint`, and `npm --prefix frontend run tauri build -- --help` succeeded |
+
+## App Plugin Migration Tracker
+
+| Stream | Goal | Status | Notes |
+|---|---|---|---|
+| Target naming | Finalize `ralphx-plugin -> plugins/app` as the repo path while keeping agent/plugin semantics clear | Completed | `plugins/app` won over `plugins/core`; the plugin contains agents, hooks, internal MCP, and external MCP, so `app` matches the actual role better |
+| Runtime path resolution | Update backend/plugin-dir discovery from `./ralphx-plugin` to `./plugins/app` without breaking worktree/dev/prod fallback logic | Completed | Claude runtime now prefers `plugins/app`, keeps `ralphx-plugin` as a fallback, routes teammate spawns through the shared resolver, and updates default plugin-dir surfaces before the tree move |
+| Config surface | Rewrite plugin paths in `ralphx.yaml`, `src-tauri/ralphx.yaml`, and path-scoped Claude rules/docs | Completed | Mechanical path rewrites landed; plugin ids and agent names stayed unchanged |
+| Packaging + release | Update release/build scripts and production app-data plugin install path to the new location | Completed | Release provisioning now copies from `plugins/app` into `~/Library/Application Support/com.ralphx.app/plugins/app` |
+| Docs + rules | Rewrite architectural/docs references after runtime/config changes are stable | Completed | Docs/rules now point at `plugins/app`; only explicit legacy fallback explanations still mention `ralphx-plugin` |
+| Validation | Run targeted runtime/config checks after the move and only then commit | Completed | `cargo test --manifest-path src-tauri/Cargo.toml test_resolve_plugin_dir_ --lib`, `cargo test --manifest-path src-tauri/Cargo.toml test_plugin_repo_root_supports_nested_plugins_app_layout --lib`, `cargo test --manifest-path src-tauri/Cargo.toml test_teammate_spawn_config_new_defaults --lib`, `cargo test --manifest-path src-tauri/Cargo.toml -p ralphx-domain test_agent_config_default`, `cargo test --manifest-path src-tauri/Cargo.toml test_all_system_prompt_files_exist --lib`, and `bash -n scripts/build-release.sh scripts/count-loc.sh plugins/app/skills/rule-manager/scripts/rule-suggest-paths.sh` passed |
 
 ## Cross-Session Tracker Notes
 

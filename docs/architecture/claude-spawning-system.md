@@ -168,7 +168,7 @@ claude:
 agents:
   - name: orchestrator-ideation
     model: opus
-    system_prompt_file: ralphx-plugin/agents/orchestrator-ideation.md
+    system_prompt_file: plugins/app/agents/orchestrator-ideation.md
     tools:
       extends: base_tools
       include: [Task]
@@ -233,7 +233,7 @@ claude.settings_profile_defaults → merged into every profile
 **File:** `src-tauri/src/infrastructure/agents/claude/mod.rs:319-424`
 
 Each agent spawn creates a temporary MCP config file that:
-1. Reads the base config from `ralphx-plugin/.mcp.json`
+1. Reads the base config from `plugins/app/.mcp.json`
 2. Injects `--agent-type=<short_name>` into the MCP server args
 3. Writes to a temp file with UUID to avoid race conditions between parallel spawns
 4. Passes via `--mcp-config <temp_path> --strict-mcp-config`
@@ -254,7 +254,7 @@ Each agent spawn creates a temporary MCP config file that:
 
 ## MCP Server — TypeScript Proxy Layer
 
-**File:** `ralphx-plugin/ralphx-mcp-server/src/index.ts`
+**File:** `plugins/app/ralphx-mcp-server/src/index.ts`
 **Transport:** Stdio (JSON-RPC 2.0 via `@modelcontextprotocol/sdk`)
 
 ### Request Flow
@@ -441,12 +441,14 @@ Before every spawn:
 **File:** `src-tauri/src/infrastructure/agents/claude/mod.rs:746-818`
 
 Priority order:
-1. `<working_dir>/ralphx-plugin` (in-repo development)
-2. `<working_dir>/../ralphx-plugin` (worktree sibling)
-3. `RALPHX_PLUGIN_DIR` env var
-4. Relative to `current_dir()`
-5. Relative to executable path (up to 3 levels)
-6. `~/Library/Application Support/com.ralphx.app/ralphx-plugin` (production macOS)
+1. `<working_dir>/plugins/app` (in-repo development)
+2. `<working_dir>/ralphx-plugin` (legacy in-repo fallback)
+3. `<working_dir>/../plugins/app` (worktree sibling)
+4. `<working_dir>/../ralphx-plugin` (legacy worktree fallback)
+5. `RALPHX_PLUGIN_DIR` env var
+6. Relative to `current_dir()`
+7. Relative to executable path (up to 3 levels)
+8. `~/Library/Application Support/com.ralphx.app/plugins/app` (production macOS)
 
 ## Alternative Spawn Modes
 
@@ -645,7 +647,7 @@ src-tauri/src/
     ├── mod.rs                   # Axum server setup, 50+ routes
     └── handlers/                # Per-endpoint handler implementations
 
-ralphx-plugin/
+plugins/app/
 ├── .mcp.json                    # MCP server stdio config
 ├── agents/*.md                  # 20 agent definitions (frontmatter + prompt)
 └── ralphx-mcp-server/src/

@@ -100,7 +100,7 @@ pub enum AutonomyLevel {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeCodeConfig {
-    /// Agent name (resolved via --plugin-dir, e.g. "worker" resolves to ralphx-plugin/agents/worker.md)
+    /// Agent name (resolved via --plugin-dir, e.g. "worker" resolves to plugins/app/agents/worker.md)
     pub agent: String,
     /// Skills to inject at startup (resolved via plugin discovery)
     #[serde(default)]

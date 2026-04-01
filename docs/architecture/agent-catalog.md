@@ -40,7 +40,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | opus |
-| **System prompt** | `ralphx-plugin/agents/orchestrator-ideation.md` (438 lines) |
+| **System prompt** | `plugins/app/agents/orchestrator-ideation.md` (438 lines) |
 | **Category** | Ideation |
 | **CLI tools** | Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
 | **Disallowed CLI tools** | Write, Edit, NotebookEdit |
@@ -67,7 +67,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `ralphx-plugin/agents/orchestrator-ideation-readonly.md` (224 lines) |
+| **System prompt** | `plugins/app/agents/orchestrator-ideation-readonly.md` (224 lines) |
 | **Category** | Ideation |
 | **CLI tools** | Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
 | **Disallowed CLI tools** | Write, Edit, NotebookEdit |
@@ -91,7 +91,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | haiku |
-| **System prompt** | `ralphx-plugin/agents/session-namer.md` (62 lines) |
+| **System prompt** | `plugins/app/agents/session-namer.md` (62 lines) |
 | **Category** | Ideation utility |
 | **CLI tools** | None (`mcp_only: true`) |
 | **MCP Tools (1):** | `update_session_title` |
@@ -110,7 +110,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | haiku |
-| **System prompt** | `ralphx-plugin/agents/dependency-suggester.md` (100 lines) |
+| **System prompt** | `plugins/app/agents/dependency-suggester.md` (100 lines) |
 | **Category** | Ideation utility |
 | **CLI tools** | None (`mcp_only: true`) |
 | **MCP Tools (1):** | `apply_proposal_dependencies` |
@@ -130,7 +130,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `ralphx-plugin/agents/chat-task.md` (63 lines) |
+| **System prompt** | `plugins/app/agents/chat-task.md` (63 lines) |
 | **Category** | Chat |
 | **CLI tools** | Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
 | **Preapproved** | Task(Explore), Task(Plan) |
@@ -153,7 +153,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `ralphx-plugin/agents/chat-project.md` (52 lines) |
+| **System prompt** | `plugins/app/agents/chat-project.md` (52 lines) |
 | **Category** | Chat |
 | **CLI tools** | Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
 | **Preapproved** | Task(Explore), Task(Plan) |
@@ -170,7 +170,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `ralphx-plugin/agents/review-chat.md` (117 lines) |
+| **System prompt** | `plugins/app/agents/review-chat.md` (117 lines) |
 | **Category** | Review |
 | **CLI tools** | Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
 | **Preapproved** | Task(Explore), Task(Plan) |
@@ -193,7 +193,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `ralphx-plugin/agents/review-history.md` (93 lines) |
+| **System prompt** | `plugins/app/agents/review-history.md` (93 lines) |
 | **Category** | Review |
 | **CLI tools** | Read, Grep, Glob, Task |
 | **Preapproved** | Task(Explore), Task(Plan) |
@@ -210,7 +210,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `ralphx-plugin/agents/worker.md` (468 lines) |
+| **System prompt** | `plugins/app/agents/worker.md` (468 lines) |
 | **Category** | Execution |
 | **CLI tools** | Read, Write, Edit, Bash, Grep, Glob, WebFetch, WebSearch, Skill, Task |
 | **All preapproved** | Read, Grep, Glob, WebFetch, WebSearch, Skill, Write, Edit, Bash, Task, Task(Explore), Task(Plan) |
@@ -236,7 +236,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `ralphx-plugin/agents/coder.md` (419 lines) |
+| **System prompt** | `plugins/app/agents/coder.md` (419 lines) |
 | **Category** | Execution |
 | **CLI tools** | Read, Write, Edit, Bash, Grep, Glob, WebFetch, WebSearch, Skill, Task |
 | **All preapproved** | Read, Grep, Glob, WebFetch, WebSearch, Skill, Write, Edit, Bash, Task, Task(Explore), Task(Plan) |
@@ -263,7 +263,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `ralphx-plugin/agents/reviewer.md` (341 lines) |
+| **System prompt** | `plugins/app/agents/reviewer.md` (341 lines) |
 | **Category** | Review |
 | **CLI tools** | Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
 | **Preapproved** | Bash, Task(Explore), Task(Plan) |
@@ -287,7 +287,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `ralphx-plugin/agents/qa-prep.md` (132 lines) |
+| **System prompt** | `plugins/app/agents/qa-prep.md` (132 lines) |
 | **Category** | QA |
 | **CLI tools** | Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
 | **Disallowed CLI tools** | Write, Edit, Bash, NotebookEdit |
@@ -303,7 +303,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | sonnet |
-| **System prompt** | `ralphx-plugin/agents/qa-executor.md` (198 lines) |
+| **System prompt** | `plugins/app/agents/qa-executor.md` (198 lines) |
 | **Category** | QA |
 | **CLI tools** | Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
 | **Preapproved** | Write, Edit, Bash, Task(Explore), Task(Plan) |
@@ -318,7 +318,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | opus |
-| **System prompt** | `ralphx-plugin/agents/orchestrator.md` (71 lines) |
+| **System prompt** | `plugins/app/agents/orchestrator.md` (71 lines) |
 | **Category** | Orchestration |
 | **CLI tools** | Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
 | **Preapproved** | Write, Edit, Bash, Task |
@@ -335,7 +335,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | haiku |
-| **System prompt** | `ralphx-plugin/agents/supervisor.md` (63 lines) |
+| **System prompt** | `plugins/app/agents/supervisor.md` (63 lines) |
 | **Category** | Monitoring |
 | **CLI tools** | Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
 | **Preapproved** | Bash, Task(Explore), Task(Plan) |
@@ -356,7 +356,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | opus |
-| **System prompt** | `ralphx-plugin/agents/deep-researcher.md` (79 lines) |
+| **System prompt** | `plugins/app/agents/deep-researcher.md` (79 lines) |
 | **Category** | Research |
 | **CLI tools** | Read, Write, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
 | **Preapproved** | Write, WebFetch, WebSearch, Task(Explore), Task(Plan) |
@@ -373,7 +373,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | haiku |
-| **System prompt** | `ralphx-plugin/agents/project-analyzer.md` (104 lines) |
+| **System prompt** | `plugins/app/agents/project-analyzer.md` (104 lines) |
 | **Category** | Infrastructure |
 | **CLI tools** | Read, Glob, Bash, Grep |
 | **Preapproved** | Read, Glob, Bash, Grep |
@@ -392,7 +392,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | opus |
-| **System prompt** | `ralphx-plugin/agents/merger.md` (258 lines) |
+| **System prompt** | `plugins/app/agents/merger.md` (258 lines) |
 | **Category** | Git |
 | **CLI tools** | Read, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Skill, Task |
 | **Preapproved** | Read, Edit, Bash, Task(Explore), Task(Plan) |
@@ -417,7 +417,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | haiku |
-| **System prompt** | `ralphx-plugin/agents/memory-maintainer.md` (163 lines) |
+| **System prompt** | `plugins/app/agents/memory-maintainer.md` (163 lines) |
 | **Category** | Memory |
 | **CLI tools** | Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Skill |
 | **All preapproved** | Read, Grep, Glob, WebFetch, WebSearch, Bash, Write, Edit |
@@ -436,7 +436,7 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | Property | Value |
 |----------|-------|
 | **Model** | haiku |
-| **System prompt** | `ralphx-plugin/agents/memory-capture.md` (205 lines) |
+| **System prompt** | `plugins/app/agents/memory-capture.md` (205 lines) |
 | **Category** | Memory |
 | **CLI tools** | Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Skill |
 | **All preapproved** | Read, Grep, Glob, WebFetch, WebSearch, Bash, Write, Edit |
@@ -459,8 +459,8 @@ Every MCP tool must be registered in three places (see `agent-mcp-tools.md`):
 | Layer | File | Controls |
 |-------|------|----------|
 | 1. Rust spawn config | `src-tauri/src/infrastructure/agents/claude/agent_config/mod.rs` | `--allowedTools` flag at spawn |
-| 2. MCP server filter | `ralphx-plugin/ralphx-mcp-server/src/tools.ts` | Server-side tool filtering |
-| 3. Agent frontmatter | `ralphx-plugin/agents/<name>.md` | Subagent spawning + docs |
+| 2. MCP server filter | `plugins/app/ralphx-mcp-server/src/tools.ts` | Server-side tool filtering |
+| 3. Agent frontmatter | `plugins/app/agents/<name>.md` | Subagent spawning + docs |
 
 ### Shared Tool Sets
 

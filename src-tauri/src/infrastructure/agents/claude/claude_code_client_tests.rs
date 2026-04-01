@@ -345,6 +345,7 @@ fn test_teammate_spawn_config_new_defaults() {
     assert_eq!(config.color, "blue");
     assert_eq!(config.agent_type, "general-purpose");
     assert_eq!(config.mcp_agent_type, "ideation-team-member");
+    assert_eq!(config.plugin_dir, Some(PathBuf::from("./plugins/app")));
     assert!(config.tools.is_empty());
     assert!(config.mcp_tools.is_empty());
     assert!(config.env.is_empty());

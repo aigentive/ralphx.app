@@ -23,7 +23,7 @@ SOURCE_DIRS=(
     "src"                    # Frontend React/TypeScript
     "src-tauri/src"          # Backend Rust
     "src-tauri/tests"        # Backend tests
-    "ralphx-plugin"          # Claude plugin
+    "plugins/app"            # Claude plugin
     "tests"                  # Frontend/E2E tests
 )
 
@@ -239,11 +239,11 @@ print_area_summary() {
     fi
 
     # Plugin
-    if [[ -d "ralphx-plugin" ]]; then
-        plugin_loc=$(find ralphx-plugin -type f \( -name "*.ts" -o -name "*.sh" \) \
+    if [[ -d "plugins/app" ]]; then
+        plugin_loc=$(find plugins/app -type f \( -name "*.ts" -o -name "*.sh" \) \
             ! -path "*/node_modules/*" ! -path "*/.cache/*" \
             -exec cat {} \; 2>/dev/null | grep -v '^\s*$' | wc -l | tr -d ' ')
-        echo -e "${YELLOW}Plugin (ralphx-plugin/)${NC}: ~$plugin_loc lines"
+        echo -e "${YELLOW}Plugin (plugins/app/)${NC}: ~$plugin_loc lines"
     fi
 
     # Tests

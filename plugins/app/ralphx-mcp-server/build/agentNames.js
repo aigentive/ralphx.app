@@ -1,8 +1,7 @@
 /**
  * Agent short names — single source of truth for TOOL_ALLOWLIST keys.
- * These match the `name:` field in each agent's frontmatter (ralphx-plugin/agents/*.md).
+ * These match the `name:` field in each agent's frontmatter (plugins/app/agents/*.md).
  */
-
 export const ORCHESTRATOR_IDEATION = "orchestrator-ideation";
 export const ORCHESTRATOR_IDEATION_READONLY = "orchestrator-ideation-readonly";
 export const CHAT_TASK = "chat-task";
@@ -23,8 +22,7 @@ export const DEEP_RESEARCHER = "ralphx-deep-researcher";
 export const MEMORY_MAINTAINER = "memory-maintainer";
 export const MEMORY_CAPTURE = "memory-capture";
 export const PLAN_CRITIC_COMPLETENESS = "plan-critic-completeness";
-export const PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY =
-  "plan-critic-implementation-feasibility";
+export const PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY = "plan-critic-implementation-feasibility";
 export const PLAN_VERIFIER = "plan-verifier";
 export const IDEATION_TEAM_LEAD = "ideation-team-lead";
 export const IDEATION_TEAM_MEMBER = "ideation-team-member";
@@ -33,14 +31,12 @@ export const IDEATION_SPECIALIST_FRONTEND = "ideation-specialist-frontend";
 export const IDEATION_SPECIALIST_INFRA = "ideation-specialist-infra";
 export const IDEATION_SPECIALIST_UX = "ideation-specialist-ux";
 export const IDEATION_SPECIALIST_CODE_QUALITY = "ideation-specialist-code-quality";
-export const IDEATION_SPECIALIST_PROMPT_QUALITY =
-  "ideation-specialist-prompt-quality";
+export const IDEATION_SPECIALIST_PROMPT_QUALITY = "ideation-specialist-prompt-quality";
 export const IDEATION_SPECIALIST_INTENT = "ideation-specialist-intent";
-export const IDEATION_SPECIALIST_PIPELINE_SAFETY =
-  "ideation-specialist-pipeline-safety";
-export const IDEATION_SPECIALIST_STATE_MACHINE =
-  "ideation-specialist-state-machine";
+export const IDEATION_SPECIALIST_PIPELINE_SAFETY = "ideation-specialist-pipeline-safety";
+export const IDEATION_SPECIALIST_STATE_MACHINE = "ideation-specialist-state-machine";
 export const IDEATION_CRITIC = "ideation-critic";
 export const IDEATION_ADVOCATE = "ideation-advocate";
 export const WORKER_TEAM_LEAD = "ralphx-worker-team";
 export const WORKER_TEAM_MEMBER = "worker-team-member";
+//# sourceMappingURL=agentNames.js.map

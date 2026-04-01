@@ -1,4 +1,5 @@
 use super::*;
+use crate::infrastructure::agents::claude::resolve_plugin_dir;
 
 pub async fn request_teammate_spawn(
     State(state): State<HttpServerState>,
@@ -136,7 +137,7 @@ pub async fn request_teammate_spawn(
             .with_mcp_agent_type(mcp_type)
             .with_effort(resolve_effort(Some(mcp_type)))
             .with_working_dir(working_dir.clone())
-            .with_plugin_dir(working_dir.join("ralphx-plugin"));
+            .with_plugin_dir(resolve_plugin_dir(&working_dir));
 
     let client = ClaudeCodeClient::new();
     match client.spawn_teammate_interactive(spawn_config).await {

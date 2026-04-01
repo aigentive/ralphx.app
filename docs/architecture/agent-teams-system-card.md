@@ -134,7 +134,7 @@ AgenticClientSpawner::spawn_agent()
     ↓ Resolves CWD
     ↓ Builds CLI command from ralphx.yaml config
 ClaudeCodeClient::spawn_agent_streaming()
-    ↓ claude --plugin-dir ./ralphx-plugin --agent <name> ...
+    ↓ claude --plugin-dir ./plugins/app --agent <name> ...
     ↓ --model <model> --tools <cli_tools> --allowedTools <mcp+cli>
     ↓ --append-system-prompt-file <prompt.md>
     ↓ --mcp-config <ralphx-mcp-server> --permission-mode <mode>
@@ -885,7 +885,7 @@ RalphX already has quality enforcement:
 
 ### 11.4 Combining RalphX Hooks with Team Hooks
 
-RalphX's plugin hooks (`ralphx-plugin/hooks/hooks.json`) and team hooks can coexist:
+RalphX's plugin hooks (`plugins/app/hooks/hooks.json`) and team hooks can coexist:
 
 | Hook Source | When Active |
 |------------|-------------|
@@ -1053,7 +1053,7 @@ RalphX spawns Claude CLI as background processes via Rust's `Command`:
 ```rust
 // Current: ClaudeCodeClient spawns subagent
 Command::new("claude")
-    .arg("--plugin-dir").arg("./ralphx-plugin")
+    .arg("--plugin-dir").arg("./plugins/app")
     .arg("--agent").arg(agent_name)
     .arg("-p").arg(prompt)
     // ... model, tools, allowedTools, mcp-config, etc.
@@ -1137,7 +1137,7 @@ Both are **required** for team functionality.
 |------|------|---------|
 | `--dangerously-skip-permissions` | Bypass permission prompts (when pre-approved) | `--dangerously-skip-permissions` |
 | `--model` | Model selection per teammate | `--model sonnet` |
-| `--plugin-dir` | Plugin directory (for MCP/skills) | `--plugin-dir ./ralphx-plugin` |
+| `--plugin-dir` | Plugin directory (for MCP/skills) | `--plugin-dir ./plugins/app` |
 | `--agent` | Agent definition (from plugin) | `--agent worker` |
 | `-p` | Print mode (lead only — teammates never use) | `-p "Execute task"` |
 | `--mcp-config` | MCP server configuration | `--mcp-config ./mcp.json` |
@@ -1171,7 +1171,7 @@ For RalphX, the full teammate spawn would combine team flags with existing agent
 env CLAUDECODE=1 \
     CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 \
   claude \
-    --plugin-dir ./ralphx-plugin \
+    --plugin-dir ./plugins/app \
     --agent ralphx-coder \
     --agent-id "coder-1@task-abc123" \
     --agent-name "coder-1" \

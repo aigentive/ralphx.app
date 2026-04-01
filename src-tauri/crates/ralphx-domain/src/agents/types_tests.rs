@@ -109,7 +109,7 @@ fn test_agent_config_default() {
     let config = AgentConfig::default();
     assert_eq!(config.role, AgentRole::Worker);
     assert!(config.prompt.is_empty());
-    assert_eq!(config.plugin_dir, Some(PathBuf::from("./ralphx-plugin")));
+    assert_eq!(config.plugin_dir, Some(PathBuf::from("./plugins/app")));
     assert!(config.agent.is_none());
     assert!(config.model.is_none());
     assert!(config.max_tokens.is_none());

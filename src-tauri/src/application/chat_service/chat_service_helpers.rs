@@ -26,7 +26,7 @@ use crate::infrastructure::agents::claude::agent_names::{
 /// ## Adding New Rules
 ///
 /// 1. Add a pattern to `resolve_agent()` for status-specific behavior
-/// 2. Create the agent definition in `ralphx-plugin/agents/`
+/// 2. Create the agent definition in `plugins/app/agents/`
 /// 3. Add tools to MCP allowlist in `ralphx-mcp-server/src/tools.ts`
 ///
 /// Priority: Status-specific rules are checked first, then team_mode, then defaults.

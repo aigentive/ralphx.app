@@ -1,6 +1,6 @@
 /**
  * Agent short names — single source of truth for TOOL_ALLOWLIST keys.
- * These match the `name:` field in each agent's frontmatter (ralphx-plugin/agents/*.md).
+ * These match the `name:` field in each agent's frontmatter (plugins/app/agents/*.md).
  */
 export declare const ORCHESTRATOR_IDEATION = "orchestrator-ideation";
 export declare const ORCHESTRATOR_IDEATION_READONLY = "orchestrator-ideation-readonly";

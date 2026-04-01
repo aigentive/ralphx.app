@@ -12,7 +12,7 @@
 #   Rust agent name constants and MCP allowlists.
 # - system_prompt_file:
 #   Full project-root-relative path to an agent markdown file (e.g.
-#   `ralphx-plugin/agents/worker.md`) used to build
+#   `plugins/app/agents/worker.md`) used to build
 #   `--append-system-prompt` content.
 # - model:
 #   Optional Claude model alias passed as `--model` for this agent
@@ -455,7 +455,7 @@ claude:
 
 agents:
   - name: orchestrator-ideation
-    system_prompt_file: ralphx-plugin/agents/orchestrator-ideation.md
+    system_prompt_file: plugins/app/agents/orchestrator-ideation.md
     model: opus
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
@@ -492,7 +492,7 @@ agents:
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
   - name: orchestrator-ideation-readonly
-    system_prompt_file: ralphx-plugin/agents/orchestrator-ideation.md
+    system_prompt_file: plugins/app/agents/orchestrator-ideation.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
@@ -513,7 +513,7 @@ agents:
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
   - name: plan-verifier
-    system_prompt_file: ralphx-plugin/agents/plan-verifier.md
+    system_prompt_file: plugins/app/agents/plan-verifier.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
@@ -527,7 +527,7 @@ agents:
     preapproved_cli_tools: [Task(Explore), Task(Plan), "Task(ralphx:plan-critic-completeness)", "Task(ralphx:plan-critic-implementation-feasibility)"]
 
   - name: session-namer
-    system_prompt_file: ralphx-plugin/agents/session-namer.md
+    system_prompt_file: plugins/app/agents/session-namer.md
     model: sonnet
     tools:
       mcp_only: true
@@ -535,7 +535,7 @@ agents:
     preapproved_cli_tools: []
 
   - name: chat-task
-    system_prompt_file: ralphx-plugin/agents/chat-task.md
+    system_prompt_file: plugins/app/agents/chat-task.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
@@ -550,7 +550,7 @@ agents:
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
   - name: chat-project
-    system_prompt_file: ralphx-plugin/agents/chat-project.md
+    system_prompt_file: plugins/app/agents/chat-project.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
@@ -565,7 +565,7 @@ agents:
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
   - name: ralphx-review-chat
-    system_prompt_file: ralphx-plugin/agents/review-chat.md
+    system_prompt_file: plugins/app/agents/review-chat.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
@@ -586,7 +586,7 @@ agents:
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
   - name: ralphx-review-history
-    system_prompt_file: ralphx-plugin/agents/review-history.md
+    system_prompt_file: plugins/app/agents/review-history.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
@@ -608,7 +608,7 @@ agents:
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
   - name: ralphx-worker
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
     model: sonnet
     tools: { extends: base_tools, include: [Write, Edit, Task, LSP] }
     mcp_tools: [
@@ -657,7 +657,7 @@ agents:
       ]
 
   - name: ralphx-coder
-    system_prompt_file: ralphx-plugin/agents/coder.md
+    system_prompt_file: plugins/app/agents/coder.md
     model: sonnet
     tools: { extends: base_tools, include: [Write, Edit, Task, LSP] }
     mcp_tools: [
@@ -703,7 +703,7 @@ agents:
       ]
 
   - name: ralphx-reviewer
-    system_prompt_file: ralphx-plugin/agents/reviewer.md
+    system_prompt_file: plugins/app/agents/reviewer.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
@@ -729,21 +729,21 @@ agents:
     preapproved_cli_tools: [Bash, Task(Explore), Task(Plan)]
 
   - name: ralphx-qa-prep
-    system_prompt_file: ralphx-plugin/agents/qa-prep.md
+    system_prompt_file: plugins/app/agents/qa-prep.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: []
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
   - name: ralphx-qa-executor
-    system_prompt_file: ralphx-plugin/agents/qa-executor.md
+    system_prompt_file: plugins/app/agents/qa-executor.md
     model: sonnet
     tools: { extends: base_tools, include: [Write, Edit, Task] }
     mcp_tools: []
     preapproved_cli_tools: [Write, Edit, Bash, Task(Explore), Task(Plan)]
 
   - name: ralphx-orchestrator
-    system_prompt_file: ralphx-plugin/agents/orchestrator.md
+    system_prompt_file: plugins/app/agents/orchestrator.md
     model: opus
     tools: { extends: base_tools, include: [Write, Edit, Task] }
     mcp_tools: [
@@ -755,14 +755,14 @@ agents:
     preapproved_cli_tools: [Write, Edit, Bash, Task]
 
   - name: ralphx-supervisor
-    system_prompt_file: ralphx-plugin/agents/supervisor.md
+    system_prompt_file: plugins/app/agents/supervisor.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: []
     preapproved_cli_tools: [Bash, Task(Explore), Task(Plan)]
 
   - name: ralphx-deep-researcher
-    system_prompt_file: ralphx-plugin/agents/deep-researcher.md
+    system_prompt_file: plugins/app/agents/deep-researcher.md
     model: opus
     tools: { extends: base_tools, include: [Write, Task] }
     mcp_tools: [
@@ -775,14 +775,14 @@ agents:
       [Write, WebFetch, WebSearch, Task(Explore), Task(Plan)]
 
   - name: project-analyzer
-    system_prompt_file: ralphx-plugin/agents/project-analyzer.md
+    system_prompt_file: plugins/app/agents/project-analyzer.md
     model: sonnet
     tools: { extends: base_tools }
     mcp_tools: [save_project_analysis, get_project_analysis]
     preapproved_cli_tools: [Read, Glob, Bash, Grep]
 
   - name: ralphx-merger
-    system_prompt_file: ralphx-plugin/agents/merger.md
+    system_prompt_file: plugins/app/agents/merger.md
     model: opus
     tools: { extends: base_tools, include: [Edit, Task] }
     mcp_tools: [
@@ -801,7 +801,7 @@ agents:
     preapproved_cli_tools: [Read, Edit, Bash, Task(Explore), Task(Plan)]
 
   - name: memory-maintainer
-    system_prompt_file: ralphx-plugin/agents/memory-maintainer.md
+    system_prompt_file: plugins/app/agents/memory-maintainer.md
     model: sonnet
     tools: { extends: base_tools, include: [Write, Edit] }
     mcp_tools: [
@@ -821,7 +821,7 @@ agents:
       [Read, Grep, Glob, WebFetch, WebSearch, Bash, Write, Edit]
 
   - name: memory-capture
-    system_prompt_file: ralphx-plugin/agents/memory-capture.md
+    system_prompt_file: plugins/app/agents/memory-capture.md
     model: sonnet
     tools: { extends: base_tools, include: [Write, Edit] }
     mcp_tools: [
@@ -840,14 +840,14 @@ agents:
   # --- Plan critic agents (read-only, MCP tools for plan verification) ---
 
   - name: plan-critic-completeness
-    system_prompt_file: ralphx-plugin/agents/plan-critic-completeness.md
+    system_prompt_file: plugins/app/agents/plan-critic-completeness.md
     model: sonnet
     tools: { extends: base_tools }
     mcp_tools: [get_session_plan, get_artifact]
     preapproved_cli_tools: []
 
   - name: plan-critic-implementation-feasibility
-    system_prompt_file: ralphx-plugin/agents/plan-critic-implementation-feasibility.md
+    system_prompt_file: plugins/app/agents/plan-critic-implementation-feasibility.md
     model: sonnet
     tools: { extends: base_tools }
     mcp_tools: [get_session_plan, get_artifact]
@@ -856,7 +856,7 @@ agents:
   # --- Plan verifier agent (owns the verification round loop) ---
 
   - name: plan-verifier
-    system_prompt_file: ralphx-plugin/agents/plan-verifier.md
+    system_prompt_file: plugins/app/agents/plan-verifier.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools:
@@ -878,7 +878,7 @@ agents:
 
   - name: ideation-team-lead
     extends: orchestrator-ideation
-    system_prompt_file: ralphx-plugin/agents/ideation-team-lead.md
+    system_prompt_file: plugins/app/agents/ideation-team-lead.md
     tools:
       {
         extends: base_tools,
@@ -927,7 +927,7 @@ agents:
 
   - name: ralphx-worker-team
     extends: ralphx-worker
-    system_prompt_file: ralphx-plugin/agents/worker-team.md
+    system_prompt_file: plugins/app/agents/worker-team.md
     model: sonnet
     tools:
       {

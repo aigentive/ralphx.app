@@ -392,13 +392,13 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 Register the RalphX MCP server with Claude:
 
 ```bash
-claude mcp add ralphx node ralphx-plugin/ralphx-mcp-server/build/index.js
+claude mcp add ralphx node plugins/app/ralphx-mcp-server/build/index.js
 ```
 
 Install MCP server dependencies:
 
 ```bash
-cd ralphx-plugin/ralphx-mcp-server
+cd plugins/app/ralphx-mcp-server
 npm i
 ```
 

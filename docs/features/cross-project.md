@@ -237,7 +237,7 @@ When the gate blocks proposal creation:
 
 ## Agent Auto-Prompt Guidance
 
-When `cross_project_guide` returns `has_cross_project_paths: true`, agents follow this mandatory 6-step workflow. Defined in `ralphx-plugin/agents/orchestrator-ideation.md` and `ralphx-plugin/agents/ideation-team-lead.md`.
+When `cross_project_guide` returns `has_cross_project_paths: true`, agents follow this mandatory 6-step workflow. Defined in `plugins/app/agents/orchestrator-ideation.md` and `plugins/app/agents/ideation-team-lead.md`.
 
 ### 6-Step Workflow
 
@@ -319,11 +319,11 @@ Two Tauri IPC commands mirror the HTTP endpoints (same implementation, shared `_
 
 | File | Purpose |
 |------|---------|
-| `ralphx-plugin/ralphx-mcp-server/src/index.ts` | `cross_project_guide` implementation: regex patterns, `CROSS_PROJECT_KEYWORDS`, gate-setting call |
-| `ralphx-plugin/ralphx-mcp-server/src/tools.ts` | MCP tool definitions for `list_projects`, `create_cross_project_session`, `cross_project_guide`, `migrate_proposals` |
-| `ralphx-plugin/ralphx-mcp-server/src/__tests__/cross-project-guide.test.ts` | Unit tests for keyword detection |
-| `ralphx-plugin/agents/orchestrator-ideation.md` | 6-step workflow prompt (Phase 4 cross-project section) |
-| `ralphx-plugin/agents/ideation-team-lead.md` | Same 6-step workflow for team mode |
+| `plugins/app/ralphx-mcp-server/src/index.ts` | `cross_project_guide` implementation: regex patterns, `CROSS_PROJECT_KEYWORDS`, gate-setting call |
+| `plugins/app/ralphx-mcp-server/src/tools.ts` | MCP tool definitions for `list_projects`, `create_cross_project_session`, `cross_project_guide`, `migrate_proposals` |
+| `plugins/app/ralphx-mcp-server/src/__tests__/cross-project-guide.test.ts` | Unit tests for keyword detection |
+| `plugins/app/agents/orchestrator-ideation.md` | 6-step workflow prompt (Phase 4 cross-project section) |
+| `plugins/app/agents/ideation-team-lead.md` | Same 6-step workflow for team mode |
 | `src-tauri/src/commands/ideation_commands/ideation_commands_cross_project.rs` | `create_cross_project_session` and `migrate_proposals` Tauri command implementations |
 | `src-tauri/src/commands/ideation_commands/ideation_commands_types.rs` | `CreateCrossProjectSessionInput`, `MigrateProposalsInput`, `MigrateProposalsResult` types |
 | `src-tauri/src/http_server/handlers/internal.rs` | `create_cross_project_session_http`, `migrate_proposals_http`, `set_cross_project_checked` handlers |

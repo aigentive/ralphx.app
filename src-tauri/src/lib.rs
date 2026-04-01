@@ -996,7 +996,7 @@ pub fn run() {
                                             Some(ep) if !ep.exists() => {
                                                 warn!(
                                                     path = %ep.display(),
-                                                    "External MCP entry not found — run `npm run build` in ralphx-plugin/ralphx-external-mcp"
+                                                    "External MCP entry not found — run `npm run build` in plugins/app/ralphx-external-mcp"
                                                 );
                                             }
                                             Some(ep) => {

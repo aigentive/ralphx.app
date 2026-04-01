@@ -74,7 +74,7 @@ vitest-results.json
 streams/hygiene/trigger
 .claude/worktrees/
 .claude/settings.local.json
-!ralphx-plugin/ralphx-external-mcp/build/
+!plugins/app/ralphx-external-mcp/build/
 
 # Secret scan output
 gitleaks-report.json

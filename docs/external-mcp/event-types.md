@@ -2,7 +2,7 @@
 
 Complete catalog of all pipeline events emitted by RalphX. Events are retrieved via `v1_get_recent_events` or `v1_subscribe_events`. Each event has a discriminated `event_type` field for safe narrowing in TypeScript.
 
-TypeScript interfaces: `ralphx-plugin/ralphx-external-mcp/src/tools/events.ts` — `RalphXEvent` union type.
+TypeScript interfaces: `plugins/app/ralphx-external-mcp/src/tools/events.ts` — `RalphXEvent` union type.
 
 ---
 

@@ -323,7 +323,7 @@ impl<'a> TransitionHandler<'a> {
                     for rel in &[
                         "node_modules",
                         "src-tauri/target",
-                        "ralphx-plugin/ralphx-mcp-server/node_modules",
+                        "plugins/app/ralphx-mcp-server/node_modules",
                     ] {
                         let sym = wt_path.join(rel);
                         if sym.is_symlink() {

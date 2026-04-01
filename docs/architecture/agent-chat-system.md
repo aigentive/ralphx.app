@@ -13,7 +13,7 @@ User message
       → ChatService.send_message()
         → resolve_agent(context_type, entity_status) → agent name
         → build_command(cli_path, plugin_dir, conversation, ...) → SpawnableCommand
-          → claude --agent ralphx:<name> --plugin-dir ./ralphx-plugin -p "<prompt>"
+          → claude --agent ralphx:<name> --plugin-dir ./plugins/app -p "<prompt>"
             → MCP tools via HTTP :3847 → ralphx-mcp-server → Tauri backend
         → stream_response() → parse JSON-stream events
           → Tauri app_handle.emit("agent:*", payload)
@@ -30,7 +30,7 @@ User message
 | Agent Resolution | Maps context_type + status → agent name | `chat_service_helpers.rs` → `resolve_agent()` |
 | Command Builder | Builds Claude CLI invocation with --agent flag | `chat_service_context.rs` → `build_command()` |
 | Streaming Parser | Parses JSON-stream output, emits events | `chat_service_streaming.rs` |
-| MCP Server | Tool proxy: agent → HTTP :3847 → Tauri backend | `ralphx-plugin/ralphx-mcp-server/src/` |
+| MCP Server | Tool proxy: agent → HTTP :3847 → Tauri backend | `plugins/app/ralphx-mcp-server/src/` |
 | Event System | Tauri emit → EventBus → React hooks | `src/lib/events.ts`, `src/hooks/useAgentEvents.ts` |
 | Message Queue | Queues messages while agent is running | `chat_service_queue.rs`, `MessageQueue` service |
 | Session Recovery | Retries on stale session detection | `chat_service_recovery.rs` |
@@ -206,7 +206,7 @@ Each agent's tool access is restricted at three independent layers. All three mu
 
 | Layer | Location | Mechanism | Granularity |
 |-------|----------|-----------|-------------|
-| 1. YAML Config | `ralphx-plugin/agents/<agent>.md` frontmatter | `tools:` list (incl. `"mcp__ralphx__*"`) / `disallowedTools:` | Per-agent file |
+| 1. YAML Config | `plugins/app/agents/<agent>.md` frontmatter | `tools:` list (incl. `"mcp__ralphx__*"`) / `disallowedTools:` | Per-agent file |
 | 2. MCP Server Filter | `ralphx-mcp-server/src/tools.ts` | `TOOL_ALLOWLIST[agentType]` → filters `listTools` response | Per-agent-type at runtime |
 | 3. Agent System Prompt | Agent `.md` body instructions | Natural language guidance on which tools to use | Behavioral (soft) |
 
@@ -330,34 +330,34 @@ State machine side effects use short names → `spawner_agent_name()` maps to FQ
 
 | File | Purpose |
 |------|---------|
-| `ralphx-plugin/ralphx-mcp-server/src/tools.ts` | ALL_TOOLS definitions + TOOL_ALLOWLIST per agent |
-| `ralphx-plugin/ralphx-mcp-server/src/agentNames.ts` | Agent name constants (TS mirror of Rust agent_names.rs) |
-| `ralphx-plugin/ralphx-mcp-server/src/index.ts` | MCP server entry point, CLI arg parsing |
+| `plugins/app/ralphx-mcp-server/src/tools.ts` | ALL_TOOLS definitions + TOOL_ALLOWLIST per agent |
+| `plugins/app/ralphx-mcp-server/src/agentNames.ts` | Agent name constants (TS mirror of Rust agent_names.rs) |
+| `plugins/app/ralphx-mcp-server/src/index.ts` | MCP server entry point, CLI arg parsing |
 
 ### Agent Definitions
 
 | File | Agent |
 |------|-------|
-| `ralphx-plugin/agents/orchestrator-ideation.md` | Ideation orchestrator |
-| `ralphx-plugin/agents/orchestrator-ideation-readonly.md` | Read-only ideation |
-| `ralphx-plugin/agents/session-namer.md` | Session title generator |
-| `ralphx-plugin/agents/dependency-suggester.md` | Dependency auto-suggestor |
-| `ralphx-plugin/agents/chat-task.md` | Task-scoped chat |
-| `ralphx-plugin/agents/chat-project.md` | Project-scoped chat |
-| `ralphx-plugin/agents/worker.md` | Task execution worker |
-| `ralphx-plugin/agents/coder.md` | Delegated coding worker |
-| `ralphx-plugin/agents/reviewer.md` | Code reviewer |
-| `ralphx-plugin/agents/review-chat.md` | Post-review human discussion |
-| `ralphx-plugin/agents/review-history.md` | Read-only review history |
-| `ralphx-plugin/agents/merger.md` | Merge conflict resolver |
-| `ralphx-plugin/agents/orchestrator.md` | Multi-task orchestrator |
-| `ralphx-plugin/agents/supervisor.md` | Execution monitor |
-| `ralphx-plugin/agents/qa-prep.md` | QA preparation |
-| `ralphx-plugin/agents/qa-executor.md` | QA execution |
-| `ralphx-plugin/agents/deep-researcher.md` | Research agent |
-| `ralphx-plugin/agents/project-analyzer.md` | Build/validation detector |
-| `ralphx-plugin/agents/memory-capture.md` | Post-session knowledge extraction |
-| `ralphx-plugin/agents/memory-maintainer.md` | Memory ingestion/maintenance |
+| `plugins/app/agents/orchestrator-ideation.md` | Ideation orchestrator |
+| `plugins/app/agents/orchestrator-ideation-readonly.md` | Read-only ideation |
+| `plugins/app/agents/session-namer.md` | Session title generator |
+| `plugins/app/agents/dependency-suggester.md` | Dependency auto-suggestor |
+| `plugins/app/agents/chat-task.md` | Task-scoped chat |
+| `plugins/app/agents/chat-project.md` | Project-scoped chat |
+| `plugins/app/agents/worker.md` | Task execution worker |
+| `plugins/app/agents/coder.md` | Delegated coding worker |
+| `plugins/app/agents/reviewer.md` | Code reviewer |
+| `plugins/app/agents/review-chat.md` | Post-review human discussion |
+| `plugins/app/agents/review-history.md` | Read-only review history |
+| `plugins/app/agents/merger.md` | Merge conflict resolver |
+| `plugins/app/agents/orchestrator.md` | Multi-task orchestrator |
+| `plugins/app/agents/supervisor.md` | Execution monitor |
+| `plugins/app/agents/qa-prep.md` | QA preparation |
+| `plugins/app/agents/qa-executor.md` | QA execution |
+| `plugins/app/agents/deep-researcher.md` | Research agent |
+| `plugins/app/agents/project-analyzer.md` | Build/validation detector |
+| `plugins/app/agents/memory-capture.md` | Post-session knowledge extraction |
+| `plugins/app/agents/memory-maintainer.md` | Memory ingestion/maintenance |
 
 ---
 

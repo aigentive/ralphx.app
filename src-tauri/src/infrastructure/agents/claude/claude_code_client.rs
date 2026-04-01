@@ -167,7 +167,7 @@ impl TeammateSpawnConfig {
             mcp_tools: Vec::new(),
             color: "blue".to_string(),
             working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-            plugin_dir: Some(PathBuf::from("./ralphx-plugin")),
+            plugin_dir: Some(PathBuf::from("./plugins/app")),
             agent_type: "general-purpose".to_string(),
             mcp_agent_type: "ideation-team-member".to_string(),
             env: HashMap::new(),

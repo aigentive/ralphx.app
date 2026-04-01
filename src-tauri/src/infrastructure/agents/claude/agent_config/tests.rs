@@ -143,7 +143,7 @@ tools:
   include: [Write]
 mcp_tools: [get_task_context]
 preapproved_cli_tools: []
-system_prompt_file: ralphx-plugin/agents/worker.md
+system_prompt_file: plugins/app/agents/worker.md
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     assert_eq!(
@@ -175,7 +175,7 @@ agents:
       include: [Write]
     mcp_tools: [get_task_context]
     preapproved_cli_tools: []
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
 "#;
     let parsed = parse_config_no_env_overrides(yaml).expect("config should parse");
     assert_eq!(
@@ -213,7 +213,7 @@ agents:
       include: [Write]
     mcp_tools: [get_task_context]
     preapproved_cli_tools: []
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
 "#;
     let parsed: RalphxConfig = serde_yaml::from_str(yaml).expect("config should parse");
     let mut selected =
@@ -383,14 +383,14 @@ agents:
       include: [Write]
     mcp_tools: [get_task_context]
     preapproved_cli_tools: []
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
   - name: ralphx-coder
     tools:
       extends: base_tools
       include: [Write]
     mcp_tools: [get_task_context]
     preapproved_cli_tools: []
-    system_prompt_file: ralphx-plugin/agents/coder.md
+    system_prompt_file: plugins/app/agents/coder.md
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
 
@@ -444,7 +444,7 @@ tools:
   include: [Write]
 mcp_tools: [get_task_context]
 preapproved_cli_tools: []
-system_prompt_file: ralphx-plugin/agents/worker.md
+system_prompt_file: plugins/app/agents/worker.md
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     let worker = parsed
@@ -526,7 +526,7 @@ agents:
       include: [Write]
     mcp_tools: [get_task_context]
     preapproved_cli_tools: []
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     assert_eq!(
@@ -564,7 +564,7 @@ agents:
       include: [Write]
     mcp_tools: [get_task_context]
     preapproved_cli_tools: []
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     assert_eq!(
@@ -595,7 +595,7 @@ tools:
   include: [Write]
 mcp_tools: [get_task_context]
 preapproved_cli_tools: []
-system_prompt_file: ralphx-plugin/agents/worker.md
+system_prompt_file: plugins/app/agents/worker.md
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     assert_eq!(
@@ -619,7 +619,7 @@ tools:
   include: [Write]
 mcp_tools: [get_task_context]
 preapproved_cli_tools: []
-system_prompt_file: ralphx-plugin/agents/worker.md
+system_prompt_file: plugins/app/agents/worker.md
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     assert_eq!(parsed.claude.mcp_server_name, "acme");
@@ -974,14 +974,14 @@ claude:
   permission_prompt_tool: permission_request
 agents:
   - name: base-worker
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
     model: sonnet
     tools: { extends: base_tools, include: [Write, Edit, Task] }
     mcp_tools: [start_step, complete_step]
     preapproved_cli_tools: [Write, Edit, Bash]
   - name: worker-team
     extends: base-worker
-    system_prompt_file: ralphx-plugin/agents/worker-team.md
+    system_prompt_file: plugins/app/agents/worker-team.md
     model: opus
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
@@ -996,7 +996,7 @@ agents:
     // system_prompt_file overridden by child
     assert_eq!(
         team.system_prompt_file,
-        "ralphx-plugin/agents/worker-team.md"
+        "plugins/app/agents/worker-team.md"
     );
     // tools inherited from parent (child didn't specify)
     assert!(team.resolved_cli_tools.contains(&"Write".to_string()));
@@ -1021,7 +1021,7 @@ claude:
   permission_prompt_tool: permission_request
 agents:
   - name: base-worker
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
     model: sonnet
     tools: { extends: base_tools, include: [Write] }
     mcp_tools: [start_step, complete_step]
@@ -1042,7 +1042,7 @@ agents:
     // model inherited
     assert_eq!(custom.model.as_deref(), Some("sonnet"));
     // system_prompt_file inherited
-    assert_eq!(custom.system_prompt_file, "ralphx-plugin/agents/worker.md");
+    assert_eq!(custom.system_prompt_file, "plugins/app/agents/worker.md");
 }
 
 #[test]
@@ -1056,10 +1056,10 @@ claude:
 agents:
   - name: agent-a
     extends: agent-b
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
   - name: agent-b
     extends: agent-a
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
 "#;
     // Should parse without panic (circular breaks with warning)
     let parsed = parse_config(yaml).expect("config should parse despite circular extends");
@@ -1077,7 +1077,7 @@ claude:
 agents:
   - name: orphan-agent
     extends: nonexistent-parent
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
     model: haiku
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
@@ -1099,7 +1099,7 @@ claude:
   permission_prompt_tool: permission_request
 agents:
   - name: grandparent
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
     model: haiku
     mcp_tools: [tool_a]
     preapproved_cli_tools: [Bash]
@@ -1123,7 +1123,7 @@ agents:
     // mcp_tools from parent (overrides grandparent)
     assert_eq!(child.allowed_mcp_tools, vec!["tool_b"]);
     // system_prompt_file from grandparent (inherited through chain)
-    assert_eq!(child.system_prompt_file, "ralphx-plugin/agents/worker.md");
+    assert_eq!(child.system_prompt_file, "plugins/app/agents/worker.md");
     // preapproved_cli_tools from grandparent
     assert!(child.preapproved_cli_tools.contains(&"Bash".to_string()));
 }
@@ -1139,7 +1139,7 @@ claude:
   permission_prompt_tool: permission_request
 agents:
   - name: standalone
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
     model: sonnet
     tools: { extends: base_tools, include: [Write] }
     mcp_tools: [get_task_context]
@@ -1173,7 +1173,7 @@ process_mapping:
     default: orchestrator-ideation
 agents:
   - name: ralphx-worker
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
     tools: { extends: base_tools, include: [Write] }
     mcp_tools: [get_task_context]
     preapproved_cli_tools: []
@@ -1211,7 +1211,7 @@ team_constraints:
     timeout_minutes: 30
 agents:
   - name: ralphx-worker
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
     tools: { extends: base_tools, include: [Write] }
     mcp_tools: [get_task_context]
     preapproved_cli_tools: []
@@ -1234,7 +1234,7 @@ claude:
   permission_prompt_tool: permission_request
 agents:
   - name: ralphx-worker
-system_prompt_file: ralphx-plugin/agents/worker.md
+system_prompt_file: plugins/app/agents/worker.md
 tools: { extends: base_tools, include: [Write] }
 mcp_tools: [get_task_context]
 preapproved_cli_tools: []
@@ -1262,7 +1262,7 @@ agents:
       extends: base_tools
     mcp_tools: []
     preapproved_cli_tools: []
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     let agent = parsed
@@ -1288,10 +1288,10 @@ agents:
       extends: base_tools
     mcp_tools: []
     preapproved_cli_tools: []
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
   - name: child-agent
     extends: parent-agent
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     let child = parsed
@@ -1321,11 +1321,11 @@ agents:
       extends: base_tools
     mcp_tools: []
     preapproved_cli_tools: []
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
   - name: child-agent
     extends: parent-agent
     effort: high
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     let child = parsed
@@ -1377,7 +1377,7 @@ agents:
       extends: base_tools
     mcp_tools: []
     preapproved_cli_tools: []
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     let agent = parsed
@@ -1406,7 +1406,7 @@ agents:
       extends: base_tools
     mcp_tools: []
     preapproved_cli_tools: []
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     assert_eq!(
@@ -1430,7 +1430,7 @@ agents:
       extends: base_tools
     mcp_tools: []
     preapproved_cli_tools: []
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     assert_eq!(
@@ -1465,7 +1465,7 @@ agents:
       extends: base_tools
     mcp_tools: []
     preapproved_cli_tools: []
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     assert_eq!(

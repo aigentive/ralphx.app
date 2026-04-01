@@ -27,7 +27,7 @@ ralphx/
 │  └─ shared/             # Shared Claude Code plugin for external RalphX agents
 ├─ src-tauri/             # Backend (Rust/Tauri) → src-tauri/CLAUDE.md
 │  └─ ralphx.db           # SQLite (dev)
-├─ ralphx-plugin/         # Claude plugin (agents/skills/hooks)
+├─ plugins/app/         # Claude plugin (agents/skills/hooks)
 │  ├─ ralphx-mcp-server/  # Internal agent MCP (stdio → :3847)
 │  └─ ralphx-external-mcp/# External API MCP (HTTP :3848 → :3847)
 ```
@@ -98,8 +98,8 @@ Two MCP servers — different audiences. Full disambiguation: `.claude/rules/mcp
 Internal: Claude Agent → stdio → ralphx-mcp-server → HTTP :3847 → Tauri Backend
 External: Third-party bot → Bearer token → ralphx-external-mcp (:3848) → HTTP :3847 → Tauri Backend
 ```
-Plugin: `claude --plugin-dir ./ralphx-plugin --agent worker -p "Execute"` | Tool config: `.claude/rules/agent-mcp-tools.md`
-**MCP server build (NON-NEGOTIABLE):** After modifying ANY source in `ralphx-plugin/ralphx-mcp-server/src/` or `ralphx-plugin/ralphx-external-mcp/src/`, rebuild the respective server. ❌ Committing without rebuilding.
+Plugin: `claude --plugin-dir ./plugins/app --agent worker -p "Execute"` | Tool config: `.claude/rules/agent-mcp-tools.md`
+**MCP server build (NON-NEGOTIABLE):** After modifying ANY source in `plugins/app/ralphx-mcp-server/src/` or `plugins/app/ralphx-external-mcp/src/`, rebuild the respective server. ❌ Committing without rebuilding.
 **mcp_tools override semantics (NON-NEGOTIABLE):** `extends` in `ralphx.yaml`: specifying `mcp_tools` fully replaces parent (no merge) — child must list ALL tools. Omitting `mcp_tools` inherits parent's list. ❌ Assuming partial inheritance when you specify the key.
 **Agent frontmatter tool fields (NON-NEGOTIABLE):** Only `tools` and `disallowedTools` are valid in agent `.md` frontmatter. ❌ `allowedTools` — silently ignored by Claude Code. Add MCP tools (e.g., `"mcp__ralphx__*"`) to the `tools` list. Note: `--allowedTools` IS valid as a CLI flag at spawn time — only invalid as frontmatter.
 
@@ -157,7 +157,7 @@ Agent limitations mean no single plan can be trusted in full. Plans proposing co
 
 **Adversarial agent rules:** Read actual code (not summaries). Concrete scenarios only ("if X then Y breaks at line Z"). ❌ Style/preference debates. Each gap: scenario + severity + blocks implementation?
 
-Full process details: `ralphx-plugin/agents/ideation-team-lead.md` (Phase 4.5) | `ralphx-plugin/agents/orchestrator-ideation.md` (Phase 3.5)
+Full process details: `plugins/app/agents/ideation-team-lead.md` (Phase 4.5) | `plugins/app/agents/orchestrator-ideation.md` (Phase 3.5)
 
 ## Design System
 `specs/DESIGN.md` | Accent: `#ff6b35` (warm orange) ❌ purple/blue | Font: SF Pro ❌ Inter | **INVOKE `/tailwind-v4-shadcn` before UI work**

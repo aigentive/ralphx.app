@@ -4,11 +4,11 @@
 
 - Node.js 18 or later
 - RalphX Tauri backend running and listening on `http://127.0.0.1:3847`
-- Built server assets: `ralphx-plugin/ralphx-external-mcp/build/index.js`
+- Built server assets: `plugins/app/ralphx-external-mcp/build/index.js`
 
 If the build directory is missing, rebuild:
 ```bash
-cd ralphx-plugin/ralphx-external-mcp
+cd plugins/app/ralphx-external-mcp
 npm install
 npm run build
 ```
@@ -18,7 +18,7 @@ npm run build
 ### Localhost only (development)
 
 ```bash
-node ralphx-plugin/ralphx-external-mcp/build/index.js
+node plugins/app/ralphx-external-mcp/build/index.js
 ```
 
 The server starts on `http://127.0.0.1:3848`. Log output goes to stderr:
@@ -34,7 +34,7 @@ EXTERNAL_MCP_HOST=0.0.0.0 \
 EXTERNAL_MCP_PORT=3848 \
 EXTERNAL_MCP_TLS_CERT=/etc/ssl/certs/ralphx.crt \
 EXTERNAL_MCP_TLS_KEY=/etc/ssl/private/ralphx.key \
-node ralphx-plugin/ralphx-external-mcp/build/index.js
+node plugins/app/ralphx-external-mcp/build/index.js
 ```
 
 The server refuses to start if TLS is not configured for non-localhost binds.

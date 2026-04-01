@@ -26,7 +26,7 @@ ClaudeChatService.send_message()
 
 ### Failure path
 
-If the `orchestrator-ideation` subprocess was spawned without `--plugin-dir ./ralphx-plugin`, the `ralphx:plan-critic-completeness` agent type cannot be resolved. The critic falls back to a general-purpose agent inheriting the orchestrator's full toolset (which has no Write/Edit restrictions at the process level if `bypassPermissions` is set).
+If the `orchestrator-ideation` subprocess was spawned without `--plugin-dir ./plugins/app`, the `ralphx:plan-critic-completeness` agent type cannot be resolved. The critic falls back to a general-purpose agent inheriting the orchestrator's full toolset (which has no Write/Edit restrictions at the process level if `bypassPermissions` is set).
 
 ## Fix Applied
 
@@ -40,8 +40,8 @@ or codebase. You are a pure analysis agent.
 ```
 
 Files modified:
-- `ralphx-plugin/agents/plan-critic-completeness.md`
-- `ralphx-plugin/agents/plan-critic-implementation-feasibility.md`
+- `plugins/app/agents/plan-critic-completeness.md`
+- `plugins/app/agents/plan-critic-implementation-feasibility.md`
 
 ## Defense-in-Depth Status
 

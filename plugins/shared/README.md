@@ -8,7 +8,7 @@ This plugin teaches external Claude Code agents **judgment** for navigating the 
 
 **Audience:** External autonomous agents interacting with RalphX via the External MCP API (`v1_*` tools).
 
-**Not for:** Internal RalphX agents (those use `ralphx-plugin/` inside the RalphX app).
+**Not for:** Internal RalphX agents (those use `plugins/app/` inside the RalphX app).
 
 ## Installation
 
@@ -144,7 +144,7 @@ Reference files are derived from source material in the RalphX repo. When source
 | Reference file | Source |
 |----------------|--------|
 | `reference/state-machine.md` | `.claude/rules/task-state-machine.md` |
-| `reference/event-catalog.md` | `ralphx-plugin/ralphx-external-mcp/src/tools/events.ts` |
+| `reference/event-catalog.md` | `plugins/app/ralphx-external-mcp/src/tools/events.ts` |
 | `reference/decision-trees.md` | Cross-references states + events; verify tool names against external MCP tool list |
 | `reference/failure-playbooks.md` | Verify tool names + parameters against external MCP tool list |
 | `reference/cross-project.md` | `docs/features/active-plan.md` + cross-project orchestration flow |

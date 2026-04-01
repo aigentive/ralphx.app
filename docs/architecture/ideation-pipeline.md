@@ -361,4 +361,4 @@ fail the ideation operation. An event delivery failure cannot interrupt the pipe
 | Verification + proposals | `src-tauri/src/http_server/handlers/ideation.rs` |
 | Proposal application | `src-tauri/src/http_server/helpers.rs` |
 | EventType enum | `src-tauri/crates/ralphx-domain/src/entities/event_type.rs` |
-| External MCP tools | `ralphx-plugin/ralphx-external-mcp/src/tools/` |
+| External MCP tools | `plugins/app/ralphx-external-mcp/src/tools/` |

@@ -24,7 +24,7 @@ fi
 
 # Extract potential path terms from the file content
 terms=$(grep -oE '`[a-zA-Z0-9_./-]+\.(rs|ts|tsx|js|md|json)`' "$FILE" | tr -d '`' | sort -u || true)
-dirs=$(grep -oE '(src|src-tauri|ralphx-plugin|ralphx-mcp-server|streams|specs|tests|screenshots)/[a-zA-Z0-9_/-]+' "$FILE" | sort -u || true)
+dirs=$(grep -oE '(src|src-tauri|frontend|plugins|streams|specs|tests|screenshots)/[a-zA-Z0-9_/-]+' "$FILE" | sort -u || true)
 
 # Combine and deduplicate
 all_terms=$(echo -e "$terms\n$dirs" | grep -v '^$' | sort -u || true)

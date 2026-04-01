@@ -108,7 +108,7 @@ To manually test authorization:
 
 1. **Test memory-maintainer access:**
    ```bash
-   cd ralphx-plugin/ralphx-mcp-server
+   cd plugins/app/ralphx-mcp-server
    RALPHX_AGENT_TYPE=memory-maintainer node src/index.js --agent-type=memory-maintainer
    # Send list_tools request via stdio
    # Verify all 5 write tools are present
@@ -116,7 +116,7 @@ To manually test authorization:
 
 2. **Test worker denial:**
    ```bash
-   cd ralphx-plugin/ralphx-mcp-server
+   cd plugins/app/ralphx-mcp-server
    RALPHX_AGENT_TYPE=ralphx-worker node src/index.js --agent-type=ralphx-worker
    # Send list_tools request via stdio
    # Verify NO memory write tools are present
@@ -126,7 +126,7 @@ To manually test authorization:
 
 3. **Test project scope validation:**
    ```bash
-   cd ralphx-plugin/ralphx-mcp-server
+   cd plugins/app/ralphx-mcp-server
    RALPHX_AGENT_TYPE=memory-maintainer RALPHX_PROJECT_ID=project-123 node src/index.js --agent-type=memory-maintainer
    # Call upsert_memories with project_id: "project-456"
    # Verify project scope violation error
@@ -136,12 +136,12 @@ To manually test authorization:
 
 Authorization is enforced at THREE layers (defense in depth):
 
-1. **MCP Server TOOL_ALLOWLIST** (ralphx-plugin/ralphx-mcp-server/src/tools.ts)
+1. **MCP Server TOOL_ALLOWLIST** (plugins/app/ralphx-mcp-server/src/tools.ts)
    - Hard-coded mapping of agent types to allowed tool names
    - Tools not in allowlist are filtered from `list_tools` response
    - Unauthorized tool calls return "tool not available" error
 
-2. **MCP Server Request Handler** (ralphx-plugin/ralphx-mcp-server/src/index.ts)
+2. **MCP Server Request Handler** (plugins/app/ralphx-mcp-server/src/index.ts)
    - Validates `project_id` parameter matches `RALPHX_PROJECT_ID` env var
    - Returns "project scope violation" error if mismatch
 
@@ -159,9 +159,9 @@ All three layers MUST agree for a tool call to succeed.
 
 ## Related Files
 
-- `ralphx-plugin/ralphx-mcp-server/src/tools.ts` - TOOL_ALLOWLIST definitions
-- `ralphx-plugin/ralphx-mcp-server/src/index.ts` - Request handler with authorization checks
-- `ralphx-plugin/ralphx-mcp-server/src/agentNames.ts` - Agent name constants
+- `plugins/app/ralphx-mcp-server/src/tools.ts` - TOOL_ALLOWLIST definitions
+- `plugins/app/ralphx-mcp-server/src/index.ts` - Request handler with authorization checks
+- `plugins/app/ralphx-mcp-server/src/agentNames.ts` - Agent name constants
 - `src-tauri/src/http_server/handlers/memory.rs` - HTTP handlers for memory tools
 - `src-tauri/src/http_server/types.rs` - Request/response types
 - `src-tauri/src/http_server/mod.rs` - Route definitions

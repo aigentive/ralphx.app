@@ -50,6 +50,31 @@ use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use tracing::{info, warn};
 
+const PRIMARY_PLUGIN_DIR_REL: &str = "plugins/app";
+const LEGACY_PLUGIN_DIR_REL: &str = "ralphx-plugin";
+
+fn plugin_repo_root(plugin_dir: &Path) -> PathBuf {
+    let parent = plugin_dir.parent().unwrap_or(plugin_dir);
+    if plugin_dir.ends_with(Path::new(PRIMARY_PLUGIN_DIR_REL)) {
+        parent
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| parent.to_path_buf())
+    } else {
+        parent.to_path_buf()
+    }
+}
+
+fn first_existing_plugin_dir(candidates: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
+    for candidate in candidates {
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    None
+}
+
 /// Apply common Claude CLI environment flags for RalphX-managed spawns.
 pub fn apply_common_spawn_env(cmd: &mut Command) {
     cmd.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
@@ -184,7 +209,7 @@ pub fn build_base_cli_command(
     // Plugin directory for agent/skill discovery
     cmd.args([
         "--plugin-dir",
-        plugin_dir.to_str().unwrap_or("./ralphx-plugin"),
+        plugin_dir.to_str().unwrap_or("./plugins/app"),
     ]);
 
     // Output format for streaming JSON
@@ -273,7 +298,7 @@ pub fn build_base_cli_command(
 
 fn resolve_agent_system_prompt_path(plugin_dir: &Path, agent_name: &str) -> Option<PathBuf> {
     let short = mcp_agent_type(agent_name);
-    let project_root = plugin_dir.parent().unwrap_or(plugin_dir);
+    let project_root = plugin_repo_root(plugin_dir);
     let agents_dir = plugin_dir.join("agents");
     let configured = get_agent_config(short)
         .map(|cfg| {
@@ -478,7 +503,7 @@ pub fn create_mcp_config(
     agent_type: &str,
     is_external_mcp: bool,
 ) -> Result<PathBuf, String> {
-    // ${CLAUDE_PLUGIN_ROOT} in .mcp.json means the plugin_dir itself (e.g. ralphx-plugin/).
+    // ${CLAUDE_PLUGIN_ROOT} in .mcp.json means the plugin_dir itself.
     // spawn_teammate_interactive sets CLAUDE_PLUGIN_ROOT=plugin_dir, so expansion must match.
     let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
     let mcp_server_path_str = mcp_server_path.to_string_lossy().to_string();
@@ -492,7 +517,7 @@ pub fn create_mcp_config(
     let short_name = mcp_agent_type(agent_type);
     let mcp_server_name = &claude_runtime_config().mcp_server_name;
 
-    // Start from ralphx-plugin/.mcp.json when available, then inject agent scoping args.
+    // Start from plugin_dir/.mcp.json when available, then inject agent scoping args.
     // This preserves server fields (env, headers, etc.) while still enforcing per-agent tools.
     let mcp_json_path = plugin_dir.join(".mcp.json");
     let mut server_cfg = std::fs::read_to_string(&mcp_json_path)
@@ -557,7 +582,7 @@ pub fn create_mcp_config(
             args_vec.push(mcp_server_path_str);
         } else {
             // Expand ${CLAUDE_PLUGIN_ROOT} templates to the actual plugin_dir path.
-            // .mcp.json uses ${CLAUDE_PLUGIN_ROOT} as the plugin dir (e.g. ralphx-plugin/).
+            // .mcp.json uses ${CLAUDE_PLUGIN_ROOT} as the plugin dir.
             // Must match what spawn_teammate_interactive sets: CLAUDE_PLUGIN_ROOT=plugin_dir.
             let plugin_dir_str = plugin_dir.to_string_lossy();
             args_vec = args_vec
@@ -1089,31 +1114,34 @@ pub fn find_plugin_dir() -> Option<PathBuf> {
         }
     }
 
-    // In development, it's relative to the current working directory
-    let dev_path = std::env::current_dir().ok()?.join("ralphx-plugin");
-
-    if dev_path.exists() {
-        return Some(dev_path);
+    // In development, prefer plugins/app and keep ralphx-plugin as a legacy fallback.
+    if let Ok(current_dir) = std::env::current_dir() {
+        if let Some(candidate) = first_existing_plugin_dir([
+            current_dir.join(PRIMARY_PLUGIN_DIR_REL),
+            current_dir.join(LEGACY_PLUGIN_DIR_REL),
+        ]) {
+            return Some(candidate);
+        }
     }
 
     // Try relative to executable
     if let Ok(exe_path) = std::env::current_exe() {
         // Go up from the executable to find the plugin dir
-        // In dev: target/debug/ralphx -> ../../../ralphx-plugin
+        // In dev: target/debug/ralphx -> ../../../plugins/app (preferred)
         if let Some(parent) = exe_path.parent() {
             let candidates = [
-                parent.join("ralphx-plugin"),
-                parent.join("../ralphx-plugin"),
-                parent.join("../../ralphx-plugin"),
-                parent.join("../../../ralphx-plugin"),
+                parent.join(PRIMARY_PLUGIN_DIR_REL),
+                parent.join(LEGACY_PLUGIN_DIR_REL),
+                parent.join(format!("../{PRIMARY_PLUGIN_DIR_REL}")),
+                parent.join(format!("../{LEGACY_PLUGIN_DIR_REL}")),
+                parent.join(format!("../../{PRIMARY_PLUGIN_DIR_REL}")),
+                parent.join(format!("../../{LEGACY_PLUGIN_DIR_REL}")),
+                parent.join(format!("../../../{PRIMARY_PLUGIN_DIR_REL}")),
+                parent.join(format!("../../../{LEGACY_PLUGIN_DIR_REL}")),
             ];
 
-            for candidate in candidates {
-                if let Ok(canonical) = candidate.canonicalize() {
-                    if canonical.exists() {
-                        return Some(canonical);
-                    }
-                }
+            if let Some(candidate) = first_existing_plugin_dir(candidates) {
+                return Some(candidate);
             }
         }
     }
@@ -1121,10 +1149,14 @@ pub fn find_plugin_dir() -> Option<PathBuf> {
     // Production fallback: app data location where local release provisioning
     // installs plugin runtime assets.
     if let Ok(home) = std::env::var("HOME") {
-        let app_data_plugin =
-            PathBuf::from(home).join("Library/Application Support/com.ralphx.app/ralphx-plugin");
-        if app_data_plugin.exists() {
-            return Some(app_data_plugin);
+        if let Some(candidate) = first_existing_plugin_dir([
+            PathBuf::from(&home).join(format!(
+                "Library/Application Support/com.ralphx.app/{PRIMARY_PLUGIN_DIR_REL}"
+            )),
+            PathBuf::from(home)
+                .join("Library/Application Support/com.ralphx.app/ralphx-plugin"),
+        ]) {
+            return Some(candidate);
         }
     }
 
@@ -1134,24 +1166,30 @@ pub fn find_plugin_dir() -> Option<PathBuf> {
 /// Resolve plugin directory for a specific working directory context.
 ///
 /// Priority:
-/// 1) `<working_dir>/ralphx-plugin`
-/// 2) `<working_dir>/../ralphx-plugin`
-/// 3) global discovery via `find_plugin_dir()`
-/// 4) fallback to `<working_dir>/ralphx-plugin` (even if missing)
+/// 1) `<working_dir>/plugins/app`
+/// 2) `<working_dir>/ralphx-plugin`
+/// 3) `<working_dir>/../plugins/app`
+/// 4) `<working_dir>/../ralphx-plugin`
+/// 5) global discovery via `find_plugin_dir()`
+/// 6) fallback to `<working_dir>/plugins/app` (even if missing)
 pub fn resolve_plugin_dir(working_dir: &Path) -> PathBuf {
-    let direct = working_dir.join("ralphx-plugin");
-    if direct.exists() {
-        return direct;
+    if let Some(candidate) = first_existing_plugin_dir([
+        working_dir.join(PRIMARY_PLUGIN_DIR_REL),
+        working_dir.join(LEGACY_PLUGIN_DIR_REL),
+    ]) {
+        return candidate;
     }
 
     if let Some(parent) = working_dir.parent() {
-        let parent_candidate = parent.join("ralphx-plugin");
-        if parent_candidate.exists() {
-            return parent_candidate;
+        if let Some(candidate) = first_existing_plugin_dir([
+            parent.join(PRIMARY_PLUGIN_DIR_REL),
+            parent.join(LEGACY_PLUGIN_DIR_REL),
+        ]) {
+            return candidate;
         }
     }
 
-    find_plugin_dir().unwrap_or(direct)
+    find_plugin_dir().unwrap_or_else(|| working_dir.join(PRIMARY_PLUGIN_DIR_REL))
 }
 
 // ============================================================================
@@ -1197,7 +1235,7 @@ mod create_mcp_config_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     /// build_spawnable_command calls ensure_claude_spawn_allowed() which returns
     /// Err in tests — exercise the function up to that guard.
@@ -1279,5 +1317,51 @@ mod tests {
             None,
         );
         assert!(result.is_err(), "should be blocked in test environment");
+    }
+
+    #[test]
+    fn test_plugin_repo_root_supports_nested_plugins_app_layout() {
+        let plugin_dir = PathBuf::from("/tmp/ralphx/plugins/app");
+        assert_eq!(plugin_repo_root(&plugin_dir), PathBuf::from("/tmp/ralphx"));
+    }
+
+    #[test]
+    fn test_resolve_plugin_dir_prefers_plugins_app_in_working_dir() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let working_dir = temp_dir.path().join("repo");
+        std::fs::create_dir_all(working_dir.join(PRIMARY_PLUGIN_DIR_REL)).unwrap();
+        std::fs::create_dir_all(working_dir.join(LEGACY_PLUGIN_DIR_REL)).unwrap();
+
+        assert_eq!(
+            resolve_plugin_dir(&working_dir),
+            working_dir.join(PRIMARY_PLUGIN_DIR_REL)
+        );
+    }
+
+    #[test]
+    fn test_resolve_plugin_dir_falls_back_to_legacy_working_dir() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let working_dir = temp_dir.path().join("repo");
+        std::fs::create_dir_all(working_dir.join(LEGACY_PLUGIN_DIR_REL)).unwrap();
+
+        assert_eq!(
+            resolve_plugin_dir(&working_dir),
+            working_dir.join(LEGACY_PLUGIN_DIR_REL)
+        );
+    }
+
+    #[test]
+    fn test_resolve_plugin_dir_checks_parent_plugins_app_before_legacy() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let repo_root = temp_dir.path().join("repo");
+        let working_dir = repo_root.join("frontend");
+        std::fs::create_dir_all(repo_root.join(PRIMARY_PLUGIN_DIR_REL)).unwrap();
+        std::fs::create_dir_all(repo_root.join(LEGACY_PLUGIN_DIR_REL)).unwrap();
+        std::fs::create_dir_all(&working_dir).unwrap();
+
+        assert_eq!(
+            resolve_plugin_dir(&working_dir),
+            repo_root.join(PRIMARY_PLUGIN_DIR_REL)
+        );
     }
 }

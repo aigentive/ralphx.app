@@ -275,7 +275,7 @@ const PROJECT_ANCHORS = [
   "mockups",
   "assets",
   "public",
-  "ralphx-plugin",
+  "plugins",
   ".claude",
 ];
 

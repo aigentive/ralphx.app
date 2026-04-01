@@ -34,7 +34,7 @@ Tauri backend (:3847, localhost-only)
 ### Start the server
 
 ```bash
-cd ralphx-plugin/ralphx-external-mcp
+cd plugins/app/ralphx-external-mcp
 node build/index.js
 ```
 
@@ -105,7 +105,7 @@ See [webhooks.md](webhooks.md) for full details including failure handling and i
 ## Source Location
 
 ```
-ralphx-plugin/ralphx-external-mcp/
+plugins/app/ralphx-external-mcp/
 ├── src/
 │   ├── index.ts          — Server entry point, request routing
 │   ├── auth.ts           — Bearer token validation, 30s TTL cache

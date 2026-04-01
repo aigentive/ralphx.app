@@ -22,7 +22,7 @@ claude:             # Global Claude CLI runtime settings
 
 agents:             # All agent definitions (20 currently)
   - name: ralphx-worker
-    system_prompt_file: ralphx-plugin/agents/worker.md
+    system_prompt_file: plugins/app/agents/worker.md
     model: sonnet
     tools: { extends: base_tools, include: [Write, Edit, Task] }
     mcp_tools: [start_step, complete_step, ...]
@@ -329,5 +329,5 @@ The `RALPHX_AGENT_TYPE` env var enables server-side tool filtering in `tools.ts`
 | `src-tauri/src/infrastructure/agents/claude/mod.rs` | CLI command building, MCP config generation |
 | `src-tauri/src/infrastructure/agents/spawner.rs` | State machine → agent spawn orchestration |
 | `src-tauri/src/domain/agents/types.rs` | Domain agent types (AgentConfig, AgentRole) |
-| `ralphx-plugin/ralphx-mcp-server/src/tools.ts` | Server-side MCP tool filtering (TOOL_ALLOWLIST) |
-| `ralphx-plugin/agents/*.md` | Agent system prompts with frontmatter allowlists |
+| `plugins/app/ralphx-mcp-server/src/tools.ts` | Server-side MCP tool filtering (TOOL_ALLOWLIST) |
+| `plugins/app/agents/*.md` | Agent system prompts with frontmatter allowlists |
