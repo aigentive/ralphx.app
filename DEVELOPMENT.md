@@ -475,7 +475,7 @@ Quick reference:
 | `ralphx=debug,ralphx::http_server=warn` | broad debug with quieter HTTP |
 
 Log locations:
-- Dev logs: `logs/ralphx_YYYY-MM-DD_HH-MM-SS.log`
+- Dev logs: `.artifacts/logs/ralphx_YYYY-MM-DD_HH-MM-SS.log`
 - Prod logs: `~/Library/Application Support/com.ralphx.app/logs/`
 - Stream debug logs: `/tmp/ralphx-stream-debug-{conversation_id}.log`
 

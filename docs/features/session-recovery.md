@@ -145,7 +145,7 @@ Three key events for monitoring:
 View logs during development:
 ```bash
 # Inspect recent recovery events
-grep -E "event=(stale_session_detected|rehydrate_success|rehydrate_failure)" logs/ralphx.log | tail -20
+grep -E "event=(stale_session_detected|rehydrate_success|rehydrate_failure)" .artifacts/logs/ralphx_*.log | tail -20
 ```
 
 ## Troubleshooting
@@ -215,11 +215,11 @@ rm -rf ~/.claude/projects/<session-id>
 ### Monitoring Production
 ```bash
 # Recent recovery activity
-grep -E "event=(stale_session_detected|rehydrate_success|rehydrate_failure)" logs/ralphx.log | tail -50
+grep -E "event=(stale_session_detected|rehydrate_success|rehydrate_failure)" .artifacts/logs/ralphx_*.log | tail -50
 
 # Success and failure counts
-grep -c "event=rehydrate_success" logs/ralphx.log
-grep -c "event=rehydrate_failure" logs/ralphx.log
+grep -c "event=rehydrate_success" .artifacts/logs/ralphx_*.log
+grep -c "event=rehydrate_failure" .artifacts/logs/ralphx_*.log
 ```
 
 ### Integration Tests

@@ -67,8 +67,8 @@ When working in `src-tauri/`, also follow:
 | Tauri wiring | Repoint Tauri dev/build hooks at `frontend/` and make frontend-local `npm run tauri ...` work | Completed | `frontend/package.json` shells back to repo root for the Tauri CLI; `src-tauri/tauri.conf.json` now points at `../frontend` |
 | Repo command surface | Update docs/scripts/CI/release flows from root-frontend assumptions to `frontend/` commands | Completed | README, DEVELOPMENT, getting-started, build/release/CI paths rewired to `frontend/` |
 | Tooling path refs | Update Claude/Cursor/rule-manager/path-scoped rule references from `src/**` and `tests/**` to `frontend/src/**` and `frontend/tests/**` where repo-local paths matter | Completed | `.claude/settings.json`, visual testing/api rules, and rule-manager scripts adjusted |
-| Root cleanup | Remove stale root artifacts and reduce visible clutter | Partially complete | `rollback_backup.json` removed; empty `.config/` removed; `.cursor/` intentionally kept at root |
-| Artifact strategy | Decide whether generated outputs move under `.artifacts/` and whether Playwright visual baselines stay tracked | Pending | Current review needed for `logs/`, `reports/`, snapshots, and repo-size tradeoffs |
+| Root cleanup | Remove stale root artifacts and reduce visible clutter | Completed | `rollback_backup.json` and empty `.config/` removed; local generated dirs now live under `.artifacts/`; `.cursor/` intentionally kept at root |
+| Artifact strategy | Move generated local outputs under `.artifacts/` while keeping Playwright visual baselines tracked in-repo | Completed | `logs/`, `reports/`, `screenshots/`, and `backups/` moved under `.artifacts/`; frontend visual baselines stay in `frontend/tests/visual/snapshots/` |
 | Validation | Re-run targeted frontend and Tauri-facing checks after rewiring completes | Completed | `npm --prefix frontend run typecheck`, `npm --prefix frontend run lint`, and `npm --prefix frontend run tauri build -- --help` succeeded |
 
 ## Cross-Session Tracker Notes

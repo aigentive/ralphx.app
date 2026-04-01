@@ -8,7 +8,7 @@ Usage:
     python3 scripts/scan_history.py [options]
 
 Options:
-    --output PATH       Output report path (default: reports/history-scan-report.md)
+    --output PATH       Output report path (default: .artifacts/reports/history-scan-report.md)
     --branches LIST     Comma-separated branch names (default: all branches via --all)
     --since DATE        Only scan commits after this date (e.g. 2023-01-01)
     --max-commits N     Limit commits scanned (useful for testing)
@@ -861,8 +861,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         epilog=__doc__,
     )
     parser.add_argument(
-        "--output", default="reports/history-scan-report.md",
-        help="Output report path (default: reports/history-scan-report.md)"
+        "--output", default=".artifacts/reports/history-scan-report.md",
+        help="Output report path (default: .artifacts/reports/history-scan-report.md)"
     )
     parser.add_argument(
         "--branches", default="all",

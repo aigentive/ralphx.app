@@ -89,7 +89,7 @@
 defer_merge_enabled: false
 
 # Write tracing output to a per-launch log file in addition to console.
-# Dev: logs/ralphx_YYYY-MM-DD_HH-MM-SS.log | Prod: ~/Library/Application Support/com.ralphx.app/logs/
+# Dev: .artifacts/logs/ralphx_YYYY-MM-DD_HH-MM-SS.log | Prod: ~/Library/Application Support/com.ralphx.app/logs/
 # Env override: RALPHX_FILE_LOGGING=true|false
 file_logging: true
 

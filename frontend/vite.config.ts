@@ -108,7 +108,7 @@ export default defineConfig(async ({ mode }) => {
         : undefined,
       watch: {
         // 3. tell Vite to ignore watching `src-tauri`, `logs`, and all markdown files
-        ignored: ["**/src-tauri/**", "**/logs/**", "**/*.md"],
+        ignored: ["**/src-tauri/**", "**/.artifacts/**", "**/logs/**", "**/*.md"],
       },
     },
 

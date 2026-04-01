@@ -25,7 +25,7 @@ import scan_history as sh
 
 def _make_args(**kwargs) -> Namespace:
     defaults = dict(
-        output="reports/test-report.md",
+        output=".artifacts/reports/test-report.md",
         branches="all",
         since=None,
         max_commits=0,

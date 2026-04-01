@@ -1,3 +1,6 @@
+# Generated local artifacts
+.artifacts/
+
 # DB backups
 backups/
 
