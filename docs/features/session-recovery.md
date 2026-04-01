@@ -144,11 +144,8 @@ Three key events for monitoring:
 
 View logs during development:
 ```bash
-# Monitor recovery events
-./scripts/monitor-session-recovery.sh
-
-# Calculate success rate
-./scripts/calculate-recovery-rate.sh logs/ralphx.log
+# Inspect recent recovery events
+grep -E "event=(stale_session_detected|rehydrate_success|rehydrate_failure)" logs/ralphx.log | tail -20
 ```
 
 ## Troubleshooting
@@ -217,11 +214,12 @@ rm -rf ~/.claude/projects/<session-id>
 
 ### Monitoring Production
 ```bash
-# Real-time monitoring
-tail -f logs/ralphx.log | ./scripts/monitor-session-recovery.sh
+# Recent recovery activity
+grep -E "event=(stale_session_detected|rehydrate_success|rehydrate_failure)" logs/ralphx.log | tail -50
 
-# Daily metrics
-./scripts/calculate-recovery-rate.sh logs/ralphx-$(date +%Y%m%d).log
+# Success and failure counts
+grep -c "event=rehydrate_success" logs/ralphx.log
+grep -c "event=rehydrate_failure" logs/ralphx.log
 ```
 
 ### Integration Tests
@@ -231,8 +229,6 @@ cargo test --package ralphx --lib -- chat_session_recovery
 
 ## Related Documentation
 
-- [Session Recovery Rollout Plan](../operations/session-recovery-rollout.md) - Internal deployment plan
-- [Session Recovery Monitoring](../operations/session-recovery-monitoring.md) - Metrics and observability
 - [Manual Testing Guide](../testing/session-recovery-manual-test.md) - Testing procedures
 
 ## Feedback
