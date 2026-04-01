@@ -10,15 +10,26 @@ Creates beautifully framed versions of screenshots with:
 - Scaled down and centered with generous padding
 
 Usage:
-  python3 scripts/frame-screenshots.py                    # Frame all README screenshots
-  python3 scripts/frame-screenshots.py --single welcome   # Frame just one (by palette key)
-  python3 scripts/frame-screenshots.py --variations welcome  # Generate multiple gradient options
+  python3 assets/scripts/frame-screenshots.py                        # Frame and publish all README screenshots
+  python3 assets/scripts/frame-screenshots.py --single welcome       # Frame and publish one screenshot
+  python3 assets/scripts/frame-screenshots.py --skip-existing        # Resume a partial batch run
+  python3 assets/scripts/frame-screenshots.py --list                 # Show available screenshot keys
+  python3 assets/scripts/frame-screenshots.py --variations welcome   # Generate local raw gradient options
 """
 
 from PIL import Image, ImageDraw, ImageFilter
 import os
-import sys
 import argparse
+import tempfile
+from pathlib import Path
+
+from asset_utils import (
+    PUBLIC_ASSETS_DIR,
+    RAW_ASSETS_DIR,
+    RAW_VARIATIONS_DIR,
+    compress_image,
+    ensure_asset_dirs,
+)
 
 
 def lerp_color(c1, c2, t):
@@ -269,27 +280,45 @@ VARIATION_PALETTES = {
     ),
 }
 
-# Screenshots config: (source_filename, output_prefix, palette_key)
-SCREENSHOTS = [
+# Default public screenshot set used by README/docs: (source_filename, output_prefix, palette_key)
+PUBLIC_SCREENSHOTS = [
     ('welcome-2026-02-22.png', 'framed-welcome-2026-02-22.png', 'welcome'),
     ('graph-2026-02-22.png', 'framed-graph-2026-02-22.png', 'graph'),
     ('ideation-2026-02-21.png', 'framed-ideation-2026-02-21.png', 'ideation'),
     ('merge-2026-02-21.png', 'framed-merge-2026-02-21.png', 'merge'),
     ('ai-review-2026-02-22.png', 'framed-ai-review-2026-02-22.png', 'ai-review'),
     ('merge-conflicts-2026-02-22.png', 'framed-merge-conflicts-2026-02-22.png', 'merge-conflicts'),
-    ('approved-2026-02-22.png', 'framed-approved-2026-02-22.png', 'approved'),
     ('merged-2026-02-23.png', 'framed-merged-2026-02-23.png', 'merged'),
 ]
+
+# Additional optional screenshot entries available for manual one-off publishing.
+OPTIONAL_SCREENSHOTS = [
+    ('approved-2026-02-22.png', 'framed-approved-2026-02-22.png', 'approved'),
+]
+
+SCREENSHOTS = PUBLIC_SCREENSHOTS + OPTIONAL_SCREENSHOTS
 
 
 def main():
     parser = argparse.ArgumentParser(description='Frame screenshots with Dribbble-style gradients')
     parser.add_argument('--single', help='Frame just one screenshot by palette key (e.g., welcome)')
+    parser.add_argument('--list', action='store_true', help='List available screenshot keys')
+    parser.add_argument(
+        '--skip-existing',
+        action='store_true',
+        help='Skip publish targets that already exist in assets/public',
+    )
     parser.add_argument('--variations', help='Generate gradient variations for one screenshot')
     args = parser.parse_args()
 
-    assets_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'assets')
-    assets_dir = os.path.abspath(assets_dir)
+    ensure_asset_dirs()
+
+    if args.list:
+        print("Available screenshot keys:\n")
+        for src_name, dst_name, palette_key in SCREENSHOTS:
+            marker = "public" if (src_name, dst_name, palette_key) in PUBLIC_SCREENSHOTS else "optional"
+            print(f"  {palette_key:16} {src_name} -> {dst_name} [{marker}]")
+        return
 
     if args.variations:
         # Generate multiple gradient options for comparison
@@ -299,15 +328,15 @@ def main():
             print(f"Unknown key: {key}. Available: {[s[2] for s in SCREENSHOTS]}")
             return
 
-        src_path = os.path.join(assets_dir, src_file)
+        src_path = RAW_ASSETS_DIR / src_file
         print(f"Generating {len(VARIATION_PALETTES)} gradient variations for {src_file}...\n")
 
         for var_name, palette in VARIATION_PALETTES.items():
             dst_name = f"var-{var_name}-{src_file}"
-            dst_path = os.path.join(assets_dir, dst_name)
-            frame_screenshot(src_path, dst_path, palette)
+            dst_path = RAW_VARIATIONS_DIR / dst_name
+            frame_screenshot(str(src_path), str(dst_path), palette)
 
-        print(f"\nDone! Check assets/var-*-{src_file} files.")
+        print(f"\nDone! Check assets/raw/variations/var-*-{src_file} files.")
         return
 
     if args.single:
@@ -317,19 +346,33 @@ def main():
             return
         targets = matches
     else:
-        targets = SCREENSHOTS
+        targets = PUBLIC_SCREENSHOTS
 
-    print("Framing screenshots with vibrant gradient backgrounds...\n")
+    print("Framing screenshots and publishing repo assets...\n")
 
     for src_name, dst_name, palette_key in targets:
-        src_path = os.path.join(assets_dir, src_name)
-        dst_path = os.path.join(assets_dir, dst_name)
+        src_path = RAW_ASSETS_DIR / src_name
+        dst_path = PUBLIC_ASSETS_DIR / dst_name
 
-        if not os.path.exists(src_path):
+        if not src_path.exists():
             print(f"  SKIP {src_name} (not found)")
             continue
+        if args.skip_existing and dst_path.exists():
+            print(f"  SKIP {dst_name} (already published)")
+            continue
 
-        frame_screenshot(src_path, dst_path, PALETTES[palette_key])
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            temp_output = Path(tmp.name)
+
+        try:
+            frame_screenshot(str(src_path), str(temp_output), PALETTES[palette_key])
+            result = compress_image(temp_output, dst_path)
+            print(
+                f"  published {dst_name}: "
+                f"{result['source_size'] // 1024}KB -> {result['final_size'] // 1024}KB"
+            )
+        finally:
+            temp_output.unlink(missing_ok=True)
 
     print("\nDone!")
 

@@ -2,18 +2,22 @@
 """
 Pipeline diagram generator — dark-theme vertical flow for README "How It Works" section.
 
-Generates assets/pipeline-diagram.png matching the app's design system:
+Generates the tracked publishable asset at assets/public/pipeline-diagram.png:
   - Subdued dark mesh gradient background
   - Flat surface cards with subtle border and drop shadow
   - Accent orange (#ff6b35) arrows with glow + arrowheads
   - SF Pro typography via SFNS.ttf variable font
 
 Usage:
-  python3 scripts/generate-pipeline-diagram.py
+  python3 assets/scripts/generate-pipeline-diagram.py
 """
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 import os
+import tempfile
+from pathlib import Path
+
+from asset_utils import PUBLIC_ASSETS_DIR, compress_image, ensure_asset_dirs
 
 
 # ── Colors ────────────────────────────────────────────────────────────────────
@@ -249,6 +253,7 @@ def draw_trigger_glow(canvas, draw, y, text, font):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    ensure_asset_dirs()
     fonts = load_fonts()
     title_font, desc_font, trigger_font, badge_font = fonts
 
@@ -303,16 +308,21 @@ def main():
             draw_arrow(canvas, draw, a_start, a_end)
             y += ARROW_GAP
 
-    # Save
-    assets_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'assets')
-    assets_dir = os.path.abspath(assets_dir)
-    out = os.path.join(assets_dir, 'pipeline-diagram.png')
+    output_path = PUBLIC_ASSETS_DIR / "pipeline-diagram.png"
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        temp_output = Path(tmp.name)
 
-    canvas.convert('RGB').save(out, 'PNG', optimize=True)
+    try:
+        canvas.convert('RGB').save(temp_output, 'PNG', optimize=True)
+        result = compress_image(temp_output, output_path, max_width=2800)
+    finally:
+        temp_output.unlink(missing_ok=True)
 
-    size_kb = os.path.getsize(out) // 1024
-    print(f"Generated: {out}")
-    print(f"File size: {size_kb}KB")
+    print(f"Generated: {output_path}")
+    print(
+        f"File size: {result['final_size'] // 1024}KB "
+        f"(source {result['source_size'] // 1024}KB)"
+    )
 
 
 if __name__ == '__main__':

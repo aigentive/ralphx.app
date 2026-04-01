@@ -174,16 +174,6 @@ style={{ boxShadow: "none", outline: "none" }}
 ## Git Conventions
 ❌ git init/push/remotes | Prefixes: `docs:` | `feat:` | `fix:` | `chore:` | Co-author: `Co-Authored-By: Claude <MODEL> <noreply@anthropic.com>`
 
-## Screenshot Framing
-Script: `scripts/frame-screenshots.py` | Assets: `assets/` | Add new entries to `SCREENSHOTS` list in script before running.
-
-| Step | Rule |
-|------|------|
-| **Inspect source** | Check for macOS system bar (date/time/Wi-Fi/battery) at top of screenshot |
-| **Crop if needed** | Script auto-crops via variance detection. Manual fallback: ~50px standard display \| ~100px Retina 2x |
-| **Frame** | `python3 scripts/frame-screenshots.py --single <palette-key>` |
-| **Verify output** | Confirm no system bar, no personal info in `assets/framed-*.png` |
-
 ## Misc
 - DB: `sqlite3 src-tauri/ralphx.db "SELECT * FROM table_name;"`
 - App logs: per-launch file — dev: `.artifacts/logs/ralphx_YYYY-MM-DD_HH-MM-SS.log` | prod: `~/Library/Application Support/com.ralphx.app/logs/` | latest: `ls -t .artifacts/logs/*.log | head -1` | config: `file_logging` in ralphx.yaml / `RALPHX_FILE_LOGGING` env (default: true)

@@ -69,6 +69,7 @@ When working in `src-tauri/`, also follow:
 | Tooling path refs | Update Claude/Cursor/rule-manager/path-scoped rule references from `src/**` and `tests/**` to `frontend/src/**` and `frontend/tests/**` where repo-local paths matter | Completed | `.claude/settings.json`, visual testing/api rules, and rule-manager scripts adjusted |
 | Root cleanup | Remove stale root artifacts and reduce visible clutter | Completed | `rollback_backup.json` and empty `.config/` removed; local generated dirs now live under `.artifacts/`; `.cursor/` intentionally kept at root |
 | Artifact strategy | Move generated local outputs under `.artifacts/` while keeping Playwright visual baselines tracked in-repo | Completed | `logs/`, `reports/`, `screenshots/`, and `backups/` moved under `.artifacts/`; frontend visual baselines stay in `frontend/tests/visual/snapshots/` |
+| Asset publishing pipeline | Split ignored source captures from tracked public assets, move asset tooling under `assets/scripts/`, and add reusable compression/publish commands | Completed | `assets/raw/` is now gitignored source, `assets/public/` is the tracked publish set, `assets/scripts/` owns framing/diagram/compression, and `.claude/rules/assets.md` holds the workflow |
 | Validation | Re-run targeted frontend and Tauri-facing checks after rewiring completes | Completed | `npm --prefix frontend run typecheck`, `npm --prefix frontend run lint`, and `npm --prefix frontend run tauri build -- --help` succeeded |
 
 ## Cross-Session Tracker Notes

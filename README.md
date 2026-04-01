@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/framed-welcome-2026-02-22.png" alt="RalphX — Describe it. Ship it." width="100%">
+  <img src="assets/public/framed-welcome-2026-02-22.png" alt="RalphX — Describe it. Ship it." width="100%">
 </p>
 
 <p align="center">
@@ -42,7 +42,7 @@ All data stays on your machine. Local SQLite database. No cloud dependency. No t
 **Give every builder the power to develop software with AI — independent of any platform, vendor, or provider.**
 
 <p align="center">
-  <img src="assets/framed-graph-2026-02-22.png" alt="RalphX dependency graph — critical path highlighting, tier grouping, live execution status" width="100%">
+  <img src="assets/public/framed-graph-2026-02-22.png" alt="RalphX dependency graph — critical path highlighting, tier grouping, live execution status" width="100%">
 </p>
 
 ---
@@ -50,7 +50,7 @@ All data stays on your machine. Local SQLite database. No cloud dependency. No t
 ## How It Works
 
 <p align="center">
-  <img src="assets/pipeline-diagram.png" alt="RalphX execution pipeline — from idea to merged code" width="100%">
+  <img src="assets/public/pipeline-diagram.png" alt="RalphX execution pipeline — from idea to merged code" width="100%">
 </p>
 
 Every agent has **principle-of-least-privilege** tool access enforced at three independent layers:
@@ -85,8 +85,8 @@ RalphX manages AI agent development workflows. It was itself built by AI agents.
 ## Screenshots
 
 <table><tr>
-<td><img src="assets/framed-ideation-2026-02-21.png" width="100%"></td>
-<td><img src="assets/framed-merge-2026-02-21.png" width="100%"></td>
+<td><img src="assets/public/framed-ideation-2026-02-21.png" width="100%"></td>
+<td><img src="assets/public/framed-merge-2026-02-21.png" width="100%"></td>
 </tr></table>
 
 <p align="center">
@@ -98,17 +98,17 @@ RalphX manages AI agent development workflows. It was itself built by AI agents.
 <br>
 
 <p align="center">
-  <img src="assets/framed-ai-review-2026-02-22.png" alt="AI Review" width="100%">
+  <img src="assets/public/framed-ai-review-2026-02-22.png" alt="AI Review" width="100%">
 </p>
 <p align="center"><em>AI Review — Reviewer agent examines diffs and files structured issues</em></p>
 
 <p align="center">
-  <img src="assets/framed-merge-conflicts-2026-02-22.png" alt="Merge conflict resolution" width="100%">
+  <img src="assets/public/framed-merge-conflicts-2026-02-22.png" alt="Merge conflict resolution" width="100%">
 </p>
 <p align="center"><em>Conflict resolution — Merger agent resolves conflicts, never force-pushes</em></p>
 
 <p align="center">
-  <img src="assets/framed-merged-2026-02-23.png" alt="Merged — code lands on main branch" width="100%">
+  <img src="assets/public/framed-merged-2026-02-23.png" alt="Merged — code lands on main branch" width="100%">
 </p>
 <p align="center"><em>Merged — automated pipeline lands reviewed code on main</em></p>
 
