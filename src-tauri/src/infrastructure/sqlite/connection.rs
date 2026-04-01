@@ -6,11 +6,9 @@ use tauri::{AppHandle, Manager};
 
 use crate::error::{AppError, AppResult};
 
-/// Get the default database path based on Tauri's app data directory
+/// Get the default development database path inside the repo.
 pub fn get_default_db_path() -> PathBuf {
-    // For now, use a simple path in the working directory
-    // In production, this would use Tauri's app data path
-    PathBuf::from("ralphx.db")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("ralphx.db")
 }
 
 /// Get the database path inside the app data directory

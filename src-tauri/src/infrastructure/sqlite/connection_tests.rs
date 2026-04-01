@@ -7,8 +7,9 @@ use tempfile::tempdir;
 #[test]
 fn test_get_default_db_path_returns_path() {
     let path = get_default_db_path();
-    assert!(!path.to_str().unwrap().is_empty());
-    assert!(path.to_str().unwrap().ends_with(".db"));
+    let path_str = path.to_str().unwrap();
+    assert!(!path_str.is_empty());
+    assert!(path_str.ends_with("src-tauri/ralphx.db"));
 }
 
 #[test]
