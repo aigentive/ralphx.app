@@ -4,7 +4,7 @@ This is the implementation playbook for RalphX. It exists to keep frontend, back
 
 Read with:
 - `CLAUDE.md`
-- `src/CLAUDE.md`
+- `frontend/src/CLAUDE.md`
 - `src-tauri/CLAUDE.md`
 - `.claude/rules/code-quality-standards.md`
 - `.claude/rules/api-layer.md`
@@ -408,14 +408,14 @@ The MCP HTTP server starts automatically on `http://127.0.0.1:3847` when the Tau
 
 | Mode | Command | Frontend Port | Backend | Use Case |
 |---|---|---|---|---|
-| Native | `npm run tauri dev` | 1420 | Real Rust/Tauri | Full-stack development |
-| Web | `npm run dev:web` | 5173 | Mocked via `src/api-mock/` | UI-only work |
+| Native | `cd frontend && npm run tauri dev` | 1420 | Real Rust/Tauri | Full-stack development |
+| Web | `cd frontend && npm run dev:web` | 5173 | Mocked via `frontend/src/api-mock/` | UI-only work |
 
 Core commands:
 
 ```bash
-npm run tauri dev
-npm run dev:web
+cd frontend && npm run tauri dev
+cd frontend && npm run dev:web
 ```
 
 ### Frontend Logging
@@ -455,12 +455,12 @@ Default:
 Useful logging:
 
 ```bash
-RUST_LOG=ralphx=debug npm run tauri dev
-RUST_LOG=ralphx::application::chat_service=debug npm run tauri dev
-RUST_LOG=ralphx::domain::state_machine=debug npm run tauri dev
-RUST_LOG=ralphx::application::git_service=debug npm run tauri dev
-RUST_LOG=ralphx::http_server=debug npm run tauri dev
-RUST_LOG="ralphx::application::chat_service=debug,ralphx::domain::state_machine=debug,ralphx::http_server=warn" npm run tauri dev
+RUST_LOG=ralphx=debug npm --prefix frontend run tauri dev
+RUST_LOG=ralphx::application::chat_service=debug npm --prefix frontend run tauri dev
+RUST_LOG=ralphx::domain::state_machine=debug npm --prefix frontend run tauri dev
+RUST_LOG=ralphx::application::git_service=debug npm --prefix frontend run tauri dev
+RUST_LOG=ralphx::http_server=debug npm --prefix frontend run tauri dev
+RUST_LOG="ralphx::application::chat_service=debug,ralphx::domain::state_machine=debug,ralphx::http_server=warn" npm --prefix frontend run tauri dev
 ```
 
 Quick reference:
@@ -484,31 +484,31 @@ Log locations:
 Chat/streaming issues:
 
 ```bash
-RUST_LOG=ralphx::application::chat_service=debug npm run tauri dev
+RUST_LOG=ralphx::application::chat_service=debug npm --prefix frontend run tauri dev
 ```
 
 State machine transitions:
 
 ```bash
-RUST_LOG=ralphx::domain::state_machine=debug npm run tauri dev
+RUST_LOG=ralphx::domain::state_machine=debug npm --prefix frontend run tauri dev
 ```
 
 Git/worktree/merge issues:
 
 ```bash
-RUST_LOG=ralphx::application::git_service=debug npm run tauri dev
+RUST_LOG=ralphx::application::git_service=debug npm --prefix frontend run tauri dev
 ```
 
 Startup or migration issues:
 
 ```bash
-RUST_LOG=ralphx=debug npm run tauri dev
+RUST_LOG=ralphx=debug npm --prefix frontend run tauri dev
 ```
 
 MCP HTTP handler issues:
 
 ```bash
-RUST_LOG=ralphx::http_server=debug npm run tauri dev
+RUST_LOG=ralphx::http_server=debug npm --prefix frontend run tauri dev
 ```
 
 What to check during startup failures:

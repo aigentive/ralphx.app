@@ -53,7 +53,7 @@ json_files="$json_files]"
 
 # Also check CLAUDE.md files for @ refs
 claude_md_refs=""
-for cmd_file in "$(get_project_root)/CLAUDE.md" "$(get_project_root)/src/CLAUDE.md" "$(get_project_root)/src-tauri/CLAUDE.md"; do
+for cmd_file in "$(get_project_root)/CLAUDE.md" "$(get_project_root)/frontend/src/CLAUDE.md" "$(get_project_root)/src-tauri/CLAUDE.md"; do
   if [[ -f "$cmd_file" ]]; then
     refs=$(get_at_refs "$cmd_file" | tr '\n' ',' | sed 's/,$//')
     [[ -n "$refs" ]] && claude_md_refs="$claude_md_refs $(basename "$(dirname "$cmd_file")")/$(basename "$cmd_file"):$refs"

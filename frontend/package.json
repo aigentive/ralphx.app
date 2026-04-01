@@ -10,7 +10,7 @@
     "build": "tsc && vite build",
     "build:web": "vite build --mode web --outDir dist-web",
     "preview": "vite preview",
-    "tauri": "tauri",
+    "tauri": "cd .. && ./frontend/node_modules/.bin/tauri",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",

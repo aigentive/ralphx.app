@@ -314,17 +314,17 @@ State machine side effects use short names → `spawner_agent_name()` maps to FQ
 
 | File | Purpose |
 |------|---------|
-| `src/lib/events.ts` | Event name constants (mirrors backend) |
-| `src/hooks/useAgentEvents.ts` | Agent lifecycle event listener (run state, messages, queue, errors) |
-| `src/hooks/useIntegratedChatEvents.ts` | Streaming event handler (chunks, tool calls, tasks) |
-| `src/hooks/useChatPanelHandlers.ts` | ChatPanel event handlers and queue management |
-| `src/hooks/useChat.ts` | TanStack Query hooks for chat API calls |
-| `src/api/chat.ts` | Tauri invoke wrappers for chat commands |
-| `src/stores/chatStore.ts` | Zustand store for chat UI state (running, queue, active conversation) |
-| `src/components/Chat/ChatPanel.tsx` | Main chat panel component |
-| `src/components/Chat/IntegratedChatPanel.tsx` | Integrated panel with streaming tool call display |
-| `src/providers/EventProvider.tsx` | EventBus provider (browser/Tauri abstraction) |
-| `src/types/chat-conversation.ts` | ContextType type, conversation schemas |
+| `frontend/src/lib/events.ts` | Event name constants (mirrors backend) |
+| `frontend/src/hooks/useAgentEvents.ts` | Agent lifecycle event listener (run state, messages, queue, errors) |
+| `frontend/src/hooks/useIntegratedChatEvents.ts` | Streaming event handler (chunks, tool calls, tasks) |
+| `frontend/src/hooks/useChatPanelHandlers.ts` | ChatPanel event handlers and queue management |
+| `frontend/src/hooks/useChat.ts` | TanStack Query hooks for chat API calls |
+| `frontend/src/api/chat.ts` | Tauri invoke wrappers for chat commands |
+| `frontend/src/stores/chatStore.ts` | Zustand store for chat UI state (running, queue, active conversation) |
+| `frontend/src/components/Chat/ChatPanel.tsx` | Main chat panel component |
+| `frontend/src/components/Chat/IntegratedChatPanel.tsx` | Integrated panel with streaming tool call display |
+| `frontend/src/providers/EventProvider.tsx` | EventBus provider (browser/Tauri abstraction) |
+| `frontend/src/types/chat-conversation.ts` | ContextType type, conversation schemas |
 
 ### MCP Server
 

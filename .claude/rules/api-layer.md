@@ -1,13 +1,13 @@
 ---
 paths:
-  - "src/api/**"
-  - "src/api-mock/**"
-  - "src/types/**"
-  - "src/lib/tauri*.ts"
+  - "frontend/src/api/**"
+  - "frontend/src/api-mock/**"
+  - "frontend/src/types/**"
+  - "frontend/src/lib/tauri*.ts"
   - "src-tauri/src/http_server/**"
   - "src-tauri/src/commands/**"
-  - "src/mocks/**"
-  - "vite.config.ts"
+  - "frontend/src/mocks/**"
+  - "frontend/vite.config.ts"
 ---
 
 # API Layer Patterns
@@ -58,9 +58,9 @@ Files: `{domain}.ts` | `{domain}.schemas.ts` | `{domain}.transforms.ts` | `{doma
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| `isWebMode()` | `src/lib/tauri-detection.ts` | Environment check |
-| Mock plugins | `src/mocks/tauri-plugin-*.ts` | Graceful degradation |
-| Vite aliases | `vite.config.ts` | Redirect in web mode |
+| `isWebMode()` | `frontend/src/lib/tauri-detection.ts` | Environment check |
+| Mock plugins | `frontend/src/mocks/tauri-plugin-*.ts` | Graceful degradation |
+| Vite aliases | `frontend/vite.config.ts` | Redirect in web mode |
 
 ## EventBus
 
@@ -77,4 +77,4 @@ Pattern: `bus.subscribe(event, handler)` → returns unsubscribe fn
 - [ ] Types (camelCase)
 - [ ] Transform fn
 - [ ] Domain API method using typedInvokeWithTransform
-- [ ] Re-export in `src/lib/tauri.ts` if widely used
+- [ ] Re-export in `frontend/src/lib/tauri.ts` if widely used

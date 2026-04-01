@@ -5,8 +5,8 @@ import { setupKanban } from "../../../fixtures/setup.fixtures";
 /**
  * Visual regression tests for the Kanban board.
  *
- * These tests run against the web mode dev server (npm run dev:web)
- * which uses mock data from src/api-mock/ instead of the real Tauri backend.
+ * These tests run against the web mode dev server (cd frontend && npm run dev:web)
+ * which uses mock data from frontend/src/api-mock/ instead of the real Tauri backend.
  *
  * Uses Page Object Model pattern for maintainable selectors.
  */

@@ -68,7 +68,7 @@ fi
 
 if [[ "${SKIP_BUILD}" != "true" ]]; then
   echo "Building RalphX release..."
-  cd "${PROJECT_ROOT}"
+  cd "${PROJECT_ROOT}/frontend"
 
   if [[ "${BUILD_BUNDLE}" == "true" ]]; then
     CI=false npm run tauri build

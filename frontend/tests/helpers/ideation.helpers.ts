@@ -2,7 +2,7 @@ import { Page } from "@playwright/test";
 
 /**
  * Helper to select the mock ideation session that has proposals.
- * The mock data in src/api-mock/ideation.ts creates a session with one proposal.
+ * The mock data in frontend/src/api-mock/ideation.ts creates a session with one proposal.
  * This helper waits for that data to load and waits for the proposal cards.
  */
 export async function loadMockIdeationSession(page: Page) {

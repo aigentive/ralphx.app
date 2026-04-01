@@ -41,7 +41,7 @@ invoke("create_api_key", { input: { name, projectIds, permissions } })
 invoke("create_api_key", { input: { name, project_ids, permissions } })
 ```
 
-**Reference:** `src/CLAUDE.md` rule 14 — Tauri invoke: camelCase fields.
+**Reference:** `frontend/src/CLAUDE.md` rule 14 — Tauri invoke: camelCase fields.
 
 ## Direct Flat Params (No Struct)
 

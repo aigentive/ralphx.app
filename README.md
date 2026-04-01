@@ -163,6 +163,7 @@ RalphX manages AI agent development workflows. It was itself built by AI agents.
 ```bash
 git clone https://github.com/lazabogdan/ralphx.git
 cd ralphx
+cd frontend
 npm install
 npm run tauri dev
 ```

@@ -8,8 +8,8 @@ RalphX can run in two modes:
 
 | Mode | Command | Backend | Events | Use Case |
 |------|---------|---------|--------|----------|
-| **Tauri Mode** | `npm run dev` | Real Rust backend | Tauri IPC events | Normal development |
-| **Web Mode** | `npm run dev:web` | Mock API (read-only) | In-memory events | Visual testing, Playwright |
+| **Tauri Mode** | `cd frontend && npm run dev` | Real Rust backend | Tauri IPC events | Normal development |
+| **Web Mode** | `cd frontend && npm run dev:web` | Mock API (read-only) | In-memory events | Visual testing, Playwright |
 
 Web mode enables browser automation testing by mocking the Tauri backend, allowing the React frontend to render with mock data in any browser.
 
@@ -20,18 +20,18 @@ Web mode enables browser automation testing by mocking the Tauri backend, allowi
 ### Start the Dev Server
 
 ```bash
-npm run dev:web
+cd frontend && npm run dev:web
 ```
 
 This starts Vite with `--mode web`, which:
-- Uses mock API implementations from `src/api-mock/`
-- Aliases Tauri plugins to mock implementations in `src/mocks/`
+- Uses mock API implementations from `frontend/src/api-mock/`
+- Aliases Tauri plugins to mock implementations in `frontend/src/mocks/`
 - Runs on port 5173 (separate from Tauri's port 1420)
 
 ### Build for Web
 
 ```bash
-npm run build:web
+cd frontend && npm run build:web
 ```
 
 Outputs to `dist-web/` directory for deployment or static testing.
@@ -112,6 +112,7 @@ The mock API provides factory-generated data for:
 Install Playwright (already in devDependencies):
 
 ```bash
+cd frontend
 npm install -D @playwright/test
 npx playwright install
 ```
@@ -119,24 +120,24 @@ npx playwright install
 ### Run All Tests
 
 ```bash
-npx playwright test
+cd frontend && npx playwright test
 ```
 
 This will:
 1. Start the web mode dev server automatically
-2. Run all tests in `tests/visual/`
+2. Run all tests in `frontend/tests/visual/`
 3. Generate HTML report
 
 ### Run Specific Test
 
 ```bash
-npx playwright test kanban
+cd frontend && npx playwright test kanban
 ```
 
 ### Interactive Mode
 
 ```bash
-npx playwright test --ui
+cd frontend && npx playwright test --ui
 ```
 
 Opens the Playwright Test UI for interactive debugging.
@@ -144,7 +145,7 @@ Opens the Playwright Test UI for interactive debugging.
 ### Debug Mode
 
 ```bash
-npx playwright test --debug
+cd frontend && npx playwright test --debug
 ```
 
 Runs tests with step-by-step debugging.
@@ -156,7 +157,7 @@ Runs tests with step-by-step debugging.
 ### How It Works
 
 1. Tests take screenshots of the app in specific states
-2. Screenshots are compared against baseline images in `tests/visual/snapshots/`
+2. Screenshots are compared against baseline images in `frontend/tests/visual/snapshots/`
 3. Differences above threshold (1% pixel diff) fail the test
 
 ### Update Baseline Screenshots
@@ -164,7 +165,7 @@ Runs tests with step-by-step debugging.
 When UI intentionally changes:
 
 ```bash
-npx playwright test --update-snapshots
+cd frontend && npx playwright test --update-snapshots
 ```
 
 This regenerates all snapshot files. Review the changes before committing.
@@ -173,14 +174,14 @@ This regenerates all snapshot files. Review the changes before committing.
 
 Snapshots are stored in:
 ```
-tests/visual/snapshots/
+frontend/tests/visual/snapshots/
 └── kanban-board.png          # Kanban board snapshot
 └── [test-name]-[browser].png # Other snapshots
 ```
 
 ### Threshold Configuration
 
-Configured in `playwright.config.ts`:
+Configured in `frontend/playwright.config.ts`:
 
 ```typescript
 expect: {
@@ -199,7 +200,7 @@ expect: {
 Tests use a **modular Page Object Model (POM)** architecture:
 
 ```
-tests/
+frontend/tests/
 ├── visual/
 │   ├── views/                    # View-specific specs
 │   │   ├── kanban/
@@ -232,7 +233,7 @@ tests/
 All selectors must be in page objects, **never raw selectors in spec files**.
 
 ```typescript
-// tests/pages/kanban.page.ts
+// frontend/tests/pages/kanban.page.ts
 import { Page, Locator } from "@playwright/test";
 import { BasePage } from "./base.page";
 
@@ -258,7 +259,7 @@ export class KanbanPage extends BasePage {
 ### Spec File Pattern
 
 ```typescript
-// tests/visual/views/kanban/kanban.spec.ts
+// frontend/tests/visual/views/kanban/kanban.spec.ts
 import { test, expect } from "@playwright/test";
 import { KanbanPage } from "../../../pages/kanban.page";
 import { setupKanban } from "../../../fixtures/setup.fixtures";
@@ -328,7 +329,7 @@ Before committing a new spec:
 
 ### Basic Workflow
 
-1. **Create page object** (if new feature): `tests/pages/{feature}.page.ts`
+1. **Create page object** (if new feature): `frontend/tests/pages/{feature}.page.ts`
 2. **Write spec** using page object pattern
 3. **Generate baseline**: `npx playwright test [spec] --update-snapshots`
 4. **Verify test passes**: `npx playwright test [spec]`
@@ -346,7 +347,7 @@ Before committing a new spec:
 
 ### Environment Detection
 
-`src/lib/tauri-detection.ts`:
+`frontend/src/lib/tauri-detection.ts`:
 
 ```typescript
 export function isWebMode(): boolean {
@@ -359,28 +360,28 @@ export function isWebMode(): boolean {
 The API layer automatically switches based on environment:
 
 - **Tauri mode**: Real API calls via `invoke()`
-- **Web mode**: Mock API from `src/api-mock/`
+- **Web mode**: Mock API from `frontend/src/api-mock/`
 
 ### Event Bus
 
-`src/lib/event-bus.ts` provides:
+`frontend/src/lib/event-bus.ts` provides:
 
 - **TauriEventBus**: Real Tauri `listen()`/`emit()` in native mode
 - **MockEventBus**: In-memory event emitter in web mode
 
-The `EventProvider` component in `src/providers/EventProvider.tsx` automatically selects the appropriate bus.
+The `EventProvider` component in `frontend/src/providers/EventProvider.tsx` automatically selects the appropriate bus.
 
 ### Plugin Mocks
 
-Vite aliases Tauri plugins to mocks in `src/mocks/` when in web mode:
+Vite aliases Tauri plugins to mocks in `frontend/src/mocks/` when in web mode:
 
 | Plugin | Mock Location |
 |--------|---------------|
-| `@tauri-apps/plugin-dialog` | `src/mocks/tauri-plugin-dialog.ts` |
-| `@tauri-apps/plugin-fs` | `src/mocks/tauri-plugin-fs.ts` |
-| `@tauri-apps/plugin-process` | `src/mocks/tauri-plugin-process.ts` |
-| `@tauri-apps/plugin-updater` | `src/mocks/tauri-plugin-updater.ts` |
-| `@tauri-apps/plugin-global-shortcut` | `src/mocks/tauri-plugin-global-shortcut.ts` |
+| `@tauri-apps/plugin-dialog` | `frontend/src/mocks/tauri-plugin-dialog.ts` |
+| `@tauri-apps/plugin-fs` | `frontend/src/mocks/tauri-plugin-fs.ts` |
+| `@tauri-apps/plugin-process` | `frontend/src/mocks/tauri-plugin-process.ts` |
+| `@tauri-apps/plugin-updater` | `frontend/src/mocks/tauri-plugin-updater.ts` |
+| `@tauri-apps/plugin-global-shortcut` | `frontend/src/mocks/tauri-plugin-global-shortcut.ts` |
 
 ---
 
@@ -394,19 +395,19 @@ Vite aliases Tauri plugins to mocks in `src/mocks/` when in web mode:
 lsof -ti:5173 | xargs kill -9
 
 # Retry
-npm run dev:web
+cd frontend && npm run dev:web
 ```
 
 ### Tests Fail to Start
 
 **Playwright browsers not installed:**
 ```bash
-npx playwright install
+cd frontend && npx playwright install
 ```
 
 **Web server timeout:**
-- Increase timeout in `playwright.config.ts` (default: 120s)
-- Check if `npm run dev:web` works manually
+- Increase timeout in `frontend/playwright.config.ts` (default: 120s)
+- Check if `cd frontend && npm run dev:web` works manually
 
 ### Screenshots Don't Match
 
@@ -425,12 +426,12 @@ npx playwright install
 ### Mock Data Issues
 
 **Missing mock implementation:**
-- Check `src/api-mock/` for the API function
+- Check `frontend/src/api-mock/` for the API function
 - Add mock implementation if missing
 
 **Type errors with mocks:**
 - Ensure mock return types match real API types
-- Check `src/types/` for expected interfaces
+- Check `frontend/src/types/` for expected interfaces
 
 ### Console Errors in Web Mode
 
@@ -448,16 +449,16 @@ npx playwright install
 
 | File | Purpose |
 |------|---------|
-| `playwright.config.ts` | Playwright configuration |
-| `tests/visual/` | Visual regression spec files (views, modals, states) |
-| `tests/visual/snapshots/` | Baseline screenshot images |
-| `tests/pages/` | Page Object Model files |
-| `tests/pages/base.page.ts` | Base page object with shared methods |
-| `tests/fixtures/` | Shared test setup and data |
-| `tests/helpers/` | Utility functions for tests |
-| `src/api-mock/` | Mock API implementations |
-| `src/mocks/` | Tauri plugin mocks |
-| `src/lib/tauri-detection.ts` | Environment detection |
-| `src/lib/event-bus.ts` | Event bus abstraction |
-| `src/providers/EventProvider.tsx` | Event provider component |
-| `vite.config.ts` | Vite config with web mode handling |
+| `frontend/playwright.config.ts` | Playwright configuration |
+| `frontend/tests/visual/` | Visual regression spec files (views, modals, states) |
+| `frontend/tests/visual/snapshots/` | Baseline screenshot images |
+| `frontend/tests/pages/` | Page Object Model files |
+| `frontend/tests/pages/base.page.ts` | Base page object with shared methods |
+| `frontend/tests/fixtures/` | Shared test setup and data |
+| `frontend/tests/helpers/` | Utility functions for tests |
+| `frontend/src/api-mock/` | Mock API implementations |
+| `frontend/src/mocks/` | Tauri plugin mocks |
+| `frontend/src/lib/tauri-detection.ts` | Environment detection |
+| `frontend/src/lib/event-bus.ts` | Event bus abstraction |
+| `frontend/src/providers/EventProvider.tsx` | Event provider component |
+| `frontend/vite.config.ts` | Vite config with web mode handling |

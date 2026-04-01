@@ -23,7 +23,7 @@ for file in "$RULES_DIR"/*.md; do
 done
 
 # Scan CLAUDE.md files
-for cmd_file in "$PROJECT_ROOT/CLAUDE.md" "$PROJECT_ROOT/src/CLAUDE.md" "$PROJECT_ROOT/src-tauri/CLAUDE.md"; do
+for cmd_file in "$PROJECT_ROOT/CLAUDE.md" "$PROJECT_ROOT/frontend/src/CLAUDE.md" "$PROJECT_ROOT/src-tauri/CLAUDE.md"; do
   [[ -f "$cmd_file" ]] || continue
   name="$(basename "$cmd_file")"
   [[ "$cmd_file" != "$PROJECT_ROOT/CLAUDE.md" ]] && name="$(basename "$(dirname "$cmd_file")")/$(basename "$cmd_file")"

@@ -95,7 +95,7 @@ Add these secrets:
 
 ```bash
 # Quick build for local testing (no signing)
-npm run tauri build
+cd frontend && npm run tauri build
 ```
 
 Output:
@@ -139,7 +139,7 @@ For signed builds, verify there are no Gatekeeper warnings when opening the app.
 ```
 
 This updates version in:
-- `package.json`
+- `frontend/package.json`
 - `src-tauri/Cargo.toml`
 - `src-tauri/tauri.conf.json`
 

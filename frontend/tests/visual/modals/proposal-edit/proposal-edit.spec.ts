@@ -10,8 +10,8 @@ import { loadMockIdeationSession, openProposalEditModal } from "../../../helpers
  * The ProposalEditModal allows users to edit task proposal details including
  * title, description, category, priority, complexity, steps, and acceptance criteria.
  *
- * These tests run against web mode dev server (npm run dev:web) which uses
- * mock data from src/api-mock/ instead of the real Tauri backend.
+ * These tests run against web mode dev server (cd frontend && npm run dev:web) which uses
+ * mock data from frontend/src/api-mock/ instead of the real Tauri backend.
  */
 
 test.describe("ProposalEditModal", () => {

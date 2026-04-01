@@ -20,7 +20,9 @@ Code quality: `.claude/rules/code-quality-standards.md` | State machine: `.claud
 ## Structure
 ```
 ralphx/
-├─ src/                   # Frontend (React/TS) → src/CLAUDE.md
+├─ frontend/              # Frontend project root (Vite/React) → frontend/src/CLAUDE.md
+│  ├─ src/                # Frontend app code
+│  └─ tests/              # Frontend/Vitest/Playwright tests
 ├─ src-tauri/             # Backend (Rust/Tauri) → src-tauri/CLAUDE.md
 │  └─ ralphx.db           # SQLite (dev)
 ├─ ralphx-plugin/         # Claude plugin (agents/skills/hooks)

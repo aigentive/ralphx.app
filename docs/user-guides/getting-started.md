@@ -9,7 +9,7 @@ RalphX is a native Mac application for AI-driven software development. You descr
 | Question | Answer |
 |----------|--------|
 | What do I need to install? | macOS, Node.js 18+, Rust 1.70+, Claude CLI |
-| How do I run RalphX? | `npm install && npm run tauri dev` |
+| How do I run RalphX? | `cd frontend && npm install && npm run tauri dev` |
 | What is a project? | A git repository you've registered with RalphX |
 | How do I start building a feature? | Open **Ideation**, click **New Session**, describe what you want |
 | Where do I watch tasks run? | **Kanban** — tasks move left-to-right through the execution pipeline |
@@ -64,6 +64,7 @@ git clone <your-ralphx-repo-url>
 cd ralphx
 
 # Install dependencies
+cd frontend
 npm install
 
 # Start in development mode
@@ -75,7 +76,8 @@ The first build compiles the Rust backend — this takes 2–5 minutes. Subseque
 ### Building a Release Binary
 
 ```bash
-npm run build && npx tauri build
+npm run build
+npm run tauri build
 ```
 
 The resulting `.app` bundle (~10MB) is in `src-tauri/target/release/bundle/macos/`.

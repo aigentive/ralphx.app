@@ -5,8 +5,8 @@ import { setupTaskDetail } from "../../../fixtures/setup.fixtures";
 /**
  * Visual regression tests for the Task Detail overlay.
  *
- * These tests run against the web mode dev server (npm run dev:web)
- * which uses mock data from src/api-mock/ instead of the real Tauri backend.
+ * These tests run against the web mode dev server (cd frontend && npm run dev:web)
+ * which uses mock data from frontend/src/api-mock/ instead of the real Tauri backend.
  *
  * Tests the TaskDetailOverlay component that appears in the Kanban split layout
  * when a task is selected.

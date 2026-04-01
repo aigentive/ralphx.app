@@ -59,6 +59,18 @@ When working in `src-tauri/`, also follow:
 | P2 | Capability test split | Continue moving OS-capability checks out of default broad suites into explicit ignored tests or dedicated capability binaries |
 | P3 | Oversized HTTP handlers | After transition-handler stabilization, resume large backend handler refactors like `git.rs` and `teams.rs` |
 
+## Active Migration Tracker
+
+| Stream | Goal | Status | Notes |
+|---|---|---|---|
+| Frontend relocation | Move the Vite/React app from repo root into `frontend/` while keeping `src-tauri/` at root | Completed | `package.json`, configs, `public/`, `src/`, and `tests/` now live under `frontend/` |
+| Tauri wiring | Repoint Tauri dev/build hooks at `frontend/` and make frontend-local `npm run tauri ...` work | Completed | `frontend/package.json` shells back to repo root for the Tauri CLI; `src-tauri/tauri.conf.json` now points at `../frontend` |
+| Repo command surface | Update docs/scripts/CI/release flows from root-frontend assumptions to `frontend/` commands | Completed | README, DEVELOPMENT, getting-started, build/release/CI paths rewired to `frontend/` |
+| Tooling path refs | Update Claude/Cursor/rule-manager/path-scoped rule references from `src/**` and `tests/**` to `frontend/src/**` and `frontend/tests/**` where repo-local paths matter | Completed | `.claude/settings.json`, visual testing/api rules, and rule-manager scripts adjusted |
+| Root cleanup | Remove stale root artifacts and reduce visible clutter | Partially complete | `rollback_backup.json` removed; empty `.config/` removed; `.cursor/` intentionally kept at root |
+| Artifact strategy | Decide whether generated outputs move under `.artifacts/` and whether Playwright visual baselines stay tracked | Pending | Current review needed for `logs/`, `reports/`, snapshots, and repo-size tradeoffs |
+| Validation | Re-run targeted frontend and Tauri-facing checks after rewiring completes | Completed | `npm --prefix frontend run typecheck`, `npm --prefix frontend run lint`, and `npm --prefix frontend run tauri build -- --help` succeeded |
+
 ## Cross-Session Tracker Notes
 
 | Tracker | Current Guardrails |

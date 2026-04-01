@@ -1,7 +1,7 @@
-# src/CLAUDE.md — Frontend
+# frontend/src/CLAUDE.md — Frontend
 
-Quality standards: @../.claude/rules/code-quality-standards.md
-Task detail views: @../.claude/rules/task-detail-views.md
+Quality standards: @../../.claude/rules/code-quality-standards.md
+Task detail views: @../../.claude/rules/task-detail-views.md
 
 ## Stack
 React 19.1 | TS 5.8 | Zustand 5.0+immer | TanStack Query 5.90 | Tailwind 4.1 | Zod 4.3
@@ -95,7 +95,7 @@ NO purple gradients | NO Inter font | Warm orange #ff6b35
 ## Code Quality
 
 ### Multi-Stream Workflow
-Quality work is now split into dedicated streams. See `.claude/rules/stream-*.md`:
+Quality work is now split into dedicated streams. See `../../.claude/rules/stream-*.md`:
 - **features**: PRD tasks + P0 gap fixes
 - **refactor**: P1 large file splits (>500 LOC)
 - **polish**: P2/P3 cleanup, lint, type fixes
@@ -106,7 +106,7 @@ Quality work is now split into dedicated streams. See `.claude/rules/stream-*.md
 Fix ALL lint warnings and test failures before completing work — including pre-existing ones. ❌ "It's pre-existing" is not an excuse. Run `npm run lint` and `npm run typecheck` and fix everything.
 
 ### File Size Limits
-**See:** `.claude/rules/code-quality-standards.md` (single source of truth)
+**See:** `../../.claude/rules/code-quality-standards.md` (single source of truth)
 
 Quick reference: Component 500 max (refactor at 400), Hook 300 max, Presentational 200 max.
 
@@ -115,7 +115,7 @@ Component does ONE of: Display UI | Manage State | Coordinate children
 
 ### Document Patterns Inline
 When introducing a new architectural pattern, add a one-liner here. Pattern name + rule only.
-Example: "View Registry Pattern" — see @../.claude/rules/task-detail-views.md
+Example: "View Registry Pattern" — see @../../.claude/rules/task-detail-views.md
 
 - **Chat Context Registry** — `src/lib/chat-context-registry.ts`. Use `buildStoreKey()`, `resolveContextType()`, `getContextConfig()` for all chat context derivations. New context type = add to registry + `CONTEXT_TYPE_VALUES`.
 - **Unified Chat Hooks** — `useChatActions` (send/queue/stop), `useChatEvents` (streaming/tool calls), `useChatRecovery` (polling/sync). Both panels use these.
@@ -142,10 +142,10 @@ npm run test:run   # single run
 npm run typecheck  # TS check
 npm run lint       # ESLint
 ```
-Note: Dev server via `npm run tauri dev` from project root (user manages manually).
+Note: Dev server via `cd frontend && npm run tauri dev` (user manages manually).
 
 ## Task Management (MANDATORY)
-Use TaskCreate/TaskUpdate/TaskList for complex work. See `.claude/rules/task-management.md`
+Use TaskCreate/TaskUpdate/TaskList for complex work. See `../../.claude/rules/task-management.md`
 
 ## Adding Features
 1. Types: Zod schema in types/
