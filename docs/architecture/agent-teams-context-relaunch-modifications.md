@@ -2,7 +2,7 @@
 
 # Agent Teams: Context Relaunch Protocol Implementation Spec
 
-**Decision:** `docs/decisions/agent-teams-context-relaunch-protocol.md`
+**Decision:** Approved context relaunch protocol for agent teams
 **Phase:** 1C (post-integration, pre-UI)
 
 ## File Modifications Table

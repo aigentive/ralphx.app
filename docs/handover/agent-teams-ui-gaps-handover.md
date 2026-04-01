@@ -23,7 +23,7 @@ Verified `docs/product-briefs/agent-teams-ideation-integration.md` (v5) against 
 
 ### Round 2: All Briefs Gaps (Team: team-ui-gaps-v2)
 
-Audited ALL 6 approved briefs (see `docs/decisions/agent-teams-briefs-approved.md`) and found 13 additional gaps. Implemented with a 5-worker team:
+Audited all 6 approved agent-teams briefs and found 13 additional gaps. Implemented with a 5-worker team:
 
 | Task | Worker | Files Created/Modified |
 |------|--------|----------------------|
@@ -194,14 +194,12 @@ src/App.tsx                          — Team view case
 
 | Document | Path | Purpose |
 |----------|------|---------|
-| Approved briefs decision | `docs/decisions/agent-teams-briefs-approved.md` | Lists all 6 approved briefs + key decisions |
 | Ideation integration brief | `docs/product-briefs/agent-teams-ideation-integration.md` | v5, all questions resolved |
 | Worker integration brief | `docs/product-briefs/agent-teams-worker-integration.md` | v3 |
 | Configurable variants brief | `docs/product-briefs/configurable-agent-variants.md` | v5 |
 | Chat UI extension brief | `docs/product-briefs/agent-teams-chat-ui-extension.md` | v1 |
 | Split-pane UI brief | `docs/product-briefs/agent-teams-split-pane-ui.md` | v1 |
 | UI decision brief | `docs/product-briefs/agent-teams-ui-decision.md` | v2, phased hybrid |
-| Implementation tracker | `docs/agent-teams-implementation-tracker.md` | Phase 1A/1B completion |
 | System card | `docs/agent-teams-system-card.md` | 1,237 lines, comprehensive reference |
 
 ---
