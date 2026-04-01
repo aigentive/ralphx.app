@@ -2,8 +2,8 @@
 paths:
   - ".mcp.json"
   - "ralphx.yaml"
-  - "ralphx-plugin/ralphx-mcp-server/**"
-  - "ralphx-plugin/ralphx-external-mcp/**"
+  - "plugins/app/ralphx-mcp-server/**"
+  - "plugins/app/ralphx-external-mcp/**"
   - "src-tauri/src/application/external_mcp_supervisor.rs"
   - "src-tauri/src/http_server/**"
   - "docs/external-mcp/**"
@@ -15,7 +15,7 @@ paths:
 
 Two MCP servers exist in this repo. They serve **different audiences** and must not be confused.
 
-## 1. Internal Agent MCP — `ralphx-plugin/ralphx-mcp-server/`
+## 1. Internal Agent MCP — `plugins/app/ralphx-mcp-server/`
 
 **Purpose:** Stdio-based MCP proxy for RalphX's own Claude agents (workers, reviewers, mergers, ideation orchestrators). Runs embedded inside Claude CLI — NOT a standalone service.
 
@@ -27,13 +27,13 @@ Two MCP servers exist in this repo. They serve **different audiences** and must 
 | **Auth** | Agent-type filtering via `RALPHX_AGENT_TYPE` env + `ralphx.yaml` `mcp_tools` |
 | **Tools** | ~42 (41 base + `permission_request`), filtered per agent type (see `agent-mcp-tools.md`) |
 | **Config** | `.mcp.json` registers it; `ralphx.yaml` controls per-agent tool access |
-| **Build** | `cd ralphx-plugin/ralphx-mcp-server && npm run build` (NON-NEGOTIABLE after source changes) |
+| **Build** | `cd plugins/app/ralphx-mcp-server && npm run build` (NON-NEGOTIABLE after source changes) |
 
 ```
 Claude CLI → stdio → ralphx-mcp-server → HTTP :3847 → Tauri Backend
 ```
 
-## 2. External API MCP — `ralphx-plugin/ralphx-external-mcp/`
+## 2. External API MCP — `plugins/app/ralphx-external-mcp/`
 
 **Purpose:** HTTP+SSE MCP server exposing orchestration tools to external agents (e.g., reefbot.ai) over the network. Auto-started by Tauri app when enabled.
 
@@ -47,7 +47,7 @@ Claude CLI → stdio → ralphx-mcp-server → HTTP :3847 → Tauri Backend
 | **Tools** | 34 tools (`v1_` prefixed): discovery(3), ideation(13), tasks(2), pipeline(11), events(4), onboarding(1) |
 | **Startup** | Auto-managed by `ExternalMcpSupervisor` when `external_mcp.enabled = true` in `ralphx.yaml`. Health checks + auto-restart (up to 3x) |
 | **Config** | `ralphx.yaml` (`external_mcp` section) + env vars (`EXTERNAL_MCP_PORT`, `EXTERNAL_MCP_HOST`, TLS cert/key) |
-| **Build** | `cd ralphx-plugin/ralphx-external-mcp && npm run build` |
+| **Build** | `cd plugins/app/ralphx-external-mcp && npm run build` |
 | **Docs** | `docs/external-mcp/README.md`, `docs/external-mcp/api-versioning.md`, `docs/external-mcp/operational-runbook.md` |
 
 ```

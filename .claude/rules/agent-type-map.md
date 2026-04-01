@@ -1,8 +1,8 @@
 ---
 paths:
   - "ralphx.yaml"
-  - "ralphx-plugin/agents/**"
-  - "ralphx-plugin/ralphx-mcp-server/src/**"
+  - "plugins/app/agents/**"
+  - "plugins/app/ralphx-mcp-server/src/**"
   - "src-tauri/src/infrastructure/agents/**"
   - "src-tauri/src/application/chat_service/**"
   - "src-tauri/src/commands/execution_commands.rs"
@@ -82,13 +82,13 @@ Adding a new specialist to the plan verification pipeline requires these 7 steps
 
 | Step | File | Change |
 |------|------|--------|
-| 1 | `ralphx-plugin/agents/<name>.md` | Create agent prompt with role/scope/refuse boundaries and output format |
-| 2 | `ralphx-plugin/ralphx.yaml` | Register agent: model, tools, mcp_tools, disallowedTools |
-| 3 | `ralphx-plugin/ralphx-mcp-server/src/agentNames.ts` | Add `export const IDEATION_SPECIALIST_<NAME> = "<name>"` constant |
-| 4 | `ralphx-plugin/ralphx-mcp-server/src/tools.ts` | Import constant; add `[IDEATION_SPECIALIST_<NAME>]: [...]` to TOOL_ALLOWLIST |
-| 5 | `ralphx-plugin/agents/plan-verifier.md` frontmatter | Add `Task(ralphx:<name>)` to `tools` list |
-| 6 | `ralphx-plugin/ralphx.yaml` plan-verifier entry | Add `Task(ralphx:<name>)` to `preapproved_cli_tools` array |
-| 7 | `ralphx-plugin/agents/plan-verifier.md` prompt | Add signal → specialist mapping in dynamic role selection section |
+| 1 | `plugins/app/agents/<name>.md` | Create agent prompt with role/scope/refuse boundaries and output format |
+| 2 | `ralphx.yaml` | Register agent: model, tools, mcp_tools, disallowedTools |
+| 3 | `plugins/app/ralphx-mcp-server/src/agentNames.ts` | Add `export const IDEATION_SPECIALIST_<NAME> = "<name>"` constant |
+| 4 | `plugins/app/ralphx-mcp-server/src/tools.ts` | Import constant; add `[IDEATION_SPECIALIST_<NAME>]: [...]` to TOOL_ALLOWLIST |
+| 5 | `plugins/app/agents/plan-verifier.md` frontmatter | Add `Task(ralphx:<name>)` to `tools` list |
+| 6 | `ralphx.yaml` plan-verifier entry | Add `Task(ralphx:<name>)` to `preapproved_cli_tools` array |
+| 7 | `plugins/app/agents/plan-verifier.md` prompt | Add signal → specialist mapping in dynamic role selection section |
 
 **Two specialist dispatch modes:**
 | Mode | When | Example |

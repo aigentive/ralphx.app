@@ -1,8 +1,8 @@
 ---
 paths:
   - "src-tauri/src/infrastructure/agents/**"
-  - "ralphx-plugin/agents/**"
-  - "ralphx-plugin/ralphx-mcp-server/src/**"
+  - "plugins/app/agents/**"
+  - "plugins/app/ralphx-mcp-server/src/**"
   - "src-tauri/src/http_server/**"
 ---
 
@@ -16,9 +16,9 @@ MCP access is controlled by **three distinct layers**. Changing only one layer i
 
 | Layer | File | Controls | Required? |
 |-------|------|----------|-----------|
-| 1 | `ralphx-plugin/agents/*.md` frontmatter `tools` | What the agent prompt contract says it can call | Yes |
+| 1 | `plugins/app/agents/*.md` frontmatter `tools` | What the agent prompt contract says it can call | Yes |
 | 2 | `ralphx.yaml` → `mcp_tools: [...]` per agent | What Rust injects via `--allowed-tools` at runtime | Yes |
-| 3 | `ralphx-plugin/ralphx-mcp-server/src/tools.ts` | Tool handler registration + per-agent MCP allowlist | Yes |
+| 3 | `plugins/app/ralphx-mcp-server/src/tools.ts` | Tool handler registration + per-agent MCP allowlist | Yes |
 
 **How it works:** Rust `create_mcp_config()` reads `mcp_tools` from `ralphx.yaml` and injects `--allowed-tools=tool1,tool2,...` into the MCP config JSON args. MCP server parses this at startup. Frontmatter still matters because Claude won't call a tool that is not listed in the prompt contract.
 
@@ -27,7 +27,7 @@ MCP access is controlled by **three distinct layers**. Changing only one layer i
 When adding OR removing an MCP tool from an agent:
 - update the agent `.md` frontmatter
 - update that agent's `mcp_tools` in `ralphx.yaml`
-- update any per-agent allowlist/grouping in `ralphx-plugin/ralphx-mcp-server/src/tools.ts`
+- update any per-agent allowlist/grouping in `plugins/app/ralphx-mcp-server/src/tools.ts`
 - rebuild the MCP server if `src/tools.ts` changed
 
 ❌ Removing a tool only from frontmatter
@@ -49,10 +49,10 @@ When adding OR removing an MCP tool from an agent:
 
 | Step | What | File | Required? |
 |------|------|------|-----------|
-| 1 | Update agent frontmatter `tools` list | `ralphx-plugin/agents/*.md` | Yes |
+| 1 | Update agent frontmatter `tools` list | `plugins/app/agents/*.md` | Yes |
 | 2 | Update agent `mcp_tools` | `ralphx.yaml` | Yes |
-| 3 | Update MCP allowlist/grouping if the agent's effective set changed | `ralphx-plugin/ralphx-mcp-server/src/tools.ts` | Yes |
-| 4 | Rebuild MCP server | `cd ralphx-plugin/ralphx-mcp-server && npm run build` | Yes (after step 3) |
+| 3 | Update MCP allowlist/grouping if the agent's effective set changed | `plugins/app/ralphx-mcp-server/src/tools.ts` | Yes |
+| 4 | Rebuild MCP server | `cd plugins/app/ralphx-mcp-server && npm run build` | Yes (after step 3) |
 
 **What you NO LONGER need to do:**
 - ~~Edit `TOOL_ALLOWLIST` in `tools.ts`~~ (bypassed by `--allowed-tools`)
@@ -219,7 +219,7 @@ case "get_merge_target":
   // handler implementation
 ```
 
-Then rebuild: `cd ralphx-plugin/ralphx-mcp-server && npm run build`
+Then rebuild: `cd plugins/app/ralphx-mcp-server && npm run build`
 
 ## Subagent MCP Access — Two Spawning Paths (NON-NEGOTIABLE)
 

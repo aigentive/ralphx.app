@@ -2,7 +2,7 @@
 paths:
   - "src/**/*.{ts,tsx,js,jsx}"
   - "src-tauri/src/**/*.rs"
-  - "ralphx-plugin/**/*.{ts,js}"
+  - "plugins/app/**/*.{ts,js}"
 ---
 
 # Code Quality Standards

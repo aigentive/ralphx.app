@@ -8,10 +8,10 @@ paths:
   - "src-tauri/src/infrastructure/sqlite/migrations/v20260329113000_ideation_blocker_fingerprint*.rs"
   - "src-tauri/crates/ralphx-domain/src/entities/task_context.rs"
   - "src-tauri/crates/ralphx-domain/src/entities/ideation/mod.rs"
-  - "ralphx-plugin/agents/worker.md"
-  - "ralphx-plugin/agents/reviewer.md"
-  - "ralphx-plugin/ralphx-mcp-server/src/index.ts"
-  - "ralphx-plugin/ralphx-mcp-server/src/tools.ts"
+  - "plugins/app/agents/worker.md"
+  - "plugins/app/agents/reviewer.md"
+  - "plugins/app/ralphx-mcp-server/src/index.ts"
+  - "plugins/app/ralphx-mcp-server/src/tools.ts"
 ---
 
 # Follow-up Blocker Dedupe
@@ -125,5 +125,5 @@ When a new blocker class needs dedupe:
 | Child-session idempotent reuse | `src-tauri/src/http_server/handlers/session_linking/create.rs` |
 | Follow-up provenance + fingerprint fields | `src-tauri/crates/ralphx-domain/src/entities/ideation/mod.rs` |
 | Follow-up persistence | `src-tauri/src/infrastructure/sqlite/sqlite_ideation_session_repo.rs` |
-| Worker/reviewer guidance | `ralphx-plugin/agents/worker.md` | `ralphx-plugin/agents/reviewer.md` |
-| MCP follow-up tool | `ralphx-plugin/ralphx-mcp-server/src/index.ts` | `ralphx-plugin/ralphx-mcp-server/src/tools.ts` |
+| Worker/reviewer guidance | `plugins/app/agents/worker.md` | `plugins/app/agents/reviewer.md` |
+| MCP follow-up tool | `plugins/app/ralphx-mcp-server/src/index.ts` | `plugins/app/ralphx-mcp-server/src/tools.ts` |

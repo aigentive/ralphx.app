@@ -2,7 +2,7 @@
 paths:
   - "src-tauri/src/infrastructure/agents/**"
   - "src-tauri/src/application/chat_service/**"
-  - "ralphx-plugin/agents/**"
+  - "plugins/app/agents/**"
 ---
 
 # Task Execution Agents
@@ -162,7 +162,7 @@ paths:
 | Agent spawner (CWD resolution) | `src-tauri/src/infrastructure/agents/spawner.rs` |
 | ChatService contexts | `src-tauri/src/application/chat_service/chat_service_context.rs` |
 | HTTP merge handlers | `src-tauri/src/http_server/handlers/git.rs` |
-| Agent definitions | `ralphx-plugin/agents/*.md` |
+| Agent definitions | `plugins/app/agents/*.md` |
 | Plan branch commands | `src-tauri/src/commands/plan_branch_commands.rs` |
 | Ideation apply | `src-tauri/src/commands/ideation_commands/ideation_commands_apply.rs` |
 | Git settings UI | `src/components/settings/GitSettingsSection.tsx` |

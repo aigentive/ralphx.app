@@ -1,8 +1,8 @@
 ---
 paths:
   - ralphx.yaml
-  - ralphx-plugin/ralphx-mcp-server/src/tools.ts
-  - ralphx-plugin/agents/plan-verifier.md
+  - plugins/app/ralphx-mcp-server/src/tools.ts
+  - plugins/app/agents/plan-verifier.md
 ---
 
 > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
@@ -38,8 +38,8 @@ Add the 6 specialist tools to `plan-verifier`'s allowlist across all 3 layers. T
 
 | # | File | Location | Change |
 |---|------|----------|--------|
-| 1 | `ralphx-plugin/agents/plan-verifier.md` | frontmatter `tools:` list | Add 6 `mcp__ralphx__<tool>` entries |
-| 2 | `ralphx-plugin/ralphx-mcp-server/src/tools.ts` | `TOOL_ALLOWLIST[PLAN_VERIFIER]` (~line 1909) | Add 6 tool name strings |
+| 1 | `plugins/app/agents/plan-verifier.md` | frontmatter `tools:` list | Add 6 `mcp__ralphx__<tool>` entries |
+| 2 | `plugins/app/ralphx-mcp-server/src/tools.ts` | `TOOL_ALLOWLIST[PLAN_VERIFIER]` (~line 1909) | Add 6 tool name strings |
 | 3 | `ralphx.yaml` | `plan-verifier` `mcp_tools` array (~line 846) | Add 6 tool names |
 
 **Example — `plan-verifier.md` frontmatter addition:**
@@ -58,8 +58,8 @@ When Anthropic ships a fix for #25200, remove the 6 tools from all 3 files. Spec
 
 | File | Location | Remove |
 |------|----------|--------|
-| `ralphx-plugin/agents/plan-verifier.md` | frontmatter `tools:` list | `mcp__ralphx__create_team_artifact`, `mcp__ralphx__list_session_proposals`, `mcp__ralphx__get_proposal`, `mcp__ralphx__search_memories`, `mcp__ralphx__get_memory`, `mcp__ralphx__get_memories_for_paths` |
-| `ralphx-plugin/ralphx-mcp-server/src/tools.ts` | `TOOL_ALLOWLIST[PLAN_VERIFIER]` | `"create_team_artifact"`, `"list_session_proposals"`, `"get_proposal"`, `"search_memories"`, `"get_memory"`, `"get_memories_for_paths"` |
+| `plugins/app/agents/plan-verifier.md` | frontmatter `tools:` list | `mcp__ralphx__create_team_artifact`, `mcp__ralphx__list_session_proposals`, `mcp__ralphx__get_proposal`, `mcp__ralphx__search_memories`, `mcp__ralphx__get_memory`, `mcp__ralphx__get_memories_for_paths` |
+| `plugins/app/ralphx-mcp-server/src/tools.ts` | `TOOL_ALLOWLIST[PLAN_VERIFIER]` | `"create_team_artifact"`, `"list_session_proposals"`, `"get_proposal"`, `"search_memories"`, `"get_memory"`, `"get_memories_for_paths"` |
 | `ralphx.yaml` | `plan-verifier` `mcp_tools` | `create_team_artifact`, `list_session_proposals`, `get_proposal`, `search_memories`, `get_memory`, `get_memories_for_paths` |
 
 Remove the `# workaround for #25200` comment added alongside these entries, not the other entries in those arrays.

@@ -159,7 +159,7 @@ With strict TypeScript (`exactOptionalPropertyTypes`, etc.), adding a required f
 | `src-tauri/**` | backend service/module name |
 | `src/**` | frontend component/feature name |
 | `ralphx-mcp-server/**` | mcp |
-| `ralphx-plugin/**` | plugin |
+| `plugins/app/**` | plugin |
 | `specs/**`, `docs/**` | docs |
 
 ## Validation Before Finalizing PRD

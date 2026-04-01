@@ -8,7 +8,7 @@ RalphX can run in two modes:
 
 | Mode | Command | Backend | Events | Use Case |
 |------|---------|---------|--------|----------|
-| **Tauri Mode** | `cd frontend && npm run dev` | Real Rust backend | Tauri IPC events | Normal development |
+| **Tauri Mode** | `cd frontend && npm run tauri dev` | Real Rust backend | Tauri IPC events | Normal development |
 | **Web Mode** | `cd frontend && npm run dev:web` | Mock API (read-only) | In-memory events | Visual testing, Playwright |
 
 Web mode enables browser automation testing by mocking the Tauri backend, allowing the React frontend to render with mock data in any browser.

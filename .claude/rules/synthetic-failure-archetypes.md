@@ -8,11 +8,11 @@ paths:
   - "src-tauri/src/http_server/**"
   - "src/hooks/useAgentEvents.ts"
   - "src/components/Chat/**"
-  - "ralphx-plugin/agents/plan-verifier.md"
-  - "ralphx-plugin/agents/plan-critic-*.md"
-  - "ralphx-plugin/agents/ideation-team-lead.md"
-  - "ralphx-plugin/agents/orchestrator-ideation.md"
-  - "ralphx-plugin/agents/ideation-specialist-*.md"
+  - "plugins/app/agents/plan-verifier.md"
+  - "plugins/app/agents/plan-critic-*.md"
+  - "plugins/app/agents/ideation-team-lead.md"
+  - "plugins/app/agents/orchestrator-ideation.md"
+  - "plugins/app/agents/ideation-specialist-*.md"
 ---
 
 > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
@@ -101,7 +101,7 @@ Evaluation specialists and plan critics MUST check proposed changes against thes
 | Field | Detail |
 |-------|--------|
 | **Trigger** | New feature ships without ALL exit paths (error, timeout, cancel, user action) emitting the required UI events |
-| **Affected Files** | Ideation pipeline handlers, `src-tauri/src/commands/`, `ralphx-plugin/agents/` pipeline stage handlers |
+| **Affected Files** | Ideation pipeline handlers, `src-tauri/src/commands/`, `plugins/app/agents/` pipeline stage handlers |
 | **Evidence** | Prior missing-event and gate-bypass regressions in pipeline handlers |
 | **Still Active?** | Yes — surface area grows with every new pipeline feature |
 | **Check** | Does this add pipeline functionality, a new MCP tool, or a new agent type? → `.claude/rules/event-coverage-checklist.md` |

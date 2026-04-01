@@ -1,9 +1,9 @@
 ---
 paths:
-  - "ralphx-plugin/agents/orchestrator-ideation*.md"
+  - "plugins/app/agents/orchestrator-ideation*.md"
   - "src-tauri/src/infrastructure/agents/**"
   - "src-tauri/src/application/chat_service/**"
-  - "ralphx-plugin/ralphx-mcp-server/src/tools.ts"
+  - "plugins/app/ralphx-mcp-server/src/tools.ts"
 ---
 
 # Orchestrator Ideation Workflows
@@ -110,9 +110,9 @@ See `agent-mcp-tools.md` for full scope matrix.
 
 | Component | Path |
 |-----------|------|
-| Active ideation agent | `ralphx-plugin/agents/orchestrator-ideation.md` |
-| Readonly ideation agent | `ralphx-plugin/agents/orchestrator-ideation-readonly.md` |
-| MCP tool allowlist | `ralphx-plugin/ralphx-mcp-server/src/tools.ts` |
+| Active ideation agent | `plugins/app/agents/orchestrator-ideation.md` |
+| Readonly ideation agent | `plugins/app/agents/orchestrator-ideation-readonly.md` |
+| MCP tool allowlist | `plugins/app/ralphx-mcp-server/src/tools.ts` |
 | ChatService context routing | `src-tauri/src/application/chat_service/chat_service_context.rs` |
 | Agent resolution table | `task-execution-agents.md:88-95` |
 
