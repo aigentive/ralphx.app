@@ -21,7 +21,7 @@ Task subagents spawned via `Task(ralphx:agent-name)` inherit the **parent agent'
 
 Add the 6 specialist tools to `plan-verifier`'s allowlist across all 3 layers. This gives specialists access to these tools via the parent's inherited MCP connection.
 
-**Status: PENDING — not yet applied** (as of 2026-03-21). Apply to all 3 files below.
+**Status: APPLIED — 2026-04-02** (workaround active). Applied to all 3 files below.
 
 **The 6 tools to add:**
 

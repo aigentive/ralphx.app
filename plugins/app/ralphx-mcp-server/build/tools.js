@@ -1988,6 +1988,12 @@ export const TOOL_ALLOWLIST = {
         "update_plan_artifact",
         "edit_plan_artifact",
         "send_ideation_session_message",
+        "create_team_artifact", // workaround for #25200
+        "list_session_proposals", // workaround for #25200
+        "get_proposal", // workaround for #25200
+        "search_memories", // workaround for #25200
+        "get_memory", // workaround for #25200
+        "get_memories_for_paths", // workaround for #25200
     ],
     // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
     debug: ALL_TOOLS.map((t) => t.name),

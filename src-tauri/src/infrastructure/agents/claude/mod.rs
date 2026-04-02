@@ -66,13 +66,7 @@ fn plugin_repo_root(plugin_dir: &Path) -> PathBuf {
 }
 
 fn first_existing_plugin_dir(candidates: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
-    for candidate in candidates {
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
-
-    None
+    candidates.into_iter().find(|candidate| candidate.exists())
 }
 
 /// Apply common Claude CLI environment flags for RalphX-managed spawns.

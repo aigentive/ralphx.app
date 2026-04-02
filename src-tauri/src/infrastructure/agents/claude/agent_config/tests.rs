@@ -831,6 +831,17 @@ fn test_plan_verifier_mcp_tools_match_current_prompt_contract() {
         "update_plan_artifact",
         "edit_plan_artifact",
         "send_ideation_session_message",
+        // Workaround for Claude Code bug #25200: Task-spawned subagents inherit the parent's
+        // MCP connection, so specialists spawned by plan-verifier cannot access their own
+        // mcp_tools. These 6 tools are temporarily added to plan-verifier's allowlist so
+        // specialists can access them via the inherited connection.
+        // Remove when #25200 is fixed: https://github.com/anthropics/claude-code/issues/25200
+        "create_team_artifact",
+        "list_session_proposals",
+        "get_proposal",
+        "search_memories",
+        "get_memory",
+        "get_memories_for_paths",
     ] {
         assert!(
             config.allowed_mcp_tools.contains(&tool.to_string()),
@@ -838,20 +849,12 @@ fn test_plan_verifier_mcp_tools_match_current_prompt_contract() {
         );
     }
 
-    for tool in [
-        "create_team_artifact",
-        "list_session_proposals",
-        "get_proposal",
-        "get_child_session_status",
-        "search_memories",
-        "get_memory",
-        "get_memories_for_paths",
-    ] {
-        assert!(
-            !config.allowed_mcp_tools.contains(&tool.to_string()),
-            "plan-verifier should not include stale MCP tool {tool}"
-        );
-    }
+    assert!(
+        !config
+            .allowed_mcp_tools
+            .contains(&"get_child_session_status".to_string()),
+        "plan-verifier should not include stale MCP tool get_child_session_status"
+    );
 }
 
 #[test]

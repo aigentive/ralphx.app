@@ -23,6 +23,12 @@ tools:
   - "mcp__ralphx__update_plan_artifact"
   - "mcp__ralphx__edit_plan_artifact"
   - "mcp__ralphx__send_ideation_session_message"
+  - "mcp__ralphx__create_team_artifact" # workaround for #25200
+  - "mcp__ralphx__list_session_proposals" # workaround for #25200
+  - "mcp__ralphx__get_proposal" # workaround for #25200
+  - "mcp__ralphx__search_memories" # workaround for #25200
+  - "mcp__ralphx__get_memory" # workaround for #25200
+  - "mcp__ralphx__get_memories_for_paths" # workaround for #25200
 mcpServers:
   - ralphx:
       type: stdio
