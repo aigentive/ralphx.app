@@ -976,6 +976,34 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
+        // Defense-in-depth: structural git error check.
+        // Runs AFTER staleness check, BEFORE permanent failure state check.
+        // Catches structural errors that bypassed on_enter(Failed) pre-validation
+        // (e.g., git worktree add fails on a no-commits repo).
+        let last_error_message = recovery
+            .events
+            .last()
+            .map(|e| e.message.as_str())
+            .unwrap_or("");
+        if is_structural_git_error(last_error_message) {
+            warn!(
+                task_id = task.id.as_str(),
+                error = %last_error_message,
+                "Structural git error detected — setting stop_retrying=true (StructuralGitError)"
+            );
+            if let Err(e) = self
+                .set_execution_stop_retrying_with_reason(&task, StopRetryingReason::StructuralGitError)
+                .await
+            {
+                warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "Failed to set stop_retrying for structural git error"
+                );
+            }
+            return false;
+        }
+
         // Skip if recovery has reached permanent failure state
         if recovery.last_state == ExecutionRecoveryState::Failed {
             tracing::debug!(
@@ -1021,17 +1049,31 @@ impl<R: Runtime> ReconciliationRunner<R> {
         };
 
         // Per-source max-retries check for GitIsolation (runs BEFORE global check).
-        // GitIsolation uses an independent retry budget — exhaustion does NOT set stop_retrying,
-        // preserving the separate budget for timeout/crash failures.
+        // On exhaustion, set stop_retrying=true with GitIsolationExhausted — 3 git-isolation
+        // failures means the git environment is broken; more retries won't help and would
+        // restart the counter on app restart via auto_recover_task() event clearing.
         if is_git_isolation {
             // retry_count / max_retries already scoped to git-isolation budget (computed above)
             if retry_count >= max_retries {
-                tracing::debug!(
+                warn!(
                     task_id = task.id.as_str(),
                     git_isolation_count = retry_count,
                     git_isolation_max = max_retries,
-                    "Skipping failed execution reconciliation: git-isolation retry budget exhausted (stop_retrying NOT set)"
+                    "Git-isolation retry budget exhausted — setting stop_retrying=true (GitIsolationExhausted)"
                 );
+                if let Err(e) = self
+                    .set_execution_stop_retrying_with_reason(
+                        &task,
+                        StopRetryingReason::GitIsolationExhausted,
+                    )
+                    .await
+                {
+                    warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to set stop_retrying for git-isolation exhaustion"
+                    );
+                }
                 return false;
             }
         } else {
@@ -2376,4 +2418,20 @@ fn is_permanent_git_error(msg: &str) -> bool {
         || msg.contains("not a valid object name")
         || msg.contains("does not point to a valid object")
         || msg.contains("no longer exists")
+}
+
+/// Returns true if the error message indicates a structural git failure — one where
+/// retrying cannot help regardless of timing or transient conditions.
+///
+/// Two patterns:
+/// 1. `"structural:"` prefix — emitted by pre-validation (e.g. missing base branch).
+/// 2. Combined `"does not exist"` + `"invalid reference"` — missing branch/commits at
+///    worktree add time (no prior successful execution on this repo).
+///
+/// Must return false for all transient git errors (lock contention, network, busy).
+fn is_structural_git_error(msg: &str) -> bool {
+    if msg.contains("structural:") {
+        return true;
+    }
+    msg.contains("does not exist") && msg.contains("invalid reference")
 }

@@ -27,6 +27,7 @@ use crate::domain::entities::{
     MergeRecoveryMetadata, MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
     Project, ProjectId, Task, TaskCategory, TaskId, TaskStepStatus,
 };
+use crate::domain::entities::task_metadata::StopRetryingReason;
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::domain::services::github_service::GithubServiceTrait;
 use crate::error::{AppError, AppResult};
@@ -149,6 +150,22 @@ async fn create_fresh_branch_and_worktree(
     )
     .await;
     let base_branch = resolved_base.as_str();
+
+    // Pre-validate that the base branch exists before attempting worktree creation.
+    // This is DISTINCT from the task-branch check below (line ~178) which validates
+    // the task branch (ralphx/{project}/task-{id}), not the base branch.
+    // Conservative: only block if we can CONFIRM the branch is missing (Ok(false)).
+    // Git errors (timeout, IO) fall through as Ok(true) — do not block on uncertainty.
+    if !GitService::branch_exists(repo_path, base_branch)
+        .await
+        .unwrap_or(true)
+    {
+        return Err(AppError::ExecutionBlocked(format!(
+            "{}: structural: base branch '{}' does not exist",
+            GIT_ISOLATION_ERROR_PREFIX,
+            base_branch
+        )));
+    }
 
     // Use compute_task_worktree_path for consistent path computation
     let worktree_path_str = compute_task_worktree_path(project, task_id_str);
