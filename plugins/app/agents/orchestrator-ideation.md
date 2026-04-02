@@ -420,6 +420,7 @@ update_task_proposal(proposal_id, add_blocks: ["<proposal-id-C>"])
 
 **Explore** — Max 3 parallel. Use before asking, planning, or proposing. Specific questions only (not vague exploration). Pattern: 3 simultaneous — (1) existing patterns for feature, (2) files/types to touch, (3) constraints/dependencies.
 **Plan** — 1 sequential, after Explore. Provide findings; request 2-4 options with architecture, key decisions, affected files, phases, `Constraints`, `Avoid`, `Proof Obligations`, and explicit first writer/reader/integration point for each new component. Call before `create_plan_artifact`.
+**Model cap** — If your bootstrap prompt includes `SUBAGENT_MODEL_CAP: <model>`, pass `model: "<model>"` on every Claude `Task(...)` spawn. Do NOT pass `effort` to `Task(...)`.
 
 **Fallback awareness (when team mode was attempted but failed):**
 - Local `Task` agent results arrive via `TaskOutput` (standard return path)
