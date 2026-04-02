@@ -139,9 +139,9 @@ You have two ways to delegate work. Choose based on whether agents need to coord
 
 **Local agent example** (parallel independent research):
 ```
-Task: { subagent_type: "ralphx:ideation-specialist-frontend", name: "frontend-researcher", prompt: "Research X...", run_in_background: true }
-Task: { subagent_type: "ralphx:ideation-specialist-backend", name: "backend-researcher", prompt: "Research Y...", run_in_background: true }
-Task: { subagent_type: "ralphx:ideation-specialist-ux", name: "ux-researcher", prompt: "Research UX flows for X...", run_in_background: true }
+Task: { subagent_type: "ralphx:ideation-specialist-frontend", name: "frontend-researcher", prompt: "Research X...", model: "<SUBAGENT_MODEL_CAP>", run_in_background: true }
+Task: { subagent_type: "ralphx:ideation-specialist-backend", name: "backend-researcher", prompt: "Research Y...", model: "<SUBAGENT_MODEL_CAP>", run_in_background: true }
+Task: { subagent_type: "ralphx:ideation-specialist-ux", name: "ux-researcher", prompt: "Research UX flows for X...", model: "<SUBAGENT_MODEL_CAP>", run_in_background: true }
 // All run in parallel, return results to you, you synthesize
 ```
 
@@ -616,7 +616,7 @@ If ANY inconsistency is found → immediately call `update_plan_artifact` with a
 |------|---------|----------|------------------|
 | `TeamCreate` | Create team config + shared task directory | both | `team_name` (use `ideation-<session_id>` for ideation teams), `description` |
 | `TaskCreate` | Add work items to team's shared task list | both | `subject` (imperative), `description` (full context), `activeForm` (spinner text) |
-| `Task` | Spawn a teammate subprocess | both | `subagent_type: "general-purpose"`, `name` (unique within team), `team_name`, `prompt`, `model`, `mode: "bypassPermissions"`. Ideation: `run_in_background: true`. Execution: foreground only (MCP requires it). |
+| `Task` | Spawn a teammate subprocess | both | `subagent_type: "general-purpose"`, `name` (unique within team), `team_name`, `prompt`, `model`, `mode: "bypassPermissions"`. When bootstrap includes `SUBAGENT_MODEL_CAP`, use that exact value for `model`. Do not pass `effort` to `Task`. Ideation: `run_in_background: true`. Execution: foreground only (MCP requires it). |
 | `SendMessage` | Communicate with teammates | both | `type: "message"\|"broadcast"\|"shutdown_request"`, `recipient` (teammate name), `content`, `summary`. Broadcast = N API calls — use only for critical team-wide issues. |
 | `TaskUpdate` | Assign tasks, set status, add dependencies | both | `taskId`, `owner`, `status`, `addBlockedBy` |
 | `TaskList` | Check team progress — all tasks + owners | both | (no args) |
