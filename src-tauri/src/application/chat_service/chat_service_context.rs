@@ -15,8 +15,8 @@ use crate::domain::entities::{
 };
 use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::repositories::{
-    ArtifactRepository, ChatAttachmentRepository, IdeationSessionRepository, ProjectRepository,
-    TaskRepository,
+    ArtifactRepository, ChatAttachmentRepository, IdeationModelSettingsRepository,
+    IdeationSessionRepository, ProjectRepository, TaskRepository,
 };
 use crate::infrastructure::agents::claude::{
     build_spawnable_command, build_spawnable_interactive_command, mcp_agent_type,
@@ -959,9 +959,11 @@ pub async fn build_command(
     team_mode: bool,
     chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     artifact_repo: Arc<dyn ArtifactRepository>,
+    ideation_model_settings_repo: Option<Arc<dyn IdeationModelSettingsRepository>>,
     session_messages: &[ChatMessage],
     total_available: usize,
     effort_override: Option<&str>,
+    model_override: Option<&str>,
 ) -> Result<SpawnableCommand, String> {
     // Compute agent_name using the resolution system (context type + optional status + team mode)
     let agent_name =
@@ -992,8 +994,34 @@ pub async fn build_command(
         .collect::<Vec<_>>();
 
     let attachment_context = format_attachments_for_agent(&attachments).await?;
+    let resolved_model_override = if conversation.context_type == ChatContextType::Ideation {
+        match model_override {
+            Some(model) => Some(model.to_string()),
+            None => {
+                if let Some(ref repo) = ideation_model_settings_repo {
+                    Some(
+                        crate::infrastructure::agents::claude::resolve_ideation_model(
+                            agent_name,
+                            project_id,
+                            repo.as_ref(),
+                        )
+                        .await
+                        .model,
+                    )
+                } else {
+                    Some(crate::infrastructure::agents::claude::resolve_model(Some(agent_name)))
+                }
+            }
+        }
+    } else {
+        model_override.map(str::to_string)
+    };
     let ideation_subagent_model_cap = (conversation.context_type == ChatContextType::Ideation)
-        .then(|| crate::infrastructure::agents::claude::resolve_model(Some(agent_name)));
+        .then(|| {
+            resolved_model_override
+                .clone()
+                .unwrap_or_else(|| crate::infrastructure::agents::claude::resolve_model(Some(agent_name)))
+        });
 
     let (prompt, resume_session) = if should_resume {
         let session_id = conversation.claude_session_id.as_ref().unwrap();
@@ -1038,7 +1066,7 @@ pub async fn build_command(
         resume_session.as_deref(),
         working_directory,
         effort_override,
-        None, // model_override: non-ideation path; DB-resolved model injected separately
+        resolved_model_override.as_deref(),
     )?;
 
     apply_ralphx_env_vars(
@@ -1207,11 +1235,13 @@ pub async fn build_resume_command(
     team_mode: bool,
     _chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     artifact_repo: Arc<dyn ArtifactRepository>,
+    ideation_model_settings_repo: Option<Arc<dyn IdeationModelSettingsRepository>>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     task_repo: Arc<dyn TaskRepository>,
     session_messages: &[ChatMessage],
     total_available: usize,
     effort_override: Option<&str>,
+    model_override: Option<&str>,
 ) -> Result<SpawnableCommand, String> {
     // Fetch entity status for status-aware agent resolution
     let entity_status =
@@ -1220,8 +1250,34 @@ pub async fn build_resume_command(
 
     let agent_name =
         resolve_agent_with_team_mode(&context_type, entity_status.as_deref(), team_mode);
+    let resolved_model_override = if context_type == ChatContextType::Ideation {
+        match model_override {
+            Some(model) => Some(model.to_string()),
+            None => {
+                if let Some(ref repo) = ideation_model_settings_repo {
+                    Some(
+                        crate::infrastructure::agents::claude::resolve_ideation_model(
+                            agent_name,
+                            project_id,
+                            repo.as_ref(),
+                        )
+                        .await
+                        .model,
+                    )
+                } else {
+                    Some(crate::infrastructure::agents::claude::resolve_model(Some(agent_name)))
+                }
+            }
+        }
+    } else {
+        model_override.map(str::to_string)
+    };
     let ideation_subagent_model_cap = (context_type == ChatContextType::Ideation)
-        .then(|| crate::infrastructure::agents::claude::resolve_model(Some(agent_name)));
+        .then(|| {
+            resolved_model_override
+                .clone()
+                .unwrap_or_else(|| crate::infrastructure::agents::claude::resolve_model(Some(agent_name)))
+        });
 
     // Re-inject context_id on resume so the agent can detect session mismatches.
     // For Ideation context, session_history is injected programmatically.
@@ -1244,7 +1300,7 @@ pub async fn build_resume_command(
         Some(session_id),
         working_directory,
         effort_override,
-        None, // model_override: non-ideation path; DB-resolved model injected separately
+        resolved_model_override.as_deref(),
     )?;
 
     // In resume flow, session_id IS the Claude session ID.

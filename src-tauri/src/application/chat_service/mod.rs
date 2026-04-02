@@ -828,9 +828,11 @@ impl<R: Runtime> ClaudeChatService<R> {
             self.team_mode.load(Ordering::Relaxed),
             Arc::clone(&self.chat_attachment_repo),
             Arc::clone(&self.artifact_repo),
+            self.ideation_model_settings_repo.clone(),
             session_messages,
             total_available,
             None, // effort_override: callers pre-resolve if needed
+            None, // model_override: callers pre-resolve if needed
         )
         .await
         .map_err(ChatServiceError::SpawnFailed)
