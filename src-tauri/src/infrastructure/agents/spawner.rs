@@ -258,28 +258,30 @@ impl AgenticClientSpawner {
 
     /// Resolve the working directory for a given task.
     /// Uses task's worktree_path, falls back to spawner default.
-    async fn resolve_working_directory(&self, task_id: &str) -> (PathBuf, bool) {
+    async fn resolve_working_directory(&self, task_id: &str) -> PathBuf {
         if let (Some(task_repo), Some(project_repo)) = (&self.task_repo, &self.project_repo) {
             let task_id_typed = TaskId(task_id.to_string());
             if let Ok(Some(task)) = task_repo.get_by_id(&task_id_typed).await {
                 let project_id = &task.project_id;
                 if let Ok(Some(_project)) = project_repo.get_by_id(project_id).await {
-                    return match task.worktree_path.as_ref() {
-                        Some(p) => (PathBuf::from(p), true),
-                        None => {
+                    return task
+                        .worktree_path
+                        .as_ref()
+                        .map(|p| PathBuf::from(p))
+                        .unwrap_or_else(|| {
                             tracing::error!(
                                 task_id = %task.id.0,
                                 "Safety net: worktree_path is None — \
                                  refusing to use project directory (main branch). \
                                  Falling back to spawner default."
                             );
-                            (self.working_directory.clone(), false)
-                        }
-                    };
+                            self.working_directory.clone()
+                        });
                 }
             }
         }
-        (self.working_directory.clone(), false)
+        // Fallback to the spawner's default working directory
+        self.working_directory.clone()
     }
 }
 
@@ -355,18 +357,17 @@ impl AgentSpawner for AgenticClientSpawner {
         let role = Self::role_from_string(agent_type);
 
         // Resolve working directory per-task (worktree-aware)
-        let (working_dir, is_worktree) = self.resolve_working_directory(task_id).await;
+        let working_dir = self.resolve_working_directory(task_id).await;
 
+        // Resolve project ID for RALPHX_PROJECT_ID env var
         let project_id = self.resolve_project_id(task_id).await;
 
+        // Resolve plugin dir robustly for both dev and release runs.
         let plugin_dir = crate::infrastructure::agents::claude::resolve_plugin_dir(&working_dir);
 
         let mut env = std::collections::HashMap::new();
         if let Some(pid) = project_id {
             env.insert("RALPHX_PROJECT_ID".to_string(), pid);
-        }
-        if is_worktree {
-            env.insert("RALPHX_WORKTREE".to_string(), "1".to_string());
         }
 
         let config = AgentConfig {

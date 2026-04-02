@@ -697,9 +697,8 @@ async fn test_resolve_working_directory_worktree_mode() {
         .with_working_dir("/fallback")
         .with_repos(task_repo, project_repo);
 
-    let (resolved, is_worktree) = spawner.resolve_working_directory("task-worktree").await;
+    let resolved = spawner.resolve_working_directory("task-worktree").await;
     assert_eq!(resolved, PathBuf::from("/worktrees/task-worktree"));
-    assert!(is_worktree);
 }
 
 #[tokio::test]
@@ -724,9 +723,9 @@ async fn test_resolve_working_directory_worktree_mode_no_worktree_path() {
         .with_working_dir("/fallback")
         .with_repos(task_repo, project_repo);
 
-    let (resolved, is_worktree) = spawner.resolve_working_directory("task-no-wt").await;
+    // Safety net: falls back to spawner default (NOT project dir) when worktree_path is None
+    let resolved = spawner.resolve_working_directory("task-no-wt").await;
     assert_eq!(resolved, PathBuf::from("/fallback"));
-    assert!(!is_worktree);
 }
 
 #[tokio::test]
@@ -736,9 +735,8 @@ async fn test_resolve_working_directory_fallback_no_repos() {
     // No repos attached — should fall back to self.working_directory
     let spawner = AgenticClientSpawner::new(mock).with_working_dir("/fallback");
 
-    let (resolved, is_worktree) = spawner.resolve_working_directory("any-task").await;
+    let resolved = spawner.resolve_working_directory("any-task").await;
     assert_eq!(resolved, PathBuf::from("/fallback"));
-    assert!(!is_worktree);
 }
 
 #[tokio::test]
@@ -754,7 +752,6 @@ async fn test_resolve_working_directory_fallback_task_not_found() {
         .with_working_dir("/fallback")
         .with_repos(task_repo, project_repo);
 
-    let (resolved, is_worktree) = spawner.resolve_working_directory("nonexistent-task").await;
+    let resolved = spawner.resolve_working_directory("nonexistent-task").await;
     assert_eq!(resolved, PathBuf::from("/fallback"));
-    assert!(!is_worktree);
 }
