@@ -542,7 +542,7 @@ describe("QATestEventSchema", () => {
 describe("PlanVerificationStatusChangedSchema — contract test", () => {
   const fixturePath = resolve(
     __dirname,
-    "../../src-tauri/tests/fixtures/verification_event.json"
+    "../../../src-tauri/tests/fixtures/verification_event.json"
   );
 
   it("parses the Rust-generated verification_event.json fixture", () => {

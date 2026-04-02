@@ -13,7 +13,7 @@ fn test_execution_state_new() {
     let state = ExecutionState::new();
     assert!(!state.is_paused());
     assert_eq!(state.running_count(), 0);
-    assert_eq!(state.max_concurrent(), 2);
+    assert_eq!(state.max_concurrent(), 10);
 }
 
 #[test]
@@ -2585,7 +2585,7 @@ fn test_default_trait() {
     let state = ExecutionState::default();
     assert!(!state.is_paused());
     assert_eq!(state.running_count(), 0);
-    assert_eq!(state.max_concurrent(), 2);
+    assert_eq!(state.max_concurrent(), 10);
 }
 
 // ========================================
@@ -2861,7 +2861,7 @@ async fn test_running_count_decrements_for_all_agent_active_states() {
 #[test]
 fn test_set_max_concurrent_updates_value() {
     let state = ExecutionState::new();
-    assert_eq!(state.max_concurrent(), 2); // default
+    assert_eq!(state.max_concurrent(), 10); // default
 
     state.set_max_concurrent(5);
     assert_eq!(state.max_concurrent(), 5);
@@ -2919,7 +2919,7 @@ async fn test_execution_settings_repo_get_default() {
 
     // Default values
     assert_eq!(settings.max_concurrent_tasks, 10);
-    assert_eq!(settings.project_ideation_max, 2);
+    assert_eq!(settings.project_ideation_max, 5);
     assert!(settings.auto_commit);
     assert!(settings.pause_on_failure);
 }
@@ -2964,8 +2964,8 @@ async fn test_execution_settings_update_syncs_execution_state() {
     let execution_state = Arc::new(ExecutionState::new());
     let app_state = AppState::new_test();
 
-    // Initial state
-    assert_eq!(execution_state.max_concurrent(), 2);
+    // Initial state (ExecutionState::new() defaults to max_concurrent=10)
+    assert_eq!(execution_state.max_concurrent(), 10);
 
     // Update settings
     let new_settings = ExecutionSettings {

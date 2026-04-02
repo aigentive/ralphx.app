@@ -7,7 +7,7 @@ async fn test_get_default_global_settings() {
     // Get global defaults (project_id = None)
     let settings = repo.get_settings(None).await.unwrap();
     assert_eq!(settings.max_concurrent_tasks, 10);
-    assert_eq!(settings.project_ideation_max, 2);
+    assert_eq!(settings.project_ideation_max, 5);
     assert!(settings.auto_commit);
     assert!(settings.pause_on_failure);
 }
@@ -42,7 +42,7 @@ async fn test_per_project_settings() {
     // Initially, get_settings for a project should return global defaults
     let settings = repo.get_settings(Some(&project_id)).await.unwrap();
     assert_eq!(settings.max_concurrent_tasks, 10); // global default
-    assert_eq!(settings.project_ideation_max, 2);
+    assert_eq!(settings.project_ideation_max, 5);
 
     // Create project-specific settings
     let project_settings = ExecutionSettings {
@@ -93,7 +93,7 @@ async fn test_global_execution_settings() {
     // Get default global settings
     let settings = repo.get_settings().await.unwrap();
     assert_eq!(settings.global_max_concurrent, 20);
-    assert_eq!(settings.global_ideation_max, 4);
+    assert_eq!(settings.global_ideation_max, 10);
     assert!(!settings.allow_ideation_borrow_idle_execution);
 
     // Update global settings
