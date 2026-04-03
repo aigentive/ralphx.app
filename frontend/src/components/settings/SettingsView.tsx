@@ -322,7 +322,7 @@ function GlobalExecutionSection() {
         setError(err instanceof Error ? err.message : "Failed to load global settings");
         setGlobalSettings({
           globalMaxConcurrent: 20,
-          globalIdeationMax: 4,
+          globalIdeationMax: 10,
           allowIdeationBorrowIdleExecution: false,
         });
       } finally {
@@ -365,7 +365,7 @@ function GlobalExecutionSection() {
     setGlobalSettings((prev) => {
       const nextSettings = {
         globalMaxConcurrent: value,
-        globalIdeationMax: prev?.globalIdeationMax ?? 4,
+        globalIdeationMax: prev?.globalIdeationMax ?? 10,
         allowIdeationBorrowIdleExecution:
           prev?.allowIdeationBorrowIdleExecution ?? false,
       };
@@ -391,7 +391,7 @@ function GlobalExecutionSection() {
     setGlobalSettings((prev) => {
       const nextSettings = {
         globalMaxConcurrent: prev?.globalMaxConcurrent ?? 20,
-        globalIdeationMax: prev?.globalIdeationMax ?? 4,
+        globalIdeationMax: prev?.globalIdeationMax ?? 10,
         allowIdeationBorrowIdleExecution:
           !(prev?.allowIdeationBorrowIdleExecution ?? false),
       };
@@ -441,7 +441,7 @@ function GlobalExecutionSection() {
         id="global-ideation-max"
         label="Global Ideation Cap"
         description="Maximum concurrent ideation and verification sessions across all projects (1-50)"
-        value={globalSettings?.globalIdeationMax ?? 4}
+        value={globalSettings?.globalIdeationMax ?? 10}
         min={1}
         max={50}
         step={1}

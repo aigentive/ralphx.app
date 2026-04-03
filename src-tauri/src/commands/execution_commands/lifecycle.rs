@@ -439,6 +439,8 @@ pub async fn resume_execution(
                     .with_app_handle(handle.clone())
                     .with_execution_state(Arc::clone(&execution_state_arc))
                     .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
+                    .with_ideation_effort_settings_repo(Arc::clone(&app_state.ideation_effort_settings_repo))
+                    .with_ideation_model_settings_repo(Arc::clone(&app_state.ideation_model_settings_repo))
                     .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
                     .with_task_proposal_repo(Arc::clone(&app_state.task_proposal_repo))
                     .with_task_step_repo(Arc::clone(&app_state.task_step_repo))
@@ -482,6 +484,8 @@ pub async fn resume_execution(
                 .with_app_handle(handle.clone())
                 .with_execution_state(Arc::clone(&execution_state_arc))
                 .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
+                .with_ideation_effort_settings_repo(Arc::clone(&app_state.ideation_effort_settings_repo))
+                .with_ideation_model_settings_repo(Arc::clone(&app_state.ideation_model_settings_repo))
                 .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
                 .with_task_proposal_repo(Arc::clone(&app_state.task_proposal_repo))
                 .with_task_step_repo(Arc::clone(&app_state.task_step_repo))
@@ -525,6 +529,8 @@ pub async fn resume_execution(
                     .with_app_handle(handle.clone())
                     .with_execution_state(Arc::clone(&execution_state_arc))
                     .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
+                    .with_ideation_effort_settings_repo(Arc::clone(&app_state.ideation_effort_settings_repo))
+                    .with_ideation_model_settings_repo(Arc::clone(&app_state.ideation_model_settings_repo))
                     .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
                     .with_task_proposal_repo(Arc::clone(&app_state.task_proposal_repo))
                     .with_task_step_repo(Arc::clone(&app_state.task_step_repo))
@@ -702,4 +708,3 @@ pub async fn stop_execution(
         status,
     })
 }
-

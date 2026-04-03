@@ -29,19 +29,19 @@ let mockExecutionState: ExecutionStatusResponse = {
   ideationActive: 0,
   ideationIdle: 0,
   ideationWaiting: 0,
-  ideationMaxProject: 2,
-  ideationMaxGlobal: 4,
+  ideationMaxProject: 5,
+  ideationMaxGlobal: 10,
 };
 
 let mockGlobalSettings: GlobalExecutionSettingsResponse = {
   globalMaxConcurrent: 20,
-  globalIdeationMax: 4,
+  globalIdeationMax: 10,
   allowIdeationBorrowIdleExecution: false,
 };
 
 let mockExecutionSettings: ExecutionSettingsResponse = {
   maxConcurrentTasks: 3,
-  projectIdeationMax: 2,
+  projectIdeationMax: 5,
   autoCommit: false,
   pauseOnFailure: true,
 };
@@ -99,8 +99,8 @@ export const mockExecutionApi = {
       ideationActive: 0,
       ideationIdle: 0,
       ideationWaiting: 0,
-      ideationMaxProject: 2,
-      ideationMaxGlobal: 4,
+      ideationMaxProject: 5,
+      ideationMaxGlobal: 10,
     };
     return {
       success: true,

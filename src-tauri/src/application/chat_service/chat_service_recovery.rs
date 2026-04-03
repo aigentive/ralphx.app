@@ -17,10 +17,11 @@ use crate::domain::repositories::{
     ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
     ChatMessageRepository, IdeationSessionRepository, TaskProposalRepository,
 };
+use crate::application::AppState;
 use crate::domain::entities::VerificationStatus;
 use crate::domain::services::emit_verification_status_changed;
 use crate::error::{AppError, AppResult};
-use tauri::Runtime;
+use tauri::{Manager, Runtime};
 
 /// Attempt to recover from a stale Claude session by rebuilding conversation history
 /// and spawning a fresh session.
@@ -120,6 +121,11 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
         ideation_metadata.as_ref(),
     );
 
+    let ideation_model_settings_repo = app_handle.map(|handle| {
+        let app_state = handle.state::<AppState>();
+        Arc::clone(&app_state.ideation_model_settings_repo)
+    });
+
     // 4. Spawn fresh Claude session with history
     let spawnable = match chat_service_context::build_command(
         cli_path,
@@ -132,9 +138,11 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
         team_mode,
         chat_attachment_repo,
         artifact_repo,
+        ideation_model_settings_repo,
         &[], // recovery path already builds its own bootstrap_prompt with history
         0,   // total_available: not needed here — session_messages is empty
         None, // effort_override: recovery uses default
+        None, // model_override: recovery uses resolved ideation settings when available
     )
     .await
     {

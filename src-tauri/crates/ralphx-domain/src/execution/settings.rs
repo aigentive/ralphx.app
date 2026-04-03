@@ -18,7 +18,7 @@ impl Default for ExecutionSettings {
     fn default() -> Self {
         Self {
             max_concurrent_tasks: 10,
-            project_ideation_max: 2,
+            project_ideation_max: 5,
             auto_commit: true,
             pause_on_failure: true,
         }
@@ -42,7 +42,7 @@ impl Default for GlobalExecutionSettings {
     fn default() -> Self {
         Self {
             global_max_concurrent: 20,
-            global_ideation_max: 4,
+            global_ideation_max: 10,
             allow_ideation_borrow_idle_execution: false,
         }
     }

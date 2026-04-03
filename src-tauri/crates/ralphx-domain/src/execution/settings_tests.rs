@@ -4,7 +4,7 @@ use super::*;
 fn test_execution_settings_default() {
     let settings = ExecutionSettings::default();
     assert_eq!(settings.max_concurrent_tasks, 10);
-    assert_eq!(settings.project_ideation_max, 2);
+    assert_eq!(settings.project_ideation_max, 5);
     assert!(settings.auto_commit);
     assert!(settings.pause_on_failure);
 }
@@ -46,7 +46,7 @@ fn test_execution_settings_clone() {
 fn test_global_execution_settings_default() {
     let settings = GlobalExecutionSettings::default();
     assert_eq!(settings.global_max_concurrent, 20);
-    assert_eq!(settings.global_ideation_max, 4);
+    assert_eq!(settings.global_ideation_max, 10);
     assert!(!settings.allow_ideation_borrow_idle_execution);
 }
 

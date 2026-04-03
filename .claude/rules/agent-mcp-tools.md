@@ -183,7 +183,7 @@ After adding a tool, verify MCP server stderr shows:
 | `memory-capture` | `search_memories`, `get_memory`, `get_memories_for_paths`, `get_conversation_transcript`, `upsert_memories`, `mark_memory_obsolete` |
 | `plan-critic-completeness` | `get_session_plan`, `get_artifact` |
 | `plan-critic-implementation-feasibility` | `get_session_plan`, `get_artifact` |
-| `plan-verifier` | `get_session_plan`, `get_parent_session_context`, `update_plan_verification`, `get_plan_verification`, `update_plan_artifact`, `edit_plan_artifact`, `get_child_session_status`, `send_ideation_session_message` |
+| `plan-verifier` | `get_session_plan`, `get_session_messages`, `get_team_artifacts`, `get_artifact`, `get_parent_session_context`, `update_plan_verification`, `get_plan_verification`, `update_plan_artifact`, `edit_plan_artifact`, `send_ideation_session_message`, `create_team_artifact`, `list_session_proposals`, `get_proposal`, `search_memories`, `get_memory`, `get_memories_for_paths` |
 | `ideation-specialist-backend` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
 | `ideation-specialist-frontend` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
 | `ideation-specialist-infra` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |

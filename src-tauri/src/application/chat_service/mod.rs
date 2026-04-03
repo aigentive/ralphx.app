@@ -828,9 +828,11 @@ impl<R: Runtime> ClaudeChatService<R> {
             self.team_mode.load(Ordering::Relaxed),
             Arc::clone(&self.chat_attachment_repo),
             Arc::clone(&self.artifact_repo),
+            self.ideation_model_settings_repo.clone(),
             session_messages,
             total_available,
             None, // effort_override: callers pre-resolve if needed
+            None, // model_override: callers pre-resolve if needed
         )
         .await
         .map_err(ChatServiceError::SpawnFailed)
@@ -1801,6 +1803,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 project_repo: Arc::clone(&self.project_repo),
                 ideation_session_repo: Arc::clone(&self.ideation_session_repo),
                 execution_settings_repo: self.execution_settings_repo.clone(),
+                ideation_effort_settings_repo: self.ideation_effort_settings_repo.clone(),
+                ideation_model_settings_repo: self.ideation_model_settings_repo.clone(),
                 activity_event_repo: Arc::clone(&self.activity_event_repo),
                 memory_event_repo: Arc::clone(&self.memory_event_repo),
                 message_queue: Arc::clone(&self.message_queue),

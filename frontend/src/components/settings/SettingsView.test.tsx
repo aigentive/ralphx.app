@@ -426,7 +426,7 @@ describe("SettingsView", () => {
       render(<SettingsView />);
 
       expect(await screen.findByTestId("global-max-concurrent")).toHaveValue(20);
-      expect(screen.getByTestId("global-ideation-max")).toHaveValue(4);
+      expect(screen.getByTestId("global-ideation-max")).toHaveValue(10);
       expect(screen.getByTestId("allow-ideation-borrow-idle-execution")).toHaveAttribute(
         "data-state",
         "unchecked"

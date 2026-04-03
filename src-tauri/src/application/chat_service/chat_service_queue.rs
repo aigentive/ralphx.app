@@ -5,8 +5,9 @@
 
 use std::path::Path;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 
+use crate::application::AppState;
 use super::chat_service_context;
 use super::chat_service_helpers::get_assistant_role;
 use super::chat_service_streaming::process_stream_background;
@@ -309,6 +310,11 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 }
             }
 
+            let ideation_model_settings_repo = app_handle.as_ref().map(|handle| {
+                let app_state = handle.state::<AppState>();
+                Arc::clone(&app_state.ideation_model_settings_repo)
+            });
+
             // Build and spawn resume command
             let spawnable = match chat_service_context::build_resume_command(
                 cli_path,
@@ -322,11 +328,13 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 team_mode,
                 Arc::clone(chat_attachment_repo),
                 Arc::clone(artifact_repo),
+                ideation_model_settings_repo,
                 Arc::clone(ideation_session_repo),
                 Arc::clone(task_repo),
                 &[], // queue resume path — session history not injected here
                 0,   // total_available: not needed here — session_messages is empty
                 None, // effort_override: queue resume uses default
+                None, // model_override: queue resume uses resolved ideation settings when available
             )
             .await
             {

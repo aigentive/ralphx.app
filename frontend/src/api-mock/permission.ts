@@ -6,6 +6,7 @@
  */
 
 import type { ResolvePermissionInput } from "@/api/permission";
+import type { PermissionRequest } from "@/types/permission";
 
 /**
  * Mock Permission API matching the real API interface
@@ -18,5 +19,12 @@ export const mockPermissionApi = {
   resolveRequest: async (_input: ResolvePermissionInput): Promise<void> => {
     // No-op - visual testing doesn't process permission responses
     console.log("[mock] resolveRequest called");
+  },
+
+  /**
+   * Mock get pending permissions - returns empty array for visual testing
+   */
+  getPendingPermissions: async (): Promise<PermissionRequest[]> => {
+    return [];
   },
 } as const;
