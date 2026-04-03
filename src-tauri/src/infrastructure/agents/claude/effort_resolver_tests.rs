@@ -29,6 +29,22 @@ fn test_effort_bucket_mapping_verifier() {
         effort_bucket_for_agent("plan-verifier"),
         Some(EffortBucket::Verifier)
     );
+    assert_eq!(
+        effort_bucket_for_agent("ralphx:plan-verifier"),
+        Some(EffortBucket::Verifier)
+    );
+}
+
+#[test]
+fn test_effort_bucket_mapping_primary_agents_fully_qualified() {
+    assert_eq!(
+        effort_bucket_for_agent("ralphx:orchestrator-ideation"),
+        Some(EffortBucket::Primary)
+    );
+    assert_eq!(
+        effort_bucket_for_agent("ralphx:ideation-team-lead"),
+        Some(EffortBucket::Primary)
+    );
 }
 
 #[test]
@@ -66,6 +82,24 @@ async fn test_resolve_effort_global_override() {
 
     let result = resolve_ideation_effort("plan-verifier", None, &repo).await;
     assert_eq!(result, "medium");
+}
+
+#[tokio::test]
+async fn test_resolve_effort_fully_qualified_verifier_uses_verifier_bucket() {
+    let repo = MemoryIdeationEffortSettingsRepository::new();
+    repo.upsert(None, "low", "medium").await.unwrap();
+
+    let result = resolve_ideation_effort("ralphx:plan-verifier", None, &repo).await;
+    assert_eq!(result, "medium");
+}
+
+#[tokio::test]
+async fn test_resolve_effort_fully_qualified_primary_uses_primary_bucket() {
+    let repo = MemoryIdeationEffortSettingsRepository::new();
+    repo.upsert(None, "high", "low").await.unwrap();
+
+    let result = resolve_ideation_effort("ralphx:orchestrator-ideation", None, &repo).await;
+    assert_eq!(result, "high");
 }
 
 #[tokio::test]

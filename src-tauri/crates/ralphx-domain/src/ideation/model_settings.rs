@@ -87,7 +87,8 @@ impl IdeationModelSettings {
 
 /// Map an agent name to its `ModelBucket`, or `None` for non-ideation agents.
 pub fn model_bucket_for_agent(agent_name: &str) -> Option<ModelBucket> {
-    match agent_name {
+    let normalized = agent_name.strip_prefix("ralphx:").unwrap_or(agent_name);
+    match normalized {
         "orchestrator-ideation"
         | "ideation-team-lead"
         | "ideation-team-member"

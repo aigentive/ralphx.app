@@ -65,6 +65,22 @@ fn test_model_bucket_for_agent_verifier() {
         model_bucket_for_agent("plan-verifier"),
         Some(ModelBucket::Verifier)
     );
+    assert_eq!(
+        model_bucket_for_agent("ralphx:plan-verifier"),
+        Some(ModelBucket::Verifier)
+    );
+}
+
+#[test]
+fn test_model_bucket_for_agent_primary_fully_qualified() {
+    assert_eq!(
+        model_bucket_for_agent("ralphx:orchestrator-ideation"),
+        Some(ModelBucket::Primary)
+    );
+    assert_eq!(
+        model_bucket_for_agent("ralphx:ideation-team-lead"),
+        Some(ModelBucket::Primary)
+    );
 }
 
 #[test]

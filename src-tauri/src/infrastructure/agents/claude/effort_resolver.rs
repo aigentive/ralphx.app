@@ -13,7 +13,8 @@ use super::resolve_effort;
 /// Returns `Some(bucket)` for the known ideation agents, or `None` for all others
 /// (non-ideation agents fall through to the standard YAML-based resolution).
 pub fn effort_bucket_for_agent(agent_name: &str) -> Option<EffortBucket> {
-    match agent_name {
+    let normalized = agent_name.strip_prefix("ralphx:").unwrap_or(agent_name);
+    match normalized {
         "orchestrator-ideation"
         | "ideation-team-lead"
         | "ideation-team-member"

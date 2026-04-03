@@ -174,6 +174,26 @@ async fn test_resolve_model_verifier_agent_uses_verifier_bucket() {
     assert_eq!(result.source, "global");
 }
 
+#[tokio::test]
+async fn test_resolve_model_fully_qualified_verifier_agent_uses_verifier_bucket() {
+    let repo = MemoryIdeationModelSettingsRepository::new();
+    repo.upsert_global("sonnet", "haiku").await.unwrap();
+
+    let result = resolve_ideation_model("ralphx:plan-verifier", None, &repo).await;
+    assert_eq!(result.model, "haiku");
+    assert_eq!(result.source, "global");
+}
+
+#[tokio::test]
+async fn test_resolve_model_fully_qualified_primary_agent_uses_primary_bucket() {
+    let repo = MemoryIdeationModelSettingsRepository::new();
+    repo.upsert_global("opus", "haiku").await.unwrap();
+
+    let result = resolve_ideation_model("ralphx:orchestrator-ideation", None, &repo).await;
+    assert_eq!(result.model, "opus");
+    assert_eq!(result.source, "global");
+}
+
 // Ensure the ModelBucket type is accessible (used by other tasks)
 #[test]
 fn test_model_bucket_variants_exist() {
