@@ -58,30 +58,33 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Parse HTTP error response into a TauriClientError.
+ * Reads body as text first to avoid consuming the stream before fallback.
  */
 async function parseErrorResponse(
   response: Response,
-  url: string
+  _url: string
 ): Promise<TauriClientError> {
   let errorMessage = `Tauri API error: ${response.statusText}`;
   let details: string | undefined;
 
   try {
-    const errorData = (await response.json()) as TauriApiError;
-    if (errorData.error) {
-      errorMessage = errorData.error;
-      details = errorData.details;
-    }
-  } catch {
-    // JSON parse failed — try plain text response
-    try {
-      const text = await response.text();
-      if (text) {
+    const text = await response.text();
+    if (text) {
+      try {
+        const errorData = JSON.parse(text) as TauriApiError;
+        if (errorData.error) {
+          errorMessage = errorData.error;
+          details = errorData.details;
+        } else if (typeof (errorData as unknown as Record<string, unknown>).message === "string") {
+          errorMessage = (errorData as unknown as Record<string, unknown>).message as string;
+        }
+      } catch {
+        // Not JSON — use raw text as the error message
         errorMessage = text;
       }
-    } catch {
-      // Both JSON and text failed, use status text
     }
+  } catch {
+    // text() failed, fall back to statusText
   }
 
   return new TauriClientError(errorMessage, response.status, details);
@@ -125,6 +128,40 @@ async function withRetry(
 }
 
 /**
+ * Shared fetch executor: performs a single fetch attempt with error parsing.
+ * Used by callTauri and callTauriGet to eliminate duplicated logic.
+ */
+async function executeFetch(
+  url: string,
+  init: RequestInit,
+  label: string
+): Promise<unknown> {
+  return withRetry(async () => {
+    try {
+      const response = await fetch(url, init);
+
+      if (!response.ok) {
+        throw await parseErrorResponse(response, url);
+      }
+
+      return await safeJsonParse(response);
+    } catch (error) {
+      if (error instanceof TauriClientError) {
+        throw error;
+      }
+
+      // Network or other fetch errors
+      throw new TauriClientError(
+        `Failed to connect to Tauri backend at ${url}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        0
+      );
+    }
+  }, label);
+}
+
+/**
  * Call a Tauri backend endpoint via HTTP POST
  * @param endpoint - Endpoint path (e.g., "create_task_proposal")
  * @param args - Request body (JSON)
@@ -136,36 +173,15 @@ export async function callTauri(
   args: Record<string, unknown>
 ): Promise<unknown> {
   const url = `${TAURI_API_URL}/api/${endpoint}`;
-
-  return withRetry(async () => {
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(args),
-      });
-
-      if (!response.ok) {
-        throw await parseErrorResponse(response, url);
-      }
-
-      return await safeJsonParse(response);
-    } catch (error) {
-      if (error instanceof TauriClientError) {
-        throw error;
-      }
-
-      // Network or other fetch errors
-      throw new TauriClientError(
-        `Failed to connect to Tauri backend at ${url}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-        0
-      );
-    }
-  }, `POST /api/${endpoint}`);
+  return executeFetch(
+    url,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(args),
+    },
+    `POST /api/${endpoint}`
+  );
 }
 
 /**
@@ -176,33 +192,12 @@ export async function callTauri(
  */
 export async function callTauriGet(endpoint: string): Promise<unknown> {
   const url = `${TAURI_API_URL}/api/${endpoint}`;
-
-  return withRetry(async () => {
-    try {
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw await parseErrorResponse(response, url);
-      }
-
-      return await safeJsonParse(response);
-    } catch (error) {
-      if (error instanceof TauriClientError) {
-        throw error;
-      }
-
-      // Network or other fetch errors
-      throw new TauriClientError(
-        `Failed to connect to Tauri backend at ${url}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-        0
-      );
-    }
-  }, `GET /api/${endpoint}`);
+  return executeFetch(
+    url,
+    {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    },
+    `GET /api/${endpoint}`
+  );
 }

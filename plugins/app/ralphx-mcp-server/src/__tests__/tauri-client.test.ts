@@ -316,3 +316,88 @@ describe("callTauriGet — safeJsonParse resilience", () => {
     expect(result).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// parseErrorResponse — body consumption bug fix (text-first reading)
+// ---------------------------------------------------------------------------
+
+describe("parseErrorResponse — error body surfacing", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("plain-text 400 body → surfaces the actual error text (not statusText)", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response("review notes are missing required fields", {
+        status: 400,
+        statusText: "Bad Request",
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const err = (await callTauri("complete_review", {}).catch((e: unknown) => e)) as TauriClientError;
+    expect(err).toBeInstanceOf(TauriClientError);
+    expect(err.message).toBe("review notes are missing required fields");
+    expect(err.statusCode).toBe(400);
+  });
+
+  it("JSON body {error: msg} 400 → surfaces the error field value (regression check)", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: "task is not in reviewable state" }), {
+        status: 400,
+        statusText: "Bad Request",
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const err = (await callTauri("complete_review", {}).catch((e: unknown) => e)) as TauriClientError;
+    expect(err).toBeInstanceOf(TauriClientError);
+    expect(err.message).toBe("task is not in reviewable state");
+    expect(err.statusCode).toBe(400);
+  });
+
+  it("JSON body with details field → surfaces both error and details", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: "validation failed", details: "field 'name' is required" }),
+        { status: 422, statusText: "Unprocessable Entity" }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const err = (await callTauri("test_endpoint", {}).catch((e: unknown) => e)) as TauriClientError;
+    expect(err).toBeInstanceOf(TauriClientError);
+    expect(err.message).toBe("validation failed");
+    expect(err.details).toBe("field 'name' is required");
+  });
+
+  it("empty body 400 → graceful fallback to statusText", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response("", {
+        status: 400,
+        statusText: "Bad Request",
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const err = (await callTauri("test_endpoint", {}).catch((e: unknown) => e)) as TauriClientError;
+    expect(err).toBeInstanceOf(TauriClientError);
+    expect(err.message).toBe("Tauri API error: Bad Request");
+    expect(err.statusCode).toBe(400);
+  });
+
+  it("callTauriGet: plain-text 400 body → surfaces actual error text", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response("endpoint not found", {
+        status: 404,
+        statusText: "Not Found",
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const err = (await callTauriGet("missing/endpoint").catch((e: unknown) => e)) as TauriClientError;
+    expect(err).toBeInstanceOf(TauriClientError);
+    expect(err.message).toBe("endpoint not found");
+    expect(err.statusCode).toBe(404);
+  });
+});

@@ -21,6 +21,12 @@ pub async fn complete_review(
         .map_err(|e| (e.status, e.message.unwrap_or_default()))?;
 
     if task.internal_status != InternalStatus::Reviewing {
+        tracing::warn!(
+            task_id = %task_id.as_str(),
+            decision = %req.decision,
+            rejection_reason = %task.internal_status.as_str(),
+            "complete_review rejected: task not in reviewing state"
+        );
         return Err((
             StatusCode::BAD_REQUEST,
             format!(
@@ -38,7 +44,15 @@ pub async fn complete_review(
         .as_deref()
         .map(str::parse::<ScopeDriftClassification>)
         .transpose()
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+        .map_err(|e| {
+            tracing::warn!(
+                task_id = %task_id.as_str(),
+                decision = %req.decision,
+                rejection_reason = %e,
+                "complete_review rejected: invalid scope_drift_classification"
+            );
+            (StatusCode::BAD_REQUEST, e.to_string())
+        })?;
     let prior_review_notes = state
         .app_state
         .review_repo
@@ -55,7 +69,15 @@ pub async fn complete_review(
 
     // 2. Parse and validate decision policy
     let outcome = parse_review_decision(&req.decision)
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+        .map_err(|e| {
+            tracing::warn!(
+                task_id = %task_id.as_str(),
+                decision = %req.decision,
+                rejection_reason = %e,
+                "complete_review rejected: invalid decision value"
+            );
+            (StatusCode::BAD_REQUEST, e.to_string())
+        })?;
     validate_complete_review_policy(
         task_context.scope_drift_status.clone(),
         &task_context.out_of_scope_files,
@@ -65,7 +87,15 @@ pub async fn complete_review(
         &review_settings,
         req.issues.as_ref().map_or(0, Vec::len),
     )
-    .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    .map_err(|e| {
+        tracing::warn!(
+            task_id = %task_id.as_str(),
+            decision = %req.decision,
+            rejection_reason = %e,
+            "complete_review rejected: policy validation failed"
+        );
+        (StatusCode::BAD_REQUEST, e.to_string())
+    })?;
 
     // 3. Get feedback - stored separately from issues now
     let feedback = req.feedback.clone();
@@ -125,7 +155,15 @@ pub async fn complete_review(
             )
         })
         .transpose()
-        .map_err(|msg| (StatusCode::BAD_REQUEST, msg))?;
+        .map_err(|msg: String| {
+            tracing::warn!(
+                task_id = %task_id.as_str(),
+                decision = %req.decision,
+                rejection_reason = %msg,
+                "complete_review rejected: invalid review issues"
+            );
+            (StatusCode::BAD_REQUEST, msg)
+        })?;
 
     let domain_issues = parsed_issues.as_ref().map(|issues| build_review_note_issues(issues));
 

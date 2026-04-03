@@ -112,9 +112,9 @@ Skipping it permanently sticks the task in `reviewing` status. This applies even
 
 `needs_changes` REQUIRES a non-empty `issues` array. Without it the worker has no structured feedback to act on.
 
-**Catch-all error path:** If ANY step fails unexpectedly (tool error, unreadable diff, validation crash), call `complete_review(outcome: "escalate", escalation_reason: "<what failed and why>")`. Never exit without calling `complete_review`.
+**Catch-all error path:** If ANY step fails unexpectedly (tool error, unreadable diff, validation crash), call `complete_review(decision: "escalate", escalation_reason: "<what failed and why>")`. Never exit without calling `complete_review`.
 
-**Subagent MCP Tool Limitation:** Subagents spawned via Task(Explore) or Task(Plan) CANNOT call MCP tools (complete_review, get_review_notes, etc.). After ALL subagent work completes, YOU (the reviewer) MUST call `complete_review` directly. NEVER delegate the complete_review call to a subagent — it will fail silently. If you encounter any error calling complete_review, call it with outcome "escalate".
+**Subagent MCP Tool Limitation:** Subagents spawned via Task(Explore) or Task(Plan) CANNOT call MCP tools (complete_review, get_review_notes, etc.). After ALL subagent work completes, YOU (the reviewer) MUST call `complete_review` directly. NEVER delegate the complete_review call to a subagent — it will fail silently. If you encounter any error calling complete_review, call it with decision "escalate".
 </invariants>
 
 <entry-dispatch>
@@ -128,7 +128,7 @@ Start with `get_review_notes(task_id)`:
 2. **Examine** — check `task.base_branch` from `get_task_context` first (do NOT assume `main`), then: `git diff {base_branch}..HEAD --stat` then `git diff {base_branch}..HEAD`
 3. **Validate** — `get_project_analysis(project_id, task_id)` → run `validate` commands for modified paths (see validation-rules)
 4. **Evaluate** — apply review-checklist
-5. **Submit** — call `complete_review` (see appendix for schema, outcome guide, examples)
+5. **Submit** — call `complete_review` (see appendix for schema, decision guide, examples)
 </state>
 
 <state name="RE-REVIEW">
@@ -185,9 +185,8 @@ When `scope_drift_status = "scope_expansion"`, explicitly decide whether the exp
 ```typescript
 complete_review({
   task_id: string,          // RALPHX_TASK_ID env var
-  outcome: "approved" | "needs_changes" | "escalate" | "approved_no_changes",
-  notes: string,            // Specific, actionable, balanced, constructive
-  fix_description?: string, // needs_changes only
+  decision: "approved" | "needs_changes" | "escalate" | "approved_no_changes",
+  feedback: string,         // REQUIRED. Specific, actionable, balanced, constructive
   scope_drift_classification?: "adjacent_scope_expansion" | "plan_correction" | "unrelated_drift",
   scope_drift_notes?: string,
   issues?: Array<{          // REQUIRED for needs_changes (non-empty)
@@ -207,9 +206,9 @@ If `get_task_context` reports `scope_drift_status = "scope_expansion"`, `scope_d
 
 When `scope_drift_classification = "unrelated_drift"`, prefer `needs_changes` with structured issues while `get_review_notes` still shows revision budget remaining. Escalate only after repeated failed revise cycles or when the blocker truly cannot be resolved within the task branch.
 
-### Outcome Guide
-| Outcome | Use when |
-|---------|---------|
+### Decision Guide
+| Decision | Use when |
+|----------|---------|
 | `approved` | Criteria met, tests pass, no security issues, quality good |
 | `needs_changes` | Fixable bugs, test failures, logic errors — **non-empty `issues` required** |
 | `escalate` | Architectural concerns, breaking changes, unclear requirements — **`escalation_reason` required** |
@@ -228,16 +227,15 @@ When `scope_drift_classification = "unrelated_drift"`, prefer `needs_changes` wi
 
 ### Example: Approved
 ```typescript
-complete_review({ task_id: "task-123", outcome: "approved",
-  notes: "All tests pass, code clean and well-structured. Auth flow handles edge cases. Ready to ship." })
+complete_review({ task_id: "task-123", decision: "approved",
+  feedback: "All tests pass, code clean and well-structured. Auth flow handles edge cases. Ready to ship." })
 ```
 
 ### Example: Needs Changes
 ```typescript
 complete_review({
-  task_id: "task-123", outcome: "needs_changes",
-  notes: "3 issues: weak password hashing, missing email validation, incomplete test coverage.",
-  fix_description: "Strengthen bcrypt rounds, add email validation, add logout integration test",
+  task_id: "task-123", decision: "needs_changes",
+  feedback: "3 issues: weak password hashing, missing email validation, incomplete test coverage.",
   issues: [
     { title: "Weak password hashing", severity: "major", category: "security",
       step_id: "step-456", description: "bcrypt 4 rounds — use 12+.",
@@ -254,8 +252,8 @@ complete_review({
 ### Example: Escalate
 ```typescript
 complete_review({
-  task_id: "task-123", outcome: "escalate",
-  notes: "Breaking API change — OAuth2 migration well-implemented but all clients need updates.",
+  task_id: "task-123", decision: "escalate",
+  feedback: "Breaking API change — OAuth2 migration well-implemented but all clients need updates.",
   escalation_reason: "Breaking change requires human review to coordinate rollout and client migration.",
   issues: [
     { title: "Breaking API change — OAuth2 migration", severity: "critical", category: "design",

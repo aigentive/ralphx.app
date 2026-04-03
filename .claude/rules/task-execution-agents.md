@@ -75,8 +75,8 @@ paths:
 **MUST call `complete_review` before exiting.** Task stuck in `reviewing` otherwise.
 
 **`complete_review` params:**
-- `outcome`: `"approved"` | `"needs_changes"` | `"escalate"`
-- `notes`, `fix_description` (if needs_changes)
+- `decision`: `"approved"` | `"needs_changes"` | `"escalate"` | `"approved_no_changes"`
+- `feedback` (required)
 - `issues[]` (REQUIRED for needs_changes): `{ title, severity, step_id, description, file_path, line_number }`
 - `escalation_reason` (if escalate)
 
