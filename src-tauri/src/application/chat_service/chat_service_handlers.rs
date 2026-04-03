@@ -1065,6 +1065,10 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         // Retry send with fresh session (set is_retry=true)
                         let mut retry_conv = conv.clone();
                         retry_conv.claude_session_id = Some(new_session_id.clone());
+                        let ideation_effort_settings_repo = app_handle.as_ref().map(|handle| {
+                            let app_state = handle.state::<AppState>();
+                            Arc::clone(&app_state.ideation_effort_settings_repo)
+                        });
                         let ideation_model_settings_repo = app_handle.as_ref().map(|handle| {
                             let app_state = handle.state::<AppState>();
                             Arc::clone(&app_state.ideation_model_settings_repo)
@@ -1082,7 +1086,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             team_mode,
                             Arc::clone(chat_attachment_repo),
                             Arc::clone(artifact_repo),
-                            ideation_model_settings_repo,
+                            ideation_model_settings_repo.clone(),
                             &[], // retry path — no session history injection needed
                             0,   // total_available: not needed here — session_messages is empty
                             None, // effort_override: recovery retry uses default
@@ -1120,6 +1124,10 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                             ),
                                             execution_settings_repo:
                                                 execution_settings_repo.clone(),
+                                            ideation_effort_settings_repo:
+                                                ideation_effort_settings_repo.clone(),
+                                            ideation_model_settings_repo:
+                                                ideation_model_settings_repo.clone(),
                                             task_proposal_repo: task_proposal_repo.clone(),
                                             activity_event_repo: Arc::clone(activity_event_repo),
                                             memory_event_repo: Arc::clone(memory_event_repo),

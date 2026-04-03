@@ -25,7 +25,7 @@ use crate::domain::entities::{AgentRunId, ChatContextType, ChatConversationId, I
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ArtifactRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
-    IdeationSessionRepository,
+    IdeationEffortSettingsRepository, IdeationModelSettingsRepository, IdeationSessionRepository,
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
     TaskDependencyRepository, TaskProposalRepository, TaskRepository, TaskStepRepository,
 };
@@ -44,6 +44,8 @@ pub(super) struct BackgroundRunRepos {
     pub project_repo: Arc<dyn ProjectRepository>,
     pub ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     pub execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+    pub ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
+    pub ideation_model_settings_repo: Option<Arc<dyn IdeationModelSettingsRepository>>,
     pub task_proposal_repo: Option<Arc<dyn TaskProposalRepository>>,
     pub activity_event_repo: Arc<dyn ActivityEventRepository>,
     pub memory_event_repo: Arc<dyn MemoryEventRepository>,
@@ -191,6 +193,8 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             project_repo,
             ideation_session_repo,
             execution_settings_repo,
+            ideation_effort_settings_repo,
+            ideation_model_settings_repo,
             task_proposal_repo,
             activity_event_repo,
             memory_event_repo,
@@ -642,6 +646,12 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                         )
                         .with_execution_state(Arc::clone(&exec_state))
                         .with_execution_settings_repo(Arc::clone(&exec_settings));
+                        if let Some(ref effort_repo) = ideation_effort_settings_repo {
+                            svc = svc.with_ideation_effort_settings_repo(Arc::clone(effort_repo));
+                        }
+                        if let Some(ref model_repo) = ideation_model_settings_repo {
+                            svc = svc.with_ideation_model_settings_repo(Arc::clone(model_repo));
+                        }
                         if let Some(ref ah) = app_handle {
                             svc = svc.with_app_handle(ah.clone());
                         }
