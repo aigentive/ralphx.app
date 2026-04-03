@@ -856,9 +856,11 @@ async fn test_build_command_with_team_mode_true() {
         true, // team_mode=true
         chat_attachment_repo,
         artifact_repo,
+        None,
         &[],
         0,
         None, // effort_override
+        None, // model_override
     )
     .await;
 
@@ -890,9 +892,11 @@ async fn test_build_command_with_team_mode_false() {
         false, // team_mode=false
         chat_attachment_repo,
         artifact_repo,
+        None,
         &[],
         0,
         None, // effort_override
+        None, // model_override
     )
     .await;
 
@@ -972,11 +976,13 @@ async fn test_build_resume_command_with_team_mode() {
         true, // team_mode=true
         chat_attachment_repo.clone(),
         artifact_repo.clone(),
+        None,
         ideation_repo.clone(),
         task_repo.clone(),
         &[],
         0,
         None, // effort_override
+        None, // model_override
     )
     .await;
 
@@ -993,11 +999,13 @@ async fn test_build_resume_command_with_team_mode() {
         false, // team_mode=false
         chat_attachment_repo,
         artifact_repo,
+        None,
         ideation_repo,
         task_repo,
         &[],
         0,
         None, // effort_override
+        None, // model_override
     )
     .await;
 
