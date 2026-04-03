@@ -662,10 +662,12 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 .unwrap_or(None)
                 .unwrap_or_default();
 
+        let reason_code = stop_retrying_reason_to_code(&reason);
+
         let event = ExecutionRecoveryEvent::new(
             ExecutionRecoveryEventKind::StopRetrying,
             ExecutionRecoverySource::System,
-            ExecutionRecoveryReasonCode::GitBranchLost,
+            reason_code,
             format!("Permanent git error - stopping auto-retry (reason: {:?})", reason),
         );
 
@@ -923,3 +925,21 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
     }
 }
+
+/// Maps a `StopRetryingReason` to its corresponding `ExecutionRecoveryReasonCode`.
+pub(crate) fn stop_retrying_reason_to_code(
+    reason: &StopRetryingReason,
+) -> ExecutionRecoveryReasonCode {
+    match reason {
+        StopRetryingReason::GitBranchLost => ExecutionRecoveryReasonCode::GitBranchLost,
+        StopRetryingReason::StructuralGitError => ExecutionRecoveryReasonCode::StructuralGitError,
+        StopRetryingReason::GitIsolationExhausted => {
+            ExecutionRecoveryReasonCode::GitIsolationExhausted
+        }
+        _ => ExecutionRecoveryReasonCode::Unknown,
+    }
+}
+
+#[cfg(test)]
+#[path = "metadata_tests.rs"]
+mod tests;

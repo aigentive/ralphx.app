@@ -742,6 +742,10 @@ pub enum ExecutionRecoveryReasonCode {
     GitIsolationFailed,
     /// Permanent git error — branch lost or deleted, auto-recovery exhausted
     GitBranchLost,
+    /// Structural git error (missing branch, no commits) — retrying cannot help
+    StructuralGitError,
+    /// Git-isolation retry budget exhausted (3/3 retries failed)
+    GitIsolationExhausted,
     /// Unknown/unclassified reason
     Unknown,
 }
@@ -769,6 +773,14 @@ pub enum StopRetryingReason {
     GitBranchLost,
     /// User-initiated stop
     ManualStop,
+    /// Structural git error (missing branch, no commits) — retrying cannot help
+    StructuralGitError,
+    /// Git-isolation retry budget exhausted (3/3 retries failed)
+    GitIsolationExhausted,
+    /// Unknown variant from newer code — MUST be treated as stop reason (safe default:
+    /// unknown variants were explicitly set as stop reasons by newer code).
+    #[serde(other)]
+    Unknown,
 }
 
 /// Validation cache metadata stored in tasks.metadata

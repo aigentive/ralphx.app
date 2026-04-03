@@ -65,6 +65,7 @@ fn plugin_repo_root(plugin_dir: &Path) -> PathBuf {
     }
 }
 
+#[allow(clippy::manual_find)]
 fn first_existing_plugin_dir(candidates: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
     candidates.into_iter().find(|candidate| candidate.exists())
 }

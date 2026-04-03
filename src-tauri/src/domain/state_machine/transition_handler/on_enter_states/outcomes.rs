@@ -50,16 +50,35 @@ impl<'a> TransitionHandler<'a> {
                         .is_none()
                     {
                         let mut recovery = ExecutionRecoveryMetadata::new();
-                        recovery.append_event_with_state(
-                            ExecutionRecoveryEvent::new(
-                                ExecutionRecoveryEventKind::Failed,
-                                ExecutionRecoverySource::System,
-                                ExecutionRecoveryReasonCode::Unknown,
-                                "Failed without pre-written recovery metadata (fallback)",
-                            )
-                            .with_failure_source(ExecutionFailureSource::Unknown),
-                            ExecutionRecoveryState::Retrying,
-                        );
+                        // Detect structural git errors (e.g., missing base branch detected by
+                        // pre-validation in create_fresh_branch_and_worktree). These cannot be
+                        // fixed by retrying — mark stop_retrying=true immediately.
+                        if data.error.contains("structural:") {
+                            recovery.stop_retrying = true;
+                            recovery.unrecoverable_reason =
+                                Some(StopRetryingReason::StructuralGitError);
+                            recovery.append_event_with_state(
+                                ExecutionRecoveryEvent::new(
+                                    ExecutionRecoveryEventKind::Failed,
+                                    ExecutionRecoverySource::System,
+                                    ExecutionRecoveryReasonCode::StructuralGitError,
+                                    &data.error,
+                                )
+                                .with_failure_source(ExecutionFailureSource::GitIsolation),
+                                ExecutionRecoveryState::Failed,
+                            );
+                        } else {
+                            recovery.append_event_with_state(
+                                ExecutionRecoveryEvent::new(
+                                    ExecutionRecoveryEventKind::Failed,
+                                    ExecutionRecoverySource::System,
+                                    ExecutionRecoveryReasonCode::Unknown,
+                                    "Failed without pre-written recovery metadata (fallback)",
+                                )
+                                .with_failure_source(ExecutionFailureSource::Unknown),
+                                ExecutionRecoveryState::Retrying,
+                            );
+                        }
                         if let Ok(recovery_value) = serde_json::to_value(&recovery) {
                             metadata_obj.insert("execution_recovery".to_string(), recovery_value);
                         }

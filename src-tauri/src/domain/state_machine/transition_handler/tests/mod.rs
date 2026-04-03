@@ -21,6 +21,7 @@ mod merge_retry;
 mod merge_workflow;
 mod execution_recovery_fallback_tests;
 mod metadata_skip_guard;
+mod structural_git_error_tests;
 mod transitions_agents;
 mod transitions_basic;
 mod transitions_branchless_merge;

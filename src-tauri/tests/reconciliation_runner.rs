@@ -8114,3 +8114,232 @@ fn test_deferred_merge_cleanup_timeout_metadata_format_matches_domain_types() {
         "RC3 Test 5: metadata round-trip must deserialize back to DeferredWorktreeKill variant"
     );
 }
+
+// ============================================================================
+// Defense-in-depth: GitIsolationExhausted and StructuralGitError stop_retrying
+// ============================================================================
+
+/// Budget exhaustion (3/3 git-isolation retries) sets stop_retrying=true with GitIsolationExhausted.
+///
+/// Verifies that when the git-isolation retry budget is exhausted, the reconciler
+/// calls set_execution_stop_retrying_with_reason(GitIsolationExhausted) so the task
+/// is not retried again after an app restart (event clearing via auto_recover_task).
+#[tokio::test]
+async fn reconcile_failed_git_isolation_budget_exhausted_sets_stop_retrying_git_isolation_exhausted() {
+    use ralphx_lib::domain::entities::{
+        ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
+        ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource,
+        ExecutionRecoveryState, Project,
+    };
+    use ralphx_lib::domain::entities::task_metadata::StopRetryingReason;
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let max = reconciliation_config().git_isolation_max_retries as u32;
+
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    // Append exactly git_isolation_max_retries AutoRetryTriggered events with GitIsolation source
+    for i in 0..max {
+        recovery.append_event(
+            ExecutionRecoveryEvent::new(
+                ExecutionRecoveryEventKind::AutoRetryTriggered,
+                ExecutionRecoverySource::Auto,
+                ExecutionRecoveryReasonCode::GitIsolationFailed,
+                format!("Git isolation retry {}", i + 1),
+            )
+            .with_attempt(i + 1)
+            .with_failure_source(ExecutionFailureSource::GitIsolation),
+        );
+    }
+    recovery.last_state = ExecutionRecoveryState::Retrying;
+
+    let task = make_task_with_recovery(&project.id, recovery);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = reconciler
+        .reconcile_failed_execution_task(&task, InternalStatus::Failed)
+        .await;
+
+    assert!(!result, "git-isolation budget exhausted: should return false");
+
+    // Verify stop_retrying=true and unrecoverable_reason=GitIsolationExhausted
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let updated_recovery =
+        ExecutionRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .expect("parse metadata")
+            .expect("execution_recovery should exist");
+    assert!(
+        updated_recovery.stop_retrying,
+        "git-isolation budget exhausted: stop_retrying must be true"
+    );
+    assert_eq!(
+        updated_recovery.unrecoverable_reason,
+        Some(StopRetryingReason::GitIsolationExhausted),
+        "git-isolation budget exhausted: unrecoverable_reason must be GitIsolationExhausted"
+    );
+}
+
+/// Structural error detected by reconciler sets stop_retrying=true with StructuralGitError.
+///
+/// Verifies that a task whose last recovery event message contains "structural:"
+/// gets stop_retrying=true set by the reconciler (defense-in-depth for errors that
+/// bypass on_enter(Failed) pre-validation).
+#[tokio::test]
+async fn reconcile_failed_structural_error_sets_stop_retrying_structural_git_error() {
+    use ralphx_lib::domain::entities::{
+        ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
+        ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource,
+        ExecutionRecoveryState, Project,
+    };
+    use ralphx_lib::domain::entities::task_metadata::StopRetryingReason;
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    // Structural error message — contains "structural:" prefix
+    recovery.append_event_with_state(
+        ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::Failed,
+            ExecutionRecoverySource::System,
+            ExecutionRecoveryReasonCode::GitIsolationFailed,
+            "git_isolation_error: structural: base branch 'main' does not exist",
+        )
+        .with_failure_source(ExecutionFailureSource::GitIsolation),
+        ExecutionRecoveryState::Retrying,
+    );
+
+    let task = make_task_with_recovery(&project.id, recovery);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = reconciler
+        .reconcile_failed_execution_task(&task, InternalStatus::Failed)
+        .await;
+
+    assert!(!result, "structural git error: should return false");
+
+    // Verify stop_retrying=true and unrecoverable_reason=StructuralGitError
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let updated_recovery =
+        ExecutionRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .expect("parse metadata")
+            .expect("execution_recovery should exist");
+    assert!(
+        updated_recovery.stop_retrying,
+        "structural git error: stop_retrying must be true"
+    );
+    assert_eq!(
+        updated_recovery.unrecoverable_reason,
+        Some(StopRetryingReason::StructuralGitError),
+        "structural git error: unrecoverable_reason must be StructuralGitError"
+    );
+}
+
+/// Structural error with stop_retrying=true survives app restart — startup recovery skips it.
+///
+/// Verifies the !r.stop_retrying gate at line 204 prevents startup recovery
+/// (recover_timeout_failures) from re-queuing a task that was permanently stopped
+/// by a structural git error.
+#[tokio::test]
+async fn recover_timeout_failures_skips_task_with_stop_retrying_true() {
+    use ralphx_lib::domain::entities::{
+        ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
+        ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Project,
+        Task,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Task with stop_retrying=true and last_state=Retrying — simulates post-structural-error state
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    recovery.append_event_with_state(
+        ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::Failed,
+            ExecutionRecoverySource::System,
+            ExecutionRecoveryReasonCode::GitIsolationFailed,
+            "git_isolation_error: structural: base branch 'main' does not exist",
+        ),
+        ExecutionRecoveryState::Retrying,
+    );
+    recovery.stop_retrying = true;
+
+    let mut task = Task::new(project.id.clone(), "Structural Error Task".into());
+    task.internal_status = InternalStatus::Failed;
+    task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Simulate app restart — run startup recovery
+    reconciler.recover_timeout_failures().await;
+
+    // Task must remain Failed — stop_retrying=true prevents startup recovery
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Failed,
+        "Task with stop_retrying=true must NOT be recovered by startup recovery"
+    );
+}
+
+/// Classifier overlap: task with stop_retrying=true matching both is_structural_git_error
+/// and is_permanent_git_error is skipped by startup recovery at the stop_retrying gate —
+/// never reaching the is_permanent_git_error check.
+#[tokio::test]
+async fn recover_timeout_failures_classifier_overlap_blocked_by_stop_retrying_gate() {
+    use ralphx_lib::domain::entities::{
+        ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
+        ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Project,
+        Task,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Message matching BOTH is_structural_git_error ("structural:" prefix)
+    // AND is_permanent_git_error ("invalid reference", "does not exist")
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    recovery.append_event_with_state(
+        ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::Failed,
+            ExecutionRecoverySource::System,
+            ExecutionRecoveryReasonCode::GitIsolationFailed,
+            "fatal: invalid reference: structural: refs/heads/main does not exist",
+        ),
+        ExecutionRecoveryState::Retrying,
+    );
+    // stop_retrying=true — set by reconciler or on_enter(Failed) structural error path
+    recovery.stop_retrying = true;
+
+    let mut task = Task::new(project.id.clone(), "Overlap Classifier Task".into());
+    task.internal_status = InternalStatus::Failed;
+    task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Startup recovery should skip this — stop_retrying=true blocks it at the !r.stop_retrying gate
+    reconciler.recover_timeout_failures().await;
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Failed,
+        "Task with stop_retrying=true must NOT be recovered even when error matches both classifiers"
+    );
+}
+

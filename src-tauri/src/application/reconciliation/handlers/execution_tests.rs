@@ -204,3 +204,80 @@ fn test_preserve_steps_flag_overwrites_false_value() {
         "preserve_steps should be overwritten to true"
     );
 }
+
+// ============================================================
+// Tests for is_structural_git_error() classifier
+// ============================================================
+
+/// Replicates is_structural_git_error() from execution.rs for testing.
+fn is_structural_git_error_test(msg: &str) -> bool {
+    if msg.contains("structural:") {
+        return true;
+    }
+    msg.contains("does not exist") && msg.contains("invalid reference")
+}
+
+#[test]
+fn test_structural_git_error_structural_prefix() {
+    let msg = "git_isolation_error: structural: base branch 'main' does not exist";
+    assert!(
+        is_structural_git_error_test(msg),
+        "Should detect 'structural:' prefix as structural git error"
+    );
+}
+
+#[test]
+fn test_structural_git_error_combined_does_not_exist_and_invalid_reference() {
+    let msg = "fatal: invalid reference: refs/heads/main does not exist";
+    assert!(
+        is_structural_git_error_test(msg),
+        "Should detect combined 'does not exist' + 'invalid reference' as structural git error"
+    );
+}
+
+#[test]
+fn test_structural_git_error_only_does_not_exist_not_structural() {
+    // Only one of the combined patterns — should NOT match
+    let msg = "fatal: path 'some/file' does not exist in the repository";
+    assert!(
+        !is_structural_git_error_test(msg),
+        "Single 'does not exist' without 'invalid reference' should not be structural"
+    );
+}
+
+#[test]
+fn test_structural_git_error_only_invalid_reference_not_structural() {
+    // Only one of the combined patterns — should NOT match
+    let msg = "fatal: invalid reference 'refs/heads/task-abc'";
+    assert!(
+        !is_structural_git_error_test(msg),
+        "Single 'invalid reference' without 'does not exist' should not be structural"
+    );
+}
+
+#[test]
+fn test_structural_git_error_transient_not_matched() {
+    let transient_errors = [
+        "fatal: Unable to create '.git/index.lock': File exists",
+        "unable to create .git/index.lock",
+        "Connection timed out",
+        "repository busy, try again later",
+        "error: lock file '.git/index.lock' is already locked",
+        "error: remote end hung up unexpectedly",
+    ];
+    for msg in &transient_errors {
+        assert!(
+            !is_structural_git_error_test(msg),
+            "Should NOT classify transient error as structural: {}",
+            msg
+        );
+    }
+}
+
+#[test]
+fn test_structural_git_error_empty_message_not_structural() {
+    assert!(
+        !is_structural_git_error_test(""),
+        "Empty message should not be classified as structural git error"
+    );
+}

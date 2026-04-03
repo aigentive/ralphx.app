@@ -1729,3 +1729,26 @@ fn validation_cache_metadata_version_is_one() {
     let parsed: ValidationCacheMetadata = serde_json::from_str(&json_str).unwrap();
     assert_eq!(parsed.version, 1);
 }
+
+#[test]
+fn stop_retrying_reason_serde_round_trip_new_variants() {
+    // StructuralGitError round-trips
+    let json = serde_json::to_string(&StopRetryingReason::StructuralGitError).unwrap();
+    assert_eq!(json, "\"structural_git_error\"");
+    let parsed: StopRetryingReason = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed, StopRetryingReason::StructuralGitError);
+
+    // GitIsolationExhausted round-trips
+    let json = serde_json::to_string(&StopRetryingReason::GitIsolationExhausted).unwrap();
+    assert_eq!(json, "\"git_isolation_exhausted\"");
+    let parsed: StopRetryingReason = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed, StopRetryingReason::GitIsolationExhausted);
+}
+
+#[test]
+fn stop_retrying_reason_unknown_fallback_for_future_variants() {
+    // An unrecognised variant from newer code must deserialise to Unknown
+    let parsed: StopRetryingReason = serde_json::from_str("\"some_future_variant\"").unwrap();
+    assert_eq!(parsed, StopRetryingReason::Unknown);
+}
+
