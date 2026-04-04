@@ -16,6 +16,7 @@ pub struct ExecutionSettings {
 
 impl Default for ExecutionSettings {
     fn default() -> Self {
+        // Last-resort fallback only. Keep aligned with ralphx.yaml execution_defaults.project.
         Self {
             max_concurrent_tasks: 10,
             project_ideation_max: 5,
@@ -40,6 +41,7 @@ pub struct GlobalExecutionSettings {
 
 impl Default for GlobalExecutionSettings {
     fn default() -> Self {
+        // Last-resort fallback only. Keep aligned with ralphx.yaml execution_defaults.global.
         Self {
             global_max_concurrent: 20,
             global_ideation_max: 10,

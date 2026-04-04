@@ -275,6 +275,20 @@ fn test_execution_defaults_fallback_when_section_missing() {
 }
 
 #[test]
+fn test_embedded_config_keeps_explicit_execution_defaults_aligned_with_fallback() {
+    let parsed =
+        parse_config_no_env_overrides(EMBEDDED_CONFIG).expect("embedded config should parse");
+
+    assert_eq!(
+        parsed.execution_defaults,
+        ExecutionDefaultsConfig::default(),
+        "ralphx.yaml should keep explicit execution_defaults aligned with the Rust fallback \
+         defaults so YAML remains the human-edited source of truth and the code default stays \
+         only a last-resort safety net"
+    );
+}
+
+#[test]
 fn test_settings_profile_resolves_prefixed_env_overrides() {
     let mut settings = serde_json::json!({
         "env": {
