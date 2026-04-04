@@ -15,15 +15,22 @@ pub(super) async fn auto_propose_for_external(
         return;
     }
 
-    // Transition external activity phase to "proposing" (fire-and-forget)
+    // Transition external activity phase to "proposing" before attempting delivery so the
+    // later "ready" write cannot be clobbered by a delayed fire-and-forget update.
     {
-        let repo = std::sync::Arc::clone(&state.app_state.ideation_session_repo);
         let sid = crate::domain::entities::IdeationSessionId::from_string(session_id.to_string());
-        tokio::spawn(async move {
-            if let Err(e) = repo.update_external_activity_phase(&sid, Some("proposing")).await {
-                tracing::error!("Failed to set activity phase 'proposing' for session {}: {}", sid.as_str(), e);
-            }
-        });
+        if let Err(e) = state
+            .app_state
+            .ideation_session_repo
+            .update_external_activity_phase(&sid, Some("proposing"))
+            .await
+        {
+            tracing::error!(
+                "Failed to set activity phase 'proposing' for session {}: {}",
+                sid.as_str(),
+                e
+            );
+        }
     }
 
     let is_team_mode = session_is_team_mode(session);

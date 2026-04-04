@@ -2473,7 +2473,7 @@ async fn test_auto_propose_fires_for_external_zero_blocking() {
     // Round 2: 0 gaps → server auto-detects zero_blocking, overrides to Verified,
     // then calls auto_propose_for_external (external + zero_blocking guard passes).
     let result = update_plan_verification(
-        State(state),
+        State(state.clone()),
         Path(session_id.clone()),
         Json(UpdateVerificationRequest {
             status: "needs_revision".to_string(),
@@ -2500,16 +2500,41 @@ async fn test_auto_propose_fires_for_external_zero_blocking() {
         "convergence_reason must be 'zero_blocking'"
     );
 
-    // Assert auto-propose was queued for this session's ideation context
-    let queued = message_queue.get_queued(ChatContextType::Ideation, &session_id);
+    // The detached auto-propose task should enqueue the trigger message and complete the
+    // external activity handoff shortly after the handler returns.
+    let mut queued_contents: Vec<String> = Vec::new();
+    let mut final_phase = None;
+    for _ in 0..40 {
+        let queued = message_queue.get_queued(ChatContextType::Ideation, &session_id);
+        queued_contents = queued.iter().map(|m| m.content.clone()).collect();
+        let refreshed = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&session_id_obj)
+            .await
+            .expect("session reload should succeed")
+            .expect("session should still exist");
+        final_phase = refreshed.external_activity_phase.clone();
+        if queued_contents
+            .iter()
+            .any(|content| content.contains("<auto-propose>"))
+            && final_phase.as_deref() == Some("ready")
+        {
+            break;
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    }
     assert!(
-        !queued.is_empty(),
-        "auto-propose message must be queued for external zero_blocking session"
-    );
-    assert!(
-        queued.iter().any(|m| m.content.contains("<auto-propose>")),
+        queued_contents
+            .iter()
+            .any(|content| content.contains("<auto-propose>")),
         "queued message must contain <auto-propose> tag; got: {:?}",
-        queued.iter().map(|m| &m.content).collect::<Vec<_>>()
+        queued_contents
+    );
+    assert_eq!(
+        final_phase.as_deref(),
+        Some("ready"),
+        "external auto-propose must restore activity phase to ready after delivery"
     );
 }
 

@@ -460,12 +460,24 @@ pub async fn update_plan_verification(
         }
     }
 
-    // Auto-propose for external sessions that converged via zero_blocking
+    // Auto-propose for external sessions that converged via zero_blocking.
+    // Run this detached from the verifier's request lifecycle so the child session can finish
+    // cleanly without cancelling the follow-on orchestrator spawn mid-flight.
     if new_status == VerificationStatus::Verified
         && metadata.convergence_reason.as_deref() == Some("zero_blocking")
         && session.origin == crate::domain::entities::ideation::SessionOrigin::External
     {
-        auto_propose_for_external(&session_id, &session, &state).await;
+        let state_for_auto_propose = state.clone();
+        let session_for_auto_propose = session.clone();
+        let session_id_for_auto_propose = session_id.clone();
+        tauri::async_runtime::spawn(async move {
+            auto_propose_for_external(
+                &session_id_for_auto_propose,
+                &session_for_auto_propose,
+                &state_for_auto_propose,
+            )
+            .await;
+        });
     }
 
     // For external sessions that reach Verified WITHOUT auto-propose (non-zero_blocking):
