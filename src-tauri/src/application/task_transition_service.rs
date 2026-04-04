@@ -1036,6 +1036,9 @@ impl<R: Runtime> TaskTransitionService<R> {
             );
             tracing::debug!("Emitted task:event status_changed");
         }
+        self.event_emitter
+            .emit_status_change(task_id.as_str(), old_status.as_str(), new_status.as_str())
+            .await;
 
         // 6. Execute exit actions for the old status (e.g., decrement running count)
         tracing::debug!(
@@ -1319,6 +1322,9 @@ impl<R: Runtime> TaskTransitionService<R> {
                             }),
                         );
                     }
+                    self.event_emitter
+                        .emit_status_change(task_id.as_str(), result.from_status.as_str(), "failed")
+                        .await;
                     // Create ExecutionRecoveryMetadata for git isolation failures.
                     // Written ONLY after the optimistic lock succeeded (inside apply_corrective_transition
                     // Ok(true) branch), so the task IS in Failed state. This prevents orphaned metadata
@@ -1379,6 +1385,13 @@ impl<R: Runtime> TaskTransitionService<R> {
                             }),
                         );
                     }
+                    self.event_emitter
+                        .emit_status_change(
+                            task_id.as_str(),
+                            result.from_status.as_str(),
+                            "escalated",
+                        )
+                        .await;
                 }
             }
         }
@@ -1446,6 +1459,13 @@ impl<R: Runtime> TaskTransitionService<R> {
                 );
                 tracing::debug!("Emitted task:event for auto-transition");
             }
+            self.event_emitter
+                .emit_status_change(
+                    task_id.as_str(),
+                    current_status.as_str(),
+                    auto_status.as_str(),
+                )
+                .await;
 
             // Execute on_enter for the auto-transition target state
             if let Err(e) = handler.on_enter(&auto_state).await {
