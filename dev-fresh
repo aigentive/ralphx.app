@@ -20,8 +20,10 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
 
-cd "$PROJECT_ROOT/src-tauri"
-cargo clean
+(
+  cd "$PROJECT_ROOT/src-tauri"
+  cargo clean
 
-cd "$PROJECT_ROOT/frontend"
-exec npm run tauri dev
+  cd "$PROJECT_ROOT/frontend"
+  npm run tauri dev
+)
