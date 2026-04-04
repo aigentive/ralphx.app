@@ -150,6 +150,10 @@ impl WebhookPublisherTrait for WebhookPublisher {
             });
         }
     }
+
+    fn invalidate_project(&self, project_id: &str) {
+        self.cache.remove(project_id);
+    }
 }
 
 // ============================================================================

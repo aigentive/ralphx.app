@@ -576,13 +576,123 @@ async fn test_webhook_deactivation_after_10_consecutive_failures() {
 }
 
 // ============================================================================
-// Test 5: Full pipeline + webhook registration in one flow
+// Test 5: Re-registration refreshes project_ids scope (PDM-280 fix)
+//
+// Flow: register webhook with proj-a → re-register same URL with [proj-a, proj-b]
+//       → verify list_active_for_project(proj-b) returns the webhook
+//       → verify id and secret preserved across re-registration
+// ============================================================================
+
+#[tokio::test]
+async fn test_reregistration_refreshes_project_ids() {
+    let state = setup_test_state().await;
+
+    let api_key_id = "api-key-reregister-test";
+    let webhook_url = "http://127.0.0.1:18789/hooks/reregister";
+    let proj_a = "proj-reregister-a";
+    let proj_b = "proj-reregister-b";
+
+    // Create both projects
+    state
+        .app_state
+        .project_repo
+        .create(make_project(proj_a, "Reregister Project A"))
+        .await
+        .unwrap();
+    state
+        .app_state
+        .project_repo
+        .create(make_project(proj_b, "Reregister Project B"))
+        .await
+        .unwrap();
+
+    // --- Step 1: Register webhook scoped to proj-a only ---
+    let reg_req = RegisterWebhookRequest {
+        url: webhook_url.to_string(),
+        event_types: None,
+        project_ids: vec![proj_a.to_string()],
+    };
+    let reg_result = register_webhook_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        headers_with_key(api_key_id),
+        Json(reg_req),
+    )
+    .await;
+    assert!(reg_result.is_ok(), "Initial registration must succeed");
+    let reg_resp = reg_result.unwrap().0;
+    let original_id = reg_resp.id.clone();
+    let original_secret = reg_resp.secret.clone();
+
+    // proj-b must NOT be in scope yet
+    let before = state
+        .app_state
+        .webhook_registration_repo
+        .list_active_for_project(proj_b)
+        .await
+        .unwrap();
+    assert_eq!(before.len(), 0, "proj-b must not be in scope before re-registration");
+
+    // --- Step 2: Re-register same URL with expanded scope [proj-a, proj-b] ---
+    let rereg_req = RegisterWebhookRequest {
+        url: webhook_url.to_string(),
+        event_types: None,
+        project_ids: vec![proj_a.to_string(), proj_b.to_string()],
+    };
+    let rereg_result = register_webhook_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        headers_with_key(api_key_id),
+        Json(rereg_req),
+    )
+    .await;
+    assert!(rereg_result.is_ok(), "Re-registration must succeed");
+    let rereg_resp = rereg_result.unwrap().0;
+
+    // Same id and secret preserved
+    assert_eq!(
+        rereg_resp.id, original_id,
+        "Webhook id must be preserved across re-registration"
+    );
+    assert_eq!(
+        rereg_resp.secret, original_secret,
+        "Webhook secret must be preserved across re-registration"
+    );
+    assert!(rereg_resp.active, "Re-registered webhook must be active");
+
+    // proj-b must now appear
+    let after = state
+        .app_state
+        .webhook_registration_repo
+        .list_active_for_project(proj_b)
+        .await
+        .unwrap();
+    assert_eq!(
+        after.len(),
+        1,
+        "proj-b must appear in list_active_for_project after re-registration"
+    );
+    assert_eq!(after[0].id, original_id);
+
+    // proj-a still appears
+    let for_a = state
+        .app_state
+        .webhook_registration_repo
+        .list_active_for_project(proj_a)
+        .await
+        .unwrap();
+    assert_eq!(for_a.len(), 1, "proj-a must still appear after re-registration");
+}
+
+// ============================================================================
+// Test 6: Full pipeline + webhook registration in one flow
 //
 // Flow: create project → session → proposals → apply → register webhook →
 //       list webhooks → unregister webhook → list webhooks (empty)
 //
 // This is the combined E2E scenario an autonomous agent would execute.
 // ============================================================================
+
 
 #[tokio::test]
 async fn test_full_pipeline_with_webhook_registration() {

@@ -122,3 +122,49 @@ async fn test_reset_failures() {
     assert!(reg.active);
     assert_eq!(reg.failure_count, 0);
 }
+
+#[tokio::test]
+async fn test_upsert_refreshes_project_ids_and_preserves_id_and_secret() {
+    let repo = make_repo();
+    // Initial registration: proj-1 only, known secret
+    let mut reg1 = make_reg("wh-1", "key-1", "http://example.com/hook");
+    reg1.secret = "original-secret-abcdef".to_string();
+    let created = repo.upsert(reg1).await.unwrap();
+    assert_eq!(created.id, "wh-1");
+    assert_eq!(created.project_ids, "[\"proj-1\"]");
+
+    // Re-register same url+api_key_id with expanded scope including proj-2
+    let mut reg2 = make_reg("wh-NEW", "key-1", "http://example.com/hook");
+    reg2.project_ids = "[\"proj-1\",\"proj-2\"]".to_string();
+    reg2.event_types = Some("[\"task:status_changed\"]".to_string());
+    reg2.secret = "new-secret-should-not-replace".to_string();
+    let result = repo.upsert(reg2).await.unwrap();
+
+    // Same id preserved
+    assert_eq!(result.id, "wh-1", "Existing id must be preserved");
+    // Secret preserved (not regenerated on re-registration)
+    assert_eq!(result.secret, "original-secret-abcdef", "Secret must be preserved");
+    // project_ids refreshed
+    assert_eq!(
+        result.project_ids, "[\"proj-1\",\"proj-2\"]",
+        "project_ids must be refreshed on re-registration"
+    );
+    // event_types refreshed
+    assert_eq!(
+        result.event_types,
+        Some("[\"task:status_changed\"]".to_string()),
+        "event_types must be refreshed on re-registration"
+    );
+    // active and failure_count reset
+    assert!(result.active);
+    assert_eq!(result.failure_count, 0);
+
+    // Verify via list_active_for_project — new project must appear
+    let for_proj2 = repo.list_active_for_project("proj-2").await.unwrap();
+    assert_eq!(
+        for_proj2.len(),
+        1,
+        "Webhook must appear for newly-scoped project after re-registration"
+    );
+    assert_eq!(for_proj2[0].id, "wh-1");
+}

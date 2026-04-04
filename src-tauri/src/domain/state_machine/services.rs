@@ -217,6 +217,12 @@ pub trait WebhookPublisher: Send + Sync {
         project_id: &str,
         payload: serde_json::Value,
     );
+
+    /// Evict a project's webhooks from the publisher cache after a registration mutation.
+    ///
+    /// Call after `upsert()` so the next `publish()` re-queries fresh data from the repo.
+    /// Default implementation is a no-op (suitable for test/mock publishers).
+    fn invalidate_project(&self, _project_id: &str) {}
 }
 
 /// No-op webhook publisher for tests.

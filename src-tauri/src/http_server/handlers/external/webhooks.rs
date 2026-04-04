@@ -84,6 +84,16 @@ pub async fn register_webhook_http(
             }
         })?;
 
+    // Invalidate publisher DashMap cache for affected projects so the next publish()
+    // call re-queries the repo and picks up the refreshed project_ids.
+    if let Some(publisher) = &state.app_state.webhook_publisher {
+        let project_ids: Vec<String> =
+            serde_json::from_str(&registration.project_ids).unwrap_or_default();
+        for pid in &project_ids {
+            publisher.invalidate_project(pid);
+        }
+    }
+
     let event_types: Option<Vec<String>> = registration
         .event_types
         .as_deref()

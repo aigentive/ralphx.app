@@ -127,6 +127,62 @@ async fn scoped_webhook_not_returned_for_other_project() {
 }
 
 #[tokio::test]
+async fn register_reregistration_refreshes_project_ids() {
+    let repo = make_repo();
+    let svc = make_service(Arc::clone(&repo));
+
+    // First registration: proj-a only
+    let first = svc
+        .register(
+            "key-1",
+            "https://example.com/hook",
+            None,
+            vec!["proj-a".to_string()],
+            &["proj-a".to_string(), "proj-b".to_string()],
+        )
+        .await
+        .expect("first registration should succeed");
+
+    let first_id = first.id.clone();
+    let stored_first: Vec<String> =
+        serde_json::from_str(&first.project_ids).expect("valid JSON");
+    assert_eq!(stored_first, vec!["proj-a"]);
+
+    // Second registration (same URL+api_key): expand scope to include proj-b
+    let second = svc
+        .register(
+            "key-1",
+            "https://example.com/hook",
+            None,
+            vec!["proj-a".to_string(), "proj-b".to_string()],
+            &["proj-a".to_string(), "proj-b".to_string()],
+        )
+        .await
+        .expect("re-registration should succeed");
+
+    // Same id preserved
+    assert_eq!(second.id, first_id, "Re-registration must preserve webhook id");
+    // project_ids refreshed to include proj-b
+    let stored_second: Vec<String> =
+        serde_json::from_str(&second.project_ids).expect("valid JSON");
+    assert!(
+        stored_second.contains(&"proj-b".to_string()),
+        "Re-registration must include newly-added project in project_ids"
+    );
+
+    // Verify new project appears in list_active_for_project
+    let for_b = repo
+        .list_active_for_project("proj-b")
+        .await
+        .expect("query should succeed");
+    assert_eq!(
+        for_b.len(),
+        1,
+        "Webhook must appear for proj-b after re-registration"
+    );
+}
+
+#[tokio::test]
 async fn register_rejects_out_of_scope_project_ids() {
     let repo = make_repo();
     let svc = make_service(Arc::clone(&repo));

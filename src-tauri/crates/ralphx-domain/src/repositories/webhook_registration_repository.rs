@@ -25,7 +25,9 @@ pub struct WebhookRegistration {
 #[async_trait]
 pub trait WebhookRegistrationRepository: Send + Sync {
     /// Create or update (idempotent by url+api_key_id): if url already exists for this api_key_id,
-    /// reset failure_count to 0, set active=true, return existing id. Otherwise insert new row.
+    /// refresh `project_ids` and `event_types` from the incoming registration, reset
+    /// `failure_count` to 0, set `active=true`, and return the existing `id`.
+    /// Otherwise insert a new row. The `secret` is never regenerated on re-registration.
     async fn upsert(&self, registration: WebhookRegistration) -> AppResult<WebhookRegistration>;
 
     /// Get by ID

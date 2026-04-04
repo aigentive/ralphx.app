@@ -72,10 +72,10 @@ impl WebhookRegistrationRepository for SqliteWebhookRegistrationRepository {
                     .ok();
 
                 if let Some(existing_id) = existing {
-                    // Idempotent: reset failures, reactivate
+                    // Re-registration: refresh project_ids, event_types, reset failures, reactivate
                     conn.execute(
-                        "UPDATE webhook_registrations SET active = 1, failure_count = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?1",
-                        [existing_id.as_str()],
+                        "UPDATE webhook_registrations SET active = 1, failure_count = 0, project_ids = ?2, event_types = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?1",
+                        rusqlite::params![existing_id, project_ids, event_types],
                     )?;
                     // Return updated row
                     conn.query_row(

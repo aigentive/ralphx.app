@@ -41,6 +41,8 @@ impl WebhookRegistrationRepository for MemoryWebhookRegistrationRepository {
             .map(|r| r.id.clone());
         if let Some(id) = existing_id {
             let entry = store.get_mut(&id).unwrap();
+            entry.project_ids = registration.project_ids.clone();
+            entry.event_types = registration.event_types.clone();
             entry.failure_count = 0;
             entry.active = true;
             Ok(entry.clone())
@@ -130,3 +132,7 @@ impl WebhookRegistrationRepository for MemoryWebhookRegistrationRepository {
         Ok(results)
     }
 }
+
+#[cfg(test)]
+#[path = "memory_webhook_registration_repo_tests.rs"]
+mod tests;
