@@ -965,6 +965,30 @@ fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
     }
 }
 
+#[test]
+fn test_plan_critic_mcp_tools_match_prompt_contract() {
+    for agent_name in [
+        "plan-critic-completeness",
+        "plan-critic-implementation-feasibility",
+    ] {
+        let config = get_agent_config(agent_name).expect("plan critic should exist");
+
+        for tool in ["get_session_plan", "get_artifact", "create_team_artifact"] {
+            assert!(
+                config.allowed_mcp_tools.contains(&tool.to_string()),
+                "{agent_name} missing expected MCP tool {tool}"
+            );
+        }
+
+        assert!(
+            !config
+                .allowed_mcp_tools
+                .contains(&"get_team_artifacts".to_string()),
+            "{agent_name} should stay bounded and not depend on get_team_artifacts"
+        );
+    }
+}
+
 // ── Agent extends inheritance tests ─────────────────────────────
 
 #[test]

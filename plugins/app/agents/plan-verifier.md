@@ -258,8 +258,8 @@ Before dispatching any specialist selected in Step A1, check `disabled_specialis
 Dispatch ALL agents (critics + applicable specialists) in a SINGLE response message — this is how Claude Code runs Tasks in parallel:
 
 ```
-Task(subagent_type: "ralphx:plan-critic-completeness", model: "<SUBAGENT_MODEL_CAP>", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Return highest-signal failure predictors only.")
-Task(subagent_type: "ralphx:plan-critic-implementation-feasibility", model: "<SUBAGENT_MODEL_CAP>", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Return highest-signal failure predictors only.")
+Task(subagent_type: "ralphx:plan-critic-completeness", model: "<SUBAGENT_MODEL_CAP>", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Stay bounded to the plan's Affected Files and at most one adjacent integration point per file family. Create exactly one TeamResearch artifact on the parent session with title prefix 'Completeness: ' and structured best-effort JSON content. If analysis is incomplete, emit status=partial instead of continuing to explore.")
+Task(subagent_type: "ralphx:plan-critic-implementation-feasibility", model: "<SUBAGENT_MODEL_CAP>", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Stay bounded to the plan's Affected Files and at most one adjacent integration point per file family. Create exactly one TeamResearch artifact on the parent session with title prefix 'Feasibility: ' and structured best-effort JSON content. If analysis is incomplete, emit status=partial instead of continuing to explore.")
 [If UX specialist selected AND `ideation-specialist-ux` NOT in disabled_specialists]:
 Task(subagent_type: "ralphx:ideation-specialist-ux", model: "<SUBAGENT_MODEL_CAP>", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nAnalyze the plan from a UI/UX perspective. Read the plan via get_session_plan. Create your TeamResearch artifact using session_id: <parent_session_id> — this is the PARENT IDEATION SESSION ID, not your own session. Title the artifact with prefix 'UX: ' followed by the feature name.")
 [If prompt quality specialist selected AND `ideation-specialist-prompt-quality` NOT in disabled_specialists]:
@@ -277,34 +277,63 @@ Task(subagent_type: "ralphx:ideation-specialist-state-machine", model: "<SUBAGEN
 
 Wait for ALL dispatched Tasks to return (critics + any specialists).
 
-### B. Collect specialist artifacts (if specialists were dispatched)
+### B. Collect round artifacts
 
-If any specialists were dispatched in step A2, collect their artifacts via two-step flow:
+Collect artifacts produced during this round via two-step flow. This includes:
+- critic artifacts (`Completeness:`, `Feasibility:`)
+- specialist artifacts (`UX:`, `PromptQuality:`, `PipelineSafety:`, `StateMachine:`)
 
 1. Call `mcp__ralphx__get_team_artifacts(session_id: <parent_session_id>)` — returns summaries with 200-char `content_preview`.
 2. Filter artifacts **client-side** by `created_at` timestamp ONLY: keep all artifacts where `created_at >= (round_start_time minus 5 seconds)`. This filters out artifacts from prior rounds.
-   ❌ Do NOT apply title-prefix filtering here — collect ALL matching-timestamp artifacts regardless of prefix (`UX:`, `PromptQuality:`, etc.). Prefix filtering happens at consumption time in Step F2 only.
+   ❌ Do NOT apply title-prefix filtering here — collect ALL matching-timestamp artifacts regardless of prefix (`Completeness:`, `Feasibility:`, `UX:`, `PromptQuality:`, etc.). Prefix filtering happens at consumption time in steps C and F2.
 3. For each matching artifact (newest first, by `created_at`): call `mcp__ralphx__get_artifact(artifact_id: <id>)` to retrieve full content.
 4. If multiple artifacts from the same specialist type exist (identified by title prefix at F2 consumption), use only the **latest** (highest `created_at`).
-5. If `get_team_artifacts` fails or returns no matches → treat as "no specialist artifacts" and continue with critic results only.
+5. If `get_team_artifacts` fails or returns no matches → treat as "no round artifacts". Continue, but note critic output as unavailable for this round.
 
-Store ALL retrieved specialist artifact content (keyed by title prefix) for use in step F2 (plan revision).
+Store ALL retrieved artifact content (keyed by title prefix) for use in steps C and F2.
 
 ### C. Parse critic results
 
-Each critic returns a JSON object: `{"gaps": [...], "summary": "..."}`.
+Critic outputs come from artifacts, not direct chat replies.
 
-If a critic returns an error JSON (e.g., `{"gaps": [{"severity": "critical", "description": "Failed to fetch plan..."}]}`), note the error but continue — include it in the gap list.
+For each required critic:
+- `Completeness:` → parse artifact body as JSON object from the completeness critic
+- `Feasibility:` → parse artifact body as JSON object from the feasibility critic
 
-Extract all gaps from both critics. Each gap has:
+Expected artifact body schema:
+```json
+{
+  "status": "complete|partial|error",
+  "critic": "completeness|feasibility",
+  "round": <current_round>,
+  "coverage": "plan_only|affected_files|affected_files_plus_adjacent",
+  "summary": "...",
+  "gaps": [...]
+}
+```
+
+Rules:
+1. Use the latest artifact for each critic prefix from this round window.
+2. If the artifact parses successfully:
+   - treat `status: "complete"` and `status: "partial"` as usable outputs
+   - treat `status: "error"` as usable output containing infrastructure gaps
+3. If a critic artifact is missing or unparseable:
+   - mark that critic as unavailable for the round
+   - do NOT invent gaps from scratch
+   - do NOT claim zero-blocking convergence for this round
+4. If only one critic returns usable output, continue with that output plus any specialist artifacts.
+5. If both critics are unavailable, continue only to record the failure and specialist findings; treat the round as non-converged.
+
+Extract all gaps from usable critic artifacts. Each gap has:
 - `severity`: "critical" | "high" | "medium" | "low"
 - `category`: string
 - `description`: string
 - `why_it_matters`: string (optional)
+- feasibility gaps may also include `lens`
 
 ### D. Merge gaps (deduplicate)
 
-Deduplicate gaps across Layer 1 and Layer 2 results:
+Deduplicate gaps across usable critic results:
 - Two gaps are duplicates if they describe the same file/function/issue
 - Keep the higher-severity version when merging duplicates
 - Assign source: "layer1" | "layer2" | "both"
@@ -392,9 +421,10 @@ If no StateMachine artifact collected: log "State machine safety specialist retu
 Call `mcp__ralphx__get_plan_verification(session_id: <parent_session_id>)`.
 
 Check for convergence conditions:
-1. **Verified**: All blocking gaps from this round are cleared → `status: "verified"`, `convergence_reason: "zero_blocking"`
+1. **Verified**: All blocking gaps from this round are cleared AND both required critics returned usable artifacts (`complete`, `partial`, or `error`) → `status: "verified"`, `convergence_reason: "zero_blocking"`
 2. **Hard cap reached**: `current_round >= max_rounds` → convergence even if gaps remain
 3. **Penalty surface stable**: If the same blocking gaps remain with no material improvement after revision, stop and report `needs_revision` rather than churn wording
+4. **Critic unavailable**: If a required critic artifact is missing or unparseable this round, the round cannot converge to `verified`
 
 If converged → proceed to **FINAL CLEANUP** with the appropriate status and reason.
 If not converged → continue to next round.

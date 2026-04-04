@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { getAllowedToolNames, getFilteredTools, isToolAllowed, setAgentType, getAllTools, TOOL_ALLOWLIST, parseAllowedToolsFromArgs, } from '../tools.js';
-import { IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_MEMBER, ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_SPECIALIST_CODE_QUALITY, IDEATION_SPECIALIST_PROMPT_QUALITY, IDEATION_SPECIALIST_INTENT, IDEATION_SPECIALIST_PIPELINE_SAFETY, IDEATION_SPECIALIST_STATE_MACHINE, IDEATION_CRITIC, IDEATION_ADVOCATE, } from '../agentNames.js';
+import { IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_MEMBER, ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_SPECIALIST_CODE_QUALITY, IDEATION_SPECIALIST_PROMPT_QUALITY, IDEATION_SPECIALIST_INTENT, IDEATION_SPECIALIST_PIPELINE_SAFETY, IDEATION_SPECIALIST_STATE_MACHINE, IDEATION_CRITIC, IDEATION_ADVOCATE, PLAN_CRITIC_COMPLETENESS, PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY, } from '../agentNames.js';
 describe('getAllowedToolNames', () => {
     beforeEach(() => {
         // Clear env var before each test
@@ -613,6 +613,18 @@ describe('TOOL_ALLOWLIST specialist entries', () => {
     });
     it('IDEATION_ADVOCATE should include get_team_artifacts', () => {
         expect(TOOL_ALLOWLIST[IDEATION_ADVOCATE]).toContain('get_team_artifacts');
+    });
+    it.each([
+        PLAN_CRITIC_COMPLETENESS,
+        PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY,
+    ])('%s should include create_team_artifact', (agent) => {
+        expect(TOOL_ALLOWLIST[agent]).toContain('create_team_artifact');
+    });
+    it.each([
+        PLAN_CRITIC_COMPLETENESS,
+        PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY,
+    ])('%s should stay bounded to direct read tools', (agent) => {
+        expect(TOOL_ALLOWLIST[agent]).not.toContain('get_team_artifacts');
     });
 });
 //# sourceMappingURL=tools.test.js.map

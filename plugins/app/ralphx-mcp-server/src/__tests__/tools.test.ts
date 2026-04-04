@@ -29,6 +29,8 @@ import {
   IDEATION_SPECIALIST_STATE_MACHINE,
   IDEATION_CRITIC,
   IDEATION_ADVOCATE,
+  PLAN_CRITIC_COMPLETENESS,
+  PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY,
 } from '../agentNames.js';
 
 describe('getAllowedToolNames', () => {
@@ -771,5 +773,19 @@ describe('TOOL_ALLOWLIST specialist entries', () => {
 
   it('IDEATION_ADVOCATE should include get_team_artifacts', () => {
     expect(TOOL_ALLOWLIST[IDEATION_ADVOCATE]).toContain('get_team_artifacts');
+  });
+
+  it.each([
+    PLAN_CRITIC_COMPLETENESS,
+    PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY,
+  ])('%s should include create_team_artifact', (agent) => {
+    expect(TOOL_ALLOWLIST[agent]).toContain('create_team_artifact');
+  });
+
+  it.each([
+    PLAN_CRITIC_COMPLETENESS,
+    PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY,
+  ])('%s should stay bounded to direct read tools', (agent) => {
+    expect(TOOL_ALLOWLIST[agent]).not.toContain('get_team_artifacts');
   });
 });

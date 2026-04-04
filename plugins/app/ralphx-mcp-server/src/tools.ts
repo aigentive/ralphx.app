@@ -2102,8 +2102,16 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_memories_for_paths",
   ],
   // Plan critic agents - read-only, only need plan access tools
-  [PLAN_CRITIC_COMPLETENESS]: ["get_session_plan", "get_artifact"],
-  [PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY]: ["get_session_plan", "get_artifact"],
+  [PLAN_CRITIC_COMPLETENESS]: [
+    "get_session_plan",
+    "get_artifact",
+    "create_team_artifact",
+  ],
+  [PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY]: [
+    "get_session_plan",
+    "get_artifact",
+    "create_team_artifact",
+  ],
   // Plan verifier agent - owns the verification round loop
   [PLAN_VERIFIER]: [
     "get_session_plan",

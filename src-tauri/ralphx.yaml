@@ -305,6 +305,7 @@ tool_sets:
       KillShell,
       MCPSearch,
     ]
+  critic_tools: [Read, Grep, Glob]
 
 # process_mapping:
 #   Maps logical process slots to agent variants. Each slot has a `default`
@@ -842,15 +843,15 @@ agents:
   - name: plan-critic-completeness
     system_prompt_file: plugins/app/agents/plan-critic-completeness.md
     model: sonnet
-    tools: { extends: base_tools }
-    mcp_tools: [get_session_plan, get_artifact]
+    tools: { extends: critic_tools }
+    mcp_tools: [get_session_plan, get_artifact, create_team_artifact]
     preapproved_cli_tools: []
 
   - name: plan-critic-implementation-feasibility
     system_prompt_file: plugins/app/agents/plan-critic-implementation-feasibility.md
     model: sonnet
-    tools: { extends: base_tools }
-    mcp_tools: [get_session_plan, get_artifact]
+    tools: { extends: critic_tools }
+    mcp_tools: [get_session_plan, get_artifact, create_team_artifact]
     preapproved_cli_tools: []
 
   # --- Plan verifier agent (owns the verification round loop) ---
