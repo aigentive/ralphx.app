@@ -154,6 +154,21 @@ describe("PermissionDialog", () => {
     });
   });
 
+  it("displays formatted input for Write tool when Claude sends camelCase filePath", async () => {
+    render(<PermissionDialog />);
+    await act(async () => { await Promise.resolve(); });
+
+    emitEvent("permission:request", makeRequest({
+      tool_name: "Write",
+      tool_input: { filePath: "/tmp/test.txt", content: "Hello from camelCase!" },
+    }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Write to: \/tmp\/test.txt/)).toBeInTheDocument();
+      expect(screen.getByText(/Hello from camelCase!/)).toBeInTheDocument();
+    });
+  });
+
   it("truncates long Write content", async () => {
     render(<PermissionDialog />);
     await act(async () => { await Promise.resolve(); });
@@ -198,6 +213,20 @@ describe("PermissionDialog", () => {
     });
   });
 
+  it("displays formatted input for Read tool when Claude sends path", async () => {
+    render(<PermissionDialog />);
+    await act(async () => { await Promise.resolve(); });
+
+    emitEvent("permission:request", makeRequest({
+      tool_name: "Read",
+      tool_input: { path: "/tmp/test.txt" },
+    }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Read: /tmp/test.txt")).toBeInTheDocument();
+    });
+  });
+
   it("displays context when provided", async () => {
     render(<PermissionDialog />);
     await act(async () => { await Promise.resolve(); });
@@ -206,6 +235,19 @@ describe("PermissionDialog", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Listing directory contents")).toBeInTheDocument();
+    });
+  });
+
+  it("shows a short hint explaining that Allow lets the agent continue", async () => {
+    render(<PermissionDialog />);
+    await act(async () => { await Promise.resolve(); });
+
+    emitEvent("permission:request", makeRequest());
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Allow approves this exact request and lets the agent continue/i)
+      ).toBeInTheDocument();
     });
   });
 
@@ -370,7 +412,7 @@ describe("PermissionDialog", () => {
     await waitFor(() => {
       expect(screen.getByText("Allow").closest("button")).toBeDisabled();
       expect(screen.getByText("Deny").closest("button")).toBeDisabled();
-      expect(screen.getByText("Dismiss").closest("button")).toBeDisabled();
+      expect(screen.getByText("Hide").closest("button")).toBeDisabled();
     });
   });
 
@@ -542,27 +584,27 @@ describe("PermissionDialog", () => {
   });
 
   // ============================================================================
-  // Dismiss button (D6)
+  // Hide button (D6)
   // ============================================================================
 
-  it("dismiss button removes request from queue without backend call", async () => {
+  it("hide button removes request from queue without backend call", async () => {
     const user = userEvent.setup();
     render(<PermissionDialog />);
     await act(async () => { await Promise.resolve(); });
 
     emitEvent("permission:request", makeRequest());
-    await waitFor(() => { expect(screen.getByText("Dismiss")).toBeInTheDocument(); });
+    await waitFor(() => { expect(screen.getByText("Hide")).toBeInTheDocument(); });
 
-    await user.click(screen.getByText("Dismiss"));
+    await user.click(screen.getByText("Hide"));
 
     await waitFor(() => {
       expect(screen.queryByText("Permission Required")).not.toBeInTheDocument();
     });
     expect(mockResolveRequest).not.toHaveBeenCalled();
-    expect(mockToastInfo).toHaveBeenCalledWith("Permission request dismissed");
+    expect(mockToastInfo).toHaveBeenCalledWith("Permission request hidden");
   });
 
-  it("dismiss button disabled while resolving", async () => {
+  it("hide button disabled while resolving", async () => {
     mockResolveRequest.mockImplementation(() => new Promise(() => {}));
 
     const user = userEvent.setup();
@@ -575,7 +617,7 @@ describe("PermissionDialog", () => {
     await user.click(screen.getByText("Allow"));
 
     await waitFor(() => {
-      expect(screen.getByText("Dismiss").closest("button")).toBeDisabled();
+      expect(screen.getByText("Hide").closest("button")).toBeDisabled();
     });
   });
 

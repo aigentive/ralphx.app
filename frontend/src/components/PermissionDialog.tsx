@@ -56,6 +56,23 @@ type BufferedEvent =
   | { type: "permission:request"; payload: PermissionRequest }
   | { type: "permission:expired"; payload: PermissionExpiredEvent };
 
+function getStringField(
+  input: Record<string, unknown>,
+  keys: readonly string[]
+): string | undefined {
+  for (const key of keys) {
+    const value = input[key];
+    if (typeof value === "string" && value.length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function getPathField(input: Record<string, unknown>): string | undefined {
+  return getStringField(input, ["file_path", "filePath", "path"]);
+}
+
 export function PermissionDialog() {
   const [requests, setRequests] = useState<PermissionRequest[]>([]);
   // D8: track WHICH request is being resolved, not just a boolean
@@ -189,11 +206,11 @@ export function PermissionDialog() {
     }
   };
 
-  // D6: Dismiss removes from frontend queue only — no backend call
+  // D6: hide removes from frontend queue only — no backend call
   const handleDismiss = () => {
     if (!currentRequest) return;
     setRequests((prev) => prev.filter((r) => r.request_id !== currentRequest.request_id));
-    toast.info("Permission request dismissed");
+    toast.info("Permission request hidden");
   };
 
   // Dialog not visible when no requests
@@ -287,7 +304,11 @@ export function PermissionDialog() {
           {/* Tool name */}
           <div className="flex items-center gap-2 text-sm">
             <Terminal className="h-4 w-4 shrink-0" style={{ color: "var(--text-muted)" }} />
-            <span className="font-medium" style={{ color: "var(--text-primary)" }}>
+            <span
+              className="font-medium"
+              style={{ color: "var(--text-primary)" }}
+              data-testid="permission-tool-name"
+            >
               {currentRequest.tool_name}
             </span>
           </div>
@@ -303,6 +324,7 @@ export function PermissionDialog() {
             <pre
               className="whitespace-pre-wrap break-all"
               style={{ color: "var(--text-secondary)" }}
+              data-testid="permission-input-preview"
             >
               {toolInputPreview}
             </pre>
@@ -310,14 +332,30 @@ export function PermissionDialog() {
 
           {/* Context if provided */}
           {currentRequest.context && (
-            <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+            <p
+              className="text-sm"
+              style={{ color: "var(--text-secondary)" }}
+              data-testid="permission-context"
+            >
               {currentRequest.context}
             </p>
           )}
 
+          <p
+            className="text-xs"
+            style={{ color: "var(--text-muted)" }}
+            data-testid="permission-decision-hint"
+          >
+            Allow approves this exact request and lets the agent continue. Hide only closes this dialog locally.
+          </p>
+
           {/* Queue indicator */}
           {requests.length > 1 && (
-            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+            <p
+              className="text-xs"
+              style={{ color: "var(--text-muted)" }}
+              data-testid="permission-queue-count"
+            >
               +{requests.length - 1} more permission request(s) waiting
             </p>
           )}
@@ -332,7 +370,7 @@ export function PermissionDialog() {
             onClick={handleDismiss}
             disabled={resolvingId !== null}
           >
-            Dismiss
+            Hide
           </Button>
           <div className="flex gap-2">
             <Button
@@ -369,16 +407,27 @@ function formatToolInput(
   switch (toolName) {
     case "Bash":
       return (input.command as string) || JSON.stringify(input, null, 2);
+    case "Glob": {
+      const pattern = getStringField(input, ["pattern"]);
+      return pattern ? `Glob: ${pattern}` : JSON.stringify(input, null, 2);
+    }
     case "Write": {
-      const content = input.content as string;
+      const targetPath = getPathField(input) ?? "(path unavailable)";
+      const content = getStringField(input, ["content"]) ?? "";
       const preview = content?.slice(0, 200) || "";
       const truncated = content?.length > 200 ? "..." : "";
-      return `Write to: ${input.file_path}\n\n${preview}${truncated}`;
+      return `Write to: ${targetPath}\n\n${preview}${truncated}`;
     }
-    case "Edit":
-      return `Edit: ${input.file_path}\n- "${input.old_string}"\n+ "${input.new_string}"`;
-    case "Read":
-      return `Read: ${input.file_path}`;
+    case "Edit": {
+      const targetPath = getPathField(input) ?? "(path unavailable)";
+      const oldString = getStringField(input, ["old_string", "oldString"]) ?? "";
+      const newString = getStringField(input, ["new_string", "newString"]) ?? "";
+      return `Edit: ${targetPath}\n- "${oldString}"\n+ "${newString}"`;
+    }
+    case "Read": {
+      const targetPath = getPathField(input) ?? "(path unavailable)";
+      return `Read: ${targetPath}`;
+    }
     default:
       return JSON.stringify(input, null, 2);
   }

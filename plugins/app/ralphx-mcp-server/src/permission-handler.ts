@@ -49,6 +49,51 @@ interface PermissionDecision {
   message?: string;
 }
 
+function getStringField(
+  input: Record<string, unknown>,
+  keys: readonly string[]
+): string | undefined {
+  for (const key of keys) {
+    const value = input[key];
+    if (typeof value === "string" && value.length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+export function normalizePermissionToolInput(
+  toolName: string,
+  toolInput: Record<string, unknown>
+): Record<string, unknown> {
+  const normalized = { ...toolInput };
+
+  if (toolName === "Write" || toolName === "Edit" || toolName === "Read") {
+    const path = getStringField(toolInput, ["file_path", "filePath", "path"]);
+    if (path) {
+      if (normalized.file_path === undefined) normalized.file_path = path;
+      if (normalized.filePath === undefined) normalized.filePath = path;
+      if (normalized.path === undefined) normalized.path = path;
+    }
+  }
+
+  if (toolName === "Edit") {
+    const oldString = getStringField(toolInput, ["old_string", "oldString"]);
+    if (oldString) {
+      if (normalized.old_string === undefined) normalized.old_string = oldString;
+      if (normalized.oldString === undefined) normalized.oldString = oldString;
+    }
+
+    const newString = getStringField(toolInput, ["new_string", "newString"]);
+    if (newString) {
+      if (normalized.new_string === undefined) normalized.new_string = newString;
+      if (normalized.newString === undefined) normalized.newString = newString;
+    }
+  }
+
+  return normalized;
+}
+
 /** Normalize permission args from CLI (may send snake_case, camelCase, or name/input). */
 function normalizePermissionArgs(
   args: Record<string, unknown>
@@ -84,6 +129,7 @@ export async function handlePermissionRequest(
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
   const { tool_name, tool_input, context } = normalizePermissionArgs(args);
+  const normalizedToolInput = normalizePermissionToolInput(tool_name, tool_input);
 
   if (!tool_name) {
     safeError("[RalphX MCP] Permission request missing tool name", args);
@@ -120,7 +166,10 @@ export async function handlePermissionRequest(
     const contextType = process.env.RALPHX_CONTEXT_TYPE;
     const contextId = process.env.RALPHX_CONTEXT_ID;
 
-    const body: PermissionRequestBody = { tool_name, tool_input };
+    const body: PermissionRequestBody = {
+      tool_name,
+      tool_input: normalizedToolInput,
+    };
     if (context !== undefined && context !== "") body.context = context;
     if (agentType && agentType !== "unknown") body.agent_type = agentType;
     if (taskId) body.task_id = taskId;
@@ -213,7 +262,7 @@ export async function handlePermissionRequest(
     // - deny:  { behavior: "deny", message: <string> }
     const payload =
       decision.decision === "allow"
-        ? { behavior: "allow" as const, updatedInput: tool_input }
+        ? { behavior: "allow" as const, updatedInput: normalizedToolInput }
         : {
             behavior: "deny" as const,
             message:
