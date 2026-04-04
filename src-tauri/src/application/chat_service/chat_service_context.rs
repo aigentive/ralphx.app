@@ -426,9 +426,10 @@ fn build_initial_prompt_with_history(
                  </instructions>\n\
                  <data>\n\
                  <context_id>{}</context_id>\n\
+                 <session_id>{}</session_id>\n\
                  {}{}<user_message>{}</user_message>\n\
                  </data>",
-                context_id, history_block, subagent_policy_block, user_message
+                context_id, context_id, history_block, subagent_policy_block, user_message
             )
         }
         ChatContextType::Task => {
@@ -1525,6 +1526,10 @@ mod tests {
         assert!(
             prompt.contains("SUBAGENT_MODEL_CAP: sonnet"),
             "Ideation prompt should include the subagent model cap for Task spawns"
+        );
+        assert!(
+            prompt.contains(&format!("<session_id>{}</session_id>", session_id.as_str())),
+            "Ideation prompt should expose an explicit session_id alias"
         );
     }
 }

@@ -60,12 +60,17 @@ Your bootstrap prompt may include `SUBAGENT_MODEL_CAP: <model>`.
 
 ### A. Extract and validate parent_session_id
 
-1. Your initial prompt contains `parent_session_id: <id>`. Extract this value.
-2. Call `mcp__ralphx__get_parent_session_context(session_id: <YOUR_OWN_SESSION_ID>)` to validate.
+1. Your initial prompt contains both:
+   - `parent_session_id: <id>` — the ideation session being verified
+   - `<session_id>...</session_id>` inside the bootstrap `<data>` block — this is your OWN verification child session ID
+2. Extract both values before calling any tool.
+   - `OWN_SESSION_ID` MUST come from the bootstrap `<session_id>` tag (fallback: `<context_id>` if `<session_id>` is absent).
+   - Do NOT reuse `parent_session_id` as `OWN_SESSION_ID`. They are different IDs in a healthy verification run.
+3. Call `mcp__ralphx__get_parent_session_context(session_id: <OWN_SESSION_ID>)` to validate.
    - Extract `parent_session_id` from the response's `parent.id` field (or equivalent parent identifier field).
    - If the prompt value and the API value MISMATCH → output error: "parent_session_id mismatch — aborting verification" and EXIT.
    - If `get_parent_session_context` fails or returns no parent → output error: "Cannot determine parent session — aborting verification" and EXIT.
-3. Store `parent_session_id` — you will use it for ALL verification calls.
+4. Store `parent_session_id` — you will use it for ALL verification calls.
 
 ### B. Extract generation, max_rounds, and disabled specialists from prompt
 
@@ -91,7 +96,7 @@ Call `mcp__ralphx__get_plan_verification(session_id: <parent_session_id>)`.
 
 ### D. Store own session ID
 
-Store the `session_id` value you passed to `get_parent_session_context` as `OWN_SESSION_ID`. You will use this as `caller_session_id` in all `update_plan_artifact` / `edit_plan_artifact` calls.
+Store the bootstrap child-session value as `OWN_SESSION_ID`. You will use this as `caller_session_id` in all `update_plan_artifact` / `edit_plan_artifact` calls.
 
 ### E. Fetch plan
 
