@@ -109,7 +109,6 @@ describe("ChatPanel Integration", () => {
           ideation: false,
           extensibility: false,
           activity: false,
-          settings: false,
           task_detail: false,
         },
       });

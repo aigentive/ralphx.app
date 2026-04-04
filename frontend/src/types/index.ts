@@ -398,7 +398,6 @@ export {
   isIdeationContext,
   isTaskDetailContext,
   isActivityContext,
-  isSettingsContext,
   hasSelectedTask,
   hasIdeationSession,
   createKanbanContext,

@@ -68,9 +68,14 @@ vi.mock("@/components/activity", () => ({
   ),
 }));
 
-// Mock SettingsView
+// Mock SettingsView (still exported from index for backward compat, but no longer used in App)
 vi.mock("@/components/settings", () => ({
   SettingsView: () => <div data-testid="settings-view-mock">Settings View</div>,
+}));
+
+// Mock SettingsDialog — the new modal-based settings overlay
+vi.mock("@/components/settings/SettingsDialog", () => ({
+  default: () => <div data-testid="settings-dialog-mock">Settings Dialog</div>,
 }));
 
 // Mock ProjectSelector
@@ -425,15 +430,15 @@ describe("App", () => {
       expect(screen.queryByTestId("task-board-mock")).not.toBeInTheDocument();
     });
 
-    it("should switch to Settings view when clicked", async () => {
+    it("should open Settings modal when clicked", async () => {
       const user = userEvent.setup();
       render(<App />);
 
       await user.click(screen.getByTestId("nav-settings"));
 
-      expect(screen.getByTestId("nav-settings")).toHaveAttribute("aria-current", "page");
-      expect(screen.getByTestId("settings-view-mock")).toBeInTheDocument();
-      expect(screen.queryByTestId("task-board-mock")).not.toBeInTheDocument();
+      // Settings is now a modal — activeModal is set, kanban stays visible underneath
+      expect(useUiStore.getState().activeModal).toBe("settings");
+      expect(screen.getByTestId("task-board-mock")).toBeInTheDocument();
     });
 
     it("should switch views correctly multiple times", async () => {
@@ -447,9 +452,9 @@ describe("App", () => {
       await user.click(screen.getByTestId("nav-activity"));
       expect(screen.getByTestId("activity-view-mock")).toBeInTheDocument();
 
-      // Go to Settings
+      // Open Settings modal
       await user.click(screen.getByTestId("nav-settings"));
-      expect(screen.getByTestId("settings-view-mock")).toBeInTheDocument();
+      expect(useUiStore.getState().activeModal).toBe("settings");
 
       // Go back to Kanban
       await user.click(screen.getByTestId("nav-kanban"));
@@ -517,12 +522,12 @@ describe("App", () => {
       expect(useUiStore.getState().currentView).toBe("activity");
     });
 
-    it("should switch to Settings with Cmd+6", () => {
+    it("should open Settings dialog with Cmd+6", () => {
       render(<App />);
 
       fireEvent.keyDown(window, { key: "6", metaKey: true });
 
-      expect(useUiStore.getState().currentView).toBe("settings");
+      expect(useUiStore.getState().activeModal).toBe("settings");
     });
 
     it("should work with Ctrl key (for non-Mac)", () => {

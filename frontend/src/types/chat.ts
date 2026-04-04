@@ -17,7 +17,6 @@ export const VIEW_TYPE_VALUES = [
   "extensibility",
   "activity",
   "insights",
-  "settings",
   "task_detail",
   "team",
 ] as const;
@@ -76,13 +75,6 @@ export function isTaskDetailContext(context: ChatContext): boolean {
  */
 export function isActivityContext(context: ChatContext): boolean {
   return context.view === "activity";
-}
-
-/**
- * Check if context is in settings view
- */
-export function isSettingsContext(context: ChatContext): boolean {
-  return context.view === "settings";
 }
 
 /**
@@ -146,11 +138,11 @@ export function createTaskDetailContext(
 }
 
 /**
- * Create a simple project context (activity, settings views)
+ * Create a simple project context (e.g. activity view)
  */
 export function createProjectContext(
   projectId: string,
-  view: "activity" | "settings"
+  view: "activity" | "insights"
 ): ChatContext {
   return {
     view,

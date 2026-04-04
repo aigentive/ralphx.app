@@ -102,11 +102,6 @@ describe("uiStore", () => {
       expect(useUiStore.getState().currentView).toBe("activity");
     });
 
-    it("sets current view to settings", () => {
-      useUiStore.getState().setCurrentView("settings");
-      expect(useUiStore.getState().currentView).toBe("settings");
-    });
-
     it("switches between views", () => {
       useUiStore.getState().setCurrentView("ideation");
       expect(useUiStore.getState().currentView).toBe("ideation");
@@ -1065,7 +1060,6 @@ describe("uiStore", () => {
           graph: false,
           ideation: false,
           activity: false,
-          settings: false,
           extensibility: false,
           insights: false,
           task_detail: false,

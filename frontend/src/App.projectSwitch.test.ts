@@ -134,11 +134,22 @@ describe("Project switch effect — App.tsx integration", () => {
     simulateProjectSwitch("project-a", "project-b");
     expect(useUiStore.getState().currentView).toBe("kanban");
 
-    // User navigates to "settings" within project B
-    useUiStore.setState({ currentView: "settings" });
+    // User navigates to "insights" within project B
+    useUiStore.setState({ currentView: "insights" });
 
-    // Switch B→A: saves B's "settings", restores A's "activity"
+    // Switch B→A: saves B's "insights", restores A's "activity"
     simulateProjectSwitch("project-b", "project-a");
     expect(useUiStore.getState().currentView).toBe("activity");
+  });
+
+  it("falls back stale 'settings' localStorage value to kanban on project switch", () => {
+    // Simulate a stale "settings" value in viewByProject (from before the refactor)
+    useUiStore.setState({
+      viewByProject: { "project-b": "settings" as never },
+    });
+
+    simulateProjectSwitch("project-a", "project-b");
+    // "settings" is no longer a valid view — should fall back to "kanban"
+    expect(useUiStore.getState().currentView).toBe("kanban");
   });
 });

@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { SettingsPage } from "../../../pages/settings.page";
 import { setupSettings } from "../../../fixtures/setup.fixtures";
 
-test.describe("Settings View", () => {
+test.describe("Settings Dialog", () => {
   let settingsPage: SettingsPage;
 
   test.beforeEach(async ({ page }) => {
@@ -10,16 +10,21 @@ test.describe("Settings View", () => {
     await setupSettings(page);
   });
 
-  test("renders settings view layout", async () => {
-    await expect(settingsPage.settingsView).toBeVisible();
+  test("renders settings dialog layout", async () => {
+    await expect(settingsPage.settingsDialog).toBeVisible();
     await expect(settingsPage.settingsTitle).toBeVisible();
   });
 
-  test("displays all four settings sections", async () => {
-    await expect(settingsPage.executionSection).toBeVisible();
-    await expect(settingsPage.modelSection).toBeVisible();
-    await expect(settingsPage.reviewSection).toBeVisible();
-    await expect(settingsPage.supervisorSection).toBeVisible();
+  test("renders above the underlying view (modal overlay)", async ({ page }) => {
+    // The kanban/current view is still mounted behind the modal
+    await expect(settingsPage.settingsDialog).toBeVisible();
+    // Dialog should have highest z-index (rendered in portal above app content)
+    const zIndex = await page.evaluate(() => {
+      const dialog = document.querySelector('[data-testid="settings-dialog"]');
+      if (!dialog) return null;
+      return getComputedStyle(dialog.closest('[role="dialog"]') ?? dialog).zIndex;
+    });
+    expect(zIndex).not.toBeNull();
   });
 
   test("execution section contains all controls", async () => {
@@ -29,12 +34,16 @@ test.describe("Settings View", () => {
     await expect(settingsPage.reviewBeforeDestructiveToggle).toBeVisible();
   });
 
-  test("model section contains all controls", async () => {
+  test("model section contains all controls", async ({ page }) => {
+    settingsPage = new SettingsPage(page);
+    await settingsPage.openViaStore("model");
     await expect(settingsPage.modelSelect).toBeVisible();
     await expect(settingsPage.allowOpusUpgradeToggle).toBeVisible();
   });
 
-  test("review section contains all controls", async () => {
+  test("review section contains all controls", async ({ page }) => {
+    settingsPage = new SettingsPage(page);
+    await settingsPage.openViaStore("review");
     await expect(settingsPage.aiReviewEnabledToggle).toBeVisible();
     await expect(settingsPage.aiReviewAutoFixToggle).toBeVisible();
     await expect(settingsPage.requireFixApprovalToggle).toBeVisible();
@@ -42,15 +51,17 @@ test.describe("Settings View", () => {
     await expect(settingsPage.maxFixAttemptsInput).toBeVisible();
   });
 
-  test("supervisor section contains all controls", async () => {
+  test("supervisor section contains all controls", async ({ page }) => {
+    settingsPage = new SettingsPage(page);
+    await settingsPage.openViaStore("supervisor");
     await expect(settingsPage.supervisorEnabledToggle).toBeVisible();
     await expect(settingsPage.loopThresholdInput).toBeVisible();
     await expect(settingsPage.stuckTimeoutInput).toBeVisible();
   });
 
-  test("matches snapshot - default state", async ({ page }) => {
+  test("matches snapshot - default state (execution section)", async ({ page }) => {
     await settingsPage.waitForAnimations();
-    await expect(page).toHaveScreenshot("settings-view-default.png", {
+    await expect(page).toHaveScreenshot("settings-dialog-default.png", {
       fullPage: true,
     });
   });
@@ -60,7 +71,7 @@ test.describe("Settings View", () => {
     await settingsPage.aiReviewEnabledToggle.click();
     await settingsPage.waitForAnimations();
 
-    await expect(page).toHaveScreenshot("settings-view-review-disabled.png", {
+    await expect(page).toHaveScreenshot("settings-dialog-review-disabled.png", {
       fullPage: true,
     });
   });
@@ -70,7 +81,7 @@ test.describe("Settings View", () => {
     await settingsPage.supervisorEnabledToggle.click();
     await settingsPage.waitForAnimations();
 
-    await expect(page).toHaveScreenshot("settings-view-supervisor-disabled.png", {
+    await expect(page).toHaveScreenshot("settings-dialog-supervisor-disabled.png", {
       fullPage: true,
     });
   });

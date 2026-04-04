@@ -402,16 +402,6 @@ describe("ChatPanel", () => {
       expect(screen.getByText(/task/i)).toBeInTheDocument();
     });
 
-    it("shows 'Settings' context for settings view", () => {
-      const settingsContext: ChatContext = {
-        view: "settings",
-        projectId: "project-1",
-      };
-
-      render(<ChatPanel context={settingsContext} />, { wrapper: createWrapper() });
-
-      expect(screen.getByText(/settings/i)).toBeInTheDocument();
-    });
   });
 
   describe("messages display", () => {

@@ -27,6 +27,7 @@ interface UseAppKeyboardShortcutsProps {
   welcomeOverlayReturnView?: ViewType | null;
   openPlanQuickSwitcher?: () => void;
   onBattleModeToggle?: () => void;
+  openSettings?: () => void;
   featureFlags?: FeatureFlags;
 }
 
@@ -44,6 +45,7 @@ export function useAppKeyboardShortcuts({
   welcomeOverlayReturnView,
   openPlanQuickSwitcher,
   onBattleModeToggle,
+  openSettings,
   featureFlags = ALL_ENABLED_FLAGS,
 }: UseAppKeyboardShortcutsProps) {
   // Keyboard shortcuts for view switching (Cmd+1-5 for main views, Cmd+K for chat)
@@ -89,7 +91,7 @@ export function useAppKeyboardShortcuts({
           case ",":
             // Cmd+6, Cmd+. or Cmd+, for settings (Cmd+, may not work in dev mode)
             e.preventDefault();
-            setCurrentView("settings");
+            openSettings?.();
             break;
           case "k":
           case "K": {
@@ -235,20 +237,25 @@ export function useAppKeyboardShortcuts({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setCurrentView, toggleChatVisible, toggleReviewsPanel, toggleGraphRightPanel, currentView, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView, openPlanQuickSwitcher, onBattleModeToggle, featureFlags]);
+  }, [setCurrentView, toggleChatVisible, toggleReviewsPanel, toggleGraphRightPanel, currentView, openProjectWizard, hasProjects, showWelcomeOverlay, openWelcomeOverlay, closeWelcomeOverlay, welcomeOverlayReturnView, openPlanQuickSwitcher, onBattleModeToggle, openSettings, featureFlags]);
 
   // Global shortcut for Cmd+, (registered at OS level to bypass DevTools interception)
   const setCurrentViewRef = useRef(setCurrentView);
+  const openSettingsRef = useRef(openSettings);
 
   useEffect(() => {
     setCurrentViewRef.current = setCurrentView;
   }, [setCurrentView]);
 
   useEffect(() => {
+    openSettingsRef.current = openSettings;
+  }, [openSettings]);
+
+  useEffect(() => {
     const shortcut = "CommandOrControl+,";
 
     register(shortcut, () => {
-      setCurrentViewRef.current("settings");
+      openSettingsRef.current?.();
     }).catch(() => {
       // Ignore registration errors
     });

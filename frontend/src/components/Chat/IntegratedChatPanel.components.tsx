@@ -243,8 +243,6 @@ export function ContextIndicator({ context, isExecutionMode = false, isReviewMod
         return { icon: CheckSquare, label: "Task" };
       case "activity":
         return { icon: MessageSquare, label: "Activity" };
-      case "settings":
-        return { icon: MessageSquare, label: "Settings" };
       default:
         return { icon: MessageSquare, label: "Chat" };
     }

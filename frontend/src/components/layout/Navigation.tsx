@@ -79,18 +79,12 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
     shortcut: "⌘6",
     visible: (_flags, taskCount) => taskCount >= 10,
   },
-  {
-    view: "settings",
-    label: "Settings",
-    icon: SlidersHorizontal,
-    shortcut: "⌘7",
-    visible: () => true,
-  },
 ];
 
 interface NavigationProps {
   currentView: ViewType;
   onViewChange: (view: ViewType) => void;
+  onOpenSettings?: () => void;
 }
 
 function NavItem({
@@ -146,7 +140,7 @@ function NavItem({
   );
 }
 
-export function Navigation({ currentView, onViewChange }: NavigationProps) {
+export function Navigation({ currentView, onViewChange, onOpenSettings }: NavigationProps) {
   const hasActiveTeam = useTeamStore(selectHasAnyActiveTeam);
   const teammateCount = useTeamStore(selectTotalTeammateCount);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
@@ -174,6 +168,30 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
           onViewChange={onViewChange}
         />
       ))}
+
+      {/* Settings button — opens modal overlay */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onOpenSettings}
+            className="gap-2 h-8 px-2 xl:px-3 transition-all duration-150 active:scale-[0.98]"
+            style={{
+              background: "transparent",
+              border: "1px solid transparent",
+              color: "hsl(220 10% 55%)",
+            }}
+            data-testid="nav-settings"
+          >
+            <SlidersHorizontal className="w-[18px] h-[18px] flex-shrink-0" />
+            <span className="text-sm font-medium whitespace-nowrap hidden xl:inline">Settings</span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="text-xs">
+          Settings <kbd className="ml-1 opacity-70">⌘,</kbd>
+        </TooltipContent>
+      </Tooltip>
 
       {/* Team active indicator */}
       {hasActiveTeam && (

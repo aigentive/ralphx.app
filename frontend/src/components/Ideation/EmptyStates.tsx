@@ -26,7 +26,7 @@ interface WaitingForCapacityStateProps {
 
 export function WaitingForCapacityState({ pendingInitialPrompt, projectId }: WaitingForCapacityStateProps) {
   const { data, isLoading, isError } = useExecutionStatus(projectId);
-  const setCurrentView = useUiStore((s) => s.setCurrentView);
+  const openModal = useUiStore((s) => s.openModal);
 
   const hasCapacityData = !isLoading && !isError && data != null;
 
@@ -69,7 +69,7 @@ export function WaitingForCapacityState({ pendingInitialPrompt, projectId }: Wai
 
         {/* Settings navigation link */}
         <button
-          onClick={() => setCurrentView("settings")}
+          onClick={() => openModal("settings", { section: "ideation-workflow" })}
           className="mt-3 inline-flex items-center gap-1 text-xs transition-colors"
           style={{ color: "hsl(38 90% 60%)" }}
         >

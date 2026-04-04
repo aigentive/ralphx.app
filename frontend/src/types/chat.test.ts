@@ -13,8 +13,8 @@ import {
 } from "./chat";
 
 describe("ViewTypeSchema", () => {
-  it("should have 9 view type values", () => {
-    expect(VIEW_TYPE_VALUES.length).toBe(9);
+  it("should have 8 view type values", () => {
+    expect(VIEW_TYPE_VALUES.length).toBe(8);
   });
 
   it("should parse all valid view types", () => {
@@ -29,7 +29,6 @@ describe("ViewTypeSchema", () => {
     expect(VIEW_TYPE_VALUES).toContain("ideation");
     expect(VIEW_TYPE_VALUES).toContain("extensibility");
     expect(VIEW_TYPE_VALUES).toContain("activity");
-    expect(VIEW_TYPE_VALUES).toContain("settings");
     expect(VIEW_TYPE_VALUES).toContain("task_detail");
   });
 
@@ -91,14 +90,6 @@ describe("ChatContextSchema", () => {
     expect(() => ChatContextSchema.parse(context)).not.toThrow();
   });
 
-  it("should parse settings context", () => {
-    const context = {
-      view: "settings" as const,
-      projectId: "project-123",
-    };
-    expect(() => ChatContextSchema.parse(context)).not.toThrow();
-  });
-
   it("should reject context with empty project id", () => {
     expect(() =>
       ChatContextSchema.parse({
@@ -126,7 +117,7 @@ describe("Context helper functions", () => {
 
     it("should return false for other views", () => {
       expect(isKanbanContext({ view: "ideation", projectId: "p1" })).toBe(false);
-      expect(isKanbanContext({ view: "settings", projectId: "p1" })).toBe(false);
+      expect(isKanbanContext({ view: "activity", projectId: "p1" })).toBe(false);
     });
   });
 
@@ -192,9 +183,9 @@ describe("Context factory functions", () => {
       expect(ctx.projectId).toBe("project-123");
     });
 
-    it("should create settings context", () => {
-      const ctx = createProjectContext("project-123", "settings");
-      expect(ctx.view).toBe("settings");
+    it("should create activity context", () => {
+      const ctx = createProjectContext("project-123", "activity");
+      expect(ctx.view).toBe("activity");
     });
   });
 });

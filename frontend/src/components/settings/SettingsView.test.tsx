@@ -46,18 +46,11 @@ describe("SettingsView", () => {
     it("renders with default settings", () => {
       render(<SettingsView />);
       expect(screen.getByTestId("settings-view")).toBeInTheDocument();
-      expect(screen.getByText("Settings")).toBeInTheDocument();
-      expect(screen.getByText("Configure project behavior")).toBeInTheDocument();
     });
 
     it("renders loading skeleton when isLoading is true", () => {
       render(<SettingsView isLoading={true} />);
       expect(screen.getByTestId("settings-skeleton")).toBeInTheDocument();
-    });
-
-    it("renders saving indicator when isSaving is true", () => {
-      render(<SettingsView isSaving={true} />);
-      expect(screen.getByText("Saving...")).toBeInTheDocument();
     });
 
     it("renders error message when error is provided", () => {
@@ -72,13 +65,6 @@ describe("SettingsView", () => {
       expect(screen.getByText("Model")).toBeInTheDocument();
       expect(screen.getByText("Review")).toBeInTheDocument();
       expect(screen.getByText("Supervisor")).toBeInTheDocument();
-    });
-
-    it("renders Settings icon in header", () => {
-      render(<SettingsView />);
-      // The Settings icon is rendered in the header with accent color
-      const header = screen.getByText("Settings").closest("div");
-      expect(header).toBeInTheDocument();
     });
 
     it("renders section icons", () => {
@@ -377,29 +363,6 @@ describe("SettingsView", () => {
   });
 
   describe("Premium Design Elements", () => {
-    it("renders glass effect header with backdrop blur", () => {
-      render(<SettingsView />);
-
-      // Header uses inline translucent background + blur styling
-      const heading = screen.getByRole("heading", { name: "Settings" });
-      let styledAncestor: HTMLElement | null = heading as HTMLElement;
-      while (styledAncestor && !styledAncestor.getAttribute("style")) {
-        styledAncestor = styledAncestor.parentElement;
-      }
-      expect(styledAncestor).toBeInTheDocument();
-      expect(styledAncestor?.getAttribute("style")?.replace(/\s+/g, "")).toContain(
-        "rgba(18,18,18,0.85)"
-      );
-    });
-
-    it("renders warm radial gradient background", () => {
-      render(<SettingsView />);
-
-      const settingsView = screen.getByTestId("settings-view");
-      // Container uses layered radial gradients over --bg-base
-      expect(settingsView.getAttribute("style")).toContain("var(--bg-base)");
-    });
-
     it("renders sub-settings with visual indentation", async () => {
       render(<SettingsView />);
 

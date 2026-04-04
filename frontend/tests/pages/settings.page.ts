@@ -2,9 +2,10 @@ import { Page, Locator } from "@playwright/test";
 import { BasePage } from "./base.page";
 
 export class SettingsPage extends BasePage {
-  readonly settingsView: Locator;
-  readonly header: Locator;
+  // Modal container (replaces old settings-view full-page shell)
+  readonly settingsDialog: Locator;
   readonly settingsTitle: Locator;
+  readonly closeButton: Locator;
   readonly savingIndicator: Locator;
   readonly errorBanner: Locator;
 
@@ -37,10 +38,10 @@ export class SettingsPage extends BasePage {
   constructor(page: Page) {
     super(page);
 
-    // Main elements
-    this.settingsView = page.locator('[data-testid="settings-view"]');
-    this.header = page.locator('[data-testid="settings-view"]').locator("text=Settings").first().locator("..");
-    this.settingsTitle = page.locator('[data-testid="settings-view"]').locator("h2:has-text('Settings')");
+    // Main dialog element (modal overlay)
+    this.settingsDialog = page.locator('[data-testid="settings-dialog"]');
+    this.settingsTitle = this.settingsDialog.locator("text=Settings").first();
+    this.closeButton = this.settingsDialog.getByRole("button", { name: "Close settings" });
     this.savingIndicator = page.locator("text=Saving...");
     this.errorBanner = page.locator('[role="alert"]');
 
@@ -71,8 +72,49 @@ export class SettingsPage extends BasePage {
     this.stuckTimeoutInput = page.locator('[data-testid="stuck-timeout"]');
   }
 
+  /** Open settings dialog by clicking the nav button */
+  async openViaNavigation() {
+    await this.page.click('[data-testid="nav-settings"]');
+    await this.settingsDialog.waitFor({ state: "visible" });
+  }
+
+  /** Open settings dialog via uiStore.openModal (web-mode shortcut) */
+  async openViaStore(section?: string) {
+    await this.page.evaluate((sec) => {
+      const uiStore = (window as unknown as { __uiStore?: { getState(): { openModal(type: string, ctx?: Record<string, unknown>): void } } }).__uiStore;
+      if (uiStore) {
+        uiStore.getState().openModal("settings", sec ? { section: sec } : undefined);
+      }
+    }, section);
+    await this.settingsDialog.waitFor({ state: "visible" });
+  }
+
+  /** Open settings dialog via keyboard shortcut ⌘7 */
+  async openViaKeyboard() {
+    await this.page.keyboard.press("Meta+7");
+    await this.settingsDialog.waitFor({ state: "visible" });
+  }
+
+  /** Select a section by its ID using the left-rail navigation */
+  async selectSection(sectionId: string) {
+    // Find the left-rail nav button whose data-section matches, or fall back to text-based nav
+    const sectionButton = this.settingsDialog.getByRole("button", { name: new RegExp(`^${sectionId}$`, "i") });
+    if (await sectionButton.isVisible()) {
+      await sectionButton.click();
+    } else {
+      // Fallback: open via store with section deep-link
+      await this.openViaStore(sectionId);
+    }
+  }
+
+  /** Close the settings dialog via the close button */
+  async closeModal() {
+    await this.closeButton.click();
+    await this.settingsDialog.waitFor({ state: "hidden" });
+  }
+
   async waitForSettingsLoaded() {
-    await this.settingsView.waitFor({ state: "visible" });
+    await this.settingsDialog.waitFor({ state: "visible" });
     await this.waitForAnimations();
   }
 

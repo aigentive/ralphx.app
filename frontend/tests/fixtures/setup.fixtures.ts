@@ -29,10 +29,15 @@ export async function setupActivity(page: Page) {
 
 export async function setupSettings(page: Page) {
   await setupApp(page);
-  // Navigate to settings view
-  await page.click('[data-testid="nav-settings"]');
-  // Wait for settings view to load
-  await page.waitForSelector('[data-testid="settings-view"]', { timeout: 10000 });
+  // Open settings modal via uiStore (exposed on window in web mode)
+  await page.evaluate(() => {
+    const uiStore = (window as unknown as { __uiStore?: { getState(): { openModal(type: string, ctx?: Record<string, unknown>): void } } }).__uiStore;
+    if (uiStore) {
+      uiStore.getState().openModal("settings");
+    }
+  });
+  // Wait for settings dialog to open
+  await page.waitForSelector('[data-testid="settings-dialog"]', { timeout: 10000 });
 }
 
 export async function setupExtensibility(page: Page) {

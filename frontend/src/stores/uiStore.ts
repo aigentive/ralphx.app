@@ -72,7 +72,6 @@ const DEFAULT_CHAT_VISIBILITY: Record<ViewType, boolean> = {
   extensibility: false,
   activity: false,
   insights: false,
-  settings: false,
   task_detail: false,
   team: false, // team view has its own split layout
 };
@@ -849,7 +848,12 @@ export const useUiStore = create<UiState & UiActions>()(
 
         // RESTORE phase — resolve view, fallback ephemeral views to kanban
         let restoredView: ViewType = state.viewByProject[newProjectId] ?? "kanban";
-        if (restoredView === "task_detail" || restoredView === "team") {
+        // Guard against stale localStorage values ("settings" was removed from ViewType)
+        if (
+          (restoredView as string) === "settings" ||
+          restoredView === "task_detail" ||
+          restoredView === "team"
+        ) {
           restoredView = "kanban";
         }
         // Feature flag guard: redirect disabled views to kanban

@@ -812,9 +812,9 @@ describe("getContextKey", () => {
     expect(key).toBe("project:project-abc");
   });
 
-  it("returns project key for settings context", () => {
+  it("returns project key for activity context", () => {
     const context = createTestContext({
-      view: "settings",
+      view: "activity",
       projectId: "project-def",
     });
 

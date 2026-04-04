@@ -20,7 +20,7 @@ import { ProposalDetailSheet } from "@/components/Ideation/ProposalDetailSheet";
 import type { ProposalDetailEnrichment } from "@/components/Ideation/ProposalDetailSheet";
 import { ExtensibilityView } from "@/components/ExtensibilityView";
 import { ActivityView } from "@/components/activity";
-import { SettingsView } from "@/components/settings";
+import SettingsDialog from "@/components/settings/SettingsDialog";
 import { InsightsView } from "@/components/views/InsightsView";
 import { TeamSplitView } from "@/components/Team";
 import { TaskGraphView } from "@/components/TaskGraph";
@@ -158,6 +158,7 @@ function AppContent() {
   const toggleGraphRightPanelCompactOpen = useUiStore(
     (s) => s.toggleGraphRightPanelCompactOpen
   );
+  const openModal = useUiStore((s) => s.openModal);
   const battleModeActive = useUiStore((s) => s.battleModeActive);
   const enterBattleMode = useUiStore((s) => s.enterBattleMode);
   const exitBattleMode = useUiStore((s) => s.exitBattleMode);
@@ -549,7 +550,7 @@ function AppContent() {
   };
 
   const handleOpenSettings = () => {
-    setCurrentView("settings");
+    openModal("settings", { section: "execution" });
   };
 
   const handleBattleModeToggle = useCallback(() => {
@@ -773,6 +774,7 @@ function AppContent() {
     welcomeOverlayReturnView,
     openPlanQuickSwitcher: handleOpenPlanQuickSwitcher,
     onBattleModeToggle: handleBattleModeToggle,
+    openSettings: handleOpenSettings,
     featureFlags,
   });
 
@@ -849,7 +851,7 @@ function AppContent() {
             </h1>
 
             {/* View Navigation */}
-            <Navigation currentView={currentView} onViewChange={handleViewChange} />
+            <Navigation currentView={currentView} onViewChange={handleViewChange} onOpenSettings={handleOpenSettings} />
           </div>
 
           {/* Spacer */}
@@ -1156,15 +1158,6 @@ function AppContent() {
                     : null
               )}
               {currentView === "insights" && <InsightsView />}
-              {currentView === "settings" && (
-                <SettingsView
-                  {...(executionSettings && { initialSettings: executionSettings })}
-                  isLoading={isLoadingSettings}
-                  isSaving={isSavingSettings}
-                  error={settingsError}
-                  onSettingsChange={handleSettingsChange}
-                />
-              )}
               {currentView === "team" && <TeamSplitView />}
             </div>
         </div>
@@ -1213,6 +1206,15 @@ function AppContent() {
         isCreating={isCreatingProject}
         error={projectCreationError}
         isFirstRun={hasNoProjects}
+      />
+
+      {/* Settings Dialog - Modal overlay replacing routed settings view */}
+      <SettingsDialog
+        executionSettings={executionSettings}
+        isLoadingSettings={isLoadingSettings}
+        isSavingSettings={isSavingSettings}
+        settingsError={settingsError}
+        onSettingsChange={handleSettingsChange}
       />
 
       {/* Permission Dialog - Global UI-based permission approval */}
