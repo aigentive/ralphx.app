@@ -15,6 +15,7 @@
  *   - X-RalphX-Project-Scope header injected for backend enforcement
  */
 import type { Server as HttpServer } from "node:http";
+import type { IncomingMessage } from "node:http";
 import type { ExternalMcpConfig } from "./types.js";
 /** Returns the current number of active TCP connections (for testing). */
 export declare function getActiveConnections(): number;
@@ -32,4 +33,14 @@ export declare function shutdown(): Promise<void>;
  * Start the external MCP server.
  */
 export declare function startServer(config?: Partial<ExternalMcpConfig>): Promise<void>;
+/**
+ * Read the raw request body as a string, distinguishing stream errors from empty/parse outcomes.
+ * Unlike readJsonBody, this preserves the error distinction needed for MCP body pre-parsing.
+ */
+export declare function readBodyString(req: IncomingMessage): Promise<{
+    ok: true;
+    body: string;
+} | {
+    ok: false;
+}>;
 //# sourceMappingURL=index.d.ts.map

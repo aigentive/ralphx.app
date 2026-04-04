@@ -1,8 +1,10 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::application::GitService;
 use crate::domain::entities::{InternalStatus, TaskId};
 use crate::domain::repositories::TaskRepository;
+use crate::infrastructure::agents::claude::git_runtime_config;
 
 mod agents;
 mod guard;
@@ -46,7 +48,33 @@ impl<'a> super::TransitionHandler<'a> {
         }
 
         cancel_validation_and_stop_agents(self, task_id_str, task, app_handle).await;
-        cleanup_stale_worktrees(task_id_str, task, project, repo_path, task_repo, app_handle).await;
+
+        // Best-effort: clean orphaned task worktrees before the main stale-worktree cleanup.
+        // Placed between cancel_validation_and_stop_agents and cleanup_stale_worktrees so agents
+        // are already stopped before we touch the filesystem. Uses best-effort semantics —
+        // failure here must never abort the merge pipeline.
+        let task_wt_path = task.worktree_path.as_deref().map(std::path::Path::new);
+        if let Err(e) = GitService::cleanup_stale_worktree_artifacts(
+            repo_path,
+            task_wt_path,
+            project,
+            task_id_str,
+        )
+        .await
+        {
+            tracing::warn!(
+                task_id = task_id_str,
+                error = %e,
+                "cleanup_stale_worktree_artifacts failed (non-fatal, continuing merge pipeline)"
+            );
+        }
+
+        // Compute outer deadline for Step 2 retry budget:
+        // original_timeout + original_timeout + 10s gives enough room for one retry.
+        let worktree_timeout_secs = git_runtime_config().cleanup_worktree_timeout_secs;
+        let outer_deadline = std::time::Instant::now()
+            + std::time::Duration::from_secs(worktree_timeout_secs * 2 + 10);
+        cleanup_stale_worktrees(task_id_str, task, project, repo_path, task_repo, app_handle, outer_deadline).await;
 
         tracing::info!(
             task_id = task_id_str,

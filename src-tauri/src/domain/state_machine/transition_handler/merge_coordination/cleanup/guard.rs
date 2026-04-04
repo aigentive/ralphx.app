@@ -34,9 +34,10 @@ pub(super) async fn maybe_skip_first_attempt_cleanup<'a>(
             tracing::info!(
                 task_id = task_id_str,
                 elapsed_us = cleanup_start.elapsed().as_micros() as u64,
-                "pre_merge_cleanup: GUARD fast-path — first clean attempt, no agents running, skipping all cleanup"
+                "pre_merge_cleanup: first clean attempt, no agents running — running cleanup to clear stale worktrees from prior crashes"
             );
-            return true;
+            // Always proceed with cleanup — stale worktrees from prior crashed merges
+            // must be cleaned even on the first attempt to prevent merge failures.
         }
         tracing::info!(
             task_id = task_id_str,

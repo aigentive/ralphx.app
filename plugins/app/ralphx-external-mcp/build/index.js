@@ -112,12 +112,37 @@ async function handleRequest(req, res, config) {
  * Supports both stateful (session-based) and stateless modes.
  */
 async function handleMcpRequest(req, res, keyContext, _config) {
+    // Pre-parse the request body for POST requests before handing to transport.
+    // The SDK's StreamableHTTPServerTransport converts the Node.js stream to a Web Standard
+    // Request via @hono/node-server, and req.json() on the converted request can fail on
+    // chunked bodies, encoding issues, or partial reads. Pre-parsing avoids the fragile
+    // Node.js→Web Standard stream conversion as a failure point.
+    // Non-POST requests (GET for SSE polling, DELETE for session close) have no body to parse.
+    let parsedBody;
+    if (req.method === "POST") {
+        const bodyResult = await readBodyString(req);
+        if (!bodyResult.ok) {
+            sendError(res, 500, "Stream read failure");
+            return;
+        }
+        if (bodyResult.body.trim() === "") {
+            sendError(res, 400, "Empty request body");
+            return;
+        }
+        try {
+            parsedBody = JSON.parse(bodyResult.body);
+        }
+        catch {
+            sendJsonRpcParseError(res);
+            return;
+        }
+    }
     // Session management: look up existing transport or create new one
     const sessionId = req.headers["mcp-session-id"];
     if (sessionId && activeTransports.has(sessionId)) {
         // Resume existing session
         const transport = activeTransports.get(sessionId);
-        await transport.handleRequest(req, res);
+        await transport.handleRequest(req, res, parsedBody);
         return;
     }
     // New session — only POST is valid for initialization
@@ -146,7 +171,7 @@ async function handleMcpRequest(req, res, keyContext, _config) {
         console.error("[ralphx-external-mcp] Transport error:", err);
     };
     await server.connect(transport);
-    await transport.handleRequest(req, res);
+    await transport.handleRequest(req, res, parsedBody);
 }
 /** Reset connection counter — used in tests to clean up between runs. */
 export function resetActiveConnections() {
@@ -265,6 +290,38 @@ function readJsonBody(req) {
         });
         req.on("error", () => resolve(null));
     });
+}
+/**
+ * Read the raw request body as a string, distinguishing stream errors from empty/parse outcomes.
+ * Unlike readJsonBody, this preserves the error distinction needed for MCP body pre-parsing.
+ */
+export function readBodyString(req) {
+    return new Promise((resolve) => {
+        let data = "";
+        req.on("data", (chunk) => {
+            data += String(chunk);
+        });
+        req.on("end", () => {
+            resolve({ ok: true, body: data });
+        });
+        req.on("error", () => resolve({ ok: false }));
+    });
+}
+/** Send a JSON-RPC 2.0 parse error response (code -32700) with HTTP 400. */
+function sendJsonRpcParseError(res) {
+    const body = JSON.stringify({
+        jsonrpc: "2.0",
+        id: null,
+        error: {
+            code: -32700,
+            message: "Parse error",
+        },
+    });
+    res.writeHead(400, {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(body),
+    });
+    res.end(body);
 }
 async function handleInvalidateCache(req, res) {
     const body = await readJsonBody(req);

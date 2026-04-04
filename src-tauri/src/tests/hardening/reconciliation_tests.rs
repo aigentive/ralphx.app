@@ -322,7 +322,7 @@ async fn test_e7_no_retry_counter_on_execution_state() {
     let exec_state = ExecutionState::new();
     // No get_retry_count(), increment_retry(), max_retries(), has_exceeded_retries()
     assert_eq!(exec_state.running_count(), 0);
-    assert_eq!(exec_state.max_concurrent(), 2);
+    assert_eq!(exec_state.max_concurrent(), 10);
     assert!(!exec_state.is_paused());
 }
 

@@ -80,6 +80,7 @@ describe("validateKey", () => {
       ok: true,
       status: 200,
       json: async () => ({
+        valid: true,
         key_id: "key-001",
         project_ids: ["proj-abc"],
         permissions: 3,
@@ -129,6 +130,7 @@ describe("validateKey", () => {
       ok: true,
       status: 200,
       json: async () => ({
+        valid: true,
         key_id: "key-002",
         project_ids: ["proj-xyz"],
         permissions: 1,
@@ -184,6 +186,7 @@ describe("authMiddleware", () => {
         ok: true,
         status: 200,
         json: async () => ({
+          valid: true,
           key_id: "key-valid",
           project_ids: ["proj-1"],
           permissions: 3,
@@ -219,6 +222,7 @@ describe("invalidateCacheByKeyId", () => {
       ok: true,
       status: 200,
       json: async () => ({
+        valid: true,
         key_id: "key-to-invalidate",
         project_ids: ["proj-1"],
         permissions: 3,
