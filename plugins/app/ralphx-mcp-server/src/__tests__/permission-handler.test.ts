@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { normalizePermissionToolInput } from "../permission-handler.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  normalizePermissionToolInput,
+  shouldAutoApprovePermission,
+} from "../permission-handler.js";
 
 describe("normalizePermissionToolInput", () => {
   it("adds snake_case and path aliases for Write requests", () => {
@@ -44,5 +50,137 @@ describe("normalizePermissionToolInput", () => {
       newString: "after",
       new_string: "after",
     });
+  });
+});
+
+describe("shouldAutoApprovePermission", () => {
+  const tempDirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  function makeTempGitRepo(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-perm-"));
+    tempDirs.push(dir);
+    fs.mkdirSync(path.join(dir, ".git"));
+    fs.writeFileSync(path.join(dir, "package.json"), "{}\n");
+    return dir;
+  }
+
+  it("auto-approves Read for files inside a git repo", () => {
+    const repo = makeTempGitRepo();
+    const file = path.join(repo, "package.json");
+
+    expect(
+      shouldAutoApprovePermission("Read", {
+        path: file,
+      })
+    ).toBe(true);
+  });
+
+  it("does not auto-approve Read for .env files even inside a git repo", () => {
+    const repo = makeTempGitRepo();
+    const file = path.join(repo, ".env");
+
+    expect(
+      shouldAutoApprovePermission("Read", {
+        path: file,
+      })
+    ).toBe(false);
+  });
+
+  it("auto-approves Glob for patterns rooted inside a git repo", () => {
+    const repo = makeTempGitRepo();
+
+    expect(
+      shouldAutoApprovePermission("Glob", {
+        pattern: `${repo}/**/*.{ts,js,py}`,
+      })
+    ).toBe(true);
+  });
+
+  it("auto-approves Grep when its target path is inside a git repo", () => {
+    const repo = makeTempGitRepo();
+
+    expect(
+      shouldAutoApprovePermission("Grep", {
+        pattern: "permission",
+        path: repo,
+      })
+    ).toBe(true);
+  });
+
+  it("auto-approves read-only repo inspection Bash commands", () => {
+    const repo = makeTempGitRepo();
+
+    expect(
+      shouldAutoApprovePermission("Bash", {
+        command: `cat ${path.join(repo, "package.json")} 2>/dev/null || echo 'FILE NOT FOUND'; ls -la ${repo}/`,
+      })
+    ).toBe(true);
+  });
+
+  it("does not auto-approve mutating Bash commands", () => {
+    const repo = makeTempGitRepo();
+
+    expect(
+      shouldAutoApprovePermission("Bash", {
+        command: `rm -rf ${repo}`,
+      })
+    ).toBe(false);
+  });
+
+  it("auto-approves Read for ~/.reefagent/agents content", () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-home-"));
+    tempDirs.push(homeDir);
+    vi.spyOn(os, "homedir").mockReturnValue(homeDir);
+
+    const agentDir = path.join(homeDir, ".reefagent", "agents", "spanish-tutor");
+    fs.mkdirSync(agentDir, { recursive: true });
+    const file = path.join(agentDir, "memory.md");
+    fs.writeFileSync(file, "hola\n");
+
+    expect(
+      shouldAutoApprovePermission("Read", {
+        path: file,
+      })
+    ).toBe(true);
+  });
+
+  it("auto-approves Write for Claude project memory markdown files", () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-home-"));
+    tempDirs.push(homeDir);
+    vi.spyOn(os, "homedir").mockReturnValue(homeDir);
+
+    const memoryDir = path.join(
+      homeDir,
+      ".claude",
+      "projects",
+      "sample-project",
+      "memory"
+    );
+    fs.mkdirSync(memoryDir, { recursive: true });
+    const file = path.join(memoryDir, "feedback_telegram_response_style.md");
+
+    expect(
+      shouldAutoApprovePermission("Write", {
+        filePath: file,
+        content: "---\nname: test\n---\n",
+      })
+    ).toBe(true);
+  });
+
+  it("does not auto-approve Write outside Claude project memory", () => {
+    const repo = makeTempGitRepo();
+
+    expect(
+      shouldAutoApprovePermission("Write", {
+        filePath: path.join(repo, "feedback.md"),
+        content: "---\nname: test\n---\n",
+      })
+    ).toBe(false);
   });
 });

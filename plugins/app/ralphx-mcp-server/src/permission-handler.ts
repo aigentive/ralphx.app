@@ -12,9 +12,24 @@
  */
 
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { safeError } from "./redact.js";
 
 const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
+const SAFE_READONLY_BASH_COMMANDS = new Set([
+  "ls",
+  "cat",
+  "find",
+  "rg",
+  "grep",
+  "head",
+  "sed",
+  "wc",
+  "pwd",
+  "echo",
+]);
 
 /**
  * MCP tool definition for permission handling
@@ -60,6 +75,198 @@ function getStringField(
     }
   }
   return undefined;
+}
+
+function expandHome(value: string): string {
+  if (!value.startsWith("~")) return value;
+  return path.join(os.homedir(), value.slice(1));
+}
+
+function normalizePathLike(value: string): string {
+  return path.resolve(expandHome(value));
+}
+
+function isSensitivePath(targetPath: string): boolean {
+  const normalized = normalizePathLike(targetPath);
+  const basename = path.basename(normalized);
+  const parts = normalized.split(path.sep);
+  return (
+    basename === ".env" ||
+    basename.startsWith(".env.") ||
+    parts.includes(".git")
+  );
+}
+
+function isWithin(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function findGitRepoRoot(targetPath: string): string | null {
+  let current = normalizePathLike(targetPath);
+
+  while (!fs.existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+
+  if (!fs.statSync(current).isDirectory()) {
+    current = path.dirname(current);
+  }
+
+  while (true) {
+    if (fs.existsSync(path.join(current, ".git"))) {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
+
+function trustedRoots(): string[] {
+  const roots = new Set<string>();
+  const pwd = process.env.PWD;
+  if (pwd) roots.add(normalizePathLike(pwd));
+  roots.add(normalizePathLike(process.cwd()));
+  roots.add(path.join(os.homedir(), ".reefagent", "agents"));
+  return [...roots];
+}
+
+function isTrustedReadPath(targetPath: string): boolean {
+  const normalized = normalizePathLike(targetPath);
+  if (isSensitivePath(normalized)) return false;
+
+  for (const root of trustedRoots()) {
+    if (isWithin(root, normalized)) return true;
+  }
+
+  return findGitRepoRoot(normalized) !== null;
+}
+
+function isTrustedClaudeProjectMemoryPath(targetPath: string): boolean {
+  const normalized = normalizePathLike(targetPath);
+  const memoryRoot = path.join(os.homedir(), ".claude", "projects");
+  const ext = path.extname(normalized).toLowerCase();
+
+  if (!isWithin(memoryRoot, normalized)) return false;
+  if (ext !== ".md") return false;
+  if (isSensitivePath(normalized)) return false;
+
+  const parts = normalized.split(path.sep);
+  return parts.includes("memory");
+}
+
+function extractGlobRoot(pattern: string): string | null {
+  const wildcardIndex = pattern.search(/[*?[{]/);
+  if (wildcardIndex === -1) {
+    return pattern;
+  }
+
+  const prefix = pattern.slice(0, wildcardIndex);
+  if (!prefix) return null;
+
+  if (prefix.endsWith(path.sep) || prefix.endsWith("/")) {
+    return prefix;
+  }
+
+  return path.dirname(prefix);
+}
+
+function shellSegments(command: string): string[] {
+  return command
+    .split(/\s*(?:&&|\|\||;|\|)\s*/)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+}
+
+function tokenizeShellSegment(segment: string): string[] {
+  return segment.match(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\S+/g) ?? [];
+}
+
+function unquote(token: string): string {
+  if (
+    (token.startsWith("\"") && token.endsWith("\"")) ||
+    (token.startsWith("'") && token.endsWith("'"))
+  ) {
+    return token.slice(1, -1);
+  }
+  return token;
+}
+
+function isPathToken(token: string): boolean {
+  return (
+    token.startsWith("/") ||
+    token.startsWith("~/") ||
+    token.startsWith("./") ||
+    token.startsWith("../")
+  );
+}
+
+function segmentIsTrustedReadonlyBash(segment: string): boolean {
+  const rawTokens = tokenizeShellSegment(segment).map(unquote);
+  if (rawTokens.length === 0) return true;
+
+  let index = 0;
+  while (
+    index < rawTokens.length &&
+    /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(rawTokens[index] ?? "")
+  ) {
+    index += 1;
+  }
+
+  const command = rawTokens[index];
+  if (!command || !SAFE_READONLY_BASH_COMMANDS.has(command)) {
+    return false;
+  }
+
+  if (command === "echo" || command === "pwd") {
+    return true;
+  }
+
+  const pathTokens = rawTokens
+    .slice(index + 1)
+    .filter((token) => isPathToken(token) && !token.includes(">"));
+
+  if (pathTokens.length === 0) {
+    return isTrustedReadPath(process.env.PWD ?? process.cwd());
+  }
+
+  return pathTokens.every((token) => isTrustedReadPath(token));
+}
+
+export function shouldAutoApprovePermission(
+  toolName: string,
+  toolInput: Record<string, unknown>
+): boolean {
+  switch (toolName) {
+    case "Write":
+    case "Edit": {
+      const targetPath = getStringField(toolInput, ["file_path", "filePath", "path"]);
+      return Boolean(targetPath && isTrustedClaudeProjectMemoryPath(targetPath));
+    }
+    case "Read": {
+      const targetPath = getStringField(toolInput, ["file_path", "filePath", "path"]);
+      return Boolean(targetPath && isTrustedReadPath(targetPath));
+    }
+    case "LS":
+    case "Grep": {
+      const targetPath = getStringField(toolInput, ["file_path", "filePath", "path"]);
+      return Boolean(targetPath && isTrustedReadPath(targetPath));
+    }
+    case "Glob": {
+      const pattern = getStringField(toolInput, ["pattern"]);
+      const root = pattern ? extractGlobRoot(pattern) : null;
+      return Boolean(root && isTrustedReadPath(root));
+    }
+    case "Bash": {
+      const command = getStringField(toolInput, ["command"]);
+      return Boolean(command) && shellSegments(command).every(segmentIsTrustedReadonlyBash);
+    }
+    default:
+      return false;
+  }
 }
 
 export function normalizePermissionToolInput(
@@ -147,6 +354,21 @@ export async function handlePermissionRequest(
   }
 
   safeError(`[RalphX MCP] Permission request for tool: ${tool_name}`);
+
+  if (shouldAutoApprovePermission(tool_name, normalizedToolInput)) {
+    safeError(`[RalphX MCP] Auto-allowing safe read-only permission for tool: ${tool_name}`);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            behavior: "allow" as const,
+            updatedInput: normalizedToolInput,
+          }),
+        },
+      ],
+    };
+  }
 
   // 1. Register permission request with Tauri backend
   let request_id: string;
