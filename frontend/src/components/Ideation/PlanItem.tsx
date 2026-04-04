@@ -68,22 +68,25 @@ function formatDate(dateString: string): string {
 
 const ACCENT_COLOR = "hsl(14 100% 60%)";
 const VERIFYING_COLOR = "hsl(217 91% 60%)";
+const QUEUED_COLOR = "hsl(45 93% 55%)";
 
 interface ActivityIndicatorProps {
   isActive: boolean;
   isWaiting: boolean;
+  isQueued: boolean;
   label?: string | undefined;
   separator?: string | undefined;
   color?: string | undefined;
 }
 
-function ActivityIndicator({ isActive, isWaiting, label = "Agent working...", separator, color = ACCENT_COLOR }: ActivityIndicatorProps) {
-  if (!isActive && !isWaiting) return null;
+function ActivityIndicator({ isActive, isWaiting, isQueued, label = "Agent working...", separator, color = ACCENT_COLOR }: ActivityIndicatorProps) {
+  if (!isActive && !isWaiting && !isQueued) return null;
   return (
     <>
       {isActive && <span style={{ color }}>{label}</span>}
       {isWaiting && <span style={{ color: "hsl(220 10% 45%)" }}>Awaiting input</span>}
-      {separator && <span style={{ color: "hsl(220 10% 35%)" }}>{separator}</span>}
+      {!isActive && !isWaiting && isQueued && <span style={{ color: QUEUED_COLOR }}>Queued</span>}
+      {(isActive || isWaiting) && separator && <span style={{ color: "hsl(220 10% 35%)" }}>{separator}</span>}
     </>
   );
 }
@@ -123,9 +126,10 @@ interface MetadataLineProps {
   isIdeationActive: boolean;
   isIdeationWaiting: boolean;
   isVerifying: boolean;
+  isQueued: boolean;
 }
 
-function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiting, isVerifying }: MetadataLineProps) {
+function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiting, isVerifying, isQueued }: MetadataLineProps) {
   const parentSessionTitle = plan.parentSessionTitle;
   const activityLabel = isVerifying ? "Verifying..." : undefined;
   const activityColor = isVerifying ? VERIFYING_COLOR : undefined;
@@ -137,7 +141,7 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
         className="flex flex-col gap-0.5 text-[10px]"
         style={{ color: "hsl(220 10% 45%)" }}
       >
-        <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} label={activityLabel} color={activityColor} />
+        <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} label={activityLabel} color={activityColor} />
         <div className="flex items-center gap-1">
           <CornerDownRight className="w-2.5 h-2.5" />
           <span className="truncate">Follow-up of: {parentSessionTitle}</span>
@@ -153,8 +157,8 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
           className="flex items-center gap-1 text-[10px]"
           style={{ color: "hsl(220 10% 45%)" }}
         >
-          {(isIdeationActive || isIdeationWaiting || isVerifying) ? (
-            <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} label={activityLabel} color={activityColor} />
+          {(isIdeationActive || isIdeationWaiting || isVerifying || isQueued) ? (
+            <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} label={activityLabel} color={activityColor} />
           ) : (
             <>
               <Clock className="w-2.5 h-2.5" />
@@ -166,10 +170,10 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
 
     case "in-progress":
       if (!progress) {
-        if (isIdeationActive || isIdeationWaiting || isVerifying) {
+        if (isIdeationActive || isIdeationWaiting || isVerifying || isQueued) {
           return (
             <span className="text-[10px]">
-              <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} label={activityLabel} color={activityColor} />
+              <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} label={activityLabel} color={activityColor} />
             </span>
           );
         }
@@ -177,7 +181,7 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
       }
       return (
         <div className="flex items-center gap-1 text-[10px]">
-          <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} label={activityLabel ?? "Agent working"} separator="·" color={activityColor} />
+          <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} label={activityLabel ?? "Agent working"} separator="·" color={activityColor} />
           <span style={{ color: "hsl(145 70% 50%)" }}>
             {progress.done}/{progress.total} done
           </span>
@@ -198,7 +202,7 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
           className="flex items-center gap-1 text-[10px]"
           style={{ color: "hsl(220 10% 45%)" }}
         >
-          <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} separator="·" label={activityLabel} color={activityColor} />
+          <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} separator="·" label={activityLabel} color={activityColor} />
           <span>{progress?.total ?? 0} {(progress?.total ?? 0) === 1 ? "task" : "tasks"}</span>
           {plan.convertedAt && (
             <>
@@ -215,7 +219,7 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
           className="flex items-center gap-1 text-[10px]"
           style={{ color: "hsl(220 10% 40%)" }}
         >
-          <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} separator="·" label={activityLabel} color={activityColor} />
+          <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} separator="·" label={activityLabel} color={activityColor} />
           <CircleCheck className="w-2.5 h-2.5" style={{ color: "hsl(145 70% 40%)" }} />
           <span>Completed</span>
         </div>
@@ -227,7 +231,7 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
           className="flex items-center gap-1 text-[10px]"
           style={{ color: "hsl(220 10% 40%)" }}
         >
-          <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} separator="·" label={activityLabel} color={activityColor} />
+          <ActivityIndicator isActive={isIdeationActive || isVerifying} isWaiting={isIdeationWaiting} isQueued={isQueued} separator="·" label={activityLabel} color={activityColor} />
           {plan.archivedAt ? (
             <span>Archived {formatDate(plan.archivedAt)}</span>
           ) : (
@@ -499,6 +503,7 @@ export const PlanItem = memo(function PlanItem({
                 isIdeationActive={isIdeationActive}
                 isIdeationWaiting={isIdeationWaiting}
                 isVerifying={isVerifying}
+                isQueued={plan.hasPendingPrompt ?? false}
               />
             </>
           )}

@@ -28,6 +28,7 @@ function createSession(overrides: Partial<IdeationSessionWithProgress> = {}): Id
     convertedAt: null,
     progress: null,
     parentSessionTitle: null,
+    hasPendingPrompt: false,
     ...overrides,
   };
 }
@@ -390,6 +391,74 @@ describe("PlanItem", () => {
       expect(screen.getByText("Reopen")).toBeInTheDocument();
       expect(screen.queryByText("Delete")).not.toBeInTheDocument();
       expect(screen.queryByText("Reset & Re-accept")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("queued state (hasPendingPrompt)", () => {
+    it("renders 'Queued' inline text when hasPendingPrompt=true and agent is idle", () => {
+      renderItem({
+        group: "drafts",
+        plan: createSession({ hasPendingPrompt: true }),
+      });
+      expect(screen.getByText("Queued")).toBeInTheDocument();
+    });
+
+    it("renders 'Queued' in amber color", () => {
+      renderItem({
+        group: "drafts",
+        plan: createSession({ hasPendingPrompt: true }),
+      });
+      const label = screen.getByText("Queued");
+      expect(label).toHaveStyle({ color: "hsl(45 93% 55%)" });
+    });
+
+    it("active wins: isActive=true + hasPendingPrompt=true renders 'Agent working...' not 'Queued'", () => {
+      useChatStore.setState({ agentStatus: { "session:session-1": "generating" } });
+      renderItem({
+        group: "drafts",
+        plan: createSession({ hasPendingPrompt: true }),
+      });
+      expect(screen.getByText("Agent working...")).toBeInTheDocument();
+      expect(screen.queryByText("Queued")).not.toBeInTheDocument();
+    });
+
+    it("waiting wins: isWaiting=true + hasPendingPrompt=true renders 'Awaiting input' not 'Queued'", () => {
+      useChatStore.setState({ agentStatus: { "session:session-1": "waiting_for_input" } });
+      renderItem({
+        group: "drafts",
+        plan: createSession({ hasPendingPrompt: true }),
+      });
+      expect(screen.getByText("Awaiting input")).toBeInTheDocument();
+      expect(screen.queryByText("Queued")).not.toBeInTheDocument();
+    });
+
+    it("none set: hasPendingPrompt=false renders timestamp, not 'Queued'", () => {
+      renderItem({
+        group: "drafts",
+        plan: createSession({ hasPendingPrompt: false }),
+      });
+      expect(screen.queryByText("Queued")).not.toBeInTheDocument();
+    });
+
+    it("queued renders in drafts group instead of falling through to timestamp", () => {
+      renderItem({
+        group: "drafts",
+        plan: createSession({ hasPendingPrompt: true }),
+      });
+      expect(screen.getByText("Queued")).toBeInTheDocument();
+      expect(screen.queryByText(/ago/)).not.toBeInTheDocument();
+    });
+
+    it("separator does NOT render when only queued (no active/waiting)", () => {
+      renderItem({
+        group: "accepted",
+        plan: createSession({ hasPendingPrompt: true, progress: createProgress({ idle: 3, total: 3 }) }),
+      });
+      const label = screen.getByText("Queued");
+      expect(label).toBeInTheDocument();
+      // The separator "·" should not appear between Queued and task count
+      const container = label.closest("div");
+      expect(container?.textContent).not.toMatch(/Queued\s*·/);
     });
   });
 
