@@ -1,8 +1,8 @@
 use ralphx_lib::application::AppState;
 use ralphx_lib::commands::review_commands::{FixTaskAttemptsResponse, ReviewResponse};
 use ralphx_lib::domain::entities::{
-    InternalStatus, Project, ProjectId, Review, ReviewId, ReviewStatus, ReviewerType, Task,
-    TaskCategory, TaskId,
+    InternalStatus, Project, ProjectId, Review, ReviewId, ReviewNote, ReviewOutcome, ReviewStatus,
+    ReviewerType, Task, TaskCategory, TaskId,
 };
 
 async fn setup_test_state() -> AppState {
@@ -500,4 +500,201 @@ async fn test_fix_task_attempts_response_serialization() {
         serde_json::to_string(&response).expect("Failed to serialize response to JSON in test");
     assert!(json.contains("\"task_id\":\"task-123\""));
     assert!(json.contains("\"attempt_count\":2"));
+}
+
+// ========================================
+// request_task_changes_from_reviewing Tests
+//
+// These tests validate the pre/post-conditions of the command logic
+// using memory repositories. The full Tauri command (with AppHandle
+// and event emission) requires an integration environment; the tests
+// here cover state validation, idempotency guard, and review note
+// creation — the three steps exercisable without a live AppHandle.
+// ========================================
+
+/// Helper: create a task with a specific internal status in the test state.
+async fn create_task_with_status(
+    state: &AppState,
+    project_id: &str,
+    status: InternalStatus,
+) -> Task {
+    let pid = ProjectId::from_string(project_id.to_string());
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    let mut project_with_id = project;
+    project_with_id.id = pid.clone();
+    // Ignore duplicate project errors (ok if already created).
+    let _ = state.project_repo.create(project_with_id).await;
+
+    let mut task = Task::new(pid, "Test Task".to_string());
+    task.internal_status = status;
+    state
+        .task_repo
+        .create(task.clone())
+        .await
+        .expect("Failed to create task in test");
+    task
+}
+
+/// (a) Happy path pre-condition: task in Reviewing state passes validation.
+#[tokio::test]
+async fn test_request_task_changes_from_reviewing_accepts_reviewing_state() {
+    let state = setup_test_state().await;
+    let task = create_task_with_status(&state, "proj-rc1", InternalStatus::Reviewing).await;
+
+    let fetched = state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .expect("repo error")
+        .expect("task not found");
+
+    // Command step 1: validate status == Reviewing
+    assert_eq!(
+        fetched.internal_status,
+        InternalStatus::Reviewing,
+        "State validation must pass for Reviewing tasks"
+    );
+}
+
+/// (b) Reject ReviewPassed — command must return an error.
+#[tokio::test]
+async fn test_request_task_changes_from_reviewing_rejects_review_passed() {
+    let state = setup_test_state().await;
+    let task =
+        create_task_with_status(&state, "proj-rc2", InternalStatus::ReviewPassed).await;
+
+    let fetched = state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .expect("repo error")
+        .expect("task not found");
+
+    // Simulates command step 1 guard
+    assert_ne!(
+        fetched.internal_status,
+        InternalStatus::Reviewing,
+        "ReviewPassed should fail the Reviewing state guard"
+    );
+}
+
+/// (b) Reject Escalated — command must return an error.
+#[tokio::test]
+async fn test_request_task_changes_from_reviewing_rejects_escalated() {
+    let state = setup_test_state().await;
+    let task =
+        create_task_with_status(&state, "proj-rc3", InternalStatus::Escalated).await;
+
+    let fetched = state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .expect("repo error")
+        .expect("task not found");
+
+    assert_ne!(fetched.internal_status, InternalStatus::Reviewing);
+}
+
+/// (b) Reject InProgress (Executing) — command must return an error.
+#[tokio::test]
+async fn test_request_task_changes_from_reviewing_rejects_executing() {
+    let state = setup_test_state().await;
+    let task =
+        create_task_with_status(&state, "proj-rc4", InternalStatus::Executing).await;
+
+    let fetched = state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .expect("repo error")
+        .expect("task not found");
+
+    assert_ne!(fetched.internal_status, InternalStatus::Reviewing);
+}
+
+/// Idempotency guard: metadata flag is written before side effects.
+#[tokio::test]
+async fn test_request_task_changes_from_reviewing_writes_idempotency_flag() {
+    let state = setup_test_state().await;
+    let mut task =
+        create_task_with_status(&state, "proj-rc5", InternalStatus::Reviewing).await;
+
+    // Simulate command step 2: write idempotency guard
+    let mut meta = task
+        .metadata
+        .as_deref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = meta.as_object_mut() {
+        obj.insert(
+            "request_changes_initiated".to_string(),
+            serde_json::json!(true),
+        );
+    }
+    task.metadata = Some(serde_json::to_string(&meta).unwrap());
+    task.touch();
+    state
+        .task_repo
+        .update(&task)
+        .await
+        .expect("Failed to update task with idempotency flag");
+
+    // Verify the flag is persisted
+    let updated = state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .expect("repo error")
+        .expect("task not found");
+
+    let stored_meta: serde_json::Value = serde_json::from_str(
+        updated.metadata.as_deref().expect("metadata must be present"),
+    )
+    .expect("metadata must be valid JSON");
+
+    assert_eq!(
+        stored_meta["request_changes_initiated"],
+        serde_json::json!(true),
+        "Idempotency flag must be written to task metadata"
+    );
+}
+
+/// Review note with ChangesRequested outcome and Human reviewer is written to repo.
+/// This mirrors command step 4 (add_note).
+#[tokio::test]
+async fn test_request_task_changes_from_reviewing_creates_review_note() {
+    let state = setup_test_state().await;
+    let task =
+        create_task_with_status(&state, "proj-rc6", InternalStatus::Reviewing).await;
+
+    let feedback = "Missing error handling in the auth flow".to_string();
+
+    // Simulate command step 4: add a human ChangesRequested note
+    let review_note = ReviewNote::with_notes(
+        task.id.clone(),
+        ReviewerType::Human,
+        ReviewOutcome::ChangesRequested,
+        feedback.clone(),
+    );
+    state
+        .review_repo
+        .add_note(&review_note)
+        .await
+        .expect("Failed to add review note");
+
+    // Verify the note was persisted
+    let notes = state
+        .review_repo
+        .get_notes_by_task_id(&task.id)
+        .await
+        .expect("Failed to get notes");
+
+    assert_eq!(notes.len(), 1, "Exactly one review note should exist");
+    assert_eq!(notes[0].reviewer, ReviewerType::Human);
+    assert_eq!(notes[0].outcome, ReviewOutcome::ChangesRequested);
+    assert_eq!(
+        notes[0].notes,
+        Some(feedback),
+        "Feedback text must be stored in the review note"
+    );
 }

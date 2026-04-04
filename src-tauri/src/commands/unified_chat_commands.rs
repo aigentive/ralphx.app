@@ -159,7 +159,7 @@ pub struct AgentRunStatusResponse {
 // Helper to create ChatService
 // ============================================================================
 
-fn create_chat_service(
+pub(crate) fn create_chat_service(
     state: &AppState,
     app_handle: tauri::AppHandle,
     execution_state: &Arc<ExecutionState>,

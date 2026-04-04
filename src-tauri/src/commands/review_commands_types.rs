@@ -188,6 +188,15 @@ pub struct RequestTaskChangesInput {
     pub feedback: String,
 }
 
+/// Input for requesting changes on a task while it is actively being reviewed (Reviewing state)
+/// Stops the reviewer agent, records a human ChangesRequested note, and transitions to RevisionNeeded.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestTaskChangesFromReviewingInput {
+    pub task_id: String,
+    pub feedback: String,
+}
+
 /// Input for re-queueing an escalated task for AI re-review
 #[derive(Debug, Deserialize)]
 pub struct ReReviewTaskInput {

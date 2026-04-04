@@ -14,8 +14,9 @@ import {
   AlertTriangle,
   XCircle,
   Square,
-  ArrowUpRight,
+  RotateCcw,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   SectionTitle,
@@ -233,6 +234,8 @@ export function ReviewingTaskDetail({
   const queryClient = useQueryClient();
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedback, setFeedback] = useState("");
 
   const stopMutation = useMutation({
     mutationFn: async () => {
@@ -247,16 +250,17 @@ export function ReviewingTaskDetail({
     },
   });
 
-  const escalateMutation = useMutation({
-    mutationFn: async () => {
-      await api.tasks.move(task.id, "escalated");
-    },
+  const requestChangesMutation = useMutation({
+    mutationFn: (feedbackText: string) =>
+      api.reviews.requestTaskChangesFromReviewing({ task_id: task.id, feedback: feedbackText }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      setShowFeedback(false);
+      setFeedback("");
       setActionError(null);
     },
     onError: (err) => {
-      setActionError(err instanceof Error ? err.message : "Failed to escalate task");
+      setActionError(err instanceof Error ? err.message : "Failed to request changes");
     },
   });
 
@@ -271,18 +275,18 @@ export function ReviewingTaskDetail({
     stopMutation.mutate();
   }, [confirm, stopMutation]);
 
-  const handleEscalate = useCallback(async () => {
-    const confirmed = await confirm({
-      title: "Escalate to human review?",
-      description: "This will skip the AI review and escalate the task for human review.",
-      confirmText: "Escalate",
-      variant: "destructive",
-    });
-    if (!confirmed) return;
-    escalateMutation.mutate();
-  }, [confirm, escalateMutation]);
+  const handleRequestChanges = () => {
+    if (showFeedback && feedback.trim().length > 0) {
+      requestChangesMutation.mutate(feedback.trim());
+    } else if (showFeedback && feedback.trim().length === 0) {
+      setActionError("Feedback cannot be empty");
+    } else {
+      setShowFeedback(true);
+      setActionError(null);
+    }
+  };
 
-  const isActionLoading = stopMutation.isPending || escalateMutation.isPending;
+  const isActionLoading = stopMutation.isPending || requestChangesMutation.isPending;
 
   return (
     <>
@@ -347,6 +351,22 @@ export function ReviewingTaskDetail({
         <section data-testid="reviewing-actions-section">
           <SectionTitle>Actions</SectionTitle>
           <DetailCard>
+            {showFeedback && (
+              <div className="mb-4 space-y-3">
+                <Textarea
+                  data-testid="feedback-input"
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  placeholder="Describe the changes needed..."
+                  disabled={requestChangesMutation.isPending}
+                  className="min-h-[100px] text-[13px] resize-none rounded-xl"
+                  style={{
+                    backgroundColor: "rgba(0, 0, 0, 0.3)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                  }}
+                />
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -364,21 +384,43 @@ export function ReviewingTaskDetail({
               </button>
               <button
                 type="button"
-                data-testid="escalate-review-action"
-                onClick={handleEscalate}
-                disabled={isActionLoading}
+                data-testid="request-changes-action"
+                onClick={handleRequestChanges}
+                disabled={requestChangesMutation.isPending || (showFeedback && feedback.trim().length === 0)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
                   backgroundColor: "rgba(255, 159, 10, 0.15)",
                   color: "#ff9f0a",
                 }}
               >
-                <ArrowUpRight className="w-3.5 h-3.5" />
-                Escalate
+                {requestChangesMutation.isPending ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <RotateCcw className="w-3.5 h-3.5" />
+                )}
+                {requestChangesMutation.isPending
+                  ? "Submitting..."
+                  : showFeedback
+                  ? "Submit"
+                  : "Request Changes"}
               </button>
+              {showFeedback && !requestChangesMutation.isPending && (
+                <button
+                  type="button"
+                  data-testid="cancel-request-changes"
+                  onClick={() => {
+                    setShowFeedback(false);
+                    setFeedback("");
+                    setActionError(null);
+                  }}
+                  className="text-[12px] text-white/40 hover:text-white/60 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+              )}
             </div>
             {actionError && (
-              <p className="mt-2 text-[12px]" style={{ color: "#ff453a" }}>
+              <p className="mt-1 text-[12px]" style={{ color: "#ff453a" }}>
                 {actionError}
               </p>
             )}

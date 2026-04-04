@@ -378,7 +378,10 @@ pub async fn get_fix_task_attempts(
 // Commands - Task-based approval (for human review after AI review)
 // ============================================================================
 
-use super::review_commands_types::{ApproveTaskInput, ReReviewTaskInput, RequestTaskChangesInput};
+use super::review_commands_types::{
+    ApproveTaskInput, ReReviewTaskInput, RequestTaskChangesFromReviewingInput,
+    RequestTaskChangesInput,
+};
 use crate::application::{TaskSchedulerService, TaskTransitionService};
 use crate::commands::execution_commands::ExecutionState;
 use crate::domain::state_machine::services::TaskScheduler;
@@ -683,6 +686,148 @@ pub async fn re_review_task_from_escalated(
             "task_id": task_id.as_str(),
             "old_status": old_status,
             "new_status": "pending_review",
+        }),
+    );
+
+    Ok(())
+}
+
+/// Request changes on a task while it is actively being reviewed (Reviewing state)
+///
+/// Atomically: stops the reviewer agent → writes idempotency flag → adds a human
+/// ChangesRequested review note → transitions to RevisionNeeded → emits events.
+/// Emits `review:action_failed` on any failure in steps 3–5.
+#[tauri::command]
+pub async fn request_task_changes_from_reviewing(
+    input: RequestTaskChangesFromReviewingInput,
+    state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    use crate::application::ChatService as _;
+    use crate::commands::unified_chat_commands::create_chat_service;
+    use crate::domain::entities::ChatContextType;
+    use crate::domain::state_machine::transition_handler::parse_metadata;
+
+    let task_id = TaskId::from_string(input.task_id);
+
+    // 1. Get task and validate state is Reviewing
+    let mut task = state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Task not found: {}", task_id.as_str()))?;
+
+    if task.internal_status != InternalStatus::Reviewing {
+        return Err(format!(
+            "Task must be in 'reviewing' status to request changes from an active review. \
+            Current status: {}. Use request_task_changes_for_review for tasks in \
+            'review_passed' or 'escalated' status.",
+            task.internal_status.as_str()
+        ));
+    }
+
+    // 2. Write idempotency guard to metadata before any side effects
+    //    Prevents replay of RevisionNeeded → ReExecuting auto-transition on restart.
+    {
+        let mut meta = parse_metadata(&task).unwrap_or_else(|| serde_json::json!({}));
+        if let Some(obj) = meta.as_object_mut() {
+            obj.insert(
+                "request_changes_initiated".to_string(),
+                serde_json::json!(true),
+            );
+        }
+        task.metadata = Some(
+            serde_json::to_string(&meta)
+                .unwrap_or_else(|_| r#"{"request_changes_initiated":true}"#.to_string()),
+        );
+        task.touch();
+        state
+            .task_repo
+            .update(&task)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    let emit_action_failed = |reason: &str| {
+        let _ = app.emit(
+            "review:action_failed",
+            serde_json::json!({
+                "task_id": task_id.as_str(),
+                "reason": reason,
+            }),
+        );
+    };
+
+    // 3. Stop the reviewer agent (SIGTERM + mark agent_run failed + agent:stopped event)
+    let chat_service = create_chat_service(&state, app.clone(), &execution_state, None);
+    if let Err(e) = chat_service
+        .stop_agent(ChatContextType::Review, task_id.as_str())
+        .await
+    {
+        let msg = e.to_string();
+        emit_action_failed(&msg);
+        return Err(msg);
+    }
+
+    // 4. Add a human ChangesRequested review note
+    let review_note = ReviewNote::with_notes(
+        task_id.clone(),
+        ReviewerType::Human,
+        ReviewOutcome::ChangesRequested,
+        input.feedback.clone(),
+    );
+    if let Err(e) = state.review_repo.add_note(&review_note).await {
+        let msg = e.to_string();
+        emit_action_failed(&msg);
+        return Err(msg);
+    }
+
+    // 5. Transition to RevisionNeeded (auto-chain fires RevisionNeeded → ReExecuting)
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_attachment_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.activity_event_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Arc::clone(&execution_state),
+        Some(app.clone()),
+        Arc::clone(&state.memory_event_repo),
+    )
+    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+
+    if let Err(e) = transition_service
+        .transition_task(&task_id, InternalStatus::RevisionNeeded)
+        .await
+    {
+        let msg = e.to_string();
+        emit_action_failed(&msg);
+        return Err(msg);
+    }
+
+    // 6. Emit success events
+    let _ = app.emit(
+        "review:human_changes_requested",
+        serde_json::json!({
+            "task_id": task_id.as_str(),
+            "feedback": input.feedback,
+        }),
+    );
+    let _ = app.emit(
+        "task:status_changed",
+        serde_json::json!({
+            "task_id": task_id.as_str(),
+            "old_status": "reviewing",
+            "new_status": "revision_needed",
         }),
     );
 

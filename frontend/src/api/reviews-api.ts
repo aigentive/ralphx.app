@@ -88,6 +88,16 @@ export interface RequestTaskChangesInput {
 }
 
 /**
+ * Input for requesting changes on a task that is currently being reviewed (Reviewing state).
+ * Use this when a human wants to stop the active review and send the task back with feedback.
+ * For tasks in Escalated or ReviewPassed state, use RequestTaskChangesInput instead.
+ */
+export interface RequestTaskChangesFromReviewingInput {
+  task_id: string;
+  feedback: string;
+}
+
+/**
  * Input for re-queueing an escalated task for AI re-review
  */
 export interface ReReviewTaskInput {
@@ -168,13 +178,24 @@ export const reviewsApi = {
     typedInvoke("approve_task_for_review", { input }, TauriVoidSchema),
 
   /**
-   * Request changes on a task (task-based, for human reviewers)
-   * Used when task is in review_passed or escalated state.
+   * Request changes on a task (task-based, for human reviewers).
+   * Valid states: ReviewPassed or Escalated only.
+   * For tasks currently being reviewed (Reviewing state), use requestTaskChangesFromReviewing instead.
    * @param input Request changes input with task_id and feedback
    * @returns void on success
    */
   requestTaskChanges: (input: RequestTaskChangesInput) =>
     typedInvoke("request_task_changes_for_review", { input }, TauriVoidSchema),
+
+  /**
+   * Request changes on a task that is actively being reviewed (Reviewing state only).
+   * Stops the active review agent, records human feedback, and transitions to revision_needed.
+   * For tasks in ReviewPassed or Escalated state, use requestTaskChanges instead.
+   * @param input Request changes input with task_id and feedback
+   * @returns void on success
+   */
+  requestTaskChangesFromReviewing: (input: RequestTaskChangesFromReviewingInput) =>
+    typedInvoke("request_task_changes_from_reviewing", { input }, TauriVoidSchema),
 
   /**
    * Re-queue an escalated task for AI re-review

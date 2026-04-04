@@ -1141,6 +1141,7 @@ pub fn run() {
             commands::review_commands::get_fix_task_attempts,
             commands::review_commands::approve_task_for_review,
             commands::review_commands::request_task_changes_for_review,
+            commands::review_commands::request_task_changes_from_reviewing,
             commands::review_commands::re_review_task_from_escalated,
             // Review issue commands
             commands::review_commands::get_task_issues,
