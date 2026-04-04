@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  cat <<'EOF'
+Usage: ./dev-fresh
+
+From repo root:
+1. cleans the Rust build artifacts under src-tauri/
+2. starts the native Tauri dev app from frontend/
+
+Equivalent to:
+  cd src-tauri && cargo clean
+  cd ../frontend && npm run tauri dev
+EOF
+  exit 0
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$SCRIPT_DIR"
+
+cd "$PROJECT_ROOT/src-tauri"
+cargo clean
+
+cd "$PROJECT_ROOT/frontend"
+exec npm run tauri dev

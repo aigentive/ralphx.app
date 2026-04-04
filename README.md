@@ -170,6 +170,12 @@ npm run tauri dev
 
 First build compiles the Rust backend (2-5 minutes). Subsequent starts are fast.
 
+Fresh native start from repo root:
+
+```bash
+./dev-fresh
+```
+
 ### First Task
 
 1. **Create a project** — Point RalphX at a git repository
