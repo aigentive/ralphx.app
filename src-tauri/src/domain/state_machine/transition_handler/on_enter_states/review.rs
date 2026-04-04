@@ -50,19 +50,30 @@ impl<'a> TransitionHandler<'a> {
             }
         }
 
-        if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+        {
             let payload = serde_json::json!({
                 "task_id": self.machine.context.task_id,
                 "project_id": self.machine.context.project_id,
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             });
-            publisher
-                .publish(
-                    ralphx_domain::entities::EventType::ReviewReady,
-                    &self.machine.context.project_id,
-                    payload,
-                )
-                .await;
+            if let Some(ref repo) = self.machine.context.services.external_events_repo {
+                let _ = repo
+                    .insert_event(
+                        &ralphx_domain::entities::EventType::ReviewReady.to_string(),
+                        &self.machine.context.project_id,
+                        &payload.to_string(),
+                    )
+                    .await;
+            }
+            if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+                publisher
+                    .publish(
+                        ralphx_domain::entities::EventType::ReviewReady,
+                        &self.machine.context.project_id,
+                        payload,
+                    )
+                    .await;
+            }
         }
     }
 
@@ -359,19 +370,30 @@ impl<'a> TransitionHandler<'a> {
             )
             .await;
 
-        if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+        {
             let payload = serde_json::json!({
                 "task_id": self.machine.context.task_id,
                 "project_id": self.machine.context.project_id,
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             });
-            publisher
-                .publish(
-                    ralphx_domain::entities::EventType::ReviewApproved,
-                    &self.machine.context.project_id,
-                    payload,
-                )
-                .await;
+            if let Some(ref repo) = self.machine.context.services.external_events_repo {
+                let _ = repo
+                    .insert_event(
+                        &ralphx_domain::entities::EventType::ReviewApproved.to_string(),
+                        &self.machine.context.project_id,
+                        &payload.to_string(),
+                    )
+                    .await;
+            }
+            if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+                publisher
+                    .publish(
+                        ralphx_domain::entities::EventType::ReviewApproved,
+                        &self.machine.context.project_id,
+                        payload,
+                    )
+                    .await;
+            }
         }
     }
 
@@ -394,36 +416,58 @@ impl<'a> TransitionHandler<'a> {
             )
             .await;
 
-        if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+        {
             let payload = serde_json::json!({
                 "task_id": self.machine.context.task_id,
                 "project_id": self.machine.context.project_id,
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             });
-            publisher
-                .publish(
-                    ralphx_domain::entities::EventType::ReviewEscalated,
-                    &self.machine.context.project_id,
-                    payload,
-                )
-                .await;
+            if let Some(ref repo) = self.machine.context.services.external_events_repo {
+                let _ = repo
+                    .insert_event(
+                        &ralphx_domain::entities::EventType::ReviewEscalated.to_string(),
+                        &self.machine.context.project_id,
+                        &payload.to_string(),
+                    )
+                    .await;
+            }
+            if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+                publisher
+                    .publish(
+                        ralphx_domain::entities::EventType::ReviewEscalated,
+                        &self.machine.context.project_id,
+                        payload,
+                    )
+                    .await;
+            }
         }
     }
 
     pub(super) async fn enter_revision_needed_state(&self) {
-        if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+        {
             let payload = serde_json::json!({
                 "task_id": self.machine.context.task_id,
                 "project_id": self.machine.context.project_id,
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             });
-            publisher
-                .publish(
-                    ralphx_domain::entities::EventType::ReviewChangesRequested,
-                    &self.machine.context.project_id,
-                    payload,
-                )
-                .await;
+            if let Some(ref repo) = self.machine.context.services.external_events_repo {
+                let _ = repo
+                    .insert_event(
+                        &ralphx_domain::entities::EventType::ReviewChangesRequested.to_string(),
+                        &self.machine.context.project_id,
+                        &payload.to_string(),
+                    )
+                    .await;
+            }
+            if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+                publisher
+                    .publish(
+                        ralphx_domain::entities::EventType::ReviewChangesRequested,
+                        &self.machine.context.project_id,
+                        payload,
+                    )
+                    .await;
+            }
         }
     }
 }

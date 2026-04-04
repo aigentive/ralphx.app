@@ -20,6 +20,7 @@ use crate::domain::repositories::{
     ActivityEventRepository, IdeationSessionRepository, PlanBranchRepository, ProjectRepository,
     TaskRepository, TaskStepRepository,
 };
+use ralphx_domain::repositories::ExternalEventsRepository;
 use dashmap::DashMap;
 use std::any::Any;
 use std::collections::HashSet;
@@ -125,6 +126,10 @@ pub struct TaskServices {
     /// Webhook publisher for broadcasting events to registered external endpoints.
     /// Optional — None when webhook delivery is not configured.
     pub webhook_publisher: Option<Arc<dyn WebhookPublisher>>,
+
+    /// External events repository for persisting lifecycle events to the external_events table.
+    /// Optional — None when external event persistence is not configured.
+    pub external_events_repo: Option<Arc<dyn ExternalEventsRepository>>,
 }
 
 impl TaskServices {
@@ -161,6 +166,7 @@ impl TaskServices {
             github_service: None,
             transition_service: None,
             webhook_publisher: None,
+            external_events_repo: None,
         }
     }
 
@@ -297,6 +303,12 @@ impl TaskServices {
         self
     }
 
+    /// Set the external events repository for persisting lifecycle events (builder pattern).
+    pub fn with_external_events_repo(mut self, repo: Arc<dyn ExternalEventsRepository>) -> Self {
+        self.external_events_repo = Some(repo);
+        self
+    }
+
     /// Creates a TaskServices with all mock implementations for testing
     pub fn new_mock() -> Self {
         use crate::application::MockChatService;
@@ -325,6 +337,7 @@ impl TaskServices {
             github_service: None,
             transition_service: None,
             webhook_publisher: None,
+            external_events_repo: None,
         }
     }
 }
@@ -410,6 +423,13 @@ impl std::fmt::Debug for TaskServices {
             .field(
                 "webhook_publisher",
                 &self.webhook_publisher.as_ref().map(|_| "<WebhookPublisher>"),
+            )
+            .field(
+                "external_events_repo",
+                &self
+                    .external_events_repo
+                    .as_ref()
+                    .map(|_| "<ExternalEventsRepository>"),
             )
             .finish()
     }

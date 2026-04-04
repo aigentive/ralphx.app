@@ -467,6 +467,40 @@ pub async fn complete_merge(
         );
     }
 
+    // 11b. Dual-channel emission: external_events table (SSE/poll) + webhook publisher
+    {
+        let project_id_str = project.id.to_string();
+        let merge_payload = serde_json::json!({
+            "task_id": task_id.as_str(),
+            "project_id": project_id_str,
+            "source_branch": task.task_branch.as_deref().unwrap_or(""),
+            "target_branch": target_branch,
+            "commit_sha": req.commit_sha,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        });
+        if let Err(e) = state
+            .app_state
+            .external_events_repo
+            .insert_event("merge:completed", &project_id_str, &merge_payload.to_string())
+            .await
+        {
+            tracing::warn!(
+                error = %e,
+                task_id = task_id.as_str(),
+                "complete_merge: failed to insert external event (non-fatal)"
+            );
+        }
+        if let Some(ref publisher) = state.app_state.webhook_publisher {
+            publisher
+                .publish(
+                    ralphx_domain::entities::EventType::MergeCompleted,
+                    &project_id_str,
+                    merge_payload,
+                )
+                .await;
+        }
+    }
+
     // 12. Notify completion signal then close stdin via IPR (success path)
     {
         use crate::application::interactive_process_registry::InteractiveProcessKey;
@@ -599,6 +633,40 @@ pub async fn report_conflict(
                 "new_status": "merge_conflict",
             }),
         );
+    }
+
+    // 4b. Dual-channel emission: external_events table (SSE/poll) + webhook publisher
+    {
+        let project_id_str = task.project_id.to_string();
+        let conflict_payload = serde_json::json!({
+            "task_id": task_id.as_str(),
+            "project_id": project_id_str,
+            "source_branch": task.task_branch.as_deref().unwrap_or(""),
+            "conflict_files": req.conflict_files,
+            "reason": req.reason,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        });
+        if let Err(e) = state
+            .app_state
+            .external_events_repo
+            .insert_event("merge:conflict", &project_id_str, &conflict_payload.to_string())
+            .await
+        {
+            tracing::warn!(
+                error = %e,
+                task_id = task_id.as_str(),
+                "report_conflict: failed to insert external event (non-fatal)"
+            );
+        }
+        if let Some(ref publisher) = state.app_state.webhook_publisher {
+            publisher
+                .publish(
+                    ralphx_domain::entities::EventType::MergeConflict,
+                    &project_id_str,
+                    conflict_payload,
+                )
+                .await;
+        }
     }
 
     // 5. Notify completion signal then close stdin via IPR

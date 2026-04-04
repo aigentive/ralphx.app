@@ -261,7 +261,7 @@ pub async fn complete_review(
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
-    let transition_service = TaskTransitionService::new(
+    let mut transition_service_builder = TaskTransitionService::new(
         Arc::clone(&state.app_state.task_repo),
         Arc::clone(&state.app_state.task_dependency_repo),
         Arc::clone(&state.app_state.project_repo),
@@ -281,6 +281,14 @@ pub async fn complete_review(
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
     .with_interactive_process_registry(Arc::clone(&state.app_state.interactive_process_registry));
+
+    if let Some(ref pub_) = state.app_state.webhook_publisher {
+        transition_service_builder = transition_service_builder
+            .with_webhook_publisher_for_emitter(Arc::clone(pub_));
+    }
+
+    let transition_service = transition_service_builder
+        .with_external_events_repo(Arc::clone(&state.app_state.external_events_repo));
 
     // Early unregister: remove the review agent from running_agent_registry BEFORE triggering
     // the state transition. This prevents pre_merge_cleanup from seeing the review agent as

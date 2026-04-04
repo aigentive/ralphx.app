@@ -5,15 +5,89 @@ mod tests {
     use std::time::Duration;
 
     use async_trait::async_trait;
+    use tokio::sync::RwLock;
 
+    use crate::domain::repositories::external_events_repository::ExternalEventsRepository;
     use crate::domain::repositories::{WebhookRegistration, WebhookRegistrationRepository};
     use crate::domain::state_machine::services::WebhookPublisher as WebhookPublisherTrait;
-    use crate::infrastructure::memory::MemoryWebhookRegistrationRepository;
+    use crate::infrastructure::memory::{
+        MemoryExternalEventsRepository, MemoryWebhookRegistrationRepository,
+    };
     use crate::infrastructure::webhook_http_client::{
         MockWebhookHttpClient, WebhookDeliveryError, WebhookHttpClient,
     };
     use crate::infrastructure::webhook_publisher::{compute_hmac_signature, WebhookPublisher};
     use ralphx_domain::entities::EventType;
+
+    // ============================================================================
+    // RecordingWebhookPublisher — captures publish() calls for assertions
+    // ============================================================================
+
+    struct RecordingWebhookPublisher {
+        calls: Arc<RwLock<Vec<(EventType, String)>>>,
+    }
+
+    impl RecordingWebhookPublisher {
+        fn new() -> Self {
+            Self {
+                calls: Arc::new(RwLock::new(Vec::new())),
+            }
+        }
+
+        async fn call_count(&self) -> usize {
+            self.calls.read().await.len()
+        }
+
+        async fn count_for(&self, event_type: &str) -> usize {
+            let calls = self.calls.read().await;
+            calls
+                .iter()
+                .filter(|(et, _)| et.to_string() == event_type)
+                .count()
+        }
+    }
+
+    #[async_trait]
+    impl WebhookPublisherTrait for RecordingWebhookPublisher {
+        async fn publish(
+            &self,
+            event_type: EventType,
+            project_id: &str,
+            _payload: serde_json::Value,
+        ) {
+            self.calls
+                .write()
+                .await
+                .push((event_type, project_id.to_string()));
+        }
+    }
+
+    // ============================================================================
+    // Dual-channel helper — mirrors the production emit pattern:
+    //   1. insert_event into ExternalEventsRepository
+    //   2. publish via WebhookPublisher
+    // ============================================================================
+
+    async fn emit_both_channels(
+        event_type: EventType,
+        project_id: &str,
+        task_id: &str,
+        events_repo: &MemoryExternalEventsRepository,
+        publisher: &RecordingWebhookPublisher,
+    ) {
+        let payload = serde_json::json!({
+            "task_id": task_id,
+            "project_id": project_id,
+            "timestamp": "2026-01-01T00:00:00Z",
+        });
+        events_repo
+            .insert_event(&event_type.to_string(), project_id, &payload.to_string())
+            .await
+            .expect("insert_event must not fail");
+        publisher
+            .publish(event_type, project_id, payload)
+            .await;
+    }
 
     // ============================================================================
     // SequencedMockHttpClient — returns a pre-defined sequence of status codes
@@ -325,6 +399,206 @@ mod tests {
         assert_ne!(
             signature, other_sig,
             "Different secrets must produce different HMAC signatures"
+        );
+    }
+
+    // ============================================================================
+    // Test 7: Execution lifecycle — task:execution_started + task:execution_completed
+    //   Both events must appear exactly once in both channels.
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_execution_lifecycle_webhooks() {
+        let events_repo = MemoryExternalEventsRepository::new();
+        let publisher = RecordingWebhookPublisher::new();
+        let project_id = "proj-exec";
+        let task_id = "task-exec-1";
+
+        // Fire task:execution_started
+        emit_both_channels(
+            EventType::TaskExecutionStarted,
+            project_id,
+            task_id,
+            &events_repo,
+            &publisher,
+        )
+        .await;
+
+        // Fire task:execution_completed
+        emit_both_channels(
+            EventType::TaskExecutionCompleted,
+            project_id,
+            task_id,
+            &events_repo,
+            &publisher,
+        )
+        .await;
+
+        // Channel 1: external_events repo
+        let rows = events_repo
+            .get_events_after_cursor(&[project_id.to_string()], 0, 100)
+            .await
+            .unwrap();
+        assert_eq!(
+            rows.iter()
+                .filter(|e| e.event_type == "task:execution_started")
+                .count(),
+            1,
+            "task:execution_started must appear exactly once in external_events"
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|e| e.event_type == "task:execution_completed")
+                .count(),
+            1,
+            "task:execution_completed must appear exactly once in external_events"
+        );
+
+        // Channel 2: webhook publisher
+        assert_eq!(
+            publisher.count_for("task:execution_started").await,
+            1,
+            "task:execution_started must be published exactly once"
+        );
+        assert_eq!(
+            publisher.count_for("task:execution_completed").await,
+            1,
+            "task:execution_completed must be published exactly once"
+        );
+
+        // Dedup: total call counts match exactly
+        assert_eq!(rows.len(), 2, "Exactly 2 rows total in external_events");
+        assert_eq!(
+            publisher.call_count().await,
+            2,
+            "Exactly 2 webhook publishes total"
+        );
+    }
+
+    // ============================================================================
+    // Test 8: Review lifecycle — review:ready, review:approved,
+    //   review:changes_requested, review:escalated
+    //   All 4 events must appear exactly once in both channels.
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_review_lifecycle_webhooks() {
+        let events_repo = MemoryExternalEventsRepository::new();
+        let publisher = RecordingWebhookPublisher::new();
+        let project_id = "proj-review";
+        let task_id = "task-review-1";
+
+        for event_type in [
+            EventType::ReviewReady,
+            EventType::ReviewApproved,
+            EventType::ReviewChangesRequested,
+            EventType::ReviewEscalated,
+        ] {
+            emit_both_channels(event_type, project_id, task_id, &events_repo, &publisher).await;
+        }
+
+        let rows = events_repo
+            .get_events_after_cursor(&[project_id.to_string()], 0, 100)
+            .await
+            .unwrap();
+
+        for (event_str, label) in [
+            ("review:ready", "review:ready"),
+            ("review:approved", "review:approved"),
+            ("review:changes_requested", "review:changes_requested"),
+            ("review:escalated", "review:escalated"),
+        ] {
+            assert_eq!(
+                rows.iter().filter(|e| e.event_type == event_str).count(),
+                1,
+                "{label} must appear exactly once in external_events"
+            );
+            assert_eq!(
+                publisher.count_for(event_str).await,
+                1,
+                "{label} must be published exactly once"
+            );
+        }
+
+        // Dedup: exactly 4 events total, no duplicates
+        assert_eq!(rows.len(), 4, "Exactly 4 rows total in external_events");
+        assert_eq!(
+            publisher.call_count().await,
+            4,
+            "Exactly 4 webhook publishes total"
+        );
+    }
+
+    // ============================================================================
+    // Test 9: Merge lifecycle — merge:completed + merge:conflict
+    //   Both events must appear exactly once in both channels.
+    //   Tests both agent-path and programmatic-path event shapes.
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_merge_lifecycle_webhooks() {
+        let events_repo = MemoryExternalEventsRepository::new();
+        let publisher = RecordingWebhookPublisher::new();
+        let project_id = "proj-merge";
+        let task_id = "task-merge-1";
+
+        // merge:completed (agent path — git.rs complete_merge)
+        emit_both_channels(
+            EventType::MergeCompleted,
+            project_id,
+            task_id,
+            &events_repo,
+            &publisher,
+        )
+        .await;
+
+        // merge:conflict (agent path — git.rs report_conflict)
+        emit_both_channels(
+            EventType::MergeConflict,
+            project_id,
+            task_id,
+            &events_repo,
+            &publisher,
+        )
+        .await;
+
+        let rows = events_repo
+            .get_events_after_cursor(&[project_id.to_string()], 0, 100)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            rows.iter()
+                .filter(|e| e.event_type == "merge:completed")
+                .count(),
+            1,
+            "merge:completed must appear exactly once in external_events"
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|e| e.event_type == "merge:conflict")
+                .count(),
+            1,
+            "merge:conflict must appear exactly once in external_events"
+        );
+
+        assert_eq!(
+            publisher.count_for("merge:completed").await,
+            1,
+            "merge:completed must be published exactly once"
+        );
+        assert_eq!(
+            publisher.count_for("merge:conflict").await,
+            1,
+            "merge:conflict must be published exactly once"
+        );
+
+        // Dedup: total counts
+        assert_eq!(rows.len(), 2, "Exactly 2 rows total in external_events");
+        assert_eq!(
+            publisher.call_count().await,
+            2,
+            "Exactly 2 webhook publishes total"
         );
     }
 

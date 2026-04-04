@@ -6,6 +6,19 @@ TypeScript interfaces: `plugins/app/ralphx-external-mcp/src/tools/events.ts` —
 
 ---
 
+## Two-Channel Delivery Guarantee
+
+All 8 lifecycle events (`task:execution_started`, `task:execution_completed`, `review:ready`, `review:approved`, `review:changes_requested`, `review:escalated`, `merge:completed`, `merge:conflict`) are delivered via **both** channels on every transition:
+
+| Channel | Mechanism | Consumer |
+|---|---|---|
+| **SSE / poll** | Persisted to `external_events` table | `v1_get_recent_events`, `v1_subscribe_events` |
+| **HTTP push** | Delivered via `WebhookPublisher` to registered webhook endpoints | Any registered webhook URL |
+
+Both channels are guaranteed to fire together. External agents need not poll if they have a registered webhook; polling consumers need not register a webhook.
+
+---
+
 ## Task Events
 
 ### `task:created`

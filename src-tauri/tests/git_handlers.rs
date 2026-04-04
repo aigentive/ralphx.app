@@ -1488,3 +1488,218 @@ mod freshness_routing_integration {
         );
     }
 }
+
+mod webhook_emission {
+    use super::*;
+
+    async fn setup_state() -> HttpServerState {
+        let app_state = Arc::new(AppState::new_test());
+        let execution_state = Arc::new(ExecutionState::new());
+        let tracker = TeamStateTracker::new();
+        let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
+        HttpServerState {
+            app_state,
+            execution_state,
+            team_tracker: tracker,
+            team_service,
+        }
+    }
+
+    fn setup_merged_repo() -> (tempfile::TempDir, String) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo = dir.path();
+        for (args, _) in &[
+            (vec!["init"], ()),
+            (vec!["config", "user.email", "t@t.com"], ()),
+            (vec!["config", "user.name", "T"], ()),
+        ] {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(repo)
+                .output()
+                .unwrap();
+        }
+        std::fs::write(repo.join("r.md"), "init").unwrap();
+        for args in &[
+            vec!["add", "."],
+            vec!["commit", "-m", "init"],
+            vec!["branch", "-M", "main"],
+            vec!["checkout", "-b", "task-branch"],
+        ] {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(repo)
+                .output()
+                .unwrap();
+        }
+        std::fs::write(repo.join("feat.txt"), "feature").unwrap();
+        for args in &[
+            vec!["add", "."],
+            vec!["commit", "-m", "feat"],
+            vec!["checkout", "main"],
+            vec!["merge", "task-branch", "--no-edit"],
+        ] {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(repo)
+                .output()
+                .unwrap();
+        }
+        let sha = String::from_utf8(
+            std::process::Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(repo)
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+        (dir, sha)
+    }
+
+    async fn seed_merging_task_with_project_id(
+        state: &HttpServerState,
+        repo_path: &std::path::Path,
+    ) -> (TaskId, ProjectId) {
+        let project_id = ProjectId::new();
+        let mut project = Project::new(
+            "webhook-test-project".to_string(),
+            repo_path.to_string_lossy().to_string(),
+        );
+        project.id = project_id.clone();
+        project.base_branch = Some("main".to_string());
+        state.app_state.project_repo.create(project).await.unwrap();
+
+        let mut task = Task::new(project_id.clone(), "Webhook emission test".to_string());
+        task.internal_status = InternalStatus::Merging;
+        task.task_branch = Some("task-branch".to_string());
+        let task_id = task.id.clone();
+        state.app_state.task_repo.create(task).await.unwrap();
+        (task_id, project_id)
+    }
+
+    /// complete_merge inserts a `merge:completed` row into external_events_repo.
+    ///
+    /// The agent HTTP path must publish to both the SSE/poll feed (external_events)
+    /// and the webhook publisher. This test verifies the external_events side.
+    #[tokio::test]
+    async fn test_complete_merge_inserts_external_event() {
+        let (dir, merge_sha) = setup_merged_repo();
+        let state = setup_state().await;
+        let (task_id, project_id) =
+            seed_merging_task_with_project_id(&state, dir.path()).await;
+
+        let result = complete_merge(
+            State(state.clone()),
+            Path(task_id.as_str().to_string()),
+            Json(CompleteMergeRequest {
+                commit_sha: merge_sha,
+            }),
+        )
+        .await;
+
+        assert!(result.is_ok(), "complete_merge should succeed: {:?}", result);
+
+        let events = state
+            .app_state
+            .external_events_repo
+            .get_events_after_cursor(&[project_id.to_string()], 0, 100)
+            .await
+            .expect("get_events_after_cursor should succeed");
+
+        let merge_completed_events: Vec<_> = events
+            .iter()
+            .filter(|e| e.event_type == "merge:completed")
+            .collect();
+
+        assert_eq!(
+            merge_completed_events.len(),
+            1,
+            "complete_merge must insert exactly one merge:completed external event; got: {:?}",
+            events.iter().map(|e| &e.event_type).collect::<Vec<_>>()
+        );
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&merge_completed_events[0].payload)
+                .expect("payload must be valid JSON");
+        assert_eq!(
+            payload["task_id"].as_str().unwrap(),
+            task_id.as_str(),
+            "merge:completed payload must include correct task_id"
+        );
+        assert!(
+            payload.get("project_id").is_some(),
+            "merge:completed payload must include project_id"
+        );
+    }
+
+    /// report_conflict inserts a `merge:conflict` row into external_events_repo.
+    ///
+    /// The agent HTTP path must publish to the SSE/poll feed when conflict is reported.
+    #[tokio::test]
+    async fn test_report_conflict_inserts_external_event() {
+        let state = setup_state().await;
+
+        // Seed a project with known id so we can query events back
+        let project_id = ProjectId::new();
+        let mut project = Project::new(
+            "webhook-conflict-test".to_string(),
+            "/tmp/unused".to_string(),
+        );
+        project.id = project_id.clone();
+        state.app_state.project_repo.create(project).await.unwrap();
+
+        let mut task = Task::new(project_id.clone(), "Conflict test task".to_string());
+        task.internal_status = InternalStatus::Merging;
+        task.task_branch = Some("task-branch".to_string());
+        let task_id = task.id.clone();
+        state.app_state.task_repo.create(task).await.unwrap();
+
+        let result = report_conflict(
+            State(state.clone()),
+            Path(task_id.as_str().to_string()),
+            Json(ReportConflictRequest {
+                conflict_files: vec!["src/main.rs".to_string()],
+                reason: "Cannot automatically resolve conflict".to_string(),
+            }),
+        )
+        .await;
+
+        assert!(result.is_ok(), "report_conflict should succeed: {:?}", result);
+
+        let events = state
+            .app_state
+            .external_events_repo
+            .get_events_after_cursor(&[project_id.to_string()], 0, 100)
+            .await
+            .expect("get_events_after_cursor should succeed");
+
+        let conflict_events: Vec<_> = events
+            .iter()
+            .filter(|e| e.event_type == "merge:conflict")
+            .collect();
+
+        assert_eq!(
+            conflict_events.len(),
+            1,
+            "report_conflict must insert exactly one merge:conflict external event; got: {:?}",
+            events.iter().map(|e| &e.event_type).collect::<Vec<_>>()
+        );
+
+        let payload: serde_json::Value =
+            serde_json::from_str(&conflict_events[0].payload)
+                .expect("payload must be valid JSON");
+        assert_eq!(
+            payload["task_id"].as_str().unwrap(),
+            task_id.as_str(),
+            "merge:conflict payload must include correct task_id"
+        );
+        assert_eq!(
+            payload["project_id"].as_str().unwrap(),
+            project_id.to_string(),
+            "merge:conflict payload must include correct project_id"
+        );
+    }
+}

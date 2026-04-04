@@ -759,6 +759,36 @@ pub async fn execution_complete_http(
         );
     }
 
+    // Dual-channel emission of task:execution_completed
+    let project_id_str = task.project_id.as_str().to_string();
+    let completed_payload = serde_json::json!({
+        "task_id": task_id_str,
+        "project_id": project_id_str,
+        "outcome": "completed",
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+    });
+    if let Err(e) = state
+        .app_state
+        .external_events_repo
+        .insert_event(
+            "task:execution_completed",
+            &project_id_str,
+            &completed_payload.to_string(),
+        )
+        .await
+    {
+        tracing::warn!(error = %e, "Failed to persist task:execution_completed event");
+    }
+    if let Some(ref publisher) = state.app_state.webhook_publisher {
+        publisher
+            .publish(
+                ralphx_domain::entities::EventType::TaskExecutionCompleted,
+                &project_id_str,
+                completed_payload,
+            )
+            .await;
+    }
+
     Ok(Json(ExecutionCompleteResponse {
         success: true,
         message: format!("Execution complete for task {}", task_id_str),

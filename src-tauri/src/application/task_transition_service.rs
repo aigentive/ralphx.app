@@ -1141,6 +1141,9 @@ impl<R: Runtime> TaskTransitionService<R> {
         if let Some(ref publisher) = self.webhook_publisher {
             services = services.with_webhook_publisher(Arc::clone(publisher));
         }
+        if let Some(ref repo) = self.external_events_repo {
+            services = services.with_external_events_repo(Arc::clone(repo));
+        }
         services
     }
 
@@ -1392,6 +1395,31 @@ impl<R: Runtime> TaskTransitionService<R> {
                             "escalated",
                         )
                         .await;
+                    // Dual-channel emit: persist to external_events table and fire webhook.
+                    // The corrective path bypasses on_enter(Escalated), so we emit explicitly here.
+                    let escalated_payload = serde_json::json!({
+                        "task_id": task_id.as_str(),
+                        "project_id": result.task.project_id.as_str(),
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                    });
+                    if let Some(ref repo) = self.external_events_repo {
+                        let _ = repo
+                            .insert_event(
+                                &EventType::ReviewEscalated.to_string(),
+                                result.task.project_id.as_str(),
+                                &escalated_payload.to_string(),
+                            )
+                            .await;
+                    }
+                    if let Some(ref publisher) = self.webhook_publisher {
+                        publisher
+                            .publish(
+                                EventType::ReviewEscalated,
+                                result.task.project_id.as_str(),
+                                escalated_payload,
+                            )
+                            .await;
+                    }
                 }
             }
         }
@@ -1510,6 +1538,31 @@ impl<R: Runtime> TaskTransitionService<R> {
                                     "reason": "ReviewWorktreeMissing during auto-transition",
                                 }),
                             );
+                        }
+                        // Dual-channel emit: persist to external_events table and fire webhook.
+                        // The corrective path bypasses on_enter(Escalated), so we emit explicitly here.
+                        let escalated_payload = serde_json::json!({
+                            "task_id": task_id.as_str(),
+                            "project_id": result.task.project_id.as_str(),
+                            "timestamp": chrono::Utc::now().to_rfc3339(),
+                        });
+                        if let Some(ref repo) = self.external_events_repo {
+                            let _ = repo
+                                .insert_event(
+                                    &EventType::ReviewEscalated.to_string(),
+                                    result.task.project_id.as_str(),
+                                    &escalated_payload.to_string(),
+                                )
+                                .await;
+                        }
+                        if let Some(ref publisher) = self.webhook_publisher {
+                            publisher
+                                .publish(
+                                    EventType::ReviewEscalated,
+                                    result.task.project_id.as_str(),
+                                    escalated_payload,
+                                )
+                                .await;
                         }
                     }
                 }

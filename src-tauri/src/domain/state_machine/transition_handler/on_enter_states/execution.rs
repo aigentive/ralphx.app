@@ -595,6 +595,41 @@ impl<'a> TransitionHandler<'a> {
         }
     }
 
+    /// Dual-channel emission of `task:execution_started` after a successful agent spawn.
+    /// Non-fatal: logs warnings on failure rather than propagating errors.
+    async fn emit_execution_started(&self, task_id_str: &str, project_id_str: &str) {
+        let payload = serde_json::json!({
+            "task_id": task_id_str,
+            "project_id": project_id_str,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        });
+        if let Some(ref repo) = self.machine.context.services.external_events_repo {
+            if let Err(e) = repo
+                .insert_event(
+                    "task:execution_started",
+                    project_id_str,
+                    &payload.to_string(),
+                )
+                .await
+            {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    error = %e,
+                    "Failed to persist task:execution_started event"
+                );
+            }
+        }
+        if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+            publisher
+                .publish(
+                    crate::domain::entities::EventType::TaskExecutionStarted,
+                    project_id_str,
+                    payload,
+                )
+                .await;
+        }
+    }
+
     pub(super) async fn enter_executing_state(&self) -> AppResult<()> {
         let task_id_str = self.machine.context.task_id.as_str();
         let project_id_str = self.machine.context.project_id.as_str();
@@ -621,12 +656,18 @@ impl<'a> TransitionHandler<'a> {
             prompt_len = prompt.len(),
             "Transition handler sending task_execution message"
         );
-        self.send_task_execution_message(
-            task_id_str,
-            &prompt,
-            "Failed to send task execution message — agent not started",
-        )
-        .await
+        let result = self
+            .send_task_execution_message(
+                task_id_str,
+                &prompt,
+                "Failed to send task execution message — agent not started",
+            )
+            .await;
+        if result.is_ok() {
+            self.emit_execution_started(task_id_str, project_id_str)
+                .await;
+        }
+        result
     }
 
     pub(super) async fn enter_reexecuting_state(&self) -> AppResult<()> {
@@ -651,11 +692,17 @@ impl<'a> TransitionHandler<'a> {
                 format!("Re-execute task (revision): {}", task_id_str),
             )
             .await;
-        self.send_task_execution_message(
-            task_id_str,
-            &prompt,
-            "Failed to send re-execution message — agent not started",
-        )
-        .await
+        let result = self
+            .send_task_execution_message(
+                task_id_str,
+                &prompt,
+                "Failed to send re-execution message — agent not started",
+            )
+            .await;
+        if result.is_ok() {
+            self.emit_execution_started(task_id_str, project_id_str)
+                .await;
+        }
+        result
     }
 }

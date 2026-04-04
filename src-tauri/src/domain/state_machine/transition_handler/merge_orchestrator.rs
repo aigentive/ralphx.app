@@ -1002,22 +1002,37 @@ impl<'a> super::TransitionHandler<'a> {
             "Dispatching merge strategy"
         );
 
-        // Emit merge:ready webhook event.
-        if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
-            let webhook_payload = serde_json::json!({
+        // Emit merge:ready via both channels: external_events (SSE/poll) + webhook publisher.
+        {
+            let project_id_str = project.id.to_string();
+            let ready_payload = serde_json::json!({
                 "task_id": task_id_str,
-                "project_id": project.id.to_string(),
+                "project_id": project_id_str,
                 "source_branch": source_branch,
                 "target_branch": target_branch,
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             });
-            publisher
-                .publish(
-                    ralphx_domain::entities::EventType::MergeReady,
-                    &project.id.to_string(),
-                    webhook_payload,
-                )
-                .await;
+            if let Some(ref repo) = self.machine.context.services.external_events_repo {
+                if let Err(e) = repo
+                    .insert_event("merge:ready", &project_id_str, &ready_payload.to_string())
+                    .await
+                {
+                    tracing::warn!(
+                        error = %e,
+                        task_id = task_id_str,
+                        "merge_orchestrator: failed to insert merge:ready external event (non-fatal)"
+                    );
+                }
+            }
+            if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+                publisher
+                    .publish(
+                        ralphx_domain::entities::EventType::MergeReady,
+                        &project_id_str,
+                        ready_payload,
+                    )
+                    .await;
+            }
         }
 
         // Phase 1: Run git strategy under merge deadline (fast, seconds only)

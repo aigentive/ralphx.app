@@ -429,23 +429,38 @@ impl<'a> super::TransitionHandler<'a> {
             self.post_merge_cleanup(task_id_str, task_id, repo_path, plan_branch_repo)
                 .await;
 
-            // Emit merge:completed webhook event.
-            if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
-                let webhook_payload = serde_json::json!({
+            // Emit merge:completed via both channels: webhook publisher + external_events (SSE/poll).
+            {
+                let project_id_str = project.id.to_string();
+                let merge_payload = serde_json::json!({
                     "task_id": task_id_str,
-                    "project_id": project.id.to_string(),
+                    "project_id": project_id_str,
                     "source_branch": source_branch,
                     "target_branch": target_branch,
                     "commit_sha": commit_sha,
                     "timestamp": chrono::Utc::now().to_rfc3339(),
                 });
-                publisher
-                    .publish(
-                        ralphx_domain::entities::EventType::MergeCompleted,
-                        &project.id.to_string(),
-                        webhook_payload,
-                    )
-                    .await;
+                if let Some(ref repo) = self.machine.context.services.external_events_repo {
+                    if let Err(e) = repo
+                        .insert_event("merge:completed", &project_id_str, &merge_payload.to_string())
+                        .await
+                    {
+                        tracing::warn!(
+                            error = %e,
+                            task_id = task_id_str,
+                            "merge_outcome: failed to insert merge:completed external event (non-fatal)"
+                        );
+                    }
+                }
+                if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+                    publisher
+                        .publish(
+                            ralphx_domain::entities::EventType::MergeCompleted,
+                            &project_id_str,
+                            merge_payload,
+                        )
+                        .await;
+                }
             }
 
             // Phase 3: spawn fire-and-forget cleanup for slow operations
@@ -581,28 +596,43 @@ impl<'a> super::TransitionHandler<'a> {
             .emit_status_change(task_id_str, "pending_merge", "merging")
             .await;
 
-        // Emit merge:conflict webhook event.
-        if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+        // Emit merge:conflict via both channels: external_events (SSE/poll) + webhook publisher.
+        {
+            let project_id_str = project.id.to_string();
             let conflict_file_strings: Vec<String> = conflict_files
                 .iter()
                 .map(|p| p.to_string_lossy().to_string())
                 .collect();
-            let webhook_payload = serde_json::json!({
+            let conflict_payload = serde_json::json!({
                 "task_id": task_id_str,
-                "project_id": project.id.to_string(),
+                "project_id": project_id_str,
                 "source_branch": source_branch,
                 "target_branch": target_branch,
                 "conflict_files": conflict_file_strings,
                 "strategy": opts.strategy_label,
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             });
-            publisher
-                .publish(
-                    ralphx_domain::entities::EventType::MergeConflict,
-                    &project.id.to_string(),
-                    webhook_payload,
-                )
-                .await;
+            if let Some(ref repo) = self.machine.context.services.external_events_repo {
+                if let Err(e) = repo
+                    .insert_event("merge:conflict", &project_id_str, &conflict_payload.to_string())
+                    .await
+                {
+                    tracing::warn!(
+                        error = %e,
+                        task_id = task_id_str,
+                        "merge_outcome: failed to insert merge:conflict external event (non-fatal)"
+                    );
+                }
+            }
+            if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
+                publisher
+                    .publish(
+                        ralphx_domain::entities::EventType::MergeConflict,
+                        &project_id_str,
+                        conflict_payload,
+                    )
+                    .await;
+            }
         }
 
         // Spawn merger agent
