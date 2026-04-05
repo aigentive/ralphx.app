@@ -5,6 +5,7 @@ description: >
   ideation → execution → review → merge. Covers 24-state machine, decision trees
   for edge cases, event-driven patterns, failure recovery playbooks.
   Use when connecting to RalphX via External MCP API or managing pipeline tasks.
+allowed-tools: ralphx__*
 argument-hint: "[section: quick-start | state-machine | decisions | events | recovery | dos-donts | cross-project]"
 ---
 
@@ -94,7 +95,7 @@ Do not ask "shall I approve?" unless approval is genuinely blocked on the user.
 | `review:escalated` event arrives | `v1_get_task_detail` → `v1_create_task_note` → surface blocker clearly | Treat it like an ordinary `review_passed` case |
 | Task in `merge_conflict` | Annotate with conflict files + alert human | Call `v1_retry_task` (resets branch context) |
 | Task in `blocked` | Call `v1_get_task_detail` to inspect blocker; notify human if human-input block | Cancel the blocked task |
-| `system:webhook_unhealthy` received | System handles recovery automatically — no agent action required | Attempt to manage webhook transport manually |
+| MCP/webhook delivery failure | Observe; system health tracker handles recovery automatically | Produce `system:webhook_unhealthy` events or claim transport repair — infrastructure issues, not agent-resolvable |
 | `v1_accept_plan_and_schedule` fails | Call `v1_resume_scheduling(session_id)` to resume idempotently | Re-call `v1_accept_plan_and_schedule` (may double-create tasks) |
 | Agent `agent_status: generating` | Wait briefly, then check status again | Send a message (it will be queued and may confuse agent state) |
 | Rate limit 429 received | Exponential backoff: 1s → 2s → 4s → 8s with ±200ms jitter | Retry immediately or in a tight loop |
@@ -161,7 +162,7 @@ All paths are relative to this skill file's directory (`skills/ralphx-swe/`):
 | `reference/state-machine.md` | All 24 pipeline states, transition table, happy paths, behavioral patterns | Confused by a state transition; need precise state semantics |
 | `reference/decision-trees.md` | 6 ASCII decision trees for common scenarios | Handling escalation, merge conflict, blocked task, failed task, capacity |
 | `reference/event-catalog.md` | All 20 event types, fields, and recommended reactions | Unsure how to react to a specific event; need event field names |
-| `reference/failure-playbooks.md` | 4 step-by-step recovery procedures with real `v1_` tool calls | Recovering from accept failure, blocked task, rate limits, idle agent |
+| `reference/failure-playbooks.md` | 5 step-by-step recovery procedures with real `v1_` tool calls | Recovering from accept failure, blocked task, rate limits, idle agent, webhook delivery failure |
 | `reference/cross-project.md` | Cross-project orchestration — what it is and what it means for your agent | Understanding tasks appearing across multiple projects from a single ideation session |
 
 These files are fully self-contained. No external dependencies. No internet required.

@@ -1,6 +1,6 @@
 # Failure Playbooks
 
-Step-by-step recovery for the 4 most common failure modes. Each playbook uses real `v1_` tool calls
+Step-by-step recovery for the 5 most common failure modes. Each playbook uses real `v1_` tool calls
 with valid parameters.
 
 Environment naming:
@@ -167,3 +167,41 @@ if (status.proposal_count > 0) {
 ```
 
 **Key:** `v1_send_ideation_message` is safe to call on any agent state — it queues the message if the agent is between turns.
+
+
+---
+
+## Playbook 5 — Webhook Delivery Failure (Anti-Pattern)
+
+**Symptom:** Webhook events stop arriving; pipeline appears stalled; a `system:webhook_unhealthy`
+event may appear in the event stream.
+
+**Root cause:** Transient network or infrastructure failure between the RalphX backend and the
+delivery endpoint. The backend health tracker detects and recovers automatically.
+
+**Correct behavior — observe only:**
+
+```typescript
+// Do NOT produce system:webhook_unhealthy events — this event type has no handler.
+// Do NOT assume the polling bridge will cover missing webhooks.
+// Do NOT attempt to manage webhook transport, reconnect sockets, or call any recovery tool.
+
+// If pipeline events are missing, poll once to verify actual pipeline state:
+const progress = await mcp.call('v1_batch_task_status', {
+  task_ids: trackedTaskIds,
+});
+// If tasks are progressing → webhooks were delayed, not lost. Resume normal event-driven flow.
+// If tasks are genuinely stalled → annotate + alert human. Do not self-recover the transport.
+```
+
+**Anti-patterns (never do these):**
+
+| ❌ Anti-pattern | Why it fails |
+|----------------|-------------|
+| Emit `system:webhook_unhealthy` event | Event type has no registered handler — wastes cycles |
+| Call any `v1_*` recovery tool for transport repair | Infrastructure concern; no agent tool covers it |
+| Assume polling bridge restores missing events | Bridge is bounded reconciliation only, not a parallel event source |
+| Retry delivery endpoint manually | Backend health tracker already does this; double-recovery causes conflicts |
+
+**Key:** Webhook delivery failures are infrastructure events. The health tracker handles recovery
+automatically. Agent role: observe, optionally poll once to confirm state, then wait.
