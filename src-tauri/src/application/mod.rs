@@ -32,6 +32,7 @@ pub mod services;
 pub mod review_issue_service;
 pub mod review_service;
 pub mod session_export_service;
+pub mod session_namer_prompt;
 pub mod session_reopen_service;
 pub mod startup_jobs;
 pub mod supervisor_service;
@@ -112,6 +113,8 @@ mod webhook_service_tests;
 mod prune_engine_tests;
 #[cfg(test)]
 mod session_export_service_tests;
+#[cfg(test)]
+mod session_namer_prompt_tests;
 #[cfg(test)]
 mod throttled_emitter_tests;
 

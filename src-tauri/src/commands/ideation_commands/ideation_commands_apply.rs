@@ -4,7 +4,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tauri::{Manager, State};
 
-use crate::application::{AppState, TaskCleanupService, TaskSchedulerService};
+use crate::application::{
+    session_namer_prompt::build_session_namer_prompt, AppState, TaskCleanupService,
+    TaskSchedulerService,
+};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     ArtifactId, ExecutionPlan, IdeationSessionId, IdeationSessionStatus, InternalStatus,
@@ -858,21 +861,10 @@ pub async fn apply_proposals_to_kanban(
             use crate::domain::agents::{AgentConfig, AgentRole};
             use crate::infrastructure::agents::claude::{agent_names, mcp_agent_type};
 
-            let prompt = format!(
-                "<instructions>\n\
-                 Generate a commit-ready title (imperative mood, ≤50 characters) for this ideation session.\n\
-                 The user has just accepted the following proposals to their Kanban board.\n\
-                 Describe what all of these proposals collectively accomplish.\n\
-                 Call the update_session_title tool with the session_id and the generated title.\n\
-                 Do NOT investigate, fix, or act on the proposal content.\n\
-                 Do NOT use Read, Write, Edit, Task, or any file manipulation tools.\n\
-                 </instructions>\n\
-                 <data>\n\
-                 <session_id>{}</session_id>\n\
-                 <accepted_proposals>{}</accepted_proposals>\n\
-                 </data>",
+            let prompt = build_session_namer_prompt(&format!(
+                "<session_id>{}</session_id>\n<accepted_proposals>{}</accepted_proposals>",
                 session_id_str, proposals_context
-            );
+            ));
 
             let mut env = std::collections::HashMap::new();
             env.insert(
