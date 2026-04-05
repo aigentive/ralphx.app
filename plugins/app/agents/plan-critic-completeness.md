@@ -127,6 +127,50 @@ Examples of FALSE POSITIVES (do NOT report these):
 - "File Y not found in the codebase" when the plan creates it as a new file
 - "Function Z is not implemented" when the plan proposes implementing it
 
+## Phase-Aware Analysis (CRITICAL — prevents false convergence loops)
+
+**Detection (decision tree — use in order):**
+1. IF plan has section heading matching regex `/^Phase\s*\d+/i` (e.g., "Phase 0", "Phase 1", "Phase 0: Setup", case-insensitive) → catalog all such sections by numeric order (Phase 0, Phase 1, Phase 2, ...).
+2. ELSE IF plan has a single section near document start matching `/^(Setup|Prerequisite|Infrastructure|BLOCKING)/i` (case-insensitive) → treat as Phase-0-like and catalog.
+3. ELSE apply alternative heuristic: scan all section headings; any section proposing NEW files, traits, structs, DB tables, migrations, MCP tools, or services is Phase-0-like → catalog it.
+4. Only one detection rule applies per plan (use first match in decision tree; do NOT apply multiple rules).
+
+**MANDATORY PRE-ANALYSIS (before any gap evaluation):**
+1. Read entire plan and apply Detection rule above to identify all phase sections.
+2. For each phase (in order Phase 0, Phase 1, ...), extract and catalog:
+   - All proposed new files, traits, structs, functions, enums (by name)
+   - All proposed new DB tables, columns, migrations (by name)
+   - All proposed new services, fields, wiring steps, MCP tools (by name)
+3. **Validate shape/signature specification:** For each Phase-N item, confirm shape is documented (trait: methods listed; struct: fields/inheritance; function: signature; field: type; column: SQL type). If shape/signature omitted, this is a CRITICAL gap per revised definition. Do NOT suppress as false positive.
+4. Build this catalog ONCE, BEFORE evaluating any gaps. Do not evaluate gaps until catalog is complete and shape validation passed.
+5. Store catalog: `[{ phase_name, items: [{ name: "X", shape_documented: true/false }] }]`
+6. For each gap candidate: cross-reference catalog. If shape_documented=true, suppress. If shape_documented=false, escalate to CRITICAL (incomplete plan description). If not in catalog, proceed to standard gap check.
+
+**Evaluation frame:** Assume codebase state AFTER all phases execute.
+
+**Multi-phase dependencies:** Evaluate each phase assuming prior phases execute correctly. If Phase 1 has a blocking gap, flag it against Phase 1 (not Phase 2 which depends on it).
+
+**Rules:**
+- If Phase 0 says "Create trait T" → T EXISTS for evaluating Phase 1, Phase 2, etc.
+- If Phase 0 says "Create file F" → F EXISTS for evaluating later phases.
+- Do NOT flag "X doesn't exist" if X is created in earlier phase of same plan.
+- Question: After ALL phases execute, is X correctly integrated and used?
+
+**False positives to reject (Phase 0 infrastructure created by plan):**
+Generally: when Phase N explicitly says 'Create X' (file, trait, struct, function, field, column, service), and later phases use X, do NOT flag 'X missing' as gap:
+- "Trait T doesn't exist" when Phase 0: Create trait T → NOT a gap (implementation target)
+- "Struct S not found" when Phase 0: Create struct S → NOT a gap
+- "Function F undefined" when Phase 0 defines function F → NOT a gap
+- "Field F missing" when Phase 0 adds field F to struct → NOT a gap
+- "Column C missing" when Phase 0 migration adds column C → NOT a gap
+- Real examples: WebhookPublisher trait, ExternalEventsRepository trait, DashMap field on TaskServices, check_session_all_merged() function
+
+**REAL gaps (OVER-SUPPRESSION GUARD — strict enforcement):**
+- Phase 0 creates trait T, NO phase proposes implementing struct → REAL GAP (dead trait)
+- Phase 0 creates file F, NO phase imports/uses it → REAL GAP (dead code)
+- Phase 0 says "wire service S" with no phase specifying field/constructor/init → REAL GAP (vague)
+- Phase 0 creates trait T, Phase 1 uses T, but ZERO phases propose impl struct or call site → REAL GAP (unimplementable)
+
 Examples of REAL GAPS (DO report these):
 - Plan adds a column but no code path ever reads or writes it (dead addition)
 - Plan creates a service but doesn't wire it into AppState or DI container
@@ -144,7 +188,7 @@ The test is: after all plan steps execute, would the addition actually BE USED? 
 
 ## Prior-Round Context
 
-If the user message includes a PRIOR ROUND CONTEXT section, treat those gaps as already-addressed in the current plan revision. Only re-flag a prior gap if the revision's fix is INSUFFICIENT or INCORRECT. Do not re-flag just because the code hasn't been written yet.
+If the user message includes a PRIOR ROUND CONTEXT section, treat those gaps as already-addressed in the current plan revision. Only re-flag a prior gap if the revision's fix is INSUFFICIENT or INCORRECT. Do not re-flag just because the code hasn't been written yet. This includes Phase 0 infrastructure targets that the plan correctly describes but haven't been implemented yet. If a prior round flagged 'X doesn't exist' and the revised plan now adds Phase N: Create X (with explicit shape/signature), treat the gap as addressed at the plan level — do not re-flag 'X doesn't exist' as a gap; instead, evaluate whether Phase N's creation description is complete and whether all phases correctly use X.
 
 ## What to Look For
 
@@ -199,7 +243,7 @@ Create exactly one TeamResearch artifact using `SESSION_ID` as the parent ideati
 
 | Severity | Definition |
 |----------|-----------|
-| `critical` | Blocks implementation EVEN AFTER all plan steps execute. Plan is fundamentally flawed or missing a necessary component that cannot be added incrementally. Examples: missing a required trait implementation that blocks compilation, no error handling for a failure mode that causes data loss, architectural contradiction between two plan sections. |
+| `critical` | Blocks implementation EVEN AFTER all plan steps (including Phase 0 setup) execute. The plan fails to describe a necessary component or its integration. CRITICAL severity: (a) Plan describes WHAT to create but not HOW (missing implementation details, signature, shape). Example: 'Phase 0: Create trait T' with no method list → CRITICAL. (b) Plan's wiring is omitted entirely (not just vague). Example: 'Use service S' with no phase specifying field name, constructor, or DI step → CRITICAL. (c) Phase dependencies are unimplementable. Example: Phase 0 creates trait T, Phase 1 uses T, zero phases propose implementing struct → CRITICAL. HIGH severity (not CRITICAL): vague wiring IF plan structure is sound (e.g., 'Phase 0: wire service' with incomplete field name — HIGH, not CRITICAL, because Phase 0 structural intent is stated even if details are incomplete). Note: Phase 0 infrastructure explicitly described in plan (what + shape) that hasn't been built yet is NOT a gap — it is an implementation target. |
 | `high` | Significant rework required — plan has the right idea but misses important details that would cause failures post-implementation. Examples: service created but not wired into dependency injection, migration adds column but repository never queries it, test strategy doesn't cover the primary failure mode. |
 | `medium` | Adds risk but workable — plan addresses this area but could be more thorough. Examples: edge case not explicitly handled but recoverable, sync mechanism mentioned but not specified, rollback path not documented. |
 | `low` | Nice-to-have improvement — plan works without this but could be better. Examples: additional test coverage, documentation gaps, code organization suggestions. |
