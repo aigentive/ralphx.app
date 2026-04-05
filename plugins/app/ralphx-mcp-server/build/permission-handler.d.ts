@@ -16,6 +16,8 @@ import { Tool } from "@modelcontextprotocol/sdk/types.js";
  * This tool is NOT scoped by agent type - it's always available
  */
 export declare const permissionRequestTool: Tool;
+export declare function shouldAutoApprovePermission(toolName: string, toolInput: Record<string, unknown>): boolean;
+export declare function normalizePermissionToolInput(toolName: string, toolInput: Record<string, unknown>): Record<string, unknown>;
 /**
  * Handle a permission request by forwarding to Tauri backend
  * and waiting for user decision via long-poll.

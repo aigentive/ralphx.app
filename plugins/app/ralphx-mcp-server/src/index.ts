@@ -59,6 +59,19 @@ export const CROSS_PROJECT_KEYWORDS = [
 ];
 
 /**
+ * Strip fenced and inline markdown code blocks from text before path scanning.
+ * Prevents false-positive path detection on code snippets like `...>>` or `...`.
+ * Exported for unit testing.
+ */
+export function stripMarkdownCodeBlocks(text: string): string {
+  // Remove fenced code blocks (``` ... ```) — non-greedy, handles multi-line
+  let stripped = text.replace(/```[\s\S]*?```/g, "");
+  // Remove inline code (`...`)
+  stripped = stripped.replace(/`[^`\n]+`/g, "");
+  return stripped;
+}
+
+/**
  * Filter out detected paths that belong to the same project root.
  * Returns only paths that genuinely reference a different project.
  *
@@ -746,16 +759,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       }
 
+      // Strip code blocks before path scanning to avoid false positives on code snippets
+      const scanText = stripMarkdownCodeBlocks(planText);
+
       // Heuristic: detect cross-project paths (absolute paths, ../relative paths, paths with project-like names)
       const crossProjectPatterns = [
         /(?:^|\s|["'`])(\/(home|Users|workspace|projects|srv|opt)\/[^\s"'`]+)/gm,
-        /(?:^|\s|["'`])(\.\.\/?[^\s"'`]+)/gm,
+        /(?:^|\s|["'`])(\.\.\/[^\s"'`]+)/gm,
         /(?:target[_-]?project[_-]?path|project[_-]?path|working[_-]?directory)[:\s]+["']?([^\s"'`,\n]+)/gim,
       ];
 
       const rawDetectedPaths: string[] = [];
       for (const pattern of crossProjectPatterns) {
-        const matches = [...planText.matchAll(pattern)];
+        const matches = [...scanText.matchAll(pattern)];
         for (const m of matches) {
           const p = (m[1] || m[0]).trim().replace(/^["'`]|["'`]$/g, "");
           if (p && !rawDetectedPaths.includes(p)) {

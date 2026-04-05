@@ -262,7 +262,7 @@ export function shouldAutoApprovePermission(
     }
     case "Bash": {
       const command = getStringField(toolInput, ["command"]);
-      return Boolean(command) && shellSegments(command).every(segmentIsTrustedReadonlyBash);
+      return Boolean(command) && shellSegments(command!).every(segmentIsTrustedReadonlyBash);
     }
     default:
       return false;

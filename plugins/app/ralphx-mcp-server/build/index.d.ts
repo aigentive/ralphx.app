@@ -17,6 +17,12 @@
  */
 export declare const CROSS_PROJECT_KEYWORDS: string[];
 /**
+ * Strip fenced and inline markdown code blocks from text before path scanning.
+ * Prevents false-positive path detection on code snippets like `...>>` or `...`.
+ * Exported for unit testing.
+ */
+export declare function stripMarkdownCodeBlocks(text: string): string;
+/**
  * Filter out detected paths that belong to the same project root.
  * Returns only paths that genuinely reference a different project.
  *
