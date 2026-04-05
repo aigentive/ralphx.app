@@ -9,9 +9,9 @@ This plugin teaches external Claude Code agents **judgment** for navigating the 
 **Audience:** External autonomous agents interacting with RalphX via the External MCP API.
 
 **Naming note:**
-- raw MCP methods are `v1_*`
-- Claude/Codex MCP wrappers are typically `mcp__ralphx__v1_*`
-- ReefBot tool names are `ralphx__v1_*`
+- examples in this plugin use canonical RalphX method names: `v1_*`
+- Claude/Codex MCP wrappers in some environments are typically `mcp__ralphx__v1_*`
+- ReefBot integration uses `ralphx__v1_*`
 
 Never derive tool names from the skill name.
 
@@ -81,7 +81,7 @@ Pass a section name to load specific content:
 | `state-machine` | Full 24-state pipeline reference |
 | `decisions` | 6 ASCII decision trees for common scenarios |
 | `events` | All 20 event types and recommended reactions |
-| `recovery` | 4 step-by-step failure recovery procedures |
+| `recovery` | 5 step-by-step failure recovery procedures |
 | `dos-donts` | Full Do's and Don'ts table |
 | `cross-project` | Cross-project orchestration reference |
 
@@ -110,7 +110,7 @@ skills/ralphx-swe/
     ├── state-machine.md        # All 24 pipeline states + transition table
     ├── decision-trees.md       # 6 ASCII decision trees for common scenarios
     ├── event-catalog.md        # 20 event types with recommended reactions
-    ├── failure-playbooks.md    # 4 step-by-step recovery procedures
+    ├── failure-playbooks.md    # 5 step-by-step recovery procedures
     └── cross-project.md        # Cross-project orchestration reference
 ```
 
@@ -120,7 +120,7 @@ The main skill file (~180 lines). Contains:
 - **Bootstrap** — 2 startup steps every session: check attention items, load tool guide
 - **Core Principles** — observe before act, event-driven (passive), annotate before intervene, separate review approval from merge progression
 - **Do's and Don'ts** — situations with correct and incorrect actions
-- **Quick Decision Guide** — 9 most common `if X then Y` decision points with exact tool calls
+- **Quick Decision Guide** — 10 most common `if X then Y` decision points with exact tool calls
 - **Reference Navigation** — table pointing to the 5 reference files
 - **Section Dispatch** — argument-based routing to reference files
 
@@ -138,7 +138,7 @@ All 20 event types from the `RalphXEvent` discriminated union, grouped by catego
 
 ### reference/failure-playbooks.md
 
-4 recovery procedures with step-by-step `v1_*` tool calls: `accept_plan_and_schedule` saga failure, task stuck in blocked, rate limit 429, and ideation agent unexpectedly idle.
+5 recovery procedures with step-by-step `v1_*` tool calls: `accept_plan_and_schedule` saga failure, task stuck in blocked, rate limit 429, ideation agent unexpectedly idle, and webhook delivery failure anti-patterns.
 
 ### reference/cross-project.md
 
@@ -162,5 +162,6 @@ Each reference file has a `<!-- Source: path | Last synced: date -->` comment at
 1. Check state count in `task-state-machine.md` matches `reference/state-machine.md`
 2. Check event count in `events.ts` (`RalphXEvent` discriminated union) matches `reference/event-catalog.md`
 3. Verify all `v1_*` tool references in decision trees and playbooks still exist
-4. Run `claude plugin validate .` to check structure
-5. Test locally: `claude --plugin-dir ./plugins/shared`, run `/ralphx-shared-plugin:ralphx-swe`, verify skill appears in `/help`
+4. Keep examples canonical: `v1_*` in skill content; wrapper names only in mapping notes
+5. Run `claude plugin validate .` to check structure
+6. Test locally: `claude --plugin-dir ./plugins/shared`, run `/ralphx-shared-plugin:ralphx-swe`, verify skill appears in `/help`

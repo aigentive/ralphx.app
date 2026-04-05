@@ -3,10 +3,11 @@
 Step-by-step recovery for the 5 most common failure modes. Each playbook uses real `v1_` tool calls
 with valid parameters.
 
-Environment naming:
-- raw MCP methods: `v1_*`
-- Claude/Codex wrappers: `mcp__ralphx__v1_*`
-- ReefBot wrappers: `ralphx__v1_*`
+Canonical naming in this file: examples use `v1_*`.
+
+Host mappings:
+- Claude/Codex wrappers in some environments: `mcp__ralphx__v1_*`
+- ReefBot integration: `ralphx__v1_*`
 
 ---
 
@@ -173,8 +174,8 @@ if (status.proposal_count > 0) {
 
 ## Playbook 5 — Webhook Delivery Failure (Anti-Pattern)
 
-**Symptom:** Webhook events stop arriving; pipeline appears stalled; a `system:webhook_unhealthy`
-event may appear in the event stream.
+**Symptom:** Webhook events stop arriving, pipeline appears stalled, or RalphX emits
+`system:webhook_unhealthy`.
 
 **Root cause:** Transient network or infrastructure failure between the RalphX backend and the
 delivery endpoint. The backend health tracker detects and recovers automatically.
@@ -182,7 +183,7 @@ delivery endpoint. The backend health tracker detects and recovers automatically
 **Correct behavior — observe only:**
 
 ```typescript
-// Do NOT produce system:webhook_unhealthy events — this event type has no handler.
+// Do NOT synthesize your own system:webhook_unhealthy events.
 // Do NOT assume the polling bridge will cover missing webhooks.
 // Do NOT attempt to manage webhook transport, reconnect sockets, or call any recovery tool.
 
@@ -198,7 +199,7 @@ const progress = await mcp.call('v1_batch_task_status', {
 
 | ❌ Anti-pattern | Why it fails |
 |----------------|-------------|
-| Emit `system:webhook_unhealthy` event | Event type has no registered handler — wastes cycles |
+| Emit your own `system:webhook_unhealthy` event | Duplicates RalphX's health signal and creates false diagnostics |
 | Call any `v1_*` recovery tool for transport repair | Infrastructure concern; no agent tool covers it |
 | Assume polling bridge restores missing events | Bridge is bounded reconciliation only, not a parallel event source |
 | Retry delivery endpoint manually | Backend health tracker already does this; double-recovery causes conflicts |

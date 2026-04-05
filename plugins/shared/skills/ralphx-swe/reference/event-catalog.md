@@ -1,4 +1,4 @@
-<!-- Source: ralphx-external-mcp/src/tools/events.ts | Last synced: 2026-03-21 -->
+<!-- Source: ralphx-external-mcp/src/tools/events.ts | Last synced: 2026-04-05 -->
 
 # RalphX Event Catalog
 
@@ -263,7 +263,9 @@ The webhook endpoint recorded ≥10 consecutive delivery failures and was deacti
 | `webhook_id` | string | Deactivated webhook ID |
 | `failure_count` | number | Total consecutive failures |
 
-**Agent reaction:** System handles recovery automatically — no agent action required.
+**Agent reaction:** Treat as an informational system-health signal. Do not attempt transport repair
+or synthesize another unhealthy event. If the user needs status, poll actual task or session state
+once and wait for recovery.
 
 ---
 

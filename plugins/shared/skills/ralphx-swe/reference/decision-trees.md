@@ -1,14 +1,15 @@
-<!-- Source: docs/external-mcp/autonomous-workflows.md | Last synced: 2026-03-21 -->
+<!-- Source: docs/external-mcp/autonomous-workflows.md | Last synced: 2026-04-05 -->
 
 # Decision Trees — Common Scenarios
 
 ASCII decision trees for common agent decision points. States → `state-machine.md`. Events →
 `event-catalog.md`.
 
-Environment naming:
-- raw MCP methods: `v1_*`
-- Claude/Codex wrappers: `mcp__ralphx__v1_*`
-- ReefBot wrappers: `ralphx__v1_*`
+Canonical naming in this file: examples use `v1_*`.
+
+Host mappings:
+- Claude/Codex wrappers in some environments: `mcp__ralphx__v1_*`
+- ReefBot integration: `ralphx__v1_*`
 
 ---
 

@@ -5,7 +5,6 @@ description: >
   ideation → execution → review → merge. Covers 24-state machine, decision trees
   for edge cases, event-driven patterns, failure recovery playbooks.
   Use when connecting to RalphX via External MCP API or managing pipeline tasks.
-allowed-tools: ralphx__*
 argument-hint: "[section: quick-start | state-machine | decisions | events | recovery | dos-donts | cross-project]"
 ---
 
@@ -21,11 +20,14 @@ argument-hint: "[section: quick-start | state-machine | decisions | events | rec
 
 Two steps before taking any pipeline action:
 
-**Environment naming rule** (read this before any tool call):
+**Canonical tool naming** (read this before any tool call):
 ```
-Raw MCP method names: v1_*
-Claude/Codex MCP wrappers: mcp__ralphx__v1_*
-ReefBot tool names: ralphx__v1_*
+Examples in this skill use canonical RalphX method names: v1_*
+
+Host mappings:
+- RalphX external MCP methods: v1_*
+- Claude/Codex MCP wrappers in some environments: mcp__ralphx__v1_*
+- ReefBot integration: ralphx__v1_*
 
 Never invent a namespace from this skill name.
 Never call mcp__ralphx-swe__*.
@@ -95,7 +97,7 @@ Do not ask "shall I approve?" unless approval is genuinely blocked on the user.
 | `review:escalated` event arrives | `v1_get_task_detail` → `v1_create_task_note` → surface blocker clearly | Treat it like an ordinary `review_passed` case |
 | Task in `merge_conflict` | Annotate with conflict files + alert human | Call `v1_retry_task` (resets branch context) |
 | Task in `blocked` | Call `v1_get_task_detail` to inspect blocker; notify human if human-input block | Cancel the blocked task |
-| MCP/webhook delivery failure | Observe; system health tracker handles recovery automatically | Produce `system:webhook_unhealthy` events or claim transport repair — infrastructure issues, not agent-resolvable |
+| MCP/webhook delivery failure | Observe. If RalphX emits `system:webhook_unhealthy`, treat it as informational; system health tracker handles recovery automatically | Synthesize your own webhook-health events or claim transport repair — infrastructure issues, not agent-resolvable |
 | `v1_accept_plan_and_schedule` fails | Call `v1_resume_scheduling(session_id)` to resume idempotently | Re-call `v1_accept_plan_and_schedule` (may double-create tasks) |
 | Agent `agent_status: generating` | Wait briefly, then check status again | Send a message (it will be queued and may confuse agent state) |
 | Rate limit 429 received | Exponential backoff: 1s → 2s → 4s → 8s with ±200ms jitter | Retry immediately or in a tight loop |
@@ -111,7 +113,7 @@ Do not ask "shall I approve?" unless approval is genuinely blocked on the user.
 
 ## 4. Quick Decision Guide
 
-The 9 most common decision points:
+The 10 most common decision points:
 
 **1. Event arrives: `task:status_changed` → `escalated`**
 → `v1_get_task_detail(task_id)` → `v1_create_task_note(task_id, "Escalated: <reason>")` → Alert human
