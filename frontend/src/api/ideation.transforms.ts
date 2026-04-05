@@ -201,6 +201,11 @@ export function transformApplyResult(raw: z.infer<typeof ApplyProposalsResultRes
   };
 }
 
+export function transformNullableBool(value: number | null | undefined): boolean | null {
+  if (value === null || value === undefined) return null;
+  return value !== 0;
+}
+
 export function transformIdeationSettings(raw: IdeationSettingsResponse): IdeationSettings {
   return {
     planMode: raw.plan_mode as IdeationSettings["planMode"],
@@ -208,6 +213,13 @@ export function transformIdeationSettings(raw: IdeationSettingsResponse): Ideati
     suggestPlansForComplex: raw.suggest_plans_for_complex,
     autoLinkProposals: raw.auto_link_proposals,
     requireAcceptForFinalize: raw.require_accept_for_finalize,
+    requireVerificationForAccept: raw.require_verification_for_accept,
+    requireVerificationForProposals: raw.require_verification_for_proposals,
+    externalOverrides: {
+      requireVerificationForAccept: transformNullableBool(raw.ext_require_verification_for_accept),
+      requireVerificationForProposals: transformNullableBool(raw.ext_require_verification_for_proposals),
+      requireAcceptForFinalize: transformNullableBool(raw.ext_require_accept_for_finalize),
+    },
   };
 }
 

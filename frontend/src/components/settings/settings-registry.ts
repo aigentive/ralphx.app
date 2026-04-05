@@ -10,7 +10,8 @@ export type SettingsSectionId =
   | "ideation-workflow"
   | "ideation-effort"
   | "ideation-models"
-  | "api-keys";
+  | "api-keys"
+  | "external-mcp";
 
 export type SettingsGroupId = "general" | "workspace" | "ideation" | "access";
 
@@ -40,4 +41,5 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
   { id: "ideation-effort", groupId: "ideation", label: "Effort" },
   { id: "ideation-models", groupId: "ideation", label: "Models" },
   { id: "api-keys", groupId: "access", label: "API Keys" },
+  { id: "external-mcp", groupId: "access", label: "External MCP" },
 ];

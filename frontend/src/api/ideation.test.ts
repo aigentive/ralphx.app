@@ -1062,4 +1062,71 @@ describe("ideationApi.verification", () => {
       ).rejects.toThrow("Failed to revert and skip: 422");
     });
   });
+
+describe("ideationApi.settings.update — payload regression", () => {
+  beforeEach(() => {
+    mockInvoke.mockReset();
+  });
+
+  const baseSettingsResponse = {
+    plan_mode: "optional",
+    require_plan_approval: false,
+    suggest_plans_for_complex: true,
+    auto_link_proposals: true,
+    require_accept_for_finalize: true,
+    require_verification_for_accept: false,
+    require_verification_for_proposals: false,
+    ext_require_verification_for_accept: null,
+    ext_require_verification_for_proposals: null,
+    ext_require_accept_for_finalize: null,
+  };
+
+  it("includes require_accept_for_finalize in the update payload (bug fix)", async () => {
+    mockInvoke.mockResolvedValue(baseSettingsResponse);
+
+    await ideationApi.settings.update({
+      planMode: "optional",
+      requirePlanApproval: false,
+      suggestPlansForComplex: true,
+      autoLinkProposals: true,
+      requireAcceptForFinalize: true,
+      requireVerificationForAccept: false,
+      requireVerificationForProposals: false,
+      externalOverrides: {
+        requireVerificationForAccept: null,
+        requireVerificationForProposals: null,
+        requireAcceptForFinalize: null,
+      },
+    });
+
+    const calledSettings = mockInvoke.mock.calls[0]![1].settings;
+    expect(calledSettings).toHaveProperty("require_accept_for_finalize", true);
+  });
+
+  it("includes all new fields in the update payload", async () => {
+    mockInvoke.mockResolvedValue(baseSettingsResponse);
+
+    await ideationApi.settings.update({
+      planMode: "optional",
+      requirePlanApproval: false,
+      suggestPlansForComplex: true,
+      autoLinkProposals: true,
+      requireAcceptForFinalize: false,
+      requireVerificationForAccept: true,
+      requireVerificationForProposals: true,
+      externalOverrides: {
+        requireVerificationForAccept: false,
+        requireVerificationForProposals: true,
+        requireAcceptForFinalize: null,
+      },
+    });
+
+    const calledSettings = mockInvoke.mock.calls[0]![1].settings;
+    expect(calledSettings).toHaveProperty("require_verification_for_accept", true);
+    expect(calledSettings).toHaveProperty("require_verification_for_proposals", true);
+    expect(calledSettings).toHaveProperty("ext_require_verification_for_accept", 0);
+    expect(calledSettings).toHaveProperty("ext_require_verification_for_proposals", 1);
+    expect(calledSettings).toHaveProperty("ext_require_accept_for_finalize", null);
+  });
+});
 });

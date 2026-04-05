@@ -65,6 +65,15 @@ export type {
 
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+function nullableBoolToInt(value: boolean | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  return value ? 1 : 0;
+}
+
+// ============================================================================
 // Typed Invoke Helper
 // ============================================================================
 
@@ -573,6 +582,12 @@ export const ideationApi = {
             require_plan_approval: settings.requirePlanApproval,
             suggest_plans_for_complex: settings.suggestPlansForComplex,
             auto_link_proposals: settings.autoLinkProposals,
+            require_accept_for_finalize: settings.requireAcceptForFinalize,
+            require_verification_for_proposals: settings.requireVerificationForProposals,
+            require_verification_for_accept: settings.requireVerificationForAccept,
+            ext_require_verification_for_accept: nullableBoolToInt(settings.externalOverrides?.requireVerificationForAccept),
+            ext_require_verification_for_proposals: nullableBoolToInt(settings.externalOverrides?.requireVerificationForProposals),
+            ext_require_accept_for_finalize: nullableBoolToInt(settings.externalOverrides?.requireAcceptForFinalize),
           },
         },
         IdeationSettingsResponseSchema

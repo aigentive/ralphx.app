@@ -1366,6 +1366,9 @@ pub fn run() {
             commands::diagnostic_commands::get_agent_health,
             // UI feature flag commands
             commands::ui_commands::get_ui_feature_flags,
+            // External MCP config commands
+            commands::external_mcp_commands::get_external_mcp_config,
+            commands::external_mcp_commands::update_external_mcp_config,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

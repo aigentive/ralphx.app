@@ -20,11 +20,25 @@ vi.mock("@/api/ideation", () => ({
   },
 }));
 
+// Mock uiStore for autoAcceptPlans
+vi.mock("@/stores/uiStore", () => ({
+  useUiStore: (selector: (s: { autoAcceptPlans: boolean; setAutoAcceptPlans: () => void }) => unknown) =>
+    selector({ autoAcceptPlans: false, setAutoAcceptPlans: vi.fn() }),
+}));
+
 const defaultSettings: IdeationSettings = {
   planMode: "optional",
   requirePlanApproval: false,
   suggestPlansForComplex: true,
   autoLinkProposals: true,
+  requireAcceptForFinalize: false,
+  requireVerificationForAccept: false,
+  requireVerificationForProposals: false,
+  externalOverrides: {
+    requireVerificationForAccept: null,
+    requireVerificationForProposals: null,
+    requireAcceptForFinalize: null,
+  },
 };
 
 function createWrapper() {
@@ -70,6 +84,9 @@ describe("IdeationSettingsPanel", () => {
       expect(screen.getByTestId("require-plan-approval")).toBeInTheDocument();
       expect(screen.getByTestId("suggest-plans-for-complex")).toBeInTheDocument();
       expect(screen.getByTestId("auto-link-proposals")).toBeInTheDocument();
+      expect(screen.getByTestId("require-accept-for-finalize")).toBeInTheDocument();
+      expect(screen.getByTestId("require-verification-for-accept")).toBeInTheDocument();
+      expect(screen.getByTestId("require-verification-for-proposals")).toBeInTheDocument();
     });
   });
 
@@ -179,6 +196,60 @@ describe("IdeationSettingsPanel", () => {
       const autoLinkCheckbox = screen.getByTestId("auto-link-proposals");
       expect(suggestCheckbox).not.toBeChecked();
       expect(autoLinkCheckbox).not.toBeChecked();
+    });
+  });
+
+  it("renders external overrides toggle button", async () => {
+    render(<IdeationSettingsPanel />, { wrapper: createWrapper() });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("external-overrides-toggle")).toBeInTheDocument();
+      expect(screen.getByText("External Session Overrides")).toBeInTheDocument();
+    });
+  });
+
+  it("shows external override selects when section is expanded", async () => {
+    const user = userEvent.setup();
+    render(<IdeationSettingsPanel />, { wrapper: createWrapper() });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("external-overrides-toggle")).toBeInTheDocument();
+    });
+
+    // Overrides not visible initially
+    expect(screen.queryByTestId("ext-override-verification-for-accept")).not.toBeInTheDocument();
+
+    // Click to expand
+    await user.click(screen.getByTestId("external-overrides-toggle"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("ext-override-verification-for-accept")).toBeInTheDocument();
+      expect(screen.getByTestId("ext-override-verification-for-proposals")).toBeInTheDocument();
+      expect(screen.getByTestId("ext-override-accept-for-finalize")).toBeInTheDocument();
+    });
+  });
+
+  it("renders external override selects with inherit as default value", async () => {
+    const user = userEvent.setup();
+    render(<IdeationSettingsPanel />, { wrapper: createWrapper() });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("external-overrides-toggle")).toBeInTheDocument();
+    });
+
+    // Expand external overrides
+    await user.click(screen.getByTestId("external-overrides-toggle"));
+
+    await waitFor(() => {
+      // Each select trigger should show "Inherit" since all overrides are null
+      const triggers = screen.getAllByRole("combobox");
+      const overrideTriggers = triggers.filter((t) =>
+        t.getAttribute("data-testid")?.startsWith("ext-override-")
+      );
+      expect(overrideTriggers).toHaveLength(3);
+      overrideTriggers.forEach((trigger) => {
+        expect(trigger).toHaveTextContent("Inherit");
+      });
     });
   });
 });

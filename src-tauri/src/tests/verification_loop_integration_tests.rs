@@ -20,9 +20,10 @@ use crate::application::reconciliation::verification_reconciliation::{
     VerificationReconciliationConfig, VerificationReconciliationService,
 };
 use crate::domain::entities::{IdeationSession, ProjectId, SessionPurpose, VerificationStatus};
+use crate::domain::entities::ideation::VerificationError;
 use crate::domain::ideation::config::IdeationSettings;
 use crate::domain::repositories::IdeationSessionRepository;
-use crate::domain::services::verification_gate::check_verification_gate;
+use crate::domain::services::verification_gate::{check_verification_gate, resolve_effective_gate_policy};
 use crate::infrastructure::memory::MemoryIdeationSessionRepository;
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -45,6 +46,17 @@ fn settings_with_gate_disabled() -> IdeationSettings {
         require_verification_for_accept: false,
         ..Default::default()
     }
+}
+
+/// Thin helper: resolve acceptance gate policy from session origin and check gate.
+/// Replaces direct `acceptance_gate(&session, &settings)` calls after the
+/// signature change to accept `&EffectiveGatePolicy` instead of `&IdeationSettings`.
+fn acceptance_gate(
+    session: &IdeationSession,
+    settings: &IdeationSettings,
+) -> Result<(), VerificationError> {
+    let policy = resolve_effective_gate_policy(settings, session.origin);
+    check_verification_gate(session, &policy)
 }
 
 fn metadata_with_gaps(critical: u32, high: u32, round: u32, max_rounds: u32) -> String {
@@ -147,7 +159,7 @@ async fn test_full_convergence_loop_zero_blocking_exit() {
     assert!(after_r1.verification_in_progress, "loop must still be active after round 1");
 
     // Gate must block while in-progress
-    let gate_r1 = check_verification_gate(&after_r1, &settings_with_gate_enabled());
+    let gate_r1 = acceptance_gate(&after_r1, &settings_with_gate_enabled());
     assert!(
         gate_r1.is_err(),
         "gate must block acceptance during active verification"
@@ -177,7 +189,7 @@ async fn test_full_convergence_loop_zero_blocking_exit() {
     );
 
     // Gate must pass for Verified session
-    let gate_r2 = check_verification_gate(&after_r2, &settings_with_gate_enabled());
+    let gate_r2 = acceptance_gate(&after_r2, &settings_with_gate_enabled());
     assert!(gate_r2.is_ok(), "gate must allow acceptance after verification: {:?}", gate_r2);
 }
 
@@ -228,7 +240,7 @@ async fn test_high_gaps_block_zero_blocking_convergence() {
     );
 
     // Gate still blocks because session is not Verified
-    let gate = check_verification_gate(&after_r2, &settings_with_gate_enabled());
+    let gate = acceptance_gate(&after_r2, &settings_with_gate_enabled());
     assert!(gate.is_err(), "gate must block when HIGH gaps remain: {:?}", gate);
 }
 
@@ -263,7 +275,7 @@ async fn test_hard_cap_exit_after_max_rounds() {
         assert!(s.verification_in_progress, "still looping at round {}", round);
         // Gate blocks during loop
         assert!(
-            check_verification_gate(&s, &settings_with_gate_enabled()).is_err(),
+            acceptance_gate(&s, &settings_with_gate_enabled()).is_err(),
             "gate must block at round {}", round
         );
     }
@@ -299,7 +311,7 @@ async fn test_hard_cap_exit_after_max_rounds() {
 
     // Gate passes after hard-cap verified
     assert!(
-        check_verification_gate(&final_session, &settings_with_gate_enabled()).is_ok(),
+        acceptance_gate(&final_session, &settings_with_gate_enabled()).is_ok(),
         "gate must allow acceptance after max_rounds convergence"
     );
 }
@@ -329,7 +341,7 @@ async fn test_agent_crash_recovery_reconciliation_resets_and_retry_succeeds() {
 
     // Gate must block (verification in progress)
     let stuck = repo.get_by_id(&session_id).await.unwrap().unwrap();
-    let gate_stuck = check_verification_gate(&stuck, &settings_with_gate_enabled());
+    let gate_stuck = acceptance_gate(&stuck, &settings_with_gate_enabled());
     assert!(gate_stuck.is_err(), "gate must block while verification is stuck in-progress");
 
     // Reconciliation detects and resets the stuck session
@@ -354,7 +366,7 @@ async fn test_agent_crash_recovery_reconciliation_resets_and_retry_succeeds() {
     );
 
     // Gate still blocks (now unverified, gate enabled)
-    let gate_after_reset = check_verification_gate(&after_reset, &settings_with_gate_enabled());
+    let gate_after_reset = acceptance_gate(&after_reset, &settings_with_gate_enabled());
     assert!(
         gate_after_reset.is_err(),
         "gate must block unverified session even after reconciliation reset"
@@ -374,7 +386,7 @@ async fn test_agent_crash_recovery_reconciliation_resets_and_retry_succeeds() {
     let after_retry = repo.get_by_id(&session_id).await.unwrap().unwrap();
     assert_eq!(after_retry.verification_status, VerificationStatus::Verified);
     assert!(
-        check_verification_gate(&after_retry, &settings_with_gate_enabled()).is_ok(),
+        acceptance_gate(&after_retry, &settings_with_gate_enabled()).is_ok(),
         "gate must allow acceptance after successful retry"
     );
 }
@@ -450,7 +462,7 @@ async fn test_revert_and_skip_atomic_sets_skipped_and_updates_plan() {
     );
 
     // Gate must allow acceptance after skip
-    let gate = check_verification_gate(&after, &settings_with_gate_enabled());
+    let gate = acceptance_gate(&after, &settings_with_gate_enabled());
     assert!(gate.is_ok(), "gate must allow acceptance after revert-and-skip: {:?}", gate);
 }
 
@@ -473,7 +485,7 @@ async fn test_acceptance_gate_blocks_unverified_allows_skipped() {
     repo.create(unverified).await.unwrap();
 
     let s = repo.get_by_id(&unverified_id).await.unwrap().unwrap();
-    let gate = check_verification_gate(&s, &settings);
+    let gate = acceptance_gate(&s, &settings);
     assert!(gate.is_err(), "gate must block unverified session");
     assert!(
         matches!(gate.unwrap_err(), crate::domain::entities::ideation::VerificationError::NotVerified),
@@ -489,7 +501,7 @@ async fn test_acceptance_gate_blocks_unverified_allows_skipped() {
     repo.create(reviewing).await.unwrap();
 
     let s = repo.get_by_id(&reviewing_id).await.unwrap().unwrap();
-    let gate = check_verification_gate(&s, &settings);
+    let gate = acceptance_gate(&s, &settings);
     assert!(gate.is_err(), "gate must block during active verification");
     assert!(
         matches!(
@@ -508,7 +520,7 @@ async fn test_acceptance_gate_blocks_unverified_allows_skipped() {
     repo.create(needs_revision).await.unwrap();
 
     let s = repo.get_by_id(&needs_revision_id).await.unwrap().unwrap();
-    let gate = check_verification_gate(&s, &settings);
+    let gate = acceptance_gate(&s, &settings);
     assert!(gate.is_err(), "gate must block NeedsRevision session");
     assert!(
         matches!(
@@ -526,7 +538,7 @@ async fn test_acceptance_gate_blocks_unverified_allows_skipped() {
 
     let s = repo.get_by_id(&verified_id).await.unwrap().unwrap();
     assert!(
-        check_verification_gate(&s, &settings).is_ok(),
+        acceptance_gate(&s, &settings).is_ok(),
         "gate must allow Verified session"
     );
 
@@ -538,16 +550,14 @@ async fn test_acceptance_gate_blocks_unverified_allows_skipped() {
 
     let s = repo.get_by_id(&skipped_id).await.unwrap().unwrap();
     assert!(
-        check_verification_gate(&s, &settings).is_ok(),
+        acceptance_gate(&s, &settings).is_ok(),
         "gate must allow Skipped session"
     );
 
     // ── Case 6: Gate disabled globally → all states pass ─────────────────────
     let disabled_settings = settings_with_gate_disabled();
-    let gate_disabled = check_verification_gate(
-        &repo.get_by_id(&unverified_id).await.unwrap().unwrap(),
-        &disabled_settings,
-    );
+    let s = repo.get_by_id(&unverified_id).await.unwrap().unwrap();
+    let gate_disabled = acceptance_gate(&s, &disabled_settings);
     assert!(
         gate_disabled.is_ok(),
         "gate must pass for any state when require_verification_for_accept=false"
@@ -749,7 +759,7 @@ async fn test_verification_child_updates_parent_state() {
     );
     // Gate still blocks (NeedsRevision + in_progress)
     assert!(
-        check_verification_gate(&parent_after_r1, &settings_with_gate_enabled()).is_err(),
+        acceptance_gate(&parent_after_r1, &settings_with_gate_enabled()).is_err(),
         "gate must block while verification is in progress"
     );
 
@@ -776,9 +786,9 @@ async fn test_verification_child_updates_parent_state() {
     );
     // Gate passes after Verified
     assert!(
-        check_verification_gate(&parent_after_r2, &settings_with_gate_enabled()).is_ok(),
+        acceptance_gate(&parent_after_r2, &settings_with_gate_enabled()).is_ok(),
         "gate must allow acceptance after verification: {:?}",
-        check_verification_gate(&parent_after_r2, &settings_with_gate_enabled())
+        acceptance_gate(&parent_after_r2, &settings_with_gate_enabled())
     );
 }
 
@@ -900,7 +910,7 @@ async fn test_orphaned_verification_child_reconciled() {
     // Gate blocks before reconciliation (parent stuck in_progress)
     let stuck = repo.get_by_id(&parent_id).await.unwrap().unwrap();
     assert!(
-        check_verification_gate(&stuck, &settings_with_gate_enabled()).is_err(),
+        acceptance_gate(&stuck, &settings_with_gate_enabled()).is_err(),
         "gate must block while parent is stuck in_progress"
     );
 
@@ -966,7 +976,7 @@ async fn test_spawn_failure_resets_parent() {
     // Gate blocks while in_progress (spawn not yet confirmed failed)
     let locked = repo.get_by_id(&parent_id).await.unwrap().unwrap();
     assert!(
-        check_verification_gate(&locked, &settings_with_gate_enabled()).is_err(),
+        acceptance_gate(&locked, &settings_with_gate_enabled()).is_err(),
         "gate must block while verification lock is held"
     );
 
@@ -998,7 +1008,7 @@ async fn test_spawn_failure_resets_parent() {
     );
 
     // Gate still blocks (session unverified) but for the right reason
-    let gate = check_verification_gate(&parent_after, &settings_with_gate_enabled());
+    let gate = acceptance_gate(&parent_after, &settings_with_gate_enabled());
     assert!(
         gate.is_err(),
         "gate must still block unverified session after spawn failure reset"
@@ -1116,7 +1126,7 @@ async fn test_escalation_lifecycle_needs_revision_gate_blocks_reconciliation_ski
     );
 
     // Step 2: Proposal gate must block — NeedsRevision is not an accepted terminal state
-    let gate_result = check_verification_gate(&after_escalation, &settings_with_gate_enabled());
+    let gate_result = acceptance_gate(&after_escalation, &settings_with_gate_enabled());
     assert!(
         gate_result.is_err(),
         "gate must block proposal acceptance when status=NeedsRevision after escalation"
@@ -1162,7 +1172,7 @@ async fn test_escalation_lifecycle_needs_revision_gate_blocks_reconciliation_ski
 
     // Gate must pass after successful re-verification
     assert!(
-        check_verification_gate(&after_reverify, &settings_with_gate_enabled()).is_ok(),
+        acceptance_gate(&after_reverify, &settings_with_gate_enabled()).is_ok(),
         "gate must allow acceptance after successful re-verification"
     );
 }
@@ -1285,7 +1295,7 @@ async fn test_verification_child_spawn_failure_archives_child_and_unblocks_paren
     // Gate must block while verification lock is held
     let locked = repo.get_by_id(&parent_id).await.unwrap().unwrap();
     assert!(
-        check_verification_gate(&locked, &settings_with_gate_enabled()).is_err(),
+        acceptance_gate(&locked, &settings_with_gate_enabled()).is_err(),
         "gate must block while parent holds verification lock"
     );
 
@@ -1336,7 +1346,7 @@ async fn test_verification_child_spawn_failure_archives_child_and_unblocks_paren
     );
 
     // Gate now blocks for the right reason: NotVerified (not InProgress)
-    let gate = check_verification_gate(&parent_after, &settings_with_gate_enabled());
+    let gate = acceptance_gate(&parent_after, &settings_with_gate_enabled());
     assert!(gate.is_err(), "gate must still block unverified parent after spawn failure");
     assert!(
         matches!(

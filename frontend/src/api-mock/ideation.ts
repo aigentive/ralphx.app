@@ -439,6 +439,13 @@ export const mockIdeationApi = {
         suggestPlansForComplex: true,
         autoLinkProposals: true,
         requireAcceptForFinalize: false,
+        requireVerificationForAccept: false,
+        requireVerificationForProposals: false,
+        externalOverrides: {
+          requireVerificationForAccept: null,
+          requireVerificationForProposals: null,
+          requireAcceptForFinalize: null,
+        },
       };
     },
 

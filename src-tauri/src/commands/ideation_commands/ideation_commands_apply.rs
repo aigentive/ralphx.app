@@ -10,9 +10,9 @@ use crate::application::{
 };
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
-    ArtifactId, ExecutionPlan, IdeationSessionId, IdeationSessionStatus, InternalStatus,
-    PlanBranch, PlanBranchId, ProjectId, Task, TaskCategory, TaskId, TaskProposal, TaskProposalId,
-    TaskStep,
+    ArtifactId, ExecutionPlan, ExecutionPlanId, IdeationSessionId, IdeationSessionStatus,
+    InternalStatus, PlanBranch, PlanBranchId, ProjectId, Task, TaskCategory, TaskId, TaskProposal,
+    TaskProposalId, TaskStep,
 };
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::error::{AppError, AppResult};
@@ -37,6 +37,408 @@ struct TxOutput {
     dependencies_created: usize,
     warnings: Vec<String>,
     any_ready_tasks: bool,
+}
+
+// ============================================================================
+// Transaction Phase Helpers
+// ============================================================================
+
+fn phase_insert_execution_plan(
+    conn: &rusqlite::Connection,
+    session_id_str: &str,
+) -> AppResult<ExecutionPlan> {
+    let exec_plan = ExecutionPlan::new(IdeationSessionId::from_string(session_id_str.to_string()));
+    conn.execute(
+        "INSERT INTO execution_plans (id, session_id, status, created_at) VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![
+            exec_plan.id.as_str(),
+            exec_plan.session_id.as_str(),
+            exec_plan.status.to_db_string(),
+            exec_plan.created_at.to_rfc3339(),
+        ],
+    )
+    .map_err(|e| AppError::Database(format!("Failed to create execution plan: {}", e)))?;
+    Ok(exec_plan)
+}
+
+fn phase_upsert_plan_branch(
+    conn: &rusqlite::Connection,
+    plan_artifact_id_tx: &Option<ArtifactId>,
+    session_id_str: &str,
+    project_id_str: &str,
+    base_branch_override_tx: &Option<String>,
+    project_base_branch_tx: &Option<String>,
+    project_name_tx: &str,
+    project_pr_eligible_tx: bool,
+    execution_plan_id: &ExecutionPlanId,
+) -> AppResult<(PlanBranchId, String)> {
+    let effective_plan_id_str = plan_artifact_id_tx
+        .as_ref()
+        .map(|id| id.as_str().to_string())
+        .unwrap_or_else(|| session_id_str.to_string());
+    let base_branch = base_branch_override_tx
+        .clone()
+        .unwrap_or_else(|| {
+            project_base_branch_tx
+                .as_deref()
+                .unwrap_or("main")
+                .to_string()
+        });
+    let project_slug = slug_from_name(project_name_tx);
+    let exec_plan_str = execution_plan_id.as_str();
+    let short_id = &exec_plan_str[..8.min(exec_plan_str.len())];
+    let branch_name = format!("ralphx/{}/plan-{}", project_slug, short_id);
+
+    let branch = PlanBranch::new(
+        ArtifactId::from_string(effective_plan_id_str),
+        IdeationSessionId::from_string(session_id_str.to_string()),
+        ProjectId::from_string(project_id_str.to_string()),
+        branch_name,
+        base_branch.clone(),
+    );
+    let branch_with_plan = PlanBranch {
+        execution_plan_id: Some(execution_plan_id.clone()),
+        pr_eligible: project_pr_eligible_tx,
+        base_branch_override: base_branch_override_tx.clone(),
+        ..branch
+    };
+
+    conn.execute(
+        "INSERT INTO plan_branches (id, plan_artifact_id, session_id, project_id, branch_name, source_branch, status, merge_task_id, created_at, merged_at, execution_plan_id, pr_eligible, base_branch_override)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+         ON CONFLICT(session_id) DO UPDATE SET
+           plan_artifact_id=excluded.plan_artifact_id,
+           project_id=excluded.project_id,
+           branch_name=excluded.branch_name,
+           source_branch=excluded.source_branch,
+           status=excluded.status,
+           merge_task_id=excluded.merge_task_id,
+           execution_plan_id=excluded.execution_plan_id,
+           pr_eligible=excluded.pr_eligible,
+           base_branch_override=excluded.base_branch_override",
+        rusqlite::params![
+            branch_with_plan.id.as_str(),
+            branch_with_plan.plan_artifact_id.as_str(),
+            branch_with_plan.session_id.as_str(),
+            branch_with_plan.project_id.as_str(),
+            branch_with_plan.branch_name,
+            branch_with_plan.source_branch,
+            branch_with_plan.status.to_db_string(),
+            branch_with_plan.merge_task_id.as_ref().map(|t| t.as_str().to_string()),
+            branch_with_plan.created_at.to_rfc3339(),
+            branch_with_plan.merged_at.map(|dt| dt.to_rfc3339()),
+            branch_with_plan.execution_plan_id.as_ref().map(|id| id.as_str().to_string()),
+            branch_with_plan.pr_eligible as i64,
+            branch_with_plan.base_branch_override.clone(),
+        ],
+    )
+    .map_err(|e| AppError::Database(format!("Failed to upsert plan branch: {}", e)))?;
+
+    // Re-fetch by session_id to get the persisted row's id
+    // (UPSERT may have preserved an existing row's id)
+    let mut stmt = conn
+        .prepare("SELECT * FROM plan_branches WHERE session_id = ?1")
+        .map_err(|e| AppError::Database(format!("Failed to prepare branch fetch: {}", e)))?;
+    let persisted = stmt
+        .query_row(rusqlite::params![session_id_str], |row| {
+            PlanBranch::from_row(row)
+        })
+        .map_err(|e| AppError::Database(format!("Failed to fetch upserted branch: {}", e)))?;
+
+    Ok((persisted.id, base_branch))
+}
+
+fn phase_insert_tasks_and_steps(
+    conn: &rusqlite::Connection,
+    proposals_tx: &[TaskProposal],
+    project_id_str: &str,
+    session_id_str: &str,
+    plan_artifact_id_tx: &Option<ArtifactId>,
+    use_auto_status_tx: bool,
+    proposal_deps_tx: &HashMap<String, Vec<String>>,
+    execution_plan_id: &ExecutionPlanId,
+) -> AppResult<(Vec<Task>, HashMap<String, String>, bool)> {
+    let mut created_tasks: Vec<Task> = Vec::new();
+    let mut proposal_to_task: HashMap<String, String> = HashMap::new();
+    let mut any_ready_tasks = false;
+
+    // Build proposal_id → title map for blocked_reason computation
+    let proposal_titles_map: HashMap<String, String> = proposals_tx
+        .iter()
+        .map(|p| (p.id.as_str().to_string(), p.title.clone()))
+        .collect();
+
+    for proposal in proposals_tx {
+        let mut task =
+            Task::new(ProjectId::from_string(project_id_str.to_string()), proposal.title.clone());
+        task.description = proposal.description.clone();
+        task.category = TaskCategory::Regular;
+        task.internal_status = InternalStatus::Backlog;
+        task.ideation_session_id =
+            Some(IdeationSessionId::from_string(session_id_str.to_string()));
+        task.execution_plan_id = Some(execution_plan_id.clone());
+        task.priority = proposal.priority_score;
+        task.source_proposal_id = Some(proposal.id.clone());
+        // Set plan_artifact_id during INSERT — eliminates the Phase 2 update loop
+        task.plan_artifact_id = proposal
+            .plan_artifact_id
+            .clone()
+            .or_else(|| plan_artifact_id_tx.clone());
+
+        // Compute auto-status from pre-fetched proposal_deps (no async calls needed)
+        if use_auto_status_tx {
+            let has_blockers = proposal_deps_tx
+                .get(proposal.id.as_str())
+                .map(|deps| {
+                    deps.iter()
+                        .any(|dep_id| proposals_tx.iter().any(|p| p.id.as_str() == dep_id))
+                })
+                .unwrap_or(false);
+            if has_blockers {
+                let dep_ids = proposal_deps_tx
+                    .get(proposal.id.as_str())
+                    .cloned()
+                    .unwrap_or_default();
+                let blocker_names: Vec<String> = dep_ids
+                    .iter()
+                    .filter_map(|dep_id| proposal_titles_map.get(dep_id))
+                    .cloned()
+                    .collect();
+                task.internal_status = InternalStatus::Blocked;
+                task.blocked_reason =
+                    Some(format!("Waiting for: {}", blocker_names.join(", ")));
+            } else {
+                task.internal_status = InternalStatus::Ready;
+                any_ready_tasks = true;
+            }
+        }
+
+        conn.execute(
+            "INSERT INTO tasks (id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, execution_plan_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha, metadata, merge_pipeline_active)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
+            rusqlite::params![
+                task.id.as_str(),
+                task.project_id.as_str(),
+                task.category.to_string(),
+                task.title.clone(),
+                task.description.clone(),
+                task.priority,
+                task.internal_status.as_str(),
+                task.needs_review_point,
+                task.source_proposal_id.as_ref().map(|id| id.as_str()),
+                task.plan_artifact_id.as_ref().map(|id| id.as_str()),
+                task.ideation_session_id.as_ref().map(|id| id.as_str()),
+                task.execution_plan_id.as_ref().map(|id| id.as_str()),
+                task.created_at.to_rfc3339(),
+                task.updated_at.to_rfc3339(),
+                task.started_at.map(|dt| dt.to_rfc3339()),
+                task.completed_at.map(|dt| dt.to_rfc3339()),
+                task.archived_at.map(|dt| dt.to_rfc3339()),
+                task.blocked_reason.clone(),
+                task.task_branch.clone(),
+                task.worktree_path.clone(),
+                task.merge_commit_sha.clone(),
+                task.metadata.clone(),
+                task.merge_pipeline_active.clone(),
+            ],
+        )
+        .map_err(|e| AppError::Database(format!("Failed to create task: {}", e)))?;
+
+        // Insert task steps
+        if let Some(steps_json) = &proposal.steps {
+            if let Ok(step_titles) =
+                serde_json::from_str::<Vec<String>>(steps_json)
+            {
+                for (idx, title) in step_titles.into_iter().enumerate() {
+                    let step = TaskStep::new(
+                        task.id.clone(),
+                        title,
+                        idx as i32,
+                        "proposal".to_string(),
+                    );
+                    conn.execute(
+                        "INSERT INTO task_steps (id, task_id, title, description, status, sort_order, depends_on, created_by, completion_note, created_at, updated_at, started_at, completed_at, parent_step_id, scope_context)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                        rusqlite::params![
+                            step.id.as_str(),
+                            step.task_id.as_str(),
+                            step.title,
+                            step.description,
+                            step.status.to_db_string(),
+                            step.sort_order,
+                            step.depends_on.as_ref().map(|id| id.as_str()),
+                            step.created_by,
+                            step.completion_note,
+                            step.created_at.to_rfc3339(),
+                            step.updated_at.to_rfc3339(),
+                            step.started_at.map(|dt| dt.to_rfc3339()),
+                            step.completed_at.map(|dt| dt.to_rfc3339()),
+                            step.parent_step_id.as_ref().map(|id| id.as_str()),
+                            step.scope_context,
+                        ],
+                    )
+                    .map_err(|e| AppError::Database(format!("Failed to create task step: {}", e)))?;
+                }
+            }
+        }
+
+        proposal_to_task
+            .insert(proposal.id.as_str().to_string(), task.id.as_str().to_string());
+        created_tasks.push(task);
+    }
+
+    Ok((created_tasks, proposal_to_task, any_ready_tasks))
+}
+
+fn phase_insert_dependencies(
+    conn: &rusqlite::Connection,
+    proposals_tx: &[TaskProposal],
+    proposal_deps_tx: &HashMap<String, Vec<String>>,
+    proposal_to_task: &HashMap<String, String>,
+) -> AppResult<(usize, Vec<String>)> {
+    let mut dependencies_created = 0usize;
+    let mut warnings: Vec<String> = Vec::new();
+    for proposal in proposals_tx {
+        if let Some(deps) = proposal_deps_tx.get(proposal.id.as_str()) {
+            for dep_proposal_id in deps {
+                let task_id = proposal_to_task.get(proposal.id.as_str());
+                let dep_task_id = proposal_to_task.get(dep_proposal_id.as_str());
+                if let (Some(task_id), Some(dep_task_id)) = (task_id, dep_task_id) {
+                    let dep_row_id = uuid::Uuid::new_v4().to_string();
+                    conn.execute(
+                        "INSERT OR IGNORE INTO task_dependencies (id, task_id, depends_on_task_id) VALUES (?1, ?2, ?3)",
+                        rusqlite::params![
+                            dep_row_id,
+                            task_id.as_str(),
+                            dep_task_id.as_str()
+                        ],
+                    )
+                    .map_err(|e| {
+                        AppError::Database(format!(
+                            "Failed to create task dependency: {}",
+                            e
+                        ))
+                    })?;
+                    dependencies_created += 1;
+                } else {
+                    warnings.push(format!(
+                        "Dependency from {} to {} not preserved (not in selection)",
+                        proposal.id, dep_proposal_id
+                    ));
+                }
+            }
+        }
+    }
+    Ok((dependencies_created, warnings))
+}
+
+fn phase_update_proposals(
+    conn: &rusqlite::Connection,
+    proposals_tx: &[TaskProposal],
+    proposal_to_task: &HashMap<String, String>,
+    now_str: &str,
+) -> AppResult<()> {
+    for proposal in proposals_tx {
+        if let Some(task_id) = proposal_to_task.get(proposal.id.as_str()) {
+            conn.execute(
+                "UPDATE task_proposals SET created_task_id = ?2, updated_at = ?3 WHERE id = ?1",
+                rusqlite::params![
+                    proposal.id.as_str(),
+                    task_id.as_str(),
+                    now_str
+                ],
+            )
+            .map_err(|e| {
+                AppError::Database(format!("Failed to link proposal to task: {}", e))
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn phase_insert_merge_task(
+    conn: &rusqlite::Connection,
+    branch_id: &PlanBranchId,
+    base_branch_name: &str,
+    project_id_str: &str,
+    plan_artifact_id_tx: &Option<ArtifactId>,
+    session_id_str: &str,
+    execution_plan_id: &ExecutionPlanId,
+    created_tasks: &[Task],
+) -> AppResult<()> {
+    let plan_title = format!("Merge plan into {}", base_branch_name);
+    let mut merge_task = Task::new_with_category(
+        ProjectId::from_string(project_id_str.to_string()),
+        plan_title,
+        TaskCategory::PlanMerge,
+    );
+    merge_task.description = Some(format!(
+        "Auto-created merge task: merges feature branch into {}",
+        base_branch_name
+    ));
+    // Only set plan_artifact_id when real artifact exists (FK safety for tasks table)
+    merge_task.plan_artifact_id = plan_artifact_id_tx.clone();
+    merge_task.ideation_session_id =
+        Some(IdeationSessionId::from_string(session_id_str.to_string()));
+    merge_task.execution_plan_id = Some(execution_plan_id.clone());
+    merge_task.internal_status = InternalStatus::Blocked;
+    merge_task.blocked_reason =
+        Some("Waiting for all plan tasks to complete".to_string());
+
+    conn.execute(
+        "INSERT INTO tasks (id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, execution_plan_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha, metadata, merge_pipeline_active)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
+        rusqlite::params![
+            merge_task.id.as_str(),
+            merge_task.project_id.as_str(),
+            merge_task.category.to_string(),
+            merge_task.title.clone(),
+            merge_task.description.clone(),
+            merge_task.priority,
+            merge_task.internal_status.as_str(),
+            merge_task.needs_review_point,
+            merge_task.source_proposal_id.as_ref().map(|id| id.as_str()),
+            merge_task.plan_artifact_id.as_ref().map(|id| id.as_str()),
+            merge_task.ideation_session_id.as_ref().map(|id| id.as_str()),
+            merge_task.execution_plan_id.as_ref().map(|id| id.as_str()),
+            merge_task.created_at.to_rfc3339(),
+            merge_task.updated_at.to_rfc3339(),
+            merge_task.started_at.map(|dt| dt.to_rfc3339()),
+            merge_task.completed_at.map(|dt| dt.to_rfc3339()),
+            merge_task.archived_at.map(|dt| dt.to_rfc3339()),
+            merge_task.blocked_reason.clone(),
+            merge_task.task_branch.clone(),
+            merge_task.worktree_path.clone(),
+            merge_task.merge_commit_sha.clone(),
+            merge_task.metadata.clone(),
+            merge_task.merge_pipeline_active.clone(),
+        ],
+    )
+    .map_err(|e| AppError::Database(format!("Failed to create merge task: {}", e)))?;
+
+    // Add blockedBy deps: merge task blocked by all plan tasks.
+    // These do NOT increment `dependencies_created` (plan-to-plan edges only).
+    for task in created_tasks {
+        let dep_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT OR IGNORE INTO task_dependencies (id, task_id, depends_on_task_id) VALUES (?1, ?2, ?3)",
+            rusqlite::params![dep_id, merge_task.id.as_str(), task.id.as_str()],
+        )
+        .map_err(|e| {
+            AppError::Database(format!("Failed to add merge task dependency: {}", e))
+        })?;
+    }
+
+    // Update plan_branch.merge_task_id
+    conn.execute(
+        "UPDATE plan_branches SET merge_task_id = ?2 WHERE id = ?1",
+        rusqlite::params![branch_id.as_str(), merge_task.id.as_str()],
+    )
+    .map_err(|e| {
+        AppError::Database(format!("Failed to set merge task ID: {}", e))
+    })?;
+
+    Ok(())
 }
 
 /// Core apply-proposals logic — no Tauri types.
@@ -79,14 +481,19 @@ pub async fn apply_proposals_core(
         ));
     }
 
-    // Verification gate: block acceptance if plan is not verified (when enforcement is enabled)
+    // Verification gate: block acceptance if plan is not verified (when enforcement is enabled).
+    // Resolve the effective policy once from (settings, session.origin) and pass to gate.
     let ideation_settings = app_state
         .ideation_settings_repo
         .get_settings()
         .await
         .map_err(|e| AppError::Database(format!("Failed to get ideation settings: {}", e)))?;
+    let effective_policy = crate::domain::services::resolve_effective_gate_policy(
+        &ideation_settings,
+        session.origin,
+    );
     if let Err(e) =
-        crate::domain::services::check_verification_gate(&session, &ideation_settings)
+        crate::domain::services::check_verification_gate(&session, &effective_policy)
     {
         return Err(AppError::Validation(e.to_string()));
     }
@@ -202,19 +609,6 @@ pub async fn apply_proposals_core(
         ));
     }
 
-    // Dependency acknowledgment gate: multi-proposal sessions must have acknowledged dependency ordering.
-    // Gate lives here (not in finalize_proposals_impl) so ALL callers are protected:
-    // internal MCP, Tauri IPC (apply_proposals_to_kanban), and external MCP all go through apply_proposals_core.
-    if proposals_to_apply.len() >= 2 && !session.dependencies_acknowledged {
-        return Err(AppError::Validation(format!(
-            "Cannot finalize: dependency ordering has not been reviewed for {} proposals. \
-             Either set dependencies via create_task_proposal(depends_on) or \
-             update_task_proposal(add_depends_on/add_blocks), or call \
-             analyze_session_dependencies to review and acknowledge parallel execution.",
-            proposals_to_apply.len()
-        )));
-    }
-
     // ========================================================================
     // PHASE 0: Feature Branch Pre-Check (before ExecutionPlan + task creation)
     // ========================================================================
@@ -307,6 +701,20 @@ pub async fn apply_proposals_core(
         });
     }
 
+    // Dependency acknowledgment gate: multi-proposal sessions must have acknowledged dependency ordering.
+    // Gate lives here (not in finalize_proposals_impl) so ALL callers are protected:
+    // internal MCP, Tauri IPC (apply_proposals_to_kanban), and external MCP all go through apply_proposals_core.
+    // Gate is placed AFTER foreign-proposal filtering so all-foreign sessions bypass it cleanly.
+    if proposals_to_apply.len() >= 2 && !session.dependencies_acknowledged {
+        return Err(AppError::Validation(format!(
+            "Cannot finalize: dependency ordering has not been reviewed for {} proposals. \
+             Either set dependencies via create_task_proposal(depends_on) or \
+             update_task_proposal(add_depends_on/add_blocks), or call \
+             analyze_session_dependencies to review and acknowledge parallel execution.",
+            proposals_to_apply.len()
+        )));
+    }
+
     // ========================================================================
     // PRE-FETCH: Collect proposal deps (async) before entering the transaction
     // ========================================================================
@@ -352,369 +760,69 @@ pub async fn apply_proposals_core(
             // ----------------------------------------------------------------
             // (a) INSERT execution_plan
             // ----------------------------------------------------------------
-            let exec_plan = ExecutionPlan::new(IdeationSessionId::from_string(
-                session_id_str.clone(),
-            ));
-            conn.execute(
-                "INSERT INTO execution_plans (id, session_id, status, created_at) VALUES (?1, ?2, ?3, ?4)",
-                rusqlite::params![
-                    exec_plan.id.as_str(),
-                    exec_plan.session_id.as_str(),
-                    exec_plan.status.to_db_string(),
-                    exec_plan.created_at.to_rfc3339(),
-                ],
-            )
-            .map_err(|e| AppError::Database(format!("Failed to create execution plan: {}", e)))?;
+            let exec_plan = phase_insert_execution_plan(conn, &session_id_str)?;
             let execution_plan_id = exec_plan.id.clone();
 
             // ----------------------------------------------------------------
             // (b) UPSERT plan_branch (always create feature branch)
             // ----------------------------------------------------------------
-            let pending_merge: (PlanBranchId, String) = {
-                let effective_plan_id_str = plan_artifact_id_tx
-                    .as_ref()
-                    .map(|id| id.as_str().to_string())
-                    .unwrap_or_else(|| session_id_str.clone());
-                let base_branch = base_branch_override_tx
-                    .clone()
-                    .unwrap_or_else(|| {
-                        project_base_branch_tx
-                            .as_deref()
-                            .unwrap_or("main")
-                            .to_string()
-                    });
-                let project_slug = slug_from_name(&project_name_tx);
-                let exec_plan_str = execution_plan_id.as_str();
-                let short_id = &exec_plan_str[..8.min(exec_plan_str.len())];
-                let branch_name =
-                    format!("ralphx/{}/plan-{}", project_slug, short_id);
-
-                let branch = PlanBranch::new(
-                    ArtifactId::from_string(effective_plan_id_str),
-                    IdeationSessionId::from_string(session_id_str.clone()),
-                    ProjectId::from_string(project_id_str.clone()),
-                    branch_name,
-                    base_branch.clone(),
-                );
-                let branch_with_plan = PlanBranch {
-                    execution_plan_id: Some(execution_plan_id.clone()),
-                    pr_eligible: project_pr_eligible_tx,
-                    base_branch_override: base_branch_override_tx.clone(),
-                    ..branch
-                };
-
-                conn.execute(
-                    "INSERT INTO plan_branches (id, plan_artifact_id, session_id, project_id, branch_name, source_branch, status, merge_task_id, created_at, merged_at, execution_plan_id, pr_eligible, base_branch_override)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
-                     ON CONFLICT(session_id) DO UPDATE SET
-                       plan_artifact_id=excluded.plan_artifact_id,
-                       project_id=excluded.project_id,
-                       branch_name=excluded.branch_name,
-                       source_branch=excluded.source_branch,
-                       status=excluded.status,
-                       merge_task_id=excluded.merge_task_id,
-                       execution_plan_id=excluded.execution_plan_id,
-                       pr_eligible=excluded.pr_eligible,
-                       base_branch_override=excluded.base_branch_override",
-                    rusqlite::params![
-                        branch_with_plan.id.as_str(),
-                        branch_with_plan.plan_artifact_id.as_str(),
-                        branch_with_plan.session_id.as_str(),
-                        branch_with_plan.project_id.as_str(),
-                        branch_with_plan.branch_name,
-                        branch_with_plan.source_branch,
-                        branch_with_plan.status.to_db_string(),
-                        branch_with_plan.merge_task_id.as_ref().map(|t| t.as_str().to_string()),
-                        branch_with_plan.created_at.to_rfc3339(),
-                        branch_with_plan.merged_at.map(|dt| dt.to_rfc3339()),
-                        branch_with_plan.execution_plan_id.as_ref().map(|id| id.as_str().to_string()),
-                        branch_with_plan.pr_eligible as i64,
-                        branch_with_plan.base_branch_override.clone(),
-                    ],
-                )
-                .map_err(|e| AppError::Database(format!("Failed to upsert plan branch: {}", e)))?;
-
-                // Re-fetch by session_id to get the persisted row's id
-                // (UPSERT may have preserved an existing row's id)
-                let mut stmt = conn
-                    .prepare("SELECT * FROM plan_branches WHERE session_id = ?1")
-                    .map_err(|e| AppError::Database(format!("Failed to prepare branch fetch: {}", e)))?;
-                let persisted = stmt
-                    .query_row(rusqlite::params![session_id_str.as_str()], |row| {
-                        PlanBranch::from_row(row)
-                    })
-                    .map_err(|e| AppError::Database(format!("Failed to fetch upserted branch: {}", e)))?;
-
-                (persisted.id, base_branch)
-            };
+            let pending_merge = phase_upsert_plan_branch(
+                conn,
+                &plan_artifact_id_tx,
+                &session_id_str,
+                &project_id_str,
+                &base_branch_override_tx,
+                &project_base_branch_tx,
+                &project_name_tx,
+                project_pr_eligible_tx,
+                &execution_plan_id,
+            )?;
 
             // ----------------------------------------------------------------
             // (c) INSERT tasks + task_steps
             // ----------------------------------------------------------------
-            let mut created_tasks: Vec<Task> = Vec::new();
-            // String → String map (proposal_id → task_id) for 'static closure
-            let mut proposal_to_task: HashMap<String, String> = HashMap::new();
-            let mut any_ready_tasks = false;
-            let now_str = chrono::Utc::now().to_rfc3339();
-
-            // Build proposal_id → title map for blocked_reason computation
-            let proposal_titles_map: HashMap<String, String> = proposals_tx
-                .iter()
-                .map(|p| (p.id.as_str().to_string(), p.title.clone()))
-                .collect();
-
-            for proposal in &proposals_tx {
-                let mut task =
-                    Task::new(ProjectId::from_string(project_id_str.clone()), proposal.title.clone());
-                task.description = proposal.description.clone();
-                task.category = TaskCategory::Regular;
-                task.internal_status = InternalStatus::Backlog;
-                task.ideation_session_id =
-                    Some(IdeationSessionId::from_string(session_id_str.clone()));
-                task.execution_plan_id = Some(execution_plan_id.clone());
-                task.priority = proposal.priority_score;
-                task.source_proposal_id = Some(proposal.id.clone());
-                // Set plan_artifact_id during INSERT — eliminates the Phase 2 update loop
-                task.plan_artifact_id = proposal
-                    .plan_artifact_id
-                    .clone()
-                    .or_else(|| plan_artifact_id_tx.clone());
-
-                // Compute auto-status from pre-fetched proposal_deps (no async calls needed)
-                if use_auto_status_tx {
-                    let has_blockers = proposal_deps_tx
-                        .get(proposal.id.as_str())
-                        .map(|deps| {
-                            deps.iter()
-                                .any(|dep_id| proposals_tx.iter().any(|p| p.id.as_str() == dep_id))
-                        })
-                        .unwrap_or(false);
-                    if has_blockers {
-                        let dep_ids = proposal_deps_tx
-                            .get(proposal.id.as_str())
-                            .cloned()
-                            .unwrap_or_default();
-                        let blocker_names: Vec<String> = dep_ids
-                            .iter()
-                            .filter_map(|dep_id| proposal_titles_map.get(dep_id))
-                            .cloned()
-                            .collect();
-                        task.internal_status = InternalStatus::Blocked;
-                        task.blocked_reason =
-                            Some(format!("Waiting for: {}", blocker_names.join(", ")));
-                    } else {
-                        task.internal_status = InternalStatus::Ready;
-                        any_ready_tasks = true;
-                    }
-                }
-
-                conn.execute(
-                    "INSERT INTO tasks (id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, execution_plan_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha, metadata, merge_pipeline_active)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
-                    rusqlite::params![
-                        task.id.as_str(),
-                        task.project_id.as_str(),
-                        task.category.to_string(),
-                        task.title.clone(),
-                        task.description.clone(),
-                        task.priority,
-                        task.internal_status.as_str(),
-                        task.needs_review_point,
-                        task.source_proposal_id.as_ref().map(|id| id.as_str()),
-                        task.plan_artifact_id.as_ref().map(|id| id.as_str()),
-                        task.ideation_session_id.as_ref().map(|id| id.as_str()),
-                        task.execution_plan_id.as_ref().map(|id| id.as_str()),
-                        task.created_at.to_rfc3339(),
-                        task.updated_at.to_rfc3339(),
-                        task.started_at.map(|dt| dt.to_rfc3339()),
-                        task.completed_at.map(|dt| dt.to_rfc3339()),
-                        task.archived_at.map(|dt| dt.to_rfc3339()),
-                        task.blocked_reason.clone(),
-                        task.task_branch.clone(),
-                        task.worktree_path.clone(),
-                        task.merge_commit_sha.clone(),
-                        task.metadata.clone(),
-                        task.merge_pipeline_active.clone(),
-                    ],
-                )
-                .map_err(|e| AppError::Database(format!("Failed to create task: {}", e)))?;
-
-                // Insert task steps
-                if let Some(steps_json) = &proposal.steps {
-                    if let Ok(step_titles) =
-                        serde_json::from_str::<Vec<String>>(steps_json)
-                    {
-                        for (idx, title) in step_titles.into_iter().enumerate() {
-                            let step = TaskStep::new(
-                                task.id.clone(),
-                                title,
-                                idx as i32,
-                                "proposal".to_string(),
-                            );
-                            conn.execute(
-                                "INSERT INTO task_steps (id, task_id, title, description, status, sort_order, depends_on, created_by, completion_note, created_at, updated_at, started_at, completed_at, parent_step_id, scope_context)
-                                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
-                                rusqlite::params![
-                                    step.id.as_str(),
-                                    step.task_id.as_str(),
-                                    step.title,
-                                    step.description,
-                                    step.status.to_db_string(),
-                                    step.sort_order,
-                                    step.depends_on.as_ref().map(|id| id.as_str()),
-                                    step.created_by,
-                                    step.completion_note,
-                                    step.created_at.to_rfc3339(),
-                                    step.updated_at.to_rfc3339(),
-                                    step.started_at.map(|dt| dt.to_rfc3339()),
-                                    step.completed_at.map(|dt| dt.to_rfc3339()),
-                                    step.parent_step_id.as_ref().map(|id| id.as_str()),
-                                    step.scope_context,
-                                ],
-                            )
-                            .map_err(|e| AppError::Database(format!("Failed to create task step: {}", e)))?;
-                        }
-                    }
-                }
-
-                proposal_to_task
-                    .insert(proposal.id.as_str().to_string(), task.id.as_str().to_string());
-                created_tasks.push(task);
-            }
+            let (created_tasks, proposal_to_task, any_ready_tasks) =
+                phase_insert_tasks_and_steps(
+                    conn,
+                    &proposals_tx,
+                    &project_id_str,
+                    &session_id_str,
+                    &plan_artifact_id_tx,
+                    use_auto_status_tx,
+                    &proposal_deps_tx,
+                    &execution_plan_id,
+                )?;
 
             // ----------------------------------------------------------------
             // (d) INSERT task_dependencies
             // ----------------------------------------------------------------
-            let mut dependencies_created = 0usize;
-            let mut warnings: Vec<String> = Vec::new();
-            for proposal in &proposals_tx {
-                if let Some(deps) = proposal_deps_tx.get(proposal.id.as_str()) {
-                    for dep_proposal_id in deps {
-                        let task_id = proposal_to_task.get(proposal.id.as_str());
-                        let dep_task_id = proposal_to_task.get(dep_proposal_id.as_str());
-                        if let (Some(task_id), Some(dep_task_id)) = (task_id, dep_task_id) {
-                            let dep_row_id = uuid::Uuid::new_v4().to_string();
-                            conn.execute(
-                                "INSERT OR IGNORE INTO task_dependencies (id, task_id, depends_on_task_id) VALUES (?1, ?2, ?3)",
-                                rusqlite::params![
-                                    dep_row_id,
-                                    task_id.as_str(),
-                                    dep_task_id.as_str()
-                                ],
-                            )
-                            .map_err(|e| {
-                                AppError::Database(format!(
-                                    "Failed to create task dependency: {}",
-                                    e
-                                ))
-                            })?;
-                            dependencies_created += 1;
-                        } else {
-                            warnings.push(format!(
-                                "Dependency from {} to {} not preserved (not in selection)",
-                                proposal.id, dep_proposal_id
-                            ));
-                        }
-                    }
-                }
-            }
+            let (dependencies_created, warnings) = phase_insert_dependencies(
+                conn,
+                &proposals_tx,
+                &proposal_deps_tx,
+                &proposal_to_task,
+            )?;
 
             // ----------------------------------------------------------------
             // (e) UPDATE proposals with created_task_id
             // ----------------------------------------------------------------
-            for proposal in &proposals_tx {
-                if let Some(task_id) = proposal_to_task.get(proposal.id.as_str()) {
-                    conn.execute(
-                        "UPDATE task_proposals SET created_task_id = ?2, updated_at = ?3 WHERE id = ?1",
-                        rusqlite::params![
-                            proposal.id.as_str(),
-                            task_id.as_str(),
-                            now_str.as_str()
-                        ],
-                    )
-                    .map_err(|e| {
-                        AppError::Database(format!("Failed to link proposal to task: {}", e))
-                    })?;
-                }
-            }
+            let now_str = chrono::Utc::now().to_rfc3339();
+            phase_update_proposals(conn, &proposals_tx, &proposal_to_task, &now_str)?;
 
             // ----------------------------------------------------------------
             // (f) INSERT merge task if feature branch
             // ----------------------------------------------------------------
-            {
-                let (ref branch_id, ref base_branch_name) = pending_merge;
-                let plan_title = format!("Merge plan into {}", base_branch_name);
-                let mut merge_task = Task::new_with_category(
-                    ProjectId::from_string(project_id_str.clone()),
-                    plan_title,
-                    TaskCategory::PlanMerge,
-                );
-                merge_task.description = Some(format!(
-                    "Auto-created merge task: merges feature branch into {}",
-                    base_branch_name
-                ));
-                // Only set plan_artifact_id when real artifact exists (FK safety for tasks table)
-                merge_task.plan_artifact_id = plan_artifact_id_tx.clone();
-                merge_task.ideation_session_id =
-                    Some(IdeationSessionId::from_string(session_id_str.clone()));
-                merge_task.execution_plan_id = Some(execution_plan_id.clone());
-                merge_task.internal_status = InternalStatus::Blocked;
-                merge_task.blocked_reason =
-                    Some("Waiting for all plan tasks to complete".to_string());
-
-                conn.execute(
-                    "INSERT INTO tasks (id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, execution_plan_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha, metadata, merge_pipeline_active)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
-                    rusqlite::params![
-                        merge_task.id.as_str(),
-                        merge_task.project_id.as_str(),
-                        merge_task.category.to_string(),
-                        merge_task.title.clone(),
-                        merge_task.description.clone(),
-                        merge_task.priority,
-                        merge_task.internal_status.as_str(),
-                        merge_task.needs_review_point,
-                        merge_task.source_proposal_id.as_ref().map(|id| id.as_str()),
-                        merge_task.plan_artifact_id.as_ref().map(|id| id.as_str()),
-                        merge_task.ideation_session_id.as_ref().map(|id| id.as_str()),
-                        merge_task.execution_plan_id.as_ref().map(|id| id.as_str()),
-                        merge_task.created_at.to_rfc3339(),
-                        merge_task.updated_at.to_rfc3339(),
-                        merge_task.started_at.map(|dt| dt.to_rfc3339()),
-                        merge_task.completed_at.map(|dt| dt.to_rfc3339()),
-                        merge_task.archived_at.map(|dt| dt.to_rfc3339()),
-                        merge_task.blocked_reason.clone(),
-                        merge_task.task_branch.clone(),
-                        merge_task.worktree_path.clone(),
-                        merge_task.merge_commit_sha.clone(),
-                        merge_task.metadata.clone(),
-                        merge_task.merge_pipeline_active.clone(),
-                    ],
-                )
-                .map_err(|e| AppError::Database(format!("Failed to create merge task: {}", e)))?;
-
-                // Add blockedBy deps: merge task blocked by all plan tasks.
-                // These do NOT increment `dependencies_created` (plan-to-plan edges only).
-                for task in &created_tasks {
-                    let dep_id = uuid::Uuid::new_v4().to_string();
-                    conn.execute(
-                        "INSERT OR IGNORE INTO task_dependencies (id, task_id, depends_on_task_id) VALUES (?1, ?2, ?3)",
-                        rusqlite::params![dep_id, merge_task.id.as_str(), task.id.as_str()],
-                    )
-                    .map_err(|e| {
-                        AppError::Database(format!("Failed to add merge task dependency: {}", e))
-                    })?;
-                }
-
-                // Update plan_branch.merge_task_id
-                conn.execute(
-                    "UPDATE plan_branches SET merge_task_id = ?2 WHERE id = ?1",
-                    rusqlite::params![branch_id.as_str(), merge_task.id.as_str()],
-                )
-                .map_err(|e| {
-                    AppError::Database(format!("Failed to set merge task ID: {}", e))
-                })?;
-            }
+            let (ref branch_id, ref base_branch_name) = pending_merge;
+            phase_insert_merge_task(
+                conn,
+                branch_id,
+                base_branch_name,
+                &project_id_str,
+                &plan_artifact_id_tx,
+                &session_id_str,
+                &execution_plan_id,
+                &created_tasks,
+            )?;
 
             Ok(TxOutput {
                 execution_plan_id,

@@ -7,6 +7,51 @@ use crate::domain::entities::ideation::SessionOrigin;
 use crate::domain::entities::IdeationSession;
 use crate::domain::ideation::config::IdeationSettings;
 
+/// Resolved gating policy for a specific (settings, origin) pair.
+///
+/// Computed once per request via `resolve_effective_gate_policy` and passed to all
+/// gate callsites. This is a pure value type — no DB or async operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectiveGatePolicy {
+    pub require_verification_for_accept: bool,
+    pub require_verification_for_proposals: bool,
+    pub require_accept_for_finalize: bool,
+}
+
+/// Resolve the effective gating policy for a session.
+///
+/// For `SessionOrigin::External`, each field is overridden by the corresponding
+/// `external_overrides` value if `Some`, otherwise falls back to the base field.
+/// For all other origins, the base fields are used directly (overrides ignored).
+///
+/// This function is pure and synchronous — call it once per request and cache the result.
+pub fn resolve_effective_gate_policy(
+    settings: &IdeationSettings,
+    origin: SessionOrigin,
+) -> EffectiveGatePolicy {
+    match origin {
+        SessionOrigin::External => EffectiveGatePolicy {
+            require_verification_for_accept: settings
+                .external_overrides
+                .require_verification_for_accept
+                .unwrap_or(settings.require_verification_for_accept),
+            require_verification_for_proposals: settings
+                .external_overrides
+                .require_verification_for_proposals
+                .unwrap_or(settings.require_verification_for_proposals),
+            require_accept_for_finalize: settings
+                .external_overrides
+                .require_accept_for_finalize
+                .unwrap_or(settings.require_accept_for_finalize),
+        },
+        _ => EffectiveGatePolicy {
+            require_verification_for_accept: settings.require_verification_for_accept,
+            require_verification_for_proposals: settings.require_verification_for_proposals,
+            require_accept_for_finalize: settings.require_accept_for_finalize,
+        },
+    }
+}
+
 /// Identifies the proposal mutation operation being gated.
 ///
 /// Used by `check_proposal_verification_gate()` to determine which statuses to block.
@@ -35,9 +80,9 @@ impl std::fmt::Display for ProposalOperation {
 /// Returns a `VerificationError` when the gate blocks acceptance.
 pub fn check_verification_gate(
     session: &IdeationSession,
-    settings: &IdeationSettings,
+    policy: &EffectiveGatePolicy,
 ) -> Result<(), VerificationError> {
-    if !settings.require_verification_for_accept {
+    if !policy.require_verification_for_accept {
         return Ok(());
     }
     // Check in_progress first — reconciler may have reset status but process still running
@@ -93,12 +138,12 @@ pub fn check_verification_gate(
 /// Returns a `VerificationError::Proposal*` variant when the gate blocks the operation.
 pub fn check_proposal_verification_gate(
     session: &IdeationSession,
-    settings: &IdeationSettings,
+    policy: &EffectiveGatePolicy,
     parent_verification_status: Option<VerificationStatus>,
     operation: ProposalOperation,
 ) -> Result<(), VerificationError> {
     // Config bypass — gate is opt-in
-    if !settings.require_verification_for_proposals {
+    if !policy.require_verification_for_proposals {
         return Ok(());
     }
 
@@ -161,28 +206,25 @@ pub fn check_proposal_verification_gate(
     }
 }
 
-fn parse_round_info(metadata_json: &Option<String>) -> (u32, u32) {
+fn parse_verification_metadata(
+    metadata_json: &Option<String>,
+) -> Option<crate::domain::entities::ideation::VerificationMetadata> {
     metadata_json
         .as_deref()
         .and_then(|s| {
-            serde_json::from_str::<crate::domain::entities::ideation::VerificationMetadata>(
-                s,
-            )
-            .ok()
+            serde_json::from_str::<crate::domain::entities::ideation::VerificationMetadata>(s)
+                .ok()
         })
+}
+
+fn parse_round_info(metadata_json: &Option<String>) -> (u32, u32) {
+    parse_verification_metadata(metadata_json)
         .map(|m| (m.current_round, m.max_rounds))
         .unwrap_or((0, 0))
 }
 
 fn count_unresolved_gaps(metadata_json: &Option<String>) -> u32 {
-    metadata_json
-        .as_deref()
-        .and_then(|s| {
-            serde_json::from_str::<crate::domain::entities::ideation::VerificationMetadata>(
-                s,
-            )
-            .ok()
-        })
+    parse_verification_metadata(metadata_json)
         .map(|m| m.current_gaps.len() as u32)
         .unwrap_or(0)
 }

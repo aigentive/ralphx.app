@@ -26,12 +26,23 @@ export type IdeationPlanMode = z.infer<typeof IdeationPlanModeSchema>;
 /**
  * Ideation settings schema matching Rust backend serialization
  */
+export const ExternalIdeationOverridesSchema = z.object({
+  requireVerificationForAccept: z.boolean().nullable(),
+  requireVerificationForProposals: z.boolean().nullable(),
+  requireAcceptForFinalize: z.boolean().nullable(),
+});
+
+export type ExternalIdeationOverrides = z.infer<typeof ExternalIdeationOverridesSchema>;
+
 export const IdeationSettingsSchema = z.object({
   planMode: IdeationPlanModeSchema,
   requirePlanApproval: z.boolean(),
   suggestPlansForComplex: z.boolean(),
   autoLinkProposals: z.boolean(),
   requireAcceptForFinalize: z.boolean(),
+  requireVerificationForAccept: z.boolean(),
+  requireVerificationForProposals: z.boolean(),
+  externalOverrides: ExternalIdeationOverridesSchema,
 });
 
 export type IdeationSettings = z.infer<typeof IdeationSettingsSchema>;
@@ -45,6 +56,13 @@ export const defaultIdeationSettings: IdeationSettings = {
   suggestPlansForComplex: true,
   autoLinkProposals: true,
   requireAcceptForFinalize: false,
+  requireVerificationForAccept: false,
+  requireVerificationForProposals: false,
+  externalOverrides: {
+    requireVerificationForAccept: null,
+    requireVerificationForProposals: null,
+    requireAcceptForFinalize: null,
+  },
 };
 
 // ============================================================================
@@ -60,6 +78,11 @@ export const IdeationSettingsResponseSchema = z.object({
   suggest_plans_for_complex: z.boolean(),
   auto_link_proposals: z.boolean(),
   require_accept_for_finalize: z.boolean(),
+  require_verification_for_accept: z.boolean().default(false),
+  require_verification_for_proposals: z.boolean().default(false),
+  ext_require_verification_for_accept: z.number().nullable().default(null),
+  ext_require_verification_for_proposals: z.number().nullable().default(null),
+  ext_require_accept_for_finalize: z.number().nullable().default(null),
 });
 
 export type IdeationSettingsResponse = z.infer<typeof IdeationSettingsResponseSchema>;

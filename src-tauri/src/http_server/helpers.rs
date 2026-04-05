@@ -9,11 +9,11 @@ use std::str::FromStr;
 use crate::application::{AppState, CreateProposalOptions, UpdateProposalOptions, UpdateSource};
 use crate::application::git_service::GitService;
 use crate::commands::ideation_commands::{apply_proposals_core, is_local_proposal, ApplyProposalsInput, TaskProposalResponse};
-use crate::domain::services::{check_proposal_verification_gate, ProposalOperation};
+use crate::domain::services::{check_proposal_verification_gate, resolve_effective_gate_policy, ProposalOperation};
 use crate::domain::entities::{
     AcceptanceStatus, Artifact, ArtifactContent, ArtifactSummary, ArtifactType, Complexity,
     IdeationSession, IdeationSessionId, IdeationSessionStatus, InternalStatus, Priority,
-    ProposalCategory, ScopeDriftStatus, SessionOrigin, TaskContext, TaskId, TaskProposal,
+    ProposalCategory, ScopeDriftStatus, TaskContext, TaskId, TaskProposal,
     TaskProposalId, ValidationCacheData, ValidationCacheMetadata,
 };
 use crate::domain::review::{compute_out_of_scope_blocker_fingerprint, compute_scope_drift};
@@ -264,6 +264,7 @@ pub async fn create_proposal_impl(
             // Verification gate: block creation if plan hasn't been verified (when enabled)
             {
                 let settings = get_settings_sync(conn)?;
+                let policy = resolve_effective_gate_policy(&settings, session.origin);
                 let parent_status = if session.plan_artifact_id.is_none()
                     && session.inherited_plan_artifact_id.is_some()
                 {
@@ -281,7 +282,7 @@ pub async fn create_proposal_impl(
                 };
                 check_proposal_verification_gate(
                     &session,
-                    &settings,
+                    &policy,
                     parent_status,
                     ProposalOperation::Create,
                 )
@@ -504,6 +505,7 @@ pub async fn update_proposal_impl(
             // Verification gate: block update if verification in progress or needs revision
             {
                 let settings = get_settings_sync(conn)?;
+                let policy = resolve_effective_gate_policy(&settings, session.origin);
                 let parent_status = if session.plan_artifact_id.is_none()
                     && session.inherited_plan_artifact_id.is_some()
                 {
@@ -521,7 +523,7 @@ pub async fn update_proposal_impl(
                 };
                 check_proposal_verification_gate(
                     &session,
-                    &settings,
+                    &policy,
                     parent_status,
                     ProposalOperation::Update,
                 )
@@ -737,6 +739,7 @@ pub async fn archive_proposal_impl(
             // Verification gate: block delete if verification in progress or needs revision
             {
                 let settings = get_settings_sync(conn)?;
+                let policy = resolve_effective_gate_policy(&settings, session.origin);
                 let parent_status = if session.plan_artifact_id.is_none()
                     && session.inherited_plan_artifact_id.is_some()
                 {
@@ -754,7 +757,7 @@ pub async fn archive_proposal_impl(
                 };
                 check_proposal_verification_gate(
                     &session,
-                    &settings,
+                    &policy,
                     parent_status,
                     ProposalOperation::Delete,
                 )
@@ -799,7 +802,7 @@ pub async fn archive_proposal_impl(
 pub async fn finalize_proposals_impl(
     state: &AppState,
     session_id: &str,
-    is_external: bool,
+    _is_external: bool,
 ) -> AppResult<crate::http_server::types::FinalizeProposalsResponse> {
     // Fetch session and validate it is Active
     let session_id_typed = IdeationSessionId::from_string(session_id.to_string());
@@ -875,16 +878,17 @@ pub async fn finalize_proposals_impl(
     }
 
     // ─── Acceptance Gate ───────────────────────────────────────────────────────
-    // If require_accept_for_finalize is enabled AND this is not an external request,
-    // pause here and wait for user confirmation.
-    // Bypass if: (a) is_external HTTP header present, or (b) session was created externally.
-    if !is_external && session.origin != SessionOrigin::External {
+    // Resolve effective policy from (settings, session.origin) — external overrides
+    // may change whether require_accept_for_finalize applies for this session.
+    // Fail-safe-closed: return error on settings fetch failure to prevent silent bypass.
+    {
         let ideation_settings = state
             .ideation_settings_repo
             .get_settings()
             .await
-            .unwrap_or_default();
-        if ideation_settings.require_accept_for_finalize {
+            .map_err(|e| AppError::Database(format!("Failed to fetch ideation settings for acceptance gate: {}", e)))?;
+        let effective_policy = resolve_effective_gate_policy(&ideation_settings, session.origin);
+        if effective_policy.require_accept_for_finalize {
             // Set acceptance_status to Pending (CAS: only if currently None)
             state
                 .ideation_session_repo

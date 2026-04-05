@@ -11,6 +11,7 @@ pub mod chat_responses;
 pub mod diagnostic_commands;
 pub mod diff_commands;
 pub mod execution_commands;
+pub mod external_mcp_commands;
 pub mod git_commands;
 pub mod health;
 pub mod ideation_commands;

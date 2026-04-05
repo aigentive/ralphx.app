@@ -24,6 +24,7 @@ async fn test_update_settings() {
         require_verification_for_accept: false,
         require_verification_for_proposals: false,
         require_accept_for_finalize: false,
+        ..Default::default()
     };
 
     let updated = repo.update_settings(&new_settings).await.unwrap();
@@ -45,6 +46,7 @@ async fn test_with_settings() {
         require_verification_for_accept: false,
         require_verification_for_proposals: false,
         require_accept_for_finalize: false,
+        ..Default::default()
     };
 
     let repo = MemoryIdeationSettingsRepository::with_settings(initial_settings);

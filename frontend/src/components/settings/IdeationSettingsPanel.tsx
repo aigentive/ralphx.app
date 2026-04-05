@@ -6,19 +6,29 @@
  * - Require explicit approval checkbox (disabled when not in Required mode)
  * - Suggest plans for complex features checkbox
  * - Auto-link proposals to session plan checkbox
+ * - Verification gate controls (requireVerificationForProposals, requireVerificationForAccept)
+ * - Collapsible External Session Overrides subsection (3-state inherit/on/off selects)
  * - Follows SettingsView pattern with SettingRow and shadcn components
  */
 
-import { Lightbulb } from "lucide-react";
+import { useState } from "react";
+import { Lightbulb, ChevronDown, ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useIdeationSettings } from "@/hooks/useIdeationSettings";
 import { useUiStore } from "@/stores/uiStore";
-import type { IdeationPlanMode } from "@/types/ideation-config";
+import type { IdeationPlanMode, ExternalIdeationOverrides } from "@/types/ideation-config";
 
 // ============================================================================
 // Setting Row Component
@@ -115,6 +125,79 @@ function CheckboxSettingRow({
 }
 
 // ============================================================================
+// 3-State Override Select
+// ============================================================================
+
+type OverrideValue = "inherit" | "on" | "off";
+
+const OVERRIDE_OPTIONS: { value: OverrideValue; label: string; description: string }[] = [
+  { value: "inherit", label: "Inherit", description: "Use base policy" },
+  { value: "on", label: "On", description: "Always enforce" },
+  { value: "off", label: "Off", description: "Always bypass" },
+];
+
+function boolToOverride(value: boolean | null): OverrideValue {
+  if (value === null) return "inherit";
+  return value ? "on" : "off";
+}
+
+function overrideToBool(value: OverrideValue): boolean | null {
+  if (value === "inherit") return null;
+  return value === "on";
+}
+
+interface OverrideSelectRowProps {
+  id: string;
+  label: string;
+  description: string;
+  value: boolean | null;
+  disabled: boolean;
+  onChange: (value: boolean | null) => void;
+}
+
+function OverrideSelectRow({
+  id,
+  label,
+  description,
+  value,
+  disabled,
+  onChange,
+}: OverrideSelectRowProps) {
+  return (
+    <SettingRow id={id} label={label} description={description} isSubSetting isDisabled={disabled}>
+      <Select
+        value={boolToOverride(value)}
+        onValueChange={(v) => onChange(overrideToBool(v as OverrideValue))}
+        disabled={disabled}
+      >
+        <SelectTrigger
+          id={id}
+          data-testid={id}
+          aria-describedby={`${id}-desc`}
+          className="w-[160px] bg-[var(--bg-surface)] border-[var(--border-default)] focus:ring-[var(--accent-primary)]"
+        >
+          <SelectValue placeholder="Select override" />
+        </SelectTrigger>
+        <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
+          {OVERRIDE_OPTIONS.map((opt) => (
+            <SelectItem
+              key={opt.value}
+              value={opt.value}
+              className="focus:bg-[var(--accent-muted)]"
+            >
+              <div className="flex flex-col">
+                <span className="text-[var(--text-primary)]">{opt.label}</span>
+                <span className="text-xs text-[var(--text-muted)]">{opt.description}</span>
+              </div>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </SettingRow>
+  );
+}
+
+// ============================================================================
 // Plan Mode Options
 // ============================================================================
 
@@ -148,6 +231,7 @@ export function IdeationSettingsPanel() {
   const { settings, updateSettings, isUpdating } = useIdeationSettings();
   const autoAcceptPlans = useUiStore((s) => s.autoAcceptPlans);
   const setAutoAcceptPlans = useUiStore((s) => s.setAutoAcceptPlans);
+  const [showExternalOverrides, setShowExternalOverrides] = useState(false);
 
   const handlePlanModeChange = (mode: string) => {
     updateSettings({
@@ -181,6 +265,33 @@ export function IdeationSettingsPanel() {
     updateSettings({
       ...settings,
       requireAcceptForFinalize: checked,
+    });
+  };
+
+  const handleRequireVerificationForProposalsChange = (checked: boolean) => {
+    updateSettings({
+      ...settings,
+      requireVerificationForProposals: checked,
+    });
+  };
+
+  const handleRequireVerificationForAcceptChange = (checked: boolean) => {
+    updateSettings({
+      ...settings,
+      requireVerificationForAccept: checked,
+    });
+  };
+
+  const handleExternalOverrideChange = (
+    field: keyof ExternalIdeationOverrides,
+    value: boolean | null
+  ) => {
+    updateSettings({
+      ...settings,
+      externalOverrides: {
+        ...settings.externalOverrides,
+        [field]: value,
+      },
     });
   };
 
@@ -283,6 +394,26 @@ export function IdeationSettingsPanel() {
           onChange={handleRequireAcceptForFinalizeChange}
         />
 
+        {/* Require verification before accepting proposals */}
+        <CheckboxSettingRow
+          id="require-verification-for-accept"
+          label="Require verification before accepting"
+          description="Plan must pass adversarial verification before proposals can be accepted"
+          checked={settings.requireVerificationForAccept}
+          disabled={isUpdating}
+          onChange={handleRequireVerificationForAcceptChange}
+        />
+
+        {/* Require verification before creating proposals */}
+        <CheckboxSettingRow
+          id="require-verification-for-proposals"
+          label="Require verification before proposals"
+          description="Plan must pass adversarial verification before proposals can be created"
+          checked={settings.requireVerificationForProposals}
+          disabled={isUpdating}
+          onChange={handleRequireVerificationForProposalsChange}
+        />
+
         {/* Auto-accept all finalization dialogs (in-memory only) */}
         <CheckboxSettingRow
           id="auto-accept-plans"
@@ -292,6 +423,57 @@ export function IdeationSettingsPanel() {
           disabled={false}
           onChange={setAutoAcceptPlans}
         />
+
+        {/* External Session Overrides — collapsible subsection */}
+        <div className="pt-1">
+          <button
+            type="button"
+            data-testid="external-overrides-toggle"
+            onClick={() => setShowExternalOverrides((v) => !v)}
+            className="flex items-center gap-2 w-full py-2 text-left text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+          >
+            {showExternalOverrides ? (
+              <ChevronDown className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5" />
+            )}
+            External Session Overrides
+          </button>
+          {showExternalOverrides && (
+            <div className="space-y-1 mt-1">
+              <OverrideSelectRow
+                id="ext-override-verification-for-accept"
+                label="Verification for accept"
+                description="Override verification-before-accept gate for external sessions"
+                value={settings.externalOverrides.requireVerificationForAccept}
+                disabled={isUpdating}
+                onChange={(v) =>
+                  handleExternalOverrideChange("requireVerificationForAccept", v)
+                }
+              />
+              <OverrideSelectRow
+                id="ext-override-verification-for-proposals"
+                label="Verification for proposals"
+                description="Override verification-before-proposals gate for external sessions"
+                value={settings.externalOverrides.requireVerificationForProposals}
+                disabled={isUpdating}
+                onChange={(v) =>
+                  handleExternalOverrideChange("requireVerificationForProposals", v)
+                }
+              />
+              <OverrideSelectRow
+                id="ext-override-accept-for-finalize"
+                label="Accept before finalizing"
+                description="Override accept-before-finalize gate for external sessions"
+                value={settings.externalOverrides.requireAcceptForFinalize}
+                disabled={isUpdating}
+                onChange={(v) =>
+                  handleExternalOverrideChange("requireAcceptForFinalize", v)
+                }
+              />
+            </div>
+          )}
+        </div>
       </div>
     </Card>
   );

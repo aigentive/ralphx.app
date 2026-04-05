@@ -46,7 +46,9 @@ pub struct VerificationConfig {
     pub max_rounds: u32,
     /// If true, verification starts automatically when a plan is created.
     pub auto_verify: bool,
-    /// If true, `apply_proposals` is blocked unless the plan is verified or skipped.
+    /// Deprecated: gate is now driven by DB-backed `IdeationSettings`; this YAML field is ignored.
+    #[serde(skip)]
+    #[allow(dead_code)]
     pub require_verification_for_accept: bool,
     /// Minimum number of proposal tasks before auto-verification triggers (if `auto_verify=true`).
     pub complexity_threshold: u32,

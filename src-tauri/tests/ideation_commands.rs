@@ -1227,6 +1227,7 @@ async fn test_update_ideation_settings() {
         require_verification_for_accept: false,
         require_verification_for_proposals: false,
         require_accept_for_finalize: false,
+        external_overrides: Default::default(),
     };
 
     // Update settings
@@ -1258,6 +1259,7 @@ async fn test_ideation_settings_persist_across_reads() {
         require_verification_for_accept: false,
         require_verification_for_proposals: false,
         require_accept_for_finalize: false,
+        external_overrides: Default::default(),
     };
 
     state

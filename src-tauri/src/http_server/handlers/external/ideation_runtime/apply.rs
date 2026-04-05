@@ -84,17 +84,9 @@ pub async fn external_apply_proposals(
 
     session.assert_project_scope(&scope)?;
 
-    let ideation_settings = state
-        .app_state
-        .ideation_settings_repo
-        .get_settings()
-        .await
-        .map_err(|e| {
-            error!("Failed to get ideation settings: {}", e);
-            HttpError::from(StatusCode::INTERNAL_SERVER_ERROR)
-        })?;
-    check_verification_gate(&session, &ideation_settings)
-        .map_err(|e| HttpError::validation(e.to_string()))?;
+    // Note: check_verification_gate is NOT called here — it is the canonical gate inside
+    // apply_proposals_core (which resolves EffectiveGatePolicy from session.origin).
+    // assert_project_scope above handles auth; session fetch above validates ownership.
 
     let result = apply_proposals_core(&state.app_state, req.into())
         .await

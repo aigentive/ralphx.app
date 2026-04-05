@@ -239,7 +239,7 @@ fn normalize_mcp_tool_name(raw: &str, server_name: &str) -> String {
     }
 }
 
-fn config_path() -> PathBuf {
+pub fn config_path() -> PathBuf {
     if let Ok(path) = std::env::var("RALPHX_CONFIG_PATH") {
         if !path.is_empty() {
             return PathBuf::from(path);

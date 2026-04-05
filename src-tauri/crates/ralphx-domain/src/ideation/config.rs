@@ -17,6 +17,22 @@ impl Default for IdeationPlanMode {
     }
 }
 
+/// Per-origin overrides for gating policy.
+///
+/// When `SessionOrigin::External` is the session origin, these values override
+/// the corresponding base fields in `IdeationSettings`. `None` means inherit
+/// from the base field; `Some(v)` overrides with `v`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExternalIdeationOverrides {
+    /// Override for `require_verification_for_accept` for external sessions.
+    pub require_verification_for_accept: Option<bool>,
+    /// Override for `require_verification_for_proposals` for external sessions.
+    pub require_verification_for_proposals: Option<bool>,
+    /// Override for `require_accept_for_finalize` for external sessions.
+    pub require_accept_for_finalize: Option<bool>,
+}
+
 /// Ideation-specific settings (separate from QA settings)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IdeationSettings {
@@ -37,6 +53,9 @@ pub struct IdeationSettings {
     /// If true, finalize_proposals pauses for human acceptance before applying proposals
     #[serde(default)]
     pub require_accept_for_finalize: bool,
+    /// Per-origin gate overrides for external sessions. NULL columns → None → inherits base.
+    #[serde(default)]
+    pub external_overrides: ExternalIdeationOverrides,
 }
 
 impl Default for IdeationSettings {
@@ -49,6 +68,7 @@ impl Default for IdeationSettings {
             require_verification_for_accept: false, // Opt-in feature
             require_verification_for_proposals: false, // Opt-in feature
             require_accept_for_finalize: false, // Opt-in feature
+            external_overrides: ExternalIdeationOverrides::default(),
         }
     }
 }

@@ -35,7 +35,8 @@ pub use verification_events::{
     emit_verification_status_changed,
 };
 pub use verification_gate::{
-    check_proposal_verification_gate, check_verification_gate, ProposalOperation,
+    check_proposal_verification_gate, check_verification_gate, EffectiveGatePolicy,
+    ProposalOperation, resolve_effective_gate_policy,
 };
 pub use index_rewriter::{IndexRewriter, RewriteResult};
 // Unified message queue - keyed by (context_type, context_id)

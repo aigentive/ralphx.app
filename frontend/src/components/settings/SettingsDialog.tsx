@@ -15,6 +15,7 @@ import {
   type SettingsSectionId,
 } from "./settings-registry";
 import { ApiKeysSection } from "./ApiKeysSection";
+import { ExternalMcpSettingsPanel } from "./ExternalMcpSettingsPanel";
 import { GitSettingsSection } from "./GitSettingsSection";
 import { GitHubSettingsSection } from "./GitHubSettingsSection";
 import { IdeationEffortSection } from "./IdeationEffortSection";
@@ -112,6 +113,7 @@ export default function SettingsDialog({
     "ideation-effort": () => <IdeationEffortSection />,
     "ideation-models": () => <IdeationModelSection />,
     "api-keys": () => <ApiKeysSection />,
+    "external-mcp": () => <ExternalMcpSettingsPanel />,
   };
 
   return (
