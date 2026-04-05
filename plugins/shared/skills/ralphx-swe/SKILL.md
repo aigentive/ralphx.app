@@ -66,6 +66,7 @@ UUIDs from the event context. Minimum rule:
 - session-scoped update → include `session_id=<uuid>`
 - task-scoped update → include `task_id=<uuid>`
 - task within session → include both, compactly, e.g. `session_id=<uuid> | task_id=<uuid>`
+- prefer a fenced code block for that footer so chat renderers preserve it cleanly
 
 These UUIDs are not optional debug fluff. Future turns may not have the full prior event payload in
 history, so the footer is the durable follow-up handle.
@@ -93,7 +94,7 @@ be short:
 - line 1: what changed
 - line 2: next automatic step or blocker
 - line 3 only if user action is truly required
-- final line: compact metadata footer with the relevant UUIDs (`session_id=... | task_id=...`)
+- final line: fenced code block footer with the relevant UUIDs (`session_id=... | task_id=...`)
 - in shared/multi-project webhook topics, start line 1 with the project label
 - stay silent for no-op duplicate redeliveries; users should not see "No response requested" or duplicate-event chatter
 - avoid markdown tables in webhook updates; use prose or at most 2-4 compact bullets
