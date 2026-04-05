@@ -38,6 +38,7 @@ use crate::domain::state_machine::services::TaskScheduler;
 use crate::error::AppError;
 
 use super::chat_service_context;
+use crate::application::reconciliation::verification_handoff;
 use super::chat_service_errors::{classify_agent_error, StreamError};
 use super::chat_service_helpers::get_assistant_role;
 use super::chat_service_types::{AgentErrorPayload, AgentRunCompletedPayload};
@@ -676,13 +677,27 @@ pub(super) async fn handle_stream_success<R: Runtime>(
             Ok(Some(child_session)) => {
                 if child_session.session_purpose == SessionPurpose::Verification {
                     if let Some(parent_id) = child_session.parent_session_id {
-                        crate::application::reconciliation::verification_reconciliation::reconcile_verification_on_child_complete(
+                        let reconcile_result = crate::application::reconciliation::verification_reconciliation::reconcile_verification_on_child_complete(
                             &parent_id,
                             &child_id,
                             ideation_session_repo,
                             app_handle.as_ref(),
                         )
                         .await;
+
+                        // Synthesize and inject <verification-result> handoff message
+                        // when reconcile returns NeedsRevision and the dedup guard allows it.
+                        // Fire-and-forget: errors are logged but never block the handler.
+                        if let Some(result) = reconcile_result {
+                            verification_handoff::maybe_inject_verification_result_message(
+                                &parent_id,
+                                &result,
+                                conversation_repo,
+                                chat_message_repo,
+                                message_queue,
+                            )
+                            .await;
+                        }
                     }
                 }
             }

@@ -372,6 +372,29 @@ The child session automatically routes to the `plan-verifier` agent, which owns 
 
 **Recovery routing:** If `get_plan_verification` shows `in_progress: true` on RECOVER → output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete." If the user wants to interrupt it, call `stop_verification(session_id)`. Do NOT assume `get_plan_verification` provides a `child_session_id`.
 
+### Escalation Handling (Team Mode)
+
+**Detection:** If the incoming message contains `<escalation type="verification">` → treat as an escalation from the plan-verifier requiring code exploration (distinct from `<verification-result>` — escalations need active investigation).
+
+**Handling flow:**
+1. **Parse** — extract gaps, round info, `what_parent_should_explore`.
+2. **Notify teammates** — `SendMessage(type: "broadcast", content: "Escalation received. Pausing. Lead investigating code paths referenced by verifier.")`.
+3. **Explore** — spawn `Task(Explore)` agents targeting the specific code paths in `what_parent_should_explore`.
+4. **Revise** — `edit_plan_artifact` (<30%) or `update_plan_artifact` (≥30%) based on findings; call `get_session_plan` to acknowledge new version.
+5. **Report to user** and offer re-verification via `create_child_session(purpose: "verification")`.
+
+### Verification Result Handling (Team Mode)
+
+**Detection:** If the incoming message contains `<verification-result>` (NOT `<escalation>`) → treat as an informational handoff. Results require **no code exploration**.
+
+**Handling flow:**
+1. **Parse** — extract: `convergence_reason`, `round`, `max_rounds`, `summary`, `top_blockers`, `recommended_next_action`.
+2. **Notify teammates** — `SendMessage(type: "broadcast", content: "Verification complete: {summary}. Top blockers: {top_blockers}.")`.
+3. **Ask user** — call `ask_user_question` with options derived from `recommended_next_action`:
+   - `"re_verify"` → "Re-verify the updated plan with a fresh round? [Y/n]"
+   - `"revise_and_re_verify"` → "A) Revise plan, B) Re-run verification, C) Proceed to proposals"
+   - default → "Proceed to proposals? Or revise the plan first?"
+
 ### Cross-Project Plan Detection
 
 After creating or verifying a plan, check if it proposes changes spanning multiple projects:

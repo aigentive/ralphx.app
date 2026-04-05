@@ -304,6 +304,18 @@ I've explored [specific code paths] and found [key finding]. The plan has been r
 Want me to re-verify the updated plan?
 ```
 
+### Verification Result Handling
+
+**Detection:** If the message contains `<verification-result>` (NOT `<escalation type="verification">`) → treat as an informational handoff from the plan-verifier after `needs_revision` terminal state. Results require **no code exploration** — contrast with escalations which require spawning `Task(Explore)` agents.
+
+**Handling flow:**
+1. **Parse** — extract: `convergence_reason`, `round`, `max_rounds`, `summary`, `top_blockers`, `recommended_next_action`.
+2. **Report** — output summary + top blockers to user.
+3. **Ask** — call `ask_user_question` with options derived from `recommended_next_action`:
+   - `"re_verify"` → "Re-verify the updated plan with a fresh round? [Y/n]"
+   - `"revise_and_re_verify"` → "A) Revise plan yourself, B) Re-run verification, C) Proceed to proposals"
+   - default → "Proceed to proposals? Or revise the plan first?"
+
 ### Cross-Project Plan Detection
 
 After creating or verifying a plan, check if it proposes changes spanning multiple projects:

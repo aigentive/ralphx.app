@@ -21,6 +21,7 @@ use tauri::{AppHandle, Runtime};
 use crate::application::reconciliation::recovery_queue::{
     RecoveryItem, RecoveryKind, RecoveryMetadata, RecoveryQueue,
 };
+use crate::application::reconciliation::verification_handoff::ReconcileChildCompleteResult;
 use crate::domain::entities::{
     ChatContextType, IdeationSession, IdeationSessionId, IdeationSessionStatus, SessionPurpose,
     VerificationMetadata, VerificationStatus,
@@ -855,7 +856,7 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
     child_id: &IdeationSessionId,
     repo: &Arc<dyn IdeationSessionRepository>,
     app_handle: Option<&AppHandle<R>>,
-) {
+) -> Option<ReconcileChildCompleteResult> {
     // Resolve parent (fetch + 3-guard check)
     let parent = match resolve_verification_parent(
         parent_id,
@@ -865,7 +866,7 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
     .await
     {
         ResolvedParent::Ready(p) => p,
-        ResolvedParent::NotFound | ResolvedParent::ImportedVerified => return,
+        ResolvedParent::NotFound | ResolvedParent::ImportedVerified => return None,
         ResolvedParent::AlreadyResolved => {
             tracing::debug!(
                 parent_id = %parent_id.as_str(),
@@ -873,7 +874,7 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
                 "reconcile_verification_on_child_complete: verification not in progress — archiving child only"
             );
             archive_verification_session(repo, child_id).await;
-            return;
+            return None;
         }
     };
 
@@ -982,6 +983,11 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
 
     // Orphan cleanup: archive any OTHER active verification children of this parent
     archive_sibling_verification_children(repo, parent_id, Some(child_id)).await;
+
+    Some(ReconcileChildCompleteResult {
+        terminal_status,
+        parsed_meta: emit_metadata,
+    })
 }
 
 /// Reset parent verification state when a verification child agent errors or is stopped.
