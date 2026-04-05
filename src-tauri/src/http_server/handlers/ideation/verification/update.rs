@@ -178,6 +178,7 @@ pub async fn update_plan_verification(
             rounds: vec![],
             plan_version: None,
             verification_generation: new_gen,
+            verification_child: None,
         }));
     }
 
@@ -550,5 +551,6 @@ pub async fn update_plan_verification(
         rounds: post_rounds,
         plan_version: None,
         verification_generation: session.verification_generation,
+        verification_child: None,
     }))
 }

@@ -20,6 +20,7 @@ import {
   getBool,
   parseMcpToolResult,
   truncatedTitleStyle,
+  truncate,
   badgeStyles,
 } from "./shared.constants";
 import type { ToolCallWidgetProps, BadgeVariant } from "./shared.constants";
@@ -139,6 +140,13 @@ function UpdateVerification({ toolCall, compact }: ToolCallWidgetProps) {
   );
 }
 
+/** Continuity data from verification_child block (camelCase fields per VerificationChildInfo serde). */
+interface VerificationChildData {
+  latestChildSessionId?: string;
+  agentState?: string;
+  lastAssistantMessage?: string | null;
+}
+
 function GetVerification({ toolCall, compact }: ToolCallWidgetProps) {
   const parsed = parseMcpToolResult(toolCall.result);
   const status = getString(parsed, "status");
@@ -146,6 +154,8 @@ function GetVerification({ toolCall, compact }: ToolCallWidgetProps) {
   const currentRound = getNumber(parsed, "current_round");
   const maxRounds = getNumber(parsed, "max_rounds");
   const convergenceReason = getString(parsed, "convergence_reason");
+  // verification_child uses snake_case field name; inner fields are camelCase per VerificationChildInfo serde
+  const verificationChild = (parsed["verification_child"] ?? null) as VerificationChildData | null;
 
   if (!status) {
     return (
@@ -162,7 +172,7 @@ function GetVerification({ toolCall, compact }: ToolCallWidgetProps) {
   const showRound = (inProgress === true || currentRound != null) && currentRound != null && maxRounds != null;
   const showConvergence = (status === "verified" || status === "skipped" || status === "imported_verified") && convLabel;
 
-  return (
+  const mainRow = (
     <WidgetRow compact={compact}>
       <ShieldCheck size={12} style={{ color: iconColor, flexShrink: 0 }} />
       <Badge variant={variant} compact>{status}</Badge>
@@ -174,6 +184,44 @@ function GetVerification({ toolCall, compact }: ToolCallWidgetProps) {
       {showConvergence && <Badge variant="muted" compact>{convLabel}</Badge>}
     </WidgetRow>
   );
+
+  if (verificationChild != null) {
+    const sessionId = typeof verificationChild.latestChildSessionId === "string"
+      ? verificationChild.latestChildSessionId
+      : undefined;
+    const agentState = typeof verificationChild.agentState === "string"
+      ? verificationChild.agentState
+      : undefined;
+    const lastMessage = typeof verificationChild.lastAssistantMessage === "string"
+      ? verificationChild.lastAssistantMessage
+      : undefined;
+
+    const agentInfo = agentStatusLabel(agentState);
+    const sessionSnippet = sessionId ? sessionId.slice(0, 8) : undefined;
+    const messagePreview = lastMessage ? truncate(lastMessage, 120) : undefined;
+
+    return (
+      <>
+        {mainRow}
+        <WidgetRow compact={compact}>
+          <GitBranch size={11} style={{ color: colors.textMuted, flexShrink: 0 }} />
+          {sessionSnippet !== undefined && (
+            <span style={{ fontSize: compact ? 10 : 10.5, color: colors.textMuted, fontFamily: "monospace" }}>
+              {sessionSnippet}…
+            </span>
+          )}
+          <Badge variant={agentInfo.variant} compact>{agentInfo.label}</Badge>
+          {messagePreview !== undefined && (
+            <span style={{ fontSize: compact ? 10 : 10.5, color: colors.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+              {messagePreview}
+            </span>
+          )}
+        </WidgetRow>
+      </>
+    );
+  }
+
+  return mainRow;
 }
 
 function ChildSessionStatus({ toolCall, compact }: ToolCallWidgetProps) {

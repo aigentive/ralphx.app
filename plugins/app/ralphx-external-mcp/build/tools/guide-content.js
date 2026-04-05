@@ -53,7 +53,7 @@ RalphX is an autonomous software development platform. You are an engineer-agent
    - \`v1_get_session_tasks\` → track delivery progress (delivery_status + task list)
    - \`v1_get_attention_items\` → tasks needing your action
    - \`v1_get_review_summary\` + \`v1_get_task_diff\` → inspect completed work
-   - \`v1_approve_review\` or \`v1_request_changes\` → drive to merge
+   - \`v1_approve_review\` or \`v1_request_changes\` → make the review approval decision when your integration/policy allows it
    - \`v1_get_recent_events\` → cursor-based real-time activity
 
 ### Flow 0: Onboarding (1 tool)
@@ -103,7 +103,7 @@ v1_start_ideation → poll v1_get_ideation_status (5-10s interval)
   → agent_status: "waiting_for_input" → v1_get_ideation_messages
   → v1_send_ideation_message to iterate
   → when satisfied → v1_trigger_plan_verification
-  → poll v1_get_plan_verification → status: "converged"
+  → poll v1_get_plan_verification → verified / converged
   → v1_accept_plan_and_schedule
 \`\`\`
 
@@ -177,9 +177,9 @@ Calling \`v1_accept_plan_and_schedule\` on an already-accepted session is safe �
 | v1_get_task_detail | Full task info + steps + branch | task_id | — | v1_get_task_diff |
 | v1_get_task_diff | Git diff stats for task branch | task_id | Task has branch | v1_get_review_summary |
 | v1_get_review_summary | Review findings + notes | task_id | Task in review | v1_approve_review |
-| v1_approve_review | Approve → start merge | task_id | PendingReview state | — |
-| v1_request_changes | Request changes with feedback | task_id, feedback | PendingReview state | — |
-| v1_resolve_escalation | Handle escalated review | task_id, resolution | Escalated state | — |
+| v1_approve_review | Record approval decision → start merge | task_id | ReviewPassed/Escalated state and authority allows | — |
+| v1_request_changes | Send back for re-execution with feedback | task_id, feedback | ReviewPassed/Escalated state and authority allows | — |
+| v1_resolve_escalation | Handle escalated review | task_id, resolution | Escalated state and authority allows | — |
 | v1_get_merge_pipeline | All merge activity for project | project_id | — | — |
 | v1_pause_task | Pause running task | task_id | Task running | — |
 | v1_cancel_task | Cancel task | task_id | Task active | — |
@@ -194,6 +194,14 @@ pending → executing → pending_review → reviewing → pending_merge → mer
                          ↓ (escalated)      ↓ (request_changes)
                       escalated          re_executing
 \`\`\`
+
+### Review vs Merge
+
+- \`review_passed\` is the approval-decision point
+- \`pending_merge\` / \`merge:ready\` are merge-pipeline stages after approval
+- \`delivery_status = "delivered"\` means all tasks merged to main
+
+Do not turn \`merge:ready\` into a second generic approval prompt.
 
 ### v1_resolve_escalation resolution values
 - \`"approve"\` — approve and proceed to merge
@@ -232,11 +240,11 @@ while (true) {
 
 | Event | Meaning |
 |-------|---------|
-| \`task.status_changed\` | Task moved to new pipeline stage |
-| \`task.completed\` | Task execution complete |
-| \`review.escalated\` | Review needs human/agent decision |
-| \`merge.completed\` | Task merged to main |
-| \`ideation.session_created\` | New ideation session started |
+| \`task:status_changed\` | Task moved to new pipeline stage |
+| \`task:execution_completed\` | Task execution complete |
+| \`review:escalated\` | Review needs exceptional decision |
+| \`merge:completed\` | Task merged to main |
+| \`ideation:session_created\` | New ideation session started |
 `,
     resilience: `## Resilience & Best Practices
 
@@ -341,7 +349,8 @@ The \`external_activity_phase\` field in \`v1_get_ideation_status\` tracks sessi
 1. v1_get_attention_items → find tasks needing review
 2. v1_get_review_summary → read findings
 3. v1_get_task_diff → inspect changes
-4. v1_approve_review or v1_request_changes
+4. If your integration/policy grants authority: v1_approve_review or v1_request_changes
+5. Otherwise report the pending decision instead of asking for a generic merge approval
 \`\`\`
 
 ### Monitoring Pipeline
@@ -359,7 +368,7 @@ The \`external_activity_phase\` field in \`v1_get_ideation_status\` tracks sessi
 2. v1_get_session_tasks({ session_id }) → delivery_status + per-task status
    → delivery_status: "in_progress" | "pending_review" | "partial" | "delivered"
 3. When delivery_status = "pending_review" → use v1_get_attention_items
-4. When delivery_status = "delivered" → all tasks merged
+4. When delivery_status = "delivered" → all tasks merged; report "plan delivered"
 \`\`\`
 
 ### Task Reference Formatting
@@ -392,9 +401,9 @@ The \`external_activity_phase\` field in \`v1_get_ideation_status\` tracks sessi
 - \`v1_start_ideation\` → must call before any session tools
 - \`v1_send_ideation_message\` → requires \`agent_status: "waiting_for_input"\`
 - \`v1_accept_plan_and_schedule\` → requires plan + proposals in session
-- \`v1_approve_review\` / \`v1_request_changes\` → requires task in PendingReview state
+- \`v1_approve_review\` / \`v1_request_changes\` → requires task in \`review_passed\` or \`escalated\`, plus current authority
 - \`v1_trigger_plan_verification\` → requires plan artifact in session
-- \`v1_resolve_escalation\` → requires task in Escalated state
+- \`v1_resolve_escalation\` → requires task in \`escalated\`, plus current authority
 
 ### Error Handling
 

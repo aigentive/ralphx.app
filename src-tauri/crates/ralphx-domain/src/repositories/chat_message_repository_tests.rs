@@ -213,6 +213,24 @@ impl ChatMessageRepository for MockChatMessageRepository {
     ) -> AppResult<Option<String>> {
         Ok(None)
     }
+
+    async fn get_latest_message_by_role(
+        &self,
+        session_id: &IdeationSessionId,
+        role: &str,
+    ) -> AppResult<Option<ChatMessage>> {
+        let mut matching: Vec<_> = self
+            .messages
+            .iter()
+            .filter(|m| {
+                m.session_id.as_ref() == Some(session_id)
+                    && m.role.to_string() == role
+            })
+            .cloned()
+            .collect();
+        matching.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(matching.into_iter().next())
+    }
 }
 
 fn create_test_message_in_session(session_id: &IdeationSessionId) -> ChatMessage {

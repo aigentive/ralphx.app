@@ -12,7 +12,7 @@ use axum::{
 use ralphx_lib::application::{AppState, InteractiveProcessKey, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
-    ideation::{ChatMessage, IdeationSession, IdeationSessionStatus, SessionOrigin, VerificationStatus},
+    ideation::{ChatMessage, IdeationSession, IdeationSessionBuilder, IdeationSessionStatus, SessionOrigin, SessionPurpose, VerificationStatus},
     project::{GitMode, Project},
     task::Task,
     types::ProjectId,
@@ -3860,5 +3860,114 @@ async fn test_get_session_tasks_invalid_changed_since_returns_400() {
     assert_eq!(
         result.unwrap_err().status,
         axum::http::StatusCode::BAD_REQUEST
+    );
+}
+
+// ── verification_child continuity (external endpoint) ────────────────────────
+
+/// External endpoint returns verification_child block when a child session exists.
+/// active_child_session_id is populated when in_progress=true and child not archived.
+#[tokio::test]
+async fn test_get_plan_verification_external_verification_child_shape() {
+    let state = setup_test_state().await;
+    let (project_id_str, parent_id_str) =
+        setup_session(&state, "proj-vc-ext", "Verification Child External").await;
+    let project_id = ProjectId::from_string(project_id_str);
+    let parent_id = IdeationSessionId::from_string(parent_id_str.clone());
+
+    // Create a verification child session
+    let child = IdeationSessionBuilder::new()
+        .project_id(project_id)
+        .parent_session_id(parent_id.clone())
+        .session_purpose(SessionPurpose::Verification)
+        .build();
+    let child_id_str = child.id.as_str().to_string();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(child.clone())
+        .await
+        .unwrap();
+
+    // Seed an orchestrator message in the child
+    let msg = ChatMessage::orchestrator_in_session(child.id.clone(), "Round 1 done.");
+    state
+        .app_state
+        .chat_message_repo
+        .create(msg)
+        .await
+        .unwrap();
+
+    // Set parent in_progress=true
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &parent_id,
+            VerificationStatus::Reviewing,
+            true,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let result = get_plan_verification_external_http(
+        State(state),
+        unrestricted_scope(),
+        Path(parent_id_str),
+    )
+    .await
+    .expect("handler must succeed");
+
+    let child_info = result
+        .0
+        .verification_child
+        .expect("external endpoint must return verification_child block");
+
+    assert_eq!(child_info.latest_child_session_id, child_id_str);
+    assert!(!child_info.latest_child_archived);
+    assert_eq!(
+        child_info.active_child_session_id.as_deref(),
+        Some(child_id_str.as_str()),
+        "in_progress=true + non-archived → active_child_session_id must be set"
+    );
+    assert_eq!(
+        child_info.last_assistant_message.as_deref(),
+        Some("Round 1 done."),
+        "orchestrator message must be surfaced on external endpoint"
+    );
+}
+
+/// External endpoint: verification_child is null when no child exists.
+#[tokio::test]
+async fn test_get_plan_verification_external_no_child_returns_null() {
+    let state = setup_test_state().await;
+    let (_, session_id) =
+        setup_session(&state, "proj-vc-null", "No Child Project").await;
+    let session_id_obj = IdeationSessionId::from_string(session_id.clone());
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &session_id_obj,
+            VerificationStatus::Reviewing,
+            true,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let result = get_plan_verification_external_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id),
+    )
+    .await
+    .expect("handler must succeed");
+
+    assert!(
+        result.0.verification_child.is_none(),
+        "no child → verification_child must be null"
     );
 }

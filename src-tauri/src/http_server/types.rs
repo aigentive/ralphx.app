@@ -1669,6 +1669,33 @@ pub struct VerificationRoundSummary {
     pub gap_count: u32,
 }
 
+/// Continuity context for the most recent verification child session.
+/// Populated only when the parent session has at least one verification child.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerificationChildInfo {
+    /// Non-null only when in_progress=true and the child session is not archived
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_child_session_id: Option<String>,
+    /// Always present when this block exists — the most recent child session ID
+    pub latest_child_session_id: String,
+    /// True when the latest child session is archived
+    pub latest_child_archived: bool,
+    /// updated_at timestamp of the latest child session (RFC3339)
+    pub latest_child_updated_at: String,
+    /// Inferred agent state: "likely_generating" | "likely_waiting" | "idle"
+    pub agent_state: String,
+    /// Deferred launch prompt waiting for capacity, if any
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending_initial_prompt: Option<String>,
+    /// Last assistant message content truncated to 500 chars, if any
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_assistant_message: Option<String>,
+    /// Timestamp of the last assistant message (RFC3339), if any
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_assistant_message_at: Option<String>,
+}
+
 /// Response for GET/POST verification status
 #[derive(Debug, Serialize)]
 pub struct VerificationResponse {
@@ -1696,6 +1723,9 @@ pub struct VerificationResponse {
     pub plan_version: Option<u32>,
     /// Current verification generation counter
     pub verification_generation: i32,
+    /// Continuity context for the most recent verification child session, if any
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_child: Option<VerificationChildInfo>,
 }
 
 /// Request to atomically revert plan + skip verification

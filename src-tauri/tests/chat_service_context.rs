@@ -558,6 +558,13 @@ impl IdeationSessionRepository for MockIdeationRepo {
     ) -> AppResult<Vec<ralphx_lib::domain::entities::IdeationSession>> {
         Ok(vec![])
     }
+
+    async fn get_latest_verification_child(
+        &self,
+        _parent_id: &IdeationSessionId,
+    ) -> AppResult<Option<IdeationSession>> {
+        Ok(None)
+    }
 }
 
 struct MockTaskRepo;

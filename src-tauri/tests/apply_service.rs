@@ -447,6 +447,13 @@ impl IdeationSessionRepository for MockSessionRepository {
     ) -> AppResult<Vec<IdeationSession>> {
         Ok(vec![])
     }
+
+    async fn get_latest_verification_child(
+        &self,
+        _parent_id: &IdeationSessionId,
+    ) -> AppResult<Option<IdeationSession>> {
+        Ok(None)
+    }
 }
 
 struct MockProposalRepository {

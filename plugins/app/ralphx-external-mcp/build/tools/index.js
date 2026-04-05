@@ -275,7 +275,7 @@ export function registerTools(server, getKeyContext) {
             },
             {
                 name: "v1_get_plan_verification",
-                description: "Get plan verification status for a session. Returns: status, in_progress, round, max_rounds, gap_count, gap_score (weighted: critical×10+high×3+medium×1), gaps (array of {severity, category, description}), convergence_reason.",
+                description: "Get plan verification status for a session. Returns: status, in_progress, round, max_rounds, gap_count, gap_score (weighted: critical×10+high×3+medium×1), gaps (array of {severity, category, description}), convergence_reason. Also returns `verification_child` (object or null): `active_child_session_id` (non-null only when verification is in progress), `latest_child_session_id`, `latest_child_archived`, `agent_state` ('likely_generating'|'likely_waiting'|'idle'), `last_assistant_message` (500-char truncated), `last_assistant_message_at`. Check these fields to recover from `agent_completed_without_update` without a second lookup.",
                 inputSchema: {
                     type: "object",
                     properties: {

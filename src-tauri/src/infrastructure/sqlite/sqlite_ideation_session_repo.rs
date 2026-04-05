@@ -912,6 +912,24 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
             .await
     }
 
+    async fn get_latest_verification_child(
+        &self,
+        parent_id: &IdeationSessionId,
+    ) -> AppResult<Option<IdeationSession>> {
+        let param_str = parent_id.as_str().to_string();
+        self.db
+            .query_optional(move |conn| {
+                let sql = format!(
+                    "SELECT {} FROM ideation_sessions \
+                     WHERE parent_session_id = ?1 AND session_purpose = 'verification' \
+                     ORDER BY created_at DESC LIMIT 1",
+                    SESSION_COLUMNS
+                );
+                conn.query_row(&sql, [&param_str], |row| IdeationSession::from_row(row))
+            })
+            .await
+    }
+
     async fn get_verification_children(
         &self,
         parent_session_id: &IdeationSessionId,

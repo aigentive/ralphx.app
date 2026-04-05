@@ -511,6 +511,13 @@ impl IdeationSessionRepository for MockSessionRepository {
     ) -> AppResult<Vec<ralphx_lib::domain::entities::IdeationSession>> {
         Ok(vec![])
     }
+
+    async fn get_latest_verification_child(
+        &self,
+        _parent_id: &ralphx_lib::domain::entities::IdeationSessionId,
+    ) -> AppResult<Option<ralphx_lib::domain::entities::IdeationSession>> {
+        Ok(None)
+    }
 }
 
 struct MockProposalRepository {
@@ -866,6 +873,14 @@ impl ChatMessageRepository for MockMessageRepository {
         _context_type: &str,
         _context_id: &str,
     ) -> AppResult<Option<String>> {
+        Ok(None)
+    }
+
+    async fn get_latest_message_by_role(
+        &self,
+        _session_id: &ralphx_lib::domain::entities::IdeationSessionId,
+        _role: &str,
+    ) -> AppResult<Option<ralphx_lib::domain::entities::ChatMessage>> {
         Ok(None)
     }
 }

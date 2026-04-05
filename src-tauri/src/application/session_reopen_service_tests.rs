@@ -802,6 +802,13 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
     ) -> crate::error::AppResult<Vec<IdeationSession>> {
         self.inner.get_pending_verification_confirmations(project_id).await
     }
+
+    async fn get_latest_verification_child(
+        &self,
+        parent_id: &ralphx_domain::entities::IdeationSessionId,
+    ) -> crate::error::AppResult<Option<IdeationSession>> {
+        self.inner.get_latest_verification_child(parent_id).await
+    }
 }
 
 #[tokio::test]

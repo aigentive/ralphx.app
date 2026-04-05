@@ -113,6 +113,85 @@ describe("VerificationWidget", () => {
       expect(screen.getByText("verified")).toBeInTheDocument();
       expect(screen.getByText("Gaps converged")).toBeInTheDocument();
     });
+
+    it("renders continuity hint row when verification_child is present", () => {
+      const sessionId = "abcdef12-0000-0000-0000-000000000000";
+      const toolCall = makeToolCall("mcp__ralphx__get_plan_verification", {
+        result: mcpWrap({
+          status: "unverified",
+          verification_child: {
+            latestChildSessionId: sessionId,
+            agentState: "likely_generating",
+            lastAssistantMessage: "Checking gap coverage for auth module.",
+          },
+        }),
+      });
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("unverified")).toBeInTheDocument();
+      // Session ID snippet (first 8 chars + ellipsis)
+      expect(screen.getByText("abcdef12…")).toBeInTheDocument();
+      // Agent state badge
+      expect(screen.getByText("Generating")).toBeInTheDocument();
+      // Last message preview
+      expect(screen.getByText("Checking gap coverage for auth module.")).toBeInTheDocument();
+    });
+
+    it("truncates last_assistant_message to 120 chars in continuity hint", () => {
+      const longMessage = "A".repeat(200);
+      const toolCall = makeToolCall("mcp__ralphx__get_plan_verification", {
+        result: mcpWrap({
+          status: "reviewing",
+          verification_child: {
+            latestChildSessionId: "session-abc",
+            agentState: "idle",
+            lastAssistantMessage: longMessage,
+          },
+        }),
+      });
+      render(<VerificationWidget toolCall={toolCall} />);
+      // Should be truncated to 120 + ellipsis
+      expect(screen.getByText("A".repeat(120) + "…")).toBeInTheDocument();
+    });
+
+    it("renders without continuity hint when verification_child is null", () => {
+      const toolCall = makeToolCall("mcp__ralphx__get_plan_verification", {
+        result: mcpWrap({
+          status: "unverified",
+          verification_child: null,
+        }),
+      });
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("unverified")).toBeInTheDocument();
+      // No agent state badge from continuity hint
+      expect(screen.queryByText("Generating")).not.toBeInTheDocument();
+      expect(screen.queryByText("Idle")).not.toBeInTheDocument();
+    });
+
+    it("renders without continuity hint when verification_child is absent", () => {
+      const toolCall = makeToolCall("mcp__ralphx__get_plan_verification", {
+        result: mcpWrap({ status: "reviewing", in_progress: true, current_round: 1, max_rounds: 5 }),
+      });
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("reviewing")).toBeInTheDocument();
+      // No agent state hints from continuity block
+      expect(screen.queryByText("Generating")).not.toBeInTheDocument();
+    });
+
+    it("renders continuity hint without message when lastAssistantMessage is null", () => {
+      const toolCall = makeToolCall("mcp__ralphx__get_plan_verification", {
+        result: mcpWrap({
+          status: "unverified",
+          verification_child: {
+            latestChildSessionId: "deadbeef-0000",
+            agentState: "likely_waiting",
+            lastAssistantMessage: null,
+          },
+        }),
+      });
+      render(<VerificationWidget toolCall={toolCall} />);
+      expect(screen.getByText("Waiting")).toBeInTheDocument();
+      expect(screen.getByText("deadbeef…")).toBeInTheDocument();
+    });
   });
 
   describe("ChildSessionStatus (get_child_session_status)", () => {

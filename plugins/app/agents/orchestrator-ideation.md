@@ -262,7 +262,7 @@ The child session automatically routes to the `plan-verifier` agent, which owns 
 
 **If user skips verification:** Call `update_plan_verification(session_id, status: "skipped", convergence_reason: "user_skipped")` → proceed to CONFIRM.
 
-**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on session recovery → output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete." If the user wants to interrupt it, use `stop_verification(session_id)`. Do NOT assume `get_plan_verification` provides a `child_session_id`.
+**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on session recovery → output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete." If the user wants to interrupt it, use `stop_verification(session_id)`. Check `verification_child.latest_child_session_id` for the most recent verification child and `verification_child.last_assistant_message` for what the verifier last said. Use `get_child_session_status` only when deeper inspection is needed (e.g., full message history or live agent state). `verification_child` is null if no child was ever created.
 
 ### Escalation Handling
 

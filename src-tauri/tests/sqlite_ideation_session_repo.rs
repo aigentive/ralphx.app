@@ -3128,3 +3128,101 @@ async fn test_list_by_group_search_special_chars_treated_literally() {
         Some("task_cleanup plan")
     );
 }
+
+// ==================== GET LATEST VERIFICATION CHILD TESTS ====================
+
+#[tokio::test]
+async fn test_get_latest_verification_child_returns_none_when_no_children() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+    let parent = create_test_session(&project_id, Some("Parent Session"));
+    repo.create(parent.clone()).await.unwrap();
+
+    let result = repo.get_latest_verification_child(&parent.id).await.unwrap();
+    assert!(result.is_none(), "should return None when parent has no verification children");
+}
+
+#[tokio::test]
+async fn test_get_latest_verification_child_returns_archived_child() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+
+    let parent = create_test_session(&project_id, Some("Parent Session"));
+    repo.create(parent.clone()).await.unwrap();
+
+    // Create a verification child and then archive it
+    let mut child = create_test_session(&project_id, Some("Verification Child"));
+    child.parent_session_id = Some(parent.id.clone());
+    child.session_purpose = SessionPurpose::Verification;
+    repo.create(child.clone()).await.unwrap();
+
+    // Archive the child
+    repo.update_status(&child.id, IdeationSessionStatus::Archived).await.unwrap();
+
+    // get_latest_verification_child should return it even though archived
+    let result = repo.get_latest_verification_child(&parent.id).await.unwrap();
+    assert!(result.is_some(), "should return archived child");
+    assert_eq!(result.unwrap().id, child.id);
+}
+
+#[tokio::test]
+async fn test_get_latest_verification_child_returns_most_recent() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+
+    let parent = create_test_session(&project_id, Some("Parent Session"));
+    repo.create(parent.clone()).await.unwrap();
+
+    let mut child1 = create_test_session(&project_id, Some("First Verification Child"));
+    child1.parent_session_id = Some(parent.id.clone());
+    child1.session_purpose = SessionPurpose::Verification;
+    repo.create(child1.clone()).await.unwrap();
+
+    // Sleep briefly so created_at differs
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+
+    let mut child2 = create_test_session(&project_id, Some("Second Verification Child"));
+    child2.parent_session_id = Some(parent.id.clone());
+    child2.session_purpose = SessionPurpose::Verification;
+    repo.create(child2.clone()).await.unwrap();
+
+    // Should return the most recently created child
+    let result = repo.get_latest_verification_child(&parent.id).await.unwrap();
+    assert!(result.is_some());
+    assert_eq!(
+        result.unwrap().id,
+        child2.id,
+        "should return the most recently created child"
+    );
+}
+
+#[tokio::test]
+async fn test_get_latest_verification_child_ignores_non_verification_children() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(db.new_connection());
+
+    let parent = create_test_session(&project_id, Some("Parent Session"));
+    repo.create(parent.clone()).await.unwrap();
+
+    // Create a general child (non-verification)
+    let mut general_child = create_test_session(&project_id, Some("General Child"));
+    general_child.parent_session_id = Some(parent.id.clone());
+    // session_purpose defaults to General
+    repo.create(general_child.clone()).await.unwrap();
+
+    // No verification children exist — should return None
+    let result = repo.get_latest_verification_child(&parent.id).await.unwrap();
+    assert!(result.is_none(), "should ignore non-verification children");
+}

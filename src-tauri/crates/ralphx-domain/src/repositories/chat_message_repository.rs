@@ -109,6 +109,16 @@ pub trait ChatMessageRepository: Send + Sync {
         context_type: &str,
         context_id: &str,
     ) -> AppResult<Option<String>>;
+
+    /// Get the most recent message for a session filtered by role.
+    ///
+    /// Ordered by `created_at DESC, rowid DESC` to guarantee a deterministic result when
+    /// multiple messages share the same timestamp. Returns `None` when no messages match.
+    async fn get_latest_message_by_role(
+        &self,
+        session_id: &IdeationSessionId,
+        role: &str,
+    ) -> AppResult<Option<ChatMessage>>;
 }
 
 #[cfg(test)]

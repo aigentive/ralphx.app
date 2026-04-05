@@ -211,6 +211,14 @@ pub trait IdeationSessionRepository: Send + Sync {
     /// On startup, no verification agents are running, so any in-progress flag is stale by definition.
     async fn get_all_in_progress_sessions(&self) -> AppResult<Vec<IdeationSession>>;
 
+    /// Get the most recent verification child for a parent session regardless of archived status.
+    /// Returns the child ordered by `created_at DESC LIMIT 1` — no `status != 'archived'` filter.
+    /// Used to populate `VerificationChildInfo` continuity context.
+    async fn get_latest_verification_child(
+        &self,
+        parent_id: &IdeationSessionId,
+    ) -> AppResult<Option<IdeationSession>>;
+
     /// Get active (non-archived) verification child sessions for a parent session.
     /// Returns at most 1 session (the most recent), ordered by created_at DESC.
     async fn get_verification_children(

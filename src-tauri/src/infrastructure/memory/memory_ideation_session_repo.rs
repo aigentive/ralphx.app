@@ -425,6 +425,26 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
             .collect())
     }
 
+    async fn get_latest_verification_child(
+        &self,
+        parent_id: &IdeationSessionId,
+    ) -> AppResult<Option<IdeationSession>> {
+        use crate::domain::entities::ideation::SessionPurpose;
+        let mut children: Vec<_> = self
+            .sessions
+            .read()
+            .unwrap()
+            .values()
+            .filter(|s| {
+                s.parent_session_id.as_ref() == Some(parent_id)
+                    && s.session_purpose == SessionPurpose::Verification
+            })
+            .cloned()
+            .collect();
+        children.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(children.into_iter().next())
+    }
+
     async fn get_verification_children(
         &self,
         parent_session_id: &IdeationSessionId,

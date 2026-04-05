@@ -5,7 +5,9 @@ use axum::{
 };
 use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
-use ralphx_lib::domain::entities::ideation::{SessionOrigin, VerificationStatus};
+use ralphx_lib::domain::entities::ideation::{
+    IdeationSessionStatus, SessionOrigin, SessionPurpose, VerificationStatus,
+};
 use ralphx_lib::domain::entities::{
     ChatContextType, ChatMessage, IdeationSession, IdeationSessionBuilder, IdeationSessionId,
     ProjectId,
@@ -2686,5 +2688,244 @@ async fn test_auto_propose_skipped_for_non_zero_blocking() {
         queued.is_empty(),
         "no auto-propose must be queued for max_rounds convergence; got: {:?}",
         queued.iter().map(|m| &m.content).collect::<Vec<_>>()
+    );
+}
+
+// ── verification_child continuity tests ──────────────────────────────────────
+
+/// No verification child → verification_child is None
+#[tokio::test]
+async fn test_get_plan_verification_no_child_returns_null() {
+    let state = setup_test_state().await;
+    let session = IdeationSession::new(ProjectId::new());
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &session_id,
+            VerificationStatus::Reviewing,
+            true,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let result =
+        get_plan_verification(State(state), unrestricted_scope(), Path(session_id.as_str().to_string()))
+            .await
+            .expect("handler must succeed");
+
+    assert!(
+        result.0.verification_child.is_none(),
+        "no verification child → verification_child must be None"
+    );
+}
+
+/// Parent with active (non-archived) child and in_progress=true →
+/// active_child_session_id is populated.
+#[tokio::test]
+async fn test_get_plan_verification_active_child_populates_active_id() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+
+    // Create parent session
+    let parent = IdeationSession::new(project_id.clone());
+    let parent_id = parent.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    // Create active verification child
+    let child = IdeationSessionBuilder::new()
+        .project_id(project_id)
+        .parent_session_id(parent_id.clone())
+        .session_purpose(SessionPurpose::Verification)
+        .build();
+    let child_id_str = child.id.as_str().to_string();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(child)
+        .await
+        .unwrap();
+
+    // Set parent verification state: in_progress=true
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &parent_id,
+            VerificationStatus::Reviewing,
+            true,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let result =
+        get_plan_verification(State(state), unrestricted_scope(), Path(parent_id.as_str().to_string()))
+            .await
+            .expect("handler must succeed");
+
+    let child_info = result
+        .0
+        .verification_child
+        .expect("active child must produce verification_child block");
+
+    assert_eq!(
+        child_info.active_child_session_id.as_deref(),
+        Some(child_id_str.as_str()),
+        "in_progress=true + non-archived child → active_child_session_id must be set"
+    );
+    assert_eq!(child_info.latest_child_session_id, child_id_str);
+    assert!(!child_info.latest_child_archived, "active child must not be archived");
+    assert_eq!(child_info.agent_state, "idle", "no registry entry → idle");
+}
+
+/// Parent with archived child → latest_child_archived=true, active_child_session_id=None
+#[tokio::test]
+async fn test_get_plan_verification_archived_child_no_active_id() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+
+    let parent = IdeationSession::new(project_id.clone());
+    let parent_id = parent.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    let child = IdeationSessionBuilder::new()
+        .project_id(project_id)
+        .parent_session_id(parent_id.clone())
+        .session_purpose(SessionPurpose::Verification)
+        .build();
+    let child_id_str = child.id.as_str().to_string();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(child.clone())
+        .await
+        .unwrap();
+
+    // Archive the child
+    state
+        .app_state
+        .ideation_session_repo
+        .update_status(&child.id, IdeationSessionStatus::Archived)
+        .await
+        .unwrap();
+
+    // in_progress=false (verification done)
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &parent_id,
+            VerificationStatus::Verified,
+            false,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let result =
+        get_plan_verification(State(state), unrestricted_scope(), Path(parent_id.as_str().to_string()))
+            .await
+            .expect("handler must succeed");
+
+    let child_info = result
+        .0
+        .verification_child
+        .expect("archived child must still produce verification_child block");
+
+    assert_eq!(child_info.latest_child_session_id, child_id_str);
+    assert!(child_info.latest_child_archived, "archived child must set latest_child_archived=true");
+    assert!(
+        child_info.active_child_session_id.is_none(),
+        "archived child → active_child_session_id must be None"
+    );
+}
+
+/// Last orchestrator message is surfaced in last_assistant_message
+#[tokio::test]
+async fn test_get_plan_verification_child_last_orchestrator_message() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+
+    let parent = IdeationSession::new(project_id.clone());
+    let parent_id = parent.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    let child = IdeationSessionBuilder::new()
+        .project_id(project_id)
+        .parent_session_id(parent_id.clone())
+        .session_purpose(SessionPurpose::Verification)
+        .build();
+    let child_id = child.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(child)
+        .await
+        .unwrap();
+
+    // Seed an orchestrator message in the child session
+    let msg = ChatMessage::orchestrator_in_session(child_id.clone(), "Verification round 1 complete.");
+    state
+        .app_state
+        .chat_message_repo
+        .create(msg)
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &parent_id,
+            VerificationStatus::Reviewing,
+            true,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let result =
+        get_plan_verification(State(state), unrestricted_scope(), Path(parent_id.as_str().to_string()))
+            .await
+            .expect("handler must succeed");
+
+    let child_info = result
+        .0
+        .verification_child
+        .expect("child with message must produce verification_child block");
+
+    assert_eq!(
+        child_info.last_assistant_message.as_deref(),
+        Some("Verification round 1 complete."),
+        "last orchestrator message must be surfaced"
+    );
+    assert!(
+        child_info.last_assistant_message_at.is_some(),
+        "last_assistant_message_at must be populated when message exists"
     );
 }

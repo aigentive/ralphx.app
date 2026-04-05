@@ -137,6 +137,98 @@ pub async fn get_plan_verification(
         (plan_version, generation)
     };
 
+    // Step 5: Fetch verification child continuity data
+    let verification_child = {
+        use crate::http_server::types::VerificationChildInfo;
+        use crate::infrastructure::agents::claude::ideation_activity_threshold_secs;
+
+        match state
+            .app_state
+            .ideation_session_repo
+            .get_latest_verification_child(&session_id_obj)
+            .await
+        {
+            Ok(Some(child)) => {
+                let child_id_str = child.id.as_str().to_string();
+                let child_session_id = IdeationSessionId::from_string(child_id_str.clone());
+
+                // Check running_agent_registry under both keys
+                let session_key = RunningAgentKey::new("session", &child_id_str);
+                let ideation_key = RunningAgentKey::new("ideation", &child_id_str);
+                let registry = &state.app_state.running_agent_registry;
+                let agent_info = if let Some(info) = registry.get(&session_key).await {
+                    Some(info)
+                } else {
+                    registry.get(&ideation_key).await
+                };
+
+                let threshold_secs = ideation_activity_threshold_secs();
+                let agent_state = match &agent_info {
+                    None => "idle".to_string(),
+                    Some(info) => {
+                        if let Some(last_active) = info.last_active_at {
+                            let elapsed = chrono::Utc::now()
+                                .signed_duration_since(last_active)
+                                .num_seconds();
+                            if elapsed >= 0 && (elapsed as u64) < threshold_secs {
+                                "likely_generating".to_string()
+                            } else {
+                                "likely_waiting".to_string()
+                            }
+                        } else {
+                            "likely_generating".to_string()
+                        }
+                    }
+                };
+
+                // Get last orchestrator message, truncated to 500 chars
+                let last_msg = state
+                    .app_state
+                    .chat_message_repo
+                    .get_latest_message_by_role(&child_session_id, "orchestrator")
+                    .await
+                    .ok()
+                    .flatten();
+                let (last_assistant_message, last_assistant_message_at) = match last_msg {
+                    Some(msg) => {
+                        let content = msg.content.chars().take(500).collect::<String>();
+                        let at = msg.created_at.to_rfc3339();
+                        (Some(content), Some(at))
+                    }
+                    None => (None, None),
+                };
+
+                // active_child_session_id: Some only when in_progress=true and child not archived
+                let latest_child_archived = child.status == IdeationSessionStatus::Archived;
+                let active_child_session_id =
+                    if in_progress && !latest_child_archived {
+                        Some(child_id_str.clone())
+                    } else {
+                        None
+                    };
+
+                Some(VerificationChildInfo {
+                    active_child_session_id,
+                    latest_child_session_id: child_id_str,
+                    latest_child_archived,
+                    latest_child_updated_at: child.updated_at.to_rfc3339(),
+                    agent_state,
+                    pending_initial_prompt: child.pending_initial_prompt.clone(),
+                    last_assistant_message,
+                    last_assistant_message_at,
+                })
+            }
+            Ok(None) => None,
+            Err(e) => {
+                error!(
+                    "Failed to fetch verification child for {}: {}",
+                    session_id, e
+                );
+                None
+            }
+        }
+    };
+
     Ok(Json(VerificationResponse {
         session_id,
         status: status.to_string(),
@@ -150,5 +242,6 @@ pub async fn get_plan_verification(
         rounds,
         plan_version,
         verification_generation,
+        verification_child,
     }))
 }

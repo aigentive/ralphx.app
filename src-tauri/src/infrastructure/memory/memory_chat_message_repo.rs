@@ -279,6 +279,24 @@ impl ChatMessageRepository for MemoryChatMessageRepository {
         matching.sort_by_key(|m| m.created_at);
         Ok(matching.first().map(|m| m.content.clone()))
     }
+
+    async fn get_latest_message_by_role(
+        &self,
+        session_id: &IdeationSessionId,
+        role: &str,
+    ) -> AppResult<Option<ChatMessage>> {
+        let messages = self.messages.read().unwrap();
+        let mut matching: Vec<_> = messages
+            .values()
+            .filter(|m| {
+                m.session_id.as_ref().map(|s| s.as_str()) == Some(session_id.as_str())
+                    && m.role.to_string() == role
+            })
+            .cloned()
+            .collect();
+        matching.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(matching.into_iter().next())
+    }
 }
 
 #[cfg(test)]

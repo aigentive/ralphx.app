@@ -316,6 +316,28 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
             .await
     }
 
+    async fn get_latest_message_by_role(
+        &self,
+        session_id: &IdeationSessionId,
+        role: &str,
+    ) -> AppResult<Option<ChatMessage>> {
+        let session_id_str = session_id.as_str().to_string();
+        let role_str = role.to_string();
+        self.db
+            .query_optional(move |conn| {
+                conn.query_row(
+                    "SELECT id, session_id, project_id, task_id, conversation_id, role, content, \
+                     metadata, parent_message_id, tool_calls, content_blocks, created_at \
+                     FROM chat_messages \
+                     WHERE session_id = ?1 AND role = ?2 \
+                     ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                    rusqlite::params![session_id_str, role_str],
+                    ChatMessage::from_row,
+                )
+            })
+            .await
+    }
+
     async fn get_first_user_message_by_context(
         &self,
         context_type: &str,

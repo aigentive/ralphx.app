@@ -19,6 +19,33 @@ pub struct ExternalGapDetail {
     pub description: String,
 }
 
+/// Continuity context for the most recent verification child session (external API).
+/// Defined independently from the internal VerificationChildInfo — no type sharing.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalVerificationChildInfo {
+    /// Non-null only when in_progress=true and the child session is not archived
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_child_session_id: Option<String>,
+    /// Always present when this block exists — the most recent child session ID
+    pub latest_child_session_id: String,
+    /// True when the latest child session is archived
+    pub latest_child_archived: bool,
+    /// updated_at timestamp of the latest child session (RFC3339)
+    pub latest_child_updated_at: String,
+    /// Inferred agent state: "likely_generating" | "likely_waiting" | "idle"
+    pub agent_state: String,
+    /// Deferred launch prompt waiting for capacity, if any
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending_initial_prompt: Option<String>,
+    /// Last orchestrator message content truncated to 500 chars, if any
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_assistant_message: Option<String>,
+    /// Timestamp of the last orchestrator message (RFC3339), if any
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_assistant_message_at: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ExternalVerificationResponse {
     pub status: String,
@@ -30,6 +57,9 @@ pub struct ExternalVerificationResponse {
     #[serde(default)]
     pub gaps: Vec<ExternalGapDetail>,
     pub convergence_reason: Option<String>,
+    /// Continuity context for the most recent verification child session, if any
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verification_child: Option<ExternalVerificationChildInfo>,
 }
 
 /// POST /api/external/trigger_verification
@@ -216,6 +246,99 @@ pub async fn get_plan_verification_external_http(
         })
         .unwrap_or_default();
 
+    // Fetch verification child continuity data
+    let verification_child = {
+        use crate::domain::entities::IdeationSessionId as SessionId;
+        use crate::domain::entities::ideation::IdeationSessionStatus;
+        use crate::domain::services::running_agent_registry::RunningAgentKey;
+        use crate::infrastructure::agents::claude::ideation_activity_threshold_secs;
+
+        match state
+            .app_state
+            .ideation_session_repo
+            .get_latest_verification_child(&session_id_obj)
+            .await
+        {
+            Ok(Some(child)) => {
+                let child_id_str = child.id.as_str().to_string();
+                let child_session_id = SessionId::from_string(child_id_str.clone());
+
+                // Check running_agent_registry under both keys
+                let session_key = RunningAgentKey::new("session", &child_id_str);
+                let ideation_key = RunningAgentKey::new("ideation", &child_id_str);
+                let registry = &state.app_state.running_agent_registry;
+                let agent_info = if let Some(info) = registry.get(&session_key).await {
+                    Some(info)
+                } else {
+                    registry.get(&ideation_key).await
+                };
+
+                let threshold_secs = ideation_activity_threshold_secs();
+                let agent_state = match &agent_info {
+                    None => "idle".to_string(),
+                    Some(info) => {
+                        if let Some(last_active) = info.last_active_at {
+                            let elapsed = chrono::Utc::now()
+                                .signed_duration_since(last_active)
+                                .num_seconds();
+                            if elapsed >= 0 && (elapsed as u64) < threshold_secs {
+                                "likely_generating".to_string()
+                            } else {
+                                "likely_waiting".to_string()
+                            }
+                        } else {
+                            "likely_generating".to_string()
+                        }
+                    }
+                };
+
+                // Get last orchestrator message, truncated to 500 chars
+                let last_msg = state
+                    .app_state
+                    .chat_message_repo
+                    .get_latest_message_by_role(&child_session_id, "orchestrator")
+                    .await
+                    .ok()
+                    .flatten();
+                let (last_assistant_message, last_assistant_message_at) = match last_msg {
+                    Some(msg) => {
+                        let content = msg.content.chars().take(500).collect::<String>();
+                        let at = msg.created_at.to_rfc3339();
+                        (Some(content), Some(at))
+                    }
+                    None => (None, None),
+                };
+
+                // active_child_session_id: Some only when in_progress=true and child not archived
+                let latest_child_archived = child.status == IdeationSessionStatus::Archived;
+                let active_child_session_id = if in_progress && !latest_child_archived {
+                    Some(child_id_str.clone())
+                } else {
+                    None
+                };
+
+                Some(ExternalVerificationChildInfo {
+                    active_child_session_id,
+                    latest_child_session_id: child_id_str,
+                    latest_child_archived,
+                    latest_child_updated_at: child.updated_at.to_rfc3339(),
+                    agent_state,
+                    pending_initial_prompt: child.pending_initial_prompt.clone(),
+                    last_assistant_message,
+                    last_assistant_message_at,
+                })
+            }
+            Ok(None) => None,
+            Err(e) => {
+                error!(
+                    "Failed to fetch verification child for {}: {}",
+                    session_id, e
+                );
+                None
+            }
+        }
+    };
+
     Ok(Json(ExternalVerificationResponse {
         status: status_str,
         in_progress,
@@ -225,5 +348,6 @@ pub async fn get_plan_verification_external_http(
         gap_score: gap_count,
         gaps,
         convergence_reason,
+        verification_child,
     }))
 }
