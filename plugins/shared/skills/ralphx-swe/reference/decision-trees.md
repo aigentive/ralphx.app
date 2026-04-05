@@ -2,7 +2,13 @@
 
 # Decision Trees — Common Scenarios
 
-ASCII decision trees for common agent decision points. States → `state-machine.md`. Events → `event-catalog.md`. All tool names are fully qualified `v1_` names.
+ASCII decision trees for common agent decision points. States → `state-machine.md`. Events →
+`event-catalog.md`.
+
+Environment naming:
+- raw MCP methods: `v1_*`
+- Claude/Codex wrappers: `mcp__ralphx__v1_*`
+- ReefBot wrappers: `ralphx__v1_*`
 
 ---
 
@@ -19,16 +25,17 @@ review:escalated received
 │    ├─ YES → v1_create_task_note(task_id, "Escalation: <reason>. Human review required.")
 │    └─ NO  → v1_create_task_note(task_id, "Escalation received — no reason provided.")
 │
-├─ Alert human (dashboard / notification)
+├─ Alert human / owner (dashboard / notification)
 │    ↓
-│  Human explicitly delegated resolution authority?
+│  Explicit delegation / policy allows resolution?
 │    ├─ YES → v1_resolve_escalation(task_id)
 │    │         state: escalated → approved | revision_needed
 │    └─ NO  → ❌ DO NOT call v1_approve_review or v1_resolve_escalation
-│              Wait for human to act in RalphX UI
+│              Report blocked status and wait for manual decision
 ```
 
-**Rule:** Never auto-resolve escalations. Surface, annotate, and wait.
+**Rule:** Never auto-resolve escalations by default. Surface, annotate, and wait unless current
+policy explicitly grants authority.
 
 ---
 
@@ -129,7 +136,8 @@ v1_trigger_plan_verification(session_id) called
 │    │
 │    ├─ "InProgress" → Continue checking (up to 10 min total)
 │    │
-│    ├─ "Failed"     → v1_get_plan(session_id) — inspect gap list
+│    ├─ "Failed" | "NeedsRevision"
+│    │                → v1_get_plan(session_id) — inspect gap list
 │    │                  v1_send_ideation_message(session_id, "Verification failed: <gaps>")
 │    │                  v1_trigger_plan_verification(session_id)  [retry; max 2 retries]
 │    │                       ↓
@@ -139,7 +147,7 @@ v1_trigger_plan_verification(session_id) called
 │    │
 │    └─ Polling > 10 min without resolution
 │          → v1_get_plan(session_id) — check plan state
-│          → Alert human: "Verification not converging after 10 min"
+│          → Alert human/owner: "Verification not converging after 10 min"
 │          → Await human guidance before proceeding
 ```
 

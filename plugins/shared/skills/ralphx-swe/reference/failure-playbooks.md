@@ -1,6 +1,12 @@
 # Failure Playbooks
 
-Step-by-step recovery for the 4 most common failure modes. Each playbook uses real `v1_` tool calls with valid parameters.
+Step-by-step recovery for the 4 most common failure modes. Each playbook uses real `v1_` tool calls
+with valid parameters.
+
+Environment naming:
+- raw MCP methods: `v1_*`
+- Claude/Codex wrappers: `mcp__ralphx__v1_*`
+- ReefBot wrappers: `ralphx__v1_*`
 
 ---
 
@@ -125,7 +131,8 @@ const detail = await callWithBackoff('v1_get_task_detail', { task_id: 'task-abc1
 
 ## Playbook 4 — Ideation Agent Idle / Not Responding
 
-**Symptom:** No `ideation:plan_created` or `ideation:auto_propose_sent` event after several minutes; `v1_get_ideation_status` shows agent state is not `generating`.
+**Symptom:** No `ideation:plan_created` or `ideation:auto_propose_sent` event after several
+minutes; `v1_get_ideation_status` shows agent state is not `generating`.
 
 **Root cause:** The orchestrator agent may be waiting for input, or the session stalled after the initial prompt.
 
@@ -147,7 +154,7 @@ if (status.agent_status === 'waiting_for_input' || status.agent_status === 'idle
   });
 }
 
-// 3. If proposals exist but plan hasn't been created, trigger verification
+// 3. If proposals exist but verification is missing or stale, trigger verification
 if (status.proposal_count > 0) {
   const plan = await mcp.call('v1_get_plan', { session_id: 'sess-abc123' });
   if (plan.status !== 'verified') {

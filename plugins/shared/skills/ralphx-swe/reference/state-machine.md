@@ -43,17 +43,18 @@ Full reference for all 24 task states visible via `v1_batch_task_status` and `ta
 
 **Rule:** You will rarely observe transient states — they vanish in milliseconds. If `v1_batch_task_status` returns one, check status again shortly for the settled state.
 
-### Waiting — Human Action Required (5 states)
+### Waiting — Decision or Intervention Required (5 states)
 
-| State | Meaning | Required Action |
+| State | Meaning | Typical Action |
 |-------|---------|----------------|
-| `review_passed` | AI review complete, passed — awaiting human approval | `v1_approve_review` or `v1_request_changes` |
-| `escalated` | AI review needs human decision | `v1_resolve_escalation` — only if human explicitly delegated; otherwise alert human |
+| `review_passed` | AI review complete, passed — approval decision point | If delegated/allowed: `v1_approve_review` or `v1_request_changes`; otherwise report pending decision |
+| `escalated` | AI review needs exceptional intervention | `v1_resolve_escalation` only if delegated/policy allows; otherwise alert human/owner |
 | `qa_failed` | QA tests failed | Human decides: fix (`v1_request_changes`) or manually skip QA via app UI |
 | `merge_incomplete` | Merger agent errored mid-merge | Human investigates; `v1_get_task_detail` for context |
 | `merge_conflict` | Merge conflicts could not be resolved | Human must resolve; do NOT retry automatically |
 
-**Rule:** These states require human decisions. Agents annotate (`v1_create_task_note`) and notify. Never auto-resolve `escalated` or `merge_conflict`.
+**Rule:** These states require a decision or manual intervention. `review_passed` is policy-driven;
+`escalated`, `merge_conflict`, and `merge_incomplete` should be surfaced immediately.
 
 ### Suspended (1 state)
 
@@ -113,7 +114,7 @@ Full reference for all 24 task states visible via `v1_batch_task_status` and `ta
 
 ```
 backlog → ready → executing → pending_review → (auto) reviewing
-→ review_passed → [human: v1_approve_review] → approved → (auto) pending_merge
+→ review_passed → [decision: v1_approve_review] → approved → (auto) pending_merge
 → merged  (fast path: programmatic merge)
        or merging → merged  (merger agent needed)
 ```
@@ -123,7 +124,7 @@ backlog → ready → executing → pending_review → (auto) reviewing
 ```
 backlog → ready → executing → qa_refining → qa_testing
 → qa_passed → (auto) pending_review → (auto) reviewing
-→ review_passed → [human: v1_approve_review] → approved → (auto) pending_merge → merged
+→ review_passed → [decision: v1_approve_review] → approved → (auto) pending_merge → merged
 ```
 
 ### Revision Loop (Normal — Can Repeat 2-3×)
@@ -169,4 +170,6 @@ reviewing → (branch stale) → merging → merged → pending_review  (re-queu
 
 `v1_batch_task_status` returns the current `status` string for up to 50 tasks. All 24 states are valid return values. Events arrive passively via automated infrastructure — listen for `task:status_changed` events for real-time transitions.
 
-**Human gate (NON-NEGOTIABLE):** `review_passed` and `escalated` require a human to call `v1_approve_review`, `v1_request_changes`, or `v1_resolve_escalation`. Autonomous agents MUST NOT auto-approve without explicit human delegation.
+**Key distinction:** `review_passed` is the approval-decision stage. `pending_merge` / `merge:ready`
+are merge-pipeline stages after approval. Do not turn `merge:ready` into a second generic approval
+ask. When a session reaches `delivery_status = delivered`, all tasks are merged to main.

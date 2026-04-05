@@ -6,7 +6,14 @@ A Claude Code plugin providing behavioral skills for autonomous agents interacti
 
 This plugin teaches external Claude Code agents **judgment** for navigating the RalphX pipeline: when to act vs observe, how to handle edge cases, what events mean for decision-making. It supplements the `v1_get_agent_guide` API reference (tool schemas, sequencing rules) with operational playbook content.
 
-**Audience:** External autonomous agents interacting with RalphX via the External MCP API (`v1_*` tools).
+**Audience:** External autonomous agents interacting with RalphX via the External MCP API.
+
+**Naming note:**
+- raw MCP methods are `v1_*`
+- Claude/Codex MCP wrappers are typically `mcp__ralphx__v1_*`
+- ReefBot tool names are `ralphx__v1_*`
+
+Never derive tool names from the skill name.
 
 **Not for:** Internal RalphX agents (those use `plugins/app/` inside the RalphX app).
 
@@ -111,7 +118,7 @@ skills/ralphx-swe/
 
 The main skill file (~180 lines). Contains:
 - **Bootstrap** — 2 startup steps every session: check attention items, load tool guide
-- **Core Principles** — observe before act, event-driven (passive), annotate before intervene, human merge gate (NON-NEGOTIABLE)
+- **Core Principles** — observe before act, event-driven (passive), annotate before intervene, separate review approval from merge progression
 - **Do's and Don'ts** — situations with correct and incorrect actions
 - **Quick Decision Guide** — 9 most common `if X then Y` decision points with exact tool calls
 - **Reference Navigation** — table pointing to the 5 reference files

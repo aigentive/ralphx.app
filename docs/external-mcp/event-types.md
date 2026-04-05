@@ -8,7 +8,9 @@ TypeScript interfaces: `plugins/app/ralphx-external-mcp/src/tools/events.ts` —
 
 ## Two-Channel Delivery Guarantee
 
-All 8 lifecycle events (`task:execution_started`, `task:execution_completed`, `review:ready`, `review:approved`, `review:changes_requested`, `review:escalated`, `merge:completed`, `merge:conflict`) are delivered via **both** channels on every transition:
+All 9 lifecycle events (`task:execution_started`, `task:execution_completed`, `review:ready`,
+`review:approved`, `review:changes_requested`, `review:escalated`, `merge:ready`,
+`merge:completed`, `merge:conflict`) are delivered via **both** channels on every transition:
 
 | Channel | Mechanism | Consumer |
 |---|---|---|
@@ -37,15 +39,16 @@ Emitted when a new task is created in the project.
 
 ### `task:status_changed`
 
-Emitted when a task transitions between pipeline statuses (e.g., Backlog → Executing, Executing → PendingReview).
+Emitted when a task transitions between pipeline statuses (for example `backlog → executing`,
+`executing → pending_review`).
 
 ```json
 {
   "event_type": "task:status_changed",
   "task_id": "task-abc123",
   "project_id": "proj-xyz",
-  "old_status": "Executing",
-  "new_status": "PendingReview",
+  "old_status": "executing",
+  "new_status": "pending_review",
   "timestamp": "2026-03-20T14:15:00Z"
 }
 ```
@@ -80,7 +83,7 @@ Emitted when a worker agent begins executing a task.
 
 ### `task:execution_completed`
 
-Emitted when a worker agent finishes execution and the task moves out of the Executing state.
+Emitted when a worker agent finishes execution and the task moves out of the `executing` state.
 
 ```json
 {
@@ -97,7 +100,7 @@ Emitted when a worker agent finishes execution and the task moves out of the Exe
 
 ### `review:ready`
 
-Emitted when a task enters PendingReview and is queued for the reviewer agent.
+Emitted when a task enters `pending_review` and is queued for the reviewer agent.
 
 ```json
 {
@@ -110,7 +113,7 @@ Emitted when a task enters PendingReview and is queued for the reviewer agent.
 
 ### `review:approved`
 
-Emitted when the reviewer agent approves a task, moving it toward merge.
+Emitted when the approval decision is made for a reviewed task and it moves toward merge.
 
 ```json
 {
@@ -136,7 +139,8 @@ Emitted when the reviewer agent requests changes, sending the task back to re-ex
 
 ### `review:escalated`
 
-Emitted when the reviewer agent escalates a task for human attention. Requires manual triage before the task can continue.
+Emitted when the reviewer agent escalates a task for exceptional attention. Requires manual triage
+or delegated resolution before the task can continue.
 
 ```json
 {
@@ -154,7 +158,8 @@ Emitted when the reviewer agent escalates a task for human attention. Requires m
 
 ### `merge:ready`
 
-Emitted when a task enters PendingMerge and is queued for the merger agent.
+Emitted when a task enters `pending_merge` and is queued for the merger agent. This is a
+merge-pipeline progress event, not a second generic approval ceremony.
 
 ```json
 {
@@ -261,6 +266,34 @@ Emitted when the auto-propose pipeline successfully creates tasks from finalized
   "timestamp": "2026-03-20T13:51:00Z"
 }
 ```
+
+### `ideation:session_accepted`
+
+Emitted when the ideation session is accepted and enters delivery tracking.
+
+```json
+{
+  "event_type": "ideation:session_accepted",
+  "session_id": "session-def456",
+  "project_id": "proj-xyz",
+  "timestamp": "2026-03-20T13:52:00Z"
+}
+```
+
+---
+
+## Delivery Semantics
+
+`merge:completed` is a per-task event. Session delivery completion is derived separately via
+`v1_get_session_tasks`:
+
+- `delivery_status: "pending_review"` → some tasks are waiting on review/approval
+- `delivery_status: "in_progress"` → tasks still executing, queued, or merging
+- `delivery_status: "partial"` → some merged, the rest ended terminally
+- `delivery_status: "delivered"` → all tasks merged to main
+
+External agents should report "plan delivered" only when the session delivery status is
+`delivered`.
 
 ### `ideation:session_accepted`
 

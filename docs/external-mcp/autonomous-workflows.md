@@ -2,7 +2,14 @@
 
 This document describes how autonomous Claude Code CLI agents navigate the full RalphX pipeline using the External MCP tools and webhooks.
 
-**Key principle:** Agents are fully autonomous — they do NOT mirror RalphX's internal state machine. Instead, they observe pipeline events via webhooks, query current state via MCP tools, and act accordingly. Each agent role (PM, SWE, Reviewer) decides autonomously what to do next.
+**Key principle:** Agents are fully autonomous — they do NOT mirror RalphX's internal state
+machine. Instead, they observe pipeline events via webhooks, query current state via MCP tools,
+and act accordingly.
+
+Important distinctions:
+- `review_passed` is the approval-decision point
+- `merge:ready` / `pending_merge` are merge-pipeline progress signals after approval
+- session delivery is complete when `delivery_status = "delivered"` and all tasks are merged
 
 ---
 
@@ -151,10 +158,14 @@ Webhook: review:ready
   │    v1_request_changes(task_id, comments)
   │    → task re-enters execution queue
   │
-  └─ [if approved]
+  └─ [if approval authority exists in this integration/policy]
        v1_approve_review(task_id)
        → task enters PendingMerge
        → webhook fires: review:approved
+
+If the current integration does NOT grant approval authority, the agent should report the review
+result and wait for the delegated decider. Do not assume every external agent may approve. Do not
+assume every external agent must ask a human.
 ```
 
 **Review webhook events:**
@@ -162,59 +173,63 @@ Webhook: review:ready
 | Event | When | Agent action |
 |-------|------|--------------|
 | `review:ready` | Task queued for review | Spawn Reviewer agent |
-| `review:approved` | Review passed | Monitor merge pipeline |
+| `review:approved` | Approval decision made; merge pipeline continues | Monitor merge pipeline |
 | `review:changes_requested` | Changes needed | Log; SWE monitors re-execution |
-| `review:escalated` | Human triage needed | Alert human; spawn Senior agent |
+| `review:escalated` | Exceptional triage needed | Alert human/owner; spawn Senior agent if useful |
 
 **Escalation handling:**
 
 ```typescript
 // On review:escalated
 async function handleEscalation(event: ReviewEscalatedEvent) {
-  // 1. Notify human operator
+  // 1. Notify human operator / owner
   await notifyHuman({
     message: `Task ${event.task_id} escalated for human review`,
     task_url: buildTaskUrl(event.task_id),
   });
 
-  // 2. Agent can investigate but NOT resolve without human
+  // 2. Agent can investigate but should not resolve unless explicitly delegated
   const detail = await mcp.call('v1_get_task_detail', { task_id: event.task_id });
   await mcp.call('v1_create_task_note', {
     task_id: event.task_id,
     note: `Escalation: ${detail.escalation_reason}. Human review required.`,
   });
 
-  // 3. Human calls v1_resolve_escalation manually
+  // 3. Delegated resolver decides whether to call v1_resolve_escalation
 }
 ```
 
 ---
 
-### Phase 4: Merge (Human Gate)
+### Phase 4: Merge
 
-**The human merge gate is NON-NEGOTIABLE.** Agents can prepare and recommend but cannot approve merge without human action.
+`merge:ready` is a merge-pipeline event, not a second generic review/approval ceremony.
+By this point the approval decision has already happened. External agents should monitor merge
+progress and only surface exceptions such as `merge:conflict`.
 
 ```
 Webhook: merge:ready
   │
-  PM Agent (or notification to human)
+  PM Agent
   │
   ├─ v1_get_merge_pipeline(project_id)
-  │    → see tasks pending merge approval
+  │    → see tasks entering merge orchestration
   │
-  └─ [HUMAN ACTION REQUIRED]
-       Human reviews changes in RalphX UI
-       Human approves merge
+  └─ Await merge outcome
        → webhook fires: merge:completed
+       or merge:conflict
 ```
 
 **Merge webhook events:**
 
 | Event | When | Agent action |
 |-------|------|--------------|
-| `merge:ready` | Task awaiting merge approval | Notify human; queue for review |
-| `merge:completed` | Branch merged to main | Log; update project status |
+| `merge:ready` | Task entering merge pipeline | Monitor; no generic user prompt required |
+| `merge:completed` | Branch merged to main | Log; update delivery status |
 | `merge:conflict` | Merge conflict detected | Alert human; provide context via note |
+
+When all tasks from a session are merged, `v1_get_session_tasks` returns
+`delivery_status: "delivered"`. That is the correct moment to report "plan delivered".
 
 ---
 
@@ -229,7 +244,7 @@ async function runAttentionCheck(projectId: string) {
     { project_id: projectId },
   );
 
-  // Handle escalated reviews — human triage required
+  // Handle escalated reviews — exceptional triage required
   for (const item of escalated_reviews) {
     await handleEscalation(item);
   }
@@ -332,7 +347,7 @@ async function onMcpReconnect() {
 | Principle | Detail |
 |-----------|--------|
 | **Autonomous navigation** | Agents use MCP tools to read current state — no internal state mirror |
-| **Human merge gate** | Agents NEVER approve merges. Prepare context; human decides |
+| **Approval authority is policy-driven** | Agents may approve at `review_passed` only when their current integration/policy grants authority |
 | **Observe before act** | Annotate with v1_create_task_note before any intervention |
 | **Fire-and-forget dispatch** | Webhook events route to agents; agents decide what to do |
 | **Graceful degradation** | Webhooks primary; cursor polling as fallback |

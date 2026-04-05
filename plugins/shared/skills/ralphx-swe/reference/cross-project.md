@@ -32,8 +32,9 @@ to check status.
 `merge:conflict`, and other events may originate from any project in the cross-project plan.
 Handle each event in the context of its own `project_id`.
 
-**Reviews and escalations follow the same rules.** The human merge gate and escalation rules
-apply per-task, per-project — cross-project scope does not change them.
+**Reviews and escalations follow the same rules.** Approval authority remains policy-driven at
+`review_passed`, and escalation rules still apply per-task, per-project — cross-project scope does
+not change them.
 
 **No special setup required.** Event routing is automatic. Your agent receives events from all
 projects it is registered against.

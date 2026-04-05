@@ -2,7 +2,9 @@
 
 # RalphX Event Catalog
 
-All pipeline events emitted by RalphX. Events arrive passively via automated infrastructure — each event has a discriminated `event_type` field. All events include `project_id` and `timestamp` (ISO 8601 UTC).
+All pipeline events emitted by RalphX. Events arrive passively via automated infrastructure — each
+event has a discriminated `event_type` field. All events include `project_id` and `timestamp` (ISO
+8601 UTC).
 
 States referenced below → see `state-machine.md`.
 
@@ -32,11 +34,12 @@ A task transitioned between pipeline states.
 | `new_status` | string | Current state |
 
 **Agent reaction:** Branch on `new_status`:
-- `Executing` → worker agent is now active; monitor for `task:step_completed` events
-- `PendingReview` → review queue updated; expect `review:ready` shortly
-- `PendingMerge` → merge queue updated; expect `merge:ready` shortly
-- `Merged` → task complete; update downstream dependency tracking
-- `Escalated` → human triage required; surface in attention dashboard
+- `executing` → worker agent is now active; monitor for `task:step_completed` events
+- `pending_review` → review queue updated; expect `review:ready` shortly
+- `review_passed` → approval decision point; either act if delegated/allowed or report pending decision
+- `pending_merge` → merge queue updated; expect `merge:ready` shortly; this is not a second generic approval ask
+- `merged` → task complete; update downstream dependency tracking
+- `escalated` → exceptional triage required; surface in attention dashboard
 
 ---
 
@@ -71,7 +74,9 @@ The worker agent finished execution; task will transition away from `Executing`.
 |-------|------|-------|
 | `task_id` | string | — |
 
-**Agent reaction:** Expect `task:status_changed` with `new_status: PendingReview` (or `Escalated` on failure). If status change does not arrive within 60s, call `v1_get_attention_items` to check for failure.
+**Agent reaction:** Expect `task:status_changed` with `new_status: pending_review` (or `escalated`
+on failure). If status change does not arrive within 60s, call `v1_get_attention_items` to check
+for failure.
 
 ---
 
@@ -95,7 +100,8 @@ Reviewer approved the task; it will advance to `PendingMerge`.
 |-------|------|-------|
 | `task_id` | string | — |
 
-**Agent reaction:** Update task tracking. Expect `merge:ready` shortly. Begin any post-approval preparation (e.g., deployment notifications).
+**Agent reaction:** Update task tracking. Expect `merge:ready` shortly. Treat `merge:ready` as
+merge-pipeline progress after approval, not as a fresh approval request.
 
 ---
 
@@ -131,7 +137,8 @@ Task entered `PendingMerge`; merger agent is queued.
 |-------|------|-------|
 | `task_id` | string | — |
 
-**Agent reaction:** Await `merge:completed` or `merge:conflict`. No action required unless implementing custom merge routing.
+**Agent reaction:** Await `merge:completed` or `merge:conflict`. No action required unless your
+integration has explicit merge-specific routing. Do not prompt for a generic second approval here.
 
 ---
 
@@ -142,7 +149,9 @@ Merger agent successfully merged the task branch. Task enters `Merged` state.
 |-------|------|-------|
 | `task_id` | string | — |
 
-**Agent reaction:** Mark task complete in tracking. Unblock any tasks that listed this task as a dependency (`blocked_by`). Trigger downstream deployment or notification workflows.
+**Agent reaction:** Mark task complete in tracking. Unblock any tasks that listed this task as a
+dependency (`blocked_by`). Trigger downstream workflows. If all tasks from a session are merged,
+report the session as delivered.
 
 ---
 
@@ -227,7 +236,20 @@ Auto-propose pipeline failed to create tasks.
 | `session_id` | string | — |
 | `error` | string | Failure reason |
 
-**Agent reaction:** Log `error`. Surface to human for manual intervention — proposals exist but tasks were not created. User may need to manually trigger task creation from the session.
+**Agent reaction:** Log `error`. Surface to human/owner for manual intervention — proposals exist
+but tasks were not created. User may need to manually trigger task creation from the session.
+
+---
+
+### `ideation:session_accepted`
+The ideation session was accepted and moved into delivery tracking.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `session_id` | string | — |
+
+**Agent reaction:** Switch from plan supervision to delivery supervision. Use
+`v1_get_session_tasks` and `delivery_status` to track progress until delivered.
 
 ---
 

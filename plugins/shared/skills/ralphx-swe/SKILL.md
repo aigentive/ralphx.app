@@ -20,6 +20,16 @@ argument-hint: "[section: quick-start | state-machine | decisions | events | rec
 
 Two steps before taking any pipeline action:
 
+**Environment naming rule** (read this before any tool call):
+```
+Raw MCP method names: v1_*
+Claude/Codex MCP wrappers: mcp__ralphx__v1_*
+ReefBot tool names: ralphx__v1_*
+
+Never invent a namespace from this skill name.
+Never call mcp__ralphx-swe__*.
+```
+
 **Step 1 — Check attention items** (find what needs action right now):
 ```
 v1_get_attention_items(project_id)
@@ -47,17 +57,31 @@ your reasoning. This creates an audit trail for humans reviewing your decisions.
 include the human-readable title. Use `v1_get_task_detail` or `v1_batch_task_status` to resolve
 titles. Format: `task-{id} ({Title})`.
 
-**Human merge gate is NON-NEGOTIABLE.** Tasks in `review_passed` require a human to call
-`v1_approve_review`. You MUST NOT auto-approve tasks without explicit human delegation. This is
-the single hardest rule in this playbook — never violate it.
+**Separate review approval from merge progression.** `review_passed` is the approval-decision
+point. `merge:ready` / `pending_merge` are merge-pipeline observation states. Do NOT ask for a
+second "merge approval" unless your integration explicitly defines one.
+
+**Approval authority is integration-specific.** On `review_passed`, either:
+- act if your current policy/delegation allows `v1_approve_review` / `v1_request_changes`
+- or report that a decision is pending
+
+Never assume approval is always human-only. Never assume approval is always autonomous.
 
 **Conservative intervention.** When uncertain, annotate and wait. A wrong auto-action (retrying a
 non-transient failure, sending a message to a generating agent) causes more damage than a brief
 delay. Escalate to human attention when in doubt.
 
-**v1_resolve_escalation requires delegation.** The tool exists, but you MUST NOT call it unless a
-human has explicitly granted you escalation resolution authority for this task. Default behavior on
-`review:escalated` is: annotate + alert human.
+**Escalations are exception states.** `review:escalated`, `merge_conflict`, and
+`merge_incomplete` should be surfaced immediately. Only resolve `review:escalated` if your current
+policy/delegation explicitly allows it.
+
+**Report for chat surfaces, not operator consoles.** Telegram, Slack, and WhatsApp updates should
+be short:
+- line 1: what changed
+- line 2: next automatic step or blocker
+- line 3 only if user action is truly required
+
+Do not ask "shall I approve?" unless approval is genuinely blocked on the user.
 
 ---
 
@@ -65,9 +89,9 @@ human has explicitly granted you escalation resolution authority for this task. 
 
 | Situation | ✅ Do | ❌ Don't |
 |-----------|-------|---------|
-| Task in `review_passed` | Call `v1_approve_review` or `v1_request_changes` (human decision required) | Auto-approve without human confirmation |
-| Task in `escalated` | Annotate + alert human; call `v1_resolve_escalation` ONLY if human explicitly delegated | Auto-resolve escalation |
-| `review:escalated` event arrives | `v1_get_task_detail` → `v1_create_task_note` → alert human | Call `v1_approve_review` on escalated task (requires `review_passed` or `escalated` — but still needs human) |
+| Task in `review_passed` | Check current authority/policy. If allowed: `v1_approve_review` or `v1_request_changes`. If not: report pending decision. | Assume a human must always approve, or assume you may always auto-approve |
+| Task in `escalated` | Annotate + alert human/owner; call `v1_resolve_escalation` ONLY if delegation/policy explicitly allows | Auto-resolve escalation by default |
+| `review:escalated` event arrives | `v1_get_task_detail` → `v1_create_task_note` → surface blocker clearly | Treat it like an ordinary `review_passed` case |
 | Task in `merge_conflict` | Annotate with conflict files + alert human | Call `v1_retry_task` (resets branch context) |
 | Task in `blocked` | Call `v1_get_task_detail` to inspect blocker; notify human if human-input block | Cancel the blocked task |
 | `system:webhook_unhealthy` received | System handles recovery automatically — no agent action required | Attempt to manage webhook transport manually |
@@ -79,6 +103,8 @@ human has explicitly granted you escalation resolution authority for this task. 
 | Task iterating `reviewing → re_executing` | Log the cycle count; only intervene after ~5 cycles | Interrupt the loop — normal iteration is 2-3 cycles |
 | Freshness conflict (`executing → merging`) | Observe; this is automatic rebasing, not a failure | Panic or annotate — it resolves to `ready` or `pending_review` automatically |
 | QA fails (`qa_failed`) | Call `v1_get_task_detail` + surface to human; human decides: `v1_request_changes` or manually skips QA via app UI | Auto-retry QA without human review |
+| `merge:ready` or `pending_merge` | Treat as merge-pipeline progress; monitor for `merge:completed` or `merge:conflict` | Ask the user for a second generic merge approval |
+| Session `delivery_status = delivered` | Report "all tasks merged to main" / "plan delivered" | Continue talking as if approval is still pending |
 
 ---
 
@@ -90,7 +116,9 @@ The 9 most common decision points:
 → `v1_get_task_detail(task_id)` → `v1_create_task_note(task_id, "Escalated: <reason>")` → Alert human
 
 **2. Event arrives: `review_passed`**
-→ Surface in attention dashboard → Wait for human to call `v1_approve_review` or `v1_request_changes`
+→ Check current authority/policy
+→ If allowed: inspect `v1_get_review_summary` + `v1_get_task_diff` → call `v1_approve_review` or `v1_request_changes`
+→ If not allowed: report decision pending with task title and key finding summary
 
 **3. Event arrives: `merge:conflict`**
 → `v1_get_task_detail(task_id)` for conflict files → `v1_create_task_note(task_id, "Merge conflict in: <files>")` → Alert human
@@ -116,6 +144,10 @@ The 9 most common decision points:
 **9. Ideation plan ready — should I accept?**
 → Only if: plan exists AND `v1_get_plan_verification` returns `Verified` status
 → Then: `v1_accept_plan_and_schedule(session_id)` → note returned task IDs
+
+**10. Session delivery reaches `delivered`**
+→ Report concise completion: "All tasks merged to main. Plan delivered."
+→ Include task count or key titles only if useful
 
 ---
 
