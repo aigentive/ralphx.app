@@ -100,7 +100,24 @@ pub async fn create_plan_artifact(
         );
     }
 
-    let ideation_plan_payload = serde_json::json!({
+    // Project lookup for webhook enrichment (non-fatal if not found)
+    let project_name = state
+        .app_state
+        .project_repo
+        .get_by_id(&project_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|p| p.name);
+
+    let presentation_ctx = crate::domain::services::WebhookPresentationContext {
+        project_name,
+        session_title: session_title.clone(),
+        presentation_kind: Some(crate::domain::services::PresentationKind::PlanCreated),
+        task_title: None,
+    };
+
+    let mut ideation_plan_payload = serde_json::json!({
         "session_id": session_id.as_str(),
         "project_id": project_id.as_str(),
         "artifact_id": created.id.as_str(),
@@ -108,11 +125,28 @@ pub async fn create_plan_artifact(
         "timestamp": chrono::Utc::now().to_rfc3339(),
     });
 
+    // Tauri frontend-only emit — unenriched (frontend payload unchanged)
     if let Some(app_handle) = &state.app_state.app_handle {
         let _ = app_handle.emit("ideation:plan_created", &ideation_plan_payload);
     }
 
-    if let Err(e) = state
+    // Enrich payload for external channel
+    presentation_ctx.inject_into(&mut ideation_plan_payload);
+
+    // External emit via mandatory helper
+    if let Some(ref publisher) = state.app_state.webhook_publisher {
+        if let Err(msg) = crate::domain::services::emit_external_webhook_event(
+            "ideation:plan_created",
+            project_id.as_str(),
+            ideation_plan_payload,
+            &state.app_state.external_events_repo,
+            publisher,
+        )
+        .await
+        {
+            tracing::warn!(error = %msg, "Failed to emit ideation:plan_created external event (non-fatal)");
+        }
+    } else if let Err(e) = state
         .app_state
         .external_events_repo
         .insert_event(
@@ -123,16 +157,6 @@ pub async fn create_plan_artifact(
         .await
     {
         tracing::warn!(error = %e, "Failed to persist IdeationPlanCreated event (non-fatal)");
-    }
-
-    if let Some(ref publisher) = state.app_state.webhook_publisher {
-        let _ = publisher
-            .publish(
-                EventType::IdeationPlanCreated,
-                project_id.as_str(),
-                ideation_plan_payload,
-            )
-            .await;
     }
 
     if let Some(generation) = auto_verify_generation {

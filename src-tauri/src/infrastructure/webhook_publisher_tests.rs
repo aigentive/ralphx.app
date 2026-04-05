@@ -9,6 +9,7 @@ mod tests {
 
     use crate::domain::repositories::external_events_repository::ExternalEventsRepository;
     use crate::domain::repositories::{WebhookRegistration, WebhookRegistrationRepository};
+    use crate::domain::services::payload_enrichment::{PresentationKind, WebhookPresentationContext};
     use crate::domain::state_machine::services::WebhookPublisher as WebhookPublisherTrait;
     use crate::infrastructure::memory::{
         MemoryExternalEventsRepository, MemoryWebhookRegistrationRepository,
@@ -24,7 +25,7 @@ mod tests {
     // ============================================================================
 
     struct RecordingWebhookPublisher {
-        calls: Arc<RwLock<Vec<(EventType, String)>>>,
+        calls: Arc<RwLock<Vec<(EventType, String, serde_json::Value)>>>,
     }
 
     impl RecordingWebhookPublisher {
@@ -42,8 +43,17 @@ mod tests {
             let calls = self.calls.read().await;
             calls
                 .iter()
-                .filter(|(et, _)| et.to_string() == event_type)
+                .filter(|(et, _, _)| et.to_string() == event_type)
                 .count()
+        }
+
+        /// Returns the captured payload for the first call matching `event_type`.
+        async fn get_payload_for(&self, event_type: &str) -> Option<serde_json::Value> {
+            let calls = self.calls.read().await;
+            calls
+                .iter()
+                .find(|(et, _, _)| et.to_string() == event_type)
+                .map(|(_, _, payload)| payload.clone())
         }
     }
 
@@ -53,12 +63,12 @@ mod tests {
             &self,
             event_type: EventType,
             project_id: &str,
-            _payload: serde_json::Value,
+            payload: serde_json::Value,
         ) {
             self.calls
                 .write()
                 .await
-                .push((event_type, project_id.to_string()));
+                .push((event_type, project_id.to_string(), payload));
         }
     }
 
@@ -646,5 +656,75 @@ mod tests {
                 .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
             "Hex part must be lowercase hex"
         );
+    }
+
+    // ============================================================================
+    // Test 11: merge:completed payload captures human_context and presentation_kind
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_merge_completed_payload_captures_presentation_fields() {
+        let publisher = RecordingWebhookPublisher::new();
+
+        // Build a merge:completed payload that mirrors what complete_merge_internal emits
+        let ctx = WebhookPresentationContext {
+            project_name: Some("Test Project".to_string()),
+            session_title: Some("Test Session".to_string()),
+            task_title: Some("Test Task".to_string()),
+            presentation_kind: Some(PresentationKind::MergeCompleted),
+        };
+        let mut payload = serde_json::json!({
+            "task_id": "task-wp-test",
+            "project_id": "proj-wp-test",
+            "session_id": "session-wp-test",
+            "category": "regular",
+            "source_branch": "ralphx/task/test",
+            "target_branch": "main",
+            "commit_sha": "abc123def456",
+            "timestamp": "2026-01-01T00:00:00Z",
+        });
+        ctx.inject_into(&mut payload);
+
+        publisher
+            .publish(EventType::MergeCompleted, "proj-wp-test", payload.clone())
+            .await;
+
+        // Payload must be captured by the recording publisher
+        let captured = publisher
+            .get_payload_for("merge:completed")
+            .await
+            .expect("merge:completed payload must be captured");
+
+        // Enrichment fields
+        assert_eq!(
+            captured["human_context"].as_str().unwrap(),
+            "[Test Project] Test Session \u{2192} Test Task",
+            "human_context must use [project] session → task format"
+        );
+        assert_eq!(
+            captured["presentation_kind"].as_str().unwrap(),
+            "merge_completed",
+            "presentation_kind must be merge_completed"
+        );
+        assert_eq!(
+            captured["project_name"].as_str().unwrap(),
+            "Test Project"
+        );
+        assert_eq!(
+            captured["session_title"].as_str().unwrap(),
+            "Test Session"
+        );
+        assert_eq!(
+            captured["task_title"].as_str().unwrap(),
+            "Test Task"
+        );
+
+        // Backward compat: original fields still present
+        assert_eq!(captured["task_id"].as_str().unwrap(), "task-wp-test");
+        assert_eq!(captured["project_id"].as_str().unwrap(), "proj-wp-test");
+        assert_eq!(captured["session_id"].as_str().unwrap(), "session-wp-test");
+        assert_eq!(captured["commit_sha"].as_str().unwrap(), "abc123def456");
+        assert_eq!(captured["target_branch"].as_str().unwrap(), "main");
+        assert!(captured.get("timestamp").is_some(), "timestamp must be present");
     }
 }

@@ -448,24 +448,58 @@ pub async fn update_plan_verification(
             origin = %session.origin,
             "Verification reached terminal verified state — running verified side effects"
         );
-        let verified_payload = serde_json::json!({
+
+        // Project lookup for webhook enrichment (non-fatal if not found)
+        let project_name = state
+            .app_state
+            .project_repo
+            .get_by_id(&session.project_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|p| p.name);
+
+        let presentation_ctx = crate::domain::services::WebhookPresentationContext {
+            project_name,
+            session_title: session.title.clone(),
+            presentation_kind: Some(crate::domain::services::PresentationKind::Verified),
+            task_title: None,
+        };
+
+        let mut verified_payload = serde_json::json!({
             "session_id": session_id,
             "project_id": session.project_id.as_str(),
             "convergence_reason": metadata.convergence_reason,
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
-        if let Err(e) = state.app_state.external_events_repo
-            .insert_event("ideation:verified", session.project_id.as_str(), &verified_payload.to_string())
+
+        // Enrich payload for external channel
+        presentation_ctx.inject_into(&mut verified_payload);
+
+        // External emit via mandatory helper
+        if let Some(ref publisher) = state.app_state.webhook_publisher {
+            if let Err(msg) = crate::domain::services::emit_external_webhook_event(
+                "ideation:verified",
+                session.project_id.as_str(),
+                verified_payload,
+                &state.app_state.external_events_repo,
+                publisher,
+            )
+            .await
+            {
+                tracing::warn!(error = %msg, session_id = %session_id, "Failed to emit ideation:verified external event (non-fatal)");
+            }
+        } else if let Err(e) = state
+            .app_state
+            .external_events_repo
+            .insert_event(
+                "ideation:verified",
+                session.project_id.as_str(),
+                &verified_payload.to_string(),
+            )
             .await
         {
             tracing::warn!(error = %e, session_id = %session_id, "Failed to persist ideation:verified event");
-        }
-        if let Some(ref publisher) = state.app_state.webhook_publisher {
-            let _ = publisher.publish(
-                ralphx_domain::entities::EventType::IdeationVerified,
-                session.project_id.as_str(),
-                verified_payload,
-            ).await;
         }
     }
 

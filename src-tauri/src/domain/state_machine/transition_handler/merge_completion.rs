@@ -25,6 +25,10 @@ use crate::domain::state_machine::services::WebhookPublisher;
 use crate::error::{AppError, AppResult};
 use ralphx_domain::repositories::ExternalEventsRepository;
 
+use crate::domain::services::payload_enrichment::{
+    emit_external_webhook_event, PresentationKind, WebhookPresentationContext,
+};
+
 use super::merge_validation::emit_merge_progress;
 
 /// Complete a merge operation by transitioning task to Merged (Phase 2 MERGE).
@@ -67,6 +71,7 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
     external_events_repo: Option<&Arc<dyn ExternalEventsRepository>>,
     webhook_publisher: Option<&Arc<dyn WebhookPublisher>>,
     app_handle: Option<&AppHandle<R>>,
+    session_title: Option<String>,
 ) -> AppResult<()> {
     // Clone task_id early to avoid borrow conflicts with mutable task
     let task_id = task.id.clone();
@@ -236,12 +241,19 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
 
     // 5. External events: merge:completed + task:status_changed
     // Non-fatal: failures must not block merge completion.
-    {
+    if let (Some(repo), Some(publisher)) = (external_events_repo, webhook_publisher) {
         let project_id_str = project.id.to_string();
         let session_id_str = task.ideation_session_id.as_ref().map(|id| id.as_str().to_string());
         let category_str = task.category.to_string();
 
-        let merge_payload = serde_json::json!({
+        let ctx = WebhookPresentationContext {
+            project_name: Some(project.name.clone()),
+            session_title: session_title.clone(),
+            task_title: Some(task.title.clone()),
+            presentation_kind: Some(PresentationKind::MergeCompleted),
+        };
+
+        let mut merge_payload = serde_json::json!({
             "task_id": task_id_str,
             "project_id": project_id_str,
             "session_id": session_id_str,
@@ -251,22 +263,23 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
             "commit_sha": commit_sha,
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
-        if let Some(repo) = external_events_repo {
-            let _ = repo
-                .insert_event("merge:completed", &project_id_str, &merge_payload.to_string())
-                .await;
-        }
-        if let Some(publisher) = webhook_publisher {
-            publisher
-                .publish(
-                    ralphx_domain::entities::EventType::MergeCompleted,
-                    &project_id_str,
-                    merge_payload,
-                )
-                .await;
+        ctx.inject_into(&mut merge_payload);
+        if let Err(e) = emit_external_webhook_event("merge:completed", &project_id_str, merge_payload, repo, publisher).await {
+            tracing::warn!(
+                task_id = task_id_str,
+                error = %e,
+                "complete_merge_internal: merge:completed emit failed (non-fatal)"
+            );
         }
 
-        let sc_payload = serde_json::json!({
+        let ctx_sc = WebhookPresentationContext {
+            project_name: Some(project.name.clone()),
+            session_title: session_title.clone(),
+            task_title: Some(task.title.clone()),
+            presentation_kind: Some(PresentationKind::TaskStatusChanged),
+        };
+
+        let mut sc_payload = serde_json::json!({
             "task_id": task_id_str,
             "project_id": project_id_str,
             "session_id": session_id_str,
@@ -274,19 +287,13 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
             "new_status": "merged",
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
-        if let Some(repo) = external_events_repo {
-            let _ = repo
-                .insert_event("task:status_changed", &project_id_str, &sc_payload.to_string())
-                .await;
-        }
-        if let Some(publisher) = webhook_publisher {
-            publisher
-                .publish(
-                    ralphx_domain::entities::EventType::TaskStatusChanged,
-                    &project_id_str,
-                    sc_payload,
-                )
-                .await;
+        ctx_sc.inject_into(&mut sc_payload);
+        if let Err(e) = emit_external_webhook_event("task:status_changed", &project_id_str, sc_payload, repo, publisher).await {
+            tracing::warn!(
+                task_id = task_id_str,
+                error = %e,
+                "complete_merge_internal: task:status_changed emit failed (non-fatal)"
+            );
         }
     }
 
@@ -316,7 +323,13 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
                     });
 
                 if !already_delivered {
-                    let payload = serde_json::json!({
+                    let ctx_pd = WebhookPresentationContext {
+                        project_name: Some(project.name.clone()),
+                        session_title: session_title.clone(),
+                        task_title: Some(task.title.clone()),
+                        presentation_kind: Some(PresentationKind::PlanDelivered),
+                    };
+                    let mut payload = serde_json::json!({
                         "session_id": session_id_str,
                         "project_id": project_id_str,
                         "task_id": task_id_str,
@@ -324,24 +337,15 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
                         "target_branch": target_branch,
                         "timestamp": chrono::Utc::now().to_rfc3339(),
                     });
-                    if let Err(e) = repo
-                        .insert_event("plan:delivered", &project_id_str, &payload.to_string())
-                        .await
-                    {
+                    ctx_pd.inject_into(&mut payload);
+                    if let Err(e) = emit_external_webhook_event("plan:delivered", &project_id_str, payload, repo, publisher).await {
                         tracing::warn!(
                             task_id = task_id_str,
                             session_id = %session_id_str,
                             error = %e,
-                            "plan:delivered insert failed (non-fatal)"
+                            "plan:delivered emit failed (non-fatal)"
                         );
                     } else {
-                        publisher
-                            .publish(
-                                ralphx_domain::entities::EventType::PlanDelivered,
-                                &project_id_str,
-                                payload,
-                            )
-                            .await;
                         tracing::info!(
                             task_id = task_id_str,
                             session_id = %session_id_str,
@@ -747,6 +751,7 @@ mod tests {
             "",
             "main",
             &task_repo_arc,
+            None,
             None,
             None,
             None,

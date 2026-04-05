@@ -170,6 +170,12 @@ pub struct FinalizeProposalsResponse {
     pub any_ready_tasks: bool,
     /// Finalization result status: "success" or "pending_acceptance"
     pub status: String,
+    /// Session title for webhook payload enrichment.
+    #[serde(default)]
+    pub session_title: Option<String>,
+    /// Project name for webhook payload enrichment.
+    #[serde(default)]
+    pub project_name: Option<String>,
 }
 
 /// Request to accept a pending finalize confirmation

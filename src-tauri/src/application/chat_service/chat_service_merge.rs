@@ -1018,7 +1018,7 @@ async fn complete_merge_and_schedule<R: Runtime>(
     );
 
     if let Err(e) =
-        complete_merge_internal(task, project, commit_sha, source_branch, target_branch, ctx.task_repo, None, None, ctx.app_handle).await
+        complete_merge_internal(task, project, commit_sha, source_branch, target_branch, ctx.task_repo, None, None, ctx.app_handle, None).await
     {
         tracing::error!(
             task_id = ctx.task_id_str,

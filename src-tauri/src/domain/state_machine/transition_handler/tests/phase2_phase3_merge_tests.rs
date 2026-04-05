@@ -178,6 +178,7 @@ async fn complete_merge_sets_pending_cleanup_metadata() {
         None,
         None,
         None,
+        None,
     )
     .await;
 
@@ -234,6 +235,7 @@ async fn complete_merge_returns_quickly_without_cleanup_blocking() {
         "",
         "main",
         &task_repo,
+        None,
         None,
         None,
         None,

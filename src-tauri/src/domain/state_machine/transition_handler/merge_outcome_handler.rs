@@ -409,6 +409,7 @@ impl<'a> super::TransitionHandler<'a> {
             external_events_repo,
             webhook_publisher,
             app_handle,
+            None,
         )
         .await
         {

@@ -10,6 +10,9 @@ use tauri::Emitter;
 use tracing::error;
 
 use crate::application::{CreateProposalOptions, TaskSchedulerService, UpdateProposalOptions, UpdateSource};
+use crate::domain::services::{
+    emit_external_webhook_event, PresentationKind, WebhookPresentationContext,
+};
 use crate::application::task_cleanup_service::TaskCleanupService;
 use crate::http_server::handlers::ideation::stop_verification_children;
 use crate::domain::state_machine::services::TaskScheduler;
@@ -152,49 +155,71 @@ pub async fn finalize_proposals(
             json_error(status, e.to_string())
         })?;
 
-    // Layer 2: persist IdeationProposalsReady to external_events table (non-fatal)
+    // Layer 2+3: persist and push ideation:proposals_ready (non-fatal, enriched)
     {
-        let payload = serde_json::json!({
+        let mut payload = serde_json::json!({
             "session_id": req.session_id,
             "project_id": response.project_id,
             "proposal_count": response.tasks_created,
         });
-        if let Err(e) = state.app_state.external_events_repo
+        let ctx = WebhookPresentationContext {
+            project_name: response.project_name.clone(),
+            session_title: response.session_title.clone(),
+            task_title: None,
+            presentation_kind: Some(PresentationKind::ProposalsReady),
+        };
+        ctx.inject_into(&mut payload);
+        if let Some(ref publisher) = state.app_state.webhook_publisher {
+            if let Err(e) = emit_external_webhook_event(
+                "ideation:proposals_ready",
+                &response.project_id,
+                payload,
+                &state.app_state.external_events_repo,
+                publisher,
+            )
+            .await
+            {
+                tracing::warn!(error = e, context = "finalize_proposals: ideation:proposals_ready emit", "Non-fatal error in enrichment path");
+            }
+        } else if let Err(e) = state.app_state.external_events_repo
             .insert_event("ideation:proposals_ready", &response.project_id, &payload.to_string())
             .await
         {
             tracing::warn!(error = %e, "Failed to persist ideation:proposals_ready event");
         }
-        // Layer 3: webhook push (non-fatal, fire-and-forget)
-        if let Some(ref publisher) = state.app_state.webhook_publisher {
-            let _ = publisher.publish(
-                ralphx_domain::entities::EventType::IdeationProposalsReady,
-                &response.project_id,
-                payload,
-            ).await;
-        }
     }
 
     if response.session_status == "accepted" {
-        // Layer 2: persist IdeationSessionAccepted to external_events table (non-fatal)
-        let accepted_payload = serde_json::json!({
+        // Layer 2+3: persist and push ideation:session_accepted (non-fatal, enriched)
+        let mut accepted_payload = serde_json::json!({
             "session_id": req.session_id,
             "project_id": response.project_id,
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
-        if let Err(e) = state.app_state.external_events_repo
+        let accepted_ctx = WebhookPresentationContext {
+            project_name: response.project_name.clone(),
+            session_title: response.session_title.clone(),
+            task_title: None,
+            presentation_kind: Some(PresentationKind::SessionAccepted),
+        };
+        accepted_ctx.inject_into(&mut accepted_payload);
+        if let Some(ref publisher) = state.app_state.webhook_publisher {
+            if let Err(e) = emit_external_webhook_event(
+                "ideation:session_accepted",
+                &response.project_id,
+                accepted_payload,
+                &state.app_state.external_events_repo,
+                publisher,
+            )
+            .await
+            {
+                tracing::warn!(error = e, context = "finalize_proposals: ideation:session_accepted emit", "Non-fatal error in enrichment path");
+            }
+        } else if let Err(e) = state.app_state.external_events_repo
             .insert_event("ideation:session_accepted", &response.project_id, &accepted_payload.to_string())
             .await
         {
             tracing::warn!(error = %e, "Failed to persist ideation:session_accepted event");
-        }
-        // Layer 3: webhook push (non-fatal, fire-and-forget)
-        if let Some(ref publisher) = state.app_state.webhook_publisher {
-            let _ = publisher.publish(
-                ralphx_domain::entities::EventType::IdeationSessionAccepted,
-                &response.project_id,
-                accepted_payload,
-            ).await;
         }
 
         if let Some(app_handle) = &state.app_state.app_handle {

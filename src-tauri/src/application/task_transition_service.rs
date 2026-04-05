@@ -30,7 +30,10 @@ use crate::domain::repositories::{
     PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
     TaskStepRepository,
 };
-use crate::domain::services::{MessageQueue, RunningAgentRegistry};
+use crate::domain::services::{
+    payload_enrichment::{PresentationKind, WebhookPresentationContext},
+    MessageQueue, RunningAgentRegistry,
+};
 use crate::domain::state_machine::services::{
     AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStartResult, ReviewStarter,
     TaskScheduler, WebhookPublisher,
@@ -98,33 +101,38 @@ impl<R: Runtime> TauriEventEmitter<R> {
             return;
         };
 
-        let project_id = {
-            let tid = crate::domain::entities::TaskId::from_string(task_id.to_string());
-            match task_repo.get_by_id(&tid).await {
-                Ok(Some(t)) => t.project_id.to_string(),
-                Ok(None) => {
-                    tracing::debug!(task_id = task_id, "write_external_event: task not found, skipping");
-                    return;
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        error = %e,
-                        task_id = task_id,
-                        "write_external_event: failed to fetch task project_id"
-                    );
-                    return;
-                }
+        let tid = crate::domain::entities::TaskId::from_string(task_id.to_string());
+        let (project_id, task_title) = match task_repo.get_by_id(&tid).await {
+            Ok(Some(t)) => (t.project_id.to_string(), Some(t.title.clone())),
+            Ok(None) => {
+                tracing::debug!(task_id = task_id, "write_external_event: task not found, skipping");
+                return;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    task_id = task_id,
+                    "write_external_event: failed to fetch task project_id"
+                );
+                return;
             }
         };
 
-        let payload = serde_json::json!({
+        let ctx = WebhookPresentationContext {
+            project_name: None,
+            session_title: None,
+            task_title,
+            presentation_kind: Some(PresentationKind::TaskStatusChanged),
+        };
+        let mut payload_value = serde_json::json!({
             "task_id": task_id,
             "project_id": project_id,
             "old_status": old_status,
             "new_status": new_status,
             "timestamp": chrono::Utc::now().to_rfc3339(),
-        })
-        .to_string();
+        });
+        ctx.inject_into(&mut payload_value);
+        let payload = payload_value.to_string();
 
         if let Err(e) = ext_repo
             .insert_event("task:status_changed", &project_id, &payload)
@@ -192,13 +200,20 @@ impl<R: Runtime> EventEmitter for TauriEventEmitter<R> {
                 let tid = crate::domain::entities::TaskId::from_string(task_id.to_string());
                 if let Ok(Some(task)) = task_repo.get_by_id(&tid).await {
                     let project_id = task.project_id.to_string();
-                    let webhook_payload = serde_json::json!({
+                    let ctx = WebhookPresentationContext {
+                        project_name: None,
+                        session_title: None,
+                        task_title: Some(task.title.clone()),
+                        presentation_kind: Some(PresentationKind::TaskStatusChanged),
+                    };
+                    let mut webhook_payload = serde_json::json!({
                         "task_id": task_id,
                         "project_id": project_id,
                         "old_status": old_status,
                         "new_status": new_status,
                         "timestamp": chrono::Utc::now().to_rfc3339(),
                     });
+                    ctx.inject_into(&mut webhook_payload);
                     publisher
                         .publish(EventType::TaskStatusChanged, &project_id, webhook_payload)
                         .await;

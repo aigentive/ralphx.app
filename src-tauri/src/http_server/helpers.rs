@@ -918,6 +918,8 @@ pub async fn finalize_proposals_impl(
                 skipped_foreign_count: count_foreign,
                 any_ready_tasks: false,
                 status: "pending_acceptance".to_string(),
+                session_title: session.title.clone(),
+                project_name: Some(project.name.clone()),
             });
         }
     }
@@ -945,6 +947,8 @@ pub async fn finalize_proposals_impl(
             skipped_foreign_count: count_foreign,
             any_ready_tasks: false,
             status: "success".to_string(),
+            session_title: session.title.clone(),
+            project_name: Some(project.name.clone()),
         });
     }
 
@@ -980,6 +984,8 @@ pub async fn finalize_proposals_impl(
         skipped_foreign_count: count_foreign,
         any_ready_tasks: result.any_ready_tasks,
         status: "success".to_string(),
+        session_title: session.title.clone(),
+        project_name: Some(project.name.clone()),
     })
 }
 
