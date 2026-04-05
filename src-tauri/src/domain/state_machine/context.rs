@@ -130,6 +130,12 @@ pub struct TaskServices {
     /// External events repository for persisting lifecycle events to the external_events table.
     /// Optional — None when external event persistence is not configured.
     pub external_events_repo: Option<Arc<dyn ExternalEventsRepository>>,
+
+    /// Per-session mutex map for serializing concurrent plan:delivered checks.
+    /// Shared across all TaskServices instances so concurrent PlanMerge completions
+    /// in the same session cannot race on the all-merged check and fire plan:delivered twice.
+    /// ONE shared Arc across both Tauri IPC and HTTP server paths.
+    pub session_merge_locks: Arc<DashMap<String, Arc<Mutex<()>>>>,
 }
 
 impl TaskServices {
@@ -167,6 +173,7 @@ impl TaskServices {
             transition_service: None,
             webhook_publisher: None,
             external_events_repo: None,
+            session_merge_locks: Arc::new(DashMap::new()),
         }
     }
 
@@ -309,6 +316,13 @@ impl TaskServices {
         self
     }
 
+    /// Set the shared session merge locks DashMap (builder pattern).
+    /// Use this to share the same map across multiple TaskServices instances.
+    pub fn with_session_merge_locks(mut self, locks: Arc<DashMap<String, Arc<Mutex<()>>>>) -> Self {
+        self.session_merge_locks = locks;
+        self
+    }
+
     /// Creates a TaskServices with all mock implementations for testing
     pub fn new_mock() -> Self {
         use crate::application::MockChatService;
@@ -338,6 +352,7 @@ impl TaskServices {
             transition_service: None,
             webhook_publisher: None,
             external_events_repo: None,
+            session_merge_locks: Arc::new(DashMap::new()),
         }
     }
 }
@@ -430,6 +445,10 @@ impl std::fmt::Debug for TaskServices {
                     .external_events_repo
                     .as_ref()
                     .map(|_| "<ExternalEventsRepository>"),
+            )
+            .field(
+                "session_merge_locks",
+                &format!("<DashMap len={}>", self.session_merge_locks.len()),
             )
             .finish()
     }

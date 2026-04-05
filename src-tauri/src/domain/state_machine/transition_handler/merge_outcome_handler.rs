@@ -397,12 +397,17 @@ impl<'a> super::TransitionHandler<'a> {
 
         // Complete merge
         let app_handle = self.machine.context.services.app_handle.as_ref();
+        let external_events_repo = self.machine.context.services.external_events_repo.as_ref();
+        let webhook_publisher = self.machine.context.services.webhook_publisher.as_ref();
         if let Err(e) = complete_merge_internal(
             task,
             project,
             commit_sha,
+            source_branch,
             target_branch,
             task_repo,
+            external_events_repo,
+            webhook_publisher,
             app_handle,
         )
         .await
@@ -429,39 +434,8 @@ impl<'a> super::TransitionHandler<'a> {
             self.post_merge_cleanup(task_id_str, task_id, repo_path, plan_branch_repo)
                 .await;
 
-            // Emit merge:completed via both channels: webhook publisher + external_events (SSE/poll).
-            {
-                let project_id_str = project.id.to_string();
-                let merge_payload = serde_json::json!({
-                    "task_id": task_id_str,
-                    "project_id": project_id_str,
-                    "source_branch": source_branch,
-                    "target_branch": target_branch,
-                    "commit_sha": commit_sha,
-                    "timestamp": chrono::Utc::now().to_rfc3339(),
-                });
-                if let Some(ref repo) = self.machine.context.services.external_events_repo {
-                    if let Err(e) = repo
-                        .insert_event("merge:completed", &project_id_str, &merge_payload.to_string())
-                        .await
-                    {
-                        tracing::warn!(
-                            error = %e,
-                            task_id = task_id_str,
-                            "merge_outcome: failed to insert merge:completed external event (non-fatal)"
-                        );
-                    }
-                }
-                if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
-                    publisher
-                        .publish(
-                            ralphx_domain::entities::EventType::MergeCompleted,
-                            &project_id_str,
-                            merge_payload,
-                        )
-                        .await;
-                }
-            }
+            // merge:completed and task:status_changed external events are now emitted
+            // inside complete_merge_internal — no duplicate emission needed here.
 
             // Phase 3: spawn fire-and-forget cleanup for slow operations
             let task_repo_clone = Arc::clone(task_repo);

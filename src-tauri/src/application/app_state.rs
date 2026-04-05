@@ -197,6 +197,9 @@ pub struct AppState {
     /// Constructed ONCE in lib.rs and Arc-cloned into both AppState instances.
     /// None in test constructors.
     pub webhook_publisher: Option<Arc<dyn crate::domain::state_machine::services::WebhookPublisher>>,
+    /// Shared per-session mutex map for serializing concurrent plan:delivered checks.
+    /// ONE Arc, shared between both AppState instances (Tauri IPC + HTTP server) via lib.rs.
+    pub session_merge_locks: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     /// Sessions where user has enabled auto-accept for verification. Ephemeral.
     pub auto_accept_sessions: Arc<Mutex<HashSet<String>>>,
 }
@@ -398,6 +401,7 @@ impl AppState {
             running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(Arc::clone(&shared_conn))),
             webhook_registration_repo: Arc::new(SqliteWebhookRegistrationRepository::from_shared(Arc::clone(&shared_conn))),
             webhook_publisher: None,
+            session_merge_locks: Arc::new(dashmap::DashMap::new()),
             auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
@@ -512,6 +516,7 @@ impl AppState {
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             webhook_registration_repo: Arc::new(MemoryWebhookRegistrationRepository::new()),
             webhook_publisher: None,
+            session_merge_locks: Arc::new(dashmap::DashMap::new()),
             auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
@@ -611,6 +616,7 @@ impl AppState {
             running_agent_registry: registry,
             webhook_registration_repo: Arc::new(MemoryWebhookRegistrationRepository::new()),
             webhook_publisher: None,
+            session_merge_locks: Arc::new(dashmap::DashMap::new()),
             auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
@@ -726,6 +732,7 @@ impl AppState {
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             webhook_registration_repo: Arc::new(MemoryWebhookRegistrationRepository::new()),
             webhook_publisher: None,
+            session_merge_locks: Arc::new(dashmap::DashMap::new()),
             auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
@@ -819,6 +826,7 @@ impl AppState {
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             webhook_registration_repo: Arc::new(MemoryWebhookRegistrationRepository::new()),
             webhook_publisher: None,
+            session_merge_locks: Arc::new(dashmap::DashMap::new()),
             auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),

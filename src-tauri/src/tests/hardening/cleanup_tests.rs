@@ -587,8 +587,11 @@ async fn test_fix_complete_merge_internal_clears_task_branch_and_worktree_path()
         &mut task,
         &project,
         &head_sha,
+        "",
         "main",
         &task_repo,
+        None,
+        None,
         None,
     )
     .await;

@@ -653,6 +653,11 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     /// via build_task_services_common() and to TauriEventEmitter via with_external_events_repo().
     webhook_publisher: Option<Arc<dyn WebhookPublisher>>,
 
+    /// Shared per-session mutex map for serializing concurrent plan:delivered checks.
+    /// Shared across all TaskServices instances produced by this service.
+    /// ONE Arc shared between both Tauri IPC and HTTP server AppState paths.
+    session_merge_locks: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+
     /// Self-referential Arc for passing to TaskServices (PR merge poller pattern).
     /// Set via `set_self_arc()` after Arc-wrapping. Uses Mutex + Any for runtime-generic storage.
     /// Used so `on_enter(Merging)` can pass `Arc<TaskTransitionService<Wry>>` to start_polling.
@@ -761,6 +766,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             pr_poller_registry: None,
             github_service: None,
             webhook_publisher: None,
+            session_merge_locks: Arc::new(dashmap::DashMap::new()),
             self_arc: std::sync::Mutex::new(None),
         }
     }
@@ -891,6 +897,18 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// this field when rebuilding the event emitter.
     pub fn with_webhook_publisher_for_emitter(mut self, publisher: Arc<dyn WebhookPublisher>) -> Self {
         self.webhook_publisher = Some(publisher);
+        self
+    }
+
+    /// Inject a shared session-merge-locks DashMap (builder pattern).
+    ///
+    /// Caller must share ONE Arc between both AppState instances (Tauri IPC + HTTP server)
+    /// so concurrent plan:delivered checks from either path use the same per-session mutex.
+    pub fn with_session_merge_locks(
+        mut self,
+        locks: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    ) -> Self {
+        self.session_merge_locks = locks;
         self
     }
 
@@ -1144,6 +1162,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         if let Some(ref repo) = self.external_events_repo {
             services = services.with_external_events_repo(Arc::clone(repo));
         }
+        services = services.with_session_merge_locks(Arc::clone(&self.session_merge_locks));
         services
     }
 

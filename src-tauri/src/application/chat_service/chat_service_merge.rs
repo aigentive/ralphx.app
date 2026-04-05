@@ -995,6 +995,7 @@ async fn complete_merge_and_schedule<R: Runtime>(
     task: &mut Task,
     project: &Project,
     commit_sha: &str,
+    source_branch: &str,
     target_branch: &str,
     worktree_path: &Path,
     main_repo_path: &Path,
@@ -1017,7 +1018,7 @@ async fn complete_merge_and_schedule<R: Runtime>(
     );
 
     if let Err(e) =
-        complete_merge_internal(task, project, commit_sha, target_branch, ctx.task_repo, ctx.app_handle).await
+        complete_merge_internal(task, project, commit_sha, source_branch, target_branch, ctx.task_repo, None, None, ctx.app_handle).await
     {
         tracing::error!(
             task_id = ctx.task_id_str,
@@ -1203,7 +1204,7 @@ pub(crate) async fn attempt_merge_auto_complete<R: Runtime>(
     };
 
     // 10. Complete merge, unblock dependents, schedule ready tasks
-    complete_merge_and_schedule(ctx, &mut task, &project, &commit_sha, &target_branch, &worktree_path, &main_repo_path, worktree).await;
+    complete_merge_and_schedule(ctx, &mut task, &project, &commit_sha, &source_branch, &target_branch, &worktree_path, &main_repo_path, worktree).await;
 }
 
 /// Reconcile merge state when agent run finished but status is still Merging.

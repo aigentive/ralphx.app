@@ -21,7 +21,9 @@ use crate::domain::entities::{
     InternalStatus, Project, Task, TaskId,
 };
 use crate::domain::repositories::TaskRepository;
+use crate::domain::state_machine::services::WebhookPublisher;
 use crate::error::{AppError, AppResult};
+use ralphx_domain::repositories::ExternalEventsRepository;
 
 use super::merge_validation::emit_merge_progress;
 
@@ -59,8 +61,11 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
     task: &mut Task,
     project: &Project,
     commit_sha: &str,
+    source_branch: &str,
     target_branch: &str,
     task_repo: &Arc<dyn TaskRepository>,
+    external_events_repo: Option<&Arc<dyn ExternalEventsRepository>>,
+    webhook_publisher: Option<&Arc<dyn WebhookPublisher>>,
     app_handle: Option<&AppHandle<R>>,
 ) -> AppResult<()> {
     // Clone task_id early to avoid borrow conflicts with mutable task
@@ -203,7 +208,7 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
         tracing::warn!(error = %e, task_id = task_id_str, "Failed to record merge transition (non-fatal)");
     }
 
-    // 4. Emit events (intentional: no frontend listeners is OK)
+    // 4. Emit Tauri events (intentional: no frontend listeners is OK)
     if let Some(handle) = app_handle {
         let _ = handle.emit(
             "task:merged",
@@ -227,6 +232,62 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
                 "commit_sha": commit_sha,
             }),
         );
+    }
+
+    // 5. External events: merge:completed + task:status_changed
+    // Non-fatal: failures must not block merge completion.
+    {
+        let project_id_str = project.id.to_string();
+        let session_id_str = task.ideation_session_id.as_ref().map(|id| id.as_str().to_string());
+        let category_str = task.category.to_string();
+
+        let merge_payload = serde_json::json!({
+            "task_id": task_id_str,
+            "project_id": project_id_str,
+            "session_id": session_id_str,
+            "category": category_str,
+            "source_branch": source_branch,
+            "target_branch": target_branch,
+            "commit_sha": commit_sha,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        });
+        if let Some(repo) = external_events_repo {
+            let _ = repo
+                .insert_event("merge:completed", &project_id_str, &merge_payload.to_string())
+                .await;
+        }
+        if let Some(publisher) = webhook_publisher {
+            publisher
+                .publish(
+                    ralphx_domain::entities::EventType::MergeCompleted,
+                    &project_id_str,
+                    merge_payload,
+                )
+                .await;
+        }
+
+        let sc_payload = serde_json::json!({
+            "task_id": task_id_str,
+            "project_id": project_id_str,
+            "session_id": session_id_str,
+            "old_status": old_status.as_str(),
+            "new_status": "merged",
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        });
+        if let Some(repo) = external_events_repo {
+            let _ = repo
+                .insert_event("task:status_changed", &project_id_str, &sc_payload.to_string())
+                .await;
+        }
+        if let Some(publisher) = webhook_publisher {
+            publisher
+                .publish(
+                    ralphx_domain::entities::EventType::TaskStatusChanged,
+                    &project_id_str,
+                    sc_payload,
+                )
+                .await;
+        }
     }
 
     // Emit finalize success merge progress event
@@ -620,8 +681,11 @@ mod tests {
             &mut task,
             &project,
             invalid_sha,
+            "",
             "main",
             &task_repo_arc,
+            None,
+            None,
             None,
         )
         .await;

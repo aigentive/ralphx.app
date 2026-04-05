@@ -43,6 +43,18 @@ pub trait ExternalEventsRepository: Send + Sync {
         limit: i64,
     ) -> AppResult<Vec<ExternalEventRecord>>;
 
+    /// Check whether an event of the given type already exists for the given project
+    /// and session (matched by `session_id` substring in the payload JSON).
+    ///
+    /// Used as an idempotency gate before emitting `plan:delivered` events.
+    /// Returns `Ok(true)` if a matching row exists, `Ok(false)` otherwise.
+    async fn event_exists(
+        &self,
+        event_type: &str,
+        project_id: &str,
+        session_id: &str,
+    ) -> AppResult<bool>;
+
     /// Delete old events:
     ///   - entries older than 24 hours, OR
     ///   - entries beyond the 10 000-row high-water mark per project

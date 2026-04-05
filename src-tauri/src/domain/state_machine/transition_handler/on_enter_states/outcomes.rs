@@ -192,6 +192,101 @@ impl<'a> TransitionHandler<'a> {
                         self.post_merge_cleanup(task_id_str, &task_id, &repo_path, plan_branch_repo)
                             .await;
                     }
+
+                    // Emit plan:delivered if all session tasks are now Merged
+                    if let Some(ref session_id) = task.ideation_session_id {
+                        let session_id_str = session_id.as_str();
+                        let project_id_str = self.machine.context.project_id.clone();
+
+                        // Acquire per-session lock — clone Arc before awaiting to avoid
+                        // holding a DashMap shard lock across an await point.
+                        let lock_arc = {
+                            let entry = self.machine.context.services.session_merge_locks
+                                .entry(session_id_str.to_string())
+                                .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())));
+                            Arc::clone(&*entry)
+                        };
+                        let _guard = lock_arc.lock().await;
+
+                        // IDEMPOTENCY CHECK: default true (already delivered) on query failure
+                        // so a failing query never causes a duplicate emission.
+                        let already_delivered = if let Some(ref repo) =
+                            self.machine.context.services.external_events_repo
+                        {
+                            repo.event_exists("plan:delivered", &project_id_str, session_id_str)
+                                .await
+                                .unwrap_or_else(|e| {
+                                    tracing::warn!(
+                                        session_id = session_id_str,
+                                        error = %e,
+                                        "plan:delivered idempotency check failed, assuming already delivered"
+                                    );
+                                    true
+                                })
+                        } else {
+                            false // no repo → no idempotency check, proceed
+                        };
+
+                        if already_delivered {
+                            tracing::debug!(
+                                session_id = session_id_str,
+                                "plan:delivered already emitted for session, skipping"
+                            );
+                        } else {
+                            let all_merged = super::super::merge_helpers::check_session_all_merged(
+                                session_id_str,
+                                task_repo,
+                            )
+                            .await
+                            .unwrap_or_else(|e| {
+                                tracing::warn!(
+                                    session_id = session_id_str,
+                                    error = %e,
+                                    "Failed to check session merge status for plan:delivered"
+                                );
+                                false
+                            });
+
+                            if all_merged {
+                                let payload = serde_json::json!({
+                                    "session_id": session_id_str,
+                                    "task_id": task_id_str,
+                                    "project_id": project_id_str,
+                                    "commit_sha": task.merge_commit_sha,
+                                    "timestamp": Utc::now().to_rfc3339(),
+                                });
+                                if let Some(ref repo) =
+                                    self.machine.context.services.external_events_repo
+                                {
+                                    let _ = repo
+                                        .insert_event(
+                                            "plan:delivered",
+                                            &project_id_str,
+                                            &payload.to_string(),
+                                        )
+                                        .await
+                                        .map_err(|e| {
+                                            tracing::warn!(
+                                                session_id = session_id_str,
+                                                error = %e,
+                                                "Failed to persist plan:delivered event"
+                                            )
+                                        });
+                                }
+                                if let Some(ref publisher) =
+                                    self.machine.context.services.webhook_publisher
+                                {
+                                    publisher
+                                        .publish(
+                                            ralphx_domain::entities::EventType::PlanDelivered,
+                                            &project_id_str,
+                                            payload,
+                                        )
+                                        .await;
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

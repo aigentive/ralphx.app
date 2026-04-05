@@ -67,6 +67,21 @@ impl ExternalEventsRepository for MemoryExternalEventsRepository {
         Ok(result)
     }
 
+    async fn event_exists(
+        &self,
+        event_type: &str,
+        project_id: &str,
+        session_id: &str,
+    ) -> AppResult<bool> {
+        let events = self.events.read().await;
+        let found = events.iter().any(|e| {
+            e.event_type == event_type
+                && e.project_id == project_id
+                && e.payload.contains(session_id)
+        });
+        Ok(found)
+    }
+
     async fn cleanup_old_events(&self) -> AppResult<u64> {
         // No-op for tests
         Ok(0)

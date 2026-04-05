@@ -10,7 +10,7 @@ use std::time::Duration;
 use crate::application::GitService;
 use crate::domain::entities::plan_branch::{PlanBranchId, PrPushStatus, PrStatus};
 use crate::domain::entities::InternalStatus;
-use crate::domain::entities::{PlanBranchStatus, Project, Task, TaskCategory, TaskId};
+use crate::domain::entities::{IdeationSessionId, PlanBranchStatus, Project, Task, TaskCategory, TaskId};
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::domain::services::GithubServiceTrait;
 use crate::error::{AppError, AppResult};
@@ -496,6 +496,33 @@ pub(super) fn has_prior_validation_failure(task: &Task) -> bool {
         return true;
     }
     false
+}
+
+/// Check whether all tasks in a session have reached the terminal `Merged` status.
+///
+/// Returns `Ok(true)` if every task associated with the session is in `InternalStatus::Merged`.
+/// Returns `Ok(false)` if any task has not yet merged.
+/// Returns `Err(...)` on repository failure (logged at WARN level before propagating).
+#[allow(dead_code)] // Phase 0 infrastructure — called in Phase 1+2
+pub(crate) async fn check_session_all_merged(
+    session_id: &str,
+    task_repo: &Arc<dyn TaskRepository>,
+) -> AppResult<bool> {
+    let session_id_typed = IdeationSessionId::from_string(session_id.to_string());
+    let tasks = task_repo
+        .get_by_ideation_session(&session_id_typed)
+        .await
+        .map_err(|e| {
+            tracing::warn!(
+                session_id = session_id,
+                error = %e,
+                "Failed to fetch session tasks for plan:delivered check"
+            );
+            e
+        })?;
+    Ok(tasks
+        .iter()
+        .all(|t| matches!(t.internal_status, InternalStatus::Merged)))
 }
 
 /// Check if a task has the `main_merge_deferred` flag set in its metadata.

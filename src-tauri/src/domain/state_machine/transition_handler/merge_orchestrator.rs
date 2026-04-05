@@ -172,8 +172,11 @@ impl<'a> super::TransitionHandler<'a> {
                                         task,
                                         project,
                                         &plan_sha,
+                                        source_branch,
                                         &pb.branch_name,
                                         task_repo,
+                                        self.machine.context.services.external_events_repo.as_ref(),
+                                        self.machine.context.services.webhook_publisher.as_ref(),
                                         self.machine.context.services.app_handle.as_ref(),
                                     )
                                     .await
@@ -318,8 +321,11 @@ impl<'a> super::TransitionHandler<'a> {
             task,
             project,
             &target_sha,
+            source_branch,
             target_branch,
             task_repo,
+            self.machine.context.services.external_events_repo.as_ref(),
+            self.machine.context.services.webhook_publisher.as_ref(),
             self.machine.context.services.app_handle.as_ref(),
         )
         .await
@@ -426,8 +432,11 @@ impl<'a> super::TransitionHandler<'a> {
                                     task,
                                     project,
                                     &plan_sha,
+                                    source_branch,
                                     &pb.branch_name,
                                     task_repo,
+                                    self.machine.context.services.external_events_repo.as_ref(),
+                                    self.machine.context.services.webhook_publisher.as_ref(),
                                     self.machine.context.services.app_handle.as_ref(),
                                 )
                                 .await
@@ -521,8 +530,11 @@ impl<'a> super::TransitionHandler<'a> {
                     task,
                     project,
                     &target_sha,
+                    source_branch,
                     target_branch,
                     task_repo,
+                    self.machine.context.services.external_events_repo.as_ref(),
+                    self.machine.context.services.webhook_publisher.as_ref(),
                     self.machine.context.services.app_handle.as_ref(),
                 )
                 .await
@@ -1008,6 +1020,8 @@ impl<'a> super::TransitionHandler<'a> {
             let ready_payload = serde_json::json!({
                 "task_id": task_id_str,
                 "project_id": project_id_str,
+                "session_id": task.ideation_session_id,
+                "category": task.category.to_string(),
                 "source_branch": source_branch,
                 "target_branch": target_branch,
                 "timestamp": chrono::Utc::now().to_rfc3339(),

@@ -19,10 +19,11 @@ pub enum EventType {
     ReviewApproved,
     ReviewChangesRequested,
     ReviewEscalated,
-    // Merge events (3)
+    // Merge events (4)
     MergeReady,
     MergeCompleted,
     MergeConflict,
+    PlanDelivered,
     // Ideation events (7)
     IdeationSessionCreated,
     IdeationPlanCreated,
@@ -51,6 +52,7 @@ impl fmt::Display for EventType {
             EventType::MergeReady => "merge:ready",
             EventType::MergeCompleted => "merge:completed",
             EventType::MergeConflict => "merge:conflict",
+            EventType::PlanDelivered => "plan:delivered",
             EventType::IdeationSessionCreated => "ideation:session_created",
             EventType::IdeationPlanCreated => "ideation:plan_created",
             EventType::IdeationVerified => "ideation:verified",
@@ -93,6 +95,7 @@ impl FromStr for EventType {
             "merge:ready" => Ok(EventType::MergeReady),
             "merge:completed" => Ok(EventType::MergeCompleted),
             "merge:conflict" => Ok(EventType::MergeConflict),
+            "plan:delivered" => Ok(EventType::PlanDelivered),
             "ideation:session_created" => Ok(EventType::IdeationSessionCreated),
             "ideation:plan_created" => Ok(EventType::IdeationPlanCreated),
             "ideation:verified" => Ok(EventType::IdeationVerified),
@@ -153,6 +156,7 @@ mod tests {
             EventType::MergeReady,
             EventType::MergeCompleted,
             EventType::MergeConflict,
+            EventType::PlanDelivered,
             EventType::IdeationSessionCreated,
             EventType::IdeationPlanCreated,
             EventType::IdeationVerified,

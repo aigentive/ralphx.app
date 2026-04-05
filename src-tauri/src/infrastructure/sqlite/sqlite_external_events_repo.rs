@@ -132,6 +132,33 @@ impl ExternalEventsRepository for SqliteExternalEventsRepository {
             .await
     }
 
+    async fn event_exists(
+        &self,
+        event_type: &str,
+        project_id: &str,
+        session_id: &str,
+    ) -> AppResult<bool> {
+        let event_type = event_type.to_string();
+        let project_id = project_id.to_string();
+        let session_id = session_id.to_string();
+
+        self.db
+            .run(move |conn| {
+                let count: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM external_events \
+                         WHERE event_type = ?1 AND project_id = ?2 \
+                         AND instr(payload, ?3) > 0 \
+                         LIMIT 1",
+                        rusqlite::params![event_type, project_id, session_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(|e| AppError::Database(e.to_string()))?;
+                Ok(count > 0)
+            })
+            .await
+    }
+
     async fn cleanup_old_events(&self) -> AppResult<u64> {
         self.db
             .run(move |conn| {

@@ -435,6 +435,7 @@ pub fn run() {
             // Do NOT change StreamingStateCache to deep-clone without updating this sharing.
             http_app_state_inner.streaming_state_cache = app_state.streaming_state_cache.clone();
             http_app_state_inner.webhook_publisher = app_state.webhook_publisher.clone();
+            http_app_state_inner.session_merge_locks = Arc::clone(&app_state.session_merge_locks);
             let http_app_state = Arc::new(http_app_state_inner);
             // Spawn HTTP server with pre-cloned state
             tauri::async_runtime::spawn(async move {
@@ -488,6 +489,7 @@ pub fn run() {
             let startup_external_events_repo = Arc::clone(&app_state.external_events_repo);
             let startup_pr_poller_registry = Arc::clone(&app_state.pr_poller_registry);
             let startup_webhook_publisher = app_state.webhook_publisher.clone();
+            let startup_session_merge_locks = Arc::clone(&app_state.session_merge_locks);
             // Clone app handle to enable event emission in startup tasks
             let startup_app_handle = app.handle().clone();
 
@@ -623,7 +625,9 @@ pub fn run() {
                 }
 
                 let transition_service = Arc::new(
-                    transition_service_builder.with_external_events_repo(Arc::clone(&startup_external_events_repo))
+                    transition_service_builder
+                        .with_external_events_repo(Arc::clone(&startup_external_events_repo))
+                        .with_session_merge_locks(Arc::clone(&startup_session_merge_locks))
                 );
 
                 // PR startup recovery: restart pollers for tasks that were polling when app shut down.
@@ -781,7 +785,9 @@ pub fn run() {
                 }
 
                 let reconcile_transition_service = Arc::new(
-                    reconcile_transition_service_builder.with_external_events_repo(Arc::clone(&startup_external_events_repo))
+                    reconcile_transition_service_builder
+                        .with_external_events_repo(Arc::clone(&startup_external_events_repo))
+                        .with_session_merge_locks(Arc::clone(&startup_session_merge_locks))
                 );
 
                 let reconcile_runner = ReconciliationRunner::new(

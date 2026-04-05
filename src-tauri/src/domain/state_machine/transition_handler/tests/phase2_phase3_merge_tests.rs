@@ -172,8 +172,11 @@ async fn complete_merge_sets_pending_cleanup_metadata() {
         &mut task,
         &project,
         &commit_sha,
+        "",
         "main",
         &task_repo,
+        None,
+        None,
         None,
     )
     .await;
@@ -228,8 +231,11 @@ async fn complete_merge_returns_quickly_without_cleanup_blocking() {
         &mut task,
         &project,
         &commit_sha,
+        "",
         "main",
         &task_repo,
+        None,
+        None,
         None,
     )
     .await;

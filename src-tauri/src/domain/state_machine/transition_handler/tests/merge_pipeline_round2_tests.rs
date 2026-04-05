@@ -159,8 +159,11 @@ async fn test_merge_completion_aborts_on_stale_task_state() {
         &mut task_for_merge,
         &project,
         &commit_sha,
+        "",
         "main",
         &task_repo_dyn,
+        None,
+        None,
         None,
     )
     .await;
@@ -218,8 +221,11 @@ async fn test_merge_completion_proceeds_on_pending_merge() {
         &mut task_for_merge,
         &project,
         &commit_sha,
+        "",
         "main",
         &task_repo_dyn,
+        None,
+        None,
         None,
     )
     .await;
@@ -277,8 +283,11 @@ async fn test_merge_completion_proceeds_on_merging() {
         &mut task_for_merge,
         &project,
         &commit_sha,
+        "",
         "main",
         &task_repo_dyn,
+        None,
+        None,
         None,
     )
     .await;
