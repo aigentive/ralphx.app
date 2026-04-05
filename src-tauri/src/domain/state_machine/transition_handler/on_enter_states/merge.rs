@@ -76,7 +76,8 @@ impl<'a> TransitionHandler<'a> {
                  3. Resolve all conflict markers in the conflicted files\n\
                  4. Stage resolved files: `git add <files>`\n\
                  5. Commit: `git commit --no-edit`\n\
-                 6. Exit — the system will automatically retry the task merge\n\n\
+                 6. Run `git rev-parse HEAD` and call `complete_merge` with that full commit SHA\n\
+                 7. Do not exit silently — `complete_merge` tells the system how to continue\n\n\
                  If the conflict is too complex, call report_incomplete with a description.",
                 task_id = task_id,
                 base_branch = base_branch,
@@ -96,7 +97,8 @@ impl<'a> TransitionHandler<'a> {
                  3. Resolve all conflict markers in the conflicted files\n\
                  4. Stage resolved files: `git add <files>`\n\
                  5. Commit: `git commit --no-edit`\n\
-                 6. Exit — the system will automatically retry the task merge\n\n\
+                 6. Run `git rev-parse HEAD` and call `complete_merge` with that full commit SHA\n\
+                 7. Do not exit silently — `complete_merge` tells the system how to continue\n\n\
                  If the conflict is too complex, call report_incomplete with a description.",
                 task_id = task_id,
                 source_branch = source_branch,
