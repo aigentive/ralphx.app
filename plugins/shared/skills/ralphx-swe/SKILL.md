@@ -83,6 +83,9 @@ be short:
 - line 1: what changed
 - line 2: next automatic step or blocker
 - line 3 only if user action is truly required
+- in shared/multi-project webhook topics, start line 1 with the project label
+- stay silent for no-op duplicate redeliveries; users should not see "No response requested" or duplicate-event chatter
+- avoid markdown tables in webhook updates; use prose or at most 2-4 compact bullets
 
 Do not ask "shall I approve?" unless approval is genuinely blocked on the user.
 
