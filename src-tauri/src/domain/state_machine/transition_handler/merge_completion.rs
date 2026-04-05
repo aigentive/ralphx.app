@@ -18,7 +18,7 @@ use crate::domain::entities::{
         CleanupPhase, MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind,
         MergeRecoveryMetadata, MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
     },
-    InternalStatus, Project, Task, TaskId,
+    InternalStatus, Project, Task, TaskCategory, TaskId,
 };
 use crate::domain::repositories::TaskRepository;
 use crate::domain::state_machine::services::WebhookPublisher;
@@ -287,6 +287,69 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
                     sc_payload,
                 )
                 .await;
+        }
+    }
+
+    // 6. Plan:delivered event for PlanMerge tasks.
+    // This is the canonical guaranteed emission point — complete_merge_internal only
+    // returns Ok after the DB write is durable and the commit SHA is verified.
+    // The on_enter(Merged) path in outcomes.rs is retained as defense-in-depth.
+    if task.category == TaskCategory::PlanMerge {
+        if let (Some(repo), Some(publisher)) = (external_events_repo, webhook_publisher) {
+            if let Some(ref session_id) = task.ideation_session_id {
+                let session_id_str = session_id.as_str().to_string();
+                let project_id_str = project.id.to_string();
+
+                // IDEMPOTENCY CHECK: fail-safe defaults to true (already delivered)
+                // to prevent double-emission when on_enter(Merged) also fires.
+                let already_delivered = repo
+                    .event_exists("plan:delivered", &project_id_str, &session_id_str)
+                    .await
+                    .unwrap_or_else(|e| {
+                        tracing::error!(
+                            task_id = task_id_str,
+                            session_id = %session_id_str,
+                            error = %e,
+                            "plan:delivered idempotency check failed — assuming already delivered (fail-safe)"
+                        );
+                        true
+                    });
+
+                if !already_delivered {
+                    let payload = serde_json::json!({
+                        "session_id": session_id_str,
+                        "project_id": project_id_str,
+                        "task_id": task_id_str,
+                        "commit_sha": commit_sha,
+                        "target_branch": target_branch,
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                    });
+                    if let Err(e) = repo
+                        .insert_event("plan:delivered", &project_id_str, &payload.to_string())
+                        .await
+                    {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            session_id = %session_id_str,
+                            error = %e,
+                            "plan:delivered insert failed (non-fatal)"
+                        );
+                    } else {
+                        publisher
+                            .publish(
+                                ralphx_domain::entities::EventType::PlanDelivered,
+                                &project_id_str,
+                                payload,
+                            )
+                            .await;
+                        tracing::info!(
+                            task_id = task_id_str,
+                            session_id = %session_id_str,
+                            "plan:delivered emitted from complete_merge_internal"
+                        );
+                    }
+                }
+            }
         }
     }
 
