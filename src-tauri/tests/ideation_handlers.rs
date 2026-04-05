@@ -39,6 +39,18 @@ async fn setup_test_state() -> HttpServerState {
     }
 }
 
+async fn get_external_event_types(state: &HttpServerState, project_id: &ProjectId) -> Vec<String> {
+    state
+        .app_state
+        .external_events_repo
+        .get_events_after_cursor(&[project_id.as_str().to_string()], 0, 100)
+        .await
+        .expect("external events query should succeed")
+        .into_iter()
+        .map(|event| event.event_type)
+        .collect()
+}
+
 #[tokio::test]
 async fn test_get_session_messages_empty_session() {
     let state = setup_test_state().await;
@@ -2537,6 +2549,166 @@ async fn test_auto_propose_fires_for_external_zero_blocking() {
         final_phase.as_deref(),
         Some("ready"),
         "external auto-propose must restore activity phase to ready after delivery"
+    );
+}
+
+/// External zero_blocking convergence with a live verification child must still emit verified
+/// side effects before the child is stopped/archived.
+#[tokio::test]
+async fn test_external_zero_blocking_verified_side_effects_survive_child_shutdown() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+
+    let parent = IdeationSessionBuilder::new()
+        .project_id(project_id.clone())
+        .origin(SessionOrigin::External)
+        .build();
+    let parent_id = parent.id.clone();
+    let parent_id_str = parent_id.as_str().to_string();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    // Keep the parent on the queued-message path so auto-propose never spawns a real agent.
+    let parent_key = RunningAgentKey::new("ideation", &parent_id_str);
+    state
+        .app_state
+        .running_agent_registry
+        .register(
+            parent_key,
+            55555,
+            "test-conv-parent".to_string(),
+            "test-run-parent".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let child = IdeationSessionBuilder::new()
+        .project_id(project_id.clone())
+        .origin(SessionOrigin::External)
+        .parent_session_id(parent_id.clone())
+        .session_purpose(SessionPurpose::Verification)
+        .build();
+    let child_id = child.id.clone();
+    let child_id_str = child_id.as_str().to_string();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(child)
+        .await
+        .unwrap();
+
+    // Register the verifier child as running so terminal verification will actively stop it.
+    let child_key = RunningAgentKey::new("ideation", &child_id_str);
+    state
+        .app_state
+        .running_agent_registry
+        .register(
+            child_key,
+            66666,
+            "test-conv-child".to_string(),
+            "test-run-child".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let prior_gaps = vec![
+        make_gap("high", "security", "No authentication layer"),
+        make_gap("medium", "testing", "No unit tests"),
+    ];
+    let prior_rounds = vec![make_round(
+        vec!["no-authentication-layer", "no-unit-tests"],
+        30,
+    )];
+    let round1_metadata = make_metadata_json(prior_gaps, prior_rounds, 1, 5);
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &parent_id,
+            VerificationStatus::Reviewing,
+            true,
+            Some(round1_metadata),
+        )
+        .await
+        .unwrap();
+
+    let result = update_plan_verification(
+        State(state.clone()),
+        Path(parent_id_str.clone()),
+        Json(UpdateVerificationRequest {
+            status: "needs_revision".to_string(),
+            in_progress: true,
+            round: Some(2),
+            gaps: Some(vec![]),
+            convergence_reason: None,
+            max_rounds: Some(5),
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await
+    .expect("terminal zero_blocking update must succeed");
+
+    assert_eq!(result.0.status, "verified");
+    assert_eq!(result.0.convergence_reason.as_deref(), Some("zero_blocking"));
+
+    let mut queued_auto_propose = false;
+    let mut child_archived = false;
+    let mut verified_event_seen = false;
+    let mut final_phase = None;
+    for _ in 0..50 {
+        queued_auto_propose = state
+            .app_state
+            .message_queue
+            .get_queued(ChatContextType::Ideation, &parent_id_str)
+            .iter()
+            .any(|message| message.content.contains("<auto-propose>"));
+        child_archived = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&child_id)
+            .await
+            .expect("child reload should succeed")
+            .expect("child should exist")
+            .status
+            == IdeationSessionStatus::Archived;
+        final_phase = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&parent_id)
+            .await
+            .expect("parent reload should succeed")
+            .expect("parent should exist")
+            .external_activity_phase;
+        verified_event_seen = get_external_event_types(&state, &project_id)
+            .await
+            .iter()
+            .any(|event_type| event_type == "ideation:verified");
+
+        if queued_auto_propose
+            && child_archived
+            && verified_event_seen
+            && final_phase.as_deref() == Some("ready")
+        {
+            break;
+        }
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    }
+
+    assert!(queued_auto_propose, "parent must receive queued <auto-propose> message");
+    assert!(child_archived, "verification child must be archived after terminal verification");
+    assert!(verified_event_seen, "ideation:verified event must be emitted");
+    assert_eq!(
+        final_phase.as_deref(),
+        Some("ready"),
+        "external auto-propose path must restore activity phase to ready"
     );
 }
 

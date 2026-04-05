@@ -162,20 +162,19 @@ pub async fn trigger_verification_http(
     }
 
     {
-        let repo = Arc::clone(&state.app_state.ideation_session_repo);
         let trigger_session_id = IdeationSessionId::from_string(session_id.clone());
-        tokio::spawn(async move {
-            if let Err(e) = repo
-                .update_external_activity_phase(&trigger_session_id, Some("verifying"))
-                .await
-            {
-                error!(
-                    "Failed to set activity phase 'verifying' for session {}: {}",
-                    trigger_session_id.as_str(),
-                    e
-                );
-            }
-        });
+        if let Err(e) = state
+            .app_state
+            .ideation_session_repo
+            .update_external_activity_phase(&trigger_session_id, Some("verifying"))
+            .await
+        {
+            error!(
+                "Failed to set activity phase 'verifying' for session {}: {}",
+                trigger_session_id.as_str(),
+                e
+            );
+        }
     }
 
     Ok(Json(TriggerVerificationResponse {

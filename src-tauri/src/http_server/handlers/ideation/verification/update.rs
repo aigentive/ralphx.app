@@ -408,9 +408,11 @@ pub async fn update_plan_verification(
         "Verification state updated"
     );
 
-    // For terminal statuses, kill any running verification child agents before emitting events.
-    // This releases the write lock so the parent can immediately resume plan editing.
-    if matches!(new_status, VerificationStatus::Verified | VerificationStatus::Skipped) {
+    // For skipped sessions, stop the verification child immediately.
+    // Verified sessions defer child shutdown until after verified-side effects complete so
+    // external follow-on work (event emission, auto-propose) is not cut off by the child's
+    // own termination.
+    if matches!(new_status, VerificationStatus::Skipped) {
         stop_verification_children(&session_id, &state.app_state).await.ok();
     }
 
@@ -440,6 +442,12 @@ pub async fn update_plan_verification(
 
     // Layer 2+3 for IdeationVerified — only when new_status == Verified (non-fatal)
     if new_status == VerificationStatus::Verified {
+        tracing::info!(
+            session_id = %session_id,
+            convergence_reason = ?metadata.convergence_reason,
+            origin = %session.origin,
+            "Verification reached terminal verified state — running verified side effects"
+        );
         let verified_payload = serde_json::json!({
             "session_id": session_id,
             "project_id": session.project_id.as_str(),
@@ -468,6 +476,10 @@ pub async fn update_plan_verification(
         && metadata.convergence_reason.as_deref() == Some("zero_blocking")
         && session.origin == crate::domain::entities::ideation::SessionOrigin::External
     {
+        tracing::info!(
+            session_id = %session_id,
+            "Scheduling external auto-propose after zero_blocking convergence"
+        );
         let state_for_auto_propose = state.clone();
         let session_for_auto_propose = session.clone();
         let session_id_for_auto_propose = session_id.clone();
@@ -487,17 +499,26 @@ pub async fn update_plan_verification(
         && session.origin == crate::domain::entities::ideation::SessionOrigin::External
         && metadata.convergence_reason.as_deref() != Some("zero_blocking")
     {
-        let repo = std::sync::Arc::clone(&state.app_state.ideation_session_repo);
         let sid = crate::domain::entities::IdeationSessionId::from_string(session_id.clone());
-        tokio::spawn(async move {
-            if let Err(e) = repo.update_external_activity_phase(&sid, Some("ready")).await {
-                error!(
-                    "Failed to set activity phase 'ready' for session {}: {}",
-                    sid.as_str(),
-                    e
-                );
-            }
-        });
+        if let Err(e) = state
+            .app_state
+            .ideation_session_repo
+            .update_external_activity_phase(&sid, Some("ready"))
+            .await
+        {
+            error!(
+                "Failed to set activity phase 'ready' for session {}: {}",
+                sid.as_str(),
+                e
+            );
+        }
+    }
+
+    // Verified sessions stop verification children only after their follow-on side effects
+    // have been scheduled/emitted. This avoids cutting off the external auto-propose path
+    // when the verifier child is itself the caller that reported Verified.
+    if matches!(new_status, VerificationStatus::Verified) {
+        stop_verification_children(&session_id, &state.app_state).await.ok();
     }
 
     use crate::http_server::types::{VerificationGapResponse, VerificationRoundSummary};
