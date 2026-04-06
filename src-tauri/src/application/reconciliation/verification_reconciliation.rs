@@ -623,13 +623,24 @@ impl VerificationReconciliationService {
     ///
     /// Also archives stale external sessions using the configured TTL.
     pub async fn startup_scan(&self) {
+        self.startup_scan_excluding_external_archive_sessions(&HashSet::new())
+            .await;
+    }
+
+    /// Startup scan variant that preserves externally visible sessions already claimed by
+    /// startup ideation recovery before applying cold-boot archival.
+    pub async fn startup_scan_excluding_external_archive_sessions(
+        &self,
+        skip_external_archive_ids: &HashSet<String>,
+    ) {
         tracing::info!("Running verification startup scan (cold boot)...");
         let recovery_claimed = self.scan_for_recoverable_orphans().await;
         let count = self.scan_and_reset_excluding(true, &recovery_claimed).await;
         if count > 0 {
             tracing::info!(count, "Startup: reset orphaned verification in_progress states");
         }
-        self.scan_and_archive_stale_external_sessions(true).await;
+        self.scan_and_archive_stale_external_sessions_excluding(true, skip_external_archive_ids)
+            .await;
     }
 
     /// Scan for stale external sessions and archive them, then detect stalled sessions.
@@ -644,6 +655,15 @@ impl VerificationReconciliationService {
     /// After archival, runs stall detection for periodic scans only (cold boot handles all dead
     /// sessions via archival). Stall detection marks sessions with no recent activity as 'stalled'.
     pub async fn scan_and_archive_stale_external_sessions(&self, cold_boot: bool) {
+        self.scan_and_archive_stale_external_sessions_excluding(cold_boot, &HashSet::new())
+            .await;
+    }
+
+    async fn scan_and_archive_stale_external_sessions_excluding(
+        &self,
+        cold_boot: bool,
+        skip_external_archive_ids: &HashSet<String>,
+    ) {
         let stale_before = Some(
             Utc::now() - chrono::Duration::seconds(self.config.external_session_stale_secs as i64),
         );
@@ -667,7 +687,20 @@ impl VerificationReconciliationService {
 
         let mut archive_count = 0usize;
         let mut preserved_verified = 0usize;
+        let mut preserved_startup_recovery = 0usize;
         for session in &sessions {
+            if skip_external_archive_ids.contains(session.id.as_str()) {
+                preserved_startup_recovery += 1;
+                tracing::info!(
+                    session_id = %session.id.as_str(),
+                    phase = ?session.external_activity_phase,
+                    updated_at = %session.updated_at,
+                    cold_boot,
+                    "Preserved external session during stale archival scan because startup ideation recovery claimed it"
+                );
+                continue;
+            }
+
             if session.verification_status == VerificationStatus::Verified {
                 preserved_verified += 1;
                 tracing::info!(
@@ -718,6 +751,14 @@ impl VerificationReconciliationService {
                 count = preserved_verified,
                 cold_boot,
                 "External session reconciliation: preserved verified sessions during stale archival scan"
+            );
+        }
+
+        if preserved_startup_recovery > 0 {
+            tracing::info!(
+                count = preserved_startup_recovery,
+                cold_boot,
+                "External session reconciliation: preserved startup-recovery-claimed sessions during stale archival scan"
             );
         }
 

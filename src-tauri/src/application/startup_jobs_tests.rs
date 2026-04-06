@@ -771,12 +771,16 @@ async fn test_run_skips_ideation_recovery_when_persisted_stop_barrier_is_set() {
     let runner =
         build_runner_with_chat_service(&app_state, Arc::clone(&mock) as Arc<dyn ChatService>);
 
-    runner.run().await;
+    let claimed = runner.run().await;
 
     assert_eq!(
         mock.call_count(),
         0,
         "Persisted stop barrier must suppress Phase N+1 ideation recovery"
+    );
+    assert!(
+        claimed.is_empty(),
+        "stop barrier should not claim any ideation sessions for Phase N+1 recovery"
     );
 }
 
@@ -811,11 +815,17 @@ async fn test_run_refreshes_phase_n1_ideation_sessions_before_recovery() {
         )
         .await;
 
+    app_state
+        .app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
+
     let mock = Arc::new(MockChatService::new());
     let runner =
         build_runner_with_chat_service(&app_state, Arc::clone(&mock) as Arc<dyn ChatService>);
 
-    runner.run().await;
+    let claimed = runner.run().await;
 
     let refreshed = app_state
         .ideation_session_repo
@@ -826,5 +836,9 @@ async fn test_run_refreshes_phase_n1_ideation_sessions_before_recovery() {
     assert!(
         refreshed.updated_at > old_updated_at,
         "Phase N+1 ideation sessions should be touched before startup recovery so cold-boot archival does not sweep them"
+    );
+    assert!(
+        claimed.contains(session_id.as_str()),
+        "startup runner should report ideation sessions claimed for Phase N+1 recovery"
     );
 }

@@ -325,7 +325,7 @@ impl<R: Runtime> StartupJobRunner<R> {
     /// Skips if execution is paused. Stops early if max_concurrent is reached.
     /// For each task in an agent-active state, re-executes entry actions to
     /// respawn the appropriate agent.
-    pub async fn run(&self) {
+    pub async fn run(&self) -> HashSet<String> {
         debug!("StartupJobRunner::run() called");
 
         if is_startup_recovery_disabled() {
@@ -333,7 +333,7 @@ impl<R: Runtime> StartupJobRunner<R> {
                 env_var = RALPHX_DISABLE_STARTUP_RECOVERY_ENV,
                 "Startup recovery disabled via environment; skipping startup jobs"
             );
-            return;
+            return HashSet::new();
         }
 
         // Kill orphaned MCP server node processes from previous session.
@@ -460,12 +460,12 @@ impl<R: Runtime> StartupJobRunner<R> {
             ExecutionHaltMode::Paused => {
                 self.execution_state.pause();
                 info!("Persisted pause barrier detected, skipping startup recovery");
-                return;
+                return HashSet::new();
             }
             ExecutionHaltMode::Stopped => {
                 self.execution_state.pause();
                 info!("Persisted stop barrier detected, skipping startup recovery");
-                return;
+                return HashSet::new();
             }
         }
 
@@ -474,7 +474,7 @@ impl<R: Runtime> StartupJobRunner<R> {
         // Check if execution is paused - skip resumption if so
         if self.execution_state.is_paused() {
             info!("Execution paused, skipping task resumption");
-            return;
+            return HashSet::new();
         }
         debug!("Execution NOT paused, continuing...");
 
@@ -485,7 +485,7 @@ impl<R: Runtime> StartupJobRunner<R> {
                 info!("Scheduling Ready tasks (no resumption)");
                 scheduler.try_schedule_ready_tasks().await;
             }
-            return;
+            return HashSet::new();
         }
 
         // Get projects to process (scoped to active project in Phase 82)
@@ -498,11 +498,11 @@ impl<R: Runtime> StartupJobRunner<R> {
                         project_id = active_pid.as_str(),
                         "Active project not found, skipping resumption"
                     );
-                    return;
+                    return HashSet::new();
                 }
                 Err(e) => {
                     tracing::error!(error = %e, "Failed to get active project for startup resumption");
-                    return;
+                    return HashSet::new();
                 }
             }
         } else {
@@ -511,7 +511,7 @@ impl<R: Runtime> StartupJobRunner<R> {
                 Ok(projects) => projects,
                 Err(e) => {
                     tracing::error!(error = %e, "Failed to get projects for startup resumption");
-                    return;
+                    return HashSet::new();
                 }
             }
         };
@@ -690,7 +690,7 @@ impl<R: Runtime> StartupJobRunner<R> {
                             "Global execution capacity reached, stopping resumption"
                         );
                         info!(count = resumed, "Task resumption complete (partial)");
-                        return;
+                        return HashSet::new();
                     }
 
                     if !self.project_has_execution_capacity(&task.project_id).await {
@@ -774,7 +774,7 @@ impl<R: Runtime> StartupJobRunner<R> {
                             running_count = self.execution_state.running_count(),
                             "Global execution capacity reached, stopping auto-transition recovery"
                         );
-                        return;
+                        return HashSet::new();
                     }
 
                     if !self.project_has_execution_capacity(&task.project_id).await {
@@ -828,8 +828,11 @@ impl<R: Runtime> StartupJobRunner<R> {
         // Phase N+1: Ideation agent recovery — fire-and-forget.
         // Processes the snapshot captured in Phase 0, after all other startup phases complete.
         // Does NOT block startup; app becomes responsive before recovery finishes.
+        let mut phase_n1_claimed_sessions = HashSet::new();
         if !phase_n1_snapshot.is_empty() {
             if let Some(chat_service) = phase_n1_chat_service {
+                phase_n1_claimed_sessions =
+                    Self::collect_phase_n1_snapshot_session_ids(&phase_n1_snapshot);
                 let mut recovery_queue =
                     RecoveryQueue::new(std::time::Duration::from_secs(2));
                 for (key, info) in phase_n1_snapshot {
@@ -878,6 +881,20 @@ impl<R: Runtime> StartupJobRunner<R> {
                 info!("Phase N+1: No chat service configured, skipping ideation recovery");
             }
         }
+
+        phase_n1_claimed_sessions
+    }
+
+    fn collect_phase_n1_snapshot_session_ids(
+        phase_n1_snapshot: &[(
+            crate::domain::services::RunningAgentKey,
+            crate::domain::services::RunningAgentInfo,
+        )],
+    ) -> HashSet<String> {
+        phase_n1_snapshot
+            .iter()
+            .map(|(key, _)| key.context_id.clone())
+            .collect()
     }
 
     async fn refresh_phase_n1_snapshot_sessions(

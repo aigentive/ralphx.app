@@ -1361,6 +1361,34 @@ async fn test_stale_external_scan_preserves_verified_sessions() {
     );
 }
 
+/// Cold boot preserves externally visible ideation sessions that startup recovery already claimed.
+#[tokio::test]
+async fn test_startup_scan_preserves_startup_recovery_claimed_external_sessions() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    let session = make_external_session(project_id, "created", Duration::hours(5));
+    let session_id = session.id.clone();
+    repo.create(session).await.unwrap();
+
+    let config = VerificationReconciliationConfig {
+        external_session_stale_secs: 7200,
+        ..Default::default()
+    };
+    let svc = make_service(repo.clone(), config);
+    let mut claimed = HashSet::new();
+    claimed.insert(session_id.as_str().to_string());
+    svc.startup_scan_excluding_external_archive_sessions(&claimed)
+        .await;
+
+    let after = repo.get_by_id(&session_id).await.unwrap().unwrap();
+    assert_eq!(
+        after.status,
+        IdeationSessionStatus::Active,
+        "startup-recovery-claimed external session must not be archived during cold boot"
+    );
+}
+
 /// Stall detection marks sessions with no recent activity as 'stalled'.
 #[tokio::test]
 async fn test_stall_detection_marks_sessions_stalled() {
