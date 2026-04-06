@@ -11,6 +11,7 @@ use crate::domain::entities::{
     ExecutionRecoveryState, InternalStatus, MergeFailureSource, MergeRecoveryEventKind,
     MergeRecoveryMetadata, MergeRecoveryState, Task,
 };
+use crate::domain::repositories::TaskRepository;
 use crate::infrastructure::agents::claude::reconciliation_config;
 
 use super::policy::ShaComparisonResult;
@@ -924,6 +925,38 @@ impl<R: Runtime> ReconciliationRunner<R> {
             ExecutionFailureSource::Unknown => ExecutionRecoveryReasonCode::Unknown,
         }
     }
+}
+
+/// Increment `startup_resume_count` and set `last_startup_resume_at` in execution recovery metadata.
+///
+/// Called by startup_jobs.rs when a task that was in `Executing`/`ReExecuting` state at shutdown
+/// is resumed at startup (before a full re-queue). Returns the new `startup_resume_count` after
+/// increment so callers can gate on the budget without a second metadata read.
+///
+/// Uses the targeted `update_metadata()` SQL path to prevent metadata write races (GAP H7).
+// Phase 1 only — Phase 2 (startup_jobs.rs) will add the call site.
+#[allow(dead_code)]
+pub async fn record_execution_active_startup_resume(
+    task: &Task,
+    task_repo: &dyn TaskRepository,
+) -> Result<u32, String> {
+    let mut recovery = ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+        .unwrap_or(None)
+        .unwrap_or_default();
+
+    recovery.startup_resume_count += 1;
+    recovery.last_startup_resume_at = Some(chrono::Utc::now());
+
+    let updated_metadata = recovery
+        .update_task_metadata(task.metadata.as_deref())
+        .map_err(|e| e.to_string())?;
+
+    task_repo
+        .update_metadata(&task.id, Some(updated_metadata))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(recovery.startup_resume_count)
 }
 
 /// Maps a `StopRetryingReason` to its corresponding `ExecutionRecoveryReasonCode`.

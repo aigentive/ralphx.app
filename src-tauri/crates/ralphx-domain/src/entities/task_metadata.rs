@@ -466,6 +466,13 @@ pub struct ExecutionRecoveryMetadata {
     /// None if stop_retrying is false or was set before this field existed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unrecoverable_reason: Option<StopRetryingReason>,
+    /// How many times this task was resumed from an active Executing/ReExecuting state via startup recovery.
+    /// Incremented by record_execution_active_startup_resume() in startup_jobs.rs.
+    #[serde(default)]
+    pub startup_resume_count: u32,
+    /// When the most recent startup active-resume occurred.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_startup_resume_at: Option<DateTime<Utc>>,
 }
 
 impl ExecutionRecoveryMetadata {
@@ -478,6 +485,8 @@ impl ExecutionRecoveryMetadata {
             stop_retrying: false,
             auto_recovery_count: 0,
             unrecoverable_reason: None,
+            startup_resume_count: 0,
+            last_startup_resume_at: None,
         }
     }
 
