@@ -117,6 +117,8 @@ mod session_export_service_tests;
 mod session_namer_prompt_tests;
 #[cfg(test)]
 mod throttled_emitter_tests;
+#[cfg(test)]
+mod task_transition_service_tests;
 
 // Unified chat service (handles all chat contexts: ideation, task, project, task_execution)
 pub use chat_service::{

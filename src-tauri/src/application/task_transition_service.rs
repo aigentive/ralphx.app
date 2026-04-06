@@ -59,8 +59,12 @@ pub struct TauriEventEmitter<R: Runtime = tauri::Wry> {
     app_handle: Option<AppHandle<R>>,
     /// Optional external events repo for dual-emit to DB.
     external_events_repo: Option<Arc<dyn ExternalEventsRepository>>,
-    /// Optional task repo for resolving project_id during dual-emit.
+    /// Optional task repo for resolving project_id and task details during enrichment.
     task_repo_for_emit: Option<Arc<dyn TaskRepository>>,
+    /// Optional project repo for resolving project_name during enrichment.
+    project_repo_for_emit: Option<Arc<dyn ProjectRepository>>,
+    /// Optional ideation session repo for resolving session_title during enrichment.
+    ideation_session_repo_for_emit: Option<Arc<dyn IdeationSessionRepository>>,
     /// Optional webhook publisher for triple-emit (Tauri + DB + webhooks).
     webhook_publisher: Option<Arc<dyn WebhookPublisher>>,
 }
@@ -71,18 +75,24 @@ impl<R: Runtime> TauriEventEmitter<R> {
             app_handle,
             external_events_repo: None,
             task_repo_for_emit: None,
+            project_repo_for_emit: None,
+            ideation_session_repo_for_emit: None,
             webhook_publisher: None,
         }
     }
 
-    /// Attach external events repository and task repository for dual-emit.
+    /// Attach external events repository and repos for enriched dual-emit.
     pub fn with_external_events(
         mut self,
         external_events_repo: Arc<dyn ExternalEventsRepository>,
         task_repo: Arc<dyn TaskRepository>,
+        project_repo: Arc<dyn ProjectRepository>,
+        ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     ) -> Self {
         self.external_events_repo = Some(external_events_repo);
         self.task_repo_for_emit = Some(task_repo);
+        self.project_repo_for_emit = Some(project_repo);
+        self.ideation_session_repo_for_emit = Some(ideation_session_repo);
         self
     }
 
@@ -92,55 +102,108 @@ impl<R: Runtime> TauriEventEmitter<R> {
         self
     }
 
-    /// Write a status-change event to the external_events table.
-    /// Looks up the task's project_id via the task repo.
-    async fn write_external_event(&self, task_id: &str, old_status: &str, new_status: &str) {
-        let (Some(ref ext_repo), Some(ref task_repo)) =
-            (&self.external_events_repo, &self.task_repo_for_emit)
-        else {
-            return;
+    /// Build a fully enriched status-change payload by resolving task → project → session.
+    ///
+    /// Returns `Some((project_id, payload))` with `project_name`, `session_title`, `task_title`,
+    /// and `presentation_kind` injected when task/project/session lookups succeed.
+    /// Returns `None` (with a `warn!` log) when the task cannot be found — callers must skip
+    /// all sinks in that case. Project and session lookup failures degrade gracefully to `None`
+    /// fields in the payload (non-fatal).
+    ///
+    /// Used by `emit_status_change` to build a single enriched payload for all three sinks.
+    pub(crate) async fn build_enriched_payload(
+        &self,
+        task_id: &str,
+        old_status: &str,
+        new_status: &str,
+    ) -> Option<(String, serde_json::Value)> {
+        let task_repo = self.task_repo_for_emit.as_ref()?;
+        let tid = crate::domain::entities::TaskId::from_string(task_id.to_string());
+        let task = match task_repo.get_by_id(&tid).await.ok().flatten() {
+            Some(t) => t,
+            None => {
+                tracing::warn!(
+                    task_id = task_id,
+                    "build_enriched_payload: task not found — skipping enrichment"
+                );
+                return None;
+            }
         };
 
-        let tid = crate::domain::entities::TaskId::from_string(task_id.to_string());
-        let (project_id, task_title) = match task_repo.get_by_id(&tid).await {
-            Ok(Some(t)) => (t.project_id.to_string(), Some(t.title.clone())),
-            Ok(None) => {
-                tracing::debug!(task_id = task_id, "write_external_event: task not found, skipping");
-                return;
-            }
-            Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    task_id = task_id,
-                    "write_external_event: failed to fetch task project_id"
+        let project_id = task.project_id.to_string();
+        let task_title = Some(task.title.clone());
+
+        let project_name = if let Some(repo) = &self.project_repo_for_emit {
+            let result = repo
+                .get_by_id(&task.project_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|p| p.name);
+            if result.is_none() {
+                tracing::debug!(
+                    project_id = %task.project_id,
+                    "build_enriched_payload: project not found — project_name omitted"
                 );
-                return;
             }
+            result
+        } else {
+            None
+        };
+
+        let session_title = if let (Some(sid), Some(repo)) = (
+            task.ideation_session_id.as_ref(),
+            self.ideation_session_repo_for_emit.as_ref(),
+        ) {
+            let result = repo
+                .get_by_id(sid)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|s| s.title);
+            if result.is_none() {
+                tracing::debug!(
+                    "build_enriched_payload: session not found or title None — session_title omitted"
+                );
+            }
+            result
+        } else {
+            None
         };
 
         let ctx = WebhookPresentationContext {
-            project_name: None,
-            session_title: None,
+            project_name,
+            session_title,
             task_title,
             presentation_kind: Some(PresentationKind::TaskStatusChanged),
         };
-        let mut payload_value = serde_json::json!({
+
+        let mut payload = serde_json::json!({
             "task_id": task_id,
             "project_id": project_id,
             "old_status": old_status,
             "new_status": new_status,
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
-        ctx.inject_into(&mut payload_value);
-        let payload = payload_value.to_string();
+        ctx.inject_into(&mut payload);
 
+        Some((project_id, payload))
+    }
+
+    /// Write a pre-built status-change event payload to the external_events table.
+    async fn write_external_event(&self, project_id: &str, payload: serde_json::Value) {
+        let Some(ref ext_repo) = self.external_events_repo else {
+            return;
+        };
+
+        let payload_str = payload.to_string();
         if let Err(e) = ext_repo
-            .insert_event("task:status_changed", &project_id, &payload)
+            .insert_event("task:status_changed", project_id, &payload_str)
             .await
         {
             tracing::warn!(
                 error = %e,
-                task_id = task_id,
+                project_id = project_id,
                 "write_external_event: failed to insert into external_events (non-fatal)"
             );
         }
@@ -179,46 +242,38 @@ impl<R: Runtime> EventEmitter for TauriEventEmitter<R> {
     }
 
     async fn emit_status_change(&self, task_id: &str, old_status: &str, new_status: &str) {
+        // Build enriched payload once; skip all sinks if task not found.
+        let (project_id, payload) =
+            match self.build_enriched_payload(task_id, old_status, new_status).await {
+                Some(pair) => pair,
+                None => {
+                    tracing::warn!(
+                        task_id = task_id,
+                        "emit_status_change: build_enriched_payload returned None — skipping all sinks"
+                    );
+                    return;
+                }
+            };
+
+        // Sink 1: Tauri UI event.
         if let Some(ref handle) = self.app_handle {
-            let payload = serde_json::json!({
-                "task_id": task_id,
-                "old_status": old_status,
-                "new_status": new_status,
-            });
-            if let Some(throttled) = handle.try_state::<std::sync::Arc<crate::application::ThrottledEmitter>>() {
-                throttled.emit("task:status_changed", payload);
+            if let Some(throttled) =
+                handle.try_state::<std::sync::Arc<crate::application::ThrottledEmitter>>()
+            {
+                throttled.emit("task:status_changed", payload.clone());
             } else {
-                let _ = handle.emit("task:status_changed", payload);
+                let _ = handle.emit("task:status_changed", payload.clone());
             }
         }
-        // Dual-emit: write to external_events table for external consumers.
-        self.write_external_event(task_id, old_status, new_status).await;
 
-        // Triple-emit: push via webhook publisher if configured.
+        // Sink 2: external_events DB table.
+        self.write_external_event(&project_id, payload.clone()).await;
+
+        // Sink 3: webhook publisher.
         if let Some(ref publisher) = self.webhook_publisher {
-            if let Some(ref task_repo) = self.task_repo_for_emit {
-                let tid = crate::domain::entities::TaskId::from_string(task_id.to_string());
-                if let Ok(Some(task)) = task_repo.get_by_id(&tid).await {
-                    let project_id = task.project_id.to_string();
-                    let ctx = WebhookPresentationContext {
-                        project_name: None,
-                        session_title: None,
-                        task_title: Some(task.title.clone()),
-                        presentation_kind: Some(PresentationKind::TaskStatusChanged),
-                    };
-                    let mut webhook_payload = serde_json::json!({
-                        "task_id": task_id,
-                        "project_id": project_id,
-                        "old_status": old_status,
-                        "new_status": new_status,
-                        "timestamp": chrono::Utc::now().to_rfc3339(),
-                    });
-                    ctx.inject_into(&mut webhook_payload);
-                    publisher
-                        .publish(EventType::TaskStatusChanged, &project_id, webhook_payload)
-                        .await;
-                }
-            }
+            publisher
+                .publish(EventType::TaskStatusChanged, &project_id, payload)
+                .await;
         }
     }
 }
@@ -875,9 +930,19 @@ impl<R: Runtime> TaskTransitionService<R> {
         mut self,
         repo: Arc<dyn ExternalEventsRepository>,
     ) -> Self {
-        // Rebuild the event emitter with external events + optional webhook publisher.
+        // Rebuild the event emitter with external events + enrichment repos + optional webhook publisher.
+        let ideation_session_repo = self
+            .ideation_session_repo
+            .as_ref()
+            .expect("ideation_session_repo set in new()")
+            .clone();
         let emitter = TauriEventEmitter::new(self._app_handle.clone())
-            .with_external_events(Arc::clone(&repo), Arc::clone(&self.task_repo));
+            .with_external_events(
+                Arc::clone(&repo),
+                Arc::clone(&self.task_repo),
+                Arc::clone(&self.project_repo),
+                ideation_session_repo,
+            );
         let emitter = if let Some(ref pub_) = self.webhook_publisher {
             emitter.with_webhook_publisher(Arc::clone(pub_))
         } else {

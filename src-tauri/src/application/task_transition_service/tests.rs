@@ -1822,3 +1822,275 @@ async fn test_stale_freshness_routing_metadata_cleared_after_successful_review()
         "Non-freshness keys must not be removed by RoutingOnly cleanup"
     );
 }
+
+// ============================================================================
+// Enrichment Tests — build_enriched_payload and emit_status_change
+// ============================================================================
+
+mod enrichment_tests {
+    use super::*;
+    use crate::application::AppState;
+    use crate::domain::entities::{IdeationSession, Project, Task};
+    use crate::domain::repositories::ExternalEventsRepository;
+    use crate::domain::state_machine::services::WebhookPublisher;
+    use crate::infrastructure::memory::MemoryExternalEventsRepository;
+    use async_trait::async_trait;
+    use ralphx_domain::entities::EventType;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    /// Recording webhook publisher — captures published payloads for assertions.
+    struct RecordingWebhookPublisher {
+        published: Arc<Mutex<Vec<serde_json::Value>>>,
+    }
+
+    impl RecordingWebhookPublisher {
+        fn new() -> Self {
+            Self {
+                published: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+
+        async fn payloads(&self) -> Vec<serde_json::Value> {
+            self.published.lock().await.clone()
+        }
+    }
+
+    #[async_trait]
+    impl WebhookPublisher for RecordingWebhookPublisher {
+        async fn publish(
+            &self,
+            _event_type: EventType,
+            _project_id: &str,
+            payload: serde_json::Value,
+        ) {
+            self.published.lock().await.push(payload);
+        }
+    }
+
+    /// Build a TauriEventEmitter wired to recording sinks and repos from AppState.
+    fn build_recording_emitter(
+        app_state: &AppState,
+        ext_repo: Arc<MemoryExternalEventsRepository>,
+        webhook: Arc<RecordingWebhookPublisher>,
+    ) -> TauriEventEmitter<tauri::Wry> {
+        TauriEventEmitter::new(None)
+            .with_external_events(
+                Arc::clone(&ext_repo) as Arc<dyn ExternalEventsRepository>,
+                Arc::clone(&app_state.task_repo),
+                Arc::clone(&app_state.project_repo),
+                Arc::clone(&app_state.ideation_session_repo),
+            )
+            .with_webhook_publisher(Arc::clone(&webhook) as Arc<dyn WebhookPublisher>)
+    }
+
+    // ── Test 1: task with project + ideation session ──────────────────────────
+
+    #[tokio::test]
+    async fn test_enriched_payload_with_project_and_session() {
+        let app_state = AppState::new_test();
+
+        let project = Project::new("My Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        let session =
+            IdeationSession::new_with_title(project.id.clone(), "Sprint 1 Planning");
+        app_state
+            .ideation_session_repo
+            .create(session.clone())
+            .await
+            .unwrap();
+
+        let mut task = Task::new(project.id.clone(), "Implement login".to_string());
+        task.ideation_session_id = Some(session.id.clone());
+        app_state.task_repo.create(task.clone()).await.unwrap();
+
+        let ext_repo = Arc::new(MemoryExternalEventsRepository::new());
+        let webhook = Arc::new(RecordingWebhookPublisher::new());
+        let emitter =
+            build_recording_emitter(&app_state, Arc::clone(&ext_repo), Arc::clone(&webhook));
+
+        emitter
+            .emit_status_change(task.id.as_str(), "ready", "executing")
+            .await;
+
+        // DB sink: one event with all enrichment fields present
+        let db_events = ext_repo
+            .get_events_after_cursor(&[project.id.to_string()], 0, 100)
+            .await
+            .unwrap();
+        assert_eq!(db_events.len(), 1, "DB sink should receive exactly one event");
+        let db_payload: serde_json::Value =
+            serde_json::from_str(&db_events[0].payload).unwrap();
+
+        assert_eq!(db_payload["project_name"], "My Project");
+        assert_eq!(db_payload["session_title"], "Sprint 1 Planning");
+        assert_eq!(db_payload["task_title"], "Implement login");
+        assert_eq!(db_payload["presentation_kind"], "task_status_changed");
+
+        // Webhook sink: one event with matching enrichment fields
+        let webhook_payloads = webhook.payloads().await;
+        assert_eq!(
+            webhook_payloads.len(),
+            1,
+            "Webhook sink should receive exactly one event"
+        );
+        let wh = &webhook_payloads[0];
+        assert_eq!(wh["project_name"], "My Project");
+        assert_eq!(wh["session_title"], "Sprint 1 Planning");
+        assert_eq!(wh["task_title"], "Implement login");
+        assert_eq!(wh["presentation_kind"], "task_status_changed");
+    }
+
+    // ── Test 2: task with project, no ideation session ─────────────────────────
+
+    #[tokio::test]
+    async fn test_enriched_payload_with_project_no_session() {
+        let app_state = AppState::new_test();
+
+        let project = Project::new("My Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        // ideation_session_id remains None (default)
+        let task = Task::new(project.id.clone(), "Background job".to_string());
+        app_state.task_repo.create(task.clone()).await.unwrap();
+
+        let ext_repo = Arc::new(MemoryExternalEventsRepository::new());
+        let webhook = Arc::new(RecordingWebhookPublisher::new());
+        let emitter =
+            build_recording_emitter(&app_state, Arc::clone(&ext_repo), Arc::clone(&webhook));
+
+        emitter
+            .emit_status_change(task.id.as_str(), "backlog", "ready")
+            .await;
+
+        let db_events = ext_repo
+            .get_events_after_cursor(&[project.id.to_string()], 0, 100)
+            .await
+            .unwrap();
+        assert_eq!(db_events.len(), 1, "DB sink should receive one event");
+        let db_payload: serde_json::Value =
+            serde_json::from_str(&db_events[0].payload).unwrap();
+
+        // project_name present
+        assert_eq!(db_payload["project_name"], "My Project");
+        // session_title key must be ABSENT (not null) — inject_into skips None fields
+        assert!(
+            db_payload.get("session_title").is_none(),
+            "session_title must be absent when task has no ideation_session_id"
+        );
+        // task_title present
+        assert_eq!(db_payload["task_title"], "Background job");
+        // All 5 base fields intact (backward-compat coverage)
+        assert!(db_payload.get("task_id").is_some(), "task_id must be present");
+        assert!(
+            db_payload.get("project_id").is_some(),
+            "project_id must be present"
+        );
+        assert_eq!(db_payload["old_status"], "backlog");
+        assert_eq!(db_payload["new_status"], "ready");
+        assert!(
+            db_payload.get("timestamp").is_some(),
+            "timestamp must be present"
+        );
+    }
+
+    // ── Test 3: task not found — build_enriched_payload returns None, all sinks skipped ──
+
+    #[tokio::test]
+    async fn test_enriched_payload_returns_none_when_task_not_found() {
+        let app_state = AppState::new_test();
+
+        let ext_repo = Arc::new(MemoryExternalEventsRepository::new());
+        let webhook = Arc::new(RecordingWebhookPublisher::new());
+        let emitter =
+            build_recording_emitter(&app_state, Arc::clone(&ext_repo), Arc::clone(&webhook));
+
+        let nonexistent_id = "nonexistent-task-id";
+
+        // build_enriched_payload returns None for unknown task
+        let result = emitter
+            .build_enriched_payload(nonexistent_id, "ready", "executing")
+            .await;
+        assert!(
+            result.is_none(),
+            "build_enriched_payload must return None when task is not found"
+        );
+
+        // emit_status_change skips all sinks when enrichment fails
+        emitter
+            .emit_status_change(nonexistent_id, "ready", "executing")
+            .await;
+
+        let db_events = ext_repo
+            .get_events_after_cursor(&["any-project-id".to_string()], 0, 100)
+            .await
+            .unwrap();
+        assert_eq!(
+            db_events.len(),
+            0,
+            "DB sink must NOT be called when task is not found"
+        );
+
+        let webhook_payloads = webhook.payloads().await;
+        assert_eq!(
+            webhook_payloads.len(),
+            0,
+            "Webhook sink must NOT be called when task is not found"
+        );
+    }
+
+    // ── Test 4: cross-sink consistency ────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_db_and_webhook_sinks_receive_identical_enrichment_fields() {
+        let app_state = AppState::new_test();
+
+        let project =
+            Project::new("Consistent Project".to_string(), "/test/path".to_string());
+        app_state.project_repo.create(project.clone()).await.unwrap();
+
+        let session =
+            IdeationSession::new_with_title(project.id.clone(), "Cross-Sink Session");
+        app_state
+            .ideation_session_repo
+            .create(session.clone())
+            .await
+            .unwrap();
+
+        let mut task = Task::new(project.id.clone(), "Cross-Sink Task".to_string());
+        task.ideation_session_id = Some(session.id.clone());
+        app_state.task_repo.create(task.clone()).await.unwrap();
+
+        let ext_repo = Arc::new(MemoryExternalEventsRepository::new());
+        let webhook = Arc::new(RecordingWebhookPublisher::new());
+        let emitter =
+            build_recording_emitter(&app_state, Arc::clone(&ext_repo), Arc::clone(&webhook));
+
+        emitter
+            .emit_status_change(task.id.as_str(), "backlog", "executing")
+            .await;
+
+        let db_events = ext_repo
+            .get_events_after_cursor(&[project.id.to_string()], 0, 100)
+            .await
+            .unwrap();
+        assert_eq!(db_events.len(), 1, "Expected one DB event");
+        let db_payload: serde_json::Value =
+            serde_json::from_str(&db_events[0].payload).unwrap();
+
+        let webhook_payloads = webhook.payloads().await;
+        assert_eq!(webhook_payloads.len(), 1, "Expected one webhook event");
+        let wh = &webhook_payloads[0];
+
+        // DB and webhook must carry identical enrichment fields
+        // (timestamp excluded — may differ by a few ms)
+        for field in &["project_name", "session_title", "task_title", "presentation_kind"] {
+            assert_eq!(
+                db_payload[field], wh[field],
+                "Field '{}' must be identical across DB and webhook sinks",
+                field
+            );
+        }
+    }
+}
