@@ -29,6 +29,7 @@ pub mod task_qa;
 pub mod task_step;
 pub mod team;
 pub mod types;
+pub mod verification_critic_result;
 pub mod workflow;
 
 pub use activity_event::{
@@ -114,6 +115,7 @@ pub use task_metadata::{
 pub use task_qa::TaskQA;
 pub use task_step::{StepProgressSummary, TaskStep, TaskStepStatus};
 pub use team::{TeamMessageId, TeamMessageRecord, TeamSession, TeamSessionId, TeammateCost, TeammateSnapshot};
+pub use verification_critic_result::{CriticKind, VerificationCriticResult};
 pub use types::{
     ApiKeyId, ChatMessageId, ExecutionPlanId, IdeationSessionId, ProjectId, ReviewIssueId,
     SessionLinkId, TaskId, TaskProposalId, TaskQAId, TaskStepId,
