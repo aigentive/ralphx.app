@@ -305,6 +305,33 @@ describe('New team tool definitions', () => {
             });
         });
     });
+    describe('get_child_session_status', () => {
+        const tool = allTools.find((t) => t.name === 'get_child_session_status');
+        it('should document verifier debugging guidance and example payload', () => {
+            expect(tool).toBeDefined();
+            expect(tool?.description).toContain('include_recent_messages=true');
+            expect(tool?.description).toContain('last assistant/tool outputs');
+            expect((tool?.inputSchema).examples?.[0]).toMatchObject({
+                session_id: 'verification-child-session-id',
+                include_recent_messages: true,
+                message_limit: 10,
+            });
+        });
+    });
+    describe('send_ideation_session_message', () => {
+        const tool = allTools.find((t) => t.name === 'send_ideation_session_message');
+        it('should document full-context verifier nudges and example payload', () => {
+            expect(tool).toBeDefined();
+            expect(tool?.description).toContain('repeat the full invariant context');
+            expect(tool?.description).toContain('SESSION_ID, ROUND, expected artifact prefix/schema');
+            expect((tool?.inputSchema).examples?.[0]).toMatchObject({
+                session_id: 'verification-child-session-id',
+            });
+            expect((tool?.inputSchema).examples?.[0]?.message).toContain('SESSION_ID');
+            expect((tool?.inputSchema).examples?.[0]?.message).toContain('ROUND: 2');
+            expect((tool?.inputSchema).examples?.[0]?.message).toContain('TeamResearch artifact');
+        });
+    });
     describe('get_team_session_state', () => {
         const tool = allTools.find((t) => t.name === 'get_team_session_state');
         it('should exist in ALL_TOOLS', () => {
