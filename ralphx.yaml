@@ -915,6 +915,9 @@ agents:
         search_memories, # workaround for #25200
         get_memory, # workaround for #25200
         get_memories_for_paths, # workaround for #25200
+        # verification critic result tools
+        submit_verification_critic_result,
+        get_verification_round_results,
       ]
     preapproved_cli_tools: [Read, Grep, Glob, Bash, "Task(ralphx:plan-critic-completeness)", "Task(ralphx:plan-critic-implementation-feasibility)", "Task(ralphx:ideation-specialist-ux)", "Task(ralphx:ideation-specialist-code-quality)", "Task(ralphx:ideation-specialist-prompt-quality)", "Task(ralphx:ideation-specialist-intent)", "Task(ralphx:ideation-specialist-pipeline-safety)", "Task(ralphx:ideation-specialist-state-machine)"]
 

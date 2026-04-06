@@ -801,6 +801,47 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         prefixes,
         artifacts_by_prefix,
       };
+    } else if (name === "submit_verification_critic_result") {
+      // POST /api/internal/verification-critic-results
+      const {
+        parent_session_id,
+        verification_session_id,
+        round,
+        critic_kind,
+        title,
+        content,
+        artifact_type,
+      } = args as {
+        parent_session_id: string;
+        verification_session_id: string;
+        round: number;
+        critic_kind: string;
+        title: string;
+        content: string;
+        artifact_type?: string;
+      };
+      result = await callTauri("internal/verification-critic-results", {
+        parent_session_id,
+        verification_session_id,
+        round,
+        critic_kind,
+        title,
+        content,
+        artifact_type,
+      });
+    } else if (name === "get_verification_round_results") {
+      // GET /api/internal/verification-critic-results?parent_session_id=...&generation=...&round=...
+      const { parent_session_id, generation, round } = args as {
+        parent_session_id: string;
+        generation: number;
+        round: number;
+      };
+      const params = new URLSearchParams({
+        parent_session_id,
+        generation: String(generation),
+        round: String(round),
+      });
+      result = await callTauriGet(`internal/verification-critic-results?${params}`);
     } else if (name === "get_team_session_state") {
       // GET /api/team/session_state/:session_id
       const { session_id } = args as { session_id: string };

@@ -707,6 +707,92 @@ export const ALL_TOOLS = [
             required: ["session_id", "prefixes"],
         },
     },
+    // ========================================================================
+    // VERIFICATION CRITIC RESULT TOOLS (plan-verifier agent)
+    // ========================================================================
+    {
+        name: "submit_verification_critic_result",
+        description: "Submit a critic result for a verification round. Atomically creates a team artifact and inserts a " +
+            "verification_critic_results row keyed by (parent_session_id, generation, round, critic_kind). " +
+            "Use this instead of create_team_artifact when critics publish findings during plan verification — " +
+            "it indexes the result for fast retrieval by the verifier via get_verification_round_results.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                parent_session_id: {
+                    type: "string",
+                    description: "The parent ideation session ID (NOT the verification child session ID)",
+                },
+                verification_session_id: {
+                    type: "string",
+                    description: "The verification child session ID",
+                },
+                round: {
+                    type: "number",
+                    description: "The current verification round number (1-based)",
+                },
+                critic_kind: {
+                    type: "string",
+                    enum: [
+                        "completeness",
+                        "feasibility",
+                        "ux",
+                        "code_quality",
+                        "intent",
+                        "prompt_quality",
+                        "pipeline_safety",
+                        "state_machine",
+                    ],
+                    description: "The type of critic producing this result",
+                },
+                title: {
+                    type: "string",
+                    description: "Title for the artifact (e.g., 'Completeness: Round 1 gap analysis')",
+                },
+                content: {
+                    type: "string",
+                    description: "JSON or markdown content with critic findings",
+                },
+                artifact_type: {
+                    type: "string",
+                    enum: ["TeamResearch", "TeamAnalysis", "TeamSummary"],
+                    description: "Artifact type (default: TeamResearch)",
+                },
+            },
+            required: [
+                "parent_session_id",
+                "verification_session_id",
+                "round",
+                "critic_kind",
+                "title",
+                "content",
+            ],
+        },
+    },
+    {
+        name: "get_verification_round_results",
+        description: "Retrieve all critic results for a (parent_session_id, generation, round) triple. " +
+            "Returns a results_by_critic_kind map so the verifier can check which critics have reported " +
+            "and read their findings without scanning all team artifacts.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                parent_session_id: {
+                    type: "string",
+                    description: "The parent ideation session ID",
+                },
+                generation: {
+                    type: "number",
+                    description: "The verification generation number (from get_plan_verification)",
+                },
+                round: {
+                    type: "number",
+                    description: "The verification round number (1-based)",
+                },
+            },
+            required: ["parent_session_id", "generation", "round"],
+        },
+    },
     {
         name: "get_team_session_state",
         description: "Retrieve persisted team composition and phase progress for session recovery. " +
@@ -2071,6 +2157,9 @@ export const TOOL_ALLOWLIST = {
         "search_memories", // workaround for #25200
         "get_memory", // workaround for #25200
         "get_memories_for_paths", // workaround for #25200
+        // verification critic result tools
+        "submit_verification_critic_result",
+        "get_verification_round_results",
     ],
     // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
     debug: ALL_TOOLS.map((t) => t.name),

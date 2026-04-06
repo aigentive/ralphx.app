@@ -29,6 +29,9 @@ tools:
   - "mcp__ralphx__search_memories" # workaround for #25200
   - "mcp__ralphx__get_memory" # workaround for #25200
   - "mcp__ralphx__get_memories_for_paths" # workaround for #25200
+  # verification critic result tools
+  - "mcp__ralphx__submit_verification_critic_result"
+  - "mcp__ralphx__get_verification_round_results"
 mcpServers:
   - ralphx:
       type: stdio

@@ -34,6 +34,7 @@ import {
   IDEATION_ADVOCATE,
   PLAN_CRITIC_COMPLETENESS,
   PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY,
+  PLAN_VERIFIER,
 } from '../agentNames.js';
 
 describe('getAllowedToolNames', () => {
@@ -1018,5 +1019,33 @@ describe('TOOL_ALLOWLIST specialist entries', () => {
     PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY,
   ])('%s should stay bounded to direct read tools', (agent) => {
     expect(TOOL_ALLOWLIST[agent]).not.toContain('get_team_artifacts');
+  });
+
+  // verification critic result tools
+  it('submit_verification_critic_result should be in ALL_TOOLS', () => {
+    const tool = getAllTools().find((t) => t.name === 'submit_verification_critic_result');
+    expect(tool).toBeDefined();
+    expect(tool?.inputSchema.required).toContain('parent_session_id');
+    expect(tool?.inputSchema.required).toContain('verification_session_id');
+    expect(tool?.inputSchema.required).toContain('round');
+    expect(tool?.inputSchema.required).toContain('critic_kind');
+    expect(tool?.inputSchema.required).toContain('title');
+    expect(tool?.inputSchema.required).toContain('content');
+  });
+
+  it('get_verification_round_results should be in ALL_TOOLS', () => {
+    const tool = getAllTools().find((t) => t.name === 'get_verification_round_results');
+    expect(tool).toBeDefined();
+    expect(tool?.inputSchema.required).toContain('parent_session_id');
+    expect(tool?.inputSchema.required).toContain('generation');
+    expect(tool?.inputSchema.required).toContain('round');
+  });
+
+  it('PLAN_VERIFIER should include submit_verification_critic_result', () => {
+    expect(TOOL_ALLOWLIST[PLAN_VERIFIER]).toContain('submit_verification_critic_result');
+  });
+
+  it('PLAN_VERIFIER should include get_verification_round_results', () => {
+    expect(TOOL_ALLOWLIST[PLAN_VERIFIER]).toContain('get_verification_round_results');
   });
 });
