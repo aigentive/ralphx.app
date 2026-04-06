@@ -151,6 +151,31 @@ fn test_plan_verifier_prompt_includes_resumable_task_and_retry_context_rules() {
 }
 
 #[test]
+fn test_plan_verifier_prompt_uses_verification_round_artifact_helper() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+    let prompt_path = project_root.join("plugins/app/agents/plan-verifier.md");
+    let prompt = fs::read_to_string(&prompt_path)
+        .unwrap_or_else(|_| panic!("failed to read {}", prompt_path.display()));
+
+    assert!(
+        prompt.contains("mcp__ralphx__get_verification_round_artifacts"),
+        "plan-verifier prompt must use the verifier-oriented artifact collection helper"
+    );
+    assert!(
+        prompt.contains("created_after"),
+        "plan-verifier prompt must pass created_after to the artifact collection helper"
+    );
+    assert!(
+        !prompt.contains("mcp__ralphx__get_team_artifacts(session_id: <parent_session_id>)"),
+        "plan-verifier prompt should not drift back to manual get_team_artifacts collection"
+    );
+    assert!(
+        !prompt.contains("mcp__ralphx__get_artifact(artifact_id: <id>)"),
+        "plan-verifier prompt should not drift back to separate get_artifact fetches for round artifacts"
+    );
+}
+
+#[test]
 fn test_permission_prompt_tool_accepts_shorthand() {
     let yaml = r#"
 claude:
