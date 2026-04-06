@@ -103,9 +103,24 @@ describe('getToolRecoveryHint', () => {
   it('returns parent-session and example guidance for update_plan_verification', () => {
     const hint = getToolRecoveryHint('update_plan_verification');
     expect(hint).toContain('PARENT ideation session_id');
+    expect(hint).toContain('prefer those narrower helpers');
     expect(hint).toContain('status=reviewing');
     expect(hint).toContain('Example reviewing payload:');
     expect(hint).toContain('Example terminal payload:');
+  });
+
+  it('returns narrower verifier-helper guidance for report_verification_round', () => {
+    const hint = getToolRecoveryHint('report_verification_round');
+    expect(hint).toContain('verifier-friendly helper');
+    expect(hint).toContain('status=reviewing and in_progress=true are filled in automatically');
+    expect(hint).toContain('Example payload:');
+  });
+
+  it('returns narrower verifier-helper guidance for complete_plan_verification', () => {
+    const hint = getToolRecoveryHint('complete_plan_verification');
+    expect(hint).toContain('terminal verification updates');
+    expect(hint).toContain('in_progress=false is filled in automatically');
+    expect(hint).toContain('External sessions cannot use status=skipped');
   });
 
   it('returns verifier-debugging guidance for get_child_session_status', () => {
@@ -220,6 +235,17 @@ describe('getFilteredTools', () => {
 
     // Should match allowlist count
     expect(tools.length).toBe(TOOL_ALLOWLIST[WORKER_TEAM_MEMBER].length);
+  });
+
+  it('should scope plan-verifier to the narrower verification helpers', () => {
+    setAgentType('plan-verifier');
+    const tools = getFilteredTools();
+    const toolNames = tools.map((t) => t.name);
+
+    expect(toolNames).toContain('report_verification_round');
+    expect(toolNames).toContain('complete_plan_verification');
+    expect(toolNames).toContain('get_plan_verification');
+    expect(toolNames).not.toContain('update_plan_verification');
   });
 
   it('should return no tools for unknown agent type', () => {
@@ -440,6 +466,44 @@ describe('New team tool definitions', () => {
         in_progress: false,
         convergence_reason: 'zero_blocking',
       });
+    });
+  });
+
+  describe('report_verification_round', () => {
+    const tool = PLAN_TOOLS.find((t) => t.name === 'report_verification_round');
+
+    it('should expose the verifier-friendly round helper with fixed semantics', () => {
+      expect(tool).toBeDefined();
+      expect(tool?.description).toContain('Verifier-friendly helper');
+      expect(tool?.description).toContain('status fixed to reviewing');
+      expect(tool?.description).toContain('in_progress fixed to true');
+      expect((tool?.inputSchema as any).examples?.[0]).toMatchObject({
+        session_id: 'parent-session-id',
+        round: 1,
+        generation: 3,
+      });
+      expect(tool?.inputSchema.required).toEqual(['session_id', 'round', 'generation']);
+    });
+  });
+
+  describe('complete_plan_verification', () => {
+    const tool = PLAN_TOOLS.find((t) => t.name === 'complete_plan_verification');
+
+    it('should expose the verifier-friendly terminal helper with fixed semantics', () => {
+      expect(tool).toBeDefined();
+      expect(tool?.description).toContain('Verifier-friendly helper');
+      expect(tool?.description).toContain('in_progress fixed to false');
+      expect(tool?.description).toContain("External sessions cannot use status='skipped'");
+      expect((tool?.inputSchema as any).examples?.[0]).toMatchObject({
+        session_id: 'parent-session-id',
+        status: 'verified',
+        convergence_reason: 'zero_blocking',
+      });
+      expect((tool?.inputSchema as any).examples?.[1]).toMatchObject({
+        status: 'reviewing',
+        convergence_reason: 'agent_error',
+      });
+      expect(tool?.inputSchema.required).toEqual(['session_id', 'status', 'generation']);
     });
   });
 

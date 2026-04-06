@@ -18,7 +18,8 @@ tools:
   - "mcp__ralphx__get_team_artifacts"
   - "mcp__ralphx__get_artifact"
   - "mcp__ralphx__get_parent_session_context"
-  - "mcp__ralphx__update_plan_verification"
+  - "mcp__ralphx__report_verification_round"
+  - "mcp__ralphx__complete_plan_verification"
   - "mcp__ralphx__get_plan_verification"
   - "mcp__ralphx__update_plan_artifact"
   - "mcp__ralphx__edit_plan_artifact"
@@ -371,14 +372,12 @@ Deduplicate gaps across usable critic results:
 - Assign source: "layer1" | "layer2" | "both"
 - Estimate penalty mass qualitatively for each merged gap and sort highest-first before revising
 
-### E. Call update_plan_verification
+### E. Report verification round
 
-Call `mcp__ralphx__update_plan_verification` with:
+Call `mcp__ralphx__report_verification_round` with:
 ```json
 {
   "session_id": "<parent_session_id>",
-  "status": "reviewing",
-  "in_progress": true,
   "generation": <generation>,
   "round": <current_round>,
   "gaps": <merged_gap_array>
@@ -486,13 +485,12 @@ Escalate when ANY of these conditions is true:
 
 ### Escalation Procedure
 
-1. **Update verification state to terminal** — call `mcp__ralphx__update_plan_verification` with:
+1. **Update verification state to terminal** — call `mcp__ralphx__complete_plan_verification` with:
    ```json
    {
      "session_id": "<parent_session_id>",
      "status": "needs_revision",
      "convergence_reason": "escalated_to_parent",
-     "in_progress": false,
      "generation": <current_generation>,
      "gaps": [<unresolvable_gaps_array>]
    }
@@ -532,12 +530,11 @@ Fill in all fields accurately. The `what_parent_should_explore` field is the mos
 
 ## Final Cleanup (MANDATORY)
 
-After the round loop exits (convergence, hard cap, escalation, or error), call `mcp__ralphx__update_plan_verification` with:
+After the round loop exits (convergence, hard cap, escalation, or error), call `mcp__ralphx__complete_plan_verification` with:
 
 ```json
 {
   "session_id": "<parent_session_id>",
-  "in_progress": false,
   "generation": <generation>,
   "status": "<final_status>",
   "convergence_reason": "<reason>"
@@ -548,7 +545,7 @@ Where:
 - `status`: "verified" | "needs_revision" | "reviewing" (depending on outcome)
 - `convergence_reason`: "zero_blocking" | "jaccard_converged" | "max_rounds" | "critic_parse_failure" | "agent_error" | "user_stopped" | "user_skipped" | "user_reverted" | "escalated_to_parent"
 
-> **Note:** When escalating, Final Cleanup is performed as part of the Escalation Protocol (step 1 above) — do NOT call `update_plan_verification` again after sending the escalation message.
+> **Note:** When escalating, Final Cleanup is performed as part of the Escalation Protocol (step 1 above) — do NOT call `complete_plan_verification` again after sending the escalation message.
 
 Output a brief summary: "Verification complete. Status: {status}. Rounds run: {current_round}. Final gap count: {N critical, M high, K medium, J low}."
 
@@ -602,7 +599,7 @@ If the message provides feedback on a specific gap — dismissing it, downgradin
 2. Update the gap in the **current merged gap list** (in memory) before the next round's convergence check:
    - Dismiss: remove the gap from the list
    - Downgrade/upgrade: change the `severity` field
-3. On the next `update_plan_verification` call, the adjusted gaps will be persisted.
+3. On the next `report_verification_round` or `complete_plan_verification` call, the adjusted gaps will be persisted.
 4. If the adjustment changes convergence outcome (e.g., the last blocking gap was dismissed), proceed to **Final Cleanup** with `convergence_reason: "zero_blocking"`.
 
 ---
@@ -611,7 +608,7 @@ If the message provides feedback on a specific gap — dismissing it, downgradin
 
 - If any MCP call returns a non-retriable error: call final cleanup with `status: "reviewing"`, `in_progress: false`, `convergence_reason: "agent_error"`, `generation: <current_generation>`, then EXIT.
 - If generation mismatch occurs at any point: EXIT immediately without calling final cleanup (another process owns the session).
-- If `update_plan_verification` returns an error, retry up to 3 times with 2-second delays before giving up. For all other MCP calls, do not retry more than once on error.
+- If `report_verification_round` or `complete_plan_verification` returns an error, retry up to 3 times with 2-second delays before giving up. For all other MCP calls, do not retry more than once on error.
 
 ---
 
@@ -619,8 +616,8 @@ If the message provides feedback on a specific gap — dismissing it, downgradin
 
 | Rule | Detail |
 |------|--------|
-| **update/get_plan_verification** | Use `session_id: <parent_session_id>` — these tools take a session_id |
-| **generation parameter (NON-NEGOTIABLE)** | ALWAYS pass `generation` on every `update_plan_verification` call, including terminal status updates (`verified`, `skipped`, `needs_revision`). Read the generation from the response of your most recent `get_plan_verification` or `update_plan_verification` call. |
+| **report/complete/get_plan_verification** | Use `session_id: <parent_session_id>` — these tools take a session_id |
+| **generation parameter (NON-NEGOTIABLE)** | ALWAYS pass `generation` on every `report_verification_round` / `complete_plan_verification` call, including terminal status updates (`verified`, `skipped`, `needs_revision`). Read the generation from the response of your most recent `get_plan_verification`, `report_verification_round`, or `complete_plan_verification` call. |
 | **update/edit_plan_artifact** | Use `artifact_id: <plan_artifact_id>` + `caller_session_id: <OWN_SESSION_ID>` — these tools take artifact_id, NOT session_id |
 | **Parallel dispatch (critics + specialists)** | ALL Task calls (critics + selected specialists) MUST be in ONE response message — never one at a time. ❌ `run_in_background: true` does not exist on Task tool. |
 | **Task `agentId` is resumable, not complete** | If a Task result includes `agentId`, treat it as still resumable/in-progress. Poll artifacts and use bounded rescue prompts before concluding the critic/specialist failed. |
@@ -630,4 +627,4 @@ If the message provides feedback on a specific gap — dismissing it, downgradin
 | **Exit on zombie** | Generation mismatch at any step → EXIT without cleanup |
 | **Final cleanup always** | Mark `in_progress: false` before exiting (except on zombie detection) |
 | **User messages** | Check between rounds only — never interrupt a running round. Acknowledge, focus, stop, or adjust gaps per user request |
-| **Always pass generation** | ALWAYS include `generation: <current_generation>` on every `update_plan_verification` call, including terminal status updates (verified, needs_revision, skipped) — the server rejects stale-generation calls with 409 |
+| **Always pass generation** | ALWAYS include `generation: <current_generation>` on every `report_verification_round` / `complete_plan_verification` call, including terminal status updates (verified, needs_revision, skipped) — the server rejects stale-generation calls with 409 |

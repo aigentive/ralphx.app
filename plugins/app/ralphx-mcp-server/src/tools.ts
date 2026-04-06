@@ -2151,7 +2151,8 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_team_artifacts",
     "get_artifact",
     "get_parent_session_context",
-    "update_plan_verification",
+    "report_verification_round",
+    "complete_plan_verification",
     "get_plan_verification",
     "update_plan_artifact",
     "edit_plan_artifact",
@@ -2315,6 +2316,7 @@ export function getToolRecoveryHint(toolName: string): string | null {
       const examples = formatToolExamples(tool, 2);
       return [
         "Use the PARENT ideation session_id, never the verification child session_id.",
+        "If report_verification_round / complete_plan_verification are available, prefer those narrower helpers instead of this generic tool.",
         "Use status=reviewing with in_progress=true for mid-round updates; use verified or needs_revision with in_progress=false for terminal updates.",
         "Re-read get_plan_verification if generation/in_progress is unclear instead of guessing.",
         ...examples.map((example, index) =>
@@ -2324,10 +2326,31 @@ export function getToolRecoveryHint(toolName: string): string | null {
         ),
       ].join("\n");
     }
+    case "report_verification_round": {
+      const examples = formatToolExamples(tool);
+      return [
+        "Use this verifier-friendly helper for in-progress rounds on the PARENT ideation session.",
+        "You only provide round, gaps, and generation; status=reviewing and in_progress=true are filled in automatically.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    case "complete_plan_verification": {
+      const examples = formatToolExamples(tool, 2);
+      return [
+        "Use this verifier-friendly helper for terminal verification updates on the PARENT ideation session.",
+        "You provide the terminal status and generation; in_progress=false is filled in automatically.",
+        "External sessions cannot use status=skipped.",
+        ...examples.map((example, index) =>
+          index === 0
+            ? `Example terminal payload: ${example}`
+            : `Example abort-cleanup payload: ${example}`
+        ),
+      ].join("\n");
+    }
     case "get_plan_verification": {
       const examples = formatToolExamples(tool);
       return [
-        "Call this on the PARENT ideation session before retrying update_plan_verification.",
+        "Call this on the PARENT ideation session before retrying report_verification_round, complete_plan_verification, or update_plan_verification.",
         ...examples.map((example) => `Example payload: ${example}`),
       ].join("\n");
     }

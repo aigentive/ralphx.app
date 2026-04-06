@@ -375,6 +375,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const { session_id } = args;
             result = await callTauriGet(`ideation/sessions/${session_id}/verification`);
         }
+        else if (name === "report_verification_round") {
+            // POST /api/ideation/sessions/:id/verification (verifier-friendly alias)
+            const { session_id, ...body } = args;
+            result = await callTauri(`ideation/sessions/${session_id}/verification`, {
+                ...body,
+                status: "reviewing",
+                in_progress: true,
+            });
+        }
+        else if (name === "complete_plan_verification") {
+            // POST /api/ideation/sessions/:id/verification (verifier-friendly terminal alias)
+            const { session_id, ...body } = args;
+            result = await callTauri(`ideation/sessions/${session_id}/verification`, {
+                ...body,
+                in_progress: false,
+            });
+        }
         else if (name === "update_plan_verification") {
             // POST /api/ideation/sessions/:id/verification
             const { session_id, ...body } = args;

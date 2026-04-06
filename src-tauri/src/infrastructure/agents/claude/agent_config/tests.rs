@@ -862,7 +862,8 @@ fn test_plan_verifier_mcp_tools_match_current_prompt_contract() {
         "get_team_artifacts",
         "get_artifact",
         "get_parent_session_context",
-        "update_plan_verification",
+        "report_verification_round",
+        "complete_plan_verification",
         "get_plan_verification",
         "update_plan_artifact",
         "edit_plan_artifact",
@@ -884,6 +885,13 @@ fn test_plan_verifier_mcp_tools_match_current_prompt_contract() {
             "plan-verifier missing expected MCP tool {tool}"
         );
     }
+
+    assert!(
+        !config
+            .allowed_mcp_tools
+            .contains(&"update_plan_verification".to_string()),
+        "plan-verifier should not include stale generic verification update tool"
+    );
 
     assert!(
         !config
