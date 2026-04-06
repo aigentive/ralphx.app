@@ -571,3 +571,64 @@ async fn test_create_team_artifact_allows_non_ideation_session_ids() {
     assert_eq!(count, 1, "expected artifact to be retrievable by session id");
     assert_eq!(artifacts[0].name, "Execution Notes");
 }
+
+#[tokio::test]
+async fn test_get_team_artifacts_rejects_verification_child_session_id() {
+    let state = test_state();
+
+    let parent = state
+        .app_state
+        .ideation_session_repo
+        .create(
+            IdeationSession::builder()
+                .id(IdeationSessionId::from_string("parent-session-2".to_string()))
+                .project_id(ProjectId::from_string("project-2".to_string()))
+                .status(IdeationSessionStatus::Active)
+                .build(),
+        )
+        .await
+        .expect("parent session");
+
+    state
+        .app_state
+        .ideation_session_repo
+        .create(
+            IdeationSession::builder()
+                .id(IdeationSessionId::from_string(
+                    "verification-child-2".to_string(),
+                ))
+                .project_id(ProjectId::from_string("project-2".to_string()))
+                .status(IdeationSessionStatus::Active)
+                .parent_session_id(parent.id.clone())
+                .session_purpose(SessionPurpose::Verification)
+                .build(),
+        )
+        .await
+        .expect("verification child");
+
+    let _ = create_team_artifact(
+        State(state.clone()),
+        Json(CreateTeamArtifactRequest {
+            session_id: "parent-session-2".to_string(),
+            title: "Feasibility: Round 1".to_string(),
+            content: "{}".to_string(),
+            artifact_type: "TeamResearch".to_string(),
+            related_artifact_id: None,
+        }),
+    )
+    .await
+    .expect("parent artifact creation should succeed");
+
+    let result = get_team_artifacts(State(state), Path("verification-child-2".to_string())).await;
+
+    let (status, message) = result.expect_err("verification child reads must be rejected");
+    assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+    assert!(
+        message.contains("PARENT ideation session_id"),
+        "expected parent-session repair hint, got: {message}"
+    );
+    assert!(
+        message.contains("parent-session-2"),
+        "expected concrete parent session id, got: {message}"
+    );
+}

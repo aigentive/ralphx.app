@@ -7,11 +7,12 @@ fn is_placeholder_session_id(session_id: &str) -> bool {
     trimmed.is_empty() || PLACEHOLDER_SESSION_IDS.iter().any(|value| trimmed.eq_ignore_ascii_case(value))
 }
 
-pub async fn create_team_artifact(
-    State(state): State<HttpServerState>,
-    Json(req): Json<CreateTeamArtifactRequest>,
-) -> Result<Json<CreateTeamArtifactResponse>, (StatusCode, String)> {
-    if is_placeholder_session_id(&req.session_id) {
+async fn validate_team_artifact_session_id(
+    state: &HttpServerState,
+    session_id: &str,
+    action: &str,
+) -> Result<(), (StatusCode, String)> {
+    if is_placeholder_session_id(session_id) {
         return Err((
             StatusCode::BAD_REQUEST,
             "Invalid session_id for team artifact. Use the parent ideation session_id \
@@ -21,14 +22,15 @@ pub async fn create_team_artifact(
         ));
     }
 
-    let session_id_obj = crate::domain::entities::IdeationSessionId::from_string(req.session_id.clone());
+    let session_id_obj =
+        crate::domain::entities::IdeationSessionId::from_string(session_id.to_string());
     if let Some(session) = state
         .app_state
         .ideation_session_repo
         .get_by_id(&session_id_obj)
         .await
         .map_err(|e| {
-            error!("Failed to validate team artifact session {}: {}", req.session_id, e);
+            error!("Failed to validate team artifact session {}: {}", session_id, e);
             (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to validate session: {}", e))
         })?
     {
@@ -41,13 +43,23 @@ pub async fn create_team_artifact(
             return Err((
                 StatusCode::BAD_REQUEST,
                 format!(
-                    "Cannot create a team artifact on a verification child session. \
+                    "Cannot {action} team artifacts on a verification child session. \
                      Use the PARENT ideation session_id instead. Parent session_id: {}.",
                     parent_hint
                 ),
             ));
         }
     }
+
+    Ok(())
+}
+
+pub async fn create_team_artifact(
+    State(state): State<HttpServerState>,
+    Json(req): Json<CreateTeamArtifactRequest>,
+) -> Result<Json<CreateTeamArtifactResponse>, (StatusCode, String)> {
+    validate_team_artifact_session_id(&state, &req.session_id, "create")
+        .await?;
 
     // Map team artifact types to ArtifactType
     let artifact_type = match req.artifact_type.as_str() {
@@ -137,6 +149,9 @@ pub async fn get_team_artifacts(
     State(state): State<HttpServerState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<GetTeamArtifactsResponse>, (StatusCode, String)> {
+    validate_team_artifact_session_id(&state, &session_id, "read")
+        .await?;
+
     // Get all artifacts from the team-findings bucket
     let bucket_id = ArtifactBucketId::from_string("team-findings");
     let artifacts = state

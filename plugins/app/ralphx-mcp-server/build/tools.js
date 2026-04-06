@@ -653,6 +653,7 @@ export const ALL_TOOLS = [
         name: "get_team_artifacts",
         description: "Retrieve all team artifacts for a session. " +
             "Returns artifacts from the 'team-findings' bucket filtered by session ID. " +
+            "Use the PARENT ideation session_id, never the verification child session_id. " +
             "Verification flows should call this on the PARENT ideation session_id and then filter by created_at/title prefix client-side to find the latest critic or specialist artifacts for the current round. " +
             "Example: call get_team_artifacts({\"session_id\":\"<parent-session>\"}) after critic Task returns, then fetch the newest Completeness:/Feasibility: artifact ids with get_artifact.",
         inputSchema: {
