@@ -1507,6 +1507,111 @@ async fn test_task_transition_scope_violation() {
     assert_eq!(result.unwrap_err(), axum::http::StatusCode::FORBIDDEN);
 }
 
+#[tokio::test]
+async fn test_review_action_approve_review_allows_review_passed() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-review-action-approve";
+    let p = make_project(project_id, "Review Action Approve");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let mut task = Task::new(
+        ProjectId::from_string(project_id.to_string()),
+        "Review passed task".to_string(),
+    );
+    task.internal_status = InternalStatus::ReviewPassed;
+    state.app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = review_action_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Json(ReviewActionRequest {
+            task_id: task.id.to_string(),
+            action: ReviewActionType::ApproveReview,
+            resolution: None,
+            feedback: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert!(response.success);
+    assert_eq!(response.task_id, task.id.to_string());
+    assert_eq!(response.new_status, InternalStatus::Approved.to_string());
+
+    let updated = state.app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_ne!(updated.internal_status, InternalStatus::ReviewPassed);
+}
+
+#[tokio::test]
+async fn test_review_action_approve_review_rejects_reviewing() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-review-action-reviewing";
+    let p = make_project(project_id, "Review Action Reviewing");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let mut task = Task::new(
+        ProjectId::from_string(project_id.to_string()),
+        "Reviewing task".to_string(),
+    );
+    task.internal_status = InternalStatus::Reviewing;
+    state.app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = review_action_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Json(ReviewActionRequest {
+            task_id: task.id.to_string(),
+            action: ReviewActionType::ApproveReview,
+            resolution: None,
+            feedback: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), axum::http::StatusCode::UNPROCESSABLE_ENTITY);
+
+    let updated = state.app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(updated.internal_status, InternalStatus::Reviewing);
+}
+
+#[tokio::test]
+async fn test_review_action_approve_review_rejects_merged() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-review-action-merged";
+    let p = make_project(project_id, "Review Action Merged");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let mut task = Task::new(
+        ProjectId::from_string(project_id.to_string()),
+        "Merged task".to_string(),
+    );
+    task.internal_status = InternalStatus::Merged;
+    state.app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = review_action_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Json(ReviewActionRequest {
+            task_id: task.id.to_string(),
+            action: ReviewActionType::ApproveReview,
+            resolution: None,
+            feedback: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), axum::http::StatusCode::UNPROCESSABLE_ENTITY);
+
+    let updated = state.app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(updated.internal_status, InternalStatus::Merged);
+}
+
 // ============================================================================
 // get_task_detail_http
 // ============================================================================
