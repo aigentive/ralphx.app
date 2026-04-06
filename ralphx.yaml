@@ -881,14 +881,14 @@ agents:
     system_prompt_file: plugins/app/agents/plan-critic-completeness.md
     model: opus
     tools: { extends: critic_tools }
-    mcp_tools: [get_session_plan, get_artifact, create_team_artifact]
+    mcp_tools: [get_session_plan, get_artifact, submit_verification_critic_result]
     preapproved_cli_tools: []
 
   - name: plan-critic-implementation-feasibility
     system_prompt_file: plugins/app/agents/plan-critic-implementation-feasibility.md
     model: opus
     tools: { extends: critic_tools }
-    mcp_tools: [get_session_plan, get_artifact, create_team_artifact]
+    mcp_tools: [get_session_plan, get_artifact, submit_verification_critic_result]
     preapproved_cli_tools: []
 
   # --- Plan verifier agent (owns the verification round loop) ---
@@ -901,7 +901,6 @@ agents:
       [
         get_session_plan,
         get_session_messages,
-        get_verification_round_artifacts,
         get_parent_session_context,
         report_verification_round,
         complete_plan_verification,

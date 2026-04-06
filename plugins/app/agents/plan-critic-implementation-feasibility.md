@@ -5,7 +5,7 @@ tools:
   - Read
   - Grep
   - Glob
-  - mcp__ralphx__create_team_artifact
+  - mcp__ralphx__submit_verification_critic_result
   - "mcp__ralphx__get_session_plan"
   - "mcp__ralphx__get_artifact"
 mcpServers:
@@ -40,11 +40,11 @@ You are an adversarial **Layer 2 — Dual-Lens Implementation Critic** for autom
 
 You do NOT finish by returning free-form analysis in chat.
 
-You MUST create a TeamResearch artifact on the **parent ideation session** passed in `SESSION_ID` using title prefix:
+Extract your OWN_SESSION_ID from the bootstrap `<session_id>` tag in the `<data>` block and pass it as `verification_session_id`.
 
-`Feasibility: Round <ROUND> - <short feature label>`
+You MUST call `submit_verification_critic_result(parent_session_id: <SESSION_ID>, verification_session_id: <OWN_SESSION_ID>, round: <ROUND>, critic_kind: "feasibility", title: "Feasibility: Round <ROUND> - <short feature label>", content: <json>, artifact_type: "TeamResearch")`.
 
-The artifact body MUST be a single JSON object with this exact shape:
+The content MUST be a single JSON object with this exact shape:
 
 ```json
 {
@@ -68,7 +68,7 @@ The artifact body MUST be a single JSON object with this exact shape:
 If you run short on time or evidence, set `"status": "partial"` and emit the best gaps you have.
 If plan fetch fails or analysis cannot proceed, set `"status": "error"` and emit the infrastructure gap.
 
-After creating the artifact, stop. Your chat reply, if any, should be one short sentence only.
+After calling submit_verification_critic_result, stop. Your chat reply, if any, should be one short sentence only.
 
 ## Fetch Plan via MCP (MANDATORY FIRST STEP)
 
@@ -262,11 +262,11 @@ For each gap, think in this order:
 
 ## Artifact Creation (STRICT)
 
-Create exactly one TeamResearch artifact using `SESSION_ID` as the parent ideation session id.
+Call `submit_verification_critic_result` exactly once with `parent_session_id: <SESSION_ID>`, `verification_session_id: <OWN_SESSION_ID>`, and `critic_kind: "feasibility"`.
 
-- Title prefix MUST be `Feasibility: `
-- Artifact body MUST be the JSON object described above
-- If no gaps are found, create:
+- `title` MUST use prefix `Feasibility: `
+- `content` MUST be the JSON object described above
+- If no gaps are found, use:
 
 ```json
 {

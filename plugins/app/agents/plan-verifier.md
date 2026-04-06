@@ -15,7 +15,6 @@ tools:
   - "Task(ralphx:ideation-specialist-state-machine)"
   - "mcp__ralphx__get_session_plan"
   - "mcp__ralphx__get_session_messages"
-  - "mcp__ralphx__get_verification_round_artifacts"
   - "mcp__ralphx__get_parent_session_context"
   - "mcp__ralphx__report_verification_round"
   - "mcp__ralphx__complete_plan_verification"
@@ -164,7 +163,7 @@ Wait for the initial Task results to return, then inspect them before declaring 
 
 ### 0.5c — Artifact Collection
 
-1. Call `mcp__ralphx__get_verification_round_artifacts(session_id: <parent_session_id>, prefixes: ["CodeQuality", "IntentAlignment"], created_after: <enrichment_dispatch_time minus 5 seconds>)`.
+1. Call `mcp__ralphx__get_verification_round_results(session_id: <parent_session_id>, prefixes: ["CodeQuality", "IntentAlignment"], created_after: <enrichment_dispatch_time minus 5 seconds>)`.
 2. Use the returned `artifacts_by_prefix` entries directly — the helper already filters by `created_after`, sorts by `created_at` descending per prefix, and attaches full artifact `content`.
 3. **Intent specialist result handling:**
    - If the intent specialist Task returned text containing `"Intent aligned"` → log "Intent aligned — no misalignment artifact created." Skip intent integration in Step 0.5d.
@@ -273,8 +272,8 @@ Before dispatching any specialist selected in Step A1, check `disabled_specialis
 Dispatch ALL agents (critics + applicable specialists) in a SINGLE response message — this is how Claude Code runs Tasks in parallel:
 
 ```
-Task(subagent_type: "ralphx:plan-critic-completeness", model: "<SUBAGENT_MODEL_CAP>", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Stay bounded to the plan's Affected Files and at most one adjacent integration point per file family. Create exactly one TeamResearch artifact on the PARENT ideation session with title prefix 'Completeness: '. Artifact body MUST be valid JSON with keys: status, critic, round, coverage, summary, gaps. Use critic='completeness'. If analysis is incomplete, publish the artifact with status=partial now instead of continuing to explore.")
-Task(subagent_type: "ralphx:plan-critic-implementation-feasibility", model: "<SUBAGENT_MODEL_CAP>", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Stay bounded to the plan's Affected Files and at most one adjacent integration point per file family. Create exactly one TeamResearch artifact on the PARENT ideation session with title prefix 'Feasibility: '. Artifact body MUST be valid JSON with keys: status, critic, round, coverage, summary, gaps. Use critic='feasibility'. If analysis is incomplete, publish the artifact with status=partial now instead of continuing to explore.")
+Task(subagent_type: "ralphx:plan-critic-completeness", model: "<SUBAGENT_MODEL_CAP>", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nExtract your OWN_SESSION_ID from the bootstrap <session_id> tag and pass it as verification_session_id in the submit call.\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Stay bounded to the plan's Affected Files and at most one adjacent integration point per file family. Call submit_verification_critic_result with parent_session_id=SESSION_ID, verification_session_id=OWN_SESSION_ID, critic_kind='completeness', title prefix 'Completeness: ', and content MUST be valid JSON with keys: status, critic, round, coverage, summary, gaps. If analysis is incomplete, submit with status=partial now instead of continuing to explore.")
+Task(subagent_type: "ralphx:plan-critic-implementation-feasibility", model: "<SUBAGENT_MODEL_CAP>", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nExtract your OWN_SESSION_ID from the bootstrap <session_id> tag and pass it as verification_session_id in the submit call.\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Stay bounded to the plan's Affected Files and at most one adjacent integration point per file family. Call submit_verification_critic_result with parent_session_id=SESSION_ID, verification_session_id=OWN_SESSION_ID, critic_kind='feasibility', title prefix 'Feasibility: ', and content MUST be valid JSON with keys: status, critic, round, coverage, summary, gaps. If analysis is incomplete, submit with status=partial now instead of continuing to explore.")
 [If UX specialist selected AND `ideation-specialist-ux` NOT in disabled_specialists]:
 Task(subagent_type: "ralphx:ideation-specialist-ux", model: "<SUBAGENT_MODEL_CAP>", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nAnalyze the plan from a UI/UX perspective. Read the plan via get_session_plan. Create your TeamResearch artifact using session_id: <parent_session_id> — this is the PARENT IDEATION SESSION ID, not your own session. Title the artifact with prefix 'UX: ' followed by the feature name.")
 [If prompt quality specialist selected AND `ideation-specialist-prompt-quality` NOT in disabled_specialists]:
@@ -310,25 +309,25 @@ Wait for the initial Task results to return (critics + any specialists), then in
 
 ### B. Collect round artifacts
 
-> **Note:** `get_verification_round_artifacts` returns only **round-local** artifacts (filtered by `created_after`). The Team Research badge shows **cumulative** session artifacts. These are different counts — no current-round artifact does NOT mean no Team Research exists; both can be true simultaneously.
+> **Note:** `get_verification_round_results` returns only **round-local** artifacts (filtered by `created_after`). The Team Research badge shows **cumulative** session artifacts. These are different counts — no current-round artifact does NOT mean no Team Research exists; both can be true simultaneously.
 
 Collect artifacts produced during this round via two-stage wait-then-rescue flow. This includes:
 - critic artifacts (`Completeness:`, `Feasibility:`)
 - specialist artifacts (`UX:`, `PromptQuality:`, `PipelineSafety:`, `StateMachine:`)
 
-1. Call `mcp__ralphx__get_verification_round_artifacts(session_id: <parent_session_id>, prefixes: ["Completeness: ", "Feasibility: ", "UX: ", "PromptQuality: ", "PipelineSafety: ", "StateMachine: "], created_after: <round_start_time minus 5 seconds>)`.
+1. Call `mcp__ralphx__get_verification_round_results(session_id: <parent_session_id>, prefixes: ["Completeness: ", "Feasibility: ", "UX: ", "PromptQuality: ", "PipelineSafety: ", "StateMachine: "], created_after: <round_start_time minus 5 seconds>)`.
 2. Use the returned `artifacts_by_prefix` entries directly — the helper already filters by `created_after`, sorts by `created_at` descending per prefix, and attaches full artifact `content`.
 3. If a required critic artifact is missing after the first poll, apply the two-stage flow:
-   - **Stage 1 — wait (first empty poll):** If that critic's Task result included `agentId` or resumable text, log `No current-round artifacts yet; critic still running (agentId: <id>)` — do NOT dispatch a rescue. Immediately make a **second sequential** `get_verification_round_artifacts` call.
+   - **Stage 1 — wait (first empty poll):** If that critic's Task result included `agentId` or resumable text, log `No current-round artifacts yet; critic still running (agentId: <id>)` — do NOT dispatch a rescue. Immediately make a **second sequential** `get_verification_round_results` call.
      - If the second poll returns the artifact: proceed normally.
      - If the second poll is also empty: proceed to Stage 2.
-   - **Stage 2 — rescue (second empty poll):** Log `No current-round artifacts after two polls; nudging critic after repeated empty polls` and dispatch **ONE** rescue Task for that critic with FULL invariant context (`SESSION_ID`, `ROUND`, exact artifact title prefix, JSON schema, explicit parent-session artifact target). Then make a final `get_verification_round_artifacts` call (post-rescue poll).
+   - **Stage 2 — rescue (second empty poll):** Log `No current-round artifacts after two polls; nudging critic after repeated empty polls` and dispatch **ONE** rescue Task for that critic with FULL invariant context (`SESSION_ID`, `ROUND`, exact artifact title prefix, JSON schema, explicit parent-session artifact target). Then make a final `get_verification_round_results` call (post-rescue poll).
      - If post-rescue poll returns the artifact: proceed normally.
      - If post-rescue poll is still empty: log `Critic output unavailable for this round after rescue attempts` — mark that critic unavailable.
    - **If the critic's Task result did NOT include `agentId`:** skip Stage 1 (critic already exited without publishing); go directly to Stage 2 rescue dispatch.
 4. For each returned critic artifact, parse the helper-returned full `content` as JSON.
 5. If multiple artifacts from the same specialist type exist, the helper already chose the **latest** (highest `created_at`) for each prefix.
-6. If `get_verification_round_artifacts` fails or returns no matches after the rescue flow above → treat as "no current-round artifacts". Continue, but note critic output as unavailable for this round.
+6. If `get_verification_round_results` fails or returns no matches after the rescue flow above → treat as "no current-round artifacts". Continue, but note critic output as unavailable for this round.
 
 Store ALL retrieved artifact content (keyed by title prefix) for use in steps C and F2.
 
