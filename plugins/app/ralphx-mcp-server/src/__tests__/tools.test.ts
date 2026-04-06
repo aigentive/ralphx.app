@@ -13,6 +13,7 @@ import {
   TOOL_ALLOWLIST,
   parseAllowedToolsFromArgs,
 } from '../tools.js';
+import { PLAN_TOOLS } from '../plan-tools.js';
 import {
   IDEATION_TEAM_LEAD,
   IDEATION_TEAM_MEMBER,
@@ -322,6 +323,14 @@ describe('New team tool definitions', () => {
       expect(artifactType).toBeDefined();
       expect(artifactType.enum).toEqual(['TeamResearch', 'TeamAnalysis', 'TeamSummary']);
     });
+
+    it('should document parent-session targeting for verification flows', () => {
+      expect(tool?.description).toContain('PARENT ideation session_id');
+      expect((tool?.inputSchema.properties?.session_id as any)?.description).toContain(
+        'PARENT ideation session ID'
+      );
+      expect((tool?.inputSchema.properties?.title as any)?.description).toContain('Completeness: ');
+    });
   });
 
   describe('get_team_artifacts', () => {
@@ -336,6 +345,31 @@ describe('New team tool definitions', () => {
       expect(tool?.inputSchema.type).toBe('object');
       expect(tool?.inputSchema.properties).toHaveProperty('session_id');
       expect(tool?.inputSchema.required).toContain('session_id');
+    });
+
+    it('should document round-oriented verification lookup guidance', () => {
+      expect(tool?.description).toContain('PARENT ideation session_id');
+      expect(tool?.description).toContain('filter by created_at/title prefix client-side');
+    });
+  });
+
+  describe('update_plan_verification', () => {
+    const tool = PLAN_TOOLS.find((t) => t.name === 'update_plan_verification');
+
+    it('should document parent-session targeting and terminal usage', () => {
+      expect(tool).toBeDefined();
+      expect(tool?.description).toContain('PARENT ideation session_id');
+      expect(tool?.description).toContain("status='reviewing'");
+      expect(tool?.description).toContain("External sessions cannot use status='skipped'");
+    });
+
+    it('should document generation and child-session constraints in schema descriptions', () => {
+      const sessionId = tool?.inputSchema.properties?.session_id as any;
+      const status = tool?.inputSchema.properties?.status as any;
+      const generation = tool?.inputSchema.properties?.generation as any;
+      expect(sessionId.description).toContain('NOT the verification child session ID');
+      expect(status.description).toContain('Use reviewing for in-progress rounds');
+      expect(generation.description).toContain('Pass on every verifier call');
     });
   });
 

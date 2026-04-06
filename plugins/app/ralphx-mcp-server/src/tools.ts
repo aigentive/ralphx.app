@@ -679,21 +679,23 @@ export const ALL_TOOLS: Tool[] = [
     description:
       "Create a team artifact documenting research findings, analysis, or summary. " +
       "Automatically sets bucket_id='team-findings' and populates metadata with team info. " +
-      "Use for documenting team discoveries, debate analyses, or lead-synthesized summaries.",
+      "Use for documenting team discoveries, debate analyses, or lead-synthesized summaries. " +
+      "Verification critics and specialists must create artifacts on the PARENT ideation session_id, not the verification child session_id. " +
+      "If a caller is retrying after an incomplete run, reuse the same parent session_id and publish a partial artifact rather than omitting the artifact entirely.",
     inputSchema: {
       type: "object",
       properties: {
         session_id: {
           type: "string",
-          description: "The ideation or execution session ID",
+          description: "The ideation or execution session ID. For verification critics/specialists this must be the PARENT ideation session ID.",
         },
         title: {
           type: "string",
-          description: "Clear, concise title for the artifact",
+          description: "Clear, concise title for the artifact. Verification flows should use stable prefixes like 'Completeness: ', 'Feasibility: ', 'UX: ', 'PromptQuality: ', 'PipelineSafety: ', or 'StateMachine: '.",
         },
         content: {
           type: "string",
-          description: "Markdown content with research findings or analysis",
+          description: "Markdown or JSON-string content with research findings or analysis. Plan-verifier critics should publish a structured JSON object instead of freeform prose.",
         },
         artifact_type: {
           type: "string",
@@ -712,7 +714,8 @@ export const ALL_TOOLS: Tool[] = [
     name: "get_team_artifacts",
     description:
       "Retrieve all team artifacts for a session. " +
-      "Returns artifacts from the 'team-findings' bucket filtered by session ID.",
+      "Returns artifacts from the 'team-findings' bucket filtered by session ID. " +
+      "Verification flows should call this on the PARENT ideation session_id and then filter by created_at/title prefix client-side to find the latest critic or specialist artifacts for the current round.",
     inputSchema: {
       type: "object",
       properties: {

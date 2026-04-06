@@ -12,6 +12,7 @@ use crate::infrastructure::agents::claude::agent_names::{
     SHORT_REVIEW_HISTORY, SHORT_SESSION_NAMER, SHORT_SUPERVISOR, SHORT_WORKER, SHORT_WORKER_TEAM,
 };
 use std::collections::HashSet;
+use std::fs;
 
 #[test]
 fn test_yaml_loaded_has_unique_names() {
@@ -126,6 +127,27 @@ fn test_all_system_prompt_files_exist() {
             prompt_path.display()
         );
     }
+}
+
+#[test]
+fn test_plan_verifier_prompt_includes_resumable_task_and_retry_context_rules() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+    let prompt_path = project_root.join("plugins/app/agents/plan-verifier.md");
+    let prompt = fs::read_to_string(&prompt_path)
+        .unwrap_or_else(|_| panic!("failed to read {}", prompt_path.display()));
+
+    assert!(
+        prompt.contains("Task `agentId` is resumable, not complete"),
+        "plan-verifier prompt must explicitly treat Task agentId results as resumable"
+    );
+    assert!(
+        prompt.contains("Do NOT send minimalist nudges like \"finish your analysis\" without `SESSION_ID` and schema"),
+        "plan-verifier prompt must forbid context-dropping retry nudges"
+    );
+    assert!(
+        prompt.contains("required JSON object keys: `status`, `critic`, `round`, `coverage`, `summary`, `gaps`"),
+        "plan-verifier prompt must restate the critic artifact schema in rescue guidance"
+    );
 }
 
 #[test]

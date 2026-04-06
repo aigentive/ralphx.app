@@ -34,9 +34,19 @@ pub async fn update_plan_verification(
 
     // Guard: reject calls targeting verification child sessions — plan-verifier must use parent session_id
     if session.session_purpose == crate::domain::entities::SessionPurpose::Verification {
+        let parent_hint = session
+            .parent_session_id
+            .as_ref()
+            .map(|id| id.as_str().to_string())
+            .unwrap_or_else(|| "<unknown-parent-session>".to_string());
         return Err(json_error(
             StatusCode::BAD_REQUEST,
-            "Cannot update verification state on a verification child session. Use the parent session_id.",
+            format!(
+                "Cannot update verification state on a verification child session. \
+                 Call update_plan_verification with the PARENT ideation session_id instead. \
+                 Parent session_id: {}.",
+                parent_hint
+            ),
         ));
     }
 
@@ -49,7 +59,9 @@ pub async fn update_plan_verification(
                 StatusCode::CONFLICT,
                 format!(
                     "Generation mismatch: request generation {} != current generation {}. \
-                     Verification was reset — zombie agent detected.",
+                     Verification was reset — zombie agent detected. \
+                     Call get_plan_verification on the parent session, read verification_generation, \
+                     and retry only if in_progress is still true.",
                     req_gen, session.verification_generation
                 ),
             ));
@@ -72,7 +84,7 @@ pub async fn update_plan_verification(
     {
         return Err(json_error(
             StatusCode::FORBIDDEN,
-            "External sessions cannot skip plan verification. Run verification to completion (update_plan_verification with status 'reviewing').",
+            "External sessions cannot skip plan verification. Use status='reviewing' for in-progress rounds and finish with status='verified' or 'needs_revision' on the PARENT ideation session.",
         ));
     }
 
@@ -101,7 +113,7 @@ pub async fn update_plan_verification(
         if matches!(current, VerificationStatus::Skipped) {
             return Err(json_error(
                 StatusCode::UNPROCESSABLE_ENTITY,
-                "Verification was skipped — cannot update from critic",
+                "Verification was skipped — cannot update from critic. Re-run verification first by calling update_plan_verification with status='reviewing' on the parent session.",
             ));
         }
         if matches!(
@@ -110,13 +122,15 @@ pub async fn update_plan_verification(
         ) {
             return Err(json_error(
                 StatusCode::UNPROCESSABLE_ENTITY,
-                "Cannot transition needs_revision → verified without convergence_reason",
+                "Cannot transition needs_revision → verified without convergence_reason. Include convergence_reason (for example 'zero_blocking') on the terminal verified update.",
             ));
         }
         return Err(json_error(
             StatusCode::UNPROCESSABLE_ENTITY,
             format!(
-                "Invalid verification transition: {} → {}",
+                "Invalid verification transition: {} → {}. \
+                 Re-check the current verification state with get_plan_verification and use the \
+                 parent session_id plus a valid status progression.",
                 current, new_status
             ),
         ));

@@ -2052,11 +2052,18 @@ async fn test_reverify_zombie_agent_rejected_after_generation_increment() {
     .await;
 
     assert!(zombie.is_err(), "zombie agent with stale generation=5 must be rejected");
-    let (status, _) = zombie.unwrap_err();
+    let (status, body) = zombie.unwrap_err();
     assert_eq!(
         status,
         StatusCode::CONFLICT,
         "must return 409 CONFLICT for zombie agent after re-verify"
+    );
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Call get_plan_verification on the parent session"),
+        "generation mismatch error should tell the agent how to recover"
     );
 
     // Fresh agent with correct generation=6 → must succeed
@@ -2370,11 +2377,18 @@ async fn test_update_verification_rejects_skip_for_external_origin() {
     .await;
 
     assert!(result.is_err(), "external session must reject skip status");
-    let (status, _body) = result.unwrap_err();
+    let (status, body) = result.unwrap_err();
     assert_eq!(
         status,
         StatusCode::FORBIDDEN,
         "external skip must return 403 FORBIDDEN"
+    );
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Use status='reviewing' for in-progress rounds"),
+        "external skip error should provide repair guidance"
     );
 }
 

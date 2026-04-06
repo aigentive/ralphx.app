@@ -59,6 +59,14 @@ When working in `src-tauri/`, also follow:
 | P2 | Capability test split | Continue moving OS-capability checks out of default broad suites into explicit ignored tests or dedicated capability binaries |
 | P3 | Oversized HTTP handlers | After transition-handler stabilization, resume large backend handler refactors like `git.rs` and `teams.rs` |
 
+## Active Reliability Tracker
+
+| Priority | Stream | Next Step |
+|---|---|---|
+| P0 | Verifier critic resumption protocol | Landed evidence: `Task(...)` critics can return early with `agentId` before creating artifacts; next patch `plan-verifier` to treat `agentId` as resumable/in-progress, use bounded artifact rescue instead of immediate critic failure, and preserve `SESSION_ID`/`ROUND`/artifact schema on every retry |
+| P0 | Model-agnostic MCP/tool UX | Current tool contracts assume Claude-harness familiarity; next enrich high-friction tool descriptions (`update_plan_verification`, `create_team_artifact`, `get_team_artifacts`) with parent-vs-child session rules, expected payload shape, and repair-oriented guidance, then add stronger backend/tool-side recovery hints |
+| P0 | Startup external-session archival safety | Cold boot still archives matching external sessions too aggressively; next land TTL + recovery-aware exclusions, including verified-without-proposals sessions and external ideation sessions claimed for startup recovery |
+
 ## Active Migration Tracker
 
 | Stream | Goal | Status | Notes |

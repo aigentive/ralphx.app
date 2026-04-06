@@ -102,26 +102,28 @@ export const PLAN_TOOLS: Tool[] = [
   {
     name: "update_plan_verification",
     description:
-      "Update verification state for an ideation session. Reports round results from critic analysis. Call after each adversarial review round to record gaps found, and when verification converges (status=verified or skipped).",
+      "Update verification state for an ideation session. Use the PARENT ideation session_id, never the verification child session_id. " +
+      "Typical verifier flow: mid-round call with status='reviewing', in_progress=true, round=<n>, gaps=[...], generation=<current>; terminal call with in_progress=false and status='verified' or 'needs_revision'. " +
+      "External sessions cannot use status='skipped'. If the server rejects a call, read the error and correct the payload instead of guessing a new shape.",
     inputSchema: {
       type: "object",
       properties: {
         session_id: {
           type: "string",
-          description: "Ideation session ID",
+          description: "PARENT ideation session ID being verified (NOT the verification child session ID)",
         },
         status: {
           type: "string",
           enum: ["reviewing", "needs_revision", "verified", "skipped"],
-          description: "New verification status",
+          description: "New verification status. Use reviewing for in-progress rounds; use verified or needs_revision only for terminal updates; skipped is not allowed for external sessions.",
         },
         in_progress: {
           type: "boolean",
-          description: "Whether verification loop is active",
+          description: "Whether the verification loop is still active. Mid-round updates should use true; final cleanup should use false.",
         },
         round: {
           type: "integer",
-          description: "Current round number (1-based)",
+          description: "Current round number (1-based). Include on reviewing updates.",
         },
         gaps: {
           type: "array",
@@ -143,7 +145,7 @@ export const PLAN_TOOLS: Tool[] = [
             },
             required: ["severity", "category", "description"],
           },
-          description: "Gaps identified in this round",
+          description: "Gaps identified in this round. For reviewing updates this should reflect the merged current-round gaps.",
         },
         convergence_reason: {
           type: "string",
@@ -159,12 +161,12 @@ export const PLAN_TOOLS: Tool[] = [
             "escalated_to_parent",
           ],
           description:
-            "Why verification converged (only when status=verified or skipped)",
+            "Why verification converged. Required for terminal needs_revision -> verified promotion and recommended on all terminal calls.",
         },
         generation: {
           type: "integer",
           description:
-            "Generation counter for zombie protection. Pass in every call when in auto-verify mode. Server rejects in_progress=true if generation mismatches.",
+            "Generation counter for zombie protection. Pass on every verifier call. If omitted, weaker models can accidentally write stale state; if mismatched, the server rejects the request.",
         },
       },
       required: ["session_id", "status"],
@@ -173,7 +175,7 @@ export const PLAN_TOOLS: Tool[] = [
   {
     name: "get_plan_verification",
     description:
-      "Get the current verification status for an ideation session. Returns status, round number, gap list, and convergence reason if applicable.",
+      "Get the current verification status for the PARENT ideation session. Use this before and during verification to confirm the generation, in_progress flag, and current round before calling update_plan_verification.",
     inputSchema: {
       type: "object",
       properties: {
