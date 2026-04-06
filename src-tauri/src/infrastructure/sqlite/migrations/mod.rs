@@ -268,9 +268,12 @@ mod v20260406043153_add_model_to_running_agents_tests;
 mod v20260406120000_add_ideation_subagent_model;
 #[cfg(test)]
 mod v20260406120000_add_ideation_subagent_model_tests;
+mod v20260406130000_verification_critic_results;
+#[cfg(test)]
+mod v20260406130000_verification_critic_results_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i64 = 20260406120000;
+pub const SCHEMA_VERSION: i64 = 20260406130000;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -769,6 +772,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 20260406120000,
         name: "add_ideation_subagent_model",
         migrate: v20260406120000_add_ideation_subagent_model::migrate,
+    },
+    Migration {
+        version: 20260406130000,
+        name: "verification_critic_results",
+        migrate: v20260406130000_verification_critic_results::migrate,
     },
 ];
 
