@@ -81,6 +81,8 @@ export const AgentRunSchema = z.object({
   startedAt: z.string().datetime(),
   completedAt: z.string().datetime().nullable(),
   errorMessage: z.string().nullable(),
+  modelId: z.string().nullable(),
+  modelLabel: z.string().nullable(),
 });
 
 export type AgentRun = z.infer<typeof AgentRunSchema>;

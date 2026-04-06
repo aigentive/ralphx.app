@@ -1,5 +1,5 @@
 use ralphx_lib::commands::unified_chat_commands::{
-    parse_context_type, QueuedMessageResponse, SendAgentMessageResponse,
+    parse_context_type, AgentRunStatusResponse, QueuedMessageResponse, SendAgentMessageResponse,
 };
 use ralphx_lib::application::SendResult;
 use ralphx_lib::domain::entities::ChatContextType;
@@ -88,6 +88,42 @@ fn test_response_serialization() {
     assert!(json.contains("conversation_id")); // snake_case (Rust default)
     assert!(json.contains("agent_run_id"));
     assert!(json.contains("is_new_conversation"));
+}
+
+// ── AgentRunStatusResponse model field tests ──────────────────────────────────
+
+#[test]
+fn test_agent_run_status_response_serializes_model_present() {
+    let response = AgentRunStatusResponse {
+        id: "run-1".to_string(),
+        conversation_id: "conv-1".to_string(),
+        status: "running".to_string(),
+        started_at: "2024-01-01T00:00:00Z".to_string(),
+        completed_at: None,
+        error_message: None,
+        model_id: Some("claude-sonnet-4-6".to_string()),
+        model_label: Some("Sonnet 4.6".to_string()),
+    };
+    let json = serde_json::to_string(&response).unwrap();
+    assert!(json.contains(r#""model_id":"claude-sonnet-4-6""#));
+    assert!(json.contains(r#""model_label":"Sonnet 4.6""#));
+}
+
+#[test]
+fn test_agent_run_status_response_serializes_model_absent() {
+    let response = AgentRunStatusResponse {
+        id: "run-2".to_string(),
+        conversation_id: "conv-2".to_string(),
+        status: "completed".to_string(),
+        started_at: "2024-01-01T00:00:00Z".to_string(),
+        completed_at: Some("2024-01-01T01:00:00Z".to_string()),
+        error_message: None,
+        model_id: None,
+        model_label: None,
+    };
+    let json = serde_json::to_string(&response).unwrap();
+    assert!(json.contains(r#""model_id":null"#));
+    assert!(json.contains(r#""model_label":null"#));
 }
 
 // ── IPC contract tests ─────────────────────────────────────────────────────────

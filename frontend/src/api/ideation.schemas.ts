@@ -39,6 +39,7 @@ export const IdeationSessionResponseSchema = z.object({
   inherited_plan_artifact_id: z.string().nullable().optional(),
   session_purpose: z.enum(["general", "verification"]).optional(),
   acceptance_status: z.enum(["pending", "accepted", "rejected"]).nullable().optional(),
+  last_effective_model: z.string().nullable().optional(),
 });
 
 /**
