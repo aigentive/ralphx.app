@@ -1776,3 +1776,162 @@ async fn resolve_working_directory_review_rejects_merge_worktree_path() {
         "Review context must reject merge-* worktree paths"
     );
 }
+
+// --- Verifier subagent cap injection tests ---
+//
+// These tests verify that build_command correctly resolves CLAUDE_CODE_SUBAGENT_MODEL
+// from the verifier_subagent_model DB field for plan-verifier, and that non-verifier
+// agents use their own resolved model as the subagent cap instead.
+
+#[tokio::test]
+async fn test_plan_verifier_sets_subagent_cap_env_var() {
+    // When build_command is called with entity_status="verification" (plan-verifier),
+    // and the DB has verifier_subagent_model=haiku, then CLAUDE_CODE_SUBAGENT_MODEL=haiku
+    // must appear in the spawned command's environment variables.
+    let repo = MemoryIdeationModelSettingsRepository::new();
+    repo.upsert_for_project("proj-1", "opus", "sonnet", "haiku")
+        .await
+        .unwrap();
+
+    let session_id = IdeationSessionId::new();
+    let conv = ChatConversation::new_ideation(session_id);
+    let artifact_repo = Arc::new(MemoryArtifactRepository::new());
+    let attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
+    let settings_repo: Arc<dyn IdeationModelSettingsRepository> = Arc::new(repo);
+
+    let result = build_command(
+        std::path::Path::new("/fake/claude"),
+        std::path::Path::new("/fake/plugin"),
+        &conv,
+        "continue",
+        std::path::Path::new("/tmp"),
+        Some("verification"),
+        Some("proj-1"),
+        false,
+        attachment_repo,
+        artifact_repo,
+        Some(settings_repo),
+        &[],
+        0,
+        None,
+        None,
+    )
+    .await;
+
+    assert!(result.is_ok(), "build_command failed: {:?}", result.err());
+    let cmd = result.unwrap();
+    let envs = cmd.get_envs_for_test();
+    let subagent_model = envs
+        .iter()
+        .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
+        .map(|(_, v)| v.to_string_lossy().into_owned());
+
+    assert_eq!(
+        subagent_model.as_deref(),
+        Some("haiku"),
+        "CLAUDE_CODE_SUBAGENT_MODEL should be haiku for plan-verifier with DB override"
+    );
+}
+
+#[tokio::test]
+async fn test_plan_verifier_subagent_cap_uses_haiku_default_when_no_db_rows() {
+    // When the DB has no rows, the hardcoded "haiku" default must still appear
+    // in CLAUDE_CODE_SUBAGENT_MODEL for plan-verifier.
+    let repo = MemoryIdeationModelSettingsRepository::new();
+    // No rows seeded → falls back to "haiku"
+
+    let session_id = IdeationSessionId::new();
+    let conv = ChatConversation::new_ideation(session_id);
+    let artifact_repo = Arc::new(MemoryArtifactRepository::new());
+    let attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
+    let settings_repo: Arc<dyn IdeationModelSettingsRepository> = Arc::new(repo);
+
+    let result = build_command(
+        std::path::Path::new("/fake/claude"),
+        std::path::Path::new("/fake/plugin"),
+        &conv,
+        "continue",
+        std::path::Path::new("/tmp"),
+        Some("verification"),
+        None, // no project_id → no project row
+        false,
+        attachment_repo,
+        artifact_repo,
+        Some(settings_repo),
+        &[],
+        0,
+        None,
+        None,
+    )
+    .await;
+
+    assert!(result.is_ok(), "build_command failed: {:?}", result.err());
+    let cmd = result.unwrap();
+    let envs = cmd.get_envs_for_test();
+    let subagent_model = envs
+        .iter()
+        .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
+        .map(|(_, v)| v.to_string_lossy().into_owned());
+
+    assert_eq!(
+        subagent_model.as_deref(),
+        Some("haiku"),
+        "CLAUDE_CODE_SUBAGENT_MODEL should fall back to haiku when no DB rows exist"
+    );
+}
+
+#[tokio::test]
+async fn test_non_verifier_ideation_agent_subagent_cap_is_agent_own_model() {
+    // For non-verifier ideation agents (orchestrator-ideation), the subagent cap
+    // must equal the agent's own resolved model — NOT the verifier_subagent_model field.
+    let repo = MemoryIdeationModelSettingsRepository::new();
+    repo.upsert_for_project("proj-1", "sonnet", "sonnet", "haiku")
+        .await
+        .unwrap();
+
+    let session_id = IdeationSessionId::new();
+    let conv = ChatConversation::new_ideation(session_id);
+    let artifact_repo = Arc::new(MemoryArtifactRepository::new());
+    let attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
+    let settings_repo: Arc<dyn IdeationModelSettingsRepository> = Arc::new(repo);
+
+    // No entity_status → orchestrator-ideation (default ideation agent)
+    let result = build_command(
+        std::path::Path::new("/fake/claude"),
+        std::path::Path::new("/fake/plugin"),
+        &conv,
+        "continue",
+        std::path::Path::new("/tmp"),
+        None, // no entity_status → orchestrator-ideation
+        Some("proj-1"),
+        false,
+        attachment_repo,
+        artifact_repo,
+        Some(settings_repo),
+        &[],
+        0,
+        None,
+        None,
+    )
+    .await;
+
+    assert!(result.is_ok(), "build_command failed: {:?}", result.err());
+    let cmd = result.unwrap();
+    let envs = cmd.get_envs_for_test();
+    let subagent_model = envs
+        .iter()
+        .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
+        .map(|(_, v)| v.to_string_lossy().into_owned());
+
+    // The subagent cap for orchestrator-ideation = its own model ("sonnet"), NOT "haiku"
+    assert_eq!(
+        subagent_model.as_deref(),
+        Some("sonnet"),
+        "orchestrator-ideation subagent cap should be its own model, not verifier_subagent_model=haiku"
+    );
+    assert_ne!(
+        subagent_model.as_deref(),
+        Some("haiku"),
+        "verifier_subagent_model must not bleed into non-verifier agents"
+    );
+}

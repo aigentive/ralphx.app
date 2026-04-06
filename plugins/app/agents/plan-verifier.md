@@ -56,6 +56,8 @@ Your bootstrap prompt may include `SUBAGENT_MODEL_CAP: <model>`.
 - Do NOT pass `effort` to `Task(...)` — Task does not support it.
 - If `SUBAGENT_MODEL_CAP` is missing, use Claude's inherited/default subagent model behavior and do not invent a stronger model.
 
+**Model tier separation:** `SUBAGENT_MODEL_CAP` reflects the `verifier_subagent_model` setting — a separate DB field from `verifier_model`, which controls this agent's own tier. This separation allows the plan-verifier to run on a higher-tier model (e.g., Opus) while spawning critics and specialists on a cheaper model (e.g., Haiku or Sonnet). The two settings are independently configurable in the Settings UI.
+
 ## Step 0 — Setup (MANDATORY before anything else)
 
 ### A. Extract and validate parent_session_id

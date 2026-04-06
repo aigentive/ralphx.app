@@ -100,6 +100,7 @@ fn test_model_for_bucket_primary() {
         project_id: None,
         primary_model: ModelLevel::Opus,
         verifier_model: ModelLevel::Sonnet,
+        verifier_subagent_model: ModelLevel::Inherit,
         updated_at: Utc::now(),
     };
     assert_eq!(
@@ -115,6 +116,7 @@ fn test_model_for_bucket_verifier() {
         project_id: None,
         primary_model: ModelLevel::Opus,
         verifier_model: ModelLevel::Haiku,
+        verifier_subagent_model: ModelLevel::Inherit,
         updated_at: Utc::now(),
     };
     assert_eq!(
@@ -130,6 +132,7 @@ fn test_model_for_bucket_inherit() {
         project_id: None,
         primary_model: ModelLevel::Inherit,
         verifier_model: ModelLevel::Inherit,
+        verifier_subagent_model: ModelLevel::Inherit,
         updated_at: Utc::now(),
     };
     assert_eq!(
@@ -140,4 +143,45 @@ fn test_model_for_bucket_inherit() {
         settings.model_for_bucket(&ModelBucket::Verifier),
         &ModelLevel::Inherit
     );
+}
+
+#[test]
+fn test_model_for_bucket_verifier_subagent() {
+    let settings = IdeationModelSettings {
+        id: 1,
+        project_id: None,
+        primary_model: ModelLevel::Opus,
+        verifier_model: ModelLevel::Sonnet,
+        verifier_subagent_model: ModelLevel::Haiku,
+        updated_at: Utc::now(),
+    };
+    assert_eq!(
+        settings.model_for_bucket(&ModelBucket::VerifierSubagent),
+        &ModelLevel::Haiku
+    );
+}
+
+#[test]
+fn test_verifier_subagent_bucket_not_in_agent_map() {
+    // VerifierSubagent is a cap-resolution bucket, not an agent bucket.
+    // No agent name should map to it via model_bucket_for_agent().
+    let agents = [
+        "orchestrator-ideation",
+        "ideation-team-lead",
+        "ideation-team-member",
+        "orchestrator-ideation-readonly",
+        "plan-verifier",
+        "ralphx:plan-verifier",
+        "ralphx-worker",
+        "ralphx-coder",
+        "",
+    ];
+    for agent in agents {
+        assert_ne!(
+            model_bucket_for_agent(agent),
+            Some(ModelBucket::VerifierSubagent),
+            "agent '{}' should NOT map to VerifierSubagent",
+            agent
+        );
+    }
 }

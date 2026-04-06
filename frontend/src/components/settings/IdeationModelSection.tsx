@@ -182,6 +182,14 @@ function GlobalModelSubsection() {
     );
   };
 
+  const handleVerifierSubagentChange = (value: string) => {
+    setShowError(false);
+    updateSettings(
+      { verifierSubagentModel: value },
+      { onError: () => setShowError(true) }
+    );
+  };
+
   return (
     <div>
       {showError && saveError && (
@@ -211,6 +219,17 @@ function GlobalModelSubsection() {
           onChange={handleVerifierChange}
           effectiveValue={settings.effectiveVerifierModel}
           effectiveSource={settings.verifierModelSource}
+          isPlaceholderData={isPlaceholderData}
+        />
+        <ModelRow
+          id="verifier-subagent-model"
+          label="Verification Subagent Model"
+          description="Model used by critics/specialists spawned by the plan verifier"
+          value={settings.verifierSubagentModel}
+          disabled={false}
+          onChange={handleVerifierSubagentChange}
+          effectiveValue={settings.effectiveVerifierSubagentModel}
+          effectiveSource={settings.verifierSubagentModelSource}
           isPlaceholderData={isPlaceholderData}
           isLast
         />
@@ -254,6 +273,15 @@ function ProjectModelSubsection({
     );
   };
 
+  const handleVerifierSubagentChange = (value: string) => {
+    if (isDisabled) return;
+    setShowError(false);
+    updateSettings(
+      { verifierSubagentModel: value },
+      { onError: () => setShowError(true) }
+    );
+  };
+
   return (
     <div>
       <div className="mb-3">
@@ -293,6 +321,17 @@ function ProjectModelSubsection({
           onChange={handleVerifierChange}
           effectiveValue={settings.effectiveVerifierModel}
           effectiveSource={settings.verifierModelSource}
+          isPlaceholderData={isPlaceholderData}
+        />
+        <ModelRow
+          id="project-verifier-subagent-model"
+          label="Verification Subagent Model"
+          description="Override verification subagent model for this project"
+          value={settings.verifierSubagentModel}
+          disabled={isDisabled}
+          onChange={handleVerifierSubagentChange}
+          effectiveValue={settings.effectiveVerifierSubagentModel}
+          effectiveSource={settings.verifierSubagentModelSource}
           isPlaceholderData={isPlaceholderData}
           isLast
         />

@@ -851,6 +851,7 @@ impl<R: Runtime> ClaudeChatService<R> {
         is_external_mcp: bool,
         effort_override: Option<&str>,
         model_override: Option<&str>,
+        subagent_cap_override: Option<&str>,
     ) -> Result<crate::infrastructure::agents::claude::SpawnableCommand, ChatServiceError> {
         chat_service_context::build_interactive_command(
             &self.cli_path,
@@ -868,6 +869,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             is_external_mcp,
             effort_override,
             model_override,
+            subagent_cap_override,
         )
         .await
         .map_err(ChatServiceError::SpawnFailed)
@@ -1668,6 +1670,42 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             None
         };
 
+        // 7b-pre3. For plan-verifier sessions, pre-resolve the subagent cap from the
+        // separate verifier_subagent_model field so critics/specialists run on the
+        // configured cheaper model rather than the verifier's own model.
+        let resolved_verifier_subagent_cap: Option<String> =
+            if context_type == ChatContextType::Ideation {
+                let team_mode_val = self.team_mode.load(Ordering::Relaxed);
+                let agent_name = chat_service_helpers::resolve_agent_with_team_mode(
+                    &context_type,
+                    entity_status.as_deref(),
+                    team_mode_val,
+                );
+                if agent_name
+                    == crate::infrastructure::agents::claude::agent_names::AGENT_PLAN_VERIFIER
+                {
+                    if let Some(ref repo) = self.ideation_model_settings_repo {
+                        let project_row = if let Some(pid) = project_id.as_deref() {
+                            repo.get_for_project(pid).await.ok().flatten()
+                        } else {
+                            None
+                        };
+                        let global_row = repo.get_global().await.ok().flatten();
+                        let (cap, _) = crate::infrastructure::agents::claude::resolve_verifier_subagent_model_with_source(
+                            project_row.as_ref().map(|r| &r.verifier_subagent_model),
+                            global_row.as_ref().map(|r| &r.verifier_subagent_model),
+                        );
+                        Some(cap)
+                    } else {
+                        Some("haiku".to_string())
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
         // Fetch recent session messages for Ideation context ONLY when spawning a new process.
         // The agent has no prior context at spawn time, so we inject the history into the prompt.
         // For non-ideation contexts and already-running agents (IPR path above), we pass empty slice.
@@ -1706,6 +1744,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 options.is_external_mcp,
                 resolved_effort.as_deref(),
                 resolved_model.as_deref(),
+                resolved_verifier_subagent_cap.as_deref(),
             )
             .await
         {

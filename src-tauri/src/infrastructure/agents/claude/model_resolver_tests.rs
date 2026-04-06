@@ -2,7 +2,7 @@ use crate::domain::ideation::model_settings::ModelBucket;
 use crate::domain::repositories::IdeationModelSettingsRepository;
 use crate::infrastructure::memory::MemoryIdeationModelSettingsRepository;
 
-use super::{resolve_ideation_model, ResolvedModel};
+use super::{resolve_ideation_model, resolve_verifier_subagent_model_with_source, ResolvedModel};
 
 // --- model_bucket_for_agent (via model_resolver context) ---
 
@@ -23,7 +23,7 @@ async fn test_resolve_model_non_ideation_agent() {
 #[tokio::test]
 async fn test_resolve_model_project_override_primary() {
     let repo = MemoryIdeationModelSettingsRepository::new();
-    repo.upsert_for_project("proj-abc", "opus", "sonnet")
+    repo.upsert_for_project("proj-abc", "opus", "sonnet", "inherit")
         .await
         .unwrap();
 
@@ -40,7 +40,7 @@ async fn test_resolve_model_project_override_primary() {
 #[tokio::test]
 async fn test_resolve_model_project_override_verifier() {
     let repo = MemoryIdeationModelSettingsRepository::new();
-    repo.upsert_for_project("proj-abc", "sonnet", "haiku")
+    repo.upsert_for_project("proj-abc", "sonnet", "haiku", "inherit")
         .await
         .unwrap();
 
@@ -57,7 +57,7 @@ async fn test_resolve_model_project_override_verifier() {
 #[tokio::test]
 async fn test_resolve_model_global_override() {
     let repo = MemoryIdeationModelSettingsRepository::new();
-    repo.upsert_global("opus", "haiku").await.unwrap();
+    repo.upsert_global("opus", "haiku", "inherit").await.unwrap();
 
     let result = resolve_ideation_model("orchestrator-ideation", None, &repo).await;
     assert_eq!(
@@ -72,7 +72,7 @@ async fn test_resolve_model_global_override() {
 #[tokio::test]
 async fn test_resolve_model_global_override_verifier() {
     let repo = MemoryIdeationModelSettingsRepository::new();
-    repo.upsert_global("sonnet", "opus").await.unwrap();
+    repo.upsert_global("sonnet", "opus", "inherit").await.unwrap();
 
     let result = resolve_ideation_model("plan-verifier", None, &repo).await;
     assert_eq!(
@@ -88,10 +88,10 @@ async fn test_resolve_model_global_override_verifier() {
 async fn test_resolve_model_project_inherit_falls_to_global() {
     let repo = MemoryIdeationModelSettingsRepository::new();
     // Project row inherits; global row has opus primary
-    repo.upsert_for_project("proj-y", "inherit", "inherit")
+    repo.upsert_for_project("proj-y", "inherit", "inherit", "inherit")
         .await
         .unwrap();
-    repo.upsert_global("opus", "inherit").await.unwrap();
+    repo.upsert_global("opus", "inherit", "inherit").await.unwrap();
 
     let result = resolve_ideation_model("orchestrator-ideation", Some("proj-y"), &repo).await;
     assert_eq!(result.model, "opus");
@@ -102,10 +102,10 @@ async fn test_resolve_model_project_inherit_falls_to_global() {
 async fn test_resolve_model_both_inherit_falls_through_to_yaml() {
     let repo = MemoryIdeationModelSettingsRepository::new();
     // Both rows set to inherit → should fall through to YAML config
-    repo.upsert_for_project("proj-x", "inherit", "inherit")
+    repo.upsert_for_project("proj-x", "inherit", "inherit", "inherit")
         .await
         .unwrap();
-    repo.upsert_global("inherit", "inherit").await.unwrap();
+    repo.upsert_global("inherit", "inherit", "inherit").await.unwrap();
 
     let result = resolve_ideation_model("orchestrator-ideation", Some("proj-x"), &repo).await;
     assert!(!result.model.is_empty(), "expected non-empty model from YAML fallback");
@@ -135,7 +135,7 @@ async fn test_resolve_model_no_db_rows_falls_through_to_yaml() {
 async fn test_resolve_model_project_id_none_skips_project_level() {
     let repo = MemoryIdeationModelSettingsRepository::new();
     // Seed a global row but pass project_id = None
-    repo.upsert_global("haiku", "sonnet").await.unwrap();
+    repo.upsert_global("haiku", "sonnet", "inherit").await.unwrap();
 
     // ideation-team-lead primary bucket
     let result = resolve_ideation_model("ideation-team-lead", None, &repo).await;
@@ -146,7 +146,7 @@ async fn test_resolve_model_project_id_none_skips_project_level() {
 #[tokio::test]
 async fn test_resolve_model_all_primary_agents_use_primary_bucket() {
     let repo = MemoryIdeationModelSettingsRepository::new();
-    repo.upsert_global("opus", "haiku").await.unwrap();
+    repo.upsert_global("opus", "haiku", "inherit").await.unwrap();
 
     for agent in &[
         "orchestrator-ideation",
@@ -167,7 +167,7 @@ async fn test_resolve_model_all_primary_agents_use_primary_bucket() {
 #[tokio::test]
 async fn test_resolve_model_verifier_agent_uses_verifier_bucket() {
     let repo = MemoryIdeationModelSettingsRepository::new();
-    repo.upsert_global("sonnet", "haiku").await.unwrap();
+    repo.upsert_global("sonnet", "haiku", "inherit").await.unwrap();
 
     let result = resolve_ideation_model("plan-verifier", None, &repo).await;
     assert_eq!(result.model, "haiku");
@@ -177,7 +177,7 @@ async fn test_resolve_model_verifier_agent_uses_verifier_bucket() {
 #[tokio::test]
 async fn test_resolve_model_fully_qualified_verifier_agent_uses_verifier_bucket() {
     let repo = MemoryIdeationModelSettingsRepository::new();
-    repo.upsert_global("sonnet", "haiku").await.unwrap();
+    repo.upsert_global("sonnet", "haiku", "inherit").await.unwrap();
 
     let result = resolve_ideation_model("ralphx:plan-verifier", None, &repo).await;
     assert_eq!(result.model, "haiku");
@@ -187,7 +187,7 @@ async fn test_resolve_model_fully_qualified_verifier_agent_uses_verifier_bucket(
 #[tokio::test]
 async fn test_resolve_model_fully_qualified_primary_agent_uses_primary_bucket() {
     let repo = MemoryIdeationModelSettingsRepository::new();
-    repo.upsert_global("opus", "haiku").await.unwrap();
+    repo.upsert_global("opus", "haiku", "inherit").await.unwrap();
 
     let result = resolve_ideation_model("ralphx:orchestrator-ideation", None, &repo).await;
     assert_eq!(result.model, "opus");
@@ -199,4 +199,73 @@ async fn test_resolve_model_fully_qualified_primary_agent_uses_primary_bucket() 
 fn test_model_bucket_variants_exist() {
     let _primary = ModelBucket::Primary;
     let _verifier = ModelBucket::Verifier;
+}
+
+// --- resolve_verifier_subagent_model_with_source tests ---
+
+#[tokio::test]
+async fn test_verifier_subagent_bucket_resolution_independent() {
+    // verifier_subagent_model=haiku at project level; verifier_model=sonnet (different field).
+    // Assert the function reads from verifier_subagent_model, NOT verifier_model.
+    let repo = MemoryIdeationModelSettingsRepository::new();
+    repo.upsert_for_project("proj-1", "opus", "sonnet", "haiku")
+        .await
+        .unwrap();
+
+    let project_row = repo.get_for_project("proj-1").await.unwrap().unwrap();
+    let (model, source) = resolve_verifier_subagent_model_with_source(
+        Some(&project_row.verifier_subagent_model),
+        None,
+    );
+    assert_eq!(
+        model, "haiku",
+        "verifier_subagent_model=haiku should be returned, not verifier_model=sonnet"
+    );
+    assert_eq!(source, "user");
+    // Confirm independence: the function did not return the verifier_model value
+    assert_ne!(model, "sonnet");
+}
+
+#[tokio::test]
+async fn test_verifier_subagent_project_overrides_global() {
+    // Project verifier_subagent_model=haiku beats global verifier_subagent_model=sonnet.
+    let repo = MemoryIdeationModelSettingsRepository::new();
+    repo.upsert_global("opus", "opus", "sonnet").await.unwrap();
+    repo.upsert_for_project("proj-1", "opus", "opus", "haiku")
+        .await
+        .unwrap();
+
+    let project_row = repo.get_for_project("proj-1").await.unwrap().unwrap();
+    let global_row = repo.get_global().await.unwrap().unwrap();
+    let (model, source) = resolve_verifier_subagent_model_with_source(
+        Some(&project_row.verifier_subagent_model),
+        Some(&global_row.verifier_subagent_model),
+    );
+    assert_eq!(
+        model, "haiku",
+        "project verifier_subagent_model=haiku should win over global=sonnet"
+    );
+    assert_eq!(source, "user");
+}
+
+#[tokio::test]
+async fn test_verifier_subagent_fallback_to_haiku() {
+    // Both project and global verifier_subagent_model = inherit → hardcoded "haiku" default.
+    let repo = MemoryIdeationModelSettingsRepository::new();
+    repo.upsert_global("sonnet", "sonnet", "inherit").await.unwrap();
+    repo.upsert_for_project("proj-1", "sonnet", "sonnet", "inherit")
+        .await
+        .unwrap();
+
+    let project_row = repo.get_for_project("proj-1").await.unwrap().unwrap();
+    let global_row = repo.get_global().await.unwrap().unwrap();
+    let (model, source) = resolve_verifier_subagent_model_with_source(
+        Some(&project_row.verifier_subagent_model),
+        Some(&global_row.verifier_subagent_model),
+    );
+    assert_eq!(
+        model, "haiku",
+        "inherit on both levels should fall back to hardcoded haiku"
+    );
+    assert_eq!(source, "default");
 }

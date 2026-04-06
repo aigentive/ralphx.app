@@ -38,7 +38,7 @@ impl IdeationModelSettingsRepository for SqliteIdeationModelSettingsRepository {
         self.db
             .run(move |conn| {
                 let result = conn.query_row(
-                    "SELECT id, project_id, primary_model, verifier_model, updated_at
+                    "SELECT id, project_id, primary_model, verifier_model, verifier_subagent_model, updated_at
                      FROM ideation_model_settings WHERE project_id IS NULL",
                     [],
                     parse_row,
@@ -62,7 +62,7 @@ impl IdeationModelSettingsRepository for SqliteIdeationModelSettingsRepository {
         self.db
             .run(move |conn| {
                 let result = conn.query_row(
-                    "SELECT id, project_id, primary_model, verifier_model, updated_at
+                    "SELECT id, project_id, primary_model, verifier_model, verifier_subagent_model, updated_at
                      FROM ideation_model_settings WHERE project_id = ?1",
                     rusqlite::params![pid.as_str()],
                     parse_row,
@@ -82,9 +82,11 @@ impl IdeationModelSettingsRepository for SqliteIdeationModelSettingsRepository {
         &self,
         primary_model: &str,
         verifier_model: &str,
+        verifier_subagent_model: &str,
     ) -> Result<IdeationModelSettings, Box<dyn std::error::Error>> {
         let primary_model_owned = primary_model.to_string();
         let verifier_model_owned = verifier_model.to_string();
+        let verifier_subagent_model_owned = verifier_subagent_model.to_string();
 
         self.db
             .run(move |conn| {
@@ -102,26 +104,29 @@ impl IdeationModelSettingsRepository for SqliteIdeationModelSettingsRepository {
                         "UPDATE ideation_model_settings
                          SET primary_model = ?1,
                              verifier_model = ?2,
+                             verifier_subagent_model = ?3,
                              updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
                          WHERE project_id IS NULL",
                         rusqlite::params![
                             primary_model_owned.as_str(),
                             verifier_model_owned.as_str(),
+                            verifier_subagent_model_owned.as_str(),
                         ],
                     )?;
                 } else {
                     conn.execute(
-                        "INSERT INTO ideation_model_settings (project_id, primary_model, verifier_model, updated_at)
-                         VALUES (NULL, ?1, ?2, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+                        "INSERT INTO ideation_model_settings (project_id, primary_model, verifier_model, verifier_subagent_model, updated_at)
+                         VALUES (NULL, ?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
                         rusqlite::params![
                             primary_model_owned.as_str(),
                             verifier_model_owned.as_str(),
+                            verifier_subagent_model_owned.as_str(),
                         ],
                     )?;
                 }
 
                 let result = conn.query_row(
-                    "SELECT id, project_id, primary_model, verifier_model, updated_at
+                    "SELECT id, project_id, primary_model, verifier_model, verifier_subagent_model, updated_at
                      FROM ideation_model_settings WHERE project_id IS NULL",
                     [],
                     parse_row,
@@ -138,10 +143,12 @@ impl IdeationModelSettingsRepository for SqliteIdeationModelSettingsRepository {
         project_id: &str,
         primary_model: &str,
         verifier_model: &str,
+        verifier_subagent_model: &str,
     ) -> Result<IdeationModelSettings, Box<dyn std::error::Error>> {
         let pid = project_id.to_string();
         let primary_model_owned = primary_model.to_string();
         let verifier_model_owned = verifier_model.to_string();
+        let verifier_subagent_model_owned = verifier_subagent_model.to_string();
 
         self.db
             .run(move |conn| {
@@ -159,28 +166,31 @@ impl IdeationModelSettingsRepository for SqliteIdeationModelSettingsRepository {
                         "UPDATE ideation_model_settings
                          SET primary_model = ?1,
                              verifier_model = ?2,
+                             verifier_subagent_model = ?3,
                              updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
-                         WHERE project_id = ?3",
+                         WHERE project_id = ?4",
                         rusqlite::params![
                             primary_model_owned.as_str(),
                             verifier_model_owned.as_str(),
+                            verifier_subagent_model_owned.as_str(),
                             pid.as_str(),
                         ],
                     )?;
                 } else {
                     conn.execute(
-                        "INSERT INTO ideation_model_settings (project_id, primary_model, verifier_model, updated_at)
-                         VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+                        "INSERT INTO ideation_model_settings (project_id, primary_model, verifier_model, verifier_subagent_model, updated_at)
+                         VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
                         rusqlite::params![
                             pid.as_str(),
                             primary_model_owned.as_str(),
                             verifier_model_owned.as_str(),
+                            verifier_subagent_model_owned.as_str(),
                         ],
                     )?;
                 }
 
                 let result = conn.query_row(
-                    "SELECT id, project_id, primary_model, verifier_model, updated_at
+                    "SELECT id, project_id, primary_model, verifier_model, verifier_subagent_model, updated_at
                      FROM ideation_model_settings WHERE project_id = ?1",
                     rusqlite::params![pid.as_str()],
                     parse_row,
@@ -198,13 +208,16 @@ fn parse_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<IdeationModelSettings>
     let project_id_str: Option<String> = row.get(1)?;
     let primary_model_str: String = row.get(2)?;
     let verifier_model_str: String = row.get(3)?;
-    let updated_at_str: String = row.get(4)?;
+    let verifier_subagent_model_str: String = row.get(4)?;
+    let updated_at_str: String = row.get(5)?;
 
     let project_id = project_id_str.map(ProjectId);
     let primary_model =
         ModelLevel::from_str(&primary_model_str).unwrap_or(ModelLevel::Inherit);
     let verifier_model =
         ModelLevel::from_str(&verifier_model_str).unwrap_or(ModelLevel::Inherit);
+    let verifier_subagent_model =
+        ModelLevel::from_str(&verifier_subagent_model_str).unwrap_or(ModelLevel::Inherit);
     let updated_at = chrono::DateTime::parse_from_rfc3339(&updated_at_str)
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or_else(|_| Utc::now());
@@ -214,6 +227,7 @@ fn parse_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<IdeationModelSettings>
         project_id,
         primary_model,
         verifier_model,
+        verifier_subagent_model,
         updated_at,
     })
 }

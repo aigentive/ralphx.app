@@ -256,9 +256,12 @@ mod v20260330000002_ideation_model_settings;
 mod v20260405045108_ideation_external_overrides;
 #[cfg(test)]
 mod v20260405045108_ideation_external_overrides_tests;
+mod v20260406000000_verifier_subagent_model;
+#[cfg(test)]
+mod v20260406000000_verifier_subagent_model_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i64 = 20260405045108;
+pub const SCHEMA_VERSION: i64 = 20260406000000;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -737,6 +740,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 20260405045108,
         name: "ideation_external_overrides",
         migrate: v20260405045108_ideation_external_overrides::migrate,
+    },
+    Migration {
+        version: 20260406000000,
+        name: "verifier_subagent_model",
+        migrate: v20260406000000_verifier_subagent_model::migrate,
     },
 ];
 

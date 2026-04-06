@@ -12,11 +12,15 @@ use tauri::State;
 
 use crate::application::AppState;
 use crate::domain::ideation::ModelLevel;
-use crate::infrastructure::agents::claude::get_agent_config;
+use crate::infrastructure::agents::claude::{
+    get_agent_config, resolve_verifier_subagent_model_with_source,
+};
 
 // Representative agents for each bucket — used to resolve YAML model values.
 const PRIMARY_REPR_AGENT: &str = "orchestrator-ideation";
 const VERIFIER_REPR_AGENT: &str = "plan-verifier";
+// Same as plan-verifier, separate const for future flexibility.
+const VERIFIER_SUBAGENT_REPR_AGENT: &str = VERIFIER_REPR_AGENT;
 
 // ============================================================================
 // Response type
@@ -40,6 +44,13 @@ pub struct IdeationModelResponse {
     /// Source label for how effective_verifier_model was determined.
     /// One of: "user" | "global" | "yaml" | "yaml_default"
     pub verifier_model_source: String,
+    /// Stored value for the verifier subagent bucket (may be "inherit").
+    pub verifier_subagent_model: String,
+    /// Resolved effective model for the verifier subagent bucket (never "inherit").
+    pub effective_verifier_subagent_model: String,
+    /// Source label for how effective_verifier_subagent_model was determined.
+    /// One of: "user" | "global" | "default"
+    pub verifier_subagent_model_source: String,
 }
 
 // ============================================================================
@@ -55,6 +66,8 @@ pub struct UpdateIdeationModelInput {
     pub primary_model: Option<String>,
     /// New verifier model level. Only updated if provided.
     pub verifier_model: Option<String>,
+    /// New verifier subagent model level. Only updated if provided.
+    pub verifier_subagent_model: Option<String>,
 }
 
 // ============================================================================
@@ -145,16 +158,35 @@ pub async fn get_ideation_model_settings(
         .or_else(|| global_row.as_ref().map(|r| r.verifier_model.to_string()))
         .unwrap_or_else(|| ModelLevel::Inherit.to_string());
 
+    let stored_verifier_subagent = project_row
+        .as_ref()
+        .map(|r| r.verifier_subagent_model.to_string())
+        .or_else(|| {
+            global_row
+                .as_ref()
+                .map(|r| r.verifier_subagent_model.to_string())
+        })
+        .unwrap_or_else(|| ModelLevel::Inherit.to_string());
+
     // Resolve effective values
     let project_primary = project_row.as_ref().map(|r| &r.primary_model);
     let project_verifier = project_row.as_ref().map(|r| &r.verifier_model);
+    let project_verifier_subagent = project_row.as_ref().map(|r| &r.verifier_subagent_model);
     let global_primary = global_row.as_ref().map(|r| &r.primary_model);
     let global_verifier = global_row.as_ref().map(|r| &r.verifier_model);
+    let global_verifier_subagent = global_row.as_ref().map(|r| &r.verifier_subagent_model);
 
     let (effective_primary, primary_source) =
         resolve_model_with_source(project_primary, global_primary, PRIMARY_REPR_AGENT);
     let (effective_verifier, verifier_source) =
         resolve_model_with_source(project_verifier, global_verifier, VERIFIER_REPR_AGENT);
+    let (effective_verifier_subagent, verifier_subagent_source) =
+        resolve_verifier_subagent_model_with_source(
+            project_verifier_subagent,
+            global_verifier_subagent,
+        );
+    // VERIFIER_SUBAGENT_REPR_AGENT is reserved for future YAML-level resolution.
+    let _ = VERIFIER_SUBAGENT_REPR_AGENT;
 
     Ok(IdeationModelResponse {
         primary_model: stored_primary,
@@ -163,6 +195,9 @@ pub async fn get_ideation_model_settings(
         effective_verifier_model: effective_verifier,
         primary_model_source: primary_source,
         verifier_model_source: verifier_source,
+        verifier_subagent_model: stored_verifier_subagent,
+        effective_verifier_subagent_model: effective_verifier_subagent,
+        verifier_subagent_model_source: verifier_subagent_source,
     })
 }
 
@@ -185,6 +220,9 @@ pub async fn update_ideation_model_settings(
     }
     if let Some(ref v) = input.verifier_model {
         ModelLevel::from_str(v).map_err(|e| format!("Invalid verifierModel: {e}"))?;
+    }
+    if let Some(ref v) = input.verifier_subagent_model {
+        ModelLevel::from_str(v).map_err(|e| format!("Invalid verifierSubagentModel: {e}"))?;
     }
 
     // Fetch the existing row so we can merge (keep old values for unspecified fields).
@@ -212,20 +250,29 @@ pub async fn update_ideation_model_settings(
         .map(|r| r.verifier_model.to_string())
         .unwrap_or_else(|| ModelLevel::Inherit.to_string());
 
+    let current_verifier_subagent = existing
+        .as_ref()
+        .map(|r| r.verifier_subagent_model.to_string())
+        .unwrap_or_else(|| ModelLevel::Inherit.to_string());
+
     let new_primary = input.primary_model.as_deref().unwrap_or(&current_primary);
     let new_verifier = input.verifier_model.as_deref().unwrap_or(&current_verifier);
+    let new_verifier_subagent = input
+        .verifier_subagent_model
+        .as_deref()
+        .unwrap_or(&current_verifier_subagent);
 
     // Upsert the row.
     if let Some(ref pid) = input.project_id {
         app_state
             .ideation_model_settings_repo
-            .upsert_for_project(pid, new_primary, new_verifier)
+            .upsert_for_project(pid, new_primary, new_verifier, new_verifier_subagent)
             .await
             .map_err(|e| format!("Failed to save model settings: {e}"))?;
     } else {
         app_state
             .ideation_model_settings_repo
-            .upsert_global(new_primary, new_verifier)
+            .upsert_global(new_primary, new_verifier, new_verifier_subagent)
             .await
             .map_err(|e| format!("Failed to save model settings: {e}"))?;
     }
@@ -250,6 +297,7 @@ mod tests {
             project_id: None,
             primary_model: primary,
             verifier_model: verifier,
+            verifier_subagent_model: ModelLevel::Inherit,
             updated_at: Utc::now(),
         }
     }

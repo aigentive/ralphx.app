@@ -59,10 +59,13 @@ impl IdeationModelSettingsRepository for MemoryIdeationModelSettingsRepository {
         &self,
         primary_model: &str,
         verifier_model: &str,
+        verifier_subagent_model: &str,
     ) -> Result<IdeationModelSettings, Box<dyn std::error::Error>> {
         let primary = ModelLevel::from_str(primary_model)
             .map_err(|e| Box::<dyn std::error::Error>::from(e))?;
         let verifier = ModelLevel::from_str(verifier_model)
+            .map_err(|e| Box::<dyn std::error::Error>::from(e))?;
+        let verifier_subagent = ModelLevel::from_str(verifier_subagent_model)
             .map_err(|e| Box::<dyn std::error::Error>::from(e))?;
 
         let mut row = self.global_row.write().await;
@@ -72,6 +75,7 @@ impl IdeationModelSettingsRepository for MemoryIdeationModelSettingsRepository {
             project_id: None,
             primary_model: primary,
             verifier_model: verifier,
+            verifier_subagent_model: verifier_subagent,
             updated_at: Utc::now(),
         };
         *row = Some(settings.clone());
@@ -83,10 +87,13 @@ impl IdeationModelSettingsRepository for MemoryIdeationModelSettingsRepository {
         project_id: &str,
         primary_model: &str,
         verifier_model: &str,
+        verifier_subagent_model: &str,
     ) -> Result<IdeationModelSettings, Box<dyn std::error::Error>> {
         let primary = ModelLevel::from_str(primary_model)
             .map_err(|e| Box::<dyn std::error::Error>::from(e))?;
         let verifier = ModelLevel::from_str(verifier_model)
+            .map_err(|e| Box::<dyn std::error::Error>::from(e))?;
+        let verifier_subagent = ModelLevel::from_str(verifier_subagent_model)
             .map_err(|e| Box::<dyn std::error::Error>::from(e))?;
 
         let mut rows = self.project_rows.write().await;
@@ -99,6 +106,7 @@ impl IdeationModelSettingsRepository for MemoryIdeationModelSettingsRepository {
             project_id: Some(ProjectId(project_id.to_string())),
             primary_model: primary,
             verifier_model: verifier,
+            verifier_subagent_model: verifier_subagent,
             updated_at: Utc::now(),
         };
         rows.insert(project_id.to_string(), settings.clone());

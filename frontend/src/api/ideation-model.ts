@@ -10,10 +10,13 @@ import { z } from "zod";
 export const IdeationModelResponseSchema = z.object({
   primaryModel: z.string(),
   verifierModel: z.string(),
+  verifierSubagentModel: z.string(),
   effectivePrimaryModel: z.string(),
   effectiveVerifierModel: z.string(),
+  effectiveVerifierSubagentModel: z.string(),
   primaryModelSource: z.string(),
   verifierModelSource: z.string(),
+  verifierSubagentModelSource: z.string(),
 });
 
 export type IdeationModelResponse = z.infer<typeof IdeationModelResponseSchema>;
@@ -25,10 +28,13 @@ export type IdeationModelResponse = z.infer<typeof IdeationModelResponseSchema>;
 export const defaultIdeationModelSettings: IdeationModelResponse = {
   primaryModel: "inherit",
   verifierModel: "inherit",
+  verifierSubagentModel: "inherit",
   effectivePrimaryModel: "",
   effectiveVerifierModel: "",
+  effectiveVerifierSubagentModel: "",
   primaryModelSource: "",
   verifierModelSource: "",
+  verifierSubagentModelSource: "",
 };
 
 // ============================================================================
@@ -56,6 +62,7 @@ export const ideationModelApi = {
     projectId: string | null;
     primaryModel?: string;
     verifierModel?: string;
+    verifierSubagentModel?: string;
   }): Promise<IdeationModelResponse> =>
     typedInvoke(
       "update_ideation_model_settings",

@@ -13,7 +13,8 @@ use std::path::Path;
 
 use ralphx_lib::domain::repositories::IdeationModelSettingsRepository;
 use ralphx_lib::infrastructure::agents::claude::{
-    build_base_cli_command, model_resolver::resolve_ideation_model,
+    build_base_cli_command,
+    model_resolver::{resolve_ideation_model, resolve_verifier_subagent_model_with_source},
 };
 use ralphx_lib::infrastructure::memory::MemoryIdeationModelSettingsRepository;
 
@@ -102,6 +103,51 @@ fn test_build_base_cli_command_no_model_override_no_yaml_uses_default() {
     // Note: if --model is absent entirely, that is fine — means YAML had no model for this agent
 }
 
+// --- Verifier subagent independence test ---
+
+#[tokio::test]
+async fn test_verifier_vs_non_verifier_subagent_independence() {
+    // Scenario: primary_model=sonnet, verifier_model=sonnet, verifier_subagent_model=haiku
+    //
+    // plan-verifier:         agent model    = sonnet (Verifier bucket)
+    //                        subagent cap   = haiku  (VerifierSubagent bucket — independent)
+    // orchestrator-ideation: agent model    = sonnet (Primary bucket)
+    //                        subagent cap   = sonnet (its own model, NOT haiku)
+    let repo = MemoryIdeationModelSettingsRepository::new();
+    repo.upsert_for_project("proj-1", "sonnet", "sonnet", "haiku")
+        .await
+        .unwrap();
+
+    // plan-verifier agent model (from Verifier bucket) → sonnet
+    let verifier_model = resolve_ideation_model("plan-verifier", Some("proj-1"), &repo).await;
+    assert_eq!(verifier_model.model, "sonnet");
+    assert_eq!(verifier_model.source, "user");
+
+    // plan-verifier subagent cap (from verifier_subagent_model field) → haiku, not sonnet
+    let project_row = repo.get_for_project("proj-1").await.unwrap().unwrap();
+    let (cap_model, cap_source) =
+        resolve_verifier_subagent_model_with_source(Some(&project_row.verifier_subagent_model), None);
+    assert_eq!(cap_model, "haiku");
+    assert_eq!(cap_source, "user");
+    // Independence assertion: subagent cap ≠ verifier agent model when configured separately
+    assert_ne!(
+        cap_model, verifier_model.model,
+        "verifier subagent cap (haiku) must differ from verifier agent model (sonnet)"
+    );
+
+    // orchestrator-ideation agent model (from Primary bucket) → sonnet
+    let orchestrator_model =
+        resolve_ideation_model("orchestrator-ideation", Some("proj-1"), &repo).await;
+    assert_eq!(orchestrator_model.model, "sonnet");
+    assert_eq!(orchestrator_model.source, "user");
+    // orchestrator subagent cap = its own agent model (sonnet)
+    // verifier_subagent_model=haiku must NOT affect non-verifier agents
+    assert_ne!(
+        orchestrator_model.model, "haiku",
+        "orchestrator subagent cap must not be affected by verifier_subagent_model"
+    );
+}
+
 // --- Resolver + CLI integration ---
 
 #[tokio::test]
@@ -109,7 +155,7 @@ async fn test_ideation_context_db_override_flows_to_cli_arg() {
     // Scenario: Ideation context with DB override → resolved model passed as model_override
     // Simulate what send_message() does: resolve from DB, then pass to build_base_cli_command
     let repo = MemoryIdeationModelSettingsRepository::new();
-    repo.upsert_for_project("proj-abc", "opus", "sonnet")
+    repo.upsert_for_project("proj-abc", "opus", "sonnet", "inherit")
         .await
         .unwrap();
 
@@ -165,7 +211,7 @@ async fn test_non_ideation_agent_bypasses_db_model_resolution() {
 
     // With a DB override for a project — the worker still ignores it
     let repo = MemoryIdeationModelSettingsRepository::new();
-    repo.upsert_for_project("proj-x", "opus", "haiku")
+    repo.upsert_for_project("proj-x", "opus", "haiku", "inherit")
         .await
         .unwrap();
 

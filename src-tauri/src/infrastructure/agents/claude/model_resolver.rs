@@ -66,6 +66,34 @@ pub async fn resolve_ideation_model(
     ResolvedModel { model, source }
 }
 
+/// Resolve the effective verifier-subagent model string and its source label.
+///
+/// 3-level fallback chain (no YAML level — hardcoded default is always "haiku"):
+///   1. project_value (if Some and != inherit) → source "user"
+///   2. global_value  (if Some and != inherit) → source "global"
+///   3. Hardcoded default "haiku"               → source "default"
+pub fn resolve_verifier_subagent_model_with_source(
+    project_value: Option<&ModelLevel>,
+    global_value: Option<&ModelLevel>,
+) -> (String, String) {
+    // Level 1 — per-project row
+    if let Some(level) = project_value {
+        if *level != ModelLevel::Inherit {
+            return (level.to_string(), "user".to_string());
+        }
+    }
+
+    // Level 2 — global row
+    if let Some(level) = global_value {
+        if *level != ModelLevel::Inherit {
+            return (level.to_string(), "global".to_string());
+        }
+    }
+
+    // Level 3 — hardcoded default
+    ("haiku".to_string(), "default".to_string())
+}
+
 /// Internal helper: resolve model from YAML config and return (model, source).
 fn resolve_model_with_source(agent_type: Option<&str>) -> (String, &'static str) {
     use super::get_agent_config;
