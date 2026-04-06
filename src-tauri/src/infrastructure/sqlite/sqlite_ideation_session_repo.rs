@@ -1288,6 +1288,24 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         Ok(count)
     }
 
+    async fn count_active_proposals(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<usize> {
+        let session_id = session_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let count: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM task_proposals \
+                     WHERE session_id = ?1 AND archived_at IS NULL AND status != 'rejected'",
+                    rusqlite::params![session_id],
+                    |row| row.get(0),
+                )?;
+                Ok(count as usize)
+            })
+            .await
+    }
+
     async fn get_by_idempotency_key(
         &self,
         api_key_id: &str,

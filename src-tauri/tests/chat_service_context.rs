@@ -559,6 +559,13 @@ impl IdeationSessionRepository for MockIdeationRepo {
         Ok(vec![])
     }
 
+    async fn count_active_proposals(
+        &self,
+        _session_id: &IdeationSessionId,
+    ) -> AppResult<usize> {
+        Ok(0)
+    }
+
     async fn get_latest_verification_child(
         &self,
         _parent_id: &IdeationSessionId,

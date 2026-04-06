@@ -803,6 +803,13 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
         self.inner.get_pending_verification_confirmations(project_id).await
     }
 
+    async fn count_active_proposals(
+        &self,
+        session_id: &crate::domain::entities::IdeationSessionId,
+    ) -> crate::error::AppResult<usize> {
+        self.inner.count_active_proposals(session_id).await
+    }
+
     async fn get_latest_verification_child(
         &self,
         parent_id: &ralphx_domain::entities::IdeationSessionId,

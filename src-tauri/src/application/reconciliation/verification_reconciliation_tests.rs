@@ -5,7 +5,8 @@ use std::sync::Arc;
 use chrono::{Duration, Utc};
 
 use crate::domain::entities::{
-    IdeationSession, IdeationSessionStatus, ProjectId, SessionOrigin, VerificationStatus,
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, SessionOrigin,
+    VerificationStatus,
 };
 use crate::domain::repositories::IdeationSessionRepository;
 use crate::infrastructure::memory::MemoryIdeationSessionRepository;
@@ -22,11 +23,42 @@ fn make_service(
 
 fn default_config() -> VerificationReconciliationConfig {
     VerificationReconciliationConfig {
-        stale_after_secs: 5400,             // 90 min
-        auto_verify_stale_secs: 600,        // 10 min
+        stale_after_secs: 5400,                    // 90 min
+        auto_verify_stale_secs: 600,               // 10 min
         interval_secs: 300,
-        external_session_stale_secs: 7200,  // 2 hours
+        external_session_stale_secs: 7200,         // 2 hours
+        external_session_startup_grace_secs: None, // falls back to external_session_stale_secs
     }
+}
+
+/// Helper: create a stuck verification session with given generation, age, and status.
+/// Returns the session ID. Replaces the 8-line IdeationSession setup pattern.
+async fn setup_stuck_session(
+    repo: &Arc<MemoryIdeationSessionRepository>,
+    project_id: ProjectId,
+    gen: i32,
+    age_secs: i64,
+    status: VerificationStatus,
+) -> IdeationSessionId {
+    let mut session = IdeationSession::new(project_id);
+    session.verification_status = status;
+    session.verification_in_progress = true;
+    session.verification_generation = gen;
+    session.updated_at = Utc::now() - Duration::seconds(age_secs);
+    let id = session.id.clone();
+    repo.create(session).await.unwrap();
+    id
+}
+
+/// Helper: assert that a metadata JSON string contains the expected `convergence_reason`.
+fn assert_metadata_has_convergence_reason(metadata: Option<&str>, expected_reason: &str) {
+    let meta: serde_json::Value =
+        serde_json::from_str(metadata.expect("metadata must be Some")).unwrap();
+    assert_eq!(
+        meta["convergence_reason"].as_str().unwrap(),
+        expected_reason,
+        "expected convergence_reason={expected_reason} in metadata"
+    );
 }
 
 #[tokio::test]
@@ -35,13 +67,8 @@ async fn test_reconciliation_resets_stuck_session_after_timeout() {
     let project_id = ProjectId::new();
 
     // Session stuck in verification for 2 hours (> 90-min threshold)
-    let mut session = IdeationSession::new(project_id);
-    session.verification_status = VerificationStatus::Reviewing;
-    session.verification_in_progress = true;
-    session.updated_at = Utc::now() - Duration::hours(2);
-
-    let session_id = session.id.clone();
-    repo.create(session).await.unwrap();
+    let session_id =
+        setup_stuck_session(&repo, project_id, 0, 7200, VerificationStatus::Reviewing).await;
 
     let svc = make_service(repo.clone(), default_config());
     let count = svc.scan_and_reset(false).await;
@@ -70,13 +97,8 @@ async fn test_reconciliation_skips_session_under_timeout() {
     let project_id = ProjectId::new();
 
     // Session is only 30 min old — still within the 90-min window
-    let mut session = IdeationSession::new(project_id);
-    session.verification_status = VerificationStatus::Reviewing;
-    session.verification_in_progress = true;
-    session.updated_at = Utc::now() - Duration::minutes(30);
-
-    let session_id = session.id.clone();
-    repo.create(session).await.unwrap();
+    let session_id =
+        setup_stuck_session(&repo, project_id, 0, 1800, VerificationStatus::Reviewing).await;
 
     let svc = make_service(repo.clone(), default_config());
     let count = svc.scan_and_reset(false).await;
@@ -215,22 +237,14 @@ async fn test_reconciler_auto_verify_shorter_threshold() {
     };
 
     // Auto-verify session (generation > 0) stuck for 15 minutes — should be reset (> 10 min)
-    let mut auto_session = IdeationSession::new(project_id.clone());
-    auto_session.verification_status = VerificationStatus::Reviewing;
-    auto_session.verification_in_progress = true;
-    auto_session.verification_generation = 1;
-    auto_session.updated_at = Utc::now() - Duration::minutes(15);
-    let auto_id = auto_session.id.clone();
-    repo.create(auto_session).await.unwrap();
+    let auto_id =
+        setup_stuck_session(&repo, project_id.clone(), 1, 900, VerificationStatus::Reviewing)
+            .await;
 
     // Manual verify session (generation == 0) stuck for 15 minutes — should NOT be reset (< 90 min)
-    let mut manual_session = IdeationSession::new(project_id.clone());
-    manual_session.verification_status = VerificationStatus::Reviewing;
-    manual_session.verification_in_progress = true;
-    manual_session.verification_generation = 0;
-    manual_session.updated_at = Utc::now() - Duration::minutes(15);
-    let manual_id = manual_session.id.clone();
-    repo.create(manual_session).await.unwrap();
+    let manual_id =
+        setup_stuck_session(&repo, project_id.clone(), 0, 900, VerificationStatus::Reviewing)
+            .await;
 
     let svc = make_service(repo.clone(), config);
     let count = svc.scan_and_reset(false).await;
@@ -261,20 +275,19 @@ async fn test_reconciler_skips_imported_verified_sessions() {
     let project_id = ProjectId::new();
 
     // ImportedVerified session that would otherwise be considered stale (> 90 min old, in_progress=true)
-    let mut imported_session = IdeationSession::new(project_id.clone());
-    imported_session.verification_status = VerificationStatus::ImportedVerified;
-    imported_session.verification_in_progress = true;
-    imported_session.updated_at = Utc::now() - Duration::hours(3);
-    let imported_id = imported_session.id.clone();
-    repo.create(imported_session).await.unwrap();
+    let imported_id = setup_stuck_session(
+        &repo,
+        project_id.clone(),
+        0,
+        10800,
+        VerificationStatus::ImportedVerified,
+    )
+    .await;
 
     // A normal Reviewing session that IS stale — should be reset
-    let mut stuck_session = IdeationSession::new(project_id.clone());
-    stuck_session.verification_status = VerificationStatus::Reviewing;
-    stuck_session.verification_in_progress = true;
-    stuck_session.updated_at = Utc::now() - Duration::hours(3);
-    let stuck_id = stuck_session.id.clone();
-    repo.create(stuck_session).await.unwrap();
+    let stuck_id =
+        setup_stuck_session(&repo, project_id.clone(), 0, 10800, VerificationStatus::Reviewing)
+            .await;
 
     let svc = make_service(repo.clone(), default_config());
     let count = svc.scan_and_reset(false).await;
@@ -305,11 +318,14 @@ async fn test_reconciler_only_imported_verified_resets_zero() {
 
     // Two ImportedVerified sessions, both stale
     for _ in 0..2 {
-        let mut session = IdeationSession::new(project_id.clone());
-        session.verification_status = VerificationStatus::ImportedVerified;
-        session.verification_in_progress = true;
-        session.updated_at = Utc::now() - Duration::hours(5);
-        repo.create(session).await.unwrap();
+        setup_stuck_session(
+            &repo,
+            project_id.clone(),
+            0,
+            18000,
+            VerificationStatus::ImportedVerified,
+        )
+        .await;
     }
 
     let svc = make_service(repo.clone(), default_config());
@@ -324,13 +340,9 @@ async fn test_orphaned_verification_child_reconciled() {
     let project_id = ProjectId::new();
 
     // Parent session stuck in verification for 2 hours (> 90-min threshold)
-    let mut parent = IdeationSession::new(project_id.clone());
-    parent.verification_status = VerificationStatus::Reviewing;
-    parent.verification_in_progress = true;
-    parent.verification_generation = 1; // auto-verify
-    parent.updated_at = Utc::now() - Duration::hours(2);
-    let parent_id = parent.id.clone();
-    repo.create(parent).await.unwrap();
+    let parent_id =
+        setup_stuck_session(&repo, project_id.clone(), 1, 7200, VerificationStatus::Reviewing)
+            .await;
 
     // Orphaned verification child session (not archived)
     let mut child = IdeationSession::new(project_id.clone());
@@ -371,13 +383,8 @@ async fn test_reconciler_manual_session_reset_after_long_threshold() {
     };
 
     // Manual verify session stuck for 2 hours — should be reset (> 90 min)
-    let mut session = IdeationSession::new(project_id);
-    session.verification_status = VerificationStatus::Reviewing;
-    session.verification_in_progress = true;
-    session.verification_generation = 0;
-    session.updated_at = Utc::now() - Duration::hours(2);
-    let session_id = session.id.clone();
-    repo.create(session).await.unwrap();
+    let session_id =
+        setup_stuck_session(&repo, project_id, 0, 7200, VerificationStatus::Reviewing).await;
 
     let svc = make_service(repo.clone(), config);
     let count = svc.scan_and_reset(false).await;
@@ -540,11 +547,9 @@ async fn test_reconcile_child_complete_crashed_mid_round() {
     assert!(!parent_after.verification_in_progress);
 
     // Verify convergence_reason was set to agent_crashed_mid_round in metadata
-    let meta: serde_json::Value =
-        serde_json::from_str(parent_after.verification_metadata.as_deref().unwrap()).unwrap();
-    assert_eq!(
-        meta["convergence_reason"].as_str().unwrap(),
-        "agent_crashed_mid_round"
+    assert_metadata_has_convergence_reason(
+        parent_after.verification_metadata.as_deref(),
+        "agent_crashed_mid_round",
     );
 
     let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
@@ -713,30 +718,19 @@ async fn test_scan_and_reset_cold_boot_ignores_ttl() {
     let project_id = ProjectId::new();
 
     // 5-minute-old auto-verify session — would NOT be reset by scan_and_reset(false)
-    let mut recent_auto = IdeationSession::new(project_id.clone());
-    recent_auto.verification_status = VerificationStatus::Reviewing;
-    recent_auto.verification_in_progress = true;
-    recent_auto.verification_generation = 1; // auto-verify
-    recent_auto.updated_at = Utc::now() - Duration::minutes(5);
-    let recent_auto_id = recent_auto.id.clone();
-    repo.create(recent_auto).await.unwrap();
+    let recent_auto_id =
+        setup_stuck_session(&repo, project_id.clone(), 1, 300, VerificationStatus::Reviewing)
+            .await;
 
     // 30-minute-old manual-verify session — would NOT be reset by scan_and_reset(false)
-    let mut mid_manual = IdeationSession::new(project_id.clone());
-    mid_manual.verification_status = VerificationStatus::Reviewing;
-    mid_manual.verification_in_progress = true;
-    mid_manual.verification_generation = 0; // manual verify
-    mid_manual.updated_at = Utc::now() - Duration::minutes(30);
-    let mid_manual_id = mid_manual.id.clone();
-    repo.create(mid_manual).await.unwrap();
+    let mid_manual_id =
+        setup_stuck_session(&repo, project_id.clone(), 0, 1800, VerificationStatus::Reviewing)
+            .await;
 
     // 2-hour-old session — would also be reset by scan_and_reset(false)
-    let mut old_session = IdeationSession::new(project_id.clone());
-    old_session.verification_status = VerificationStatus::Reviewing;
-    old_session.verification_in_progress = true;
-    old_session.updated_at = Utc::now() - Duration::hours(2);
-    let old_id = old_session.id.clone();
-    repo.create(old_session).await.unwrap();
+    let old_id =
+        setup_stuck_session(&repo, project_id.clone(), 0, 7200, VerificationStatus::Reviewing)
+            .await;
 
     let svc = make_service(repo.clone(), default_config());
     let count = svc.scan_and_reset(true).await;
@@ -762,13 +756,9 @@ async fn test_scan_and_reset_cold_boot_ignores_ttl() {
             label
         );
         // Metadata must contain app_restart convergence_reason
-        let meta: serde_json::Value =
-            serde_json::from_str(after.verification_metadata.as_deref().unwrap()).unwrap();
-        assert_eq!(
-            meta["convergence_reason"].as_str().unwrap(),
+        assert_metadata_has_convergence_reason(
+            after.verification_metadata.as_deref(),
             "app_restart",
-            "{} convergence_reason must be app_restart",
-            label
         );
     }
 }
@@ -780,20 +770,19 @@ async fn test_scan_and_reset_cold_boot_skips_imported_verified() {
     let project_id = ProjectId::new();
 
     // ImportedVerified session with in_progress=true (should not be touched)
-    let mut imported = IdeationSession::new(project_id.clone());
-    imported.verification_status = VerificationStatus::ImportedVerified;
-    imported.verification_in_progress = true;
-    imported.updated_at = Utc::now() - Duration::minutes(5);
-    let imported_id = imported.id.clone();
-    repo.create(imported).await.unwrap();
+    let imported_id = setup_stuck_session(
+        &repo,
+        project_id.clone(),
+        0,
+        300,
+        VerificationStatus::ImportedVerified,
+    )
+    .await;
 
     // Normal in-progress session (should be reset)
-    let mut normal = IdeationSession::new(project_id.clone());
-    normal.verification_status = VerificationStatus::Reviewing;
-    normal.verification_in_progress = true;
-    normal.updated_at = Utc::now() - Duration::minutes(5);
-    let normal_id = normal.id.clone();
-    repo.create(normal).await.unwrap();
+    let normal_id =
+        setup_stuck_session(&repo, project_id.clone(), 0, 300, VerificationStatus::Reviewing)
+            .await;
 
     let svc = make_service(repo.clone(), default_config());
     let count = svc.scan_and_reset(true).await;
@@ -825,12 +814,9 @@ async fn test_scan_and_reset_cold_boot_archives_orphaned_children() {
     let project_id = ProjectId::new();
 
     // Parent with in-progress verification (5 minutes old — below any TTL threshold)
-    let mut parent = IdeationSession::new(project_id.clone());
-    parent.verification_status = VerificationStatus::Reviewing;
-    parent.verification_in_progress = true;
-    parent.updated_at = Utc::now() - Duration::minutes(5);
-    let parent_id = parent.id.clone();
-    repo.create(parent).await.unwrap();
+    let parent_id =
+        setup_stuck_session(&repo, project_id.clone(), 0, 300, VerificationStatus::Reviewing)
+            .await;
 
     // Orphaned verification child session
     let mut child = IdeationSession::new(project_id.clone());
@@ -848,9 +834,10 @@ async fn test_scan_and_reset_cold_boot_archives_orphaned_children() {
     let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
     assert_eq!(parent_after.verification_status, VerificationStatus::Unverified);
     assert!(!parent_after.verification_in_progress);
-    let meta: serde_json::Value =
-        serde_json::from_str(parent_after.verification_metadata.as_deref().unwrap()).unwrap();
-    assert_eq!(meta["convergence_reason"].as_str().unwrap(), "app_restart");
+    assert_metadata_has_convergence_reason(
+        parent_after.verification_metadata.as_deref(),
+        "app_restart",
+    );
 
     // Child must be archived
     let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
@@ -893,13 +880,7 @@ async fn test_scan_and_reset_cold_boot_injects_app_restart_metadata() {
     let after = repo.get_by_id(&session_id).await.unwrap().unwrap();
     assert_eq!(after.verification_status, VerificationStatus::Unverified);
     assert!(!after.verification_in_progress);
-    let meta: serde_json::Value =
-        serde_json::from_str(after.verification_metadata.as_deref().unwrap()).unwrap();
-    assert_eq!(
-        meta["convergence_reason"].as_str().unwrap(),
-        "app_restart",
-        "cold boot must overwrite existing metadata with app_restart"
-    );
+    assert_metadata_has_convergence_reason(after.verification_metadata.as_deref(), "app_restart");
 }
 
 // ---------------------------------------------------------------------------
@@ -929,9 +910,10 @@ async fn test_reset_verification_on_child_error_agent_error() {
     );
 
     // Metadata should contain the agent_error convergence_reason
-    let meta: serde_json::Value =
-        serde_json::from_str(parent_after.verification_metadata.as_deref().unwrap()).unwrap();
-    assert_eq!(meta["convergence_reason"].as_str().unwrap(), "agent_error");
+    assert_metadata_has_convergence_reason(
+        parent_after.verification_metadata.as_deref(),
+        "agent_error",
+    );
 
     let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
     assert_eq!(
@@ -960,9 +942,10 @@ async fn test_reset_verification_on_child_error_user_stopped() {
     );
     assert!(!parent_after.verification_in_progress);
 
-    let meta: serde_json::Value =
-        serde_json::from_str(parent_after.verification_metadata.as_deref().unwrap()).unwrap();
-    assert_eq!(meta["convergence_reason"].as_str().unwrap(), "user_stopped");
+    assert_metadata_has_convergence_reason(
+        parent_after.verification_metadata.as_deref(),
+        "user_stopped",
+    );
 }
 
 #[tokio::test]
@@ -1140,6 +1123,120 @@ async fn test_startup_scan_uses_ttl_for_external_session_archival() {
         old_error_after.status,
         IdeationSessionStatus::Archived,
         "stale 'error' session past TTL must still be archived on cold boot"
+    );
+}
+
+/// Cold boot: 10-minute-old `created` session within the 2h grace period must survive.
+#[tokio::test]
+async fn test_cold_boot_preserves_recent_created_session() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    let session = make_external_session(project_id.clone(), "created", Duration::minutes(10));
+    let session_id = session.id.clone();
+    repo.create(session).await.unwrap();
+
+    let config = VerificationReconciliationConfig {
+        external_session_stale_secs: 7200, // 2h TTL
+        ..Default::default()
+    };
+    let svc = make_service(repo.clone(), config);
+    svc.scan_and_archive_stale_external_sessions(true).await; // cold boot
+
+    let after = repo.get_by_id(&session_id).await.unwrap().unwrap();
+    assert_eq!(
+        after.status,
+        IdeationSessionStatus::Active,
+        "10-min-old 'created' session must NOT be archived on cold boot (within 2h TTL)"
+    );
+}
+
+/// Cold boot: `created` session older than the 2h grace period must be archived.
+#[tokio::test]
+async fn test_cold_boot_archives_old_created_session() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    let session = make_external_session(project_id.clone(), "created", Duration::hours(3));
+    let session_id = session.id.clone();
+    repo.create(session).await.unwrap();
+
+    let config = VerificationReconciliationConfig {
+        external_session_stale_secs: 7200, // 2h TTL
+        ..Default::default()
+    };
+    let svc = make_service(repo.clone(), config);
+    svc.scan_and_archive_stale_external_sessions(true).await; // cold boot
+
+    let after = repo.get_by_id(&session_id).await.unwrap().unwrap();
+    assert_eq!(
+        after.status,
+        IdeationSessionStatus::Archived,
+        "3h-old 'created' session must be archived on cold boot (past 2h TTL)"
+    );
+}
+
+/// Cold boot: `error` session older than the 2h grace period must be archived.
+#[tokio::test]
+async fn test_cold_boot_archives_old_error_session() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    let session = make_external_session(project_id.clone(), "error", Duration::hours(3));
+    let session_id = session.id.clone();
+    repo.create(session).await.unwrap();
+
+    let config = VerificationReconciliationConfig {
+        external_session_stale_secs: 7200, // 2h TTL
+        ..Default::default()
+    };
+    let svc = make_service(repo.clone(), config);
+    svc.scan_and_archive_stale_external_sessions(true).await; // cold boot
+
+    let after = repo.get_by_id(&session_id).await.unwrap().unwrap();
+    assert_eq!(
+        after.status,
+        IdeationSessionStatus::Archived,
+        "3h-old 'error' session must be archived on cold boot (past 2h TTL)"
+    );
+}
+
+/// Periodic scan (`cold_boot=false`) continues to archive sessions past TTL, unchanged by the
+/// cold-boot TTL fix.
+#[tokio::test]
+async fn test_periodic_scan_unchanged() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Old 'error' session — 4h (> 2h TTL): must be archived
+    let old_error = make_external_session(project_id.clone(), "error", Duration::hours(4));
+    let old_error_id = old_error.id.clone();
+    repo.create(old_error).await.unwrap();
+
+    // Old 'created' session — 3h (> 2h TTL): must be archived
+    let old_created = make_external_session(project_id.clone(), "created", Duration::hours(3));
+    let old_created_id = old_created.id.clone();
+    repo.create(old_created).await.unwrap();
+
+    let config = VerificationReconciliationConfig {
+        external_session_stale_secs: 7200, // 2h TTL
+        ..Default::default()
+    };
+    let svc = make_service(repo.clone(), config);
+    svc.scan_and_archive_stale_external_sessions(false).await; // periodic — NOT cold boot
+
+    let old_error_after = repo.get_by_id(&old_error_id).await.unwrap().unwrap();
+    assert_eq!(
+        old_error_after.status,
+        IdeationSessionStatus::Archived,
+        "periodic scan: 4h-old 'error' session must be archived"
+    );
+
+    let old_created_after = repo.get_by_id(&old_created_id).await.unwrap().unwrap();
+    assert_eq!(
+        old_created_after.status,
+        IdeationSessionStatus::Archived,
+        "periodic scan: 3h-old 'created' session must be archived"
     );
 }
 
@@ -1358,6 +1455,40 @@ async fn test_stale_external_scan_preserves_verified_sessions() {
         after.status,
         IdeationSessionStatus::Active,
         "verified external session should be preserved even if phase is archivable"
+    );
+}
+
+/// Cold boot preserves a verified session with 0 active proposals regardless of age.
+///
+/// Regression for `is_recovery_exempt()`: a verified session with no active proposals must
+/// survive cold-boot archival even if it is older than the startup grace TTL. The user may
+/// still need to act on the verification result.
+///
+/// Note: the memory repo always returns 0 for `count_active_proposals`, which is the correct
+/// baseline — the no-proposals path is the primary recovery-exempt case.
+#[tokio::test]
+async fn test_cold_boot_preserves_verified_no_proposals_even_if_old() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Verified external session — 5 hours old (well past the 2h TTL)
+    let mut session = make_external_session(project_id.clone(), "created", Duration::hours(5));
+    session.verification_status = VerificationStatus::Verified;
+    let session_id = session.id.clone();
+    repo.create(session).await.unwrap();
+
+    let config = VerificationReconciliationConfig {
+        external_session_stale_secs: 7200, // 2 hours
+        ..Default::default()
+    };
+    let svc = make_service(repo.clone(), config);
+    svc.scan_and_archive_stale_external_sessions(true).await; // cold boot
+
+    let after = repo.get_by_id(&session_id).await.unwrap().unwrap();
+    assert_eq!(
+        after.status,
+        IdeationSessionStatus::Active,
+        "verified external session with 0 proposals must NOT be archived on cold boot (recovery-exempt)"
     );
 }
 

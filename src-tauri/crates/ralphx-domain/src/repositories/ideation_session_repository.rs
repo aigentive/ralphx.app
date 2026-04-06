@@ -285,6 +285,18 @@ pub trait IdeationSessionRepository: Send + Sync {
         auto_accept_started_at: Option<String>,
     ) -> AppResult<()>;
 
+    /// Count active (non-archived, non-rejected) proposals for a session.
+    ///
+    /// Returns 0 (not an error) when a session has no proposals.
+    /// "Active" means: `archived_at IS NULL` AND `status != 'rejected'`.
+    ///
+    /// Used by the recovery-aware semantic filter to determine whether a
+    /// verified session has any active proposals before deciding to preserve it.
+    async fn count_active_proposals(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<usize>;
+
     /// Count non-archived proposals for a session (sync for use inside `db.run()` closures).
     /// WHERE session_id = ? AND status != 'archived'
     /// Do NOT use this for sort_order assignment — use the existing count_by_session_sync instead.

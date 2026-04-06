@@ -900,6 +900,7 @@ pub fn run() {
                         auto_verify_stale_secs: vcfg.auto_verify_stale_secs,
                         interval_secs: vcfg.reconciliation_interval_secs,
                         external_session_stale_secs: ext_cfg.external_session_stale_secs,
+                        external_session_startup_grace_secs: ext_cfg.external_session_startup_grace_secs,
                     };
                     let verification_session_repo = Arc::clone(&startup_ideation_session_repo);
                     let svc = Arc::new(

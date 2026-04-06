@@ -631,6 +631,14 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         ))
     }
 
+    async fn count_active_proposals(
+        &self,
+        _session_id: &IdeationSessionId,
+    ) -> AppResult<usize> {
+        // Memory repo has no proposal storage; return 0 (not an error).
+        Ok(0)
+    }
+
     async fn get_by_idempotency_key(
         &self,
         api_key_id: &str,
