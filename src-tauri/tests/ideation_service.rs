@@ -898,6 +898,16 @@ impl ChatMessageRepository for MockMessageRepository {
     ) -> AppResult<Option<ralphx_lib::domain::entities::ChatMessage>> {
         Ok(None)
     }
+
+    async fn exists_verification_result_in_conversation(
+        &self,
+        conversation_id: &ralphx_lib::domain::entities::ChatConversationId,
+    ) -> AppResult<bool> {
+        Ok(self.messages.lock().unwrap().values().any(|m| {
+            m.conversation_id.as_ref() == Some(conversation_id)
+                && m.content.contains("<verification-result>")
+        }))
+    }
 }
 
 struct MockDependencyRepository {

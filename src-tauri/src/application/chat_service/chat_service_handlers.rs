@@ -23,7 +23,7 @@ use crate::domain::entities::{
     MergeRecoveryEvent,
     MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode, MergeRecoverySource,
     MergeRecoveryState, ReviewNote, ReviewOutcome, ReviewerType, SessionPurpose, TaskId,
-    TaskStepStatus,
+    TaskStepStatus, VerificationGap, VerificationStatus,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ArtifactRepository, ChatAttachmentRepository,
@@ -293,6 +293,7 @@ pub(super) async fn handle_stream_success<R: Runtime>(
     app_handle: &Option<AppHandle<R>>,
     interactive_process_registry: &Option<Arc<InteractiveProcessRegistry>>,
     review_repo: &Option<Arc<dyn ReviewRepository>>,
+    verification_child_registry: &Option<Arc<super::verification_child_process_registry::VerificationChildProcessRegistry>>,
 ) {
     // Handle task state transition (only for TaskExecution)
     if context_type == ChatContextType::TaskExecution {
@@ -697,6 +698,16 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                                 message_queue,
                             )
                             .await;
+
+                            // Fix A: Kill the lingering verification child process after
+                            // terminal reconciliation so the 600s idle timeout cannot fire.
+                            if let Some(registry) = verification_child_registry {
+                                tracing::info!(
+                                    context_id,
+                                    "Sending SIGTERM to verification child process after terminal reconciliation"
+                                );
+                                registry.remove_and_kill(context_id);
+                            }
                         }
                     }
                 }
@@ -789,6 +800,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     interactive_process_registry: &Option<Arc<InteractiveProcessRegistry>>,
     review_repo: &Option<Arc<dyn ReviewRepository>>,
     task_step_repo: &Option<Arc<dyn TaskStepRepository>>,
+    verification_child_registry: &Option<Arc<super::verification_child_process_registry::VerificationChildProcessRegistry>>,
 ) -> bool {
     // Handle cancellation — distinguish "cancelled after normal completion" from "user stop"
     if let Some(StreamError::Cancelled {
@@ -847,6 +859,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 app_handle,
                 interactive_process_registry,
                 review_repo,
+                verification_child_registry,
             )
             .await;
 
@@ -922,6 +935,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 app_handle,
                 interactive_process_registry,
                 review_repo,
+                verification_child_registry,
             )
             .await;
 
@@ -1169,6 +1183,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                         team_service: None, // Recovery retries don't need team events
                                         streaming_state_cache: super::StreamingStateCache::new(), // Fresh cache for retry
                                         interactive_process_registry: None, // Retries don't use interactive mode
+                                        verification_child_registry: None, // Retries don't kill verification processes
                                     },
                                 );
 
@@ -1219,6 +1234,48 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     let _ = agent_run_repo
         .fail(&AgentRunId::from_string(agent_run_id), &redacted_error)
         .await;
+
+    // Gate B+C: If this is a verification child with an already-terminal parent, suppress
+    // transcript-suffix append and agent:error emission. Inject handoff if missing.
+    // On any DB failure in the gate check, None fallthrough → normal agent:error path.
+    if context_type == ChatContextType::Ideation
+        && is_verification_child(context_id, ideation_session_repo).await
+    {
+        if let Some(parent_state) = fetch_parent_verification_state(
+            context_id,
+            ideation_session_repo,
+            conversation_repo,
+        )
+        .await
+        {
+            if !parent_state.in_progress
+                && matches!(
+                    parent_state.terminal_status,
+                    VerificationStatus::Verified
+                        | VerificationStatus::NeedsRevision
+                        | VerificationStatus::Skipped
+                )
+            {
+                tracing::info!(
+                    context_id,
+                    terminal_status = ?parent_state.terminal_status,
+                    "Gate B+C: suppressing agent:error for terminal verification child"
+                );
+                verification_handoff::inject_verification_handoff_if_missing(
+                    &parent_state.parent_id,
+                    &parent_state.parent_conversation_id,
+                    parent_state.terminal_status,
+                    &parent_state.current_gaps,
+                    parent_state.convergence_reason.as_deref(),
+                    conversation_repo,
+                    chat_message_repo,
+                    message_queue,
+                )
+                .await;
+                return false;
+            }
+        }
+    }
 
     // Read existing content before overwriting — append error to any content already flushed
     let (existing_content, existing_tool_calls) =
@@ -1959,6 +2016,145 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     }
 
     false // Normal error handling performed, no retry spawned
+}
+
+/// Pre-fetched state of the parent verification session, used by Gate B+C in
+/// `handle_stream_error` to determine whether to suppress `agent:error` emission.
+struct ParentVerificationState {
+    /// Parent ideation session ID
+    parent_id: IdeationSessionId,
+    /// Active conversation ID for the parent session (used for dedup check)
+    parent_conversation_id: ChatConversationId,
+    /// Whether a verification loop is currently running on the parent
+    in_progress: bool,
+    /// The terminal verification status reached by the parent session
+    terminal_status: VerificationStatus,
+    /// Convergence reason from the parent's verification metadata (if any)
+    convergence_reason: Option<String>,
+    /// Current gaps from the parent's verification metadata (if any)
+    current_gaps: Vec<VerificationGap>,
+}
+
+/// Returns `true` if `context_id` is an ideation session with `session_purpose == Verification`.
+///
+/// Used as the first gate in the B+C suppression check. Returns `false` on any DB error
+/// so that the normal `agent:error` path remains the safe default.
+pub(crate) async fn is_verification_child(
+    context_id: &str,
+    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
+) -> bool {
+    let session_id = IdeationSessionId::from_string(context_id.to_string());
+    match ideation_session_repo.get_by_id(&session_id).await {
+        Ok(Some(session)) => session.session_purpose == SessionPurpose::Verification,
+        Ok(None) => false,
+        Err(e) => {
+            tracing::warn!(
+                context_id,
+                error = %e,
+                "Gate B: failed to fetch session for verification child check"
+            );
+            false
+        }
+    }
+}
+
+/// Fetches the verification state of the parent session for a verification child.
+///
+/// Returns `None` if:
+/// - The child session has no `parent_session_id`
+/// - The parent session cannot be found
+/// - Any DB error occurs (safe fallthrough to normal `agent:error`)
+///
+/// Returns `Some(ParentVerificationState)` with the parent's current verification state.
+async fn fetch_parent_verification_state(
+    child_context_id: &str,
+    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
+    conversation_repo: &Arc<dyn ChatConversationRepository>,
+) -> Option<ParentVerificationState> {
+    let child_id = IdeationSessionId::from_string(child_context_id.to_string());
+
+    // Load the child session to get parent_session_id
+    let child_session = match ideation_session_repo.get_by_id(&child_id).await {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            tracing::warn!(
+                context_id = child_context_id,
+                "Gate B: child session not found"
+            );
+            return None;
+        }
+        Err(e) => {
+            tracing::warn!(
+                context_id = child_context_id,
+                error = %e,
+                "Gate B: failed to fetch child session"
+            );
+            return None;
+        }
+    };
+
+    let parent_session_id = child_session.parent_session_id?;
+
+    // Load the parent session
+    let parent_session = match ideation_session_repo.get_by_id(&parent_session_id).await {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            tracing::warn!(
+                parent_id = %parent_session_id.as_str(),
+                "Gate B: parent session not found"
+            );
+            return None;
+        }
+        Err(e) => {
+            tracing::warn!(
+                parent_id = %parent_session_id.as_str(),
+                error = %e,
+                "Gate B: failed to fetch parent session"
+            );
+            return None;
+        }
+    };
+
+    // Fetch or create the parent's active conversation ID for the dedup check
+    let parent_conversation_id = match conversation_repo
+        .get_active_for_context(ChatContextType::Ideation, parent_session_id.as_str())
+        .await
+    {
+        Ok(Some(conv)) => conv.id,
+        Ok(None) => {
+            tracing::debug!(
+                parent_id = %parent_session_id.as_str(),
+                "Gate B: no active conversation for parent session — dedup check will find nothing"
+            );
+            // Use a fresh random ID as sentinel — dedup check will find nothing, injection proceeds
+            ChatConversationId::new()
+        }
+        Err(e) => {
+            tracing::warn!(
+                parent_id = %parent_session_id.as_str(),
+                error = %e,
+                "Gate B: failed to fetch parent conversation"
+            );
+            return None;
+        }
+    };
+
+    // Parse verification metadata to extract convergence_reason and current_gaps
+    let (convergence_reason, current_gaps) = parent_session
+        .verification_metadata
+        .as_deref()
+        .and_then(|json| serde_json::from_str::<crate::domain::entities::VerificationMetadata>(json).ok())
+        .map(|meta| (meta.convergence_reason.clone(), meta.current_gaps.clone()))
+        .unwrap_or_else(|| (None, vec![]));
+
+    Some(ParentVerificationState {
+        parent_id: parent_session_id,
+        parent_conversation_id,
+        in_progress: parent_session.verification_in_progress,
+        terminal_status: parent_session.verification_status,
+        convergence_reason,
+        current_gaps,
+    })
 }
 
 #[cfg(test)]

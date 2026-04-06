@@ -297,6 +297,18 @@ impl ChatMessageRepository for MemoryChatMessageRepository {
         matching.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         Ok(matching.into_iter().next())
     }
+
+    async fn exists_verification_result_in_conversation(
+        &self,
+        conversation_id: &ChatConversationId,
+    ) -> AppResult<bool> {
+        let messages = self.messages.read().unwrap();
+        let exists = messages.values().any(|m| {
+            m.conversation_id.as_ref() == Some(conversation_id)
+                && m.content.contains(crate::application::reconciliation::verification_handoff::VERIFICATION_RESULT_MARKER)
+        });
+        Ok(exists)
+    }
 }
 
 #[cfg(test)]

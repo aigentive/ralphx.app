@@ -26,6 +26,7 @@ mod chat_service_send_background;
 mod chat_service_streaming;
 mod chat_service_types;
 mod streaming_state_cache;
+pub(crate) mod verification_child_process_registry;
 
 use crate::application::interactive_process_registry::{
     InteractiveProcessKey, InteractiveProcessRegistry,
@@ -379,6 +380,9 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     /// Wrapped in Mutex for interior mutability so TaskTransitionService can inject the
     /// shared AppState registry after construction (same pattern as plan_branch_repo).
     interactive_process_registry: std::sync::Mutex<Arc<InteractiveProcessRegistry>>,
+    /// Registry of verification child process PIDs for explicit cleanup after reconciliation.
+    /// Prevents idle verification processes from lingering until the 600s timeout fires.
+    verification_child_registry: Arc<verification_child_process_registry::VerificationChildProcessRegistry>,
 }
 
 impl<R: Runtime> ClaudeChatService<R> {
@@ -440,6 +444,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             team_service: None,
             streaming_state_cache: StreamingStateCache::new(),
             interactive_process_registry: std::sync::Mutex::new(Arc::new(InteractiveProcessRegistry::new())),
+            verification_child_registry: Arc::new(verification_child_process_registry::VerificationChildProcessRegistry::new()),
         }
     }
 
@@ -1790,6 +1795,25 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         };
         tracing::debug!(pid = ?child.id(), "chat_service.send_message interactive spawn ok");
 
+        // Register verification child PID for explicit cleanup after reconciliation (Fix A).
+        // Only for Ideation sessions with SessionPurpose::Verification.
+        if context_type == ChatContextType::Ideation {
+            if let Some(pid) = child.id() {
+                let child_session_id = crate::domain::entities::IdeationSessionId::from_string(context_id.to_string());
+                match self.ideation_session_repo.get_by_id(&child_session_id).await {
+                    Ok(Some(session)) if session.session_purpose == SessionPurpose::Verification => {
+                        self.verification_child_registry.register(context_id, pid);
+                        tracing::info!(
+                            context_id,
+                            pid,
+                            "Registered verification child PID for post-reconcile cleanup"
+                        );
+                    }
+                    _ => {} // Not a verification session — do not register
+                }
+            }
+        }
+
         // Register stdin in the interactive process registry for future message delivery
         let interactive_key_for_register =
             InteractiveProcessKey::new(context_type.to_string(), context_id);
@@ -1910,6 +1934,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             team_service: self.team_service.clone(),
             streaming_state_cache: self.streaming_state_cache.clone(),
             interactive_process_registry: Some(self.ipr()),
+            verification_child_registry: Some(Arc::clone(&self.verification_child_registry)),
         };
 
         // 9. Process stream in background (extracted to separate module)

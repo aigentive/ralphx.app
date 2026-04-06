@@ -10,8 +10,8 @@ use std::sync::Arc;
 use tracing::warn;
 
 use crate::domain::entities::{
-    ChatContextType, ChatConversation, ChatMessage, IdeationSessionId, VerificationGap,
-    VerificationMetadata, VerificationStatus,
+    ChatContextType, ChatConversation, ChatConversationId, ChatMessage, IdeationSessionId,
+    VerificationGap, VerificationMetadata, VerificationStatus,
 };
 use crate::domain::repositories::{ChatConversationRepository, ChatMessageRepository};
 use crate::domain::services::MessageQueue;
@@ -19,6 +19,10 @@ use crate::domain::services::MessageQueue;
 /// Dedup guard: skip synthesis when plan-verifier already delivered a structured
 /// `<escalation type="verification">` message via the same parent session.
 pub(crate) const ESCALATED_TO_PARENT: &str = "escalated_to_parent";
+
+/// XML tag marker used to detect an already-injected verification-result message.
+/// Used to build the LIKE pattern for the dedup guard in `exists_verification_result_in_conversation`.
+pub(crate) const VERIFICATION_RESULT_MARKER: &str = "<verification-result>";
 
 /// Result returned by `reconcile_verification_on_child_complete`.
 ///
@@ -121,6 +125,82 @@ pub async fn maybe_inject_verification_result_message(
     // Best-effort: forward to any running agent on the parent session so it sees
     // the message immediately without waiting for the next spawn cycle.
     message_queue.queue(ChatContextType::Ideation, parent_id.as_str(), payload);
+}
+
+/// Inject a `<verification-result>` handoff into the parent conversation if it hasn't
+/// been injected already.
+///
+/// Called on the timeout path (Gate C) when a verification child's idle process hits the
+/// 600s no-output timeout after the parent has already reached a terminal verification state.
+///
+/// Dedup logic:
+/// 1. `exists_verification_result_in_conversation` — skips if already injected (conversation-level check)
+/// 2. `ESCALATED_TO_PARENT` convergence reason — skips if verifier escalated directly
+///
+/// Only injects for `NeedsRevision` terminal status (same filter as `maybe_inject_verification_result_message`).
+/// For `Verified` / `Skipped`, calls the inner fn which will return immediately after the status check.
+///
+/// Fire-and-forget: logs errors but never blocks the caller.
+pub(crate) async fn inject_verification_handoff_if_missing(
+    parent_id: &IdeationSessionId,
+    parent_conversation_id: &ChatConversationId,
+    terminal_status: VerificationStatus,
+    current_gaps: &[VerificationGap],
+    convergence_reason: Option<&str>,
+    conversation_repo: &Arc<dyn ChatConversationRepository>,
+    chat_message_repo: &Arc<dyn ChatMessageRepository>,
+    message_queue: &Arc<MessageQueue>,
+) {
+    // Conversation-level dedup guard: skip if already injected
+    match chat_message_repo
+        .exists_verification_result_in_conversation(parent_conversation_id)
+        .await
+    {
+        Ok(true) => {
+            tracing::debug!(
+                parent_id = %parent_id.as_str(),
+                "Gate C: verification-result already present in parent conversation — skipping"
+            );
+            return;
+        }
+        Ok(false) => {}
+        Err(e) => {
+            warn!(
+                parent_id = %parent_id.as_str(),
+                error = %e,
+                "Gate C: failed to check for existing verification-result — skipping injection"
+            );
+            return;
+        }
+    }
+
+    // Build a ReconcileChildCompleteResult from the pre-fetched state and delegate
+    // to maybe_inject_verification_result_message. It handles the ESCALATED_TO_PARENT
+    // dedup guard and the NeedsRevision filter internally.
+    let parsed_meta = Some(VerificationMetadata {
+        v: 1,
+        current_round: 0,
+        max_rounds: 0,
+        rounds: vec![],
+        current_gaps: current_gaps.to_vec(),
+        convergence_reason: convergence_reason.map(str::to_string),
+        best_round_index: None,
+        parse_failures: vec![],
+    });
+
+    let result = ReconcileChildCompleteResult {
+        terminal_status,
+        parsed_meta,
+    };
+
+    maybe_inject_verification_result_message(
+        parent_id,
+        &result,
+        conversation_repo,
+        chat_message_repo,
+        message_queue,
+    )
+    .await;
 }
 
 /// Build the `<verification-result>` XML payload.

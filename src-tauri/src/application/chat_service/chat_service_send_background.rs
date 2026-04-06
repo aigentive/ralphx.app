@@ -93,6 +93,8 @@ pub(super) struct BackgroundRunContext<R: Runtime> {
     pub streaming_state_cache: StreamingStateCache,
     // Interactive process registry for stdin cleanup on process exit
     pub interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
+    // Verification child process registry for PID-based cleanup after reconciliation
+    pub verification_child_registry: Option<Arc<super::verification_child_process_registry::VerificationChildProcessRegistry>>,
 }
 
 /// Returns true when `--resume` was used (stored is Some) AND the stream returned a different
@@ -181,6 +183,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             team_service,
             streaming_state_cache,
             interactive_process_registry,
+            verification_child_registry,
         } = ctx;
         let BackgroundRunRepos {
             chat_message_repo,
@@ -592,6 +595,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     &app_handle,
                     &interactive_process_registry,
                     &review_repo,
+                    &verification_child_registry,
                 )
                 .await;
 
@@ -976,6 +980,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     &interactive_process_registry,
                     &review_repo,
                     &task_step_repo,
+                    &verification_child_registry,
                 )
                 .await;
             }

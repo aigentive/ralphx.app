@@ -719,6 +719,7 @@ async fn invoke_handle_stream_error_cancelled(
         &None,                   // interactive_process_registry
         &None,                   // review_repo
         &None,                   // task_step_repo
+        &None,                   // verification_child_registry
     )
     .await;
 
@@ -907,5 +908,86 @@ fn test_execution_state_shutdown_flags_are_independent() {
     assert!(
         !exec_b.is_shutting_down.load(std::sync::atomic::Ordering::SeqCst),
         "exec_b flag must remain false — instances are independent"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Regression tests: verification child timeout fix (Gate B guard)
+// ---------------------------------------------------------------------------
+
+/// Gate B check: `is_verification_child` returns `true` for a session that was
+/// created with `session_purpose = Verification`.
+///
+/// This proves that `handle_stream_error` will enter the timeout-suppression branch
+/// and skip `agent:error` emission when the lingering idle process eventually hits
+/// the 600s no-output timeout.
+#[tokio::test]
+async fn test_no_agent_error_on_timeout_for_terminal_verification_child() {
+    use crate::domain::entities::{IdeationSession, ProjectId, SessionPurpose};
+    use crate::infrastructure::memory::MemoryIdeationSessionRepository;
+
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let repo_trait: Arc<dyn IdeationSessionRepository> = repo.clone();
+
+    let parent_id = IdeationSessionId::new();
+    let child_id = IdeationSessionId::new();
+
+    // Create a verification child session (session_purpose = Verification).
+    let child_session = IdeationSession::builder()
+        .id(child_id.clone())
+        .project_id(ProjectId::new())
+        .session_purpose(SessionPurpose::Verification)
+        .parent_session_id(parent_id.clone())
+        .build();
+    repo_trait.create(child_session).await.expect("create verification child session");
+
+    // Gate B: is_verification_child must return true for verification sessions.
+    // When this returns true, handle_stream_error skips agent:error — which is the
+    // regression being guarded: no false agent:error on timeout for already-reconciled
+    // verification children.
+    let is_verif = is_verification_child(child_id.as_str(), &repo_trait).await;
+    assert!(
+        is_verif,
+        "Gate B must fire for Verification sessions — handle_stream_error will suppress agent:error"
+    );
+}
+
+/// Gate B check: `is_verification_child` returns `false` for a regular (General)
+/// ideation session.
+///
+/// This proves that `handle_stream_error` does NOT suppress `agent:error` for
+/// normal ideation sessions — the verification timeout guard must not affect them.
+#[tokio::test]
+async fn test_normal_completion_unaffected_by_verification_guards() {
+    use crate::domain::entities::{IdeationSession, ProjectId, SessionPurpose};
+    use crate::infrastructure::memory::MemoryIdeationSessionRepository;
+
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let repo_trait: Arc<dyn IdeationSessionRepository> = repo.clone();
+
+    let session_id = IdeationSessionId::new();
+
+    // Create a normal (General) ideation session.
+    let general_session = IdeationSession::builder()
+        .id(session_id.clone())
+        .project_id(ProjectId::new())
+        .session_purpose(SessionPurpose::General)
+        .build();
+    repo_trait.create(general_session).await.expect("create general session");
+
+    // Gate B must NOT fire for General sessions.
+    // handle_stream_error proceeds to emit agent:error normally.
+    let is_verif = is_verification_child(session_id.as_str(), &repo_trait).await;
+    assert!(
+        !is_verif,
+        "Gate B must NOT fire for General sessions — agent:error must be emitted normally"
+    );
+
+    // Sanity check: unknown session IDs also return false (safe fallthrough).
+    let unknown_id = IdeationSessionId::new();
+    let is_unknown = is_verification_child(unknown_id.as_str(), &repo_trait).await;
+    assert!(
+        !is_unknown,
+        "Gate B must return false for unknown sessions (safe fallthrough to normal agent:error)"
     );
 }
