@@ -26,8 +26,9 @@ import { useUiStore } from "@/stores/uiStore";
 import { useTeamStore } from "@/stores/teamStore";
 import { buildStoreKey, parseStoreKey } from "@/lib/chat-context-registry";
 import { findStoreKeyForContextId } from "@/lib/agent-event-utils";
-import type { ContextType } from "@/types/chat-conversation";
+import type { ContextType, ModelDisplay } from "@/types/chat-conversation";
 import type { Unsubscribe } from "@/lib/event-bus";
+import type { AgentRunStartedPayload } from "@/types/events";
 import { logger } from "@/lib/logger";
 
 export function useGlobalAgentLifecycle() {
@@ -110,13 +111,7 @@ export function useGlobalAgentLifecycle() {
     // agent:run_started → setAgentStatus generating
     // Skip teammate events (handled by useTeamEvents)
     unsubscribes.push(
-      bus.subscribe<{
-        run_id: string;
-        context_type: string;
-        context_id: string;
-        conversation_id: string;
-        teammate_name?: string | null;
-      }>("agent:run_started", (payload) => {
+      bus.subscribe<AgentRunStartedPayload>("agent:run_started", (payload) => {
         if (payload.teammate_name) return;
         const { context_type, context_id: eventContextId } = payload;
 
@@ -134,6 +129,12 @@ export function useGlobalAgentLifecycle() {
         // Track the active conversation for this context so the stale guard can function
         // for ALL sessions, not just those with mounted per-panel hooks.
         useChatStore.getState().setActiveConversation(eventContextKey, payload.conversation_id);
+
+        // Populate effective model if both fields are present
+        if (payload.effectiveModelId && payload.effectiveModelLabel) {
+          const model: ModelDisplay = { id: payload.effectiveModelId, label: payload.effectiveModelLabel };
+          useChatStore.getState().setEffectiveModel(eventContextKey, model);
+        }
       })
     );
 

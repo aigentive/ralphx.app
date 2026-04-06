@@ -372,6 +372,14 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
         Ok(())
     }
 
+    async fn update_last_effective_model(
+        &self,
+        _session_id: &str,
+        _model: &str,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
     async fn list_active_verification_children(&self) -> AppResult<Vec<IdeationSession>> {
         Ok(Vec::new())
     }

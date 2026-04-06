@@ -389,6 +389,17 @@ pub trait IdeationSessionRepository: Send + Sync {
     /// reconciler (which filters on `updated_at < cutoff`).
     async fn touch_updated_at(&self, session_id: &str) -> AppResult<()>;
 
+    /// Persist the last effective model ID used by the agent for this session.
+    ///
+    /// Called after successful agent spawn. Failures are non-fatal (caller WARNs and
+    /// continues). The value is exposed in `IdeationSessionSummary` and
+    /// `ChildSessionStatusResponse` so the frontend can display the model label.
+    async fn update_last_effective_model(
+        &self,
+        session_id: &str,
+        model: &str,
+    ) -> AppResult<()>;
+
     /// Set (or clear) `pending_initial_prompt` on a session.
     ///
     /// Pass `Some(prompt)` to persist the deferred launch prompt;

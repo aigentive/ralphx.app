@@ -10,6 +10,7 @@ import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { ChatMessage } from "@/types/ideation";
 import type { ChatContext } from "@/types/chat";
+import type { ModelDisplay } from "@/types/chat-conversation";
 import { buildStoreKey } from "@/lib/chat-context-registry";
 
 // ============================================================================
@@ -85,6 +86,8 @@ interface ChatState {
   lastToolCallCompletionTimestamp: Record<string, number>;
   /** Per-tool-call completion timestamps: storeKey → { toolCallId → epoch ms } — for final duration display in widgets */
   toolCallCompletionTimestamps: Record<string, Record<string, number>>;
+  /** Effective model per context key (id + label). Transient — NOT persisted. */
+  effectiveModel: Record<string, ModelDisplay>;
 }
 
 // ============================================================================
@@ -142,6 +145,8 @@ interface ChatActions {
   setToolCallCompletionTimestamp: (storeKey: string, toolCallId: string, timestamp: number) => void;
   /** Clear all per-tool-call completion timestamps for a storeKey (on run_completed) */
   clearToolCallCompletionTimestamps: (storeKey: string) => void;
+  /** Set the effective model for a context key (from agent:run_started event or session HTTP response) */
+  setEffectiveModel: (storeKey: string, model: ModelDisplay) => void;
 }
 
 // ============================================================================
@@ -164,6 +169,7 @@ export const useChatStore = create<ChatState & ChatActions>()(
     toolCallStartTimes: {},
     lastToolCallCompletionTimestamp: {},
     toolCallCompletionTimestamps: {},
+    effectiveModel: {},
 
     // Actions
     setContext: (context) =>
@@ -372,6 +378,11 @@ export const useChatStore = create<ChatState & ChatActions>()(
         delete state.toolCallCompletionTimestamps[storeKey];
       }),
 
+    setEffectiveModel: (storeKey, model) =>
+      set((state) => ({
+        effectiveModel: { ...state.effectiveModel, [storeKey]: model },
+      })),
+
     processQueue: async (contextKey) => {
       const state = get();
       const messages = state.queuedMessages[contextKey];
@@ -540,6 +551,17 @@ export const selectToolCallCompletionTimestamps =
   (contextKey: string) =>
   (state: ChatState): Record<string, number> =>
     state.toolCallCompletionTimestamps[contextKey] ?? EMPTY_TOOL_CALL_START_TIMES;
+
+/**
+ * Select the effective model for a context key.
+ * Returns undefined if no effective model has been set for this key.
+ * @param storeKey - The context key (e.g., "session:abc-123")
+ * @returns Selector function returning ModelDisplay or undefined
+ */
+export const selectEffectiveModel =
+  (storeKey: string) =>
+  (s: ChatState & ChatActions): ModelDisplay | undefined =>
+    s.effectiveModel[storeKey];
 
 // Stable empty arrays to avoid creating new references
 const EMPTY_MESSAGES: ChatMessage[] = [];

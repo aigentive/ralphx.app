@@ -782,6 +782,18 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         Ok(())
     }
 
+    async fn update_last_effective_model(
+        &self,
+        session_id: &str,
+        model: &str,
+    ) -> AppResult<()> {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(session) = sessions.values_mut().find(|s| s.id.as_str() == session_id) {
+            session.last_effective_model = Some(model.to_string());
+        }
+        Ok(())
+    }
+
     async fn list_active_verification_children(&self) -> AppResult<Vec<IdeationSession>> {
         use crate::domain::entities::ideation::SessionPurpose;
         let mut children: Vec<_> = self

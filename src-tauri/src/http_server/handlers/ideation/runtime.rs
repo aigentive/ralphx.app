@@ -248,6 +248,7 @@ pub async fn get_child_session_status_handler(
             .map(|id| id.as_str().to_string()),
         created_at: session.created_at.to_rfc3339(),
         updated_at: session.updated_at.to_rfc3339(),
+        last_effective_model: session.last_effective_model.clone(),
     };
 
     Ok(Json(ChildSessionStatusResponse {

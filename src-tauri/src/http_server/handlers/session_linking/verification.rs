@@ -208,6 +208,7 @@ mod tests {
             pending_initial_prompt: None,
             acceptance_status: None,
             verification_confirmation_status: None,
+            last_effective_model: None,
         }
     }
 

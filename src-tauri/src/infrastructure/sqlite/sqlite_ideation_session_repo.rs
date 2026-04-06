@@ -31,7 +31,7 @@ const _IDLE_STATUSES: &[&str] = &["backlog", "ready", "blocked"];
 /// external_activity_phase(30), external_last_read_message_id(31), dependencies_acknowledged(32),
 /// pending_initial_prompt(33), source_task_id(34), source_context_type(35),
 /// source_context_id(36), spawn_reason(37), blocker_fingerprint(38), acceptance_status(39),
-/// verification_confirmation_status(40)
+/// verification_confirmation_status(40), last_effective_model(41)
 const SESSION_COLUMNS: &str = "id, project_id, title, title_source, status, plan_artifact_id, \
     inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
     updated_at, archived_at, converted_at, team_mode, team_config_json, \
@@ -42,7 +42,7 @@ const SESSION_COLUMNS: &str = "id, project_id, title, title_source, status, plan
     api_key_id, idempotency_key, external_activity_phase, external_last_read_message_id, \
     dependencies_acknowledged, pending_initial_prompt, source_task_id, source_context_type, \
     source_context_id, spawn_reason, blocker_fingerprint, acceptance_status, \
-    verification_confirmation_status";
+    verification_confirmation_status, last_effective_model";
 // TERMINAL: tasks that have reached a final state
 const _TERMINAL_STATUSES: &[&str] = &["approved", "merged", "failed", "cancelled", "stopped"];
 // ACTIVE: any status NOT in IDLE or TERMINAL (catch-all, matches categorizeStatus() logic)
@@ -1495,6 +1495,24 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                 conn.execute(
                     "UPDATE ideation_sessions SET updated_at = ?1 WHERE id = ?2",
                     rusqlite::params![now, session_id],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn update_last_effective_model(
+        &self,
+        session_id: &str,
+        model: &str,
+    ) -> AppResult<()> {
+        let session_id = session_id.to_string();
+        let model = model.to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE ideation_sessions SET last_effective_model = ?1 WHERE id = ?2",
+                    rusqlite::params![model, session_id],
                 )?;
                 Ok(())
             })

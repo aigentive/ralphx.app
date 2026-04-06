@@ -110,6 +110,7 @@ export const IdeationSessionSchema = z.object({
   blockerFingerprint: z.string().nullable().optional(),
   sessionPurpose: z.enum(["general", "verification"]).default("general"),
   acceptanceStatus: z.enum(["pending", "accepted", "rejected"]).nullable().optional(),
+  lastEffectiveModel: z.string().nullable().optional(),
 });
 
 export type IdeationSession = z.infer<typeof IdeationSessionSchema>;

@@ -115,6 +115,7 @@ pub struct ChatConversationWithMessages {
 
 /// Payload for agent:run_started event
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentRunStartedPayload {
     pub run_id: String,
     pub conversation_id: String,
@@ -124,6 +125,12 @@ pub struct AgentRunStartedPayload {
     pub run_chain_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_run_id: Option<String>,
+    /// The resolved Claude model ID used for this run (e.g. "claude-sonnet-4-6").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_model_id: Option<String>,
+    /// Human-readable label for the effective model (e.g. "Sonnet 4.6").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_model_label: Option<String>,
 }
 
 /// Payload for agent:chunk event
@@ -404,3 +411,7 @@ impl std::fmt::Display for ChatServiceError {
 }
 
 impl std::error::Error for ChatServiceError {}
+
+#[cfg(test)]
+#[path = "chat_service_types_tests.rs"]
+mod tests;

@@ -345,6 +345,7 @@ async fn test_try_register_then_update_agent_process() {
             "run-real",
             Some("/tmp/worktree".to_string()),
             Some(token.clone()),
+            None,
         )
         .await
         .unwrap();
@@ -394,6 +395,7 @@ async fn test_toctou_pruner_deletes_placeholder_then_update_reinserts() {
             "run-real",
             Some("/tmp/worktree-toctou".to_string()),
             Some(token.clone()),
+            None,
         )
         .await
         .unwrap();

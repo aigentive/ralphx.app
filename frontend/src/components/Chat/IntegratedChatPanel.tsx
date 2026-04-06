@@ -62,7 +62,8 @@ import { ChildSessionNotification } from "./ChildSessionNotification";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useChatAttachments } from "@/hooks/useChatAttachments";
 import { ideationApi } from "@/api/ideation";
-import { selectIsTeamActive } from "@/stores/chatStore";
+import { getModelLabel } from "@/lib/model-utils";
+import { selectIsTeamActive, selectEffectiveModel } from "@/stores/chatStore";
 import { useTeamStore, selectTeammates, selectActiveTeam, selectTeammateByName, type TeammateStatus } from "@/stores/teamStore";
 import { useTeamEvents } from "@/hooks/useTeamEvents";
 import { useTeamActions } from "@/hooks/useTeamActions";
@@ -394,6 +395,8 @@ export function IntegratedChatPanel({
   );
   const toolCallStartTimes = useChatStore(toolCallStartTimesSelector);
   const isSendingSelector = useMemo(() => selectIsSending(storeContextKey), [storeContextKey]);
+  const effectiveModelSelector = useMemo(() => selectEffectiveModel(storeContextKey), [storeContextKey]);
+  const effectiveModel = useChatStore(effectiveModelSelector);
 
   // Timeout warning state — track dismissed bash tool call ID
   const [dismissedTimeoutCallId, setDismissedTimeoutCallId] = useState<string | null>(null);
@@ -679,6 +682,18 @@ export function IntegratedChatPanel({
     }
   }, [allSessions, selectSession]);
 
+  // Hydrate effectiveModel from HTTP session data for inactive ideation sessions.
+  // This covers the case where the user opens a past session that was never live
+  // in the current app session — the store will be empty but the DB has the model.
+  useEffect(() => {
+    if (!ideationSessionId) return;
+    const session = allSessions.find((s) => s.id === ideationSessionId);
+    const lastEffectiveModel = session?.lastEffectiveModel;
+    if (!lastEffectiveModel) return;
+    const model = { id: lastEffectiveModel, label: getModelLabel(lastEffectiveModel) };
+    useChatStore.getState().setEffectiveModel(storeContextKey, model);
+  }, [ideationSessionId, allSessions, storeContextKey]);
+
   // Handle Escape key to close panel
   useEffect(() => {
     if (!onClose) return;
@@ -827,6 +842,7 @@ export function IntegratedChatPanel({
             agentStatus={isHistoryMode ? "idle" : agentStatus}
             storeKey={storeContextKey}
             {...(toolbarBackAction !== undefined ? { backAction: toolbarBackAction } : {})}
+            {...(effectiveModel !== undefined ? { modelDisplay: effectiveModel } : {})}
           />
 
           {/* Team Context Bar (team mode only) */}

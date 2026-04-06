@@ -513,3 +513,25 @@ export interface TeamPlanAutoApprovedPayload {
   }>;
   message: string;
 }
+
+// ============================================================================
+// Agent Run Lifecycle Payloads
+// ============================================================================
+
+/**
+ * Payload emitted with the agent:run_started Tauri event.
+ * Fields use snake_case for the original fields (Rust fields without camelCase annotation).
+ * effectiveModelId and effectiveModelLabel use camelCase because the Rust
+ * AgentRunStartedPayload struct has #[serde(rename_all = "camelCase")].
+ * effectiveModelId and effectiveModelLabel are optional — present only when
+ * the backend captured the resolved model at spawn time.
+ */
+export interface AgentRunStartedPayload {
+  run_id: string;
+  context_type: string;
+  context_id: string;
+  conversation_id: string;
+  teammate_name?: string | null;
+  effectiveModelId?: string;
+  effectiveModelLabel?: string;
+}

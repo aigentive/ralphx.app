@@ -228,6 +228,8 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         context_id: context_id.to_string(),
                         run_chain_id: run_chain_id.map(|s| s.to_string()),
                         parent_run_id: parent_run_id.map(|s| s.to_string()),
+                        effective_model_id: None,
+                        effective_model_label: None,
                     },
                 );
             }

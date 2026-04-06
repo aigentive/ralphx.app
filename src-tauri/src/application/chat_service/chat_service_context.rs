@@ -940,6 +940,79 @@ fn apply_ralphx_env_vars(
     }
 }
 
+/// Resolve the effective model and subagent cap for a given agent spawn context.
+///
+/// Infallible — always returns a non-empty model string via the fallback chain:
+///   1. Explicit `model_override` (if provided)
+///   2. DB-stored ideation model setting (for Ideation contexts only)
+///   3. YAML agent config default
+///   4. Hardcoded `"sonnet"`
+///
+/// Returns `(resolved_model, subagent_cap)` where:
+///   - `resolved_model`: the model string to pass via `--model`
+///   - `subagent_cap`: for Ideation contexts, the model cap for spawned subagents; `None` otherwise
+///
+/// Logs `WARN` on repo errors and continues with the next fallback level.
+pub(crate) async fn resolve_model_config(
+    agent_name: &str,
+    project_id: Option<&str>,
+    context_type: ChatContextType,
+    model_override: Option<&str>,
+    ideation_model_settings_repo: Option<&Arc<dyn IdeationModelSettingsRepository>>,
+) -> (String, Option<String>) {
+    let resolved_model = if context_type == ChatContextType::Ideation {
+        match model_override {
+            Some(model) => model.to_string(),
+            None => {
+                if let Some(repo) = ideation_model_settings_repo {
+                    crate::infrastructure::agents::claude::resolve_ideation_model(
+                        agent_name,
+                        project_id,
+                        repo.as_ref(),
+                    )
+                    .await
+                    .model
+                } else {
+                    crate::infrastructure::agents::claude::resolve_model(Some(agent_name))
+                }
+            }
+        }
+    } else {
+        model_override
+            .map(str::to_string)
+            .unwrap_or_else(|| crate::infrastructure::agents::claude::resolve_model(Some(agent_name)))
+    };
+
+    let subagent_cap = if context_type == ChatContextType::Ideation {
+        if agent_name == agent_names::AGENT_PLAN_VERIFIER {
+            // For plan-verifier, the subagent cap comes from verifier_subagent_model
+            // (a separate DB field from the verifier's own model).
+            if let Some(repo) = ideation_model_settings_repo {
+                let project_row = if let Some(pid) = project_id {
+                    repo.get_for_project(pid).await.ok().flatten()
+                } else {
+                    None
+                };
+                let global_row = repo.get_global().await.ok().flatten();
+                let (cap, _) =
+                    crate::infrastructure::agents::claude::resolve_verifier_subagent_model_with_source(
+                        project_row.as_ref().map(|r| &r.verifier_subagent_model),
+                        global_row.as_ref().map(|r| &r.verifier_subagent_model),
+                    );
+                Some(cap)
+            } else {
+                Some("haiku".to_string())
+            }
+        } else {
+            Some(resolved_model.clone())
+        }
+    } else {
+        None
+    };
+
+    (resolved_model, subagent_cap)
+}
+
 /// Create a spawnable Claude CLI command.
 ///
 /// `entity_status` is optional and enables dynamic agent resolution based on state.
@@ -995,59 +1068,14 @@ pub async fn build_command(
         .collect::<Vec<_>>();
 
     let attachment_context = format_attachments_for_agent(&attachments).await?;
-    let resolved_model_override = if conversation.context_type == ChatContextType::Ideation {
-        match model_override {
-            Some(model) => Some(model.to_string()),
-            None => {
-                if let Some(ref repo) = ideation_model_settings_repo {
-                    Some(
-                        crate::infrastructure::agents::claude::resolve_ideation_model(
-                            agent_name,
-                            project_id,
-                            repo.as_ref(),
-                        )
-                        .await
-                        .model,
-                    )
-                } else {
-                    Some(crate::infrastructure::agents::claude::resolve_model(Some(agent_name)))
-                }
-            }
-        }
-    } else {
-        model_override.map(str::to_string)
-    };
-    let ideation_subagent_model_cap: Option<String> =
-        if conversation.context_type == ChatContextType::Ideation {
-            if agent_name == agent_names::AGENT_PLAN_VERIFIER {
-                // For plan-verifier, the subagent cap comes from verifier_subagent_model
-                // (a separate DB field from the verifier's own model).
-                if let Some(ref repo) = ideation_model_settings_repo {
-                    let project_row = if let Some(pid) = project_id {
-                        repo.get_for_project(pid).await.ok().flatten()
-                    } else {
-                        None
-                    };
-                    let global_row = repo.get_global().await.ok().flatten();
-                    let (cap, _) =
-                        crate::infrastructure::agents::claude::resolve_verifier_subagent_model_with_source(
-                            project_row.as_ref().map(|r| &r.verifier_subagent_model),
-                            global_row.as_ref().map(|r| &r.verifier_subagent_model),
-                        );
-                    Some(cap)
-                } else {
-                    Some("haiku".to_string())
-                }
-            } else {
-                Some(
-                    resolved_model_override.clone().unwrap_or_else(|| {
-                        crate::infrastructure::agents::claude::resolve_model(Some(agent_name))
-                    }),
-                )
-            }
-        } else {
-            None
-        };
+    let (resolved_model, ideation_subagent_model_cap) = resolve_model_config(
+        agent_name,
+        project_id,
+        conversation.context_type,
+        model_override,
+        ideation_model_settings_repo.as_ref(),
+    )
+    .await;
 
     let (prompt, resume_session) = if should_resume {
         let session_id = conversation.claude_session_id.as_ref().unwrap();
@@ -1092,7 +1120,7 @@ pub async fn build_command(
         resume_session.as_deref(),
         working_directory,
         effort_override,
-        resolved_model_override.as_deref(),
+        Some(&resolved_model),
     )?;
 
     apply_ralphx_env_vars(
@@ -1281,58 +1309,14 @@ pub async fn build_resume_command(
 
     let agent_name =
         resolve_agent_with_team_mode(&context_type, entity_status.as_deref(), team_mode);
-    let resolved_model_override = if context_type == ChatContextType::Ideation {
-        match model_override {
-            Some(model) => Some(model.to_string()),
-            None => {
-                if let Some(ref repo) = ideation_model_settings_repo {
-                    Some(
-                        crate::infrastructure::agents::claude::resolve_ideation_model(
-                            agent_name,
-                            project_id,
-                            repo.as_ref(),
-                        )
-                        .await
-                        .model,
-                    )
-                } else {
-                    Some(crate::infrastructure::agents::claude::resolve_model(Some(agent_name)))
-                }
-            }
-        }
-    } else {
-        model_override.map(str::to_string)
-    };
-    let ideation_subagent_model_cap: Option<String> = if context_type == ChatContextType::Ideation {
-        if agent_name == agent_names::AGENT_PLAN_VERIFIER {
-            // For plan-verifier, the subagent cap comes from verifier_subagent_model
-            // (a separate DB field from the verifier's own model).
-            if let Some(ref repo) = ideation_model_settings_repo {
-                let project_row = if let Some(pid) = project_id {
-                    repo.get_for_project(pid).await.ok().flatten()
-                } else {
-                    None
-                };
-                let global_row = repo.get_global().await.ok().flatten();
-                let (cap, _) =
-                    crate::infrastructure::agents::claude::resolve_verifier_subagent_model_with_source(
-                        project_row.as_ref().map(|r| &r.verifier_subagent_model),
-                        global_row.as_ref().map(|r| &r.verifier_subagent_model),
-                    );
-                Some(cap)
-            } else {
-                Some("haiku".to_string())
-            }
-        } else {
-            Some(
-                resolved_model_override.clone().unwrap_or_else(|| {
-                    crate::infrastructure::agents::claude::resolve_model(Some(agent_name))
-                }),
-            )
-        }
-    } else {
-        None
-    };
+    let (resolved_model, ideation_subagent_model_cap) = resolve_model_config(
+        agent_name,
+        project_id,
+        context_type,
+        model_override,
+        ideation_model_settings_repo.as_ref(),
+    )
+    .await;
 
     // Re-inject context_id on resume so the agent can detect session mismatches.
     // For Ideation context, session_history is injected programmatically.
@@ -1355,7 +1339,7 @@ pub async fn build_resume_command(
         Some(session_id),
         working_directory,
         effort_override,
-        resolved_model_override.as_deref(),
+        Some(&resolved_model),
     )?;
 
     // In resume flow, session_id IS the Claude session ID.

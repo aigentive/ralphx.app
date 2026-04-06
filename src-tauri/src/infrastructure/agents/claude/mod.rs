@@ -5,6 +5,7 @@ mod agent_config;
 pub mod agent_names;
 mod claude_code_client;
 pub mod effort_resolver;
+pub mod model_labels;
 pub mod model_resolver;
 pub mod node_utils;
 mod stream_processor;
@@ -47,6 +48,7 @@ pub use effort_resolver::{effort_bucket_for_agent, resolve_ideation_effort};
 pub use model_resolver::{
     resolve_ideation_model, resolve_verifier_subagent_model_with_source, ResolvedModel,
 };
+
 
 use std::path::{Path, PathBuf};
 use tokio::process::Command;

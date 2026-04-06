@@ -55,6 +55,7 @@ pub struct IdeationSessionSummary {
     pub parent_session_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub last_effective_model: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

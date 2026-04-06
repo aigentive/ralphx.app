@@ -1098,6 +1098,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                             context_id: context_id.to_string(),
                             run_chain_id: None,
                             parent_run_id: None,
+                            effective_model_id: None,
+                            effective_model_label: None,
                         },
                     );
 
@@ -1464,18 +1466,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 .await;
         }
 
-        // 3. Emit run started event
-        self.emit_event(
-            "agent:run_started",
-            AgentRunStartedPayload {
-                run_id: agent_run_id.clone(),
-                conversation_id: conversation_id.as_str().to_string(),
-                context_type: context_type.to_string(),
-                context_id: context_id.to_string(),
-                run_chain_id: run_chain_id.clone(),
-                parent_run_id: None,
-            },
-        );
+        // 3. run_started event emitted below at step 7b-pre4 after model resolution
+        // so that effective_model_id / effective_model_label can be included in the payload.
 
         let resume_in_place = resume_in_place_requested(options.metadata.as_deref());
         let persisted_metadata = strip_resume_in_place_metadata(options.metadata.clone());
@@ -1706,6 +1698,41 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 None
             };
 
+        // 7b-pre4. Resolve effective model for run_started event and registry.
+        // For ideation, resolved_model was already computed above. For other contexts, call
+        // resolve_model_config() once using the entity_status we have now.
+        let (effective_model_id, _) = chat_service_context::resolve_model_config(
+            chat_service_helpers::resolve_agent_with_team_mode(
+                &context_type,
+                entity_status.as_deref(),
+                self.team_mode.load(Ordering::Relaxed),
+            ),
+            project_id.as_deref(),
+            context_type,
+            resolved_model.as_deref(),
+            self.ideation_model_settings_repo.as_ref(),
+        )
+        .await;
+        let effective_model_label =
+            crate::infrastructure::agents::claude::model_labels::model_id_to_label(
+                &effective_model_id,
+            );
+
+        // 3. Emit run started event (deferred from step 3 to include effective model info)
+        self.emit_event(
+            "agent:run_started",
+            AgentRunStartedPayload {
+                run_id: agent_run_id.clone(),
+                conversation_id: conversation_id.as_str().to_string(),
+                context_type: context_type.to_string(),
+                context_id: context_id.to_string(),
+                run_chain_id: run_chain_id.clone(),
+                parent_run_id: None,
+                effective_model_id: Some(effective_model_id.clone()),
+                effective_model_label: Some(effective_model_label),
+            },
+        );
+
         // Fetch recent session messages for Ideation context ONLY when spawning a new process.
         // The agent has no prior context at spawn time, so we inject the history into the prompt.
         // For non-ideation contexts and already-running agents (IPR path above), we pass empty slice.
@@ -1801,6 +1828,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                     &agent_run_id,
                     Some(registry_worktree.clone()),
                     Some(cancellation_token.clone()),
+                    Some(effective_model_id.clone()),
                 )
                 .await
             {
@@ -1808,6 +1836,22 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                     pid,
                     error = %e,
                     "chat_service.send_message: failed to update agent process in registry — slot claimed but PID not persisted"
+                );
+            }
+        }
+
+        // 7c. Persist effective model to ideation_sessions (non-fatal, WARN on failure)
+        if context_type == ChatContextType::Ideation {
+            if let Err(e) = self
+                .ideation_session_repo
+                .update_last_effective_model(context_id, &effective_model_id)
+                .await
+            {
+                tracing::warn!(
+                    context_id,
+                    effective_model = %effective_model_id,
+                    error = %e,
+                    "chat_service.send_message: failed to persist last_effective_model — non-fatal"
                 );
             }
         }
