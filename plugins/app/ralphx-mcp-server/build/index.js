@@ -16,7 +16,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema, } from "@modelcontextprotocol/sdk/types.js";
 import { callTauri, callTauriGet, TauriClientError } from "./tauri-client.js";
 import { safeError } from "./redact.js";
-import { getFilteredTools, isToolAllowed, getAllowedToolNames, parseAllowedToolsFromArgs, getToolRecoveryHint, logAllTools, getToolsByAgent, setAgentType, } from "./tools.js";
+import { getFilteredTools, isToolAllowed, getAllowedToolNames, parseAllowedToolsFromArgs, formatToolErrorMessage, logAllTools, getToolsByAgent, setAgentType, } from "./tools.js";
 import { permissionRequestTool, handlePermissionRequest, } from "./permission-handler.js";
 import { handleAskUserQuestion } from "./question-handler.js";
 import { handleRequestTeamPlan } from "./team-plan-handler.js";
@@ -742,14 +742,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     catch (error) {
         safeError(`[RalphX MCP] Error calling ${name}:`, error);
         if (error instanceof TauriClientError) {
-            const repairHint = getToolRecoveryHint(name);
             return {
                 content: [
                     {
                         type: "text",
-                        text: `ERROR: ${error.message}` +
-                            (error.details ? `\n\nDetails: ${error.details}` : "") +
-                            (repairHint ? `\n\nUsage hint for ${name}:\n${repairHint}` : ""),
+                        text: formatToolErrorMessage(name, error.message, error.details),
                     },
                 ],
                 isError: true,

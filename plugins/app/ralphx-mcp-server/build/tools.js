@@ -2226,6 +2226,15 @@ export function getToolRecoveryHint(toolName) {
     }
 }
 /**
+ * Format a backend error message with an optional tool-specific usage hint.
+ */
+export function formatToolErrorMessage(toolName, message, details) {
+    const repairHint = getToolRecoveryHint(toolName);
+    return (`ERROR: ${message}` +
+        (details ? `\n\nDetails: ${details}` : "") +
+        (repairHint ? `\n\nUsage hint for ${toolName}:\n${repairHint}` : ""));
+}
+/**
  * Print all available tools to stderr (for debugging)
  * Call this to see what tools the MCP server can provide
  */

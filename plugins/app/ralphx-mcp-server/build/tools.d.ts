@@ -61,6 +61,10 @@ export declare function getToolsByAgent(): Record<string, string[]>;
  */
 export declare function getToolRecoveryHint(toolName: string): string | null;
 /**
+ * Format a backend error message with an optional tool-specific usage hint.
+ */
+export declare function formatToolErrorMessage(toolName: string, message: string, details?: string): string;
+/**
  * Print all available tools to stderr (for debugging)
  * Call this to see what tools the MCP server can provide
  */

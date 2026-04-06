@@ -11,6 +11,7 @@ import {
   setAgentType,
   getAllTools,
   getToolRecoveryHint,
+  formatToolErrorMessage,
   TOOL_ALLOWLIST,
   parseAllowedToolsFromArgs,
 } from '../tools.js';
@@ -121,6 +122,25 @@ describe('getToolRecoveryHint', () => {
 
   it('returns null for an unknown tool', () => {
     expect(getToolRecoveryHint('not_a_real_tool')).toBeNull();
+  });
+});
+
+describe('formatToolErrorMessage', () => {
+  it('appends details and a usage hint for known high-friction tools', () => {
+    const text = formatToolErrorMessage(
+      'update_plan_verification',
+      'Cannot update verification state on a verification child session.',
+      'Use the parent session id instead.'
+    );
+    expect(text).toContain('ERROR: Cannot update verification state on a verification child session.');
+    expect(text).toContain('Details: Use the parent session id instead.');
+    expect(text).toContain('Usage hint for update_plan_verification:');
+    expect(text).toContain('Example reviewing payload:');
+  });
+
+  it('leaves unknown tools without a usage-hint section', () => {
+    const text = formatToolErrorMessage('not_a_real_tool', 'boom');
+    expect(text).toBe('ERROR: boom');
   });
 });
 

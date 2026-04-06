@@ -3,7 +3,7 @@
  * Tests agent team coordination features
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { getAllowedToolNames, getFilteredTools, isToolAllowed, setAgentType, getAllTools, getToolRecoveryHint, TOOL_ALLOWLIST, parseAllowedToolsFromArgs, } from '../tools.js';
+import { getAllowedToolNames, getFilteredTools, isToolAllowed, setAgentType, getAllTools, getToolRecoveryHint, formatToolErrorMessage, TOOL_ALLOWLIST, parseAllowedToolsFromArgs, } from '../tools.js';
 import { PLAN_TOOLS } from '../plan-tools.js';
 import { IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_MEMBER, ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_SPECIALIST_CODE_QUALITY, IDEATION_SPECIALIST_PROMPT_QUALITY, IDEATION_SPECIALIST_INTENT, IDEATION_SPECIALIST_PIPELINE_SAFETY, IDEATION_SPECIALIST_STATE_MACHINE, IDEATION_CRITIC, IDEATION_ADVOCATE, PLAN_CRITIC_COMPLETENESS, PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY, } from '../agentNames.js';
 describe('getAllowedToolNames', () => {
@@ -79,6 +79,19 @@ describe('getToolRecoveryHint', () => {
     });
     it('returns null for an unknown tool', () => {
         expect(getToolRecoveryHint('not_a_real_tool')).toBeNull();
+    });
+});
+describe('formatToolErrorMessage', () => {
+    it('appends details and a usage hint for known high-friction tools', () => {
+        const text = formatToolErrorMessage('update_plan_verification', 'Cannot update verification state on a verification child session.', 'Use the parent session id instead.');
+        expect(text).toContain('ERROR: Cannot update verification state on a verification child session.');
+        expect(text).toContain('Details: Use the parent session id instead.');
+        expect(text).toContain('Usage hint for update_plan_verification:');
+        expect(text).toContain('Example reviewing payload:');
+    });
+    it('leaves unknown tools without a usage-hint section', () => {
+        const text = formatToolErrorMessage('not_a_real_tool', 'boom');
+        expect(text).toBe('ERROR: boom');
     });
 });
 describe('getFilteredTools', () => {
