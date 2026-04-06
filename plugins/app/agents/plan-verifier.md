@@ -292,11 +292,11 @@ Wait for the initial Task results to return (critics + any specialists), then in
 **Resumable critic/specialist rule (NON-NEGOTIABLE):**
 - A Task result containing `agentId:` or `continue this agent` means the spawned agent is still resumable/in-progress.
 - Do NOT mark that critic or specialist unavailable yet.
-- Missing artifact + resumable Task result = "artifact not published yet", NOT "critic infrastructure failed".
-- Before concluding a required critic is unavailable, run up to **2 rescue cycles**:
-  1. poll artifacts
-  2. if missing and the initial result was resumable, dispatch a fresh follow-up Task with the FULL invariant context repeated
-  3. poll artifacts again
+- Missing artifact + resumable Task result = "No current-round artifacts yet — critic still running", NOT "critic infrastructure failed".
+- Before concluding a required critic is unavailable, follow the **two-stage wait-then-rescue flow** in Section B (rescue budget: 1 dispatch per critic per round):
+  1. first empty poll → log "No current-round artifacts yet; critic still running" and poll a second time immediately
+  2. second empty poll → dispatch ONE rescue Task with FULL invariant context repeated
+  3. post-rescue poll → if still empty, mark unavailable
 - Follow-up Task prompts MUST repeat:
   - `SESSION_ID: <parent_session_id>`
   - `ROUND: {current_round}`
@@ -307,19 +307,25 @@ Wait for the initial Task results to return (critics + any specialists), then in
 
 ### B. Collect round artifacts
 
-Collect artifacts produced during this round via two-step flow. This includes:
+> **Note:** `get_verification_round_artifacts` returns only **round-local** artifacts (filtered by `created_after`). The Team Research badge shows **cumulative** session artifacts. These are different counts — no current-round artifact does NOT mean no Team Research exists; both can be true simultaneously.
+
+Collect artifacts produced during this round via two-stage wait-then-rescue flow. This includes:
 - critic artifacts (`Completeness:`, `Feasibility:`)
 - specialist artifacts (`UX:`, `PromptQuality:`, `PipelineSafety:`, `StateMachine:`)
 
 1. Call `mcp__ralphx__get_verification_round_artifacts(session_id: <parent_session_id>, prefixes: ["Completeness: ", "Feasibility: ", "UX: ", "PromptQuality: ", "PipelineSafety: ", "StateMachine: "], created_after: <round_start_time minus 5 seconds>)`.
 2. Use the returned `artifacts_by_prefix` entries directly — the helper already filters by `created_after`, sorts by `created_at` descending per prefix, and attaches full artifact `content`.
-3. If a required critic artifact is missing but that critic's Task result included `agentId` or resumable text, run a rescue cycle before declaring it unavailable:
-   - dispatch a fresh follow-up Task for that critic with FULL invariant context (`SESSION_ID`, `ROUND`, exact artifact title prefix, JSON schema, explicit parent-session artifact target)
-   - then call `get_verification_round_artifacts` again
-   - do this at most 2 times per critic per round
+3. If a required critic artifact is missing after the first poll, apply the two-stage flow:
+   - **Stage 1 — wait (first empty poll):** If that critic's Task result included `agentId` or resumable text, log `No current-round artifacts yet; critic still running (agentId: <id>)` — do NOT dispatch a rescue. Immediately make a **second sequential** `get_verification_round_artifacts` call.
+     - If the second poll returns the artifact: proceed normally.
+     - If the second poll is also empty: proceed to Stage 2.
+   - **Stage 2 — rescue (second empty poll):** Log `No current-round artifacts after two polls; nudging critic after repeated empty polls` and dispatch **ONE** rescue Task for that critic with FULL invariant context (`SESSION_ID`, `ROUND`, exact artifact title prefix, JSON schema, explicit parent-session artifact target). Then make a final `get_verification_round_artifacts` call (post-rescue poll).
+     - If post-rescue poll returns the artifact: proceed normally.
+     - If post-rescue poll is still empty: log `Critic output unavailable for this round after rescue attempts` — mark that critic unavailable.
+   - **If the critic's Task result did NOT include `agentId`:** skip Stage 1 (critic already exited without publishing); go directly to Stage 2 rescue dispatch.
 4. For each returned critic artifact, parse the helper-returned full `content` as JSON.
 5. If multiple artifacts from the same specialist type exist, the helper already chose the **latest** (highest `created_at`) for each prefix.
-6. If `get_verification_round_artifacts` fails or returns no matches after rescue cycles → treat as "no round artifacts". Continue, but note critic output as unavailable for this round.
+6. If `get_verification_round_artifacts` fails or returns no matches after the rescue flow above → treat as "no current-round artifacts". Continue, but note critic output as unavailable for this round.
 
 Store ALL retrieved artifact content (keyed by title prefix) for use in steps C and F2.
 
