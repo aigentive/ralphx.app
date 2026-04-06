@@ -4,9 +4,9 @@ use tauri::{Emitter, Runtime};
 use tracing::warn;
 
 use crate::domain::entities::{
-    AgentRun, AgentRunId, ChatContextType, InternalStatus, MergeFailureSource, MergeRecoveryEvent,
-    MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode, MergeRecoverySource,
-    MergeRecoveryState, Task, TaskId,
+    AgentRun, AgentRunId, ChatContextType, ExecutionRecoveryMetadata, InternalStatus,
+    MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
+    MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState, Task, TaskId,
 };
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
 use crate::infrastructure::agents::claude::reconciliation_config;
@@ -138,7 +138,28 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .rev()
             .find(|transition| transition.to == status)
         {
-            return Some(chrono::Utc::now() - latest_transition.timestamp);
+            let transition_age = chrono::Utc::now() - latest_transition.timestamp;
+
+            // For Executing/ReExecuting, check if a startup resume is more recent than
+            // the status transition. If so, use the resume timestamp as the wall-clock
+            // baseline so restarted tasks are not immediately timed out.
+            if matches!(
+                status,
+                InternalStatus::Executing | InternalStatus::ReExecuting
+            ) {
+                if let Ok(Some(recovery)) =
+                    ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                {
+                    if let Some(resume_at) = recovery.last_startup_resume_at {
+                        let resume_age = chrono::Utc::now().signed_duration_since(resume_at);
+                        if resume_age <= transition_age {
+                            return Some(resume_age);
+                        }
+                    }
+                }
+            }
+
+            return Some(transition_age);
         }
 
         // Fallback for manually-edited tasks (status changed without status history row).

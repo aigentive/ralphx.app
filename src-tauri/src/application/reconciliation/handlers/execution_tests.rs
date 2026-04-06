@@ -281,3 +281,78 @@ fn test_structural_git_error_empty_message_not_structural() {
         "Empty message should not be classified as structural git error"
     );
 }
+
+// ============================================================
+// Tests for watchdog resume-baseline logic
+// ============================================================
+
+/// Replicates the resume-baseline selection logic from `latest_status_transition_age`.
+///
+/// Returns the age that the watchdog would use given a transition age and an optional
+/// resume timestamp, mirroring the `resume_age <= transition_age` guard in events.rs.
+fn select_watchdog_age(
+    transition_age: chrono::Duration,
+    last_startup_resume_at: Option<chrono::DateTime<chrono::Utc>>,
+) -> chrono::Duration {
+    if let Some(resume_at) = last_startup_resume_at {
+        let resume_age = chrono::Utc::now().signed_duration_since(resume_at);
+        if resume_age <= transition_age {
+            return resume_age;
+        }
+    }
+    transition_age
+}
+
+#[test]
+fn test_watchdog_uses_resume_baseline_when_newer() {
+    use chrono::{Duration, Utc};
+
+    // Status transition happened 20 minutes ago (original Executing entry).
+    let transition_age = Duration::minutes(20);
+
+    // Startup resume happened just now (~0 min ago) — newer than the transition.
+    let resume_at = Utc::now();
+
+    let selected = select_watchdog_age(transition_age, Some(resume_at));
+
+    // Watchdog should report ~0 seconds (resume baseline), not ~20 minutes.
+    assert!(
+        selected < Duration::seconds(5),
+        "watchdog must use the resume baseline (~0s) when it is newer than the transition age (~20min); got {:?}",
+        selected
+    );
+}
+
+#[test]
+fn test_watchdog_ignores_stale_resume_baseline() {
+    use chrono::{Duration, Utc};
+
+    // Status transition happened 5 minutes ago.
+    let transition_age = Duration::minutes(5);
+
+    // Resume happened 30 minutes ago — stale (older than the status transition).
+    let resume_at = Utc::now() - Duration::minutes(30);
+
+    let selected = select_watchdog_age(transition_age, Some(resume_at));
+
+    // Watchdog should fall through to the transition age (~5 min), not ~30 min.
+    assert!(
+        selected >= Duration::minutes(4) && selected < Duration::minutes(10),
+        "watchdog must fall through to transition age (~5min) when resume baseline is stale (~30min); got {:?}",
+        selected
+    );
+}
+
+#[test]
+fn test_watchdog_falls_through_when_no_resume() {
+    use chrono::Duration;
+
+    // No resume baseline — watchdog should use the transition age unchanged.
+    let transition_age = Duration::minutes(15);
+    let selected = select_watchdog_age(transition_age, None);
+
+    assert_eq!(
+        selected, transition_age,
+        "watchdog must use transition age when last_startup_resume_at is absent"
+    );
+}
