@@ -124,6 +124,9 @@ pub async fn update_plan_verification(
         (VerificationStatus::Unverified, VerificationStatus::Reviewing) => true,
         (VerificationStatus::Reviewing, VerificationStatus::NeedsRevision) => true,
         (VerificationStatus::Reviewing, VerificationStatus::Verified) => true,
+        // In-progress round reporting is idempotent when parent is already reviewing.
+        // Condition 6 will auto-promote to NeedsRevision if gaps are present.
+        (VerificationStatus::Reviewing, VerificationStatus::Reviewing) => true,
         (VerificationStatus::NeedsRevision, VerificationStatus::Reviewing) => true,
         // Allow needs_revision → verified ONLY when convergence_reason is provided
         (VerificationStatus::NeedsRevision, VerificationStatus::Verified) => has_convergence_reason,
