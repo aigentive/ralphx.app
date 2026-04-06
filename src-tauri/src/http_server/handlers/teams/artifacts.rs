@@ -1,9 +1,54 @@
 use super::*;
 
+const PLACEHOLDER_SESSION_IDS: &[&str] = &["SESSION_ID", "unknown", "<session_id>"];
+
+fn is_placeholder_session_id(session_id: &str) -> bool {
+    let trimmed = session_id.trim();
+    trimmed.is_empty() || PLACEHOLDER_SESSION_IDS.iter().any(|value| trimmed.eq_ignore_ascii_case(value))
+}
+
 pub async fn create_team_artifact(
     State(state): State<HttpServerState>,
     Json(req): Json<CreateTeamArtifactRequest>,
 ) -> Result<Json<CreateTeamArtifactResponse>, (StatusCode, String)> {
+    if is_placeholder_session_id(&req.session_id) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Invalid session_id for team artifact. Use the parent ideation session_id \
+             or the real team/execution session id; do not send placeholder values like \
+             'SESSION_ID' or 'unknown'."
+                .to_string(),
+        ));
+    }
+
+    let session_id_obj = crate::domain::entities::IdeationSessionId::from_string(req.session_id.clone());
+    if let Some(session) = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_obj)
+        .await
+        .map_err(|e| {
+            error!("Failed to validate team artifact session {}: {}", req.session_id, e);
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to validate session: {}", e))
+        })?
+    {
+        if session.session_purpose == crate::domain::entities::SessionPurpose::Verification {
+            let parent_hint = session
+                .parent_session_id
+                .as_ref()
+                .map(|id| id.as_str().to_string())
+                .unwrap_or_else(|| "<unknown-parent-session>".to_string());
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "Cannot create a team artifact on a verification child session. \
+                     Use the PARENT ideation session_id instead. Parent session_id: {}.",
+                    parent_hint
+                ),
+            ));
+        }
+    }
+
     // Map team artifact types to ArtifactType
     let artifact_type = match req.artifact_type.as_str() {
         "TeamResearch" => ArtifactType::TeamResearch,
