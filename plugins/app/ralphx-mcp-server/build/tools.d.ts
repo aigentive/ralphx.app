@@ -56,6 +56,11 @@ export declare function getAllTools(): Tool[];
  */
 export declare function getToolsByAgent(): Record<string, string[]>;
 /**
+ * Return a compact repair hint for high-friction tools so weaker models can retry
+ * with the expected payload shape instead of probing by trial and error.
+ */
+export declare function getToolRecoveryHint(toolName: string): string | null;
+/**
  * Print all available tools to stderr (for debugging)
  * Call this to see what tools the MCP server can provide
  */

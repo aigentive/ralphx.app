@@ -27,6 +27,7 @@ import {
   isToolAllowed,
   getAllowedToolNames,
   parseAllowedToolsFromArgs,
+  getToolRecoveryHint,
   logAllTools,
   getToolsByAgent,
   setAgentType,
@@ -893,11 +894,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     safeError(`[RalphX MCP] Error calling ${name}:`, error);
 
     if (error instanceof TauriClientError) {
+      const repairHint = getToolRecoveryHint(name);
       return {
         content: [
           {
             type: "text",
-            text: `ERROR: ${error.message}${error.details ? `\n\nDetails: ${error.details}` : ""}`,
+            text:
+              `ERROR: ${error.message}` +
+              (error.details ? `\n\nDetails: ${error.details}` : "") +
+              (repairHint ? `\n\nUsage hint for ${name}:\n${repairHint}` : ""),
           },
         ],
         isError: true,

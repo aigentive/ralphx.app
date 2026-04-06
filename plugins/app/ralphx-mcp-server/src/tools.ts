@@ -2285,6 +2285,92 @@ export function getToolsByAgent(): Record<string, string[]> {
   return TOOL_ALLOWLIST;
 }
 
+function formatToolExamples(tool: Tool, limit = 1): string[] {
+  const examples = ((tool.inputSchema as { examples?: unknown[] } | undefined)?.examples ?? [])
+    .slice(0, limit)
+    .map((example) => {
+      try {
+        return JSON.stringify(example);
+      } catch {
+        return String(example);
+      }
+    })
+    .filter((example) => example.length > 0);
+
+  return examples;
+}
+
+/**
+ * Return a compact repair hint for high-friction tools so weaker models can retry
+ * with the expected payload shape instead of probing by trial and error.
+ */
+export function getToolRecoveryHint(toolName: string): string | null {
+  const tool = ALL_TOOLS.find((candidate) => candidate.name === toolName);
+  if (!tool) {
+    return null;
+  }
+
+  switch (toolName) {
+    case "update_plan_verification": {
+      const examples = formatToolExamples(tool, 2);
+      return [
+        "Use the PARENT ideation session_id, never the verification child session_id.",
+        "Use status=reviewing with in_progress=true for mid-round updates; use verified or needs_revision with in_progress=false for terminal updates.",
+        "Re-read get_plan_verification if generation/in_progress is unclear instead of guessing.",
+        ...examples.map((example, index) =>
+          index === 0
+            ? `Example reviewing payload: ${example}`
+            : `Example terminal payload: ${example}`
+        ),
+      ].join("\n");
+    }
+    case "get_plan_verification": {
+      const examples = formatToolExamples(tool);
+      return [
+        "Call this on the PARENT ideation session before retrying update_plan_verification.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    case "create_team_artifact": {
+      const examples = formatToolExamples(tool);
+      return [
+        "Use the PARENT ideation session_id, not the critic/verification child session id.",
+        "For verifier critics, keep the exact artifact prefix and publish partial results instead of exploring further.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    case "get_team_artifacts": {
+      const examples = formatToolExamples(tool);
+      return [
+        "Read artifacts from the PARENT ideation session_id, not the verification child session id.",
+        "After critic Task returns, fetch the parent-session artifacts and then load the newest matching artifact ids.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    case "get_child_session_status": {
+      const examples = formatToolExamples(tool);
+      return [
+        "When debugging a verification child, set include_recent_messages=true so you can inspect the last assistant/tool outputs.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    case "send_ideation_session_message": {
+      const examples = formatToolExamples(tool);
+      return [
+        "When nudging a verifier/critic, repeat full invariant context: SESSION_ID, ROUND, artifact prefix/schema, and explicit parent-session target.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    default: {
+      const examples = formatToolExamples(tool);
+      if (examples.length === 0) {
+        return null;
+      }
+      return examples.map((example) => `Example payload: ${example}`).join("\n");
+    }
+  }
+}
+
 /**
  * Print all available tools to stderr (for debugging)
  * Call this to see what tools the MCP server can provide

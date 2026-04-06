@@ -10,6 +10,7 @@ import {
   isToolAllowed,
   setAgentType,
   getAllTools,
+  getToolRecoveryHint,
   TOOL_ALLOWLIST,
   parseAllowedToolsFromArgs,
 } from '../tools.js';
@@ -94,6 +95,32 @@ describe('getAllowedToolNames', () => {
     // Should return env var list, not agent type allowlist
     expect(tools).toEqual(['get_session_plan']);
     expect(tools).not.toEqual(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]);
+  });
+});
+
+describe('getToolRecoveryHint', () => {
+  it('returns parent-session and example guidance for update_plan_verification', () => {
+    const hint = getToolRecoveryHint('update_plan_verification');
+    expect(hint).toContain('PARENT ideation session_id');
+    expect(hint).toContain('status=reviewing');
+    expect(hint).toContain('Example reviewing payload:');
+    expect(hint).toContain('Example terminal payload:');
+  });
+
+  it('returns verifier-debugging guidance for get_child_session_status', () => {
+    const hint = getToolRecoveryHint('get_child_session_status');
+    expect(hint).toContain('include_recent_messages=true');
+    expect(hint).toContain('Example payload:');
+  });
+
+  it('returns invariant-context guidance for send_ideation_session_message', () => {
+    const hint = getToolRecoveryHint('send_ideation_session_message');
+    expect(hint).toContain('SESSION_ID, ROUND, artifact prefix/schema');
+    expect(hint).toContain('Example payload:');
+  });
+
+  it('returns null for an unknown tool', () => {
+    expect(getToolRecoveryHint('not_a_real_tool')).toBeNull();
   });
 });
 

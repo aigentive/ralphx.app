@@ -3,7 +3,7 @@
  * Tests agent team coordination features
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { getAllowedToolNames, getFilteredTools, isToolAllowed, setAgentType, getAllTools, TOOL_ALLOWLIST, parseAllowedToolsFromArgs, } from '../tools.js';
+import { getAllowedToolNames, getFilteredTools, isToolAllowed, setAgentType, getAllTools, getToolRecoveryHint, TOOL_ALLOWLIST, parseAllowedToolsFromArgs, } from '../tools.js';
 import { PLAN_TOOLS } from '../plan-tools.js';
 import { IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_MEMBER, ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_SPECIALIST_CODE_QUALITY, IDEATION_SPECIALIST_PROMPT_QUALITY, IDEATION_SPECIALIST_INTENT, IDEATION_SPECIALIST_PIPELINE_SAFETY, IDEATION_SPECIALIST_STATE_MACHINE, IDEATION_CRITIC, IDEATION_ADVOCATE, PLAN_CRITIC_COMPLETENESS, PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY, } from '../agentNames.js';
 describe('getAllowedToolNames', () => {
@@ -57,6 +57,28 @@ describe('getAllowedToolNames', () => {
         // Should return env var list, not agent type allowlist
         expect(tools).toEqual(['get_session_plan']);
         expect(tools).not.toEqual(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]);
+    });
+});
+describe('getToolRecoveryHint', () => {
+    it('returns parent-session and example guidance for update_plan_verification', () => {
+        const hint = getToolRecoveryHint('update_plan_verification');
+        expect(hint).toContain('PARENT ideation session_id');
+        expect(hint).toContain('status=reviewing');
+        expect(hint).toContain('Example reviewing payload:');
+        expect(hint).toContain('Example terminal payload:');
+    });
+    it('returns verifier-debugging guidance for get_child_session_status', () => {
+        const hint = getToolRecoveryHint('get_child_session_status');
+        expect(hint).toContain('include_recent_messages=true');
+        expect(hint).toContain('Example payload:');
+    });
+    it('returns invariant-context guidance for send_ideation_session_message', () => {
+        const hint = getToolRecoveryHint('send_ideation_session_message');
+        expect(hint).toContain('SESSION_ID, ROUND, artifact prefix/schema');
+        expect(hint).toContain('Example payload:');
+    });
+    it('returns null for an unknown tool', () => {
+        expect(getToolRecoveryHint('not_a_real_tool')).toBeNull();
     });
 });
 describe('getFilteredTools', () => {
