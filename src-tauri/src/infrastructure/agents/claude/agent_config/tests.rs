@@ -859,8 +859,7 @@ fn test_plan_verifier_mcp_tools_match_current_prompt_contract() {
     for tool in [
         "get_session_plan",
         "get_session_messages",
-        "get_team_artifacts",
-        "get_artifact",
+        "get_verification_round_artifacts",
         "get_parent_session_context",
         "report_verification_round",
         "complete_plan_verification",
@@ -885,6 +884,20 @@ fn test_plan_verifier_mcp_tools_match_current_prompt_contract() {
             "plan-verifier missing expected MCP tool {tool}"
         );
     }
+
+    assert!(
+        !config
+            .allowed_mcp_tools
+            .contains(&"get_team_artifacts".to_string()),
+        "plan-verifier should not include stale generic team artifact listing tool"
+    );
+
+    assert!(
+        !config
+            .allowed_mcp_tools
+            .contains(&"get_artifact".to_string()),
+        "plan-verifier should not include stale generic artifact fetch tool"
+    );
 
     assert!(
         !config

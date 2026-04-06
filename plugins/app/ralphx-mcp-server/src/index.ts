@@ -102,6 +102,58 @@ export function filterCrossProjectPaths(
   });
 }
 
+type TeamArtifactSummary = {
+  id: string;
+  name: string;
+  artifact_type: string;
+  version: number;
+  content_preview: string;
+  created_at: string;
+  author_teammate?: string | null;
+};
+
+export function selectLatestArtifactsByPrefix(
+  artifacts: TeamArtifactSummary[],
+  prefixes: string[],
+  createdAfter?: string
+): Array<{
+  prefix: string;
+  found: boolean;
+  total_matches: number;
+  artifact?: TeamArtifactSummary;
+}> {
+  const createdAfterMs =
+    typeof createdAfter === "string" && createdAfter.length > 0
+      ? Date.parse(createdAfter)
+      : Number.NaN;
+  const hasThreshold = Number.isFinite(createdAfterMs);
+
+  return prefixes.map((prefix) => {
+    const matches = artifacts
+      .filter((artifact) => artifact.name.startsWith(prefix))
+      .filter((artifact) => {
+        if (!hasThreshold) return true;
+        const createdAtMs = Date.parse(artifact.created_at);
+        return Number.isFinite(createdAtMs) && createdAtMs >= createdAfterMs;
+      })
+      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+
+    const latest = matches[0];
+    return latest
+      ? {
+          prefix,
+          found: true,
+          total_matches: matches.length,
+          artifact: latest,
+        }
+      : {
+          prefix,
+          found: false,
+          total_matches: 0,
+        };
+  });
+}
+
 /**
  * Parse command line arguments for --agent-type
  * Returns the agent type if found, undefined otherwise
@@ -702,6 +754,53 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // GET /api/team/artifacts/:session_id
       const { session_id } = args as { session_id: string };
       result = await callTauriGet(`team/artifacts/${session_id}`);
+    } else if (name === "get_verification_round_artifacts") {
+      const {
+        session_id,
+        prefixes,
+        created_after,
+        include_full_content = true,
+      } = args as {
+        session_id: string;
+        prefixes: string[];
+        created_after?: string;
+        include_full_content?: boolean;
+      };
+      const teamArtifacts = await callTauriGet(`team/artifacts/${session_id}`) as {
+        artifacts: TeamArtifactSummary[];
+        count: number;
+      };
+      const matches = selectLatestArtifactsByPrefix(
+        teamArtifacts.artifacts ?? [],
+        prefixes,
+        created_after
+      );
+      const artifacts_by_prefix = await Promise.all(
+        matches.map(async (match) => {
+          if (!match.artifact) {
+            return match;
+          }
+          if (!include_full_content) {
+            return match;
+          }
+          const fullArtifact = await callTauriGet(`artifact/${match.artifact.id}`) as {
+            content?: string;
+          };
+          return {
+            ...match,
+            artifact: {
+              ...match.artifact,
+              content: fullArtifact.content ?? "",
+            },
+          };
+        })
+      );
+      result = {
+        session_id,
+        created_after: created_after ?? null,
+        prefixes,
+        artifacts_by_prefix,
+      };
     } else if (name === "get_team_session_state") {
       // GET /api/team/session_state/:session_id
       const { session_id } = args as { session_id: string };

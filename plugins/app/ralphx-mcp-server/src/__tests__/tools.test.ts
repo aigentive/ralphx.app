@@ -126,6 +126,13 @@ describe('getToolRecoveryHint', () => {
     expect(hint).toContain('External sessions cannot use status=skipped');
   });
 
+  it('returns artifact-collection guidance for get_verification_round_artifacts', () => {
+    const hint = getToolRecoveryHint('get_verification_round_artifacts');
+    expect(hint).toContain('verifier helper');
+    expect(hint).toContain('get_team_artifacts + get_artifact');
+    expect(hint).toContain('created_after');
+  });
+
   it('returns verifier-debugging guidance for get_child_session_status', () => {
     const hint = getToolRecoveryHint('get_child_session_status');
     expect(hint).toContain('include_recent_messages=true');
@@ -247,8 +254,11 @@ describe('getFilteredTools', () => {
 
     expect(toolNames).toContain('report_verification_round');
     expect(toolNames).toContain('complete_plan_verification');
+    expect(toolNames).toContain('get_verification_round_artifacts');
     expect(toolNames).toContain('get_plan_verification');
     expect(toolNames).not.toContain('update_plan_verification');
+    expect(toolNames).not.toContain('get_team_artifacts');
+    expect(toolNames).not.toContain('get_artifact');
   });
 
   it('should return no tools for unknown agent type', () => {
@@ -432,7 +442,7 @@ describe('New team tool definitions', () => {
     it('should document round-oriented verification lookup guidance', () => {
       expect(tool?.description).toContain('PARENT ideation session_id');
       expect(tool?.description).toContain('backend remaps it to the parent ideation session automatically');
-      expect(tool?.description).toContain('filter by created_at/title prefix client-side');
+      expect(tool?.description).toContain('prefer get_verification_round_artifacts');
       expect(tool?.description).toContain('get_team_artifacts({"session_id":"<parent-session>"})');
       expect((tool?.inputSchema as any).examples?.[0]).toMatchObject({
         session_id: 'parent-session-id',
@@ -510,6 +520,22 @@ describe('New team tool definitions', () => {
         convergence_reason: 'agent_error',
       });
       expect(tool?.inputSchema.required).toEqual(['session_id', 'status', 'generation']);
+    });
+  });
+
+  describe('get_verification_round_artifacts', () => {
+    const tool = allTools.find((t) => t.name === 'get_verification_round_artifacts');
+
+    it('should expose the verifier artifact collection helper', () => {
+      expect(tool).toBeDefined();
+      expect(tool?.description).toContain('Verifier-oriented helper');
+      expect(tool?.description).toContain('attach full artifact content');
+      expect((tool?.inputSchema as any).examples?.[0]).toMatchObject({
+        session_id: 'parent-session-id',
+        prefixes: ['Completeness: ', 'Feasibility: '],
+        include_full_content: true,
+      });
+      expect(tool?.inputSchema.required).toEqual(['session_id', 'prefixes']);
     });
   });
 

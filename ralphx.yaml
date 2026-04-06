@@ -901,8 +901,7 @@ agents:
       [
         get_session_plan,
         get_session_messages,
-        get_team_artifacts,
-        get_artifact,
+        get_verification_round_artifacts,
         get_parent_session_context,
         report_verification_round,
         complete_plan_verification,

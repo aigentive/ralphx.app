@@ -15,8 +15,7 @@ tools:
   - "Task(ralphx:ideation-specialist-state-machine)"
   - "mcp__ralphx__get_session_plan"
   - "mcp__ralphx__get_session_messages"
-  - "mcp__ralphx__get_team_artifacts"
-  - "mcp__ralphx__get_artifact"
+  - "mcp__ralphx__get_verification_round_artifacts"
   - "mcp__ralphx__get_parent_session_context"
   - "mcp__ralphx__report_verification_round"
   - "mcp__ralphx__complete_plan_verification"
@@ -162,14 +161,14 @@ Wait for the initial Task results to return, then inspect them before declaring 
 
 ### 0.5c — Artifact Collection
 
-1. Call `mcp__ralphx__get_team_artifacts(session_id: <parent_session_id>)`.
-2. Filter artifacts **client-side**: keep only artifacts where `created_at >= (enrichment_dispatch_time minus 5 seconds)` AND title starts with `"CodeQuality"` OR `"IntentAlignment"` (case-sensitive prefix match, tolerant of colon/space variations).
+1. Call `mcp__ralphx__get_verification_round_artifacts(session_id: <parent_session_id>, prefixes: ["CodeQuality", "IntentAlignment"], created_after: <enrichment_dispatch_time minus 5 seconds>)`.
+2. Use the returned `artifacts_by_prefix` entries directly — the helper already filters by `created_after`, sorts by `created_at` descending per prefix, and attaches full artifact `content`.
 3. **Intent specialist result handling:**
    - If the intent specialist Task returned text containing `"Intent aligned"` → log "Intent aligned — no misalignment artifact created." Skip intent integration in Step 0.5d.
    - If no `IntentAlignment:`-prefixed artifact found AND intent Task did not return alignment text → log "Intent specialist returned no result — proceeding without intent check." Skip intent integration in Step 0.5d.
    - If `IntentAlignment:`-prefixed artifact found → retrieve its full content for integration in Step 0.5d.
 4. **Code quality result handling:** If no `CodeQuality`-prefixed artifact found → log "Code quality specialist returned no artifact — proceeding to round loop." Skip code quality integration in Step 0.5d.
-5. For each matching artifact (latest by `created_at` per prefix type): call `mcp__ralphx__get_artifact(artifact_id: <id>)` to retrieve full content.
+5. No extra `get_artifact` fetch is needed when the helper already returned full `content`.
 
 ### 0.5d — Plan Integration
 
@@ -312,16 +311,15 @@ Collect artifacts produced during this round via two-step flow. This includes:
 - critic artifacts (`Completeness:`, `Feasibility:`)
 - specialist artifacts (`UX:`, `PromptQuality:`, `PipelineSafety:`, `StateMachine:`)
 
-1. Call `mcp__ralphx__get_team_artifacts(session_id: <parent_session_id>)` — returns summaries with 200-char `content_preview`.
-2. Filter artifacts **client-side** by `created_at` timestamp ONLY: keep all artifacts where `created_at >= (round_start_time minus 5 seconds)`. This filters out artifacts from prior rounds.
-   ❌ Do NOT apply title-prefix filtering here — collect ALL matching-timestamp artifacts regardless of prefix (`Completeness:`, `Feasibility:`, `UX:`, `PromptQuality:`, etc.). Prefix filtering happens at consumption time in steps C and F2.
+1. Call `mcp__ralphx__get_verification_round_artifacts(session_id: <parent_session_id>, prefixes: ["Completeness: ", "Feasibility: ", "UX: ", "PromptQuality: ", "PipelineSafety: ", "StateMachine: "], created_after: <round_start_time minus 5 seconds>)`.
+2. Use the returned `artifacts_by_prefix` entries directly — the helper already filters by `created_after`, sorts by `created_at` descending per prefix, and attaches full artifact `content`.
 3. If a required critic artifact is missing but that critic's Task result included `agentId` or resumable text, run a rescue cycle before declaring it unavailable:
    - dispatch a fresh follow-up Task for that critic with FULL invariant context (`SESSION_ID`, `ROUND`, exact artifact title prefix, JSON schema, explicit parent-session artifact target)
-   - then call `get_team_artifacts` again
+   - then call `get_verification_round_artifacts` again
    - do this at most 2 times per critic per round
-4. For each matching artifact (newest first, by `created_at`): call `mcp__ralphx__get_artifact(artifact_id: <id>)` to retrieve full content.
-5. If multiple artifacts from the same specialist type exist (identified by title prefix at F2 consumption), use only the **latest** (highest `created_at`).
-6. If `get_team_artifacts` fails or returns no matches after rescue cycles → treat as "no round artifacts". Continue, but note critic output as unavailable for this round.
+4. For each returned critic artifact, parse the helper-returned full `content` as JSON.
+5. If multiple artifacts from the same specialist type exist, the helper already chose the **latest** (highest `created_at`) for each prefix.
+6. If `get_verification_round_artifacts` fails or returns no matches after rescue cycles → treat as "no round artifacts". Continue, but note critic output as unavailable for this round.
 
 Store ALL retrieved artifact content (keyed by title prefix) for use in steps C and F2.
 

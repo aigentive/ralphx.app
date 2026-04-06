@@ -726,8 +726,8 @@ export const ALL_TOOLS: Tool[] = [
       "Retrieve all team artifacts for a session. " +
       "Returns artifacts from the 'team-findings' bucket filtered by session ID. " +
       "Use the PARENT ideation session_id for verification flows; if a verification child session_id is passed, the backend remaps it to the parent ideation session automatically. " +
-      "Verification flows should call this on the PARENT ideation session_id and then filter by created_at/title prefix client-side to find the latest critic or specialist artifacts for the current round. " +
-      "Example: call get_team_artifacts({\"session_id\":\"<parent-session>\"}) after critic Task returns, then fetch the newest Completeness:/Feasibility: artifact ids with get_artifact.",
+      "Verification flows should generally prefer get_verification_round_artifacts instead of hand-filtering summaries client-side. " +
+      "Example: call get_team_artifacts({\"session_id\":\"<parent-session>\"}) when you truly need the full unfiltered artifact list for a session.",
     inputSchema: {
       type: "object",
       examples: [{ session_id: "parent-session-id" }],
@@ -738,6 +738,46 @@ export const ALL_TOOLS: Tool[] = [
         },
       },
       required: ["session_id"],
+    },
+  },
+  {
+    name: "get_verification_round_artifacts",
+    description:
+      "Verifier-oriented helper that fetches the latest TeamResearch artifacts per requested title prefix for the current verification round. " +
+      "Uses the PARENT ideation session_id as the canonical target; if a verification child session_id is passed, the backend remaps it to the parent ideation session automatically. " +
+      "Applies created_after filtering server-side in the MCP proxy, sorts by created_at descending per prefix, and can attach full artifact content so the verifier does not need a separate get_artifact fetch for the winning matches. " +
+      "Example: call get_verification_round_artifacts({\"session_id\":\"<parent-session>\",\"prefixes\":[\"Completeness: \",\"Feasibility: \"],\"created_after\":\"2026-04-06T00:00:00Z\"}) after critic Task returns.",
+    inputSchema: {
+      type: "object",
+      examples: [
+        {
+          session_id: "parent-session-id",
+          prefixes: ["Completeness: ", "Feasibility: "],
+          created_after: "2026-04-06T00:00:00Z",
+          include_full_content: true,
+        },
+      ],
+      properties: {
+        session_id: {
+          type: "string",
+          description: "The ideation session ID. Parent ideation session is canonical for verification flows; verification child ids are auto-remapped to the parent.",
+        },
+        prefixes: {
+          type: "array",
+          items: { type: "string" },
+          minItems: 1,
+          description: "Title prefixes to match, such as 'Completeness: ', 'Feasibility: ', 'UX: ', 'PromptQuality: ', 'PipelineSafety: ', or 'StateMachine: '.",
+        },
+        created_after: {
+          type: "string",
+          description: "Optional ISO timestamp. Only artifacts created at or after this timestamp are considered for each prefix.",
+        },
+        include_full_content: {
+          type: "boolean",
+          description: "When true (default), fetch the full artifact content for the latest match per prefix.",
+        },
+      },
+      required: ["session_id", "prefixes"],
     },
   },
   {
@@ -2148,8 +2188,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
   [PLAN_VERIFIER]: [
     "get_session_plan",
     "get_session_messages",
-    "get_team_artifacts",
-    "get_artifact",
+    "get_verification_round_artifacts",
     "get_parent_session_context",
     "report_verification_round",
     "complete_plan_verification",
@@ -2368,7 +2407,15 @@ export function getToolRecoveryHint(toolName: string): string | null {
       const examples = formatToolExamples(tool);
       return [
         "Read artifacts from the PARENT ideation session_id as the canonical target. If a verification child session id is passed, the backend remaps it to the parent automatically.",
-        "After critic Task returns, fetch the parent-session artifacts and then load the newest matching artifact ids.",
+        "Verification flows should usually prefer get_verification_round_artifacts instead of manually sorting summaries and then loading full artifact ids.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    case "get_verification_round_artifacts": {
+      const examples = formatToolExamples(tool);
+      return [
+        "Use this verifier helper instead of manually calling get_team_artifacts + get_artifact + client-side sorting for current-round artifacts.",
+        "Provide the parent ideation session_id plus the title prefixes you expect; the MCP proxy filters by created_after and returns the latest match per prefix.",
         ...examples.map((example) => `Example payload: ${example}`),
       ].join("\n");
     }
