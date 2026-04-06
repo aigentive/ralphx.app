@@ -327,6 +327,14 @@ impl<R: Runtime> StartupJobRunner<R> {
     /// respawn the appropriate agent.
     pub async fn run(&self) -> HashSet<String> {
         debug!("StartupJobRunner::run() called");
+        {
+            let cfg = crate::infrastructure::agents::claude::reconciliation_config();
+            info!(
+                executing_max_wall_clock_minutes = cfg.executing_max_wall_clock_minutes,
+                executing_max_startup_resumes = cfg.executing_max_startup_resumes,
+                "Startup recovery limits"
+            );
+        }
 
         if is_startup_recovery_disabled() {
             info!(
@@ -621,11 +629,25 @@ impl<R: Runtime> StartupJobRunner<R> {
                         "Phase 1: Resuming merge task"
                     );
 
-                    self.transition_service
-                        .execute_entry_actions(&task.id, &task, *status)
-                        .await;
-
-                    resumed += 1;
+                    let max_resumes = crate::infrastructure::agents::claude::reconciliation_config()
+                        .executing_max_startup_resumes;
+                    match self.should_prepare_startup_resume(&task, max_resumes).await {
+                        Ok(true) => {
+                            self.transition_service
+                                .execute_entry_actions(&task.id, &task, *status)
+                                .await;
+                            resumed += 1;
+                        }
+                        Ok(false) => {
+                            tracing::warn!(
+                                task_id = task.id.as_str(),
+                                "Phase 1: Skipping merge task respawn (budget exhausted or metadata write failed)"
+                            );
+                        }
+                        Err(_) => {
+                            // Error already logged inside should_prepare_startup_resume
+                        }
+                    }
                 }
             }
         }
@@ -708,12 +730,26 @@ impl<R: Runtime> StartupJobRunner<R> {
                         "Resuming task"
                     );
 
-                    // Re-execute entry actions to respawn the agent
-                    self.transition_service
-                        .execute_entry_actions(&task.id, &task, *status)
-                        .await;
-
-                    resumed += 1;
+                    let max_resumes = crate::infrastructure::agents::claude::reconciliation_config()
+                        .executing_max_startup_resumes;
+                    match self.should_prepare_startup_resume(&task, max_resumes).await {
+                        Ok(true) => {
+                            // Re-execute entry actions to respawn the agent
+                            self.transition_service
+                                .execute_entry_actions(&task.id, &task, *status)
+                                .await;
+                            resumed += 1;
+                        }
+                        Ok(false) => {
+                            tracing::warn!(
+                                task_id = task.id.as_str(),
+                                "Skipping task respawn (budget exhausted or metadata write failed)"
+                            );
+                        }
+                        Err(_) => {
+                            // Error already logged inside should_prepare_startup_resume
+                        }
+                    }
                 }
             }
         }
@@ -792,10 +828,25 @@ impl<R: Runtime> StartupJobRunner<R> {
                         "Re-triggering auto-transition for stuck task"
                     );
 
-                    // Re-execute entry actions - this will trigger check_auto_transition()
-                    self.transition_service
-                        .execute_entry_actions(&task.id, &task, *status)
-                        .await;
+                    let max_resumes = crate::infrastructure::agents::claude::reconciliation_config()
+                        .executing_max_startup_resumes;
+                    match self.should_prepare_startup_resume(&task, max_resumes).await {
+                        Ok(true) => {
+                            // Re-execute entry actions - this will trigger check_auto_transition()
+                            self.transition_service
+                                .execute_entry_actions(&task.id, &task, *status)
+                                .await;
+                        }
+                        Ok(false) => {
+                            tracing::warn!(
+                                task_id = task.id.as_str(),
+                                "Skipping auto-transition respawn (budget exhausted or metadata write failed)"
+                            );
+                        }
+                        Err(_) => {
+                            // Error already logged inside should_prepare_startup_resume
+                        }
+                    }
                 }
             }
         }
@@ -1013,6 +1064,95 @@ impl<R: Runtime> StartupJobRunner<R> {
                 item.context_id, e
             )),
         }
+    }
+
+    /// Budget check + metadata write before respawning an active-state task on startup.
+    ///
+    /// Returns:
+    /// - `Ok(true)`: budget OK, metadata written — proceed with respawn
+    /// - `Ok(false)`: budget exhausted — task transitioned to Failed (executing-family) or skipped
+    /// - `Err(msg)`: metadata write failed — skip respawn, leave task in current state
+    ///
+    /// Call order: budget check FIRST → write baseline → respawn.
+    async fn should_prepare_startup_resume(
+        &self,
+        task: &crate::domain::entities::Task,
+        max_resumes: u64,
+    ) -> Result<bool, String> {
+        use crate::application::reconciliation::metadata::record_execution_active_startup_resume;
+        use crate::domain::entities::ExecutionRecoveryMetadata;
+
+        // (1) Read startup_resume_count from metadata (default 0 via #[serde(default)])
+        let count = ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+            .unwrap_or(None)
+            .unwrap_or_default()
+            .startup_resume_count;
+
+        // (2) Budget check FIRST — before execute_entry_actions()
+        if count as u64 >= max_resumes {
+            let reason = format!(
+                "Execution interrupted by app restart too many times (limit: {})",
+                max_resumes
+            );
+            tracing::warn!(
+                task_id = task.id.as_str(),
+                count = count,
+                max = max_resumes,
+                "Startup resume budget exhausted; skipping respawn"
+            );
+            // Transition to Failed only for executing-family states (PO#3 — budget check before respawn)
+            let can_transition_to_failed = matches!(
+                task.internal_status,
+                InternalStatus::Executing | InternalStatus::ReExecuting
+            );
+            if can_transition_to_failed {
+                match self
+                    .transition_service
+                    .transition_task(&task.id, InternalStatus::Failed)
+                    .await
+                {
+                    Ok(_) => {
+                        // Add ReviewNote for audit trail — contains 'app restart' phrase per acceptance criteria
+                        if let Some(ref repo) = self.review_repo {
+                            let note = ReviewNote::with_notes(
+                                task.id.clone(),
+                                ReviewerType::System,
+                                ReviewOutcome::Approved,
+                                reason,
+                            );
+                            if let Err(e) = repo.add_note(&note).await {
+                                tracing::warn!(
+                                    error = %e,
+                                    task_id = task.id.as_str(),
+                                    "Failed to add startup resume budget exhaustion ReviewNote"
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            task_id = task.id.as_str(),
+                            error = %e,
+                            "Failed to transition budget-exhausted task to Failed"
+                        );
+                    }
+                }
+            }
+            return Ok(false);
+        }
+
+        // (3) Write metadata BEFORE respawn — if write fails, skip respawn entirely
+        if let Err(e) = record_execution_active_startup_resume(task, &*self.task_repo).await {
+            tracing::error!(
+                task_id = task.id.as_str(),
+                error = %e,
+                "Metadata write failed during startup resume; skipping respawn"
+            );
+            return Err(e);
+        }
+
+        // (4) Budget OK and metadata written — proceed with respawn
+        Ok(true)
     }
 
     /// Phase 0.8: Recover tasks that were escalated due to app crash or unclean shutdown.

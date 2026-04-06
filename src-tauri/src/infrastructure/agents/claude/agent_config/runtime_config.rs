@@ -340,6 +340,10 @@ pub struct ReconciliationConfig {
     /// by both startup recovery and the reconciler retry loop. Default: 86400 (24 hours).
     #[serde(default = "default_recovery_staleness_secs")]
     pub recovery_staleness_secs: u64,
+    /// Maximum number of automatic startup resumes for an Executing/ReExecuting task before
+    /// the task is transitioned to Failed. Default: 1. Range [1, 10].
+    #[serde(default = "default_executing_max_startup_resumes")]
+    pub executing_max_startup_resumes: u64,
 }
 
 fn default_merge_circuit_breaker_threshold() -> u64 {
@@ -374,6 +378,9 @@ fn default_git_isolation_max_retries() -> u32 {
 }
 fn default_recovery_staleness_secs() -> u64 {
     86400 // 24 hours
+}
+fn default_executing_max_startup_resumes() -> u64 {
+    1
 }
 
 impl Default for ReconciliationConfig {
@@ -420,6 +427,7 @@ impl Default for ReconciliationConfig {
             git_isolation_retry_base_secs: 5,
             git_isolation_max_retries: 3,
             recovery_staleness_secs: 86400,
+            executing_max_startup_resumes: 1,
         }
     }
 }
@@ -637,6 +645,7 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     env_u64!(cfg.reconciliation.execution_failed_retry_base_secs, "RALPHX_RECONCILIATION_EXECUTION_FAILED_RETRY_BASE_SECS");
     env_u64!(cfg.reconciliation.execution_failed_retry_max_secs, "RALPHX_RECONCILIATION_EXECUTION_FAILED_RETRY_MAX_SECS");
     env_u64!(cfg.reconciliation.recovery_staleness_secs, "RALPHX_RECONCILIATION_RECOVERY_STALENESS_SECS");
+    env_u64!(cfg.reconciliation.executing_max_startup_resumes, "RALPHX_RECONCILIATION_EXECUTING_MAX_STARTUP_RESUMES");
     env_u64!(cfg.reconciliation.merge_circuit_breaker_threshold, "RALPHX_MERGE_CIRCUIT_BREAKER_THRESHOLD");
     env_u64!(cfg.reconciliation.merge_circuit_breaker_window, "RALPHX_MERGE_CIRCUIT_BREAKER_WINDOW");
     env_u64!(cfg.reconciliation.freshness_backoff_base_secs, "RALPHX_RECONCILIATION_FRESHNESS_BACKOFF_BASE_SECS");
@@ -868,6 +877,14 @@ pub fn validate_reconciliation_config(cfg: &mut ReconciliationConfig) {
     if cfg.git_isolation_retry_base_secs == 0 {
         warn!("git_isolation_retry_base_secs must be > 0, got 0; clamping to 5");
         cfg.git_isolation_retry_base_secs = 5;
+    }
+
+    if cfg.executing_max_startup_resumes < 1 || cfg.executing_max_startup_resumes > 10 {
+        warn!(
+            "executing_max_startup_resumes must be in [1, 10], got {}; clamping to 1",
+            cfg.executing_max_startup_resumes
+        );
+        cfg.executing_max_startup_resumes = 1;
     }
 }
 
