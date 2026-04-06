@@ -37,5 +37,6 @@ mod human;
 mod notes;
 
 pub use complete::complete_review;
+pub use complete::ensure_task_still_reviewing_before_transition;
 pub use human::{approve_task, request_task_changes};
 pub use notes::get_review_notes;

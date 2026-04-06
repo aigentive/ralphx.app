@@ -266,6 +266,47 @@ async fn test_complete_review_rejected_when_task_merged() {
     }
 }
 
+/// RC#3 late guard: the final transition must still reject when a task leaves
+/// Reviewing after handler entry but before the transition is applied.
+#[tokio::test]
+async fn test_complete_review_late_guard_rejects_midflight_state_drift() {
+    let state = setup_review_test_state().await;
+    let task = seed_task_with_status(&state, InternalStatus::Reviewing).await;
+
+    let mut transitioned = state
+        .app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    transitioned.internal_status = InternalStatus::Merged;
+    transitioned.touch();
+    state.app_state.task_repo.update(&transitioned).await.unwrap();
+
+    let result = ensure_task_still_reviewing_before_transition(
+        &state,
+        &task.id,
+        "approved",
+    )
+    .await;
+
+    match result {
+        Err((status, msg)) => {
+            assert_eq!(
+                status,
+                StatusCode::BAD_REQUEST,
+                "late stale-review guard must reject midflight drift. Got: {status}",
+            );
+            assert!(
+                msg.contains("Task not in reviewing state"),
+                "late stale-review guard must mention reviewing state. Got: {msg}",
+            );
+        }
+        Ok(_) => panic!("late stale-review guard must reject when task drifted to merged"),
+    }
+}
+
 /// RC#3 guard 3: complete_review on a Ready task returns 400.
 ///
 /// Scenario: reviewer agent somehow fires complete_review while the task is in a

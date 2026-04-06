@@ -1,5 +1,37 @@
 use super::*;
 
+pub async fn ensure_task_still_reviewing_before_transition(
+    state: &HttpServerState,
+    task_id: &TaskId,
+    decision: &str,
+) -> Result<(), (StatusCode, String)> {
+    let current_task = state
+        .app_state
+        .task_repo
+        .get_by_id(task_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found".to_string()))?;
+
+    if current_task.internal_status != InternalStatus::Reviewing {
+        tracing::warn!(
+            task_id = %task_id.as_str(),
+            decision = %decision,
+            rejection_reason = %current_task.internal_status.as_str(),
+            "complete_review rejected: task no longer in reviewing state before transition"
+        );
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Task not in reviewing state. Current state: {}",
+                current_task.internal_status.as_str()
+            ),
+        ));
+    }
+
+    Ok(())
+}
+
 pub async fn complete_review(
     State(state): State<HttpServerState>,
     scope: ProjectScope,
@@ -318,6 +350,9 @@ pub async fn complete_review(
 
     let new_status = match outcome {
         ReviewToolOutcome::Approved => {
+            ensure_task_still_reviewing_before_transition(&state, &task_id, &req.decision)
+                .await?;
+
             // Check if human review is required
             let require_human = state
                 .app_state
@@ -337,6 +372,9 @@ pub async fn complete_review(
             target_status
         }
         ReviewToolOutcome::NeedsChanges => {
+            ensure_task_still_reviewing_before_transition(&state, &task_id, &req.decision)
+                .await?;
+
             // Needs changes: transition to RevisionNeeded (auto re-execute)
             transition_service
                 .transition_task(&task_id, InternalStatus::RevisionNeeded)
@@ -345,6 +383,9 @@ pub async fn complete_review(
             InternalStatus::RevisionNeeded
         }
         ReviewToolOutcome::Escalate => {
+            ensure_task_still_reviewing_before_transition(&state, &task_id, &req.decision)
+                .await?;
+
             // Escalate: transition to Escalated (requires human decision)
             transition_service
                 .transition_task(&task_id, InternalStatus::Escalated)
@@ -353,6 +394,9 @@ pub async fn complete_review(
             InternalStatus::Escalated
         }
         ReviewToolOutcome::ApprovedNoChanges => {
+            ensure_task_still_reviewing_before_transition(&state, &task_id, &req.decision)
+                .await?;
+
             // Extract fields BEFORE transition (transition may clear these from task)
             let task_branch = task.task_branch.clone();
             let worktree_path = task.worktree_path.clone();
