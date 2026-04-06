@@ -26,7 +26,7 @@ use crate::domain::repositories::{
     ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository,
     SessionLinkRepository, TaskDependencyRepository, TaskProposalRepository, TaskQARepository,
     TaskRepository, TaskStepRepository, TeamMessageRepository, TeamSessionRepository,
-    WebhookRegistrationRepository, WorkflowRepository,
+    VerificationCriticResultRepo, WebhookRegistrationRepository, WorkflowRepository,
 };
 use crate::domain::services::{
     GithubServiceTrait, MemoryRunningAgentRegistry, MessageQueue, RunningAgentRegistry,
@@ -71,7 +71,8 @@ use crate::infrastructure::sqlite::{
     SqliteRunningAgentRegistry, SqliteSessionLinkRepository, SqliteTaskDependencyRepository,
     SqliteTaskProposalRepository, SqliteTaskQARepository, SqliteTaskRepository,
     SqliteTaskStepRepository, SqliteTeamMessageRepository, SqliteTeamSessionRepository,
-    SqliteWebhookRegistrationRepository, SqliteWorkflowRepository,
+    SqliteVerificationCriticResultRepository, SqliteWebhookRegistrationRepository,
+    SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, GhCliGithubService, MockAgenticClient};
 
@@ -169,6 +170,8 @@ pub struct AppState {
     pub team_session_repo: Arc<dyn TeamSessionRepository>,
     /// Team message repository for agent team messages
     pub team_message_repo: Arc<dyn TeamMessageRepository>,
+    /// Verification critic result repository for run-scoped critic result tracking
+    pub verification_critic_result_repo: Arc<dyn VerificationCriticResultRepo>,
     /// Execution plan repository for tracking plan implementation attempts
     pub execution_plan_repo: Arc<dyn ExecutionPlanRepository>,
     /// Chat attachment repository for file uploads in chat
@@ -375,6 +378,9 @@ impl AppState {
             team_message_repo: Arc::new(SqliteTeamMessageRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
+            verification_critic_result_repo: Arc::new(
+                SqliteVerificationCriticResultRepository::from_shared(Arc::clone(&shared_conn)),
+            ),
             execution_plan_repo: Arc::new(SqliteExecutionPlanRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
@@ -501,6 +507,9 @@ impl AppState {
             )),
             team_session_repo: Arc::new(MemoryTeamSessionRepository::new()),
             team_message_repo: Arc::new(MemoryTeamMessageRepository::new()),
+            verification_critic_result_repo: Arc::new(
+                SqliteVerificationCriticResultRepository::from_shared(Arc::clone(&shared_conn)),
+            ),
             execution_plan_repo: Arc::new(MemoryExecutionPlanRepository::new()),
             chat_attachment_repo,
             attachment_storage_path,
@@ -601,6 +610,9 @@ impl AppState {
             )),
             team_session_repo: Arc::new(MemoryTeamSessionRepository::new()),
             team_message_repo: Arc::new(MemoryTeamMessageRepository::new()),
+            verification_critic_result_repo: Arc::new(
+                SqliteVerificationCriticResultRepository::from_shared(Arc::clone(&shared_conn)),
+            ),
             execution_plan_repo: Arc::new(MemoryExecutionPlanRepository::new()),
             chat_attachment_repo,
             attachment_storage_path,
@@ -715,6 +727,9 @@ impl AppState {
             )),
             team_session_repo: Arc::new(MemoryTeamSessionRepository::new()),
             team_message_repo: Arc::new(MemoryTeamMessageRepository::new()),
+            verification_critic_result_repo: Arc::new(
+                SqliteVerificationCriticResultRepository::from_shared(Arc::clone(&shared_conn)),
+            ),
             execution_plan_repo: Arc::new(SqliteExecutionPlanRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
@@ -808,6 +823,12 @@ impl AppState {
             )),
             team_session_repo: Arc::new(MemoryTeamSessionRepository::new()),
             team_message_repo: Arc::new(MemoryTeamMessageRepository::new()),
+            verification_critic_result_repo: Arc::new(
+                SqliteVerificationCriticResultRepository::new(
+                    open_connection(&PathBuf::from(":memory:"))
+                        .expect("Failed to create in-memory connection for verification_critic_result_repo"),
+                ),
+            ),
             execution_plan_repo: Arc::new(MemoryExecutionPlanRepository::new()),
             chat_attachment_repo,
             attachment_storage_path,

@@ -1300,6 +1300,46 @@ pub struct GetTeamArtifactsResponse {
     pub count: usize,
 }
 
+/// POST /internal/verification-critic-results — submit one critic result
+#[derive(Debug, Deserialize)]
+pub struct SubmitCriticResultRequest {
+    pub parent_session_id: String,
+    pub verification_session_id: String,
+    pub round: i32,
+    pub critic_kind: String,
+    pub title: String,
+    pub content: String,
+    pub artifact_type: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SubmitCriticResultResponse {
+    pub artifact_id: String,
+    pub result_id: String,
+}
+
+/// GET /internal/verification-critic-results — query results by (parent, generation, round)
+#[derive(Debug, Deserialize)]
+pub struct GetRoundResultsQuery {
+    pub parent_session_id: String,
+    pub generation: i32,
+    pub round: i32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RoundResultEntry {
+    pub artifact_id: String,
+    pub title: String,
+    pub status: String,
+    pub content: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GetRoundResultsResponse {
+    pub results_by_critic_kind: std::collections::HashMap<String, RoundResultEntry>,
+}
+
 /// GET /api/team/session_state/:session_id response
 #[derive(Debug, Serialize)]
 pub struct TeamSessionStateResponse {

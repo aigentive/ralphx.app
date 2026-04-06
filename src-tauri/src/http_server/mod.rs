@@ -110,6 +110,15 @@ pub async fn start_http_server(
         .route(
             "/api/internal/sessions/:id/cross_project_check",
             post(set_cross_project_checked),
+        )
+        // Verification critic result endpoints (plan-verifier + critic agents)
+        .route(
+            "/api/internal/verification-critic-results",
+            post(submit_critic_result),
+        )
+        .route(
+            "/api/internal/verification-critic-results",
+            get(get_round_results),
         );
 
     // Public API routes — permissive CORS.

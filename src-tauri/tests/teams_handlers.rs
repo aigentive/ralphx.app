@@ -1,13 +1,14 @@
 use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
-use axum::{extract::{Path, State}, Json};
+use axum::{extract::{Path, Query, State}, Json};
 use ralphx_lib::domain::entities::{
     ideation::{IdeationSession, IdeationSessionStatus, SessionPurpose},
     ArtifactType, IdeationSessionId, ProjectId,
 };
 use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::types::{
-    CreateTeamArtifactRequest, GetTeamArtifactsResponse, HttpServerState, TeamPlanTeammate,
+    CreateTeamArtifactRequest, GetRoundResultsQuery, GetTeamArtifactsResponse, HttpServerState,
+    SubmitCriticResultRequest, TeamPlanTeammate,
 };
 use ralphx_lib::infrastructure::agents::claude::TeammateSpawnRequest;
 use std::sync::Arc;
@@ -180,6 +181,20 @@ fn test_state() -> HttpServerState {
     let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
     HttpServerState {
         app_state: Arc::new(AppState::new_test()),
+        execution_state: Arc::new(ExecutionState::new()),
+        team_tracker: tracker,
+        team_service,
+    }
+}
+
+/// State backed by a shared SQLite connection with full migrations run.
+/// Use this for tests that exercise `verification_critic_result_repo` or
+/// other SQLite-backed repos that require the schema to exist.
+fn test_state_sqlite() -> HttpServerState {
+    let tracker = TeamStateTracker::new();
+    let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
+    HttpServerState {
+        app_state: Arc::new(AppState::new_sqlite_test()),
         execution_state: Arc::new(ExecutionState::new()),
         team_tracker: tracker,
         team_service,
@@ -621,4 +636,80 @@ async fn test_get_team_artifacts_remaps_verification_child_session_id_to_parent(
     let Json(GetTeamArtifactsResponse { count, artifacts }) = artifacts;
     assert_eq!(count, 1, "expected remapped parent artifacts to be returned");
     assert_eq!(artifacts[0].name, "Feasibility: Round 1");
+}
+
+/// Backwards-compat: artifact created via submit_critic_result must also appear in
+/// get_team_artifacts for the same session (both write to the team-findings bucket).
+#[tokio::test]
+async fn test_get_verification_round_artifacts_backwards_compat() {
+    let state = test_state_sqlite();
+
+    // Seed an ideation session — verification_generation defaults to 0 in the DB.
+    state
+        .app_state
+        .ideation_session_repo
+        .create(
+            IdeationSession::builder()
+                .id(IdeationSessionId::from_string("compat-parent-session".to_string()))
+                .project_id(ProjectId::from_string("compat-project".to_string()))
+                .status(IdeationSessionStatus::Active)
+                .build(),
+        )
+        .await
+        .expect("seed session");
+
+    // Submit a critic result via the new endpoint
+    let submit_resp = submit_critic_result(
+        State(state.clone()),
+        Json(SubmitCriticResultRequest {
+            parent_session_id: "compat-parent-session".to_string(),
+            verification_session_id: "compat-verification-session".to_string(),
+            round: 1,
+            critic_kind: "completeness".to_string(),
+            title: "Completeness: Round 1 — compat test".to_string(),
+            content: r#"{"status":"complete","gaps":[]}"#.to_string(),
+            artifact_type: Some("TeamResearch".to_string()),
+        }),
+    )
+    .await
+    .expect("submit_critic_result should succeed");
+
+    let artifact_id = submit_resp.0.artifact_id.clone();
+    assert!(!artifact_id.is_empty(), "should return a non-empty artifact_id");
+
+    // Old endpoint: get_team_artifacts should still return the artifact
+    let get_resp = get_team_artifacts(
+        State(state.clone()),
+        Path("compat-parent-session".to_string()),
+    )
+    .await
+    .expect("get_team_artifacts should succeed");
+
+    let Json(GetTeamArtifactsResponse { count, artifacts }) = get_resp;
+    assert_eq!(count, 1, "old endpoint must still see the submitted artifact");
+    assert_eq!(
+        artifacts[0].name, "Completeness: Round 1 — compat test",
+        "artifact title must match"
+    );
+
+    // New endpoint: get_round_results should also return it (generation=0 matches DB default).
+    let round_resp = get_round_results(
+        State(state.clone()),
+        Query(GetRoundResultsQuery {
+            parent_session_id: "compat-parent-session".to_string(),
+            generation: 0,
+            round: 1,
+        }),
+    )
+    .await
+    .expect("get_round_results should succeed");
+
+    let Json(round_results) = round_resp;
+    assert!(
+        round_results.results_by_critic_kind.contains_key("completeness"),
+        "completeness result must be present"
+    );
+    let entry = &round_results.results_by_critic_kind["completeness"];
+    assert_eq!(entry.artifact_id, artifact_id, "artifact_id must match");
+    assert_eq!(entry.status, "complete");
 }

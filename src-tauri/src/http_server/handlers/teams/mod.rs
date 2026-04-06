@@ -46,6 +46,7 @@ use crate::infrastructure::agents::claude::{
 };
 
 mod artifacts;
+mod critic_results;
 mod plan;
 mod session_state;
 mod spawn;
@@ -53,6 +54,7 @@ mod spawn_execution;
 mod spawn_helpers;
 
 pub use self::artifacts::{create_team_artifact, get_team_artifacts};
+pub use self::critic_results::{get_round_results, submit_critic_result};
 pub use self::plan::{
     approve_team_plan, await_team_plan, get_pending_plan, reject_team_plan,
     request_team_plan_register,
