@@ -6,7 +6,7 @@ use crate::application::chat_service::MockChatService;
 use crate::application::{AppState, TaskTransitionService};
 use crate::commands::execution_commands::{ActiveProjectState, ExecutionState};
 use crate::domain::entities::app_state::ExecutionHaltMode;
-use crate::domain::entities::{IdeationSession, InternalStatus, Project, ProjectId, Task};
+use crate::domain::entities::{IdeationSession, InternalStatus, Project, ProjectId, SessionOrigin, Task};
 use crate::domain::entities::ideation::IdeationSessionStatus;
 use crate::domain::services::RunningAgentKey;
 
@@ -777,5 +777,54 @@ async fn test_run_skips_ideation_recovery_when_persisted_stop_barrier_is_set() {
         mock.call_count(),
         0,
         "Persisted stop barrier must suppress Phase N+1 ideation recovery"
+    );
+}
+
+#[tokio::test]
+async fn test_run_refreshes_phase_n1_ideation_sessions_before_recovery() {
+    let app_state = AppState::new_test();
+    let project = Project::new("Test Project".into(), "/tmp/test-project".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut session = IdeationSession::new(project.id.clone());
+    session.status = IdeationSessionStatus::Active;
+    session.origin = SessionOrigin::External;
+    session.external_activity_phase = Some("created".to_string());
+    session.updated_at = chrono::Utc::now() - chrono::Duration::hours(5);
+    let session_id = session.id.clone();
+    let old_updated_at = session.updated_at;
+    app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    app_state
+        .running_agent_registry
+        .register(
+            RunningAgentKey::new("ideation", session_id.as_str()),
+            123,
+            "conv-refresh".to_string(),
+            "run-refresh".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let mock = Arc::new(MockChatService::new());
+    let runner =
+        build_runner_with_chat_service(&app_state, Arc::clone(&mock) as Arc<dyn ChatService>);
+
+    runner.run().await;
+
+    let refreshed = app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        refreshed.updated_at > old_updated_at,
+        "Phase N+1 ideation sessions should be touched before startup recovery so cold-boot archival does not sweep them"
     );
 }

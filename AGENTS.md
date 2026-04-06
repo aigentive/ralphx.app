@@ -65,7 +65,7 @@ When working in `src-tauri/`, also follow:
 |---|---|---|
 | P0 | Verifier critic resumption protocol | Landed: `plan-verifier` now treats `Task(...)` results with `agentId` as resumable/in-progress and requires full-context rescue prompts; next add deeper regressions and, if needed, runtime-side recovery so critics do not false-escalate while artifacts are still pending |
 | P0 | Model-agnostic MCP/tool UX | Landed: high-friction MCP tools now document parent-vs-child session rules plus concrete payload examples; next extend repair-oriented backend/tool-side hints and consider narrower helper/composite tools for weak-model workflows |
-| P0 | Startup external-session archival safety | Landed first slice: cold boot now respects the external-session TTL instead of archiving every `created`/`error` session on restart; next add recovery-aware exclusions for verified-without-proposals sessions and external ideation sessions claimed for startup recovery |
+| P0 | Startup external-session archival safety | Landed: cold boot now respects the external-session TTL and Phase N+1 ideation recovery refreshes startup-resumed sessions before archival can sweep them; next add recovery-aware exclusions for verified-without-proposals sessions |
 
 ## Active Migration Tracker
 

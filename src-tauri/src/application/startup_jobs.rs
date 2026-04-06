@@ -16,6 +16,7 @@
 
 use std::path::Path;
 use std::sync::Arc;
+use std::collections::HashSet;
 use tauri::{AppHandle, Emitter, Runtime};
 use tracing::{debug, info};
 
@@ -468,6 +469,8 @@ impl<R: Runtime> StartupJobRunner<R> {
             }
         }
 
+        self.refresh_phase_n1_snapshot_sessions(&phase_n1_snapshot).await;
+
         // Check if execution is paused - skip resumption if so
         if self.execution_state.is_paused() {
             info!("Execution paused, skipping task resumption");
@@ -874,6 +877,44 @@ impl<R: Runtime> StartupJobRunner<R> {
             } else {
                 info!("Phase N+1: No chat service configured, skipping ideation recovery");
             }
+        }
+    }
+
+    async fn refresh_phase_n1_snapshot_sessions(
+        &self,
+        phase_n1_snapshot: &[(crate::domain::services::RunningAgentKey, crate::domain::services::RunningAgentInfo)],
+    ) {
+        if phase_n1_snapshot.is_empty() || self.chat_service.is_none() {
+            return;
+        }
+
+        let mut refreshed = 0u32;
+        let mut seen_sessions = HashSet::new();
+
+        for (key, _) in phase_n1_snapshot {
+            if !seen_sessions.insert(key.context_id.clone()) {
+                continue;
+            }
+
+            match self.ideation_session_repo.touch_updated_at(&key.context_id).await {
+                Ok(()) => {
+                    refreshed += 1;
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        session_id = %key.context_id,
+                        error = %error,
+                        "Phase N+1: Failed to refresh ideation session before startup recovery"
+                    );
+                }
+            }
+        }
+
+        if refreshed > 0 {
+            info!(
+                count = refreshed,
+                "Phase N+1: Refreshed ideation sessions before startup recovery"
+            );
         }
     }
 
