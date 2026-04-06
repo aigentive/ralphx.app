@@ -103,6 +103,7 @@ describe('getToolRecoveryHint', () => {
   it('returns parent-session and example guidance for update_plan_verification', () => {
     const hint = getToolRecoveryHint('update_plan_verification');
     expect(hint).toContain('PARENT ideation session_id');
+    expect(hint).toContain('backend remaps it automatically');
     expect(hint).toContain('prefer those narrower helpers');
     expect(hint).toContain('status=reviewing');
     expect(hint).toContain('Example reviewing payload:');
@@ -112,6 +113,7 @@ describe('getToolRecoveryHint', () => {
   it('returns narrower verifier-helper guidance for report_verification_round', () => {
     const hint = getToolRecoveryHint('report_verification_round');
     expect(hint).toContain('verifier-friendly helper');
+    expect(hint).toContain('backend remaps it to the parent automatically');
     expect(hint).toContain('status=reviewing and in_progress=true are filled in automatically');
     expect(hint).toContain('Example payload:');
   });
@@ -119,6 +121,7 @@ describe('getToolRecoveryHint', () => {
   it('returns narrower verifier-helper guidance for complete_plan_verification', () => {
     const hint = getToolRecoveryHint('complete_plan_verification');
     expect(hint).toContain('terminal verification updates');
+    expect(hint).toContain('backend remaps it to the parent automatically');
     expect(hint).toContain('in_progress=false is filled in automatically');
     expect(hint).toContain('External sessions cannot use status=skipped');
   });
@@ -443,6 +446,7 @@ describe('New team tool definitions', () => {
     it('should document parent-session targeting and terminal usage', () => {
       expect(tool).toBeDefined();
       expect(tool?.description).toContain('PARENT ideation session_id');
+      expect(tool?.description).toContain('backend remaps it automatically');
       expect(tool?.description).toContain("status='reviewing'");
       expect(tool?.description).toContain("External sessions cannot use status='skipped'");
       expect(tool?.description).toContain('Example reviewing payload');
@@ -453,7 +457,7 @@ describe('New team tool definitions', () => {
       const sessionId = tool?.inputSchema.properties?.session_id as any;
       const status = tool?.inputSchema.properties?.status as any;
       const generation = tool?.inputSchema.properties?.generation as any;
-      expect(sessionId.description).toContain('NOT the verification child session ID');
+      expect(sessionId.description).toContain('auto-remapped');
       expect(status.description).toContain('Use reviewing for in-progress rounds');
       expect(generation.description).toContain('Pass on every verifier call');
       expect((tool?.inputSchema as any).examples?.[0]).toMatchObject({
@@ -475,6 +479,7 @@ describe('New team tool definitions', () => {
     it('should expose the verifier-friendly round helper with fixed semantics', () => {
       expect(tool).toBeDefined();
       expect(tool?.description).toContain('Verifier-friendly helper');
+      expect(tool?.description).toContain('backend remaps it automatically');
       expect(tool?.description).toContain('status fixed to reviewing');
       expect(tool?.description).toContain('in_progress fixed to true');
       expect((tool?.inputSchema as any).examples?.[0]).toMatchObject({
@@ -492,6 +497,7 @@ describe('New team tool definitions', () => {
     it('should expose the verifier-friendly terminal helper with fixed semantics', () => {
       expect(tool).toBeDefined();
       expect(tool?.description).toContain('Verifier-friendly helper');
+      expect(tool?.description).toContain('backend remaps it automatically');
       expect(tool?.description).toContain('in_progress fixed to false');
       expect(tool?.description).toContain("External sessions cannot use status='skipped'");
       expect((tool?.inputSchema as any).examples?.[0]).toMatchObject({

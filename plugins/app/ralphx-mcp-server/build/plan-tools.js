@@ -89,6 +89,7 @@ export const PLAN_TOOLS = [
     {
         name: "report_verification_round",
         description: "Verifier-friendly helper for reporting an in-progress verification round on the PARENT ideation session. " +
+            "The parent session remains canonical; if a verification child session_id is passed, the backend remaps it automatically. " +
             "This is the simpler alias for update_plan_verification with status fixed to reviewing and in_progress fixed to true. " +
             "Use this after each round once the merged gap list is ready. If generation is stale, call get_plan_verification again instead of guessing.",
         inputSchema: {
@@ -104,7 +105,7 @@ export const PLAN_TOOLS = [
             properties: {
                 session_id: {
                     type: "string",
-                    description: "PARENT ideation session ID being verified (NOT the verification child session ID)",
+                    description: "PARENT ideation session ID being verified. Verification child session IDs are auto-remapped to that parent.",
                 },
                 round: {
                     type: "integer",
@@ -143,6 +144,7 @@ export const PLAN_TOOLS = [
     {
         name: "complete_plan_verification",
         description: "Verifier-friendly helper for terminal verification updates on the PARENT ideation session. " +
+            "The parent session remains canonical; if a verification child session_id is passed, the backend remaps it automatically. " +
             "This is the simpler alias for update_plan_verification with in_progress fixed to false. " +
             "Use verified or needs_revision for normal terminal outcomes; use reviewing only for abort/error cleanup. External sessions cannot use status='skipped'. " +
             "If generation is stale, call get_plan_verification again instead of guessing.",
@@ -167,7 +169,7 @@ export const PLAN_TOOLS = [
             properties: {
                 session_id: {
                     type: "string",
-                    description: "PARENT ideation session ID being verified (NOT the verification child session ID)",
+                    description: "PARENT ideation session ID being verified. Verification child session IDs are auto-remapped to that parent.",
                 },
                 status: {
                     type: "string",
@@ -225,7 +227,7 @@ export const PLAN_TOOLS = [
     },
     {
         name: "update_plan_verification",
-        description: "Update verification state for an ideation session. Use the PARENT ideation session_id, never the verification child session_id. " +
+        description: "Update verification state for an ideation session. Use the PARENT ideation session_id as the canonical target; if a verification child session_id is passed, the backend remaps it automatically. " +
             "Typical verifier flow: mid-round call with status='reviewing', in_progress=true, round=<n>, gaps=[...], generation=<current>; terminal call with in_progress=false and status='verified' or 'needs_revision'. " +
             "External sessions cannot use status='skipped'. If the server rejects a call, read the error and correct the payload instead of guessing a new shape. " +
             "Example reviewing payload: {\"session_id\":\"<parent-session>\",\"status\":\"reviewing\",\"in_progress\":true,\"round\":1,\"gaps\":[],\"generation\":3}. " +
@@ -254,7 +256,7 @@ export const PLAN_TOOLS = [
             properties: {
                 session_id: {
                     type: "string",
-                    description: "PARENT ideation session ID being verified (NOT the verification child session ID)",
+                    description: "PARENT ideation session ID being verified. Verification child session IDs are auto-remapped to that parent.",
                 },
                 status: {
                     type: "string",
@@ -316,7 +318,7 @@ export const PLAN_TOOLS = [
     },
     {
         name: "get_plan_verification",
-        description: "Get the current verification status for the PARENT ideation session. Use this before and during verification to confirm the generation, in_progress flag, and current round before calling report_verification_round or complete_plan_verification. " +
+        description: "Get the current verification status for the PARENT ideation session. Use this before and during verification to confirm the generation, in_progress flag, and current round before calling report_verification_round or complete_plan_verification. Verification child session_ids are auto-remapped to the parent ideation session. " +
             "If a verification update call is rejected, call this again on the parent session and copy the returned generation/in_progress values instead of guessing.",
         inputSchema: {
             type: "object",

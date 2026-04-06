@@ -15,21 +15,54 @@ pub async fn get_plan_verification(
     use crate::domain::services::gap_score;
     use crate::http_server::types::{VerificationGapResponse, VerificationRoundSummary};
 
-    let session_id_obj = crate::domain::entities::IdeationSessionId::from_string(session_id.clone());
+    let requested_session_id = session_id;
+    let requested_session_id_obj =
+        crate::domain::entities::IdeationSessionId::from_string(requested_session_id.clone());
+    let requested_session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&requested_session_id_obj)
+        .await
+        .ok()
+        .flatten()
+        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
 
     if !scope.is_unrestricted() {
-        let session = state
-            .app_state
-            .ideation_session_repo
-            .get_by_id(&session_id_obj)
-            .await
-            .ok()
-            .flatten()
-            .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
-        session
+        requested_session
             .assert_project_scope(&scope)
             .map_err(|_| json_error(StatusCode::FORBIDDEN, "Forbidden"))?;
     }
+
+    let (session_id, session_id_obj, resolved_session) = if requested_session.session_purpose
+        == crate::domain::entities::SessionPurpose::Verification
+    {
+        let parent_id = requested_session.parent_session_id.clone().ok_or_else(|| {
+            json_error(
+                StatusCode::BAD_REQUEST,
+                "Cannot read verification state from a verification child session without a parent session.",
+            )
+        })?;
+        let parent_session = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&parent_id)
+            .await
+            .ok()
+            .flatten()
+            .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Parent session not found"))?;
+        tracing::info!(
+            requested_session_id = %requested_session_id,
+            parent_session_id = %parent_id.as_str(),
+            "Auto-remapping verification read from child session to parent session"
+        );
+        (parent_id.as_str().to_string(), parent_id, parent_session)
+    } else {
+        (
+            requested_session_id,
+            requested_session_id_obj,
+            requested_session,
+        )
+    };
 
     let (status, in_progress, metadata_json) = state
         .app_state
@@ -106,35 +139,18 @@ pub async fn get_plan_verification(
         })
         .unwrap_or_default();
 
-    let (plan_version, verification_generation) = {
-        let session = state
+    let verification_generation = resolved_session.verification_generation;
+    let plan_version = if let Some(ref artifact_id) = resolved_session.plan_artifact_id {
+        state
             .app_state
-            .ideation_session_repo
-            .get_by_id(&session_id_obj)
+            .artifact_repo
+            .get_by_id(artifact_id)
             .await
             .ok()
-            .flatten();
-        let generation = session
-            .as_ref()
-            .map(|s| s.verification_generation)
-            .unwrap_or(0);
-        let plan_version = if let Some(ref session) = session {
-            if let Some(ref artifact_id) = session.plan_artifact_id {
-                state
-                    .app_state
-                    .artifact_repo
-                    .get_by_id(artifact_id)
-                    .await
-                    .ok()
-                    .flatten()
-                    .map(|artifact| artifact.metadata.version)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-        (plan_version, generation)
+            .flatten()
+            .map(|artifact| artifact.metadata.version)
+    } else {
+        None
     };
 
     // Step 5: Fetch verification child continuity data

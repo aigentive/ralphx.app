@@ -2315,7 +2315,7 @@ export function getToolRecoveryHint(toolName: string): string | null {
     case "update_plan_verification": {
       const examples = formatToolExamples(tool, 2);
       return [
-        "Use the PARENT ideation session_id, never the verification child session_id.",
+        "Use the PARENT ideation session_id as the canonical target. If a verification child session_id is passed, the backend remaps it automatically.",
         "If report_verification_round / complete_plan_verification are available, prefer those narrower helpers instead of this generic tool.",
         "Use status=reviewing with in_progress=true for mid-round updates; use verified or needs_revision with in_progress=false for terminal updates.",
         "Re-read get_plan_verification if generation/in_progress is unclear instead of guessing.",
@@ -2330,6 +2330,7 @@ export function getToolRecoveryHint(toolName: string): string | null {
       const examples = formatToolExamples(tool);
       return [
         "Use this verifier-friendly helper for in-progress rounds on the PARENT ideation session.",
+        "If a verification child session_id is passed, the backend remaps it to the parent automatically.",
         "You only provide round, gaps, and generation; status=reviewing and in_progress=true are filled in automatically.",
         ...examples.map((example) => `Example payload: ${example}`),
       ].join("\n");
@@ -2338,6 +2339,7 @@ export function getToolRecoveryHint(toolName: string): string | null {
       const examples = formatToolExamples(tool, 2);
       return [
         "Use this verifier-friendly helper for terminal verification updates on the PARENT ideation session.",
+        "If a verification child session_id is passed, the backend remaps it to the parent automatically.",
         "You provide the terminal status and generation; in_progress=false is filled in automatically.",
         "External sessions cannot use status=skipped.",
         ...examples.map((example, index) =>
@@ -2350,7 +2352,7 @@ export function getToolRecoveryHint(toolName: string): string | null {
     case "get_plan_verification": {
       const examples = formatToolExamples(tool);
       return [
-        "Call this on the PARENT ideation session before retrying report_verification_round, complete_plan_verification, or update_plan_verification.",
+        "Call this on the PARENT ideation session before retrying report_verification_round, complete_plan_verification, or update_plan_verification. If a verification child session_id is passed, the backend remaps it to the parent automatically.",
         ...examples.map((example) => `Example payload: ${example}`),
       ].join("\n");
     }

@@ -15,16 +15,18 @@ pub async fn update_plan_verification(
     };
     use crate::domain::services::{gap_fingerprint, gap_score, jaccard_similarity};
 
-    let session_id_obj = crate::domain::entities::IdeationSessionId::from_string(session_id.clone());
+    let requested_session_id = session_id;
+    let requested_session_id_obj =
+        crate::domain::entities::IdeationSessionId::from_string(requested_session_id.clone());
 
     // Fetch session
-    let session = state
+    let requested_session = state
         .app_state
         .ideation_session_repo
-        .get_by_id(&session_id_obj)
+        .get_by_id(&requested_session_id_obj)
         .await
         .map_err(|e| {
-            error!("Failed to get session {}: {}", session_id, e);
+            error!("Failed to get session {}: {}", requested_session_id, e);
             json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to get session: {}", e),
@@ -32,23 +34,46 @@ pub async fn update_plan_verification(
         })?
         .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
 
-    // Guard: reject calls targeting verification child sessions — plan-verifier must use parent session_id
-    if session.session_purpose == crate::domain::entities::SessionPurpose::Verification {
-        let parent_hint = session
-            .parent_session_id
-            .as_ref()
-            .map(|id| id.as_str().to_string())
-            .unwrap_or_else(|| "<unknown-parent-session>".to_string());
-        return Err(json_error(
-            StatusCode::BAD_REQUEST,
-            format!(
-                "Cannot update verification state on a verification child session. \
-                 Call update_plan_verification with the PARENT ideation session_id instead. \
-                 Parent session_id: {}.",
-                parent_hint
-            ),
-        ));
-    }
+    let (session_id, session_id_obj, session) = if requested_session.session_purpose
+        == crate::domain::entities::SessionPurpose::Verification
+    {
+        let parent_id = requested_session.parent_session_id.clone().ok_or_else(|| {
+            json_error(
+                StatusCode::BAD_REQUEST,
+                "Cannot update verification state on a verification child session without a parent session.",
+            )
+        })?;
+        let parent_session = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&parent_id)
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to load parent session {} for verification child {}: {}",
+                    parent_id.as_str(),
+                    requested_session_id,
+                    e
+                );
+                json_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to get parent session: {}", e),
+                )
+            })?
+            .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Parent session not found"))?;
+        tracing::info!(
+            requested_session_id = %requested_session_id,
+            parent_session_id = %parent_id.as_str(),
+            "Auto-remapping verification update from child session to parent session"
+        );
+        (parent_id.as_str().to_string(), parent_id, parent_session)
+    } else {
+        (
+            requested_session_id,
+            requested_session_id_obj,
+            requested_session,
+        )
+    };
 
     // Server-side generation guard: when generation is provided, verify it matches.
     // Applies to ALL calls (including terminal in_progress=false) to prevent zombie agents

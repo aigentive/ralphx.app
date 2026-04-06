@@ -2877,6 +2877,137 @@ async fn test_auto_propose_skipped_for_non_zero_blocking() {
     );
 }
 
+#[tokio::test]
+async fn test_update_plan_verification_remaps_verification_child_session_id_to_parent() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+
+    let parent = IdeationSession::new(project_id.clone());
+    let parent_id = parent.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    let child = IdeationSessionBuilder::new()
+        .project_id(project_id)
+        .parent_session_id(parent_id.clone())
+        .session_purpose(SessionPurpose::Verification)
+        .build();
+    let child_id = child.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(child)
+        .await
+        .unwrap();
+
+    let result = update_plan_verification(
+        State(state.clone()),
+        Path(child_id.as_str().to_string()),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: Some(1),
+            gaps: Some(vec![]),
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await
+    .expect("handler must succeed via parent remap");
+
+    assert_eq!(
+        result.0.session_id,
+        parent_id.as_str(),
+        "verification updates routed through child id must return the canonical parent id"
+    );
+    assert_eq!(result.0.status, "reviewing");
+    assert!(result.0.in_progress);
+
+    let refreshed_parent = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&parent_id)
+        .await
+        .unwrap()
+        .expect("parent must still exist");
+    assert_eq!(refreshed_parent.verification_status, VerificationStatus::Reviewing);
+    assert!(
+        refreshed_parent.verification_in_progress,
+        "parent session must receive the verification state update"
+    );
+}
+
+#[tokio::test]
+async fn test_get_plan_verification_remaps_verification_child_session_id_to_parent() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+
+    let parent = IdeationSession::new(project_id.clone());
+    let parent_id = parent.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    let child = IdeationSessionBuilder::new()
+        .project_id(project_id)
+        .parent_session_id(parent_id.clone())
+        .session_purpose(SessionPurpose::Verification)
+        .build();
+    let child_id = child.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(child)
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &parent_id,
+            VerificationStatus::Reviewing,
+            true,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let result = get_plan_verification(
+        State(state),
+        unrestricted_scope(),
+        Path(child_id.as_str().to_string()),
+    )
+    .await
+    .expect("handler must succeed via parent remap");
+
+    assert_eq!(
+        result.0.session_id,
+        parent_id.as_str(),
+        "verification reads routed through child id must return the canonical parent id"
+    );
+    assert_eq!(result.0.status, "reviewing");
+    assert!(result.0.in_progress);
+    assert_eq!(
+        result
+            .0
+            .verification_child
+            .as_ref()
+            .map(|info| info.latest_child_session_id.as_str()),
+        Some(child_id.as_str()),
+        "parent continuity block must still point at the verification child"
+    );
+}
+
 // ── verification_child continuity tests ──────────────────────────────────────
 
 /// No verification child → verification_child is None
