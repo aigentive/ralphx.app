@@ -11,7 +11,7 @@ async fn validate_team_artifact_session_id(
     state: &HttpServerState,
     session_id: &str,
     action: &str,
-) -> Result<(), (StatusCode, String)> {
+) -> Result<String, (StatusCode, String)> {
     if is_placeholder_session_id(session_id) {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -35,31 +35,36 @@ async fn validate_team_artifact_session_id(
         })?
     {
         if session.session_purpose == crate::domain::entities::SessionPurpose::Verification {
-            let parent_hint = session
-                .parent_session_id
-                .as_ref()
-                .map(|id| id.as_str().to_string())
-                .unwrap_or_else(|| "<unknown-parent-session>".to_string());
+            if let Some(parent_id) = session.parent_session_id.as_ref() {
+                let parent_id = parent_id.as_str().to_string();
+                info!(
+                    verification_child_session_id = %session_id,
+                    parent_session_id = %parent_id,
+                    action,
+                    "Auto-corrected verification child session id to parent ideation session for team artifact operation"
+                );
+                return Ok(parent_id);
+            }
+
             return Err((
                 StatusCode::BAD_REQUEST,
                 format!(
-                    "Cannot {action} team artifacts on a verification child session. \
-                     Use the PARENT ideation session_id instead. Parent session_id: {}.",
-                    parent_hint
+                    "Cannot {action} team artifacts on a verification child session with no \
+                     parent_session_id. Use the PARENT ideation session_id instead."
                 ),
             ));
         }
     }
 
-    Ok(())
+    Ok(session_id.to_string())
 }
 
 pub async fn create_team_artifact(
     State(state): State<HttpServerState>,
     Json(req): Json<CreateTeamArtifactRequest>,
 ) -> Result<Json<CreateTeamArtifactResponse>, (StatusCode, String)> {
-    validate_team_artifact_session_id(&state, &req.session_id, "create")
-        .await?;
+    let resolved_session_id =
+        validate_team_artifact_session_id(&state, &req.session_id, "create").await?;
 
     // Map team artifact types to ArtifactType
     let artifact_type = match req.artifact_type.as_str() {
@@ -87,7 +92,7 @@ pub async fn create_team_artifact(
     artifact.metadata.team_metadata = Some(crate::domain::entities::TeamArtifactMetadata {
         team_name: "team".to_string(),
         author_teammate: "team-lead".to_string(),
-        session_id: Some(req.session_id.clone()),
+        session_id: Some(resolved_session_id.clone()),
         team_phase: None,
     });
 
@@ -116,7 +121,8 @@ pub async fn create_team_artifact(
 
     info!(
         artifact_id = %artifact_id,
-        session_id = %req.session_id,
+        session_id = %resolved_session_id,
+        requested_session_id = %req.session_id,
         artifact_type = %req.artifact_type,
         "Team artifact created"
     );
@@ -128,7 +134,7 @@ pub async fn create_team_artifact(
             events::TEAM_ARTIFACT_CREATED,
             TeamArtifactCreatedPayload {
                 artifact_id: artifact_id.clone(),
-                session_id: req.session_id.clone(),
+                session_id: resolved_session_id.clone(),
                 artifact_type: req.artifact_type.clone(),
                 title: req.title.clone(),
             },
@@ -149,8 +155,8 @@ pub async fn get_team_artifacts(
     State(state): State<HttpServerState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<GetTeamArtifactsResponse>, (StatusCode, String)> {
-    validate_team_artifact_session_id(&state, &session_id, "read")
-        .await?;
+    let resolved_session_id =
+        validate_team_artifact_session_id(&state, &session_id, "read").await?;
 
     // Get all artifacts from the team-findings bucket
     let bucket_id = ArtifactBucketId::from_string("team-findings");
@@ -172,7 +178,7 @@ pub async fn get_team_artifacts(
                 .team_metadata
                 .as_ref()
                 .and_then(|tm| tm.session_id.as_deref())
-                == Some(session_id.as_str())
+                == Some(resolved_session_id.as_str())
         })
         .map(|a| {
             let content_preview = match &a.content {

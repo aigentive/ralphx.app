@@ -282,8 +282,9 @@ describe('New team tool definitions', () => {
         });
         it('should document parent-session targeting for verification flows', () => {
             expect(tool?.description).toContain('PARENT ideation session_id');
+            expect(tool?.description).toContain('backend remaps it to the parent ideation session automatically');
             expect(tool?.description).toContain('Example critic artifact');
-            expect(tool?.inputSchema.properties?.session_id?.description).toContain('PARENT ideation session ID');
+            expect(tool?.inputSchema.properties?.session_id?.description).toContain('auto-remapped to that parent');
             expect(tool?.inputSchema.properties?.title?.description).toContain('Completeness: ');
             expect((tool?.inputSchema).examples?.[0]).toMatchObject({
                 session_id: 'parent-session-id',
@@ -304,6 +305,7 @@ describe('New team tool definitions', () => {
         });
         it('should document round-oriented verification lookup guidance', () => {
             expect(tool?.description).toContain('PARENT ideation session_id');
+            expect(tool?.description).toContain('backend remaps it to the parent ideation session automatically');
             expect(tool?.description).toContain('filter by created_at/title prefix client-side');
             expect(tool?.description).toContain('get_team_artifacts({"session_id":"<parent-session>"})');
             expect((tool?.inputSchema).examples?.[0]).toMatchObject({

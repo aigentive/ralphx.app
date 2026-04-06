@@ -484,7 +484,7 @@ async fn test_create_team_artifact_rejects_placeholder_session_id() {
 }
 
 #[tokio::test]
-async fn test_create_team_artifact_rejects_verification_child_session_id() {
+async fn test_create_team_artifact_remaps_verification_child_session_id_to_parent() {
     let state = test_state();
 
     let parent = state
@@ -517,7 +517,7 @@ async fn test_create_team_artifact_rejects_verification_child_session_id() {
         .await
         .expect("verification child");
 
-    let result = create_team_artifact(
+    let response = create_team_artifact(
         State(state),
         Json(CreateTeamArtifactRequest {
             session_id: "verification-child-1".to_string(),
@@ -527,17 +527,12 @@ async fn test_create_team_artifact_rejects_verification_child_session_id() {
             related_artifact_id: None,
         }),
     )
-    .await;
+    .await
+    .expect("verification child session id should be remapped to parent");
 
-    let (status, message) = result.expect_err("verification child session id must be rejected");
-    assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
     assert!(
-        message.contains("PARENT ideation session_id"),
-        "expected parent-session repair hint, got: {message}"
-    );
-    assert!(
-        message.contains("parent-session-1"),
-        "expected concrete parent session id, got: {message}"
+        !response.0.artifact_id.is_empty(),
+        "artifact id should be returned after remapping to parent session"
     );
 }
 
@@ -573,7 +568,7 @@ async fn test_create_team_artifact_allows_non_ideation_session_ids() {
 }
 
 #[tokio::test]
-async fn test_get_team_artifacts_rejects_verification_child_session_id() {
+async fn test_get_team_artifacts_remaps_verification_child_session_id_to_parent() {
     let state = test_state();
 
     let parent = state
@@ -619,16 +614,11 @@ async fn test_get_team_artifacts_rejects_verification_child_session_id() {
     .await
     .expect("parent artifact creation should succeed");
 
-    let result = get_team_artifacts(State(state), Path("verification-child-2".to_string())).await;
+    let artifacts = get_team_artifacts(State(state), Path("verification-child-2".to_string()))
+        .await
+        .expect("verification child read should be remapped to parent");
 
-    let (status, message) = result.expect_err("verification child reads must be rejected");
-    assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
-    assert!(
-        message.contains("PARENT ideation session_id"),
-        "expected parent-session repair hint, got: {message}"
-    );
-    assert!(
-        message.contains("parent-session-2"),
-        "expected concrete parent session id, got: {message}"
-    );
+    let Json(GetTeamArtifactsResponse { count, artifacts }) = artifacts;
+    assert_eq!(count, 1, "expected remapped parent artifacts to be returned");
+    assert_eq!(artifacts[0].name, "Feasibility: Round 1");
 }

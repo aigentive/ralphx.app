@@ -610,7 +610,7 @@ export const ALL_TOOLS = [
         description: "Create a team artifact documenting research findings, analysis, or summary. " +
             "Automatically sets bucket_id='team-findings' and populates metadata with team info. " +
             "Use for documenting team discoveries, debate analyses, or lead-synthesized summaries. " +
-            "Verification critics and specialists must create artifacts on the PARENT ideation session_id, not the verification child session_id. " +
+            "Verification critics and specialists should target the PARENT ideation session_id. If a verification child session_id is passed, the backend remaps it to the parent ideation session automatically. " +
             "If a caller is retrying after an incomplete run, reuse the same parent session_id and publish a partial artifact rather than omitting the artifact entirely. " +
             "Example critic artifact: {\"session_id\":\"<parent-session>\",\"title\":\"Completeness: Round 1 cold boot coverage\",\"content\":\"{\\\"status\\\":\\\"partial\\\",\\\"critic\\\":\\\"completeness\\\",\\\"round\\\":1,\\\"coverage\\\":\\\"affected_files\\\",\\\"summary\\\":\\\"...\\\",\\\"gaps\\\":[]}\",\"artifact_type\":\"TeamResearch\"}.",
         inputSchema: {
@@ -626,7 +626,7 @@ export const ALL_TOOLS = [
             properties: {
                 session_id: {
                     type: "string",
-                    description: "The ideation or execution session ID. For verification critics/specialists this must be the PARENT ideation session ID.",
+                    description: "The ideation or execution session ID. For verification critics/specialists the PARENT ideation session ID is canonical; verification child session IDs are auto-remapped to that parent.",
                 },
                 title: {
                     type: "string",
@@ -653,7 +653,7 @@ export const ALL_TOOLS = [
         name: "get_team_artifacts",
         description: "Retrieve all team artifacts for a session. " +
             "Returns artifacts from the 'team-findings' bucket filtered by session ID. " +
-            "Use the PARENT ideation session_id, never the verification child session_id. " +
+            "Use the PARENT ideation session_id for verification flows; if a verification child session_id is passed, the backend remaps it to the parent ideation session automatically. " +
             "Verification flows should call this on the PARENT ideation session_id and then filter by created_at/title prefix client-side to find the latest critic or specialist artifacts for the current round. " +
             "Example: call get_team_artifacts({\"session_id\":\"<parent-session>\"}) after critic Task returns, then fetch the newest Completeness:/Feasibility: artifact ids with get_artifact.",
         inputSchema: {
@@ -2189,7 +2189,7 @@ export function getToolRecoveryHint(toolName) {
         case "create_team_artifact": {
             const examples = formatToolExamples(tool);
             return [
-                "Use the PARENT ideation session_id, not the critic/verification child session id.",
+                "Use the PARENT ideation session_id as the canonical target. If a verification child session id is passed, the backend remaps it to the parent automatically.",
                 "For verifier critics, keep the exact artifact prefix and publish partial results instead of exploring further.",
                 ...examples.map((example) => `Example payload: ${example}`),
             ].join("\n");
@@ -2197,7 +2197,7 @@ export function getToolRecoveryHint(toolName) {
         case "get_team_artifacts": {
             const examples = formatToolExamples(tool);
             return [
-                "Read artifacts from the PARENT ideation session_id, not the verification child session id.",
+                "Read artifacts from the PARENT ideation session_id as the canonical target. If a verification child session id is passed, the backend remaps it to the parent automatically.",
                 "After critic Task returns, fetch the parent-session artifacts and then load the newest matching artifact ids.",
                 ...examples.map((example) => `Example payload: ${example}`),
             ].join("\n");
