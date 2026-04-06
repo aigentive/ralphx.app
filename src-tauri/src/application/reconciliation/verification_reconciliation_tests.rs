@@ -1335,6 +1335,32 @@ async fn test_periodic_scan_spares_session_with_recent_updated_at() {
     );
 }
 
+/// Verified external sessions remain visible even if their phase would otherwise be archivable.
+#[tokio::test]
+async fn test_stale_external_scan_preserves_verified_sessions() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    let mut session = make_external_session(project_id, "created", Duration::hours(5));
+    session.verification_status = VerificationStatus::Verified;
+    let session_id = session.id.clone();
+    repo.create(session).await.unwrap();
+
+    let config = VerificationReconciliationConfig {
+        external_session_stale_secs: 7200,
+        ..Default::default()
+    };
+    let svc = make_service(repo.clone(), config);
+    svc.scan_and_archive_stale_external_sessions(false).await;
+
+    let after = repo.get_by_id(&session_id).await.unwrap().unwrap();
+    assert_eq!(
+        after.status,
+        IdeationSessionStatus::Active,
+        "verified external session should be preserved even if phase is archivable"
+    );
+}
+
 /// Stall detection marks sessions with no recent activity as 'stalled'.
 #[tokio::test]
 async fn test_stall_detection_marks_sessions_stalled() {

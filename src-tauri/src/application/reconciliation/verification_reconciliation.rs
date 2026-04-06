@@ -665,14 +665,28 @@ impl VerificationReconciliationService {
             }
         };
 
-        let archive_count = sessions.len();
+        let mut archive_count = 0usize;
+        let mut preserved_verified = 0usize;
         for session in &sessions {
+            if session.verification_status == VerificationStatus::Verified {
+                preserved_verified += 1;
+                tracing::info!(
+                    session_id = %session.id.as_str(),
+                    phase = ?session.external_activity_phase,
+                    updated_at = %session.updated_at,
+                    cold_boot,
+                    "Preserved verified external session during stale archival scan"
+                );
+                continue;
+            }
+
             match self
                 .ideation_session_repo
                 .update_status(&session.id, IdeationSessionStatus::Archived)
                 .await
             {
                 Ok(()) => {
+                    archive_count += 1;
                     tracing::info!(
                         session_id = %session.id.as_str(),
                         phase = ?session.external_activity_phase,
@@ -696,6 +710,14 @@ impl VerificationReconciliationService {
                 count = archive_count,
                 cold_boot,
                 "External session reconciliation: archived stale sessions"
+            );
+        }
+
+        if preserved_verified > 0 {
+            tracing::info!(
+                count = preserved_verified,
+                cold_boot,
+                "External session reconciliation: preserved verified sessions during stale archival scan"
             );
         }
 
