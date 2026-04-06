@@ -694,6 +694,19 @@ export function IntegratedChatPanel({
     useChatStore.getState().setEffectiveModel(storeContextKey, model);
   }, [ideationSessionId, allSessions, storeContextKey]);
 
+  // Backfill effectiveModel from agentRunQuery for execution/review/merge contexts on reopen/refresh.
+  // Guard: skip if live agent:run_started already populated the store, or if modelId is null.
+  const agentRunModelId = agentRunQuery.data?.modelId ?? null;
+  const agentRunModelLabel = agentRunQuery.data?.modelLabel ?? null;
+  useEffect(() => {
+    if (!agentRunModelId) return;
+    if (useChatStore.getState().effectiveModel[storeContextKey]) return;
+    useChatStore.getState().setEffectiveModel(storeContextKey, {
+      id: agentRunModelId,
+      label: agentRunModelLabel ?? getModelLabel(agentRunModelId),
+    });
+  }, [storeContextKey, agentRunModelId, agentRunModelLabel]);
+
   // Handle Escape key to close panel
   useEffect(() => {
     if (!onClose) return;

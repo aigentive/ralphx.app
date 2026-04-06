@@ -206,6 +206,7 @@ export interface ChildSessionStatusResponse {
   agent_state: ChildSessionAgentState;
   recent_messages: ChildSessionMessage[];
   pending_initial_prompt?: string | null;
+  lastEffectiveModel: string | null;
 }
 
 /**
@@ -223,7 +224,24 @@ export async function getChildSessionStatus(
   if (!res.ok) {
     throw new Error(`Failed to get child session status: ${res.status}`);
   }
-  return res.json() as Promise<ChildSessionStatusResponse>;
+  const raw = (await res.json()) as {
+    session_id: string;
+    title: string | null;
+    agent_state: ChildSessionAgentState;
+    recent_messages: ChildSessionMessage[];
+    pending_initial_prompt?: string | null;
+    last_effective_model?: string | null;
+  };
+  return {
+    session_id: raw.session_id,
+    title: raw.title,
+    agent_state: raw.agent_state,
+    recent_messages: raw.recent_messages,
+    ...(raw.pending_initial_prompt !== undefined && {
+      pending_initial_prompt: raw.pending_initial_prompt,
+    }),
+    lastEffectiveModel: raw.last_effective_model ?? null,
+  };
 }
 
 // ============================================================================
@@ -250,6 +268,8 @@ const AgentRunResponseSchema = z.object({
   started_at: z.string(),
   completed_at: z.string().nullable(),
   error_message: z.string().nullable(),
+  model_id: z.string().nullable().optional(),
+  model_label: z.string().nullable().optional(),
 });
 
 type RawConversation = z.infer<typeof ChatConversationResponseSchema>;
@@ -277,6 +297,8 @@ function transformAgentRun(raw: RawAgentRun): AgentRun {
     startedAt: raw.started_at,
     completedAt: raw.completed_at,
     errorMessage: raw.error_message,
+    modelId: raw.model_id ?? null,
+    modelLabel: raw.model_label ?? null,
   };
 }
 

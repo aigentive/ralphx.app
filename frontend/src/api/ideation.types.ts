@@ -30,6 +30,7 @@ export interface IdeationSessionResponse {
   inheritedPlanArtifactId?: string | null;
   sessionPurpose: "general" | "verification";
   acceptanceStatus: "pending" | "accepted" | "rejected" | null;
+  lastEffectiveModel?: string | null;
 }
 
 export interface VerificationStatusResponse {

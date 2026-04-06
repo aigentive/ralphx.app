@@ -68,6 +68,7 @@ export function transformSession(raw: z.infer<typeof IdeationSessionResponseSche
     blockerFingerprint: raw.blocker_fingerprint ?? null,
     sessionPurpose: raw.session_purpose ?? "general",
     acceptanceStatus: raw.acceptance_status ?? null,
+    lastEffectiveModel: raw.last_effective_model ?? null,
   };
 }
 
