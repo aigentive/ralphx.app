@@ -65,6 +65,10 @@ pub enum ModelBucket {
     /// Cap-resolution bucket for subagents spawned by plan-verifier (critics/specialists).
     /// Not mapped by model_bucket_for_agent() — resolved separately at runtime.
     VerifierSubagent,
+    /// Cap-resolution bucket for subagents spawned by the main ideation path
+    /// (orchestrator-ideation, ideation-team-lead).
+    /// Not mapped by model_bucket_for_agent() — resolved separately at runtime.
+    IdeationSubagent,
 }
 
 /// Per-project or global ideation model settings row.
@@ -76,6 +80,9 @@ pub struct IdeationModelSettings {
     pub primary_model: ModelLevel,
     pub verifier_model: ModelLevel,
     pub verifier_subagent_model: ModelLevel,
+    /// Cap for subagents spawned by the main ideation path (orchestrator-ideation, ideation-team-lead).
+    /// Defaults to `Inherit` (fall through to next resolution level).
+    pub ideation_subagent_model: ModelLevel,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -86,6 +93,7 @@ impl IdeationModelSettings {
             ModelBucket::Primary => &self.primary_model,
             ModelBucket::Verifier => &self.verifier_model,
             ModelBucket::VerifierSubagent => &self.verifier_subagent_model,
+            ModelBucket::IdeationSubagent => &self.ideation_subagent_model,
         }
     }
 }

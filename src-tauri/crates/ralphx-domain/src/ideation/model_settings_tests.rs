@@ -101,6 +101,7 @@ fn test_model_for_bucket_primary() {
         primary_model: ModelLevel::Opus,
         verifier_model: ModelLevel::Sonnet,
         verifier_subagent_model: ModelLevel::Inherit,
+        ideation_subagent_model: ModelLevel::Inherit,
         updated_at: Utc::now(),
     };
     assert_eq!(
@@ -117,6 +118,7 @@ fn test_model_for_bucket_verifier() {
         primary_model: ModelLevel::Opus,
         verifier_model: ModelLevel::Haiku,
         verifier_subagent_model: ModelLevel::Inherit,
+        ideation_subagent_model: ModelLevel::Inherit,
         updated_at: Utc::now(),
     };
     assert_eq!(
@@ -133,6 +135,7 @@ fn test_model_for_bucket_inherit() {
         primary_model: ModelLevel::Inherit,
         verifier_model: ModelLevel::Inherit,
         verifier_subagent_model: ModelLevel::Inherit,
+        ideation_subagent_model: ModelLevel::Inherit,
         updated_at: Utc::now(),
     };
     assert_eq!(
@@ -153,6 +156,7 @@ fn test_model_for_bucket_verifier_subagent() {
         primary_model: ModelLevel::Opus,
         verifier_model: ModelLevel::Sonnet,
         verifier_subagent_model: ModelLevel::Haiku,
+        ideation_subagent_model: ModelLevel::Inherit,
         updated_at: Utc::now(),
     };
     assert_eq!(
@@ -181,6 +185,12 @@ fn test_verifier_subagent_bucket_not_in_agent_map() {
             model_bucket_for_agent(agent),
             Some(ModelBucket::VerifierSubagent),
             "agent '{}' should NOT map to VerifierSubagent",
+            agent
+        );
+        assert_ne!(
+            model_bucket_for_agent(agent),
+            Some(ModelBucket::IdeationSubagent),
+            "agent '{}' should NOT map to IdeationSubagent",
             agent
         );
     }

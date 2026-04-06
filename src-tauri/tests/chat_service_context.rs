@@ -1804,7 +1804,7 @@ async fn test_plan_verifier_sets_subagent_cap_env_var() {
     // and the DB has verifier_subagent_model=haiku, then CLAUDE_CODE_SUBAGENT_MODEL=haiku
     // must appear in the spawned command's environment variables.
     let repo = MemoryIdeationModelSettingsRepository::new();
-    repo.upsert_for_project("proj-1", "opus", "sonnet", "haiku")
+    repo.upsert_for_project("proj-1", "opus", "sonnet", "haiku", "inherit")
         .await
         .unwrap();
 
@@ -1898,9 +1898,11 @@ async fn test_plan_verifier_subagent_cap_uses_haiku_default_when_no_db_rows() {
 #[tokio::test]
 async fn test_non_verifier_ideation_agent_subagent_cap_is_agent_own_model() {
     // For non-verifier ideation agents (orchestrator-ideation), the subagent cap
-    // must equal the agent's own resolved model — NOT the verifier_subagent_model field.
+    // must come from the ideation_subagent_model DB field — NOT from the agent's own
+    // resolved model and NOT from verifier_subagent_model.
     let repo = MemoryIdeationModelSettingsRepository::new();
-    repo.upsert_for_project("proj-1", "sonnet", "sonnet", "haiku")
+    // Set ideation_subagent_model = "sonnet" explicitly; verifier_subagent_model = "haiku"
+    repo.upsert_for_project("proj-1", "sonnet", "sonnet", "haiku", "sonnet")
         .await
         .unwrap();
 
@@ -1938,15 +1940,163 @@ async fn test_non_verifier_ideation_agent_subagent_cap_is_agent_own_model() {
         .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
         .map(|(_, v)| v.to_string_lossy().into_owned());
 
-    // The subagent cap for orchestrator-ideation = its own model ("sonnet"), NOT "haiku"
+    // The subagent cap for orchestrator-ideation comes from ideation_subagent_model DB field ("sonnet")
     assert_eq!(
         subagent_model.as_deref(),
         Some("sonnet"),
-        "orchestrator-ideation subagent cap should be its own model, not verifier_subagent_model=haiku"
+        "orchestrator-ideation subagent cap should come from ideation_subagent_model DB field"
     );
     assert_ne!(
         subagent_model.as_deref(),
         Some("haiku"),
         "verifier_subagent_model must not bleed into non-verifier agents"
     );
+}
+
+#[tokio::test]
+async fn test_orchestrator_ideation_uses_ideation_subagent_cap() {
+    // PO#4: build_command for orchestrator-ideation must set CLAUDE_CODE_SUBAGENT_MODEL
+    // to the ideation_subagent_model DB field value ("sonnet"), NOT to resolved_model_override
+    // ("opus", which is the agent's primary model). This verifies the dispatch uses the
+    // correct dedicated field.
+    let repo = MemoryIdeationModelSettingsRepository::new();
+    // primary_model=opus, ideation_subagent_model=sonnet — they differ so we can distinguish.
+    repo.upsert_for_project("proj-1", "opus", "inherit", "inherit", "sonnet")
+        .await
+        .unwrap();
+
+    let session_id = IdeationSessionId::new();
+    let conv = ChatConversation::new_ideation(session_id);
+    let artifact_repo = Arc::new(MemoryArtifactRepository::new());
+    let attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
+    let settings_repo: Arc<dyn IdeationModelSettingsRepository> = Arc::new(repo);
+
+    // entity_status=None → orchestrator-ideation (non-verifier ideation agent)
+    let result = build_command(
+        std::path::Path::new("/fake/claude"),
+        std::path::Path::new("/fake/plugin"),
+        &conv,
+        "continue",
+        std::path::Path::new("/tmp"),
+        None,          // no entity_status → orchestrator-ideation
+        Some("proj-1"),
+        false,
+        attachment_repo,
+        artifact_repo,
+        Some(settings_repo),
+        &[],
+        0,
+        None,
+        None,          // model_override=None; resolved_model_override will be "opus" from primary bucket
+    )
+    .await;
+
+    assert!(result.is_ok(), "build_command failed: {:?}", result.err());
+    let cmd = result.unwrap();
+    let envs = cmd.get_envs_for_test();
+    let subagent_model = envs
+        .iter()
+        .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
+        .map(|(_, v)| v.to_string_lossy().into_owned());
+
+    // CLAUDE_CODE_SUBAGENT_MODEL must come from ideation_subagent_model ("sonnet"),
+    // NOT from the agent's resolved primary model ("opus").
+    assert_eq!(
+        subagent_model.as_deref(),
+        Some("sonnet"),
+        "CLAUDE_CODE_SUBAGENT_MODEL must equal ideation_subagent_model DB field (sonnet), not resolved_model_override (opus)"
+    );
+    assert_ne!(
+        subagent_model.as_deref(),
+        Some("opus"),
+        "resolved_model_override (opus) must NOT be used as CLAUDE_CODE_SUBAGENT_MODEL for orchestrator-ideation"
+    );
+}
+
+#[tokio::test]
+async fn test_both_build_and_resume_use_ideation_subagent_cap() {
+    // Both build_command AND build_resume_command must inject
+    // CLAUDE_CODE_SUBAGENT_MODEL = ideation_subagent_model DB field for orchestrator-ideation.
+    // This test MUST FAIL if either function uses old behavior (resolved_model_override or agent's own model).
+    {
+        let seeded = MemoryIdeationModelSettingsRepository::new();
+        // primary_model=opus (so resolved_model_override=opus), ideation_subagent_model=sonnet
+        seeded
+            .upsert_for_project("proj-1", "opus", "inherit", "inherit", "sonnet")
+            .await
+            .unwrap();
+        let settings_repo_seeded: Arc<dyn IdeationModelSettingsRepository> = Arc::new(seeded);
+
+        let session_id = IdeationSessionId::new();
+        let conv = ChatConversation::new_ideation(session_id.clone());
+
+        // --- Test build_command ---
+        let build_result = build_command(
+            std::path::Path::new("/fake/claude"),
+            std::path::Path::new("/fake/plugin"),
+            &conv,
+            "continue",
+            std::path::Path::new("/tmp"),
+            None,
+            Some("proj-1"),
+            false,
+            Arc::new(MemoryChatAttachmentRepository::new()),
+            Arc::new(MemoryArtifactRepository::new()),
+            Some(Arc::clone(&settings_repo_seeded)),
+            &[],
+            0,
+            None,
+            None,
+        )
+        .await;
+
+        assert!(build_result.is_ok(), "build_command failed: {:?}", build_result.err());
+        let build_cmd = build_result.unwrap();
+        let build_envs = build_cmd.get_envs_for_test();
+        let build_subagent = build_envs
+            .iter()
+            .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
+            .map(|(_, v)| v.to_string_lossy().into_owned());
+        assert_eq!(
+            build_subagent.as_deref(),
+            Some("sonnet"),
+            "build_command: CLAUDE_CODE_SUBAGENT_MODEL must be ideation_subagent_model (sonnet)"
+        );
+
+        // --- Test build_resume_command ---
+        let resume_result = build_resume_command(
+            std::path::Path::new("/fake/claude"),
+            std::path::Path::new("/fake/plugin"),
+            ChatContextType::Ideation,
+            session_id.as_str(),
+            "continue",
+            std::path::Path::new("/tmp"),
+            "fake-session-id",
+            Some("proj-1"),
+            false,
+            Arc::new(MemoryChatAttachmentRepository::new()),
+            Arc::new(MemoryArtifactRepository::new()),
+            Some(settings_repo_seeded),
+            Arc::new(MemoryIdeationSessionRepository::new()),
+            Arc::new(MemoryTaskRepository::new()),
+            &[],
+            0,
+            None,
+            None,
+        )
+        .await;
+
+        assert!(resume_result.is_ok(), "build_resume_command failed: {:?}", resume_result.err());
+        let resume_cmd = resume_result.unwrap();
+        let resume_envs = resume_cmd.get_envs_for_test();
+        let resume_subagent = resume_envs
+            .iter()
+            .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
+            .map(|(_, v)| v.to_string_lossy().into_owned());
+        assert_eq!(
+            resume_subagent.as_deref(),
+            Some("sonnet"),
+            "build_resume_command: CLAUDE_CODE_SUBAGENT_MODEL must be ideation_subagent_model (sonnet)"
+        );
+    }
 }

@@ -61,6 +61,8 @@ function formatSource(source: string): string {
       return "YAML config";
     case "yaml_default":
       return "YAML default";
+    case "default":
+      return "Default";
     default:
       return source;
   }
@@ -190,6 +192,14 @@ function GlobalModelSubsection() {
     );
   };
 
+  const handleIdeationSubagentChange = (value: string) => {
+    setShowError(false);
+    updateSettings(
+      { ideationSubagentModel: value },
+      { onError: () => setShowError(true) }
+    );
+  };
+
   return (
     <div>
       {showError && saveError && (
@@ -230,6 +240,17 @@ function GlobalModelSubsection() {
           onChange={handleVerifierSubagentChange}
           effectiveValue={settings.effectiveVerifierSubagentModel}
           effectiveSource={settings.verifierSubagentModelSource}
+          isPlaceholderData={isPlaceholderData}
+        />
+        <ModelRow
+          id="ideation-subagent-model"
+          label="Ideation Subagent Model"
+          description="Model used by subagents spawned by orchestrator-ideation and team-lead"
+          value={settings.ideationSubagentModel ?? "inherit"}
+          disabled={false}
+          onChange={handleIdeationSubagentChange}
+          effectiveValue={settings.effectiveIdeationSubagentModel ?? ""}
+          effectiveSource={settings.ideationSubagentModelSource ?? ""}
           isPlaceholderData={isPlaceholderData}
           isLast
         />
@@ -278,6 +299,15 @@ function ProjectModelSubsection({
     setShowError(false);
     updateSettings(
       { verifierSubagentModel: value },
+      { onError: () => setShowError(true) }
+    );
+  };
+
+  const handleIdeationSubagentChange = (value: string) => {
+    if (isDisabled) return;
+    setShowError(false);
+    updateSettings(
+      { ideationSubagentModel: value },
       { onError: () => setShowError(true) }
     );
   };
@@ -332,6 +362,17 @@ function ProjectModelSubsection({
           onChange={handleVerifierSubagentChange}
           effectiveValue={settings.effectiveVerifierSubagentModel}
           effectiveSource={settings.verifierSubagentModelSource}
+          isPlaceholderData={isPlaceholderData}
+        />
+        <ModelRow
+          id="project-ideation-subagent-model"
+          label="Ideation Subagent Model"
+          description="Override ideation subagent model for this project"
+          value={settings.ideationSubagentModel ?? "inherit"}
+          disabled={isDisabled}
+          onChange={handleIdeationSubagentChange}
+          effectiveValue={settings.effectiveIdeationSubagentModel ?? ""}
+          effectiveSource={settings.ideationSubagentModelSource ?? ""}
           isPlaceholderData={isPlaceholderData}
           isLast
         />

@@ -12,7 +12,7 @@ async fn upsert_and_get_global_row() {
     assert!(before.is_none());
 
     // Upsert global row
-    let result = repo.upsert_global("sonnet", "opus", "inherit").await.unwrap();
+    let result = repo.upsert_global("sonnet", "opus", "inherit", "inherit").await.unwrap();
     assert_eq!(result.primary_model, ModelLevel::Sonnet);
     assert_eq!(result.verifier_model, ModelLevel::Opus);
     assert!(result.project_id.is_none());
@@ -25,7 +25,7 @@ async fn upsert_and_get_global_row() {
     assert!(fetched.project_id.is_none());
 
     // Update it
-    let updated = repo.upsert_global("haiku", "inherit", "inherit").await.unwrap();
+    let updated = repo.upsert_global("haiku", "inherit", "inherit", "inherit").await.unwrap();
     assert_eq!(updated.primary_model, ModelLevel::Haiku);
     assert_eq!(updated.verifier_model, ModelLevel::Inherit);
 }
@@ -38,7 +38,7 @@ async fn upsert_and_get_project_row() {
     // Upsert project-specific row
     let project_id = "proj-abc";
     let result = repo
-        .upsert_for_project(project_id, "opus", "inherit", "inherit")
+        .upsert_for_project(project_id, "opus", "inherit", "inherit", "inherit")
         .await
         .unwrap();
     assert_eq!(result.primary_model, ModelLevel::Opus);
@@ -81,19 +81,19 @@ async fn upsert_is_idempotent() {
     let repo = SqliteIdeationModelSettingsRepository::from_shared(db.shared_conn());
 
     // Upsert global twice with same values
-    let first = repo.upsert_global("sonnet", "opus", "inherit").await.unwrap();
-    let second = repo.upsert_global("sonnet", "opus", "inherit").await.unwrap();
+    let first = repo.upsert_global("sonnet", "opus", "inherit", "inherit").await.unwrap();
+    let second = repo.upsert_global("sonnet", "opus", "inherit", "inherit").await.unwrap();
     assert_eq!(first.id, second.id);
     assert_eq!(second.primary_model, ModelLevel::Sonnet);
     assert_eq!(second.verifier_model, ModelLevel::Opus);
 
     // Upsert project twice with same values
     let proj_first = repo
-        .upsert_for_project("proj-1", "haiku", "inherit", "inherit")
+        .upsert_for_project("proj-1", "haiku", "inherit", "inherit", "inherit")
         .await
         .unwrap();
     let proj_second = repo
-        .upsert_for_project("proj-1", "haiku", "inherit", "inherit")
+        .upsert_for_project("proj-1", "haiku", "inherit", "inherit", "inherit")
         .await
         .unwrap();
     assert_eq!(proj_first.id, proj_second.id);
@@ -106,9 +106,9 @@ async fn upsert_updates_existing_row() {
     let repo = SqliteIdeationModelSettingsRepository::from_shared(db.shared_conn());
 
     // Insert global
-    repo.upsert_global("sonnet", "sonnet", "inherit").await.unwrap();
+    repo.upsert_global("sonnet", "sonnet", "inherit", "inherit").await.unwrap();
     // Update global
-    let updated = repo.upsert_global("opus", "haiku", "inherit").await.unwrap();
+    let updated = repo.upsert_global("opus", "haiku", "inherit", "inherit").await.unwrap();
     assert_eq!(updated.primary_model, ModelLevel::Opus);
     assert_eq!(updated.verifier_model, ModelLevel::Haiku);
 
@@ -123,8 +123,8 @@ async fn global_and_project_rows_are_independent() {
     let db = SqliteTestDb::new("sqlite_ideation_model_settings_repo_tests-independent");
     let repo = SqliteIdeationModelSettingsRepository::from_shared(db.shared_conn());
 
-    repo.upsert_global("sonnet", "opus", "inherit").await.unwrap();
-    repo.upsert_for_project("proj-1", "haiku", "inherit", "inherit")
+    repo.upsert_global("sonnet", "opus", "inherit", "inherit").await.unwrap();
+    repo.upsert_for_project("proj-1", "haiku", "inherit", "inherit", "inherit")
         .await
         .unwrap();
 

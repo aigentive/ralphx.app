@@ -28,7 +28,7 @@ pub async fn seed_ideation_model_settings(
     }
 
     // No global row — seed with inherit/inherit/inherit to preserve current YAML behavior
-    repo.upsert_global("inherit", "inherit", "inherit")
+    repo.upsert_global("inherit", "inherit", "inherit", "inherit")
         .await
         .map_err(|e| e.to_string())?;
 

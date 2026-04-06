@@ -1068,7 +1068,7 @@ pub async fn build_command(
         .collect::<Vec<_>>();
 
     let attachment_context = format_attachments_for_agent(&attachments).await?;
-    let (resolved_model, ideation_subagent_model_cap) = resolve_model_config(
+    let (resolved_model, precomputed_cap) = resolve_model_config(
         agent_name,
         project_id,
         conversation.context_type,
@@ -1076,6 +1076,57 @@ pub async fn build_command(
         ideation_model_settings_repo.as_ref(),
     )
     .await;
+
+    // VERIFIER_DISPATCH_ENTRY — AGENT_PLAN_VERIFIER subagent cap resolved from verifier_subagent_model
+    let ideation_subagent_model_cap =
+        if conversation.context_type == ChatContextType::Ideation {
+            if agent_name == agent_names::AGENT_PLAN_VERIFIER {
+                precomputed_cap
+            } else {
+                // IDEATION_DISPATCH_ENTRY — non-verifier ideation: resolve from ideation_subagent_model DB field
+                let project_settings = if let Some(repo) = ideation_model_settings_repo.as_ref() {
+                    if let Some(pid) = project_id {
+                        repo.get_for_project(pid)
+                            .await
+                            .inspect_err(|e| {
+                                tracing::warn!(
+                                    "Failed to fetch ideation model settings for project {}: {}",
+                                    pid,
+                                    e
+                                )
+                            })
+                            .ok()
+                            .flatten()
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                let global_settings = if let Some(repo) = ideation_model_settings_repo.as_ref() {
+                    repo.get_global()
+                        .await
+                        .inspect_err(|e| {
+                            tracing::warn!(
+                                "Failed to fetch global ideation model settings: {}",
+                                e
+                            )
+                        })
+                        .ok()
+                        .flatten()
+                } else {
+                    None
+                };
+                let (ideation_subagent_cap, _source) =
+                    crate::infrastructure::agents::claude::resolve_ideation_subagent_model_with_source(
+                        project_settings.as_ref().map(|s| &s.ideation_subagent_model),
+                        global_settings.as_ref().map(|s| &s.ideation_subagent_model),
+                    );
+                Some(ideation_subagent_cap)
+            }
+        } else {
+            None
+        };
 
     let (prompt, resume_session) = if should_resume {
         let session_id = conversation.claude_session_id.as_ref().unwrap();
@@ -1309,7 +1360,7 @@ pub async fn build_resume_command(
 
     let agent_name =
         resolve_agent_with_team_mode(&context_type, entity_status.as_deref(), team_mode);
-    let (resolved_model, ideation_subagent_model_cap) = resolve_model_config(
+    let (resolved_model, precomputed_cap) = resolve_model_config(
         agent_name,
         project_id,
         context_type,
@@ -1317,6 +1368,57 @@ pub async fn build_resume_command(
         ideation_model_settings_repo.as_ref(),
     )
     .await;
+
+    // VERIFIER_DISPATCH_ENTRY — AGENT_PLAN_VERIFIER subagent cap resolved from verifier_subagent_model
+    let ideation_subagent_model_cap =
+        if context_type == ChatContextType::Ideation {
+            if agent_name == agent_names::AGENT_PLAN_VERIFIER {
+                precomputed_cap
+            } else {
+                // IDEATION_DISPATCH_ENTRY — non-verifier ideation: resolve from ideation_subagent_model DB field
+                let project_settings = if let Some(repo) = ideation_model_settings_repo.as_ref() {
+                    if let Some(pid) = project_id {
+                        repo.get_for_project(pid)
+                            .await
+                            .inspect_err(|e| {
+                                tracing::warn!(
+                                    "Failed to fetch ideation model settings for project {}: {}",
+                                    pid,
+                                    e
+                                )
+                            })
+                            .ok()
+                            .flatten()
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                let global_settings = if let Some(repo) = ideation_model_settings_repo.as_ref() {
+                    repo.get_global()
+                        .await
+                        .inspect_err(|e| {
+                            tracing::warn!(
+                                "Failed to fetch global ideation model settings: {}",
+                                e
+                            )
+                        })
+                        .ok()
+                        .flatten()
+                } else {
+                    None
+                };
+                let (ideation_subagent_cap, _source) =
+                    crate::infrastructure::agents::claude::resolve_ideation_subagent_model_with_source(
+                        project_settings.as_ref().map(|s| &s.ideation_subagent_model),
+                        global_settings.as_ref().map(|s| &s.ideation_subagent_model),
+                    );
+                Some(ideation_subagent_cap)
+            }
+        } else {
+            None
+        };
 
     // Re-inject context_id on resume so the agent can detect session mismatches.
     // For Ideation context, session_history is injected programmatically.

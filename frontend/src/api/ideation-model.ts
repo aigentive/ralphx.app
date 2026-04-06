@@ -17,6 +17,9 @@ export const IdeationModelResponseSchema = z.object({
   primaryModelSource: z.string(),
   verifierModelSource: z.string(),
   verifierSubagentModelSource: z.string(),
+  ideationSubagentModel: z.string().optional(),
+  effectiveIdeationSubagentModel: z.string().optional(),
+  ideationSubagentModelSource: z.string().optional(),
 });
 
 export type IdeationModelResponse = z.infer<typeof IdeationModelResponseSchema>;
@@ -35,6 +38,9 @@ export const defaultIdeationModelSettings: IdeationModelResponse = {
   primaryModelSource: "",
   verifierModelSource: "",
   verifierSubagentModelSource: "",
+  ideationSubagentModel: "",
+  effectiveIdeationSubagentModel: "",
+  ideationSubagentModelSource: "",
 };
 
 // ============================================================================
@@ -63,6 +69,7 @@ export const ideationModelApi = {
     primaryModel?: string;
     verifierModel?: string;
     verifierSubagentModel?: string;
+    ideationSubagentModel?: string;
   }): Promise<IdeationModelResponse> =>
     typedInvoke(
       "update_ideation_model_settings",
