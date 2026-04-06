@@ -48,6 +48,12 @@ vi.mock("@/api/chat", () => ({
   },
 }));
 
+// Mock useChildSessionStatus — added in Gap 3 fix; uses useQuery internally, which would
+// consume a mock return value ahead of the component's own useQuery calls and shift the sequence.
+vi.mock("@/hooks/useChildSessionStatus", () => ({
+  useChildSessionStatus: vi.fn(() => ({ lastEffectiveModel: null })),
+}));
+
 const mockSetActiveVerificationChildId = vi.fn();
 const mockSetLastVerificationChildId = vi.fn();
 

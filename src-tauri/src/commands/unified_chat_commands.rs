@@ -153,6 +153,8 @@ pub struct AgentRunStatusResponse {
     pub started_at: String,
     pub completed_at: Option<String>,
     pub error_message: Option<String>,
+    pub model_id: Option<String>,
+    pub model_label: Option<String>,
 }
 
 // ============================================================================
@@ -495,25 +497,44 @@ pub async fn get_agent_run_status_unified(
     app: tauri::AppHandle,
 ) -> Result<Option<AgentRunStatusResponse>, String> {
     use crate::domain::entities::ChatConversationId;
+    use crate::domain::services::RunningAgentKey;
+    use crate::infrastructure::agents::claude::model_labels::model_id_to_label;
 
-    let conversation_id = ChatConversationId::from_string(&conversation_id);
+    let conv_id = ChatConversationId::from_string(&conversation_id);
 
     let service = create_chat_service(&state, app, &execution_state, None);
 
-    service
-        .get_active_run(&conversation_id)
+    let Some(run) = service
+        .get_active_run(&conv_id)
         .await
-        .map(|opt| {
-            opt.map(|run| AgentRunStatusResponse {
-                id: run.id.as_str().to_string(),
-                conversation_id: run.conversation_id.as_str().to_string(),
-                status: run.status.to_string(),
-                started_at: run.started_at.to_rfc3339(),
-                completed_at: run.completed_at.map(|dt| dt.to_rfc3339()),
-                error_message: run.error_message,
-            })
-        })
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(None);
+    };
+
+    // Look up conversation to get context_type/context_id for registry lookup
+    let (model_id, model_label) = if let Ok(Some(conv)) =
+        state.chat_conversation_repo.get_by_id(&conv_id).await
+    {
+        let key = RunningAgentKey::new(conv.context_type.to_string(), conv.context_id.clone());
+        let agent_info = state.running_agent_registry.get(&key).await;
+        let mid = agent_info.and_then(|info| info.model);
+        let mlabel = mid.as_deref().map(|id| model_id_to_label(id));
+        (mid, mlabel)
+    } else {
+        (None, None)
+    };
+
+    Ok(Some(AgentRunStatusResponse {
+        id: run.id.as_str().to_string(),
+        conversation_id: run.conversation_id.as_str().to_string(),
+        status: run.status.to_string(),
+        started_at: run.started_at.to_rfc3339(),
+        completed_at: run.completed_at.map(|dt| dt.to_rfc3339()),
+        error_message: run.error_message,
+        model_id,
+        model_label,
+    }))
 }
 
 /// Check if the chat service is available
