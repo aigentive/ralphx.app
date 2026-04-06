@@ -621,7 +621,7 @@ impl VerificationReconciliationService {
     /// `scan_and_reset(cold_boot: true)` which resets ALL in-progress sessions
     /// unconditionally (no TTL filter), since all agent processes are dead on restart.
     ///
-    /// Also archives all stale external sessions (cold boot — all agent processes are dead).
+    /// Also archives stale external sessions using the configured TTL.
     pub async fn startup_scan(&self) {
         tracing::info!("Running verification startup scan (cold boot)...");
         let recovery_claimed = self.scan_for_recoverable_orphans().await;
@@ -637,23 +637,18 @@ impl VerificationReconciliationService {
     /// Stale definition: external + active + phase IN ('created', 'error') + created_at older
     /// than `external_session_stale_secs`. These sessions have abandoned agents.
     ///
-    /// When `cold_boot: true` (app startup): no TTL filter — archives ALL matching sessions
-    /// since all agent processes are dead after restart.
-    /// When `cold_boot: false` (periodic): TTL-based archival (created_at < stale_before).
+    /// When `cold_boot: true` (app startup): still apply the TTL filter. A process restart does
+    /// not automatically mean every external `created`/`error` session is abandoned.
+    /// When `cold_boot: false` (periodic): same TTL-based archival.
     ///
     /// After archival, runs stall detection for periodic scans only (cold boot handles all dead
     /// sessions via archival). Stall detection marks sessions with no recent activity as 'stalled'.
     pub async fn scan_and_archive_stale_external_sessions(&self, cold_boot: bool) {
-        let stale_before = if cold_boot {
-            None // No TTL filter on startup — all agents are dead
-        } else {
-            Some(
-                Utc::now()
-                    - chrono::Duration::seconds(self.config.external_session_stale_secs as i64),
-            )
-        };
+        let stale_before = Some(
+            Utc::now() - chrono::Duration::seconds(self.config.external_session_stale_secs as i64),
+        );
 
-        // Archive stale external sessions (phase 'created' or 'error', past TTL or all on boot)
+        // Archive stale external sessions (phase 'created' or 'error', past TTL)
         let sessions = match self
             .ideation_session_repo
             .list_active_external_sessions_for_archival(stale_before)
@@ -704,7 +699,7 @@ impl VerificationReconciliationService {
             );
         }
 
-        // Detect stalled sessions (periodic only — cold boot archives all dead sessions above)
+        // Detect stalled sessions (periodic only — cold boot still keeps startup behavior narrow)
         if !cold_boot {
             self.detect_and_mark_stalled_external_sessions().await;
         }

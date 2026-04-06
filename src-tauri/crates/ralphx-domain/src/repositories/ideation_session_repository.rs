@@ -332,7 +332,7 @@ pub trait IdeationSessionRepository: Send + Sync {
     /// - origin = 'external'
     /// - status = 'active'
     /// - external_activity_phase IN ('created', 'error')
-    /// - updated_at < stale_before (if Some; if None, no TTL filter — startup scan)
+    /// - updated_at < stale_before
     ///
     /// Ordered by updated_at ASC.
     async fn list_active_external_sessions_for_archival(

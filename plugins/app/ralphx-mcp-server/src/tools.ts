@@ -681,9 +681,19 @@ export const ALL_TOOLS: Tool[] = [
       "Automatically sets bucket_id='team-findings' and populates metadata with team info. " +
       "Use for documenting team discoveries, debate analyses, or lead-synthesized summaries. " +
       "Verification critics and specialists must create artifacts on the PARENT ideation session_id, not the verification child session_id. " +
-      "If a caller is retrying after an incomplete run, reuse the same parent session_id and publish a partial artifact rather than omitting the artifact entirely.",
+      "If a caller is retrying after an incomplete run, reuse the same parent session_id and publish a partial artifact rather than omitting the artifact entirely. " +
+      "Example critic artifact: {\"session_id\":\"<parent-session>\",\"title\":\"Completeness: Round 1 cold boot coverage\",\"content\":\"{\\\"status\\\":\\\"partial\\\",\\\"critic\\\":\\\"completeness\\\",\\\"round\\\":1,\\\"coverage\\\":\\\"affected_files\\\",\\\"summary\\\":\\\"...\\\",\\\"gaps\\\":[]}\",\"artifact_type\":\"TeamResearch\"}.",
     inputSchema: {
       type: "object",
+      examples: [
+        {
+          session_id: "parent-session-id",
+          title: "Completeness: Round 1 cold boot coverage",
+          content:
+            "{\"status\":\"partial\",\"critic\":\"completeness\",\"round\":1,\"coverage\":\"affected_files\",\"summary\":\"Need one more pass on recovery edge cases\",\"gaps\":[]}",
+          artifact_type: "TeamResearch",
+        },
+      ],
       properties: {
         session_id: {
           type: "string",
@@ -715,9 +725,11 @@ export const ALL_TOOLS: Tool[] = [
     description:
       "Retrieve all team artifacts for a session. " +
       "Returns artifacts from the 'team-findings' bucket filtered by session ID. " +
-      "Verification flows should call this on the PARENT ideation session_id and then filter by created_at/title prefix client-side to find the latest critic or specialist artifacts for the current round.",
+      "Verification flows should call this on the PARENT ideation session_id and then filter by created_at/title prefix client-side to find the latest critic or specialist artifacts for the current round. " +
+      "Example: call get_team_artifacts({\"session_id\":\"<parent-session>\"}) after critic Task returns, then fetch the newest Completeness:/Feasibility: artifact ids with get_artifact.",
     inputSchema: {
       type: "object",
+      examples: [{ session_id: "parent-session-id" }],
       properties: {
         session_id: {
           type: "string",

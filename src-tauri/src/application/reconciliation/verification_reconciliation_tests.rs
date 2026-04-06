@@ -1104,9 +1104,9 @@ fn make_external_session(
     session
 }
 
-/// Cold boot archives ALL external sessions in 'created' or 'error' phase, regardless of TTL.
+/// Cold boot also uses the TTL and preserves recent sessions.
 #[tokio::test]
-async fn test_startup_scan_archives_all_stale_external_sessions() {
+async fn test_startup_scan_uses_ttl_for_external_session_archival() {
     let repo = Arc::new(MemoryIdeationSessionRepository::new());
     let project_id = ProjectId::new();
 
@@ -1127,19 +1127,19 @@ async fn test_startup_scan_archives_all_stale_external_sessions() {
     let svc = make_service(repo.clone(), config);
     svc.scan_and_archive_stale_external_sessions(true).await;
 
-    // Both must be archived — cold boot ignores TTL
+    // Recent session must survive; stale session must archive.
     let recent_after = repo.get_by_id(&recent_id).await.unwrap().unwrap();
     assert_eq!(
         recent_after.status,
-        IdeationSessionStatus::Archived,
-        "recent 'created' session must be archived on cold boot (all agents dead)"
+        IdeationSessionStatus::Active,
+        "recent 'created' session within TTL must NOT be archived on cold boot"
     );
 
     let old_error_after = repo.get_by_id(&old_error_id).await.unwrap().unwrap();
     assert_eq!(
         old_error_after.status,
         IdeationSessionStatus::Archived,
-        "'error' session must be archived on cold boot"
+        "stale 'error' session past TTL must still be archived on cold boot"
     );
 }
 

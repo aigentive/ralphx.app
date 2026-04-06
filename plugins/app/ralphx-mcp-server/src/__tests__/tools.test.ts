@@ -326,10 +326,15 @@ describe('New team tool definitions', () => {
 
     it('should document parent-session targeting for verification flows', () => {
       expect(tool?.description).toContain('PARENT ideation session_id');
+      expect(tool?.description).toContain('Example critic artifact');
       expect((tool?.inputSchema.properties?.session_id as any)?.description).toContain(
         'PARENT ideation session ID'
       );
       expect((tool?.inputSchema.properties?.title as any)?.description).toContain('Completeness: ');
+      expect((tool?.inputSchema as any).examples?.[0]).toMatchObject({
+        session_id: 'parent-session-id',
+        artifact_type: 'TeamResearch',
+      });
     });
   });
 
@@ -350,6 +355,10 @@ describe('New team tool definitions', () => {
     it('should document round-oriented verification lookup guidance', () => {
       expect(tool?.description).toContain('PARENT ideation session_id');
       expect(tool?.description).toContain('filter by created_at/title prefix client-side');
+      expect(tool?.description).toContain('get_team_artifacts({"session_id":"<parent-session>"})');
+      expect((tool?.inputSchema as any).examples?.[0]).toMatchObject({
+        session_id: 'parent-session-id',
+      });
     });
   });
 
@@ -361,6 +370,8 @@ describe('New team tool definitions', () => {
       expect(tool?.description).toContain('PARENT ideation session_id');
       expect(tool?.description).toContain("status='reviewing'");
       expect(tool?.description).toContain("External sessions cannot use status='skipped'");
+      expect(tool?.description).toContain('Example reviewing payload');
+      expect(tool?.description).toContain('Example terminal payload');
     });
 
     it('should document generation and child-session constraints in schema descriptions', () => {
@@ -370,6 +381,16 @@ describe('New team tool definitions', () => {
       expect(sessionId.description).toContain('NOT the verification child session ID');
       expect(status.description).toContain('Use reviewing for in-progress rounds');
       expect(generation.description).toContain('Pass on every verifier call');
+      expect((tool?.inputSchema as any).examples?.[0]).toMatchObject({
+        session_id: 'parent-session-id',
+        status: 'reviewing',
+        in_progress: true,
+      });
+      expect((tool?.inputSchema as any).examples?.[1]).toMatchObject({
+        status: 'verified',
+        in_progress: false,
+        convergence_reason: 'zero_blocking',
+      });
     });
   });
 

@@ -104,9 +104,30 @@ export const PLAN_TOOLS: Tool[] = [
     description:
       "Update verification state for an ideation session. Use the PARENT ideation session_id, never the verification child session_id. " +
       "Typical verifier flow: mid-round call with status='reviewing', in_progress=true, round=<n>, gaps=[...], generation=<current>; terminal call with in_progress=false and status='verified' or 'needs_revision'. " +
-      "External sessions cannot use status='skipped'. If the server rejects a call, read the error and correct the payload instead of guessing a new shape.",
+      "External sessions cannot use status='skipped'. If the server rejects a call, read the error and correct the payload instead of guessing a new shape. " +
+      "Example reviewing payload: {\"session_id\":\"<parent-session>\",\"status\":\"reviewing\",\"in_progress\":true,\"round\":1,\"gaps\":[],\"generation\":3}. " +
+      "Example terminal payload: {\"session_id\":\"<parent-session>\",\"status\":\"verified\",\"in_progress\":false,\"round\":1,\"gaps\":[],\"convergence_reason\":\"zero_blocking\",\"generation\":3}.",
     inputSchema: {
       type: "object",
+      examples: [
+        {
+          session_id: "parent-session-id",
+          status: "reviewing",
+          in_progress: true,
+          round: 1,
+          gaps: [],
+          generation: 3,
+        },
+        {
+          session_id: "parent-session-id",
+          status: "verified",
+          in_progress: false,
+          round: 1,
+          gaps: [],
+          convergence_reason: "zero_blocking",
+          generation: 3,
+        },
+      ],
       properties: {
         session_id: {
           type: "string",
@@ -175,9 +196,11 @@ export const PLAN_TOOLS: Tool[] = [
   {
     name: "get_plan_verification",
     description:
-      "Get the current verification status for the PARENT ideation session. Use this before and during verification to confirm the generation, in_progress flag, and current round before calling update_plan_verification.",
+      "Get the current verification status for the PARENT ideation session. Use this before and during verification to confirm the generation, in_progress flag, and current round before calling update_plan_verification. " +
+      "If an update_plan_verification call is rejected, call this again on the parent session and copy the returned generation/in_progress values instead of guessing.",
     inputSchema: {
       type: "object",
+      examples: [{ session_id: "parent-session-id" }],
       properties: {
         session_id: {
           type: "string",

@@ -63,9 +63,9 @@ When working in `src-tauri/`, also follow:
 
 | Priority | Stream | Next Step |
 |---|---|---|
-| P0 | Verifier critic resumption protocol | Landed evidence: `Task(...)` critics can return early with `agentId` before creating artifacts; next patch `plan-verifier` to treat `agentId` as resumable/in-progress, use bounded artifact rescue instead of immediate critic failure, and preserve `SESSION_ID`/`ROUND`/artifact schema on every retry |
-| P0 | Model-agnostic MCP/tool UX | Current tool contracts assume Claude-harness familiarity; next enrich high-friction tool descriptions (`update_plan_verification`, `create_team_artifact`, `get_team_artifacts`) with parent-vs-child session rules, expected payload shape, and repair-oriented guidance, then add stronger backend/tool-side recovery hints |
-| P0 | Startup external-session archival safety | Cold boot still archives matching external sessions too aggressively; next land TTL + recovery-aware exclusions, including verified-without-proposals sessions and external ideation sessions claimed for startup recovery |
+| P0 | Verifier critic resumption protocol | Landed: `plan-verifier` now treats `Task(...)` results with `agentId` as resumable/in-progress and requires full-context rescue prompts; next add deeper regressions and, if needed, runtime-side recovery so critics do not false-escalate while artifacts are still pending |
+| P0 | Model-agnostic MCP/tool UX | Landed: high-friction MCP tools now document parent-vs-child session rules plus concrete payload examples; next extend repair-oriented backend/tool-side hints and consider narrower helper/composite tools for weak-model workflows |
+| P0 | Startup external-session archival safety | Landed first slice: cold boot now respects the external-session TTL instead of archiving every `created`/`error` session on restart; next add recovery-aware exclusions for verified-without-proposals sessions and external ideation sessions claimed for startup recovery |
 
 ## Active Migration Tracker
 

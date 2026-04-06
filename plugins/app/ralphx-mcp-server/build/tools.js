@@ -609,21 +609,32 @@ export const ALL_TOOLS = [
         name: "create_team_artifact",
         description: "Create a team artifact documenting research findings, analysis, or summary. " +
             "Automatically sets bucket_id='team-findings' and populates metadata with team info. " +
-            "Use for documenting team discoveries, debate analyses, or lead-synthesized summaries.",
+            "Use for documenting team discoveries, debate analyses, or lead-synthesized summaries. " +
+            "Verification critics and specialists must create artifacts on the PARENT ideation session_id, not the verification child session_id. " +
+            "If a caller is retrying after an incomplete run, reuse the same parent session_id and publish a partial artifact rather than omitting the artifact entirely. " +
+            "Example critic artifact: {\"session_id\":\"<parent-session>\",\"title\":\"Completeness: Round 1 cold boot coverage\",\"content\":\"{\\\"status\\\":\\\"partial\\\",\\\"critic\\\":\\\"completeness\\\",\\\"round\\\":1,\\\"coverage\\\":\\\"affected_files\\\",\\\"summary\\\":\\\"...\\\",\\\"gaps\\\":[]}\",\"artifact_type\":\"TeamResearch\"}.",
         inputSchema: {
             type: "object",
+            examples: [
+                {
+                    session_id: "parent-session-id",
+                    title: "Completeness: Round 1 cold boot coverage",
+                    content: "{\"status\":\"partial\",\"critic\":\"completeness\",\"round\":1,\"coverage\":\"affected_files\",\"summary\":\"Need one more pass on recovery edge cases\",\"gaps\":[]}",
+                    artifact_type: "TeamResearch",
+                },
+            ],
             properties: {
                 session_id: {
                     type: "string",
-                    description: "The ideation or execution session ID",
+                    description: "The ideation or execution session ID. For verification critics/specialists this must be the PARENT ideation session ID.",
                 },
                 title: {
                     type: "string",
-                    description: "Clear, concise title for the artifact",
+                    description: "Clear, concise title for the artifact. Verification flows should use stable prefixes like 'Completeness: ', 'Feasibility: ', 'UX: ', 'PromptQuality: ', 'PipelineSafety: ', or 'StateMachine: '.",
                 },
                 content: {
                     type: "string",
-                    description: "Markdown content with research findings or analysis",
+                    description: "Markdown or JSON-string content with research findings or analysis. Plan-verifier critics should publish a structured JSON object instead of freeform prose.",
                 },
                 artifact_type: {
                     type: "string",
@@ -641,9 +652,12 @@ export const ALL_TOOLS = [
     {
         name: "get_team_artifacts",
         description: "Retrieve all team artifacts for a session. " +
-            "Returns artifacts from the 'team-findings' bucket filtered by session ID.",
+            "Returns artifacts from the 'team-findings' bucket filtered by session ID. " +
+            "Verification flows should call this on the PARENT ideation session_id and then filter by created_at/title prefix client-side to find the latest critic or specialist artifacts for the current round. " +
+            "Example: call get_team_artifacts({\"session_id\":\"<parent-session>\"}) after critic Task returns, then fetch the newest Completeness:/Feasibility: artifact ids with get_artifact.",
         inputSchema: {
             type: "object",
+            examples: [{ session_id: "parent-session-id" }],
             properties: {
                 session_id: {
                     type: "string",

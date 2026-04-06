@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { getAllowedToolNames, getFilteredTools, isToolAllowed, setAgentType, getAllTools, TOOL_ALLOWLIST, parseAllowedToolsFromArgs, } from '../tools.js';
+import { PLAN_TOOLS } from '../plan-tools.js';
 import { IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_MEMBER, ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_SPECIALIST_CODE_QUALITY, IDEATION_SPECIALIST_PROMPT_QUALITY, IDEATION_SPECIALIST_INTENT, IDEATION_SPECIALIST_PIPELINE_SAFETY, IDEATION_SPECIALIST_STATE_MACHINE, IDEATION_CRITIC, IDEATION_ADVOCATE, PLAN_CRITIC_COMPLETENESS, PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY, } from '../agentNames.js';
 describe('getAllowedToolNames', () => {
     beforeEach(() => {
@@ -244,6 +245,16 @@ describe('New team tool definitions', () => {
             expect(artifactType).toBeDefined();
             expect(artifactType.enum).toEqual(['TeamResearch', 'TeamAnalysis', 'TeamSummary']);
         });
+        it('should document parent-session targeting for verification flows', () => {
+            expect(tool?.description).toContain('PARENT ideation session_id');
+            expect(tool?.description).toContain('Example critic artifact');
+            expect(tool?.inputSchema.properties?.session_id?.description).toContain('PARENT ideation session ID');
+            expect(tool?.inputSchema.properties?.title?.description).toContain('Completeness: ');
+            expect((tool?.inputSchema).examples?.[0]).toMatchObject({
+                session_id: 'parent-session-id',
+                artifact_type: 'TeamResearch',
+            });
+        });
     });
     describe('get_team_artifacts', () => {
         const tool = allTools.find((t) => t.name === 'get_team_artifacts');
@@ -255,6 +266,43 @@ describe('New team tool definitions', () => {
             expect(tool?.inputSchema.type).toBe('object');
             expect(tool?.inputSchema.properties).toHaveProperty('session_id');
             expect(tool?.inputSchema.required).toContain('session_id');
+        });
+        it('should document round-oriented verification lookup guidance', () => {
+            expect(tool?.description).toContain('PARENT ideation session_id');
+            expect(tool?.description).toContain('filter by created_at/title prefix client-side');
+            expect(tool?.description).toContain('get_team_artifacts({"session_id":"<parent-session>"})');
+            expect((tool?.inputSchema).examples?.[0]).toMatchObject({
+                session_id: 'parent-session-id',
+            });
+        });
+    });
+    describe('update_plan_verification', () => {
+        const tool = PLAN_TOOLS.find((t) => t.name === 'update_plan_verification');
+        it('should document parent-session targeting and terminal usage', () => {
+            expect(tool).toBeDefined();
+            expect(tool?.description).toContain('PARENT ideation session_id');
+            expect(tool?.description).toContain("status='reviewing'");
+            expect(tool?.description).toContain("External sessions cannot use status='skipped'");
+            expect(tool?.description).toContain('Example reviewing payload');
+            expect(tool?.description).toContain('Example terminal payload');
+        });
+        it('should document generation and child-session constraints in schema descriptions', () => {
+            const sessionId = tool?.inputSchema.properties?.session_id;
+            const status = tool?.inputSchema.properties?.status;
+            const generation = tool?.inputSchema.properties?.generation;
+            expect(sessionId.description).toContain('NOT the verification child session ID');
+            expect(status.description).toContain('Use reviewing for in-progress rounds');
+            expect(generation.description).toContain('Pass on every verifier call');
+            expect((tool?.inputSchema).examples?.[0]).toMatchObject({
+                session_id: 'parent-session-id',
+                status: 'reviewing',
+                in_progress: true,
+            });
+            expect((tool?.inputSchema).examples?.[1]).toMatchObject({
+                status: 'verified',
+                in_progress: false,
+                convergence_reason: 'zero_blocking',
+            });
         });
     });
     describe('get_team_session_state', () => {
