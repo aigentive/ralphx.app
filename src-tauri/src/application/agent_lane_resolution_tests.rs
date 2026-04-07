@@ -88,6 +88,7 @@ async fn lane_row_with_claude_harness_overrides_legacy_model_and_effort() {
         Some("proj-1"),
         ChatContextType::Ideation,
         None,
+        None,
         Some(&lane_repo),
         Some(&model_repo),
         Some(&effort_repo),
@@ -131,6 +132,7 @@ async fn missing_lane_row_falls_back_to_legacy_ideation_settings() {
         "orchestrator-ideation",
         Some("proj-2"),
         ChatContextType::Ideation,
+        None,
         None,
         Some(&lane_repo),
         Some(&model_repo),
@@ -193,6 +195,7 @@ async fn codex_lane_selection_uses_codex_lane_settings() {
         None,
         ChatContextType::Ideation,
         None,
+        None,
         Some(&lane_repo),
         Some(&model_repo),
         Some(&effort_repo),
@@ -252,6 +255,7 @@ async fn codex_primary_lane_without_model_or_effort_uses_phase1_defaults() {
         None,
         ChatContextType::Ideation,
         None,
+        None,
         Some(&lane_repo),
         Some(&model_repo),
         Some(&effort_repo),
@@ -304,6 +308,7 @@ async fn codex_verifier_lane_without_model_or_effort_uses_phase1_defaults() {
         None,
         ChatContextType::Ideation,
         None,
+        None,
         Some(&lane_repo),
         Some(&model_repo),
         Some(&effort_repo),
@@ -355,6 +360,7 @@ async fn verifier_and_primary_subagent_caps_use_lane_rows_when_claude_is_selecte
         None,
         ChatContextType::Ideation,
         None,
+        None,
         Some(&lane_repo),
         Some(&model_repo),
         Some(&effort_repo),
@@ -389,6 +395,7 @@ async fn execution_worker_lane_can_resolve_codex_settings() {
         "worker",
         None,
         ChatContextType::TaskExecution,
+        None,
         None,
         Some(&lane_repo),
         None,
@@ -430,6 +437,7 @@ async fn execution_worker_codex_without_model_uses_generic_codex_defaults() {
         None,
         ChatContextType::TaskExecution,
         None,
+        None,
         Some(&lane_repo),
         None,
         None,
@@ -441,4 +449,42 @@ async fn execution_worker_codex_without_model_uses_generic_codex_defaults() {
     assert_eq!(resolved.logical_effort, Some(LogicalEffort::XHigh));
     assert_eq!(resolved.approval_policy.as_deref(), Some("on-request"));
     assert_eq!(resolved.sandbox_mode.as_deref(), Some("workspace-write"));
+}
+
+#[tokio::test]
+async fn reexecuting_task_execution_uses_reexecutor_lane_settings() {
+    let lane_repo: Arc<dyn AgentLaneSettingsRepository> =
+        Arc::new(MemoryAgentLaneSettingsRepository::new());
+
+    lane_repo
+        .upsert_global(
+            AgentLane::ExecutionReexecutor,
+            &codex_lane_settings(
+                "gpt-5.4-mini",
+                Some(LogicalEffort::Medium),
+                Some("never"),
+                Some("read-only"),
+            ),
+        )
+        .await
+        .expect("execution reexecutor lane upsert should succeed");
+
+    let resolved = resolve_agent_spawn_settings(
+        "worker",
+        None,
+        ChatContextType::TaskExecution,
+        Some("re_executing"),
+        None,
+        Some(&lane_repo),
+        None,
+        None,
+    )
+    .await;
+
+    assert_eq!(resolved.configured_harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(resolved.effective_harness, AgentHarnessKind::Codex);
+    assert_eq!(resolved.model, "gpt-5.4-mini");
+    assert_eq!(resolved.logical_effort, Some(LogicalEffort::Medium));
+    assert_eq!(resolved.approval_policy.as_deref(), Some("never"));
+    assert_eq!(resolved.sandbox_mode.as_deref(), Some("read-only"));
 }

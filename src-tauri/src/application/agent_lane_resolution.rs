@@ -35,12 +35,13 @@ pub(crate) async fn resolve_agent_spawn_settings(
     agent_name: &str,
     project_id: Option<&str>,
     context_type: ChatContextType,
+    entity_status: Option<&str>,
     model_override: Option<&str>,
     agent_lane_settings_repo: Option<&Arc<dyn AgentLaneSettingsRepository>>,
     ideation_model_settings_repo: Option<&Arc<dyn IdeationModelSettingsRepository>>,
     ideation_effort_settings_repo: Option<&Arc<dyn IdeationEffortSettingsRepository>>,
 ) -> ResolvedAgentSpawnSettings {
-    let primary_lane = lane_for_context(agent_name, context_type);
+    let primary_lane = lane_for_context(agent_name, context_type, entity_status);
     let subagent_lane = subagent_lane_for_context(agent_name, context_type);
 
     if primary_lane.is_none() {
@@ -179,19 +180,32 @@ fn ideation_lane_for_agent(agent_name: &str) -> Option<AgentLane> {
     }
 }
 
-fn execution_lane_for_context(context_type: ChatContextType) -> Option<AgentLane> {
+fn execution_lane_for_context(
+    context_type: ChatContextType,
+    entity_status: Option<&str>,
+) -> Option<AgentLane> {
     match context_type {
-        ChatContextType::TaskExecution => Some(AgentLane::ExecutionWorker),
+        ChatContextType::TaskExecution => {
+            if matches!(entity_status, Some("re_executing")) {
+                Some(AgentLane::ExecutionReexecutor)
+            } else {
+                Some(AgentLane::ExecutionWorker)
+            }
+        }
         ChatContextType::Review => Some(AgentLane::ExecutionReviewer),
         ChatContextType::Merge => Some(AgentLane::ExecutionMerger),
         ChatContextType::Ideation | ChatContextType::Task | ChatContextType::Project => None,
     }
 }
 
-fn lane_for_context(agent_name: &str, context_type: ChatContextType) -> Option<AgentLane> {
+fn lane_for_context(
+    agent_name: &str,
+    context_type: ChatContextType,
+    entity_status: Option<&str>,
+) -> Option<AgentLane> {
     match context_type {
         ChatContextType::Ideation => ideation_lane_for_agent(agent_name),
-        _ => execution_lane_for_context(context_type),
+        _ => execution_lane_for_context(context_type, entity_status),
     }
 }
 

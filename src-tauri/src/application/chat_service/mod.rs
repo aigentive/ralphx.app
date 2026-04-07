@@ -1639,6 +1639,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 agent_name,
                 project_id.as_deref(),
                 context_type,
+                entity_status.as_deref(),
                 None,
                 self.agent_lane_settings_repo.as_ref(),
                 self.ideation_model_settings_repo.as_ref(),

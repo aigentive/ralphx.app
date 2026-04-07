@@ -1319,6 +1319,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                         resolved_agent_name,
                                         resolved_project_id.as_deref(),
                                         context_type,
+                                        entity_status.as_deref(),
                                         None,
                                         agent_lane_settings_repo.as_ref(),
                                         ideation_model_settings_repo.as_ref(),

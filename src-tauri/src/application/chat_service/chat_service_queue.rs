@@ -395,6 +395,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                             agent_name,
                             project_id,
                             context_type,
+                            entity_status.as_deref(),
                             None,
                             agent_lane_settings_repo.as_ref(),
                             ideation_model_settings_repo.as_ref(),

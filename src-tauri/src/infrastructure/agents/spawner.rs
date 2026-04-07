@@ -354,6 +354,7 @@ impl AgenticClientSpawner {
             project_id,
             context_type,
             None,
+            None,
             self.agent_lane_settings_repo.as_ref(),
             None,
             None,

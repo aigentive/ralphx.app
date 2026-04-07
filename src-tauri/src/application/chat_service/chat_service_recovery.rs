@@ -136,6 +136,23 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
         let app_state = handle.state::<AppState>();
         Arc::clone(&app_state.ideation_effort_settings_repo)
     });
+    let task_repo = app_handle.map(|handle| {
+        let app_state = handle.state::<AppState>();
+        Arc::clone(&app_state.task_repo)
+    });
+    let entity_status = if let (Some(ideation_repo), Some(task_repo)) =
+        (ideation_session_repo.as_ref(), task_repo.as_ref())
+    {
+        chat_service_context::get_entity_status_for_resume(
+            conversation.context_type,
+            conversation.context_id.as_str(),
+            Arc::clone(ideation_repo),
+            Arc::clone(task_repo),
+        )
+        .await
+    } else {
+        None
+    };
 
     // 4. Spawn fresh provider session with history
     let spawnable = match harness {
@@ -145,7 +162,7 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
             conversation,
             &bootstrap_prompt,
             working_directory,
-            None,
+            entity_status.as_deref(),
             _resolved_project_id.as_deref(),
             team_mode,
             chat_attachment_repo,
@@ -172,7 +189,7 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
             let capabilities = match crate::infrastructure::agents::probe_codex_cli(cli_path) {
                 Ok(capabilities) => capabilities,
                 Err(error) => {
-                    let err = AppError::Infrastructure(format!(
+                let err = AppError::Infrastructure(format!(
                         "Failed to probe Codex CLI for recovery: {error}"
                     ));
                     log_failure(&err);
@@ -180,11 +197,12 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
                 }
             };
             let agent_name =
-                super::resolve_agent_with_team_mode(&conversation.context_type, None, false);
+                super::resolve_agent_with_team_mode(&conversation.context_type, entity_status.as_deref(), false);
             let resolved_spawn_settings = resolve_agent_spawn_settings(
                 agent_name,
                 _resolved_project_id.as_deref(),
                 conversation.context_type,
+                entity_status.as_deref(),
                 None,
                 agent_lane_settings_repo.as_ref(),
                 ideation_model_settings_repo.as_ref(),
