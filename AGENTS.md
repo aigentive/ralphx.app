@@ -111,6 +111,7 @@ When working in `src-tauri/`, also follow:
 | Priority | Stream | Status | Next Step |
 |---|---|---|---|
 | P0 | Cross-session source of truth | Started | Keep this tracker, `specs/codex-cli.md`, `docs/ai-docs/codex-cli/`, `docs/ai-docs/reefagent-codex-cli.md`, and `docs/ai-docs/reefagent-codex-responses.md` updated together so Codex parity research survives across sessions |
+| P0 | Discovery PR checkpoint | Completed | Open PR `#17` (`docs: add Codex CLI discovery spec`) from `codex-cli-discovery` so ongoing implementation planning can build on a reviewable baseline |
 | P0 | Vendor doc snapshot | Started | Maintain a local Codex CLI doc index under `docs/ai-docs/codex-cli/` covering CLI, config, approvals/security, sandboxing, AGENTS/rules/hooks, MCP, skills, subagents, models, auth, and non-interactive mode; note version skew between installed CLI help and current official docs |
 | P0 | Harness abstraction | Investigating | Design a first-class multi-harness layer above Claude/Codex process differences: spawn args, resume/session semantics, MCP wiring, event parsing, raw logging, availability checks, and capability flags |
 | P0 | Core milestone | Target defined | First implementation milestone is Codex-backed ideation + verification with subagents while execution/review/merge may stay on Claude; no team-mode parity for Codex, so Codex runs operate in explicit solo mode |
@@ -121,6 +122,7 @@ When working in `src-tauri/`, also follow:
 | P0 | Recovery / capacity / reconciliation | Investigating | Audit all places that assume Claude session ids, Claude run states, Claude resume behavior, or Claude-only provider errors; define Codex-compatible recovery and observability contracts |
 | P0 | Schema / compatibility migration | Investigating | Replace Claude-shaped persisted/API fields such as `claude_session_id`, Claude-only model enums, and `claudeCode` profile payloads with provider-neutral contracts plus temporary compatibility shims where needed |
 | P0 | Lane settings matrix | Investigating | Define per-lane `harness + model + effort + approval + sandbox` settings for ideation, verifier, ideation subagents, verifier subagents, execution, review, re-execution, and merge-conflict handling across YAML, env, DB, and UI |
+| P0 | Implementation planning | In progress | Add concrete phase plan, migration plan, and regression/test plan docs before touching Rust/frontend runtime code |
 | P1 | Model / effort defaults | Investigating | Default Codex to `gpt-5.4` with `xhigh` reasoning where supported; map Claude effort semantics vs Codex reasoning config and define per-phase overrides and downgrade rules |
 | P1 | Execution pipeline compatibility | Investigating | Audit all Claude process spawn sites, required args, consumer expectations, and fallback behavior for worker/reviewer/merger/team flows before any execution-lane Codex rollout |
 | P1 | Logging / auditability | Investigating | Standardize per-harness prompt capture, raw event logs, parsed event traces, provider session ids, and spawn metadata so failures remain debuggable across Claude and Codex |
