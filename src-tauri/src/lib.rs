@@ -718,30 +718,51 @@ pub fn run() {
                 // Create chat service for Phase N+1 ideation recovery.
                 // Must be constructed BEFORE StartupJobRunner::new() consumes the repos.
                 let recovery_chat_service_app_handle = startup_runner_app_handle.clone();
-                let recovery_chat_service: Arc<dyn application::ChatService> = Arc::new(
-                    ClaudeChatService::new(
-                        Arc::clone(&startup_chat_message_repo),
-                        Arc::clone(&startup_chat_attachment_repo),
-                        Arc::clone(&startup_artifact_repo),
-                        Arc::clone(&startup_conversation_repo),
-                        Arc::clone(&startup_agent_run_repo),
-                        Arc::clone(&startup_project_repo),
-                        Arc::clone(&startup_task_repo),
-                        Arc::clone(&startup_task_dependency_repo),
-                        Arc::clone(&startup_ideation_session_repo),
-                        Arc::clone(&startup_activity_event_repo),
-                        Arc::clone(&startup_message_queue),
-                        Arc::clone(&startup_running_agent_registry),
-                        Arc::clone(&startup_memory_event_repo),
-                    )
-                    .with_execution_state(Arc::clone(&startup_execution_state))
-                    .with_execution_settings_repo(Arc::clone(&startup_execution_settings_repo))
-                    .with_agent_lane_settings_repo(Arc::clone(&startup_agent_lane_settings_repo))
-                    .with_ideation_effort_settings_repo(Arc::clone(&startup_ideation_effort_settings_repo))
-                    .with_ideation_model_settings_repo(Arc::clone(&startup_ideation_model_settings_repo))
-                    .with_app_handle(recovery_chat_service_app_handle)
-                    .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry)),
-                );
+                let recovery_chat_service: Arc<dyn application::ChatService> =
+                    if let Some(app_state) =
+                        recovery_chat_service_app_handle.try_state::<AppState>()
+                    {
+                        Arc::new(
+                            app_state.build_chat_service_with_execution_state(Arc::clone(
+                                &startup_execution_state,
+                            )),
+                        )
+                    } else {
+                        Arc::new(
+                            ClaudeChatService::new(
+                                Arc::clone(&startup_chat_message_repo),
+                                Arc::clone(&startup_chat_attachment_repo),
+                                Arc::clone(&startup_artifact_repo),
+                                Arc::clone(&startup_conversation_repo),
+                                Arc::clone(&startup_agent_run_repo),
+                                Arc::clone(&startup_project_repo),
+                                Arc::clone(&startup_task_repo),
+                                Arc::clone(&startup_task_dependency_repo),
+                                Arc::clone(&startup_ideation_session_repo),
+                                Arc::clone(&startup_activity_event_repo),
+                                Arc::clone(&startup_message_queue),
+                                Arc::clone(&startup_running_agent_registry),
+                                Arc::clone(&startup_memory_event_repo),
+                            )
+                            .with_execution_state(Arc::clone(&startup_execution_state))
+                            .with_execution_settings_repo(Arc::clone(
+                                &startup_execution_settings_repo,
+                            ))
+                            .with_agent_lane_settings_repo(Arc::clone(
+                                &startup_agent_lane_settings_repo,
+                            ))
+                            .with_ideation_effort_settings_repo(Arc::clone(
+                                &startup_ideation_effort_settings_repo,
+                            ))
+                            .with_ideation_model_settings_repo(Arc::clone(
+                                &startup_ideation_model_settings_repo,
+                            ))
+                            .with_app_handle(recovery_chat_service_app_handle)
+                            .with_interactive_process_registry(Arc::clone(
+                                &startup_interactive_process_registry,
+                            )),
+                        )
+                    };
 
                 let runner = StartupJobRunner::new(
                     startup_task_repo,

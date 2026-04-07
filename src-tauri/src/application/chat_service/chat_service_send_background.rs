@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tokio::process::Child;
 use tracing::Instrument;
 
@@ -26,12 +26,12 @@ use crate::domain::entities::{
     AgentRunId, ChatContextType, ChatConversationId, InternalStatus, TaskId,
 };
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository,
-    ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
-    ChatMessageRepository, ExecutionSettingsRepository, IdeationEffortSettingsRepository,
-    IdeationModelSettingsRepository, IdeationSessionRepository, MemoryEventRepository,
-    PlanBranchRepository, ProjectRepository, ReviewRepository, TaskDependencyRepository,
-    TaskProposalRepository, TaskRepository, TaskStepRepository,
+    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, ArtifactRepository,
+    ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
+    ExecutionSettingsRepository, IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
+    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
+    ReviewRepository, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
+    TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentKey, RunningAgentRegistry};
 use tokio_util::sync::CancellationToken;
@@ -650,36 +650,78 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                         execution_state.as_ref().cloned(),
                         execution_settings_repo.as_ref().cloned(),
                     ) {
-                        let mut svc = super::ClaudeChatService::new(
-                            Arc::clone(&chat_message_repo),
-                            Arc::clone(&chat_attachment_repo),
-                            Arc::clone(&artifact_repo),
-                            Arc::clone(&conversation_repo),
-                            Arc::clone(&agent_run_repo),
-                            Arc::clone(&project_repo),
-                            Arc::clone(&task_repo),
-                            Arc::clone(&task_dependency_repo),
-                            Arc::clone(&ideation_session_repo),
-                            Arc::clone(&activity_event_repo),
-                            Arc::clone(&message_queue),
-                            Arc::clone(&running_agent_registry),
-                            Arc::clone(&memory_event_repo),
-                        )
-                        .with_execution_state(Arc::clone(&exec_state))
-                        .with_execution_settings_repo(Arc::clone(&exec_settings));
-                        if let Some(ref lane_repo) = agent_lane_settings_repo {
-                            svc = svc.with_agent_lane_settings_repo(Arc::clone(lane_repo));
-                        }
-                        if let Some(ref effort_repo) = ideation_effort_settings_repo {
-                            svc = svc.with_ideation_effort_settings_repo(Arc::clone(effort_repo));
-                        }
-                        if let Some(ref model_repo) = ideation_model_settings_repo {
-                            svc = svc.with_ideation_model_settings_repo(Arc::clone(model_repo));
-                        }
-                        if let Some(ref ah) = app_handle {
-                            svc = svc.with_app_handle(ah.clone());
-                        }
-                        let chat_svc: Arc<dyn super::ChatService> = Arc::new(svc);
+                        let chat_svc: Arc<dyn super::ChatService> = if let Some(ref ah) = app_handle
+                        {
+                            if let Some(app_state) =
+                                ah.try_state::<crate::application::AppState>()
+                            {
+                                Arc::new(
+                                    app_state.build_chat_service_with_execution_state(
+                                        Arc::clone(&exec_state),
+                                    ),
+                                )
+                            } else {
+                                let mut svc: super::ClaudeChatService<R> =
+                                    super::ClaudeChatService::new(
+                                    Arc::clone(&chat_message_repo),
+                                    Arc::clone(&chat_attachment_repo),
+                                    Arc::clone(&artifact_repo),
+                                    Arc::clone(&conversation_repo),
+                                    Arc::clone(&agent_run_repo),
+                                    Arc::clone(&project_repo),
+                                    Arc::clone(&task_repo),
+                                    Arc::clone(&task_dependency_repo),
+                                    Arc::clone(&ideation_session_repo),
+                                    Arc::clone(&activity_event_repo),
+                                    Arc::clone(&message_queue),
+                                    Arc::clone(&running_agent_registry),
+                                    Arc::clone(&memory_event_repo),
+                                    )
+                                    .with_execution_state(Arc::clone(&exec_state))
+                                    .with_execution_settings_repo(Arc::clone(&exec_settings));
+                                if let Some(ref lane_repo) = agent_lane_settings_repo {
+                                    svc = svc.with_agent_lane_settings_repo(Arc::clone(lane_repo));
+                                }
+                                if let Some(ref effort_repo) = ideation_effort_settings_repo {
+                                    svc = svc
+                                        .with_ideation_effort_settings_repo(Arc::clone(effort_repo));
+                                }
+                                if let Some(ref model_repo) = ideation_model_settings_repo {
+                                    svc = svc.with_ideation_model_settings_repo(Arc::clone(model_repo));
+                                }
+                                Arc::new(svc.with_app_handle(ah.clone()))
+                            }
+                        } else {
+                            let mut svc: super::ClaudeChatService<R> =
+                                super::ClaudeChatService::new(
+                                Arc::clone(&chat_message_repo),
+                                Arc::clone(&chat_attachment_repo),
+                                Arc::clone(&artifact_repo),
+                                Arc::clone(&conversation_repo),
+                                Arc::clone(&agent_run_repo),
+                                Arc::clone(&project_repo),
+                                Arc::clone(&task_repo),
+                                Arc::clone(&task_dependency_repo),
+                                Arc::clone(&ideation_session_repo),
+                                Arc::clone(&activity_event_repo),
+                                Arc::clone(&message_queue),
+                                Arc::clone(&running_agent_registry),
+                                Arc::clone(&memory_event_repo),
+                                )
+                                .with_execution_state(Arc::clone(&exec_state))
+                                .with_execution_settings_repo(Arc::clone(&exec_settings));
+                            if let Some(ref lane_repo) = agent_lane_settings_repo {
+                                svc = svc.with_agent_lane_settings_repo(Arc::clone(lane_repo));
+                            }
+                            if let Some(ref effort_repo) = ideation_effort_settings_repo {
+                                svc = svc
+                                    .with_ideation_effort_settings_repo(Arc::clone(effort_repo));
+                            }
+                            if let Some(ref model_repo) = ideation_model_settings_repo {
+                                svc = svc.with_ideation_model_settings_repo(Arc::clone(model_repo));
+                            }
+                            Arc::new(svc)
+                        };
 
                         let drain = Arc::new(
                             crate::application::pending_session_drain::PendingSessionDrainService::new(
