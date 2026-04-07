@@ -636,8 +636,48 @@ pub fn run() {
                 let watchdog_task_repo = Arc::clone(&startup_task_repo);
                 let watchdog_project_repo = Arc::clone(&startup_project_repo);
 
+                let build_transition_service_builder =
+                    |task_repo,
+                     task_dependency_repo,
+                     project_repo,
+                     chat_message_repo,
+                     chat_attachment_repo,
+                     conversation_repo,
+                     agent_run_repo,
+                     ideation_session_repo,
+                     activity_event_repo,
+                     message_queue,
+                     running_agent_registry,
+                     memory_event_repo,
+                     app_handle| {
+                        TaskTransitionService::new(
+                            task_repo,
+                            task_dependency_repo,
+                            project_repo,
+                            chat_message_repo,
+                            chat_attachment_repo,
+                            conversation_repo,
+                            agent_run_repo,
+                            ideation_session_repo,
+                            activity_event_repo,
+                            message_queue,
+                            running_agent_registry,
+                            Arc::clone(&startup_execution_state),
+                            Some(app_handle),
+                            memory_event_repo,
+                        )
+                        .with_agentic_client(Arc::clone(&startup_agent_client))
+                        .with_execution_settings_repo(Arc::clone(&startup_execution_settings_repo))
+                        .with_task_scheduler(Arc::clone(&task_scheduler))
+                        .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
+                        .with_step_repo(Arc::clone(&startup_step_repo))
+                        .with_interactive_process_registry(Arc::clone(
+                            &startup_interactive_process_registry,
+                        ))
+                    };
+
                 // Create TaskTransitionService for startup resumption
-                let mut transition_service_builder = TaskTransitionService::new(
+                let mut transition_service_builder = build_transition_service_builder(
                     Arc::clone(&startup_task_repo),
                     Arc::clone(&startup_task_dependency_repo),
                     Arc::clone(&startup_project_repo),
@@ -649,16 +689,9 @@ pub fn run() {
                     Arc::clone(&startup_activity_event_repo),
                     Arc::clone(&startup_message_queue),
                     Arc::clone(&startup_running_agent_registry),
-                    Arc::clone(&startup_execution_state),
-                    Some(startup_app_handle),
                     Arc::clone(&startup_memory_event_repo),
-                )
-                .with_agentic_client(Arc::clone(&startup_agent_client))
-                .with_execution_settings_repo(Arc::clone(&startup_execution_settings_repo))
-                .with_task_scheduler(Arc::clone(&task_scheduler))
-                .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
-                .with_step_repo(Arc::clone(&startup_step_repo))
-                .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry));
+                    startup_app_handle,
+                );
 
                 if let Some(ref pub_) = startup_webhook_publisher {
                     transition_service_builder = transition_service_builder.with_webhook_publisher_for_emitter(Arc::clone(pub_));
@@ -802,7 +835,8 @@ pub fn run() {
 
                 let reconcile_webhook_publisher = startup_webhook_publisher.clone();
 
-                let mut reconcile_transition_service_builder = TaskTransitionService::new(
+                let mut reconcile_transition_service_builder =
+                    build_transition_service_builder(
                         Arc::clone(&reconcile_task_repo),
                         Arc::clone(&reconcile_task_dependency_repo),
                         Arc::clone(&reconcile_project_repo),
@@ -814,16 +848,9 @@ pub fn run() {
                         Arc::clone(&reconcile_activity_event_repo),
                         Arc::clone(&reconcile_message_queue),
                         Arc::clone(&reconcile_running_agent_registry),
-                        Arc::clone(&startup_execution_state),
-                        Some(reconcile_app_handle.clone()),
                         Arc::clone(&reconcile_memory_event_repo),
-                    )
-                    .with_agentic_client(Arc::clone(&startup_agent_client))
-                    .with_execution_settings_repo(Arc::clone(&startup_execution_settings_repo))
-                    .with_task_scheduler(Arc::clone(&task_scheduler))
-                    .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
-                    .with_step_repo(Arc::clone(&startup_step_repo))
-                    .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry));
+                        reconcile_app_handle.clone(),
+                    );
 
                 if let Some(ref pub_) = reconcile_webhook_publisher {
                     reconcile_transition_service_builder = reconcile_transition_service_builder.with_webhook_publisher_for_emitter(Arc::clone(pub_));
