@@ -176,6 +176,7 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
     // 5. Process stream to capture new session ID
     let outcome = match process_stream_background::<tauri::Wry>(
         child,
+        crate::domain::agents::AgentHarnessKind::Claude,
         context_type,
         context_id,
         conversation_id,

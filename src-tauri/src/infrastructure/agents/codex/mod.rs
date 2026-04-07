@@ -55,6 +55,7 @@ pub struct CodexExecCliConfig {
     pub reasoning_effort: Option<LogicalEffort>,
     pub approval_policy: Option<String>,
     pub sandbox_mode: Option<String>,
+    pub config_overrides: Vec<String>,
     pub cwd: Option<PathBuf>,
     pub add_dirs: Vec<PathBuf>,
     pub skip_git_repo_check: bool,
@@ -69,6 +70,7 @@ impl Default for CodexExecCliConfig {
             reasoning_effort: None,
             approval_policy: None,
             sandbox_mode: None,
+            config_overrides: Vec::new(),
             cwd: None,
             add_dirs: Vec::new(),
             skip_git_repo_check: false,
@@ -188,6 +190,12 @@ pub fn build_codex_exec_args(
         args.push("--search".to_string());
     }
 
+    for override_value in &config.config_overrides {
+        require_capability(capabilities.supports_config_override, "config_override")?;
+        args.push("-c".to_string());
+        args.push(override_value.clone());
+    }
+
     if let Some(reasoning_effort) = config.reasoning_effort {
         require_capability(capabilities.supports_config_override, "config_override")?;
         args.push("-c".to_string());
@@ -233,6 +241,12 @@ pub fn build_codex_exec_resume_args(
 
     if config.skip_git_repo_check {
         args.push("--skip-git-repo-check".to_string());
+    }
+
+    for override_value in &config.config_overrides {
+        require_capability(capabilities.supports_config_override, "config_override")?;
+        args.push("-c".to_string());
+        args.push(override_value.clone());
     }
 
     if let Some(reasoning_effort) = config.reasoning_effort {

@@ -13,6 +13,7 @@ use tracing::info;
 use crate::application::question_state::QuestionState;
 use crate::application::team_events;
 use crate::application::team_state_tracker::TeammateStatus;
+use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::entities::{
     ActivityEvent, ActivityEventType, AgentRunId, ChatContextType, ChatConversationId,
     ChatMessageId, TaskId,
@@ -25,6 +26,10 @@ use crate::domain::services::{RunningAgentKey, RunningAgentRegistry};
 use crate::infrastructure::agents::claude::stream_timeouts;
 use crate::infrastructure::agents::claude::{
     ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall, ToolCallStats,
+};
+use crate::infrastructure::agents::{
+    extract_codex_agent_message, extract_codex_command_execution, extract_codex_error_message,
+    extract_codex_thread_id, extract_codex_tool_call, parse_codex_event_line,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -313,6 +318,7 @@ impl CompletionSignalTracker {
 /// * `streaming_state_cache` - Cache for streaming state to hydrate frontend on navigation
 pub async fn process_stream_background<R: Runtime>(
     mut child: tokio::process::Child,
+    harness: AgentHarnessKind,
     context_type: ChatContextType,
     context_id: &str,
     conversation_id: &ChatConversationId,
@@ -332,6 +338,29 @@ pub async fn process_stream_background<R: Runtime>(
     execution_state: Option<Arc<crate::commands::ExecutionState>>,
     conversation_repo: Option<Arc<dyn ChatConversationRepository>>,
 ) -> Result<StreamOutcome, StreamError> {
+    if harness == AgentHarnessKind::Codex {
+        return process_codex_stream_background(
+            child,
+            context_type,
+            context_id,
+            conversation_id,
+            app_handle,
+            activity_event_repo,
+            task_repo,
+            chat_message_repo,
+            assistant_message_id,
+            question_state,
+            cancellation_token,
+            streaming_state_cache,
+            running_agent_registry,
+            agent_run_repo,
+            agent_run_id,
+            execution_state,
+            conversation_repo,
+        )
+        .await;
+    }
+
     let mut timeout_config = StreamTimeoutConfig::for_context(&context_type);
     // Team leads wait long periods while teammates work — use team-specific timeout
     let stream_cfg = stream_timeouts();
@@ -2041,6 +2070,394 @@ pub async fn process_stream_background<R: Runtime>(
         return Err(StreamError::AgentExit {
             exit_code: status.code(),
             stderr: stderr_trimmed,
+        });
+    }
+
+    Ok(outcome)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn process_codex_stream_background<R: Runtime>(
+    mut child: tokio::process::Child,
+    context_type: ChatContextType,
+    context_id: &str,
+    conversation_id: &ChatConversationId,
+    app_handle: Option<AppHandle<R>>,
+    activity_event_repo: Option<Arc<dyn ActivityEventRepository>>,
+    task_repo: Option<Arc<dyn TaskRepository>>,
+    chat_message_repo: Option<Arc<dyn ChatMessageRepository>>,
+    assistant_message_id: Option<String>,
+    question_state: Option<Arc<QuestionState>>,
+    cancellation_token: CancellationToken,
+    streaming_state_cache: StreamingStateCache,
+    running_agent_registry: Option<Arc<dyn RunningAgentRegistry>>,
+    _agent_run_repo: Option<Arc<dyn AgentRunRepository>>,
+    _agent_run_id: Option<String>,
+    _execution_state: Option<Arc<crate::commands::ExecutionState>>,
+    conversation_repo: Option<Arc<dyn ChatConversationRepository>>,
+) -> Result<StreamOutcome, StreamError> {
+    let timeout_config = StreamTimeoutConfig::for_context(&context_type);
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| StreamError::ProcessSpawnFailed {
+            command: "codex".to_string(),
+            error: "Failed to capture stdout".to_string(),
+        })?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| StreamError::ProcessSpawnFailed {
+            command: "codex".to_string(),
+            error: "Failed to capture stderr".to_string(),
+        })?;
+
+    let event_ctx = event_context(conversation_id, &context_type, context_id);
+    let conversation_id_str = event_ctx.conversation_id.clone();
+    let context_type_str = event_ctx.context_type.clone();
+    let context_id_str = event_ctx.context_id.clone();
+    let task_id_for_persistence = if matches!(
+        context_type,
+        ChatContextType::TaskExecution | ChatContextType::Merge
+    ) {
+        Some(TaskId::from_string(context_id.to_string()))
+    } else {
+        None
+    };
+
+    let stderr_task = tokio::spawn(async move {
+        let reader = BufReader::new(stderr);
+        let mut lines = reader.lines();
+        let mut stderr_content = String::new();
+
+        while let Ok(Some(line)) = lines.next_line().await {
+            stderr_content.push_str(&line);
+            stderr_content.push('\n');
+        }
+
+        stderr_content
+    });
+
+    let stdout_reader = BufReader::new(stdout);
+    let mut lines = stdout_reader.lines();
+    let mut response_text = String::new();
+    let mut tool_calls = Vec::<ToolCall>::new();
+    let content_blocks = Vec::<ContentBlockItem>::new();
+    let mut errors = Vec::<String>::new();
+    let mut session_id: Option<String> = None;
+    let mut lines_seen = 0usize;
+    let mut lines_parsed = 0usize;
+    let mut stream_seq = 0u64;
+    let mut last_parsed_at = std::time::Instant::now();
+    let stream_start = std::time::Instant::now();
+    let max_wall_clock = std::time::Duration::from_secs(stream_timeouts().max_wall_clock_secs);
+    let mut last_flush = std::time::Instant::now();
+    const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+    let heartbeat_key = running_agent_registry
+        .as_ref()
+        .map(|_| RunningAgentKey::new(context_type.to_string(), context_id));
+    let mut last_heartbeat = std::time::Instant::now();
+    const HEARTBEAT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+
+    loop {
+        let line = tokio::select! {
+            _ = cancellation_token.cancelled() => {
+                let _ = child.kill().await;
+                flush_content_before_error(
+                    &chat_message_repo,
+                    &assistant_message_id,
+                    &response_text,
+                    &tool_calls,
+                    &content_blocks,
+                ).await;
+                return Err(StreamError::Cancelled {
+                    turns_finalized: 0,
+                    completion_tool_called: false,
+                });
+            }
+            read_result = timeout(timeout_config.line_read_timeout, lines.next_line()) => {
+                match read_result {
+                    Ok(Ok(Some(line))) => line,
+                    Ok(Ok(None)) => break,
+                    Ok(Err(error)) => {
+                        return Err(StreamError::AgentExit {
+                            exit_code: None,
+                            stderr: error.to_string(),
+                        });
+                    }
+                    Err(_) => {
+                        let has_pending_question = if let Some(ref qs) = question_state {
+                            qs.has_pending_for_session(context_id).await
+                        } else {
+                            false
+                        };
+                        let (pid_alive, child_exited) = if let Some(pid) = child.id() {
+                            let exited = child.try_wait().ok().flatten().is_some();
+                            let alive = crate::domain::services::is_process_alive(pid);
+                            (alive, exited)
+                        } else {
+                            (false, true)
+                        };
+
+                        if should_kill_on_timeout(
+                            stream_start.elapsed(),
+                            max_wall_clock,
+                            has_pending_question,
+                            false,
+                            pid_alive,
+                            child_exited,
+                            false,
+                            false,
+                        ) {
+                            let _ = child.kill().await;
+                            flush_content_before_error(
+                                &chat_message_repo,
+                                &assistant_message_id,
+                                &response_text,
+                                &tool_calls,
+                                &content_blocks,
+                            ).await;
+                            return Err(StreamError::Timeout {
+                                context_type,
+                                elapsed_secs: timeout_config.line_read_timeout.as_secs(),
+                            });
+                        }
+                        continue;
+                    }
+                }
+            }
+        };
+
+        lines_seen += 1;
+
+        if let Some(event) = parse_codex_event_line(&line) {
+            lines_parsed += 1;
+            last_parsed_at = std::time::Instant::now();
+
+            if let Some(thread_id) = extract_codex_thread_id(&event) {
+                session_id = Some(thread_id.clone());
+                if let Some(ref repo) = conversation_repo {
+                    let _ = repo
+                        .update_provider_session_ref(
+                            conversation_id,
+                            &ProviderSessionRef {
+                                harness: AgentHarnessKind::Codex,
+                                provider_session_id: thread_id,
+                            },
+                        )
+                        .await;
+                }
+            }
+
+            if let Some(text) = extract_codex_agent_message(&event) {
+                if !response_text.is_empty() {
+                    response_text.push_str("\n\n");
+                }
+                response_text.push_str(&text);
+
+                if let Some(ref handle) = app_handle {
+                    let _ = handle.emit(
+                        events::AGENT_CHUNK,
+                        AgentChunkPayload {
+                            text,
+                            conversation_id: conversation_id_str.clone(),
+                            context_type: context_type_str.clone(),
+                            context_id: context_id_str.clone(),
+                            seq: stream_seq,
+                        },
+                    );
+                    stream_seq += 1;
+                }
+            }
+
+            if let Some(tool_call) = extract_codex_tool_call(&event) {
+                tool_calls.push(tool_call.clone());
+                streaming_state_cache
+                    .upsert_tool_call(
+                        &conversation_id_str,
+                        CachedToolCall {
+                            id: tool_call
+                                .id
+                                .clone()
+                                .unwrap_or_else(|| format!("codex-tool-{}", stream_seq)),
+                            name: tool_call.name.clone(),
+                            arguments: tool_call.arguments.clone(),
+                            result: tool_call.result.clone(),
+                            diff_context: None,
+                            parent_tool_use_id: None,
+                        },
+                    )
+                    .await;
+
+                if let Some(ref handle) = app_handle {
+                    let _ = handle.emit(
+                        events::AGENT_TOOL_CALL,
+                        AgentToolCallPayload {
+                            tool_name: tool_call.name.clone(),
+                            tool_id: tool_call.id.clone(),
+                            arguments: tool_call.arguments.clone(),
+                            result: tool_call.result.clone(),
+                            conversation_id: conversation_id_str.clone(),
+                            context_type: context_type_str.clone(),
+                            context_id: context_id_str.clone(),
+                            diff_context: None,
+                            parent_tool_use_id: None,
+                            seq: stream_seq,
+                        },
+                    );
+                    stream_seq += 1;
+                }
+
+                if matches!(context_type, ChatContextType::TaskExecution | ChatContextType::Merge) {
+                    if let (Some(ref repo), Some(ref task_id)) =
+                        (&activity_event_repo, &task_id_for_persistence)
+                    {
+                        let event = ActivityEvent::new_task_event(
+                            task_id.clone(),
+                            ActivityEventType::ToolCall,
+                            tool_call.name.clone(),
+                        );
+                        let event = if let Some(ref t_repo) = task_repo {
+                            if let Ok(Some(task)) = t_repo.get_by_id(task_id).await {
+                                event.with_status(task.internal_status)
+                            } else {
+                                event
+                            }
+                        } else {
+                            event
+                        };
+                        let _ = repo.save(event).await;
+                    }
+                }
+            }
+
+            if let Some(command_execution) = extract_codex_command_execution(&event) {
+                if let Some(exit_code) = command_execution.exit_code {
+                    if exit_code != 0 {
+                        errors.push(
+                            command_execution
+                                .aggregated_output
+                                .clone()
+                                .unwrap_or_else(|| {
+                                    format!("Codex command_execution failed with exit code {exit_code}")
+                                }),
+                        );
+                    }
+                }
+            }
+
+            if let Some(error) = extract_codex_error_message(&event) {
+                errors.push(error);
+            }
+        } else if lines_seen > 0 && last_parsed_at.elapsed() >= timeout_config.parse_stall_timeout {
+            let _ = child.kill().await;
+            flush_content_before_error(
+                &chat_message_repo,
+                &assistant_message_id,
+                &response_text,
+                &tool_calls,
+                &content_blocks,
+            )
+            .await;
+            return Err(StreamError::ParseStall {
+                context_type,
+                elapsed_secs: timeout_config.parse_stall_timeout.as_secs(),
+                lines_seen,
+                lines_parsed,
+            });
+        }
+
+        if last_flush.elapsed() >= FLUSH_INTERVAL {
+            if let (Some(ref repo), Some(ref msg_id)) = (&chat_message_repo, &assistant_message_id)
+            {
+                let current_tools = serde_json::to_string(&tool_calls).ok();
+                let _ = repo
+                    .update_content(
+                        &ChatMessageId::from_string(msg_id.clone()),
+                        &response_text,
+                        current_tools.as_deref(),
+                        None,
+                    )
+                    .await;
+            }
+            last_flush = std::time::Instant::now();
+        }
+
+        if lines_parsed > 0 && last_heartbeat.elapsed() >= HEARTBEAT_INTERVAL {
+            if let (Some(ref registry), Some(ref key)) = (&running_agent_registry, &heartbeat_key) {
+                registry.update_heartbeat(key, chrono::Utc::now()).await;
+            }
+            last_heartbeat = std::time::Instant::now();
+        }
+    }
+
+    let stderr_content = {
+        let raw = stderr_task.await.unwrap_or_default();
+        crate::utils::secret_redactor::redact(&raw)
+    };
+    let status = child.wait().await.map_err(|error| StreamError::AgentExit {
+        exit_code: None,
+        stderr: error.to_string(),
+    })?;
+
+    let outcome = StreamOutcome {
+        response_text,
+        tool_calls,
+        content_blocks,
+        session_id: session_id.clone(),
+        stderr_text: stderr_content.clone(),
+        turns_finalized: 0,
+        execution_slot_held: true,
+        silent_interactive_exit: false,
+    };
+
+    flush_content_before_error(
+        &chat_message_repo,
+        &assistant_message_id,
+        &outcome.response_text,
+        &outcome.tool_calls,
+        &outcome.content_blocks,
+    )
+    .await;
+
+    if !errors.is_empty() {
+        let error_message = errors.join("; ");
+        if let Some(provider_error) =
+            super::chat_service_errors::classify_provider_error(&error_message)
+        {
+            return Err(provider_error);
+        }
+        return Err(StreamError::AgentExit {
+            exit_code: status.code(),
+            stderr: error_message,
+        });
+    }
+
+    if !status.success() && !outcome.has_meaningful_output() {
+        let stderr_trimmed = outcome.stderr_text.trim().to_string();
+        if let Some(provider_error) =
+            super::chat_service_errors::classify_provider_error(&stderr_trimmed)
+        {
+            return Err(provider_error);
+        }
+        return Err(StreamError::AgentExit {
+            exit_code: status.code(),
+            stderr: stderr_trimmed,
+        });
+    }
+
+    if outcome.tool_calls.is_empty() {
+        if let Some(provider_error) =
+            super::chat_service_errors::classify_provider_error(&outcome.response_text)
+        {
+            return Err(provider_error);
+        }
+    }
+
+    if cancellation_token.is_cancelled() {
+        return Err(StreamError::Cancelled {
+            turns_finalized: 0,
+            completion_tool_called: false,
         });
     }
 

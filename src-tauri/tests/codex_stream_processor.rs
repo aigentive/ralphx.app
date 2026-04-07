@@ -1,6 +1,7 @@
 use ralphx_lib::infrastructure::agents::{
     extract_codex_agent_message, extract_codex_command_execution, extract_codex_error_message,
-    extract_codex_tool_call, extract_codex_usage, parse_codex_event_line,
+    extract_codex_thread_id, extract_codex_tool_call, extract_codex_usage,
+    parse_codex_event_line,
 };
 
 #[test]
@@ -16,6 +17,22 @@ fn parse_codex_event_line_extracts_agent_message() {
     assert_eq!(
         extract_codex_agent_message(&event).as_deref(),
         Some("Draft plan ready")
+    );
+}
+
+#[test]
+fn extract_codex_thread_id_reads_thread_started_events() {
+    let event = parse_codex_event_line(
+        r#"{
+            "type":"thread.started",
+            "thread_id":"019d6078-21bc-73c1-a1cf-b415c8dab35b"
+        }"#,
+    )
+    .expect("event should parse");
+
+    assert_eq!(
+        extract_codex_thread_id(&event).as_deref(),
+        Some("019d6078-21bc-73c1-a1cf-b415c8dab35b")
     );
 }
 

@@ -17,6 +17,7 @@ use super::chat_service_types::{
 use super::has_meaningful_output;
 use crate::application::question_state::QuestionState;
 use crate::commands::ExecutionState;
+use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::{ChatContextType, ChatConversationId, InternalStatus, TaskId};
 use crate::domain::repositories::{
     ActivityEventRepository, ArtifactRepository, ChatMessageRepository,
@@ -60,6 +61,7 @@ fn with_resume_in_place_metadata(metadata_override: Option<String>) -> Option<St
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn process_queued_messages<R: Runtime + 'static>(
     context_type: ChatContextType,
+    harness: AgentHarnessKind,
     context_id: &str,
     conversation_id: ChatConversationId,
     session_id: &str,
@@ -326,39 +328,109 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
             });
 
             // Build and spawn resume command
-            let spawnable = match chat_service_context::build_resume_command(
-                cli_path,
-                plugin_dir,
-                context_type,
-                context_id,
-                &queued_msg.content,
-                working_directory,
-                session_id,
-                project_id,
-                team_mode,
-                Arc::clone(chat_attachment_repo),
-                Arc::clone(artifact_repo),
-                agent_lane_settings_repo,
-                ideation_effort_settings_repo,
-                ideation_model_settings_repo,
-                Arc::clone(ideation_session_repo),
-                Arc::clone(task_repo),
-                &[], // queue resume path — session history not injected here
-                0,   // total_available: not needed here — session_messages is empty
-                None, // effort_override: queue resume uses default
-                None, // model_override: queue resume uses resolved ideation settings when available
-            )
-            .await
-            {
-                Ok(cmd) => cmd,
-                Err(err) => {
-                    tracing::warn!(
-                        error = %err,
-                        %context_type,
+            let spawnable = match harness {
+                AgentHarnessKind::Claude => match chat_service_context::build_resume_command(
+                    cli_path,
+                    plugin_dir,
+                    context_type,
+                    context_id,
+                    &queued_msg.content,
+                    working_directory,
+                    session_id,
+                    project_id,
+                    team_mode,
+                    Arc::clone(chat_attachment_repo),
+                    Arc::clone(artifact_repo),
+                    agent_lane_settings_repo,
+                    ideation_effort_settings_repo,
+                    ideation_model_settings_repo,
+                    Arc::clone(ideation_session_repo),
+                    Arc::clone(task_repo),
+                    &[],
+                    0,
+                    None,
+                    None,
+                )
+                .await {
+                    Ok(cmd) => cmd,
+                    Err(err) => {
+                        tracing::warn!(
+                            error = %err,
+                            %context_type,
+                            context_id,
+                            "queue spawn blocked"
+                        );
+                        return total_processed;
+                    }
+                },
+                AgentHarnessKind::Codex => {
+                    let Some(codex_cli_path) = crate::infrastructure::agents::find_codex_cli() else {
+                        tracing::warn!(%context_type, context_id, "Codex CLI not found for queue resume");
+                        return total_processed;
+                    };
+                    let capabilities = match crate::infrastructure::agents::probe_codex_cli(&codex_cli_path) {
+                        Ok(capabilities) => capabilities,
+                        Err(error) => {
+                            tracing::warn!(%context_type, context_id, %error, "Codex CLI probe failed for queue resume");
+                            return total_processed;
+                        }
+                    };
+
+                    let entity_status = chat_service_context::get_entity_status_for_resume(
+                        context_type,
                         context_id,
-                        "queue spawn blocked"
+                        Arc::clone(ideation_session_repo),
+                        Arc::clone(task_repo),
+                    )
+                    .await;
+                    let agent_name = super::resolve_agent_with_team_mode(
+                        &context_type,
+                        entity_status.as_deref(),
+                        team_mode,
                     );
-                    return total_processed;
+                    let resolved_spawn_settings =
+                        crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
+                            agent_name,
+                            project_id,
+                            context_type,
+                            None,
+                            agent_lane_settings_repo.as_ref(),
+                            ideation_model_settings_repo.as_ref(),
+                            ideation_effort_settings_repo.as_ref(),
+                        )
+                        .await;
+
+                    match chat_service_context::build_codex_resume_command(
+                        &codex_cli_path,
+                        plugin_dir,
+                        &capabilities,
+                        context_type,
+                        context_id,
+                        &queued_msg.content,
+                        working_directory,
+                        session_id,
+                        project_id,
+                        team_mode,
+                        Arc::clone(artifact_repo),
+                        Arc::clone(ideation_session_repo),
+                        Arc::clone(task_repo),
+                        &[],
+                        0,
+                        false,
+                        &resolved_spawn_settings,
+                    )
+                    .await {
+                        Ok(cmd) => cmd,
+                        Err(err) => {
+                            tracing::warn!(
+                                error = %err,
+                                %context_type,
+                                context_id,
+                                "codex queue spawn blocked"
+                            );
+                            return total_processed;
+                        }
+                    }
                 }
             };
 
@@ -379,6 +451,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
 
                     match process_stream_background(
                         child,
+                        harness,
                         context_type,
                         context_id,
                         &conversation_id,

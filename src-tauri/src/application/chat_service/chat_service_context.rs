@@ -20,10 +20,15 @@ use crate::domain::repositories::{
     IdeationSessionRepository, ProjectRepository, TaskRepository,
 };
 use crate::infrastructure::agents::claude::{
-    build_spawnable_command, build_spawnable_interactive_command, mcp_agent_type,
-    ContentBlockItem, SpawnableCommand, ToolCall,
+    build_spawnable_command, build_spawnable_interactive_command, claude_runtime_config,
+    filter_interactive_tools, format_allowed_tools_arg_value, get_agent_config, mcp_agent_type,
+    node_utils, validate_mcp_tool_name, ContentBlockItem, SpawnableCommand, ToolCall,
 };
 use crate::infrastructure::agents::claude::agent_names;
+use crate::infrastructure::agents::{
+    build_spawnable_codex_exec_command, build_spawnable_codex_resume_command,
+    CodexCliCapabilities, CodexExecCliConfig,
+};
 use crate::utils::truncate_str;
 
 use super::super::agent_lane_resolution::ResolvedAgentSpawnSettings;
@@ -941,6 +946,99 @@ fn apply_ralphx_env_vars(
     }
 }
 
+fn encode_codex_string_literal(value: &str) -> Result<String, String> {
+    serde_json::to_string(value).map_err(|error| format!("Failed to encode Codex string literal: {error}"))
+}
+
+fn encode_codex_string_array(values: &[String]) -> Result<String, String> {
+    serde_json::to_string(values)
+        .map_err(|error| format!("Failed to encode Codex array literal: {error}"))
+}
+
+pub(crate) fn build_codex_mcp_overrides(
+    plugin_dir: &Path,
+    agent_name: &str,
+    is_external_mcp: bool,
+) -> Result<Vec<String>, String> {
+    let mcp_server_name = claude_runtime_config().mcp_server_name.clone();
+    let short_name = mcp_agent_type(agent_name);
+    let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
+    if !mcp_server_path.exists() {
+        return Err(format!(
+            "Codex MCP server not found at {}",
+            mcp_server_path.display()
+        ));
+    }
+
+    let node_command = node_utils::find_node_binary()
+        .to_string_lossy()
+        .into_owned();
+
+    let mut mcp_args = vec![
+        mcp_server_path.to_string_lossy().into_owned(),
+        "--agent-type".to_string(),
+        short_name.to_string(),
+    ];
+
+    let enabled_tools = get_agent_config(short_name).map(|config| {
+        let tools: Vec<String> = config
+            .allowed_mcp_tools
+            .iter()
+            .filter(|name| validate_mcp_tool_name(name))
+            .cloned()
+            .collect();
+        if is_external_mcp {
+            filter_interactive_tools(&tools)
+        } else {
+            tools
+        }
+    });
+
+    if let Some(arg_value) = format_allowed_tools_arg_value(enabled_tools.as_deref()) {
+        mcp_args.push(format!("--allowed-tools={arg_value}"));
+    }
+
+    let mut overrides = vec![
+        format!(
+            "mcp_servers.{mcp_server_name}.command={}",
+            encode_codex_string_literal(&node_command)?
+        ),
+        format!(
+            "mcp_servers.{mcp_server_name}.args={}",
+            encode_codex_string_array(&mcp_args)?
+        ),
+        format!("mcp_servers.{mcp_server_name}.enabled=true"),
+    ];
+
+    if let Some(tools) = enabled_tools {
+        overrides.push(format!(
+            "mcp_servers.{mcp_server_name}.enabled_tools={}",
+            encode_codex_string_array(&tools)?
+        ));
+    }
+
+    Ok(overrides)
+}
+
+fn build_codex_cli_config(
+    working_directory: &Path,
+    resolved_spawn_settings: &ResolvedAgentSpawnSettings,
+    config_overrides: Vec<String>,
+) -> CodexExecCliConfig {
+    CodexExecCliConfig {
+        model: Some(resolved_spawn_settings.model.clone()),
+        reasoning_effort: resolved_spawn_settings.logical_effort,
+        approval_policy: resolved_spawn_settings.approval_policy.clone(),
+        sandbox_mode: resolved_spawn_settings.sandbox_mode.clone(),
+        config_overrides,
+        cwd: Some(working_directory.to_path_buf()),
+        add_dirs: Vec::new(),
+        skip_git_repo_check: false,
+        json_output: true,
+        search: false,
+    }
+}
+
 /// Create a spawnable Claude CLI command.
 ///
 /// `entity_status` is optional and enables dynamic agent resolution based on state.
@@ -1104,6 +1202,76 @@ async fn build_command_from_resolved_settings(
         team_mode,
         conversation.claude_session_id.as_deref(),
         ideation_subagent_model_cap,
+    );
+
+    Ok(spawnable)
+}
+
+pub async fn build_codex_command(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    capabilities: &CodexCliCapabilities,
+    conversation: &ChatConversation,
+    user_message: &str,
+    working_directory: &Path,
+    entity_status: Option<&str>,
+    project_id: Option<&str>,
+    _team_mode: bool,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    artifact_repo: Arc<dyn ArtifactRepository>,
+    session_messages: &[ChatMessage],
+    total_available: usize,
+    is_external_mcp: bool,
+    resolved_spawn_settings: &ResolvedAgentSpawnSettings,
+) -> Result<SpawnableCommand, String> {
+    let codex_team_mode = false;
+    let agent_name =
+        resolve_agent_with_team_mode(&conversation.context_type, entity_status, codex_team_mode);
+    let ideation_subagent_model_cap = (conversation.context_type == ChatContextType::Ideation)
+        .then(|| {
+            resolved_spawn_settings
+                .subagent_model_cap
+                .clone()
+                .unwrap_or_else(|| resolved_spawn_settings.model.clone())
+        });
+
+    let attachments = chat_attachment_repo
+        .find_by_conversation_id(&conversation.id)
+        .await
+        .map_err(|e| format!("Failed to fetch attachments: {}", e))?
+        .into_iter()
+        .filter(|a| a.message_id.is_none())
+        .collect::<Vec<_>>();
+    let attachment_context = format_attachments_for_agent(&attachments).await?;
+
+    let initial_prompt = build_initial_prompt_with_session_artifacts(
+        conversation.context_type,
+        &conversation.context_id,
+        user_message,
+        session_messages,
+        total_available,
+        artifact_repo,
+        ideation_subagent_model_cap.as_deref(),
+    )
+    .await?;
+    let prompt = format!("{}{}", initial_prompt, attachment_context);
+
+    let config_overrides = build_codex_mcp_overrides(plugin_dir, agent_name, is_external_mcp)?;
+    let codex_config =
+        build_codex_cli_config(working_directory, resolved_spawn_settings, config_overrides);
+
+    let mut spawnable =
+        build_spawnable_codex_exec_command(cli_path, &prompt, capabilities, &codex_config)?;
+
+    apply_ralphx_env_vars(
+        &mut spawnable,
+        agent_name,
+        conversation.context_type,
+        &conversation.context_id,
+        project_id,
+        codex_team_mode,
+        None,
+        ideation_subagent_model_cap.as_deref(),
     );
 
     Ok(spawnable)
@@ -1361,6 +1529,70 @@ async fn build_resume_command_from_resolved_settings(
         context_id,
         project_id,
         team_mode,
+        Some(session_id),
+        ideation_subagent_model_cap,
+    );
+
+    Ok(spawnable)
+}
+
+pub async fn build_codex_resume_command(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    capabilities: &CodexCliCapabilities,
+    context_type: ChatContextType,
+    context_id: &str,
+    message: &str,
+    working_directory: &Path,
+    session_id: &str,
+    project_id: Option<&str>,
+    _team_mode: bool,
+    artifact_repo: Arc<dyn ArtifactRepository>,
+    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    task_repo: Arc<dyn TaskRepository>,
+    session_messages: &[ChatMessage],
+    total_available: usize,
+    is_external_mcp: bool,
+    resolved_spawn_settings: &ResolvedAgentSpawnSettings,
+) -> Result<SpawnableCommand, String> {
+    let codex_team_mode = false;
+    let entity_status =
+        get_entity_status_for_resume(context_type, context_id, ideation_session_repo, task_repo)
+            .await;
+    let agent_name =
+        resolve_agent_with_team_mode(&context_type, entity_status.as_deref(), codex_team_mode);
+    let ideation_subagent_model_cap = resolved_spawn_settings.subagent_model_cap.as_deref();
+
+    let resume_prompt = build_initial_prompt_with_session_artifacts(
+        context_type,
+        context_id,
+        message,
+        session_messages,
+        total_available,
+        artifact_repo,
+        ideation_subagent_model_cap,
+    )
+    .await?;
+
+    let config_overrides = build_codex_mcp_overrides(plugin_dir, agent_name, is_external_mcp)?;
+    let codex_config =
+        build_codex_cli_config(working_directory, resolved_spawn_settings, config_overrides);
+
+    let mut spawnable = build_spawnable_codex_resume_command(
+        cli_path,
+        session_id,
+        &resume_prompt,
+        capabilities,
+        &codex_config,
+    )?;
+
+    apply_ralphx_env_vars(
+        &mut spawnable,
+        agent_name,
+        context_type,
+        context_id,
+        project_id,
+        codex_team_mode,
         Some(session_id),
         ideation_subagent_model_cap,
     );

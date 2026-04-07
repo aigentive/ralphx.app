@@ -20,6 +20,7 @@ use crate::application::interactive_process_registry::{
 use crate::application::memory_orchestration::trigger_memory_pipelines;
 use crate::application::question_state::QuestionState;
 use crate::commands::ExecutionState;
+use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::entities::ChatConversation;
 use crate::domain::entities::{
     AgentRunId, ChatContextType, ChatConversationId, InternalStatus, TaskId,
@@ -63,6 +64,7 @@ pub(super) struct BackgroundRunRepos {
 pub(super) struct BackgroundRunContext<R: Runtime> {
     // Process
     pub child: Child,
+    pub harness: AgentHarnessKind,
     // Context identification
     pub context_type: ChatContextType,
     pub context_id: String,
@@ -165,6 +167,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
     tokio::spawn(async move {
         let BackgroundRunContext {
             child,
+            harness,
             context_type,
             context_id,
             conversation_id,
@@ -266,6 +269,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
         );
         let result = process_stream_background(
             child,
+            harness,
             context_type,
             &context_id,
             &conversation_id,
@@ -355,7 +359,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 let response_text = outcome.response_text;
                 let tool_calls = outcome.tool_calls;
                 let content_blocks = outcome.content_blocks;
-                let claude_session_id = outcome.session_id;
+                let provider_session_id = outcome.session_id;
                 let stderr_text = crate::utils::secret_redactor::redact(&outcome.stderr_text);
                 let turns_finalized = outcome.turns_finalized;
                 // Debug: Log what we got from stream processing
@@ -365,25 +369,31 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     context_id,
                     response_text.len(),
                     tool_calls.len(),
-                    claude_session_id
+                    provider_session_id
                 );
 
-                // Update conversation with claude_session_id
-                if let Some(ref sess_id) = claude_session_id {
+                // Update conversation with provider session id
+                if let Some(ref sess_id) = provider_session_id {
                     tracing::info!("[CHAT_SERVICE] Updating conversation with session_id={}", sess_id);
                     if let Err(e) = conversation_repo
-                        .update_claude_session_id(&conversation_id, sess_id)
+                        .update_provider_session_ref(
+                            &conversation_id,
+                            &ProviderSessionRef {
+                                harness,
+                                provider_session_id: sess_id.clone(),
+                            },
+                        )
                         .await
                     {
                         tracing::error!(
                             error = %e,
                             conversation_id = conversation_id.as_str(),
                             session_id = %sess_id,
-                            "[CHAT_SERVICE] Failed to persist claude_session_id — next resume attempt will use stale session ID"
+                            "[CHAT_SERVICE] Failed to persist provider_session_id — next resume attempt will use stale session ID"
                         );
                     }
                 } else {
-                    tracing::warn!("[CHAT_SERVICE] No claude_session_id captured from stream - queue processing will be skipped!");
+                    tracing::warn!("[CHAT_SERVICE] No provider session_id captured from stream - queue processing will be skipped!");
                 }
 
                 // Detect resume failure: if --resume was used but Claude returned a different session ID,
@@ -392,12 +402,12 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 // enqueue it as a priority message so Claude gets context before any pending user messages.
                 if session_changed_after_resume(
                     stored_session_id.as_deref(),
-                    claude_session_id.as_deref(),
+                    provider_session_id.as_deref(),
                 ) && !outcome.silent_interactive_exit
                 {
                     tracing::warn!(
                         stored_session_id = %stored_session_id.as_deref().unwrap_or(""),
-                        new_session_id = %claude_session_id.as_deref().unwrap_or(""),
+                        new_session_id = %provider_session_id.as_deref().unwrap_or(""),
                         context_type = %context_type,
                         context_id = %context_id,
                         "[RESUME] Session ID changed after --resume — triggering context recovery"
@@ -725,7 +735,8 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 // Check if there are queued messages to process
                 // If yes, DON'T emit run_completed yet - emit it after queue processing
                 // Use the stream's session_id if available, otherwise fall back to stored session_id
-                let effective_session_id = claude_session_id.clone().or(stored_session_id.clone());
+                let effective_session_id =
+                    provider_session_id.clone().or(stored_session_id.clone());
                 let initial_queue_count = message_queue.get_queued(context_type, &context_id).len();
                 let has_session_for_queue = effective_session_id.is_some();
                 let will_process_queue = initial_queue_count > 0 && has_session_for_queue && !outcome.silent_interactive_exit;
@@ -742,7 +753,10 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     "[LIFECYCLE] will_process_queue decision"
                 );
 
-                if initial_queue_count > 0 && claude_session_id.is_none() && stored_session_id.is_some() {
+                if initial_queue_count > 0
+                    && provider_session_id.is_none()
+                    && stored_session_id.is_some()
+                {
                     tracing::info!(
                         "[QUEUE] Stream had no session_id, using stored session_id from conversation for queue processing"
                     );
@@ -839,6 +853,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 if let Some(ref sess_id) = effective_session_id {
                     let total_processed = super::chat_service_queue::process_queued_messages(
                         context_type,
+                        harness,
                         &context_id,
                         conversation_id,
                         sess_id,

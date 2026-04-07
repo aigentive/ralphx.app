@@ -52,6 +52,8 @@ pub struct CodexStreamEvent {
     #[serde(rename = "type")]
     pub event_type: String,
     #[serde(default)]
+    pub thread_id: Option<String>,
+    #[serde(default)]
     pub item: Option<CodexItem>,
     #[serde(default)]
     pub usage: Option<CodexUsage>,
@@ -85,6 +87,14 @@ pub fn extract_codex_agent_message(event: &CodexStreamEvent) -> Option<String> {
     }
 
     item.text.clone()
+}
+
+pub fn extract_codex_thread_id(event: &CodexStreamEvent) -> Option<String> {
+    if event.event_type != "thread.started" {
+        return None;
+    }
+
+    event.thread_id.clone()
 }
 
 pub fn extract_codex_tool_call(event: &CodexStreamEvent) -> Option<ToolCall> {

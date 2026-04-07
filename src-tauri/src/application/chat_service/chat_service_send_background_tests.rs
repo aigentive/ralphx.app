@@ -103,6 +103,7 @@ async fn queue_processing_leaves_messages_pending_when_execution_paused() {
 
     let processed = super::super::chat_service_queue::process_queued_messages::<tauri::Wry>(
         ChatContextType::Ideation,
+        crate::domain::agents::AgentHarnessKind::Claude,
         "session-paused",
         conversation_id,
         "session-cli",

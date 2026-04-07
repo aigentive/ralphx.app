@@ -18,8 +18,9 @@ pub use codex::{
 };
 pub use codex::stream_processor::{
     extract_codex_agent_message, extract_codex_command_execution, extract_codex_error_message,
-    extract_codex_tool_call, extract_codex_usage, parse_codex_event_line, CodexCommandExecution,
-    CodexItem, CodexItemError, CodexStreamEvent, CodexUsage,
+    extract_codex_thread_id, extract_codex_tool_call, extract_codex_usage,
+    parse_codex_event_line, CodexCommandExecution, CodexItem, CodexItemError,
+    CodexStreamEvent, CodexUsage,
 };
 pub use mock::{MockAgenticClient, MockCall, MockCallType};
 pub use spawner::AgenticClientSpawner;

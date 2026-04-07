@@ -147,7 +147,7 @@ async fn missing_lane_row_falls_back_to_legacy_ideation_settings() {
 }
 
 #[tokio::test]
-async fn codex_lane_selection_degrades_to_legacy_claude_settings() {
+async fn codex_lane_selection_uses_codex_lane_settings() {
     let lane_repo: Arc<dyn AgentLaneSettingsRepository> =
         Arc::new(MemoryAgentLaneSettingsRepository::new());
     let model_repo: Arc<dyn IdeationModelSettingsRepository> =
@@ -200,18 +200,18 @@ async fn codex_lane_selection_degrades_to_legacy_claude_settings() {
     .await;
 
     assert_eq!(resolved.configured_harness, Some(AgentHarnessKind::Codex));
-    assert_eq!(resolved.effective_harness, AgentHarnessKind::Claude);
+    assert_eq!(resolved.effective_harness, AgentHarnessKind::Codex);
     assert_eq!(resolved.configured_model.as_deref(), Some("gpt-5.4"));
     assert_eq!(resolved.configured_logical_effort, Some(LogicalEffort::XHigh));
     assert_eq!(resolved.configured_approval_policy.as_deref(), Some("on_request"));
     assert_eq!(resolved.configured_sandbox_mode.as_deref(), Some("workspace_write"));
-    assert_eq!(resolved.model, "sonnet");
-    assert_eq!(resolved.logical_effort, Some(LogicalEffort::Medium));
-    assert_eq!(resolved.claude_effort.as_deref(), Some("medium"));
-    assert_eq!(resolved.approval_policy, None);
-    assert_eq!(resolved.sandbox_mode, None);
+    assert_eq!(resolved.model, "gpt-5.4");
+    assert_eq!(resolved.logical_effort, Some(LogicalEffort::XHigh));
+    assert_eq!(resolved.claude_effort.as_deref(), Some("max"));
+    assert_eq!(resolved.approval_policy.as_deref(), Some("on_request"));
+    assert_eq!(resolved.sandbox_mode.as_deref(), Some("workspace_write"));
     assert_eq!(resolved.configured_subagent_model_cap.as_deref(), Some("gpt-5.4-mini"));
-    assert_eq!(resolved.subagent_model_cap.as_deref(), Some("haiku"));
+    assert_eq!(resolved.subagent_model_cap.as_deref(), Some("gpt-5.4-mini"));
 }
 
 #[tokio::test]

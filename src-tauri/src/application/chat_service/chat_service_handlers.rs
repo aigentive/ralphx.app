@@ -1243,6 +1243,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                 super::chat_service_send_background::spawn_send_message_background(
                                     BackgroundRunContext {
                                         child: retry_child,
+                                        harness: crate::domain::agents::AgentHarnessKind::Claude,
                                         context_type,
                                         context_id: context_id.to_string(),
                                         conversation_id,
