@@ -466,15 +466,7 @@ pub async fn approve_task_for_review(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Task not found: {}", task_id.as_str()))?;
 
-    if task.internal_status != InternalStatus::ReviewPassed
-        && task.internal_status != InternalStatus::Escalated
-    {
-        return Err(format!(
-            "Task must be in 'review_passed' or 'escalated' status to approve. Current status: {}. \
-            This action is only available after the AI reviewer has approved or escalated the task.",
-            task.internal_status.as_str()
-        ));
-    }
+    ensure_human_review_followup_status(task.internal_status, "approve")?;
 
     // 2. Create a human approval review note
     let review_note = ReviewNote::with_notes(
@@ -582,15 +574,7 @@ pub async fn request_task_changes_for_review(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Task not found: {}", task_id.as_str()))?;
 
-    if task.internal_status != InternalStatus::ReviewPassed
-        && task.internal_status != InternalStatus::Escalated
-    {
-        return Err(format!(
-            "Task must be in 'review_passed' or 'escalated' status to request changes. Current status: {}. \
-            This action is only available after the AI reviewer has approved or escalated the task.",
-            task.internal_status.as_str()
-        ));
-    }
+    ensure_human_review_followup_status(task.internal_status, "request changes")?;
 
     // 2. Create a human changes-requested review note
     let review_note = ReviewNote::with_notes(
@@ -672,12 +656,7 @@ pub async fn re_review_task_from_escalated(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Task not found: {}", task_id.as_str()))?;
 
-    if task.internal_status != InternalStatus::Escalated {
-        return Err(format!(
-            "Task must be in 'escalated' status to re-review. Current status: {}.",
-            task.internal_status.as_str()
-        ));
-    }
+    ensure_re_review_from_escalated_status(task.internal_status)?;
 
     // 1b. Restore worktree_path if it's stale (pointing to a merge worktree).
     //     This unblocks tasks stuck after a merge-pipeline conflict routed them back
@@ -746,6 +725,33 @@ pub async fn re_review_task_from_escalated(
     );
 
     Ok(())
+}
+
+fn ensure_human_review_followup_status(
+    status: InternalStatus,
+    action: &str,
+) -> Result<(), String> {
+    if matches!(status, InternalStatus::ReviewPassed | InternalStatus::Escalated) {
+        return Ok(());
+    }
+
+    Err(format!(
+        "Task must be in 'review_passed' or 'escalated' status to {}. Current status: {}. \
+        This action is only available after the AI reviewer has approved or escalated the task.",
+        action,
+        status.as_str()
+    ))
+}
+
+fn ensure_re_review_from_escalated_status(status: InternalStatus) -> Result<(), String> {
+    if status == InternalStatus::Escalated {
+        return Ok(());
+    }
+
+    Err(format!(
+        "Task must be in 'escalated' status to re-review. Current status: {}.",
+        status.as_str()
+    ))
 }
 
 /// Request changes on a task while it is actively being reviewed (Reviewing state)
@@ -938,6 +944,39 @@ pub async fn get_issue_progress(
         .map_err(|e| e.to_string())?;
 
     Ok(IssueProgressResponse::from(summary))
+}
+
+#[cfg(test)]
+mod transition_guard_tests {
+    use super::*;
+
+    #[test]
+    fn human_review_followup_accepts_review_passed_and_escalated() {
+        assert!(ensure_human_review_followup_status(InternalStatus::ReviewPassed, "approve").is_ok());
+        assert!(
+            ensure_human_review_followup_status(InternalStatus::Escalated, "request changes")
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn human_review_followup_rejects_terminal_statuses() {
+        let error = ensure_human_review_followup_status(InternalStatus::Merged, "approve")
+            .expect_err("merged task must be rejected");
+        assert!(error.contains("review_passed"));
+        assert!(error.contains("escalated"));
+        assert!(error.contains("merged"));
+    }
+
+    #[test]
+    fn rereview_requires_escalated_status() {
+        assert!(ensure_re_review_from_escalated_status(InternalStatus::Escalated).is_ok());
+
+        let error = ensure_re_review_from_escalated_status(InternalStatus::ReviewPassed)
+            .expect_err("review_passed task must be rejected");
+        assert!(error.contains("escalated"));
+        assert!(error.contains("review_passed"));
+    }
 }
 
 /// Verify that an issue has been fixed (Addressed -> Verified)

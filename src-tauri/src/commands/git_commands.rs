@@ -200,16 +200,7 @@ pub async fn resolve_merge_conflict(
         .ok_or_else(|| format!("Task not found: {}", task_id_parsed.as_str()))?;
 
     // Validate task is in a resolvable merge state
-    let valid_resolve_states = [
-        InternalStatus::MergeConflict,
-        InternalStatus::MergeIncomplete,
-    ];
-    if !valid_resolve_states.contains(&task.internal_status) {
-        return Err(format!(
-            "Task is not in MergeConflict or MergeIncomplete state (current: {:?})",
-            task.internal_status
-        ));
-    }
+    ensure_resolve_merge_status(task.internal_status)?;
 
     // Get project
     let project = state
@@ -334,17 +325,7 @@ pub async fn retry_merge(
     }
 
     // Validate task is in a mergeable retry state
-    let valid_retry_states = [
-        InternalStatus::MergeConflict,
-        InternalStatus::MergeIncomplete,
-        InternalStatus::Merging,
-    ];
-    if !valid_retry_states.contains(&task.internal_status) {
-        return Err(format!(
-            "Task is not in a state that allows merge retry (current: {:?})",
-            task.internal_status
-        ));
-    }
+    ensure_retry_merge_status(task.internal_status)?;
 
     // Set in-flight guard and optional skip_validation flag
     let mut meta_obj = metadata_json.as_object().cloned().unwrap_or_default();
@@ -575,6 +556,34 @@ async fn clear_merge_retry_guard(
     Ok(())
 }
 
+fn ensure_resolve_merge_status(status: InternalStatus) -> Result<(), String> {
+    if matches!(
+        status,
+        InternalStatus::MergeConflict | InternalStatus::MergeIncomplete
+    ) {
+        return Ok(());
+    }
+
+    Err(format!(
+        "Task is not in MergeConflict or MergeIncomplete state (current: {:?})",
+        status
+    ))
+}
+
+fn ensure_retry_merge_status(status: InternalStatus) -> Result<(), String> {
+    if matches!(
+        status,
+        InternalStatus::MergeConflict | InternalStatus::MergeIncomplete | InternalStatus::Merging
+    ) {
+        return Ok(());
+    }
+
+    Err(format!(
+        "Task is not in a state that allows merge retry (current: {:?})",
+        status
+    ))
+}
+
 /// Manual cleanup for task branch/worktree
 ///
 /// Used for failed/cancelled tasks that have git resources to clean up.
@@ -621,6 +630,41 @@ pub async fn cleanup_task_branch(
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod transition_guard_tests {
+    use super::*;
+
+    #[test]
+    fn resolve_merge_accepts_conflict_states() {
+        assert!(ensure_resolve_merge_status(InternalStatus::MergeConflict).is_ok());
+        assert!(ensure_resolve_merge_status(InternalStatus::MergeIncomplete).is_ok());
+    }
+
+    #[test]
+    fn resolve_merge_rejects_non_conflict_states() {
+        let error = ensure_resolve_merge_status(InternalStatus::Approved)
+            .expect_err("approved task must not resolve merge conflict");
+        assert!(error.contains("MergeConflict"));
+        assert!(error.contains("MergeIncomplete"));
+        assert!(error.contains("Approved"));
+    }
+
+    #[test]
+    fn retry_merge_accepts_retryable_states() {
+        assert!(ensure_retry_merge_status(InternalStatus::MergeConflict).is_ok());
+        assert!(ensure_retry_merge_status(InternalStatus::MergeIncomplete).is_ok());
+        assert!(ensure_retry_merge_status(InternalStatus::Merging).is_ok());
+    }
+
+    #[test]
+    fn retry_merge_rejects_terminal_states() {
+        let error =
+            ensure_retry_merge_status(InternalStatus::Merged).expect_err("merged task must reject retry");
+        assert!(error.contains("allows merge retry"));
+        assert!(error.contains("Merged"));
+    }
 }
 
 /// Input for changing project git mode
