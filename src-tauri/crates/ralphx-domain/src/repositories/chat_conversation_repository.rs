@@ -1,7 +1,7 @@
 // Chat conversation repository trait - domain layer abstraction
 //
 // This trait defines the contract for chat conversation persistence.
-// Conversations track Claude CLI sessions linked to contexts (ideation, task, project).
+// Conversations track provider sessions linked to contexts (ideation, task, project).
 
 use async_trait::async_trait;
 
@@ -43,7 +43,7 @@ pub trait ChatConversationRepository: Send + Sync {
     /// Clear the provider session reference for a conversation.
     async fn clear_provider_session_ref(&self, id: &ChatConversationId) -> AppResult<()>;
 
-    /// Update the Claude session ID for a conversation
+    /// Compatibility helper for legacy Claude-specific callers.
     async fn update_claude_session_id(
         &self,
         id: &ChatConversationId,
@@ -59,7 +59,7 @@ pub trait ChatConversationRepository: Send + Sync {
         .await
     }
 
-    /// Clear the Claude session ID for a conversation
+    /// Compatibility helper for legacy Claude-specific callers.
     async fn clear_claude_session_id(&self, id: &ChatConversationId) -> AppResult<()> {
         self.clear_provider_session_ref(id).await
     }

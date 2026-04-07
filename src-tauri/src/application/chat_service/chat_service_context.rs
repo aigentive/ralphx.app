@@ -8,6 +8,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::{
     Artifact, ArtifactContent, ArtifactId, ArtifactType, ChatAttachment, ChatContextType,
     ChatConversation, ChatConversationId, ChatMessage, ChatMessageId, GitMode, IdeationSessionId,
@@ -45,6 +46,12 @@ pub const SESSION_HISTORY_ARTIFACT_THRESHOLD_BYTES: usize = 2000;
 
 /// Preview budget for long history messages that have a full artifact reference.
 pub const SESSION_HISTORY_PREVIEW_BYTES: usize = 500;
+
+fn claude_resume_session_id(conversation: &ChatConversation) -> Option<String> {
+    conversation.provider_session_ref().and_then(|session_ref| {
+        (session_ref.harness == AgentHarnessKind::Claude).then_some(session_ref.provider_session_id)
+    })
+}
 
 /// XML-escape content for safe embedding in XML elements.
 fn xml_escape(s: &str) -> String {
@@ -1082,7 +1089,8 @@ pub async fn build_command(
     // But review-chat needs session persistence for user conversation continuity.
     let is_fresh_review_cycle = conversation.context_type == ChatContextType::Review
         && agent_name == agent_names::AGENT_REVIEWER;
-    let should_resume = conversation.claude_session_id.is_some()
+    let claude_resume_session_id = claude_resume_session_id(conversation);
+    let should_resume = claude_resume_session_id.is_some()
         && !is_fresh_review_cycle
         && conversation.context_type != ChatContextType::TaskExecution;
 
@@ -1120,6 +1128,7 @@ pub async fn build_command(
         artifact_repo,
         &attachment_context,
         should_resume,
+        claude_resume_session_id.as_deref(),
         session_messages,
         total_available,
         effort_override,
@@ -1140,6 +1149,7 @@ async fn build_command_from_resolved_settings(
     artifact_repo: Arc<dyn ArtifactRepository>,
     attachment_context: &str,
     should_resume: bool,
+    claude_resume_session_id: Option<&str>,
     session_messages: &[ChatMessage],
     total_available: usize,
     effort_override: Option<&str>,
@@ -1148,7 +1158,9 @@ async fn build_command_from_resolved_settings(
     let resolved_model = resolved_spawn_settings.model.as_str();
     let ideation_subagent_model_cap = resolved_spawn_settings.subagent_model_cap.as_deref();
     let (prompt, resume_session) = if should_resume {
-        let session_id = conversation.claude_session_id.as_ref().unwrap();
+        let session_id = claude_resume_session_id.ok_or_else(|| {
+            "Claude resume requested without an effective Claude provider session".to_string()
+        })?;
         // Re-inject context_id on resume so the agent can detect session mismatches.
         // For Ideation context, session_history is injected programmatically.
         let resume_prompt = build_initial_prompt_with_session_artifacts(
@@ -1164,7 +1176,7 @@ async fn build_command_from_resolved_settings(
         let prompt_with_attachments = format!("{}{}", resume_prompt, attachment_context);
         (
             prompt_with_attachments,
-            Some(session_id.as_str().to_string()),
+            Some(session_id.to_string()),
         )
     } else {
         let initial_prompt = build_initial_prompt_with_session_artifacts(
@@ -1200,7 +1212,7 @@ async fn build_command_from_resolved_settings(
         &conversation.context_id,
         project_id,
         team_mode,
-        conversation.claude_session_id.as_deref(),
+        claude_resume_session_id,
         ideation_subagent_model_cap,
     );
 
@@ -1359,7 +1371,7 @@ pub async fn build_interactive_command(
         &conversation.context_id,
         project_id,
         team_mode,
-        conversation.claude_session_id.as_deref(),
+        claude_resume_session_id(conversation).as_deref(),
         ideation_subagent_model_cap.as_deref(),
     );
 

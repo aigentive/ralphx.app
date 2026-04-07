@@ -4862,7 +4862,7 @@ async fn reconcile_completed_execution_records_pending_review_transition_for_com
         .create(conversation)
         .await
         .unwrap();
-    let mut seeded_run = AgentRun::new(conversation.id.clone());
+    let mut seeded_run = AgentRun::new(conversation.id);
     seeded_run.started_at = chrono::Utc::now() - chrono::Duration::minutes(1);
     let run = app_state.agent_run_repo.create(seeded_run).await.unwrap();
     app_state.agent_run_repo.complete(&run.id).await.unwrap();

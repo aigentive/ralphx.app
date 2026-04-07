@@ -4,6 +4,7 @@ use ralphx_lib::application::chat_service::{
     format_attachments_for_agent, format_session_history, get_entity_status_for_resume,
     is_text_file, resolve_working_directory,
 };
+use ralphx_lib::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use ralphx_lib::domain::entities::{self, *};
 use ralphx_lib::domain::repositories::{self, *};
 use ralphx_lib::error::AppResult;
@@ -2119,4 +2120,53 @@ async fn test_both_build_and_resume_use_ideation_subagent_cap() {
             "build_resume_command: CLAUDE_CODE_SUBAGENT_MODEL must be ideation_subagent_model (sonnet)"
         );
     }
+}
+
+#[tokio::test]
+async fn test_build_command_resumes_from_provider_session_ref_without_legacy_alias() {
+    let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
+    conversation.set_provider_session_ref(ProviderSessionRef {
+        harness: AgentHarnessKind::Claude,
+        provider_session_id: "provider-only-session".to_string(),
+    });
+    conversation.claude_session_id = None;
+
+    let result = build_command(
+        std::path::Path::new("/fake/claude"),
+        std::path::Path::new("/fake/plugin"),
+        &conversation,
+        "continue",
+        std::path::Path::new("/tmp"),
+        None,
+        None,
+        false,
+        Arc::new(MemoryChatAttachmentRepository::new()),
+        Arc::new(MemoryArtifactRepository::new()),
+        None,
+        None,
+        None,
+        &[],
+        0,
+        None,
+        None,
+    )
+    .await;
+
+    assert!(result.is_ok(), "build_command failed: {:?}", result.err());
+    let command = result.unwrap();
+    let args = command.get_args_for_test();
+
+    assert!(
+        args.windows(2)
+            .any(|window| window[0] == "--resume" && window[1] == "provider-only-session"),
+        "build_command must resume from the canonical provider session reference",
+    );
+
+    let lead_session = command
+        .get_envs_for_test()
+        .iter()
+        .find(|(key, _)| key == "RALPHX_LEAD_SESSION_ID")
+        .map(|(_, value)| value.to_string_lossy().into_owned());
+
+    assert_eq!(lead_session.as_deref(), Some("provider-only-session"));
 }

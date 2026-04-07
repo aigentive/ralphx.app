@@ -1406,9 +1406,9 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 }
             }
 
-            // Clear stale session ID as fallback
+            // Clear stale provider session reference as fallback
             let _ = conversation_repo
-                .clear_claude_session_id(&conversation_id)
+                .clear_provider_session_ref(&conversation_id)
                 .await;
         }
         _ => {
@@ -1418,10 +1418,10 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     tracing::info!(
                         conversation_id = conversation_id.as_str(),
                         error_type = %se,
-                        "Clearing session ID due to stream error requiring session reset"
+                        "Clearing provider session due to stream error requiring session reset"
                     );
                     let _ = conversation_repo
-                        .clear_claude_session_id(&conversation_id)
+                        .clear_provider_session_ref(&conversation_id)
                         .await;
                 }
             }

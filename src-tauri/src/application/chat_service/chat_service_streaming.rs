@@ -1137,21 +1137,25 @@ pub async fn process_stream_background<R: Runtime>(
                             if let (Some(ref sess_id), Some(ref repo)) =
                                 (&session_id, &conversation_repo)
                             {
+                                let session_ref = ProviderSessionRef {
+                                    harness: AgentHarnessKind::Claude,
+                                    provider_session_id: sess_id.clone(),
+                                };
                                 if let Err(e) = repo
-                                    .update_claude_session_id(conversation_id, sess_id)
+                                    .update_provider_session_ref(conversation_id, &session_ref)
                                     .await
                                 {
                                     tracing::error!(
                                         error = %e,
                                         conversation_id = %conversation_id_str,
                                         session_id = %sess_id,
-                                        "TurnComplete: failed to persist claude_session_id"
+                                        "TurnComplete: failed to persist provider_session_ref"
                                     );
                                 } else {
                                     tracing::info!(
                                         conversation_id = %conversation_id_str,
                                         session_id = %sess_id,
-                                        "TurnComplete: persisted claude_session_id to DB"
+                                        "TurnComplete: persisted provider_session_ref to DB"
                                     );
                                 }
                                 session_id_persisted = true;
@@ -1175,6 +1179,7 @@ pub async fn process_stream_background<R: Runtime>(
                         // creates a new conversation for TaskExecution contexts) instead
                         // of queueAgentMessage (which delivers via existing stdin).
                         if let Some(ref handle) = app_handle {
+                            let provider_session_id = session_id.clone();
                             let _ = handle.emit(
                                 super::chat_service_types::events::AGENT_TURN_COMPLETED,
                                 super::chat_service_types::AgentRunCompletedPayload {
@@ -1182,8 +1187,8 @@ pub async fn process_stream_background<R: Runtime>(
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
                                     provider_harness: Some(AgentHarnessKind::Claude.to_string()),
-                                    provider_session_id: session_id.clone(),
-                                    claude_session_id: session_id,
+                                    provider_session_id: provider_session_id.clone(),
+                                    claude_session_id: provider_session_id,
                                     run_chain_id: None,
                                 },
                             );

@@ -1103,6 +1103,9 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 
                     // Emit run_started so frontend shows activity spinner
                     let interactive_run_id = uuid::Uuid::new_v4().to_string();
+                    let existing_provider_session_id = conversation
+                        .provider_session_ref()
+                        .map(|session_ref| session_ref.provider_session_id);
                     self.emit_event(
                         "agent:run_started",
                         AgentRunStartedPayload {
@@ -1115,7 +1118,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                             effective_model_id: None,
                             effective_model_label: None,
                             provider_harness: Some(AgentHarnessKind::Claude.to_string()),
-                            provider_session_id: conversation.claude_session_id.clone(),
+                            provider_session_id: existing_provider_session_id,
                         },
                     );
 
@@ -1147,9 +1150,11 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         let (conversation, _) = self
             .get_or_create_conversation(context_type, context_id)
             .await?;
+        let provider_session_ref = conversation.provider_session_ref();
         tracing::debug!(
             conversation_id = conversation.id.as_str(),
-            session_id = ?conversation.claude_session_id,
+            provider_harness = ?provider_session_ref.as_ref().map(|session_ref| session_ref.harness),
+            provider_session_id = ?provider_session_ref.as_ref().map(|session_ref| session_ref.provider_session_id.as_str()),
             "chat_service.send_message conversation (new spawn path)"
         );
 
