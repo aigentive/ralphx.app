@@ -196,6 +196,13 @@ impl AgenticClientSpawner {
         None
     }
 
+    async fn resolve_task_status(&self, task_id: &str) -> Option<String> {
+        let task_repo = self.task_repo.as_ref()?;
+        let task_id_typed = TaskId(task_id.to_string());
+        let task = task_repo.get_by_id(&task_id_typed).await.ok()??;
+        Some(task.internal_status.as_str().to_string())
+    }
+
     async fn project_has_execution_capacity(
         &self,
         task_id: &str,
@@ -340,6 +347,7 @@ impl AgenticClientSpawner {
     async fn resolve_spawn_harness(
         &self,
         agent_type: &str,
+        task_id: &str,
         project_id: Option<&str>,
     ) -> (AgentHarnessKind, Option<String>, Option<LogicalEffort>, Option<String>, Option<String>) {
         let Some(context_type) = Self::context_type_for_agent(agent_type) else {
@@ -348,12 +356,13 @@ impl AgenticClientSpawner {
         let Some(agent_name) = Self::resolve_process_agent_name(agent_type) else {
             return (AgentHarnessKind::Claude, None, None, None, None);
         };
+        let entity_status = self.resolve_task_status(task_id).await;
 
         let resolved = resolve_agent_spawn_settings(
             &agent_name,
             project_id,
             context_type,
-            None,
+            entity_status.as_deref(),
             None,
             self.agent_lane_settings_repo.as_ref(),
             None,
@@ -517,7 +526,7 @@ impl AgentSpawner for AgenticClientSpawner {
         // Resolve project ID for RALPHX_PROJECT_ID env var
         let project_id = self.resolve_project_id(task_id).await;
         let (harness, model, logical_effort, approval_policy, sandbox_mode) = self
-            .resolve_spawn_harness(agent_type, project_id.as_deref())
+            .resolve_spawn_harness(agent_type, task_id, project_id.as_deref())
             .await;
         let (client, client_type) = if harness == AgentHarnessKind::Codex {
             (Arc::clone(&self.codex_client), ClientType::Codex)

@@ -973,3 +973,72 @@ async fn test_spawn_uses_codex_client_when_execution_lane_resolves_to_codex() {
     assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-worker"));
     assert_eq!(config.model.as_deref(), Some("gpt-5.4"));
 }
+
+#[tokio::test]
+async fn test_spawn_uses_reexecutor_lane_for_reexecuting_task() {
+    let default_client = Arc::new(TestAgentClient::new(ClientType::ClaudeCode, true));
+    let codex_client = Arc::new(TestAgentClient::new(ClientType::Codex, true));
+    let exec_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let settings_repo = Arc::new(MemoryExecutionSettingsRepository::new());
+    let ideation_session_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let agent_lane_settings_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
+    let running_agent_registry = Arc::new(MemoryRunningAgentRegistry::new());
+
+    let project_id = ProjectId::from_string("project-reexecute".to_string());
+    let mut project = Project::new(
+        "Project Reexecute".to_string(),
+        "/tmp/project-reexecute".to_string(),
+    );
+    project.id = project_id.clone();
+    project_repo.create(project).await.unwrap();
+
+    let mut task = Task::new(project_id.clone(), "Reexecution task".to_string());
+    task.id = TaskId::from_string("task-reexecute".to_string());
+    task.internal_status = crate::domain::entities::InternalStatus::ReExecuting;
+    task.worktree_path = Some("/tmp/task-reexecute".to_string());
+    task_repo.create(task).await.unwrap();
+
+    let mut lane_settings = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    lane_settings.model = Some("gpt-5.4-mini".to_string());
+    lane_settings.effort = Some(crate::domain::agents::LogicalEffort::Medium);
+    lane_settings.approval_policy = Some("never".to_string());
+    lane_settings.sandbox_mode = Some("read-only".to_string());
+    lane_settings.fallback_harness = Some(AgentHarnessKind::Claude);
+    agent_lane_settings_repo
+        .upsert_for_project(
+            project_id.as_str(),
+            AgentLane::ExecutionReexecutor,
+            &lane_settings,
+        )
+        .await
+        .unwrap();
+
+    let spawner = AgenticClientSpawner::new(default_client.clone())
+        .with_codex_client(codex_client.clone())
+        .with_repos(task_repo, project_repo)
+        .with_execution_state(exec_state)
+        .with_runtime_admission_context(
+            settings_repo,
+            agent_lane_settings_repo,
+            ideation_session_repo,
+            running_agent_registry,
+        )
+        .with_working_dir("/tmp");
+
+    spawner.spawn("worker", "task-reexecute").await;
+
+    assert_eq!(default_client.spawn_count().await, 0);
+    assert_eq!(codex_client.spawn_count().await, 1);
+    let config = codex_client.last_spawn().await.expect("codex spawn config");
+    assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-worker"));
+    assert_eq!(config.model.as_deref(), Some("gpt-5.4-mini"));
+    assert_eq!(
+        config.logical_effort,
+        Some(crate::domain::agents::LogicalEffort::Medium)
+    );
+    assert_eq!(config.approval_policy.as_deref(), Some("never"));
+    assert_eq!(config.sandbox_mode.as_deref(), Some("read-only"));
+}
