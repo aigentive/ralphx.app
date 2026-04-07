@@ -1,10 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PlanTabContent } from "./PlanTabContent";
 import { useIdeationStore } from "@/stores/ideationStore";
 import type { IdeationSession, TaskProposal } from "@/types/ideation";
 import type { IdeationSettings } from "@/types/ideation-config";
+import type { Artifact } from "@/types/artifact";
 
 vi.mock("sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
@@ -15,7 +16,20 @@ vi.mock("@/api/chat", () => ({
 }));
 
 vi.mock("./PlanDisplay", () => ({
-  PlanDisplay: () => <div data-testid="plan-display" />,
+  PlanDisplay: ({ onEdit }: { onEdit: () => void }) => (
+    <div data-testid="plan-display">
+      <button data-testid="edit-button" onClick={onEdit}>Edit</button>
+    </div>
+  ),
+}));
+
+vi.mock("./PlanEditor", () => ({
+  PlanEditor: ({ onSave, onCancel }: { plan: Artifact; onSave: (a: Artifact) => void; onCancel: () => void }) => (
+    <div data-testid="plan-editor">
+      <button data-testid="save-button" onClick={() => onSave({ id: "art-1" } as Artifact)}>Save</button>
+      <button data-testid="cancel-button" onClick={onCancel}>Cancel</button>
+    </div>
+  ),
 }));
 
 vi.mock("./AcceptedSessionBanner", () => ({
@@ -29,6 +43,14 @@ vi.mock("./ExportPlanDialog", () => ({
 // ============================================================================
 // Fixtures
 // ============================================================================
+
+const mockPlanArtifact: Artifact = {
+  id: "art-1",
+  type: "specification",
+  name: "Test Plan",
+  content: { type: "inline", text: "# Plan content" },
+  metadata: { createdAt: "2026-01-01T00:00:00Z", createdBy: "agent", version: 1 },
+};
 
 const mockSession: IdeationSession = {
   id: "session-1",
@@ -120,5 +142,70 @@ describe("PlanTabContent — PlanEmptyState integration", () => {
     render(<PlanTabContent {...defaultProps} onImportPlan={onImportPlan} />);
     await userEvent.click(screen.getByTestId("drop-hint"));
     expect(onImportPlan).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("PlanTabContent — PlanEditor wiring", () => {
+  beforeEach(() => {
+    resetStore();
+    vi.clearAllMocks();
+  });
+
+  it("shows PlanDisplay when plan artifact exists and not editing", () => {
+    useIdeationStore.setState({ planArtifact: mockPlanArtifact, ideationSettings: optionalSettings });
+    render(<PlanTabContent {...defaultProps} />);
+    expect(screen.getByTestId("plan-display")).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-editor")).toBeNull();
+  });
+
+  it("switches to PlanEditor when Edit button is clicked", async () => {
+    useIdeationStore.setState({ planArtifact: mockPlanArtifact, ideationSettings: optionalSettings });
+    render(<PlanTabContent {...defaultProps} />);
+    await userEvent.click(screen.getByTestId("edit-button"));
+    expect(screen.getByTestId("plan-editor")).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-display")).toBeNull();
+  });
+
+  it("calls onHistoricalVersionViewed when Edit button is clicked", async () => {
+    const onHistoricalVersionViewed = vi.fn();
+    useIdeationStore.setState({ planArtifact: mockPlanArtifact, ideationSettings: optionalSettings });
+    render(<PlanTabContent {...defaultProps} onHistoricalVersionViewed={onHistoricalVersionViewed} />);
+    await userEvent.click(screen.getByTestId("edit-button"));
+    expect(onHistoricalVersionViewed).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns to PlanDisplay on Cancel", async () => {
+    useIdeationStore.setState({ planArtifact: mockPlanArtifact, ideationSettings: optionalSettings });
+    render(<PlanTabContent {...defaultProps} />);
+    await userEvent.click(screen.getByTestId("edit-button"));
+    await userEvent.click(screen.getByTestId("cancel-button"));
+    expect(screen.getByTestId("plan-display")).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-editor")).toBeNull();
+  });
+
+  it("calls setPlanArtifact and returns to PlanDisplay on Save", async () => {
+    useIdeationStore.setState({ planArtifact: mockPlanArtifact, ideationSettings: optionalSettings });
+    render(<PlanTabContent {...defaultProps} />);
+    await userEvent.click(screen.getByTestId("edit-button"));
+    await userEvent.click(screen.getByTestId("save-button"));
+    expect(screen.getByTestId("plan-display")).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-editor")).toBeNull();
+  });
+
+  it("exits edit mode with toast when plan version changes externally while editing", async () => {
+    const { toast } = await import("sonner");
+    useIdeationStore.setState({ planArtifact: mockPlanArtifact, ideationSettings: optionalSettings });
+    render(<PlanTabContent {...defaultProps} />);
+    await userEvent.click(screen.getByTestId("edit-button"));
+    expect(screen.getByTestId("plan-editor")).toBeInTheDocument();
+
+    act(() => {
+      useIdeationStore.setState({
+        planArtifact: { ...mockPlanArtifact, metadata: { ...mockPlanArtifact.metadata, version: 2 } },
+      });
+    });
+
+    expect(screen.getByTestId("plan-display")).toBeInTheDocument();
+    expect(toast.info).toHaveBeenCalledWith("Plan was updated externally. Exiting editor.");
   });
 });
