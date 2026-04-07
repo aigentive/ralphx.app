@@ -2803,6 +2803,20 @@ async fn reconcile_merge_incomplete_retries_when_below_max_validation_reverts() 
         reconciled || updated.internal_status == InternalStatus::MergeIncomplete,
         "Task with revert_count=1 should not be blocked by loop-breaking guard"
     );
+    if reconciled {
+        let history = app_state
+            .task_repo
+            .get_status_history(&task.id)
+            .await
+            .unwrap();
+        assert!(
+            history.iter().any(|entry| {
+                entry.from == InternalStatus::MergeIncomplete
+                    && entry.to == InternalStatus::PendingMerge
+            }),
+            "Allowed validation retry must record MergeIncomplete -> PendingMerge"
+        );
+    }
 }
 
 #[test]
@@ -3753,6 +3767,20 @@ async fn rc5_starvation_guard_skips_recently_retried_task() {
         updated2.internal_status,
         reconciled2
     );
+    if reconciled2 {
+        let history = app_state
+            .task_repo
+            .get_status_history(&task2.id)
+            .await
+            .unwrap();
+        assert!(
+            history.iter().any(|entry| {
+                entry.from == InternalStatus::MergeIncomplete
+                    && entry.to == InternalStatus::PendingMerge
+            }),
+            "Fresh MergeIncomplete retry should record MergeIncomplete -> PendingMerge"
+        );
+    }
 }
 
 #[tokio::test]
@@ -3808,6 +3836,18 @@ async fn rc4_non_validation_failure_retries_normally() {
             || updated.internal_status == InternalStatus::MergeIncomplete,
         "TransientGit failure should attempt retry (got {:?})",
         updated.internal_status
+    );
+    let history = app_state
+        .task_repo
+        .get_status_history(&task.id)
+        .await
+        .unwrap();
+    assert!(
+        history.iter().any(|entry| {
+            entry.from == InternalStatus::MergeIncomplete
+                && entry.to == InternalStatus::PendingMerge
+        }),
+        "TransientGit retry must record MergeIncomplete -> PendingMerge"
     );
 }
 
