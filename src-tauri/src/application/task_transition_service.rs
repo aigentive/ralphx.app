@@ -1013,6 +1013,13 @@ impl<R: Runtime> TaskTransitionService<R> {
         self
     }
 
+    /// Override the state-machine spawner with a concrete agentic client instance.
+    ///
+    /// This is a convenience wrapper for callers that already hold the client in AppState.
+    pub fn with_agentic_client(self, client: Arc<dyn AgenticClient>) -> Self {
+        self.with_agentic_client_factory(move || Arc::clone(&client))
+    }
+
     /// Enable team mode for agent spawning (builder pattern).
     ///
     /// When enabled, the chat service resolves to team-mode agent names

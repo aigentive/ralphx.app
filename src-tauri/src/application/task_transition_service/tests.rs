@@ -311,10 +311,8 @@ async fn test_qa_testing_transition_auto_adds_trigger_origin() {
 async fn test_qa_transition_uses_injected_agentic_client_factory() {
     let app_state = AppState::new_test();
     let mock_client = Arc::new(MockAgenticClient::new());
-    let service = build_test_service(&app_state).with_agentic_client_factory({
-        let mock_client = Arc::clone(&mock_client);
-        move || mock_client.clone() as Arc<dyn crate::domain::agents::AgenticClient>
-    });
+    let service = build_test_service(&app_state)
+        .with_agentic_client(mock_client.clone() as Arc<dyn crate::domain::agents::AgenticClient>);
 
     let repo_dir = tempfile::tempdir().unwrap();
     init_git_repo(repo_dir.path());

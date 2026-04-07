@@ -518,6 +518,7 @@ pub fn run() {
             let startup_review_repo = Arc::clone(&app_state.review_repo);
             let startup_external_events_repo = Arc::clone(&app_state.external_events_repo);
             let startup_pr_poller_registry = Arc::clone(&app_state.pr_poller_registry);
+            let startup_agent_client = Arc::clone(&app_state.agent_client);
             let startup_webhook_publisher = app_state.webhook_publisher.clone();
             let startup_session_merge_locks = Arc::clone(&app_state.session_merge_locks);
             // Clone app handle to enable event emission in startup tasks
@@ -652,6 +653,7 @@ pub fn run() {
                     Some(startup_app_handle),
                     Arc::clone(&startup_memory_event_repo),
                 )
+                .with_agentic_client(Arc::clone(&startup_agent_client))
                 .with_execution_settings_repo(Arc::clone(&startup_execution_settings_repo))
                 .with_task_scheduler(Arc::clone(&task_scheduler))
                 .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
@@ -816,6 +818,7 @@ pub fn run() {
                         Some(reconcile_app_handle.clone()),
                         Arc::clone(&reconcile_memory_event_repo),
                     )
+                    .with_agentic_client(Arc::clone(&startup_agent_client))
                     .with_execution_settings_repo(Arc::clone(&startup_execution_settings_repo))
                     .with_task_scheduler(Arc::clone(&task_scheduler))
                     .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))

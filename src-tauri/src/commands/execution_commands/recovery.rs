@@ -21,6 +21,7 @@ pub(super) fn build_transition_service_for_recovery(
             app_state.app_handle.clone(),
             Arc::clone(&app_state.memory_event_repo),
         )
+        .with_agentic_client(Arc::clone(&app_state.agent_client))
         .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
         .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
         .with_step_repo(Arc::clone(&app_state.task_step_repo))
