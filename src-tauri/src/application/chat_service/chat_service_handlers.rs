@@ -176,6 +176,70 @@ fn build_transition_service<R: Runtime>(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
+fn build_task_scheduler_service<R: Runtime>(
+    app_handle: &Option<AppHandle<R>>,
+    project_repo: Arc<dyn ProjectRepository>,
+    task_repo: Arc<dyn TaskRepository>,
+    task_dependency_repo: Arc<dyn TaskDependencyRepository>,
+    chat_message_repo: Arc<dyn ChatMessageRepository>,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    conversation_repo: Arc<dyn ChatConversationRepository>,
+    agent_run_repo: Arc<dyn AgentRunRepository>,
+    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    activity_event_repo: Arc<dyn ActivityEventRepository>,
+    message_queue: Arc<MessageQueue>,
+    running_agent_registry: Arc<dyn RunningAgentRegistry>,
+    execution_state: Arc<ExecutionState>,
+    memory_event_repo: Arc<dyn MemoryEventRepository>,
+    execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+    plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+    interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
+) -> TaskSchedulerService<R> {
+    if let Some(handle) = app_handle {
+        if let Some(app_state) = handle.try_state::<AppState>() {
+            return app_state.build_task_scheduler_for_runtime(
+                execution_state,
+                app_handle.clone(),
+            );
+        }
+    }
+
+    let mut scheduler = TaskSchedulerService::new(
+        execution_state,
+        project_repo,
+        task_repo,
+        task_dependency_repo,
+        chat_message_repo,
+        chat_attachment_repo,
+        conversation_repo,
+        agent_run_repo,
+        ideation_session_repo,
+        activity_event_repo,
+        message_queue,
+        running_agent_registry,
+        memory_event_repo,
+        app_handle.clone(),
+    );
+    if let Some(repo) = execution_settings_repo.as_ref() {
+        scheduler = scheduler.with_execution_settings_repo(Arc::clone(repo));
+    }
+    if let Some(repo) = app_handle.as_ref().and_then(|handle| {
+        handle
+            .try_state::<AppState>()
+            .map(|app_state| Arc::clone(&app_state.agent_lane_settings_repo))
+    }) {
+        scheduler = scheduler.with_agent_lane_settings_repo(repo);
+    }
+    if let Some(repo) = plan_branch_repo.as_ref() {
+        scheduler = scheduler.with_plan_branch_repo(Arc::clone(repo));
+    }
+    if let Some(ipr) = interactive_process_registry.as_ref() {
+        scheduler = scheduler.with_interactive_process_registry(Arc::clone(ipr));
+    }
+    scheduler
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum IncompleteReviewAction {
     SkipDuringShutdown,
@@ -397,8 +461,8 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                     }
 
                     // Create scheduler for auto-scheduling next Ready task
-                    let mut scheduler_svc = TaskSchedulerService::new(
-                        Arc::clone(exec_state),
+                    let scheduler_svc = build_task_scheduler_service(
+                        app_handle,
                         Arc::clone(project_repo),
                         Arc::clone(task_repo),
                         Arc::clone(task_dependency_repo),
@@ -410,28 +474,12 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         Arc::clone(activity_event_repo),
                         Arc::clone(message_queue),
                         Arc::clone(running_agent_registry),
+                        Arc::clone(exec_state),
                         Arc::clone(memory_event_repo),
-                        app_handle.clone(),
+                        execution_settings_repo.clone(),
+                        plan_branch_repo.clone(),
+                        interactive_process_registry.clone(),
                     );
-                    if let Some(ref repo) = execution_settings_repo {
-                        scheduler_svc =
-                            scheduler_svc.with_execution_settings_repo(Arc::clone(repo));
-                    }
-                    if let Some(ref repo) = app_handle.as_ref().and_then(|handle| {
-                        handle
-                            .try_state::<AppState>()
-                            .map(|app_state| Arc::clone(&app_state.agent_lane_settings_repo))
-                    }) {
-                        scheduler_svc =
-                            scheduler_svc.with_agent_lane_settings_repo(Arc::clone(repo));
-                    }
-                    if let Some(ref repo) = plan_branch_repo {
-                        scheduler_svc = scheduler_svc.with_plan_branch_repo(Arc::clone(repo));
-                    }
-                    if let Some(ref ipr) = interactive_process_registry {
-                        scheduler_svc =
-                            scheduler_svc.with_interactive_process_registry(Arc::clone(ipr));
-                    }
                     let scheduler_concrete = Arc::new(scheduler_svc);
                     scheduler_concrete
                         .set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);

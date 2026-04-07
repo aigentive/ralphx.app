@@ -32,6 +32,8 @@ Primary project docs:
 | Worktree safety (NON-NEGOTIABLE) | In Worktree mode, task/review flows must never silently fall back to the user’s main repo checkout. Prefer hard failure and repair/self-heal paths. |
 | Verify before commit | Review `git diff` for every file you touched against `HEAD` and confirm only intended hunks remain before committing. |
 | Refactor tracker hygiene | When any agent notices a high-value architectural/refactor hotspot, update `## High-Value Refactor Targets` in this file in the same slice; do not leave major debt only in chat context. |
+| Turn-level refactor discipline (NON-NEGOTIABLE) | On every substantial turn, if the touched slice reveals repeated construction/wiring/branching across production callsites, either centralize it in that turn or explicitly add/promote it in `## High-Value Refactor Targets` before continuing feature work. |
+| Factory-first runtime wiring | When the same scheduler/chat/transition/runtime assembly appears in 3+ production callsites, stop adding another copy: extend a shared builder/factory (`AppState` or dedicated helper) and migrate callsites instead. |
 
 ## Backend
 
@@ -135,6 +137,7 @@ When working in `src-tauri/`, also follow:
 
 | Priority | Area | Why It Matters | Next Step |
 |---|---|---|---|
+| P0 | Turn-by-turn runtime factory convergence | Multi-harness work is still exposing repeated scheduler/chat/transition assembly every turn; if this is not treated as an active priority, Codex parity will keep leaking across commands/handlers/recovery paths | Each turn that touches runtime wiring must first check whether an existing shared builder can absorb the change; if not, promote/create the helper before patching more leaf callsites |
 | P0 | `src-tauri/src/application/task_transition_service.rs` | Oversized, high-churn orchestration root for execution/review/merge; every Codex parity slice keeps paying rebuild + context costs here | Split provider-aware chat/spawn rebuilding, merge/review corrective routing, and builder/factory wiring into support modules before more feature work piles onto the root |
 | P0 | `src-tauri/src/application/chat_service/mod.rs` + `chat_service_*` builder seams | Multi-harness branching is spread across send/resume/recovery/queue paths, so duplication keeps reappearing when Claude/Codex behavior diverges | Establish a clearer runtime-factory boundary for provider-aware chat service construction and keep raw `ClaudeChatService::new(...)` fallbacks shrinking each slice |
 | P0 | Service reconstruction across commands/handlers/recovery | The same scheduler/chat/transition assembly keeps getting rebuilt in Tauri commands, HTTP handlers, startup, reconciliation, and merge/review side paths, which makes Codex parity fragile and easy to miss in one caller family | Introduce provider-aware factory helpers for scheduler + transition + chat assembly, then migrate callsites in batches until ad hoc reconstruction is the rare exception |

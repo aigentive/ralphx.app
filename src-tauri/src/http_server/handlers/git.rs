@@ -16,7 +16,7 @@ use super::*;
 use crate::application::chat_service::freshness_routing::{
     freshness_return_route, FreshnessRouteResult,
 };
-use crate::application::{GitService, TaskSchedulerService, TaskTransitionService};
+use crate::application::{GitService, TaskTransitionService};
 use crate::domain::entities::{task_metadata::MergeFailureSource, InternalStatus, TaskId};
 use crate::domain::state_machine::resolve_merge_branches;
 use crate::domain::state_machine::services::TaskScheduler;
@@ -977,32 +977,10 @@ pub fn is_valid_git_sha(sha: &str) -> bool {
 /// use the same service instance, avoiding duplicate construction.
 fn build_transition_service(state: &HttpServerState) -> TaskTransitionService<tauri::Wry> {
     let scheduler_concrete = std::sync::Arc::new(
-        TaskSchedulerService::new(
+        state.app_state.build_task_scheduler_for_runtime(
             std::sync::Arc::clone(&state.execution_state),
-            std::sync::Arc::clone(&state.app_state.project_repo),
-            std::sync::Arc::clone(&state.app_state.task_repo),
-            std::sync::Arc::clone(&state.app_state.task_dependency_repo),
-            std::sync::Arc::clone(&state.app_state.chat_message_repo),
-            std::sync::Arc::clone(&state.app_state.chat_attachment_repo),
-            std::sync::Arc::clone(&state.app_state.chat_conversation_repo),
-            std::sync::Arc::clone(&state.app_state.agent_run_repo),
-            std::sync::Arc::clone(&state.app_state.ideation_session_repo),
-            std::sync::Arc::clone(&state.app_state.activity_event_repo),
-            std::sync::Arc::clone(&state.app_state.message_queue),
-            std::sync::Arc::clone(&state.app_state.running_agent_registry),
-            std::sync::Arc::clone(&state.app_state.memory_event_repo),
             state.app_state.app_handle.as_ref().cloned(),
-        )
-        .with_execution_settings_repo(std::sync::Arc::clone(
-            &state.app_state.execution_settings_repo,
-        ))
-        .with_agent_lane_settings_repo(std::sync::Arc::clone(
-            &state.app_state.agent_lane_settings_repo,
-        ))
-        .with_plan_branch_repo(std::sync::Arc::clone(&state.app_state.plan_branch_repo))
-        .with_interactive_process_registry(std::sync::Arc::clone(
-            &state.app_state.interactive_process_registry,
-        )),
+        ),
     );
     scheduler_concrete
         .set_self_ref(std::sync::Arc::clone(&scheduler_concrete) as std::sync::Arc<dyn TaskScheduler>);

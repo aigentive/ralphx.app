@@ -453,26 +453,56 @@ async fn execute_merge_retry_background(
 
     // Create transition service with all necessary dependencies
     let scheduler_concrete = Arc::new(
-        TaskSchedulerService::new(
-            Arc::clone(&execution_state),
-            Arc::clone(&project_repo),
-            Arc::clone(&task_repo),
-            Arc::clone(&task_dependency_repo),
-            Arc::clone(&chat_message_repo),
-            Arc::clone(&chat_attachment_repo),
-            Arc::clone(&chat_conversation_repo),
-            Arc::clone(&agent_run_repo),
-            Arc::clone(&ideation_session_repo),
-            Arc::clone(&activity_event_repo),
-            Arc::clone(&message_queue),
-            Arc::clone(&running_agent_registry),
-            Arc::clone(&memory_event_repo),
-            app_handle_opt.clone(),
-        )
-        .with_execution_settings_repo(Arc::clone(&execution_settings_repo))
-        .with_agent_lane_settings_repo(Arc::clone(&agent_lane_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&interactive_process_registry)),
+        if let Some(handle) = app_handle_opt.as_ref() {
+            if let Some(app_state) = handle.try_state::<AppState>() {
+                app_state.build_task_scheduler_for_runtime(
+                    Arc::clone(&execution_state),
+                    app_handle_opt.clone(),
+                )
+            } else {
+                TaskSchedulerService::new(
+                    Arc::clone(&execution_state),
+                    Arc::clone(&project_repo),
+                    Arc::clone(&task_repo),
+                    Arc::clone(&task_dependency_repo),
+                    Arc::clone(&chat_message_repo),
+                    Arc::clone(&chat_attachment_repo),
+                    Arc::clone(&chat_conversation_repo),
+                    Arc::clone(&agent_run_repo),
+                    Arc::clone(&ideation_session_repo),
+                    Arc::clone(&activity_event_repo),
+                    Arc::clone(&message_queue),
+                    Arc::clone(&running_agent_registry),
+                    Arc::clone(&memory_event_repo),
+                    app_handle_opt.clone(),
+                )
+                .with_execution_settings_repo(Arc::clone(&execution_settings_repo))
+                .with_agent_lane_settings_repo(Arc::clone(&agent_lane_settings_repo))
+                .with_plan_branch_repo(Arc::clone(&plan_branch_repo))
+                .with_interactive_process_registry(Arc::clone(&interactive_process_registry))
+            }
+        } else {
+            TaskSchedulerService::new(
+                Arc::clone(&execution_state),
+                Arc::clone(&project_repo),
+                Arc::clone(&task_repo),
+                Arc::clone(&task_dependency_repo),
+                Arc::clone(&chat_message_repo),
+                Arc::clone(&chat_attachment_repo),
+                Arc::clone(&chat_conversation_repo),
+                Arc::clone(&agent_run_repo),
+                Arc::clone(&ideation_session_repo),
+                Arc::clone(&activity_event_repo),
+                Arc::clone(&message_queue),
+                Arc::clone(&running_agent_registry),
+                Arc::clone(&memory_event_repo),
+                None,
+            )
+            .with_execution_settings_repo(Arc::clone(&execution_settings_repo))
+            .with_agent_lane_settings_repo(Arc::clone(&agent_lane_settings_repo))
+            .with_plan_branch_repo(Arc::clone(&plan_branch_repo))
+            .with_interactive_process_registry(Arc::clone(&interactive_process_registry))
+        },
     );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
@@ -796,26 +826,10 @@ fn create_transition_service(
 ) -> TaskTransitionService<tauri::Wry> {
     // Create scheduler for post-merge scheduling (unblocked plan_merge tasks)
     let scheduler_concrete = Arc::new(
-        TaskSchedulerService::new(
+        state.build_task_scheduler_for_runtime(
             Arc::clone(execution_state),
-            Arc::clone(&state.project_repo),
-            Arc::clone(&state.task_repo),
-            Arc::clone(&state.task_dependency_repo),
-            Arc::clone(&state.chat_message_repo),
-            Arc::clone(&state.chat_attachment_repo),
-            Arc::clone(&state.chat_conversation_repo),
-            Arc::clone(&state.agent_run_repo),
-            Arc::clone(&state.ideation_session_repo),
-            Arc::clone(&state.activity_event_repo),
-            Arc::clone(&state.message_queue),
-            Arc::clone(&state.running_agent_registry),
-            Arc::clone(&state.memory_event_repo),
             state.app_handle.clone(),
-        )
-        .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-        .with_agent_lane_settings_repo(Arc::clone(&state.agent_lane_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
+        ),
     );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;

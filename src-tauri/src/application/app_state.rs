@@ -10,6 +10,7 @@ use tokio::sync::Mutex;
 use crate::application::PermissionState;
 use crate::application::QuestionState;
 use crate::application::ResumeValidator;
+use crate::application::TaskSchedulerService;
 use crate::application::TaskTransitionService;
 use crate::application::chat_service::ClaudeChatService;
 use crate::commands::ExecutionState;
@@ -310,6 +311,34 @@ impl AppState {
         )
         .with_agentic_client(Arc::clone(&self.agent_client))
         .with_execution_settings_repo(Arc::clone(&self.execution_settings_repo))
+        .with_agent_lane_settings_repo(Arc::clone(&self.agent_lane_settings_repo))
+        .with_plan_branch_repo(Arc::clone(&self.plan_branch_repo))
+        .with_interactive_process_registry(Arc::clone(&self.interactive_process_registry))
+    }
+
+    pub fn build_task_scheduler_for_runtime<R: Runtime>(
+        &self,
+        execution_state: Arc<ExecutionState>,
+        app_handle: Option<AppHandle<R>>,
+    ) -> TaskSchedulerService<R> {
+        TaskSchedulerService::new(
+            execution_state,
+            Arc::clone(&self.project_repo),
+            Arc::clone(&self.task_repo),
+            Arc::clone(&self.task_dependency_repo),
+            Arc::clone(&self.chat_message_repo),
+            Arc::clone(&self.chat_attachment_repo),
+            Arc::clone(&self.chat_conversation_repo),
+            Arc::clone(&self.agent_run_repo),
+            Arc::clone(&self.ideation_session_repo),
+            Arc::clone(&self.activity_event_repo),
+            Arc::clone(&self.message_queue),
+            Arc::clone(&self.running_agent_registry),
+            Arc::clone(&self.memory_event_repo),
+            app_handle,
+        )
+        .with_execution_settings_repo(Arc::clone(&self.execution_settings_repo))
+        .with_agent_lane_settings_repo(Arc::clone(&self.agent_lane_settings_repo))
         .with_plan_branch_repo(Arc::clone(&self.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&self.interactive_process_registry))
     }

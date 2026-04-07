@@ -13,9 +13,7 @@ use tokio::sync::RwLock;
 use crate::application::chat_service::{ChatService, SendMessageOptions, uses_execution_slot};
 use crate::application::reconciliation::UserRecoveryAction;
 use crate::application::team_state_tracker::TeamStateTracker;
-use crate::application::{
-    AppState, ReconciliationRunner, TaskSchedulerService, TaskTransitionService,
-};
+use crate::application::{AppState, ReconciliationRunner, TaskTransitionService};
 use crate::domain::entities::{
     ChatContextType, IdeationSessionStatus, InternalStatus, ProjectId, Task, TaskId,
     app_state::ExecutionHaltMode, task_step::StepProgressSummary, types::IdeationSessionId,

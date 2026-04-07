@@ -146,6 +146,15 @@ impl<'a, R: Runtime> MergeAutoCompleteContext<'a, R> {
     }
 
     fn build_scheduler_service(&self) -> TaskSchedulerService<R> {
+        if let Some(handle) = self.app_handle {
+            if let Some(app_state) = handle.try_state::<AppState>() {
+                return app_state.build_task_scheduler_for_runtime(
+                    Arc::clone(self.execution_state),
+                    self.app_handle.cloned(),
+                );
+            }
+        }
+
         let scheduler = TaskSchedulerService::new(
             Arc::clone(self.execution_state),
             Arc::clone(self.project_repo),
