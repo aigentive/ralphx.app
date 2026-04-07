@@ -47,6 +47,17 @@ async fn clear_failed_steps_for_failed_restart(
     Ok(cleared)
 }
 
+fn validate_update_task_input(input: &UpdateTaskInput) -> Result<(), String> {
+    if input.internal_status.is_some() {
+        return Err(
+            "Task status updates must use move_task or the dedicated lifecycle commands"
+                .to_string(),
+        );
+    }
+
+    Ok(())
+}
+
 /// Create a new task
 #[tauri::command]
 pub async fn create_task(
@@ -114,6 +125,8 @@ pub async fn update_task(
     input: UpdateTaskInput,
     state: State<'_, AppState>,
 ) -> Result<TaskResponse, String> {
+    validate_update_task_input(&input)?;
+
     let task_id = TaskId::from_string(task_id);
 
     // Get existing task
@@ -137,10 +150,6 @@ pub async fn update_task(
     if let Some(priority) = input.priority {
         task.priority = priority;
     }
-    if let Some(status_str) = input.internal_status {
-        task.internal_status = status_str.parse().unwrap_or(task.internal_status);
-    }
-
     task.touch();
 
     state
@@ -1116,6 +1125,38 @@ impl TaskStopper for TransitionTaskStopper {
             .transition_to_stopped_with_context(task_id, from_status, reason)
             .await
             .map(|_| ())
+    }
+}
+
+#[cfg(test)]
+mod update_task_validation_tests {
+    use super::{validate_update_task_input, UpdateTaskInput};
+
+    #[test]
+    fn rejects_status_edits_through_update_task() {
+        let input = UpdateTaskInput {
+            title: Some("Updated".to_string()),
+            description: None,
+            category: None,
+            priority: None,
+            internal_status: Some("ready".to_string()),
+        };
+
+        let error = validate_update_task_input(&input).expect_err("status edits must be rejected");
+        assert!(error.contains("move_task"));
+    }
+
+    #[test]
+    fn allows_regular_field_edits_through_update_task() {
+        let input = UpdateTaskInput {
+            title: Some("Updated".to_string()),
+            description: Some("Desc".to_string()),
+            category: Some("bug".to_string()),
+            priority: Some(3),
+            internal_status: None,
+        };
+
+        validate_update_task_input(&input).expect("non-status edits should remain allowed");
     }
 }
 
