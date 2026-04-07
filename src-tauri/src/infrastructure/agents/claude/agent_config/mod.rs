@@ -3,6 +3,9 @@ pub mod team_config;
 mod ui_config;
 pub use ui_config::{UiConfig, UiFeatureFlagsConfig};
 
+use crate::domain::agents::{
+    AgentHarnessKind, AgentLane, AgentLaneSettings, LogicalEffort,
+};
 use crate::domain::execution::{ExecutionSettings, GlobalExecutionSettings};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -93,6 +96,103 @@ impl Default for ExecutionDefaultsConfig {
             global: GlobalExecutionSettings::default(),
         }
     }
+}
+
+pub type AgentHarnessDefaultsConfig = HashMap<AgentLane, AgentLaneSettings>;
+type AgentHarnessDefaultsConfigRaw = HashMap<AgentLane, AgentLaneSettingsConfigRaw>;
+
+#[derive(Debug, Clone, Deserialize)]
+struct AgentLaneSettingsConfigRaw {
+    harness: AgentHarnessKind,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    effort: Option<LogicalEffort>,
+    #[serde(default)]
+    approval_policy: Option<String>,
+    #[serde(default)]
+    sandbox_mode: Option<String>,
+    #[serde(default)]
+    fallback_harness: Option<AgentHarnessKind>,
+}
+
+impl From<AgentLaneSettingsConfigRaw> for AgentLaneSettings {
+    fn from(value: AgentLaneSettingsConfigRaw) -> Self {
+        Self {
+            harness: value.harness,
+            model: value.model,
+            effort: value.effort,
+            approval_policy: value.approval_policy,
+            sandbox_mode: value.sandbox_mode,
+            fallback_harness: value.fallback_harness,
+        }
+    }
+}
+
+impl From<AgentLaneSettings> for AgentLaneSettingsConfigRaw {
+    fn from(value: AgentLaneSettings) -> Self {
+        Self {
+            harness: value.harness,
+            model: value.model,
+            effort: value.effort,
+            approval_policy: value.approval_policy,
+            sandbox_mode: value.sandbox_mode,
+            fallback_harness: value.fallback_harness,
+        }
+    }
+}
+
+fn codex_lane_defaults(
+    model: &str,
+    effort: LogicalEffort,
+    approval_policy: Option<&str>,
+    sandbox_mode: Option<&str>,
+) -> AgentLaneSettings {
+    let mut settings = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    settings.model = Some(model.to_string());
+    settings.effort = Some(effort);
+    settings.approval_policy = approval_policy.map(str::to_string);
+    settings.sandbox_mode = sandbox_mode.map(str::to_string);
+    settings.fallback_harness = Some(AgentHarnessKind::Claude);
+    settings
+}
+
+fn default_agent_harness_defaults() -> AgentHarnessDefaultsConfig {
+    HashMap::from([
+        (
+            AgentLane::IdeationPrimary,
+            codex_lane_defaults(
+                "gpt-5.4",
+                LogicalEffort::XHigh,
+                Some("on-request"),
+                Some("workspace-write"),
+            ),
+        ),
+        (
+            AgentLane::IdeationVerifier,
+            codex_lane_defaults(
+                "gpt-5.4-mini",
+                LogicalEffort::Medium,
+                Some("on-request"),
+                Some("workspace-write"),
+            ),
+        ),
+        (
+            AgentLane::IdeationSubagent,
+            codex_lane_defaults("gpt-5.4-mini", LogicalEffort::Medium, None, None),
+        ),
+        (
+            AgentLane::IdeationVerifierSubagent,
+            codex_lane_defaults("gpt-5.4-mini", LogicalEffort::Medium, None, None),
+        ),
+    ])
+}
+
+fn default_agent_harness_defaults_raw() -> AgentHarnessDefaultsConfigRaw {
+    default_agent_harness_defaults()
+        .into_iter()
+        .map(|(lane, settings)| (lane, settings.into()))
+        .collect()
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -206,6 +306,8 @@ struct RalphxConfig {
     ui: Option<UiConfig>,
     #[serde(default)]
     execution_defaults: ExecutionDefaultsConfig,
+    #[serde(default = "default_agent_harness_defaults_raw")]
+    agent_harness_defaults: AgentHarnessDefaultsConfigRaw,
 }
 
 const EMBEDDED_CONFIG: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../ralphx.yaml"));
@@ -227,6 +329,7 @@ struct LoadedConfig {
     file_logging: bool,
     runtime: AllRuntimeConfig,
     execution_defaults: ExecutionDefaultsConfig,
+    agent_harness_defaults: AgentHarnessDefaultsConfig,
 }
 
 static LOADED_CONFIG_CELL: OnceLock<LoadedConfig> = OnceLock::new();
@@ -509,6 +612,12 @@ fn parse_config_with_lookup(
         );
     }
     runtime_config::apply_env_overrides(&mut runtime);
+    let mut agent_harness_defaults = parsed
+        .agent_harness_defaults
+        .into_iter()
+        .map(|(lane, settings)| (lane, settings.into()))
+        .collect::<AgentHarnessDefaultsConfig>();
+    apply_agent_harness_env_overrides_with(&mut agent_harness_defaults, lookup);
 
     Some(LoadedConfig {
         agents: resolved,
@@ -519,6 +628,7 @@ fn parse_config_with_lookup(
         file_logging: parsed.file_logging,
         runtime,
         execution_defaults: parsed.execution_defaults,
+        agent_harness_defaults,
     })
 }
 
@@ -558,6 +668,117 @@ fn runtime_settings_profile_override_for_agent_with(
             Some(trimmed.to_string())
         }
     })
+}
+
+fn normalize_lane_name_for_env(lane: AgentLane) -> String {
+    lane.to_string()
+        .chars()
+        .map(|ch| match ch {
+            'a'..='z' => ch.to_ascii_uppercase(),
+            'A'..='Z' | '0'..='9' => ch,
+            _ => '_',
+        })
+        .collect()
+}
+
+fn normalize_override_value(raw: Option<String>) -> Option<String> {
+    raw.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn all_agent_lanes() -> [AgentLane; 8] {
+    [
+        AgentLane::IdeationPrimary,
+        AgentLane::IdeationVerifier,
+        AgentLane::IdeationSubagent,
+        AgentLane::IdeationVerifierSubagent,
+        AgentLane::ExecutionWorker,
+        AgentLane::ExecutionReviewer,
+        AgentLane::ExecutionReexecutor,
+        AgentLane::ExecutionMerger,
+    ]
+}
+
+fn apply_agent_harness_env_overrides_with(
+    defaults: &mut AgentHarnessDefaultsConfig,
+    lookup: &dyn Fn(&str) -> Option<String>,
+) {
+    for lane in all_agent_lanes() {
+        let lane_key = normalize_lane_name_for_env(lane);
+        let harness_key = format!("RALPHX_AGENT_HARNESS_{lane_key}");
+        let model_key = format!("RALPHX_AGENT_MODEL_{lane_key}");
+        let effort_key = format!("RALPHX_AGENT_EFFORT_{lane_key}");
+        let approval_key = format!("RALPHX_AGENT_APPROVAL_POLICY_{lane_key}");
+        let sandbox_key = format!("RALPHX_AGENT_SANDBOX_MODE_{lane_key}");
+
+        let existing = defaults.get(&lane).cloned();
+        let mut settings = existing
+            .clone()
+            .unwrap_or_else(|| AgentLaneSettings::new(AgentHarnessKind::Claude));
+        let mut changed = false;
+
+        if let Some(raw) = normalize_override_value(lookup(&harness_key)) {
+            match raw.parse::<AgentHarnessKind>() {
+                Ok(value) => {
+                    settings.harness = value;
+                    changed = true;
+                }
+                Err(error) => {
+                    tracing::warn!(lane = %lane, env = %harness_key, value = %raw, %error, "Ignoring invalid agent harness env override");
+                }
+            }
+        }
+
+        if let Some(raw) = normalize_override_value(lookup(&model_key)) {
+            settings.model = Some(raw);
+            changed = true;
+        }
+
+        if let Some(raw) = normalize_override_value(lookup(&effort_key)) {
+            match raw.parse::<LogicalEffort>() {
+                Ok(value) => {
+                    settings.effort = Some(value);
+                    changed = true;
+                }
+                Err(error) => {
+                    tracing::warn!(lane = %lane, env = %effort_key, value = %raw, %error, "Ignoring invalid agent effort env override");
+                }
+            }
+        }
+
+        if let Some(raw) = normalize_override_value(lookup(&approval_key)) {
+            settings.approval_policy = Some(raw);
+            changed = true;
+        }
+
+        if let Some(raw) = normalize_override_value(lookup(&sandbox_key)) {
+            settings.sandbox_mode = Some(raw);
+            changed = true;
+        }
+
+        if !changed {
+            continue;
+        }
+
+        if existing.is_none()
+            && settings.harness == AgentHarnessKind::Codex
+            && settings.fallback_harness.is_none()
+        {
+            settings.fallback_harness = Some(AgentHarnessKind::Claude);
+        }
+
+        if settings.fallback_harness == Some(settings.harness) {
+            settings.fallback_harness = None;
+        }
+
+        defaults.insert(lane, settings);
+    }
 }
 
 fn normalize_agent_name_for_env(agent_name: &str) -> String {
@@ -806,6 +1027,7 @@ fn load_config() -> LoadedConfig {
             file_logging: true,
             runtime,
             execution_defaults: ExecutionDefaultsConfig::default(),
+            agent_harness_defaults: default_agent_harness_defaults(),
         }
     })
 }
@@ -869,6 +1091,10 @@ pub fn file_logging_enabled() -> bool {
 
 pub fn execution_defaults_config() -> &'static ExecutionDefaultsConfig {
     &LOADED_CONFIG_CELL.get_or_init(load_config).execution_defaults
+}
+
+pub fn agent_harness_defaults_config() -> &'static AgentHarnessDefaultsConfig {
+    &LOADED_CONFIG_CELL.get_or_init(load_config).agent_harness_defaults
 }
 
 pub fn stream_timeouts() -> &'static StreamTimeoutsConfig {

@@ -1,4 +1,5 @@
 use super::*;
+use crate::domain::agents::{AgentHarnessKind, AgentLane, LogicalEffort};
 use crate::infrastructure::agents::claude::agent_names::{
     SHORT_CHAT_PROJECT, SHORT_CHAT_TASK, SHORT_CODER, SHORT_DEEP_RESEARCHER,
     SHORT_IDEATION_ADVOCATE, SHORT_IDEATION_CRITIC, SHORT_IDEATION_SPECIALIST_BACKEND,
@@ -322,6 +323,55 @@ fn test_execution_defaults_fallback_when_section_missing() {
 }
 
 #[test]
+fn test_agent_harness_defaults_parse_custom_values() {
+    let yaml = r#"
+agent_harness_defaults:
+  ideation_primary:
+    harness: codex
+    model: gpt-5.4
+    effort: xhigh
+    approval_policy: on-request
+    sandbox_mode: workspace-write
+    fallback_harness: claude
+  execution_worker:
+    harness: claude
+    model: sonnet
+"#;
+    let parsed = parse_config_no_env_overrides(yaml).expect("config should parse");
+
+    let ideation_primary = parsed
+        .agent_harness_defaults
+        .get(&AgentLane::IdeationPrimary)
+        .expect("ideation primary defaults should exist");
+    assert_eq!(ideation_primary.harness, AgentHarnessKind::Codex);
+    assert_eq!(ideation_primary.model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(ideation_primary.effort, Some(LogicalEffort::XHigh));
+    assert_eq!(ideation_primary.approval_policy.as_deref(), Some("on-request"));
+    assert_eq!(ideation_primary.sandbox_mode.as_deref(), Some("workspace-write"));
+    assert_eq!(
+        ideation_primary.fallback_harness,
+        Some(AgentHarnessKind::Claude)
+    );
+
+    let execution_worker = parsed
+        .agent_harness_defaults
+        .get(&AgentLane::ExecutionWorker)
+        .expect("execution worker defaults should exist");
+    assert_eq!(execution_worker.harness, AgentHarnessKind::Claude);
+    assert_eq!(execution_worker.model.as_deref(), Some("sonnet"));
+}
+
+#[test]
+fn test_agent_harness_defaults_fallback_when_section_missing() {
+    let parsed = parse_config_no_env_overrides("").expect("config should parse");
+
+    assert_eq!(
+        parsed.agent_harness_defaults,
+        default_agent_harness_defaults()
+    );
+}
+
+#[test]
 fn test_embedded_config_keeps_explicit_execution_defaults_aligned_with_fallback() {
     let parsed =
         parse_config_no_env_overrides(EMBEDDED_CONFIG).expect("embedded config should parse");
@@ -333,6 +383,54 @@ fn test_embedded_config_keeps_explicit_execution_defaults_aligned_with_fallback(
          defaults so YAML remains the human-edited source of truth and the code default stays \
          only a last-resort safety net"
     );
+}
+
+#[test]
+fn test_embedded_config_keeps_explicit_agent_harness_defaults_aligned_with_fallback() {
+    let parsed =
+        parse_config_no_env_overrides(EMBEDDED_CONFIG).expect("embedded config should parse");
+
+    assert_eq!(
+        parsed.agent_harness_defaults,
+        default_agent_harness_defaults(),
+        "ralphx.yaml should keep explicit agent_harness_defaults aligned with the Rust fallback \
+         defaults so embedded config and runtime bootstrap stay in sync"
+    );
+}
+
+#[test]
+fn test_agent_harness_defaults_env_overrides_create_and_override_rows() {
+    let parsed = parse_config_with_lookup("", &|name| match name {
+        "RALPHX_AGENT_HARNESS_EXECUTION_WORKER" => Some("codex".to_string()),
+        "RALPHX_AGENT_MODEL_EXECUTION_WORKER" => Some("gpt-5.4".to_string()),
+        "RALPHX_AGENT_EFFORT_EXECUTION_WORKER" => Some("xhigh".to_string()),
+        "RALPHX_AGENT_APPROVAL_POLICY_EXECUTION_WORKER" => Some("on-request".to_string()),
+        "RALPHX_AGENT_SANDBOX_MODE_EXECUTION_WORKER" => Some("workspace-write".to_string()),
+        "RALPHX_AGENT_MODEL_IDEATION_VERIFIER" => Some("gpt-5.4-nano".to_string()),
+        _ => None,
+    })
+    .expect("config should parse");
+
+    let execution_worker = parsed
+        .agent_harness_defaults
+        .get(&AgentLane::ExecutionWorker)
+        .expect("execution worker defaults should be created from env");
+    assert_eq!(execution_worker.harness, AgentHarnessKind::Codex);
+    assert_eq!(execution_worker.model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(execution_worker.effort, Some(LogicalEffort::XHigh));
+    assert_eq!(execution_worker.approval_policy.as_deref(), Some("on-request"));
+    assert_eq!(execution_worker.sandbox_mode.as_deref(), Some("workspace-write"));
+    assert_eq!(
+        execution_worker.fallback_harness,
+        Some(AgentHarnessKind::Claude)
+    );
+
+    let ideation_verifier = parsed
+        .agent_harness_defaults
+        .get(&AgentLane::IdeationVerifier)
+        .expect("ideation verifier defaults should remain present");
+    assert_eq!(ideation_verifier.harness, AgentHarnessKind::Codex);
+    assert_eq!(ideation_verifier.model.as_deref(), Some("gpt-5.4-nano"));
 }
 
 #[test]

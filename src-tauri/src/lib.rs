@@ -53,9 +53,9 @@ use crate::infrastructure::{ExternalMcpHandle, ExternalMcpSupervisor};
 use application::ideation_effort_bootstrap::seed_ideation_effort_defaults;
 use application::ideation_model_bootstrap::seed_ideation_model_settings;
 use application::{
-    load_or_seed_execution_settings_defaults, ChatResumptionRunner, ClaudeChatService,
-    EventCleanupService, ReconciliationRunner, StartupJobRunner, TaskSchedulerService,
-    TaskTransitionService,
+    load_or_seed_agent_lane_settings_defaults, load_or_seed_execution_settings_defaults,
+    ChatResumptionRunner, ClaudeChatService, EventCleanupService, ReconciliationRunner,
+    StartupJobRunner, TaskSchedulerService, TaskTransitionService,
 };
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -298,8 +298,11 @@ pub fn run() {
             // This must happen before HTTP server starts to ensure consistent configuration
             let init_settings_repo = Arc::clone(&app_state.execution_settings_repo);
             let init_global_settings_repo = Arc::clone(&app_state.global_execution_settings_repo);
+            let init_agent_lane_settings_repo = Arc::clone(&app_state.agent_lane_settings_repo);
             let execution_defaults =
                 infrastructure::agents::claude::execution_defaults_config().clone();
+            let agent_harness_defaults =
+                infrastructure::agents::claude::agent_harness_defaults_config().clone();
             tauri::async_runtime::block_on(async move {
                 match load_or_seed_execution_settings_defaults(
                     init_settings_repo,
@@ -334,6 +337,32 @@ pub fn run() {
                     Err(e) => {
                         warn!(
                             "Failed to load/seed execution settings from database, using defaults: {}",
+                            e
+                        );
+                    }
+                }
+
+                match load_or_seed_agent_lane_settings_defaults(
+                    init_agent_lane_settings_repo,
+                    &agent_harness_defaults,
+                )
+                .await
+                {
+                    Ok(result) => {
+                        info!(
+                            seeded_global_lane_count = result.seeded_global_lanes.len(),
+                            seeded_global_lanes = ?result
+                                .seeded_global_lanes
+                                .iter()
+                                .map(ToString::to_string)
+                                .collect::<Vec<_>>(),
+                            configured_global_lane_count = result.global_defaults.len(),
+                            "Initialized agent harness defaults from DB/YAML defaults"
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to load/seed agent harness defaults from database, using runtime fallbacks: {}",
                             e
                         );
                     }

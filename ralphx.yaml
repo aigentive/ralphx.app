@@ -117,6 +117,42 @@ execution_defaults:
     global_ideation_max: 10
     allow_ideation_borrow_idle_execution: false
 
+# ── Agent harness defaults ────────────────────────────────────────────────
+# Seed values for the persisted global agent lane settings table.
+# Missing rows are created from these defaults at startup; existing DB rows stay authoritative.
+# Env overrides:
+#   RALPHX_AGENT_HARNESS_<LANE>
+#   RALPHX_AGENT_MODEL_<LANE>
+#   RALPHX_AGENT_EFFORT_<LANE>
+#   RALPHX_AGENT_APPROVAL_POLICY_<LANE>
+#   RALPHX_AGENT_SANDBOX_MODE_<LANE>
+# Example lane key: IDEATION_PRIMARY
+agent_harness_defaults:
+  ideation_primary:
+    harness: codex
+    model: gpt-5.4
+    effort: xhigh
+    approval_policy: on-request
+    sandbox_mode: workspace-write
+    fallback_harness: claude
+  ideation_verifier:
+    harness: codex
+    model: gpt-5.4-mini
+    effort: medium
+    approval_policy: on-request
+    sandbox_mode: workspace-write
+    fallback_harness: claude
+  ideation_subagent:
+    harness: codex
+    model: gpt-5.4-mini
+    effort: medium
+    fallback_harness: claude
+  ideation_verifier_subagent:
+    harness: codex
+    model: gpt-5.4-mini
+    effort: medium
+    fallback_harness: claude
+
 # ── Runtime timeouts & limits ──────────────────────────────────────────────
 # All fields required — no Rust serde defaults. Missing keys cause a deserialization error.
 # All values can be overridden by env: RALPHX_<SECTION>_<FIELD> (e.g. RALPHX_STREAM_MERGE_LINE_READ_SECS)
