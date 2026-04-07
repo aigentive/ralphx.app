@@ -928,6 +928,18 @@ async fn reconcile_merge_conflict_transitions_after_cooldown() {
         InternalStatus::MergeIncomplete,
         "Task should transition to MergeIncomplete after cooldown (requires manual resolution)"
     );
+    let history = app_state
+        .task_repo
+        .get_status_history(&task.id)
+        .await
+        .unwrap();
+    assert!(
+        history.iter().any(|entry| {
+            entry.from == InternalStatus::MergeConflict
+                && entry.to == InternalStatus::PendingMerge
+        }),
+        "Allowed MergeConflict retry must record MergeConflict -> PendingMerge before entry actions run"
+    );
 }
 
 #[tokio::test]
