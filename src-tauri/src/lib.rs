@@ -52,9 +52,10 @@ use crate::infrastructure::{ExternalMcpHandle, ExternalMcpSupervisor};
 
 use application::ideation_effort_bootstrap::seed_ideation_effort_defaults;
 use application::ideation_model_bootstrap::seed_ideation_model_settings;
+use application::runtime_factory::{ChatRuntimeFactoryDeps, build_chat_service_with_fallback};
 use application::{
     load_or_seed_agent_lane_settings_defaults, load_or_seed_execution_settings_defaults,
-    ChatResumptionRunner, ClaudeChatService, EventCleanupService, ReconciliationRunner,
+    ChatResumptionRunner, EventCleanupService, ReconciliationRunner,
     StartupJobRunner, TaskSchedulerService, TaskTransitionService,
 };
 
@@ -730,52 +731,44 @@ pub fn run() {
                 // Create chat service for Phase N+1 ideation recovery.
                 // Must be constructed BEFORE StartupJobRunner::new() consumes the repos.
                 let recovery_chat_service_app_handle = startup_runner_app_handle.clone();
-                let recovery_chat_service: Arc<dyn application::ChatService> =
-                    if let Some(app_state) =
-                        recovery_chat_service_app_handle.try_state::<AppState>()
-                    {
-                        Arc::new(
-                            app_state.build_chat_service_for_runtime(
-                                Some(Arc::clone(&startup_execution_state)),
-                                Some(recovery_chat_service_app_handle.clone()),
-                            ),
-                        )
-                    } else {
-                        Arc::new(
-                            ClaudeChatService::new(
-                                Arc::clone(&startup_chat_message_repo),
-                                Arc::clone(&startup_chat_attachment_repo),
-                                Arc::clone(&startup_artifact_repo),
-                                Arc::clone(&startup_conversation_repo),
-                                Arc::clone(&startup_agent_run_repo),
-                                Arc::clone(&startup_project_repo),
-                                Arc::clone(&startup_task_repo),
-                                Arc::clone(&startup_task_dependency_repo),
-                                Arc::clone(&startup_ideation_session_repo),
-                                Arc::clone(&startup_activity_event_repo),
-                                Arc::clone(&startup_message_queue),
-                                Arc::clone(&startup_running_agent_registry),
-                                Arc::clone(&startup_memory_event_repo),
-                            )
-                            .with_execution_state(Arc::clone(&startup_execution_state))
-                            .with_execution_settings_repo(Arc::clone(
-                                &startup_execution_settings_repo,
-                            ))
-                            .with_agent_lane_settings_repo(Arc::clone(
-                                &startup_agent_lane_settings_repo,
-                            ))
-                            .with_ideation_effort_settings_repo(Arc::clone(
-                                &startup_ideation_effort_settings_repo,
-                            ))
-                            .with_ideation_model_settings_repo(Arc::clone(
-                                &startup_ideation_model_settings_repo,
-                            ))
-                            .with_app_handle(recovery_chat_service_app_handle)
-                            .with_interactive_process_registry(Arc::clone(
-                                &startup_interactive_process_registry,
-                            )),
-                        )
-                    };
+                let recovery_chat_service_deps = ChatRuntimeFactoryDeps {
+                    chat_message_repo: Arc::clone(&startup_chat_message_repo),
+                    chat_attachment_repo: Arc::clone(&startup_chat_attachment_repo),
+                    artifact_repo: Arc::clone(&startup_artifact_repo),
+                    conversation_repo: Arc::clone(&startup_conversation_repo),
+                    agent_run_repo: Arc::clone(&startup_agent_run_repo),
+                    project_repo: Arc::clone(&startup_project_repo),
+                    task_repo: Arc::clone(&startup_task_repo),
+                    task_dependency_repo: Arc::clone(&startup_task_dependency_repo),
+                    ideation_session_repo: Arc::clone(&startup_ideation_session_repo),
+                    activity_event_repo: Arc::clone(&startup_activity_event_repo),
+                    message_queue: Arc::clone(&startup_message_queue),
+                    running_agent_registry: Arc::clone(&startup_running_agent_registry),
+                    memory_event_repo: Arc::clone(&startup_memory_event_repo),
+                    execution_settings_repo: Some(Arc::clone(&startup_execution_settings_repo)),
+                    agent_lane_settings_repo: Some(Arc::clone(&startup_agent_lane_settings_repo)),
+                    ideation_effort_settings_repo: Some(Arc::clone(
+                        &startup_ideation_effort_settings_repo,
+                    )),
+                    ideation_model_settings_repo: Some(Arc::clone(
+                        &startup_ideation_model_settings_repo,
+                    )),
+                    plan_branch_repo: None,
+                    task_proposal_repo: None,
+                    task_step_repo: None,
+                    review_repo: None,
+                    interactive_process_registry: Some(Arc::clone(
+                        &startup_interactive_process_registry,
+                    )),
+                    streaming_state_cache: None,
+                };
+                let recovery_chat_service: Arc<dyn application::ChatService> = Arc::new(
+                    build_chat_service_with_fallback(
+                        &Some(recovery_chat_service_app_handle.clone()),
+                        Some(Arc::clone(&startup_execution_state)),
+                        &recovery_chat_service_deps,
+                    ),
+                );
 
                 let runner = StartupJobRunner::new(
                     startup_task_repo,
@@ -963,30 +956,38 @@ pub fn run() {
                     let recovery_config = RecoveryQueueConfig::default();
                     // Construct a ClaudeChatService for the recovery queue processor.
                     // Uses pre-cloned repos (cloned before StartupJobRunner consumed some originals).
+                    let recovery_queue_chat_deps = ChatRuntimeFactoryDeps {
+                        chat_message_repo: recovery_cs_chat_message_repo,
+                        chat_attachment_repo: recovery_cs_chat_attachment_repo,
+                        artifact_repo: recovery_cs_artifact_repo,
+                        conversation_repo: recovery_cs_conversation_repo,
+                        agent_run_repo: recovery_cs_agent_run_repo,
+                        project_repo: recovery_cs_project_repo,
+                        task_repo: recovery_cs_task_repo,
+                        task_dependency_repo: recovery_cs_task_dep_repo,
+                        ideation_session_repo: recovery_cs_ideation_repo,
+                        activity_event_repo: recovery_cs_activity_repo,
+                        message_queue: recovery_cs_message_queue,
+                        running_agent_registry: recovery_cs_running_reg,
+                        memory_event_repo: recovery_cs_memory_event_repo,
+                        execution_settings_repo: Some(recovery_cs_execution_settings_repo),
+                        agent_lane_settings_repo: Some(recovery_cs_agent_lane_repo),
+                        ideation_effort_settings_repo: Some(recovery_cs_ideation_effort_repo),
+                        ideation_model_settings_repo: Some(recovery_cs_ideation_model_repo),
+                        plan_branch_repo: None,
+                        task_proposal_repo: None,
+                        task_step_repo: None,
+                        review_repo: None,
+                        interactive_process_registry: Some(recovery_cs_ipr),
+                        streaming_state_cache: None,
+                    };
                     let recovery_chat_service: std::sync::Arc<dyn application::chat_service::ChatService> =
                         std::sync::Arc::new(
-                            application::chat_service::ClaudeChatService::<tauri::Wry>::new(
-                                recovery_cs_chat_message_repo,
-                                recovery_cs_chat_attachment_repo,
-                                recovery_cs_artifact_repo,
-                                recovery_cs_conversation_repo,
-                                recovery_cs_agent_run_repo,
-                                recovery_cs_project_repo,
-                                recovery_cs_task_repo,
-                                recovery_cs_task_dep_repo,
-                                recovery_cs_ideation_repo,
-                                recovery_cs_activity_repo,
-                                recovery_cs_message_queue,
-                                recovery_cs_running_reg,
-                                recovery_cs_memory_event_repo,
-                            )
-                            .with_execution_state(Arc::clone(&startup_execution_state))
-                            .with_execution_settings_repo(recovery_cs_execution_settings_repo)
-                            .with_agent_lane_settings_repo(recovery_cs_agent_lane_repo)
-                            .with_ideation_effort_settings_repo(recovery_cs_ideation_effort_repo)
-                            .with_ideation_model_settings_repo(recovery_cs_ideation_model_repo)
-                            .with_app_handle(recovery_cs_app_handle.clone())
-                            .with_interactive_process_registry(recovery_cs_ipr),
+                            build_chat_service_with_fallback(
+                                &Some(recovery_cs_app_handle.clone()),
+                                Some(Arc::clone(&startup_execution_state)),
+                                &recovery_queue_chat_deps,
+                            ),
                         );
                     let (recovery_queue, recovery_processor) = create_recovery_queue(
                         Arc::clone(&startup_running_agent_registry),

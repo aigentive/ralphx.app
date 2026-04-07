@@ -13,9 +13,10 @@
 // - Sends "Continue where you left off." message to resume Claude session
 
 use std::sync::Arc;
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Runtime};
 use tracing::{info, warn};
 
+use crate::application::runtime_factory::{ChatRuntimeFactoryDeps, build_chat_service_with_fallback};
 use crate::application::{ChatService, ClaudeChatService, InteractiveProcessRegistry};
 use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
 use crate::domain::entities::{ChatContextType, InterruptedConversation, TaskId};
@@ -287,49 +288,39 @@ impl<R: Runtime> ChatResumptionRunner<R> {
 
     /// Create a ChatService instance for resumption.
     fn create_chat_service(&self) -> ClaudeChatService<R> {
-        if let Some(ref handle) = self.app_handle {
-            if let Some(app_state) = handle.try_state::<crate::application::AppState>() {
-                return app_state.build_chat_service_for_runtime(
-                    Some(Arc::clone(&self.execution_state)),
-                    self.app_handle.clone(),
-                );
-            }
-        }
-
-        let mut service = ClaudeChatService::new(
-            Arc::clone(&self.chat_message_repo),
-            Arc::clone(&self.chat_attachment_repo),
-            Arc::clone(&self.artifact_repo),
-            Arc::clone(&self.conversation_repo),
-            Arc::clone(&self.agent_run_repo),
-            Arc::clone(&self.project_repo),
-            Arc::clone(&self.task_repo),
-            Arc::clone(&self.task_dependency_repo),
-            Arc::clone(&self.ideation_session_repo),
-            Arc::clone(&self.activity_event_repo),
-            Arc::clone(&self.message_queue),
-            Arc::clone(&self.running_agent_registry),
-            Arc::clone(&self.memory_event_repo),
+        let deps = ChatRuntimeFactoryDeps {
+            chat_message_repo: Arc::clone(&self.chat_message_repo),
+            chat_attachment_repo: Arc::clone(&self.chat_attachment_repo),
+            artifact_repo: Arc::clone(&self.artifact_repo),
+            conversation_repo: Arc::clone(&self.conversation_repo),
+            agent_run_repo: Arc::clone(&self.agent_run_repo),
+            project_repo: Arc::clone(&self.project_repo),
+            task_repo: Arc::clone(&self.task_repo),
+            task_dependency_repo: Arc::clone(&self.task_dependency_repo),
+            ideation_session_repo: Arc::clone(&self.ideation_session_repo),
+            activity_event_repo: Arc::clone(&self.activity_event_repo),
+            message_queue: Arc::clone(&self.message_queue),
+            running_agent_registry: Arc::clone(&self.running_agent_registry),
+            memory_event_repo: Arc::clone(&self.memory_event_repo),
+            execution_settings_repo: self.execution_settings_repo.as_ref().map(Arc::clone),
+            agent_lane_settings_repo: self.agent_lane_settings_repo.as_ref().map(Arc::clone),
+            ideation_effort_settings_repo: None,
+            ideation_model_settings_repo: None,
+            plan_branch_repo: self.plan_branch_repo.as_ref().map(Arc::clone),
+            task_proposal_repo: None,
+            task_step_repo: None,
+            review_repo: None,
+            interactive_process_registry: self
+                .interactive_process_registry
+                .as_ref()
+                .map(Arc::clone),
+            streaming_state_cache: None,
+        };
+        build_chat_service_with_fallback(
+            &self.app_handle,
+            Some(Arc::clone(&self.execution_state)),
+            &deps,
         )
-        .with_execution_state(Arc::clone(&self.execution_state));
-
-        if let Some(ref handle) = self.app_handle {
-            service = service.with_app_handle(handle.clone());
-        }
-        if let Some(ref repo) = self.execution_settings_repo {
-            service = service.with_execution_settings_repo(Arc::clone(repo));
-        }
-        if let Some(ref repo) = self.agent_lane_settings_repo {
-            service = service.with_agent_lane_settings_repo(Arc::clone(repo));
-        }
-        if let Some(ref repo) = self.plan_branch_repo {
-            service = service.with_plan_branch_repo(Arc::clone(repo));
-        }
-        if let Some(ref ipr) = self.interactive_process_registry {
-            service = service.with_interactive_process_registry(Arc::clone(ipr));
-        }
-
-        service
     }
 }
 
