@@ -221,6 +221,80 @@ impl<R: ReviewRepository, T: TaskRepository> ReviewService<R, T> {
         &self.settings
     }
 
+    async fn transition_task_validated(
+        &self,
+        task_id: &TaskId,
+        target_status: InternalStatus,
+        history_actor: &str,
+    ) -> AppResult<Task> {
+        self.transition_task_status(task_id, target_status, history_actor, true)
+            .await
+    }
+
+    async fn transition_task_corrective(
+        &self,
+        task_id: &TaskId,
+        target_status: InternalStatus,
+        history_actor: &str,
+    ) -> AppResult<Task> {
+        self.transition_task_status(task_id, target_status, history_actor, false)
+            .await
+    }
+
+    async fn transition_task_status(
+        &self,
+        task_id: &TaskId,
+        target_status: InternalStatus,
+        history_actor: &str,
+        validate_graph: bool,
+    ) -> AppResult<Task> {
+        let mut task = self
+            .task_repo
+            .get_by_id(task_id)
+            .await?
+            .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
+
+        let from_status = task.internal_status;
+        if from_status == target_status {
+            return Ok(task);
+        }
+
+        if validate_graph && !from_status.can_transition_to(target_status) {
+            return Err(AppError::InvalidTransition {
+                from: from_status.as_str().to_string(),
+                to: target_status.as_str().to_string(),
+            });
+        }
+
+        task.internal_status = target_status;
+        task.touch();
+
+        if !self
+            .task_repo
+            .update_with_expected_status(&task, from_status)
+            .await?
+        {
+            let current = self
+                .task_repo
+                .get_by_id(task_id)
+                .await?
+                .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
+            return Err(AppError::Conflict(format!(
+                "Could not persist {} -> {} for task {}; current status is {}",
+                from_status.as_str(),
+                target_status.as_str(),
+                task_id.as_str(),
+                current.internal_status.as_str()
+            )));
+        }
+
+        self.task_repo
+            .persist_status_change(task_id, from_status, target_status, history_actor)
+            .await?;
+
+        Ok(task)
+    }
+
     // ========================================
     // Fix Task Workflow Methods
     // ========================================
@@ -229,7 +303,7 @@ impl<R: ReviewRepository, T: TaskRepository> ReviewService<R, T> {
     ///
     /// This is called when a human approves an AI-proposed fix task.
     pub async fn approve_fix_task(&self, fix_task_id: &TaskId) -> AppResult<()> {
-        let mut fix_task = self
+        let fix_task = self
             .task_repo
             .get_by_id(fix_task_id)
             .await?
@@ -243,8 +317,9 @@ impl<R: ReviewRepository, T: TaskRepository> ReviewService<R, T> {
             )));
         }
 
-        fix_task.internal_status = InternalStatus::Ready;
-        self.task_repo.update(&fix_task).await
+        self.transition_task_validated(fix_task_id, InternalStatus::Ready, "review_fix")
+            .await?;
+        Ok(())
     }
 
     /// Reject a fix task with feedback and optionally create a new fix proposal
@@ -260,14 +335,14 @@ impl<R: ReviewRepository, T: TaskRepository> ReviewService<R, T> {
         original_task_id: &TaskId,
     ) -> AppResult<Option<TaskId>> {
         // Get fix task and mark as rejected
-        let mut fix_task = self
+        let fix_task = self
             .task_repo
             .get_by_id(fix_task_id)
             .await?
             .ok_or_else(|| AppError::TaskNotFound(fix_task_id.as_str().to_string()))?;
 
-        fix_task.internal_status = InternalStatus::Failed;
-        self.task_repo.update(&fix_task).await?;
+        self.transition_task_corrective(fix_task_id, InternalStatus::Failed, "review_fix")
+            .await?;
 
         // Get original task
         let original_task = self
@@ -282,9 +357,8 @@ impl<R: ReviewRepository, T: TaskRepository> ReviewService<R, T> {
         // Check if we've exceeded max attempts
         if self.settings.exceeded_max_attempts(attempt_count) {
             // Move original task to backlog
-            let mut orig = original_task;
-            orig.internal_status = InternalStatus::Backlog;
-            self.task_repo.update(&orig).await?;
+            self.transition_task_corrective(original_task_id, InternalStatus::Backlog, "review_fix")
+                .await?;
 
             // Add a note about max attempts reached
             self.add_review_note(
@@ -326,14 +400,8 @@ impl<R: ReviewRepository, T: TaskRepository> ReviewService<R, T> {
 
     /// Move a task to backlog (used when giving up on fixes)
     pub async fn move_to_backlog(&self, task_id: &TaskId, reason: &str) -> AppResult<()> {
-        let mut task = self
-            .task_repo
-            .get_by_id(task_id)
-            .await?
-            .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
-
-        task.internal_status = InternalStatus::Backlog;
-        self.task_repo.update(&task).await?;
+        self.transition_task_corrective(task_id, InternalStatus::Backlog, "review_service")
+            .await?;
 
         // Add a note about why it was moved to backlog
         self.add_review_note(task_id, ReviewerType::System, ReviewOutcome::Rejected, reason)
@@ -509,13 +577,8 @@ impl<R: ReviewRepository, T: TaskRepository> ReviewService<R, T> {
         .await?;
 
         // Move task to failed status
-        let mut task = self
-            .task_repo
-            .get_by_id(&review.task_id)
-            .await?
-            .ok_or_else(|| AppError::TaskNotFound(review.task_id.as_str().to_string()))?;
-
-        task.internal_status = InternalStatus::Failed;
-        self.task_repo.update(&task).await
+        self.transition_task_corrective(&review.task_id, InternalStatus::Failed, "review_human")
+            .await?;
+        Ok(())
     }
 }
