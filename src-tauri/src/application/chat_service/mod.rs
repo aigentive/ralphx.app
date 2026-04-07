@@ -1656,7 +1656,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             team_mode_val,
         );
         let resolved_spawn_settings =
-            crate::application::agent_lane_resolution::resolve_claude_spawn_settings(
+            crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
                 agent_name,
                 project_id.as_deref(),
                 context_type,
@@ -1666,7 +1666,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 self.ideation_effort_settings_repo.as_ref(),
             )
             .await;
-        let resolved_effort = resolved_spawn_settings.effort.clone();
+        let resolved_effort = resolved_spawn_settings.claude_effort.clone();
         let resolved_model = Some(resolved_spawn_settings.model.clone());
         let resolved_subagent_model_cap = resolved_spawn_settings.subagent_model_cap.clone();
         let effective_model_id = resolved_spawn_settings.model;

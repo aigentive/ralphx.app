@@ -998,7 +998,7 @@ pub async fn build_command(
 
     let attachment_context = format_attachments_for_agent(&attachments).await?;
     let resolved_spawn_settings =
-        crate::application::agent_lane_resolution::resolve_claude_spawn_settings(
+        crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
             agent_name,
             project_id,
             conversation.context_type,
@@ -1246,7 +1246,7 @@ pub async fn build_resume_command(
     let agent_name =
         resolve_agent_with_team_mode(&context_type, entity_status.as_deref(), team_mode);
     let resolved_spawn_settings =
-        crate::application::agent_lane_resolution::resolve_claude_spawn_settings(
+        crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
             agent_name,
             project_id,
             context_type,
