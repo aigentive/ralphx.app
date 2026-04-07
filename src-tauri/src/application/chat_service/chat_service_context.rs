@@ -26,6 +26,7 @@ use crate::infrastructure::agents::claude::{
 use crate::infrastructure::agents::claude::agent_names;
 use crate::utils::truncate_str;
 
+use super::super::agent_lane_resolution::ResolvedAgentSpawnSettings;
 use super::chat_service_helpers::resolve_agent_with_team_mode;
 
 /// Maximum number of recent messages to inject into the bootstrap prompt.
@@ -1008,9 +1009,46 @@ pub async fn build_command(
             ideation_effort_settings_repo.as_ref(),
         )
         .await;
-    let resolved_model = resolved_spawn_settings.model;
-    let ideation_subagent_model_cap = resolved_spawn_settings.subagent_model_cap;
 
+    build_command_from_resolved_settings(
+        cli_path,
+        plugin_dir,
+        agent_name,
+        conversation,
+        user_message,
+        working_directory,
+        project_id,
+        team_mode,
+        artifact_repo,
+        &attachment_context,
+        should_resume,
+        session_messages,
+        total_available,
+        effort_override,
+        &resolved_spawn_settings,
+    )
+    .await
+}
+
+async fn build_command_from_resolved_settings(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    agent_name: &str,
+    conversation: &ChatConversation,
+    user_message: &str,
+    working_directory: &Path,
+    project_id: Option<&str>,
+    team_mode: bool,
+    artifact_repo: Arc<dyn ArtifactRepository>,
+    attachment_context: &str,
+    should_resume: bool,
+    session_messages: &[ChatMessage],
+    total_available: usize,
+    effort_override: Option<&str>,
+    resolved_spawn_settings: &ResolvedAgentSpawnSettings,
+) -> Result<SpawnableCommand, String> {
+    let resolved_model = resolved_spawn_settings.model.as_str();
+    let ideation_subagent_model_cap = resolved_spawn_settings.subagent_model_cap.as_deref();
     let (prompt, resume_session) = if should_resume {
         let session_id = conversation.claude_session_id.as_ref().unwrap();
         // Re-inject context_id on resume so the agent can detect session mismatches.
@@ -1022,7 +1060,7 @@ pub async fn build_command(
             session_messages,
             total_available,
             Arc::clone(&artifact_repo),
-            ideation_subagent_model_cap.as_deref(),
+            ideation_subagent_model_cap,
         )
         .await?;
         let prompt_with_attachments = format!("{}{}", resume_prompt, attachment_context);
@@ -1038,7 +1076,7 @@ pub async fn build_command(
             session_messages,
             total_available,
             Arc::clone(&artifact_repo),
-            ideation_subagent_model_cap.as_deref(),
+            ideation_subagent_model_cap,
         )
         .await?;
         // Append attachments after the initial prompt
@@ -1054,7 +1092,7 @@ pub async fn build_command(
         resume_session.as_deref(),
         working_directory,
         effort_override,
-        Some(&resolved_model),
+        Some(resolved_model),
     )?;
 
     apply_ralphx_env_vars(
@@ -1065,7 +1103,7 @@ pub async fn build_command(
         project_id,
         team_mode,
         conversation.claude_session_id.as_deref(),
-        ideation_subagent_model_cap.as_deref(),
+        ideation_subagent_model_cap,
     );
 
     Ok(spawnable)
@@ -1094,21 +1132,16 @@ pub async fn build_interactive_command(
     session_messages: &[ChatMessage],
     total_available: usize,
     is_external_mcp: bool,
-    effort_override: Option<&str>,
-    model_override: Option<&str>,
-    subagent_cap_override: Option<&str>,
+    resolved_spawn_settings: &ResolvedAgentSpawnSettings,
 ) -> Result<SpawnableCommand, String> {
     let agent_name =
         resolve_agent_with_team_mode(&conversation.context_type, entity_status, team_mode);
     let ideation_subagent_model_cap = (conversation.context_type == ChatContextType::Ideation)
         .then(|| {
-            if let Some(cap) = subagent_cap_override {
-                cap.to_string()
-            } else {
-                model_override.map(str::to_string).unwrap_or_else(|| {
-                    crate::infrastructure::agents::claude::resolve_model(Some(agent_name))
-                })
-            }
+            resolved_spawn_settings
+                .subagent_model_cap
+                .clone()
+                .unwrap_or_else(|| resolved_spawn_settings.model.clone())
         });
 
     // Interactive mode: never resume with --resume session_id because the process stays
@@ -1147,8 +1180,8 @@ pub async fn build_interactive_command(
         resume_session,
         working_directory,
         is_external_mcp,
-        effort_override,
-        model_override,
+        resolved_spawn_settings.claude_effort.as_deref(),
+        Some(resolved_spawn_settings.model.as_str()),
     )?;
 
     apply_ralphx_env_vars(
@@ -1256,9 +1289,46 @@ pub async fn build_resume_command(
             ideation_effort_settings_repo.as_ref(),
         )
         .await;
-    let resolved_model = resolved_spawn_settings.model;
-    let ideation_subagent_model_cap = resolved_spawn_settings.subagent_model_cap;
 
+    build_resume_command_from_resolved_settings(
+        cli_path,
+        plugin_dir,
+        agent_name,
+        context_type,
+        context_id,
+        message,
+        working_directory,
+        session_id,
+        project_id,
+        team_mode,
+        artifact_repo,
+        session_messages,
+        total_available,
+        effort_override,
+        &resolved_spawn_settings,
+    )
+    .await
+}
+
+async fn build_resume_command_from_resolved_settings(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    agent_name: &str,
+    context_type: ChatContextType,
+    context_id: &str,
+    message: &str,
+    working_directory: &Path,
+    session_id: &str,
+    project_id: Option<&str>,
+    team_mode: bool,
+    artifact_repo: Arc<dyn ArtifactRepository>,
+    session_messages: &[ChatMessage],
+    total_available: usize,
+    effort_override: Option<&str>,
+    resolved_spawn_settings: &ResolvedAgentSpawnSettings,
+) -> Result<SpawnableCommand, String> {
+    let resolved_model = resolved_spawn_settings.model.as_str();
+    let ideation_subagent_model_cap = resolved_spawn_settings.subagent_model_cap.as_deref();
     // Re-inject context_id on resume so the agent can detect session mismatches.
     // For Ideation context, session_history is injected programmatically.
     let resume_prompt = build_initial_prompt_with_session_artifacts(
@@ -1268,7 +1338,7 @@ pub async fn build_resume_command(
         session_messages,
         total_available,
         artifact_repo,
-        ideation_subagent_model_cap.as_deref(),
+        ideation_subagent_model_cap,
     )
     .await?;
 
@@ -1280,7 +1350,7 @@ pub async fn build_resume_command(
         Some(session_id),
         working_directory,
         effort_override,
-        Some(&resolved_model),
+        Some(resolved_model),
     )?;
 
     // In resume flow, session_id IS the Claude session ID.
@@ -1292,7 +1362,7 @@ pub async fn build_resume_command(
         project_id,
         team_mode,
         Some(session_id),
-        ideation_subagent_model_cap.as_deref(),
+        ideation_subagent_model_cap,
     );
 
     Ok(spawnable)

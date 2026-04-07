@@ -866,9 +866,7 @@ impl<R: Runtime> ClaudeChatService<R> {
         session_messages: &[crate::domain::entities::ChatMessage],
         total_available: usize,
         is_external_mcp: bool,
-        effort_override: Option<&str>,
-        model_override: Option<&str>,
-        subagent_cap_override: Option<&str>,
+        resolved_spawn_settings: &crate::application::agent_lane_resolution::ResolvedAgentSpawnSettings,
     ) -> Result<crate::infrastructure::agents::claude::SpawnableCommand, ChatServiceError> {
         chat_service_context::build_interactive_command(
             &self.cli_path,
@@ -884,9 +882,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             session_messages,
             total_available,
             is_external_mcp,
-            effort_override,
-            model_override,
-            subagent_cap_override,
+            resolved_spawn_settings,
         )
         .await
         .map_err(ChatServiceError::SpawnFailed)
@@ -1666,10 +1662,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 self.ideation_effort_settings_repo.as_ref(),
             )
             .await;
-        let resolved_effort = resolved_spawn_settings.claude_effort.clone();
-        let resolved_model = Some(resolved_spawn_settings.model.clone());
-        let resolved_subagent_model_cap = resolved_spawn_settings.subagent_model_cap.clone();
-        let effective_model_id = resolved_spawn_settings.model;
+        let effective_model_id = resolved_spawn_settings.model.clone();
         let effective_model_label =
             crate::infrastructure::agents::claude::model_labels::model_id_to_label(
                 &effective_model_id,
@@ -1726,9 +1719,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 &session_messages,
                 session_total,
                 options.is_external_mcp,
-                resolved_effort.as_deref(),
-                resolved_model.as_deref(),
-                resolved_subagent_model_cap.as_deref(),
+                &resolved_spawn_settings,
             )
             .await
         {
