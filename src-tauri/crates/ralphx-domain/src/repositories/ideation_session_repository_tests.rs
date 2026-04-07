@@ -305,6 +305,13 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
         unimplemented!()
     }
 
+    async fn count_active_proposals(
+        &self,
+        _session_id: &IdeationSessionId,
+    ) -> AppResult<usize> {
+        Ok(0)
+    }
+
     fn count_active_by_session_sync(
         _conn: &rusqlite::Connection,
         _session_id: &str,
@@ -500,6 +507,7 @@ fn create_test_session(project_id: &ProjectId) -> IdeationSession {
         pending_initial_prompt: None,
         acceptance_status: None,
         verification_confirmation_status: None,
+        last_effective_model: None,
     }
 }
 
