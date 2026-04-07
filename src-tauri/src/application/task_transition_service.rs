@@ -12,6 +12,8 @@
 
 use async_trait::async_trait;
 use std::collections::HashSet;
+use std::future::Future;
+use std::panic::Location;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
@@ -740,6 +742,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         task_id: &TaskId,
         from: InternalStatus,
         to: InternalStatus,
+        caller: &'static Location<'static>,
     ) -> AppResult<()> {
         if from.can_transition_to(to) {
             return Ok(());
@@ -749,6 +752,9 @@ impl<R: Runtime> TaskTransitionService<R> {
             task_id = task_id.as_str(),
             from = from.as_str(),
             to = to.as_str(),
+            caller_file = caller.file(),
+            caller_line = caller.line(),
+            caller_column = caller.column(),
             "Rejected invalid task status transition"
         );
 
@@ -1027,13 +1033,17 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// # Returns
     /// * `Ok(Task)` - The updated task with new status
     /// * `Err(AppError)` - If the task is not found or transition is invalid
-    pub async fn transition_task(
-        &self,
-        task_id: &TaskId,
+    #[track_caller]
+    pub fn transition_task<'a>(
+        &'a self,
+        task_id: &'a TaskId,
         new_status: InternalStatus,
-    ) -> AppResult<Task> {
-        self.transition_task_with_metadata(task_id, new_status, None)
-            .await
+    ) -> impl Future<Output = AppResult<Task>> + 'a {
+        let caller = Location::caller();
+        async move {
+            self.transition_task_with_metadata_from_caller(task_id, new_status, None, caller)
+                .await
+        }
     }
 
     /// Transition a task to a new status with optional metadata update.
@@ -1050,15 +1060,38 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// # Returns
     /// * `Ok(Task)` - The updated task with new status and merged metadata
     /// * `Err(AppError)` - If the task is not found or transition is invalid
-    pub async fn transition_task_with_metadata(
+    #[track_caller]
+    pub fn transition_task_with_metadata<'a>(
+        &'a self,
+        task_id: &'a TaskId,
+        new_status: InternalStatus,
+        metadata_update: Option<MetadataUpdate>,
+    ) -> impl Future<Output = AppResult<Task>> + 'a {
+        let caller = Location::caller();
+        async move {
+            self.transition_task_with_metadata_from_caller(
+                task_id,
+                new_status,
+                metadata_update,
+                caller,
+            )
+            .await
+        }
+    }
+
+    async fn transition_task_with_metadata_from_caller(
         &self,
         task_id: &TaskId,
         new_status: InternalStatus,
         metadata_update: Option<MetadataUpdate>,
+        caller: &'static Location<'static>,
     ) -> AppResult<Task> {
         tracing::debug!(
             task_id = task_id.as_str(),
             new_status = new_status.as_str(),
+            caller_file = caller.file(),
+            caller_line = caller.line(),
+            caller_column = caller.column(),
             "Starting task transition"
         );
 
@@ -1083,10 +1116,13 @@ impl<R: Runtime> TaskTransitionService<R> {
         tracing::debug!(
             from = old_status.as_str(),
             to = new_status.as_str(),
+            caller_file = caller.file(),
+            caller_line = caller.line(),
+            caller_column = caller.column(),
             "Transitioning task status"
         );
 
-        self.validate_status_transition(task_id, old_status, new_status)?;
+        self.validate_status_transition(task_id, old_status, new_status, caller)?;
 
         // 3. Update the task status
         task.internal_status = new_status;
@@ -1116,6 +1152,9 @@ impl<R: Runtime> TaskTransitionService<R> {
                 task_id = task_id.as_str(),
                 from = old_status.as_str(),
                 to = new_status.as_str(),
+                caller_file = caller.file(),
+                caller_line = caller.line(),
+                caller_column = caller.column(),
                 "Optimistic lock: task already transitioned by another caller, skipping"
             );
             // Re-fetch to return current state
@@ -1142,6 +1181,9 @@ impl<R: Runtime> TaskTransitionService<R> {
             task_id = task_id.as_str(),
             from = old_status.as_str(),
             to = new_status.as_str(),
+            caller_file = caller.file(),
+            caller_line = caller.line(),
+            caller_column = caller.column(),
             "Status transition confirmed"
         );
 
@@ -1197,12 +1239,14 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// # Returns
     /// * `Ok(Task)` - The stopped task with stop metadata
     /// * `Err(AppError)` - If the task is not found or transition is invalid
-    pub async fn transition_to_stopped_with_context(
-        &self,
-        task_id: &TaskId,
+    #[track_caller]
+    pub fn transition_to_stopped_with_context<'a>(
+        &'a self,
+        task_id: &'a TaskId,
         from_status: InternalStatus,
         reason: Option<String>,
-    ) -> AppResult<Task> {
+    ) -> impl Future<Output = AppResult<Task>> + 'a {
+        let caller = Location::caller();
         tracing::info!(
             task_id = task_id.as_str(),
             from_status = from_status.as_str(),
@@ -1214,8 +1258,15 @@ impl<R: Runtime> TaskTransitionService<R> {
         let stop_metadata = build_stop_metadata(from_status, reason);
 
         // Transition to Stopped with metadata
-        self.transition_task_with_metadata(task_id, InternalStatus::Stopped, Some(stop_metadata))
+        async move {
+            self.transition_task_with_metadata_from_caller(
+                task_id,
+                InternalStatus::Stopped,
+                Some(stop_metadata),
+                caller,
+            )
             .await
+        }
     }
 
     /// Apply an explicit corrective transition for nonstandard repair flows.
@@ -1227,40 +1278,54 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// This wrapper still records status history and uses the same optimistic-lock discipline
     /// as the internal corrective path, but it deliberately skips the normal entry/exit actions
     /// and event emission that belong to workflow transitions.
-    pub async fn transition_task_corrective(
-        &self,
-        task_id: &TaskId,
+    #[track_caller]
+    pub fn transition_task_corrective<'a>(
+        &'a self,
+        task_id: &'a TaskId,
         target_status: InternalStatus,
         blocked_reason: Option<String>,
-        history_actor: &str,
-    ) -> AppResult<Task> {
-        let existing = self
-            .task_repo
-            .get_by_id(task_id)
-            .await?
-            .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
+        history_actor: &'a str,
+    ) -> impl Future<Output = AppResult<Task>> + 'a {
+        let caller = Location::caller();
+        async move {
+            let existing = self
+                .task_repo
+                .get_by_id(task_id)
+                .await?
+                .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
 
-        if existing.internal_status == target_status {
-            return Ok(existing);
-        }
+            if existing.internal_status == target_status {
+                return Ok(existing);
+            }
 
-        match self
-            .apply_corrective_transition(task_id, target_status, blocked_reason, history_actor)
-            .await
-        {
-            Some(result) => Ok(result.task),
-            None => {
-                let current = self
-                    .task_repo
-                    .get_by_id(task_id)
-                    .await?
-                    .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
+            match self
+                .apply_corrective_transition(task_id, target_status, blocked_reason, history_actor)
+                .await
+            {
+                Some(result) => Ok(result.task),
+                None => {
+                    let current = self
+                        .task_repo
+                        .get_by_id(task_id)
+                        .await?
+                        .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
 
-                Err(AppError::Conflict(format!(
-                    "Corrective transition to {} did not persist; current status is {}",
-                    target_status.as_str(),
-                    current.internal_status.as_str()
-                )))
+                    tracing::warn!(
+                        task_id = task_id.as_str(),
+                        target_status = target_status.as_str(),
+                        current_status = current.internal_status.as_str(),
+                        caller_file = caller.file(),
+                        caller_line = caller.line(),
+                        caller_column = caller.column(),
+                        "Corrective transition did not persist"
+                    );
+
+                    Err(AppError::Conflict(format!(
+                        "Corrective transition to {} did not persist; current status is {}",
+                        target_status.as_str(),
+                        current.internal_status.as_str()
+                    )))
+                }
             }
         }
     }
