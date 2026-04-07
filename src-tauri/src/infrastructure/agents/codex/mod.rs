@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::Command as StdCommand;
 
 use crate::domain::agents::LogicalEffort;
+use crate::infrastructure::agents::claude::SpawnableCommand;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodexCliCapabilities {
@@ -206,8 +207,95 @@ pub fn build_codex_exec_args(
     Ok(args)
 }
 
+pub fn build_codex_exec_resume_args(
+    capabilities: &CodexCliCapabilities,
+    session_id: &str,
+    config: &CodexExecCliConfig,
+) -> Result<Vec<String>, String> {
+    if !capabilities.supports_exec_subcommand {
+        return Err("Codex CLI does not advertise the exec subcommand".to_string());
+    }
+
+    let mut args = vec!["exec".to_string(), "resume".to_string(), session_id.to_string()];
+
+    if config.json_output {
+        require_capability(capabilities.supports_json_output, "json_output")?;
+        args.push("--json".to_string());
+    }
+
+    if let Some(model) = config.model.as_deref() {
+        require_capability(capabilities.supports_model_flag, "model_flag")?;
+        args.push("-m".to_string());
+        args.push(model.to_string());
+    }
+
+    if config.skip_git_repo_check {
+        args.push("--skip-git-repo-check".to_string());
+    }
+
+    if let Some(reasoning_effort) = config.reasoning_effort {
+        require_capability(capabilities.supports_config_override, "config_override")?;
+        args.push("-c".to_string());
+        args.push(format!(
+            "model_reasoning_effort=\"{}\"",
+            reasoning_effort
+        ));
+    }
+
+    if let Some(approval_policy) = config.approval_policy.as_deref() {
+        require_capability(capabilities.supports_config_override, "config_override")?;
+        args.push("-c".to_string());
+        args.push(format!(
+            "approval_policy=\"{}\"",
+            normalize_cli_token(approval_policy)
+        ));
+    }
+
+    if let Some(sandbox_mode) = config.sandbox_mode.as_deref() {
+        require_capability(capabilities.supports_config_override, "config_override")?;
+        args.push("-c".to_string());
+        args.push(format!(
+            "sandbox_mode=\"{}\"",
+            normalize_cli_token(sandbox_mode)
+        ));
+    }
+
+    Ok(args)
+}
+
+pub fn build_spawnable_codex_exec_command(
+    cli_path: &Path,
+    prompt: &str,
+    capabilities: &CodexCliCapabilities,
+    config: &CodexExecCliConfig,
+) -> Result<SpawnableCommand, String> {
+    let args = build_codex_exec_args(capabilities, config)?;
+    let mut cmd = tokio::process::Command::new(cli_path);
+    cmd.args(args);
+    cmd.arg("--");
+    cmd.arg(prompt);
+    configure_spawn(&mut cmd, config.cwd.as_deref());
+    Ok(SpawnableCommand::new(cmd, None))
+}
+
+pub fn build_spawnable_codex_resume_command(
+    cli_path: &Path,
+    session_id: &str,
+    prompt: &str,
+    capabilities: &CodexCliCapabilities,
+    config: &CodexExecCliConfig,
+) -> Result<SpawnableCommand, String> {
+    let args = build_codex_exec_resume_args(capabilities, session_id, config)?;
+    let mut cmd = tokio::process::Command::new(cli_path);
+    cmd.args(args);
+    cmd.arg("--");
+    cmd.arg(prompt);
+    configure_spawn(&mut cmd, config.cwd.as_deref());
+    Ok(SpawnableCommand::new(cmd, None))
+}
+
 fn run_codex_command(cli_path: &Path, args: &[&str]) -> Result<String, String> {
-    let output = Command::new(cli_path)
+    let output = StdCommand::new(cli_path)
         .args(args)
         .output()
         .map_err(|error| format!("Failed to run {} {:?}: {}", cli_path.display(), args, error))?;
@@ -223,6 +311,15 @@ fn run_codex_command(cli_path: &Path, args: &[&str]) -> Result<String, String> {
             String::from_utf8_lossy(&output.stderr)
         ))
     }
+}
+
+fn configure_spawn(cmd: &mut tokio::process::Command, cwd: Option<&Path>) {
+    if let Some(cwd) = cwd {
+        cmd.current_dir(cwd);
+    }
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+    cmd.stdin(std::process::Stdio::piped());
 }
 
 fn require_capability(supported: bool, capability: &str) -> Result<(), String> {

@@ -12,8 +12,9 @@ pub use claude::{
     StreamEvent, StreamingSpawnResult, TeammateContext, TeammateSpawnConfig, TeammateSpawnResult,
 };
 pub use codex::{
-    build_codex_exec_args, find_codex_cli, parse_codex_cli_capabilities, parse_codex_version,
-    probe_codex_cli, CodexCliCapabilities, CodexExecCliConfig,
+    build_codex_exec_args, build_codex_exec_resume_args, build_spawnable_codex_exec_command,
+    build_spawnable_codex_resume_command, find_codex_cli, parse_codex_cli_capabilities,
+    parse_codex_version, probe_codex_cli, CodexCliCapabilities, CodexExecCliConfig,
 };
 pub use mock::{MockAgenticClient, MockCall, MockCallType};
 pub use spawner::AgenticClientSpawner;

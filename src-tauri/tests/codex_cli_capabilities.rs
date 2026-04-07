@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use ralphx_lib::commands::diagnostic_commands::build_codex_cli_diagnostics_response;
 use ralphx_lib::domain::agents::LogicalEffort;
 use ralphx_lib::infrastructure::agents::{
-    build_codex_exec_args, parse_codex_cli_capabilities, parse_codex_version,
+    build_codex_exec_args, build_codex_exec_resume_args, build_spawnable_codex_exec_command,
+    build_spawnable_codex_resume_command, parse_codex_cli_capabilities, parse_codex_version,
     CodexCliCapabilities, CodexExecCliConfig,
 };
 
@@ -131,6 +132,92 @@ fn build_codex_exec_args_rejects_missing_config_override_support() {
         .expect_err("missing config override support must fail");
 
     assert!(error.contains("config_override"));
+}
+
+#[test]
+fn build_codex_exec_resume_args_maps_config_to_resume_surface() {
+    let capabilities =
+        parse_codex_cli_capabilities(ROOT_HELP, EXEC_HELP, Some("codex-cli 0.116.0"));
+    let config = CodexExecCliConfig {
+        model: Some("gpt-5.4".to_string()),
+        reasoning_effort: Some(LogicalEffort::XHigh),
+        approval_policy: Some("on_request".to_string()),
+        sandbox_mode: Some("workspace_write".to_string()),
+        cwd: Some(PathBuf::from("/tmp/work")),
+        skip_git_repo_check: true,
+        json_output: true,
+        ..Default::default()
+    };
+
+    let args = build_codex_exec_resume_args(&capabilities, "session-123", &config)
+        .expect("resume args should build");
+
+    assert_eq!(
+        args,
+        vec![
+            "exec",
+            "resume",
+            "session-123",
+            "--json",
+            "-m",
+            "gpt-5.4",
+            "--skip-git-repo-check",
+            "-c",
+            "model_reasoning_effort=\"xhigh\"",
+            "-c",
+            "approval_policy=\"on-request\"",
+            "-c",
+            "sandbox_mode=\"workspace-write\"",
+        ]
+    );
+}
+
+#[test]
+fn build_spawnable_codex_exec_command_uses_prompt_arg_transport() {
+    let capabilities =
+        parse_codex_cli_capabilities(ROOT_HELP, EXEC_HELP, Some("codex-cli 0.116.0"));
+    let config = CodexExecCliConfig {
+        model: Some("gpt-5.4".to_string()),
+        cwd: Some(PathBuf::from("/tmp/work")),
+        ..Default::default()
+    };
+
+    let spawnable = build_spawnable_codex_exec_command(
+        std::path::Path::new("/opt/homebrew/bin/codex"),
+        "Plan the refactor",
+        &capabilities,
+        &config,
+    )
+    .expect("spawnable codex command should build");
+
+    assert_eq!(
+        spawnable.get_args_for_test(),
+        vec!["exec", "--json", "-m", "gpt-5.4", "-C", "/tmp/work", "--", "Plan the refactor"]
+    );
+}
+
+#[test]
+fn build_spawnable_codex_resume_command_uses_resume_subcommand_and_prompt_arg() {
+    let capabilities =
+        parse_codex_cli_capabilities(ROOT_HELP, EXEC_HELP, Some("codex-cli 0.116.0"));
+    let config = CodexExecCliConfig {
+        json_output: true,
+        ..Default::default()
+    };
+
+    let spawnable = build_spawnable_codex_resume_command(
+        std::path::Path::new("/opt/homebrew/bin/codex"),
+        "session-123",
+        "Continue the plan",
+        &capabilities,
+        &config,
+    )
+    .expect("spawnable codex resume command should build");
+
+    assert_eq!(
+        spawnable.get_args_for_test(),
+        vec!["exec", "resume", "session-123", "--json", "--", "Continue the plan"]
+    );
 }
 
 #[test]

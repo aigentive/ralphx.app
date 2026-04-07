@@ -711,6 +711,10 @@ impl std::fmt::Debug for SpawnableCommand {
 }
 
 impl SpawnableCommand {
+    pub(crate) fn new(cmd: Command, stdin_prompt: Option<String>) -> Self {
+        Self { cmd, stdin_prompt }
+    }
+
     /// Set an environment variable on the underlying command.
     pub fn env(&mut self, key: &str, val: &str) -> &mut Self {
         self.cmd.env(key, val);
@@ -732,6 +736,16 @@ impl SpawnableCommand {
             .as_std()
             .get_envs()
             .filter_map(|(k, v)| v.map(|val| (k.to_os_string(), val.to_os_string())))
+            .collect()
+    }
+
+    /// Returns CLI arguments currently configured on this command.
+    #[doc(hidden)]
+    pub fn get_args_for_test(&self) -> Vec<String> {
+        self.cmd
+            .as_std()
+            .get_args()
+            .map(|value| value.to_string_lossy().into_owned())
             .collect()
     }
 
@@ -976,7 +990,7 @@ pub fn build_spawnable_command(
         build_base_cli_command(cli_path, plugin_dir, agent, false, effort_override, model_override)?;
     let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session, false);
     configure_spawn(&mut cmd, working_directory, stdin_prompt.is_some());
-    Ok(SpawnableCommand { cmd, stdin_prompt })
+    Ok(SpawnableCommand::new(cmd, stdin_prompt))
 }
 
 /// Build a ready-to-spawn interactive CLI command (no `-p` flag).
@@ -1009,7 +1023,7 @@ pub fn build_spawnable_interactive_command(
     // interactive=true: no -p flag; prompt stored in stdin_prompt for spawn_interactive()
     let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session, true);
     configure_spawn(&mut cmd, working_directory, true);
-    Ok(SpawnableCommand { cmd, stdin_prompt })
+    Ok(SpawnableCommand::new(cmd, stdin_prompt))
 }
 
 /// Register the configured MCP server with Claude Code CLI.
