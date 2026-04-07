@@ -512,4 +512,95 @@ async fn test_poller_merged_stops_poller() {
         !registry.is_polling(&task.id),
         "poller must remove itself from the registry after a MERGED status is processed"
     );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task must still exist after merged poller exit");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Merged,
+        "MERGED PR status must transition a Merging task to Merged"
+    );
+}
+
+/// A stale PR poller must not be able to regress an already-merged task back to
+/// MergeIncomplete when GitHub reports the PR as closed. The validated transition
+/// guard should reject `Merged -> MergeIncomplete`, and the poller should just stop.
+#[tokio::test(start_paused = true)]
+async fn test_poller_closed_does_not_regress_already_merged_task() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+
+    let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Closed stale poller task".to_string());
+    task.internal_status = InternalStatus::Merged;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let mut pb = PlanBranch::new(
+        ArtifactId::from_string("test-artifact".to_string()),
+        IdeationSessionId::from_string("test-session".to_string()),
+        project.id.clone(),
+        "plan/feature".to_string(),
+        "main".to_string(),
+    );
+    pb.merge_task_id = Some(task.id.clone());
+    pb.pr_number = Some(42);
+    pb.pr_eligible = true;
+    pb.pr_polling_active = true;
+    let plan_branch_id = pb.id.clone();
+    plan_branch_repo.create(pb).await.unwrap();
+
+    let mock = Arc::new(MockGithubService::new());
+    mock.will_return_status(PrStatus::Closed);
+
+    let registry = Arc::new(PrPollerRegistry::new(
+        Some(mock.clone() as Arc<dyn ralphx_lib::domain::services::github_service::GithubServiceTrait>),
+        Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>,
+    ));
+
+    let transition_service = build_transition_service(&app_state, &execution_state);
+
+    registry.start_polling(
+        task.id.clone(),
+        plan_branch_id,
+        42,
+        std::path::PathBuf::from("/tmp/test-repo"),
+        "main".to_string(),
+        transition_service,
+    );
+
+    for _ in 0..5 {
+        tokio::task::yield_now().await;
+    }
+    tokio::time::advance(std::time::Duration::from_secs(31)).await;
+    for _ in 0..10 {
+        tokio::task::yield_now().await;
+    }
+    tokio::time::advance(std::time::Duration::from_secs(61)).await;
+    for _ in 0..30 {
+        tokio::task::yield_now().await;
+    }
+
+    assert!(
+        !registry.is_polling(&task.id),
+        "closed PR poller must stop even when the transition is rejected"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task must still exist after closed poller exit");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Merged,
+        "A stale closed-PR poller must not regress an already-merged task"
+    );
 }
