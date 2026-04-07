@@ -55,6 +55,7 @@ pub(crate) use ideation_harness_availability::{
     build_ideation_lane_harness_availability, probe_claude_harness, probe_codex_harness,
     resolve_lane_harness_config, resolve_primary_ideation_harness_availability,
     validate_chat_runtime_for_context, IDEATION_LANES,
+    AGENT_LANES,
 };
 pub use apply_service::{
     ApplyProposalsOptions, ApplyProposalsResult, ApplyService, SelectionValidation, TargetColumn,

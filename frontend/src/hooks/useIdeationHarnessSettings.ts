@@ -1,37 +1,37 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
-  defaultIdeationHarnessLanes,
-  ideationHarnessApi,
-  type UpdateIdeationHarnessLaneInput,
+  defaultAgentHarnessLanes,
+  agentHarnessApi,
+  type UpdateAgentHarnessLaneInput,
 } from "@/api/ideation-harness";
 
 function harnessQueryKey(projectId: string | null) {
-  return ["ideation", "harness", projectId] as const;
+  return ["agent", "harness", projectId] as const;
 }
 
-export function useIdeationHarnessSettings(projectId: string | null) {
+export function useAgentHarnessSettings(projectId: string | null) {
   const queryClient = useQueryClient();
   const queryKey = harnessQueryKey(projectId);
 
   const query = useQuery({
     queryKey,
-    queryFn: () => ideationHarnessApi.get(projectId),
+    queryFn: () => agentHarnessApi.get(projectId),
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 10,
-    placeholderData: defaultIdeationHarnessLanes,
+    placeholderData: defaultAgentHarnessLanes,
   });
 
   const mutation = useMutation({
-    mutationFn: (input: Omit<UpdateIdeationHarnessLaneInput, "projectId">) =>
-      ideationHarnessApi.update({ projectId, ...input }),
+    mutationFn: (input: Omit<UpdateAgentHarnessLaneInput, "projectId">) =>
+      agentHarnessApi.update({ projectId, ...input }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["ideation", "harness"] });
+      await queryClient.invalidateQueries({ queryKey: ["agent", "harness"] });
     },
   });
 
   return {
-    lanes: query.data ?? defaultIdeationHarnessLanes,
+    lanes: query.data ?? defaultAgentHarnessLanes,
     isLoading: query.isLoading,
     isPlaceholderData: query.isPlaceholderData,
     isError: query.isError,

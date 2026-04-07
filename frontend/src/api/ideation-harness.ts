@@ -1,14 +1,18 @@
 import { typedInvoke } from "@/lib/tauri";
 import { z } from "zod";
 
-export const IdeationLaneSchema = z.enum([
+export const AgentLaneSchema = z.enum([
   "ideation_primary",
   "ideation_verifier",
   "ideation_subagent",
   "ideation_verifier_subagent",
+  "execution_worker",
+  "execution_reviewer",
+  "execution_reexecutor",
+  "execution_merger",
 ]);
 
-export type IdeationLane = z.infer<typeof IdeationLaneSchema>;
+export type AgentLane = z.infer<typeof AgentLaneSchema>;
 
 export const HarnessSchema = z.enum(["claude", "codex"]);
 
@@ -16,7 +20,7 @@ export type Harness = z.infer<typeof HarnessSchema>;
 
 export const AgentLaneSettingsResponseSchema = z.object({
   projectId: z.string().nullable().optional(),
-  lane: IdeationLaneSchema,
+  lane: AgentLaneSchema,
   harness: HarnessSchema,
   model: z.string().nullable().optional(),
   effort: z.string().nullable().optional(),
@@ -30,9 +34,9 @@ export type AgentLaneSettingsResponse = z.infer<
   typeof AgentLaneSettingsResponseSchema
 >;
 
-export const IdeationHarnessAvailabilityResponseSchema = z.object({
+export const AgentHarnessAvailabilityResponseSchema = z.object({
   projectId: z.string().nullable().optional(),
-  lane: IdeationLaneSchema,
+  lane: AgentLaneSchema,
   configuredHarness: HarnessSchema.nullable().optional(),
   fallbackHarness: HarnessSchema.nullable().optional(),
   effectiveHarness: HarnessSchema,
@@ -45,12 +49,12 @@ export const IdeationHarnessAvailabilityResponseSchema = z.object({
   error: z.string().nullable().optional(),
 });
 
-export type IdeationHarnessAvailabilityResponse = z.infer<
-  typeof IdeationHarnessAvailabilityResponseSchema
+export type AgentHarnessAvailabilityResponse = z.infer<
+  typeof AgentHarnessAvailabilityResponseSchema
 >;
 
-export interface IdeationHarnessLaneView {
-  lane: IdeationLane;
+export interface AgentHarnessLaneView {
+  lane: AgentLane;
   row: AgentLaneSettingsResponse | null;
   configuredHarness: Harness | null;
   effectiveHarness: Harness;
@@ -64,9 +68,9 @@ export interface IdeationHarnessLaneView {
   error: string | null;
 }
 
-export interface UpdateIdeationHarnessLaneInput {
+export interface UpdateAgentHarnessLaneInput {
   projectId: string | null;
-  lane: IdeationLane;
+  lane: AgentLane;
   harness: Harness;
   model?: string | null;
   effort?: string | null;
@@ -75,15 +79,24 @@ export interface UpdateIdeationHarnessLaneInput {
   fallbackHarness?: Harness | null;
 }
 
-export const IDEATION_LANES: IdeationLane[] = [
+export const IDEATION_LANES: AgentLane[] = [
   "ideation_primary",
   "ideation_verifier",
   "ideation_subagent",
   "ideation_verifier_subagent",
 ];
 
-export const defaultIdeationHarnessLanes: IdeationHarnessLaneView[] =
-  IDEATION_LANES.map((lane) => ({
+export const EXECUTION_LANES: AgentLane[] = [
+  "execution_worker",
+  "execution_reviewer",
+  "execution_reexecutor",
+  "execution_merger",
+];
+
+export const AGENT_LANES: AgentLane[] = [...IDEATION_LANES, ...EXECUTION_LANES];
+
+export const defaultAgentHarnessLanes: AgentHarnessLaneView[] =
+  AGENT_LANES.map((lane) => ({
     lane,
     row: null,
     configuredHarness: null,
@@ -98,11 +111,11 @@ export const defaultIdeationHarnessLanes: IdeationHarnessLaneView[] =
     error: null,
   }));
 
-export function mergeIdeationHarnessState(
+export function mergeAgentHarnessState(
   rows: AgentLaneSettingsResponse[],
-  availability: IdeationHarnessAvailabilityResponse[],
-): IdeationHarnessLaneView[] {
-  return IDEATION_LANES.map((lane) => {
+  availability: AgentHarnessAvailabilityResponse[],
+): AgentHarnessLaneView[] {
+  return AGENT_LANES.map((lane) => {
     const row = rows.find((entry) => entry.lane === lane) ?? null;
     const status = availability.find((entry) => entry.lane === lane);
 
@@ -126,8 +139,8 @@ export function mergeIdeationHarnessState(
   });
 }
 
-export const ideationHarnessApi = {
-  async get(projectId: string | null): Promise<IdeationHarnessLaneView[]> {
+export const agentHarnessApi = {
+  async get(projectId: string | null): Promise<AgentHarnessLaneView[]> {
     const [rows, availability] = await Promise.all([
       typedInvoke(
         "get_agent_lane_settings",
@@ -135,17 +148,17 @@ export const ideationHarnessApi = {
         z.array(AgentLaneSettingsResponseSchema),
       ),
       typedInvoke(
-        "get_ideation_harness_availability",
+        "get_agent_harness_availability",
         { projectId },
-        z.array(IdeationHarnessAvailabilityResponseSchema),
+        z.array(AgentHarnessAvailabilityResponseSchema),
       ),
     ]);
 
-    return mergeIdeationHarnessState(rows, availability);
+    return mergeAgentHarnessState(rows, availability);
   },
 
   update(
-    input: UpdateIdeationHarnessLaneInput,
+    input: UpdateAgentHarnessLaneInput,
   ): Promise<AgentLaneSettingsResponse> {
     return typedInvoke(
       "update_agent_lane_settings",

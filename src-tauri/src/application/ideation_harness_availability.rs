@@ -46,6 +46,17 @@ pub(crate) const IDEATION_LANES: [AgentLane; 4] = [
     AgentLane::IdeationVerifierSubagent,
 ];
 
+pub(crate) const AGENT_LANES: [AgentLane; 8] = [
+    AgentLane::IdeationPrimary,
+    AgentLane::IdeationSubagent,
+    AgentLane::IdeationVerifier,
+    AgentLane::IdeationVerifierSubagent,
+    AgentLane::ExecutionWorker,
+    AgentLane::ExecutionReviewer,
+    AgentLane::ExecutionReexecutor,
+    AgentLane::ExecutionMerger,
+];
+
 pub(crate) async fn resolve_ideation_lane_harness_availability(
     repo: &Arc<dyn AgentLaneSettingsRepository>,
     project_id: Option<&str>,

@@ -11,11 +11,13 @@ import {
 } from "@/components/ui/select";
 import { ErrorBanner, SectionCard } from "./SettingsView.shared";
 import {
+  EXECUTION_LANES,
   type Harness,
-  type IdeationHarnessLaneView,
-  type IdeationLane,
+  type AgentHarnessLaneView,
+  type AgentLane,
+  IDEATION_LANES,
 } from "@/api/ideation-harness";
-import { useIdeationHarnessSettings } from "@/hooks/useIdeationHarnessSettings";
+import { useAgentHarnessSettings } from "@/hooks/useIdeationHarnessSettings";
 import { selectActiveProject, useProjectStore } from "@/stores/projectStore";
 
 const HARNESS_OPTIONS: {
@@ -31,12 +33,12 @@ const HARNESS_OPTIONS: {
   {
     value: "codex",
     label: "Codex",
-    description: "Phase-1 ideation harness using Codex exec and native subagents",
+    description: "Provider-neutral Codex harness with solo ideation and lane-level execution routing",
   },
 ];
 
 const LANE_META: Record<
-  IdeationLane,
+  AgentLane,
   { label: string; description: string }
 > = {
   ideation_primary: {
@@ -55,10 +57,46 @@ const LANE_META: Record<
     label: "Verifier Subagents",
     description: "Critics and specialists spawned during verification",
   },
+  execution_worker: {
+    label: "Execution Worker",
+    description: "Primary task execution lane",
+  },
+  execution_reviewer: {
+    label: "Execution Reviewer",
+    description: "AI review lane after execution completes",
+  },
+  execution_reexecutor: {
+    label: "Execution Re-executor",
+    description: "Follow-up execution lane after review requests changes",
+  },
+  execution_merger: {
+    label: "Execution Merger",
+    description: "Merge-conflict and merge completion lane",
+  },
 };
 
+const LANE_GROUPS: {
+  id: "ideation" | "execution";
+  title: string;
+  description: string;
+  lanes: AgentLane[];
+}[] = [
+  {
+    id: "ideation",
+    title: "Ideation",
+    description: "Orchestration, verification, and subagent lanes used during planning.",
+    lanes: IDEATION_LANES,
+  },
+  {
+    id: "execution",
+    title: "Execution Pipeline",
+    description: "Task execution, review, re-execution, and merge lanes.",
+    lanes: EXECUTION_LANES,
+  },
+];
+
 function defaultsForHarness(
-  lane: IdeationLane,
+  lane: AgentLane,
   harness: Harness,
 ): {
   harness: Harness;
@@ -101,6 +139,17 @@ function defaultsForHarness(
     };
   }
 
+  if (EXECUTION_LANES.includes(lane)) {
+    return {
+      harness,
+      model: "gpt-5.4",
+      effort: "xhigh",
+      approvalPolicy: "on-request",
+      sandboxMode: "workspace-write",
+      fallbackHarness: "claude",
+    };
+  }
+
   return {
     harness,
     model: "gpt-5.4-mini",
@@ -111,7 +160,7 @@ function defaultsForHarness(
   };
 }
 
-function availabilityCopy(lane: IdeationHarnessLaneView): string {
+function availabilityCopy(lane: AgentHarnessLaneView): string {
   if (lane.fallbackActivated && lane.configuredHarness) {
     return `Configured ${lane.configuredHarness}, using ${lane.effectiveHarness} until the requested harness is available.`;
   }
@@ -140,7 +189,7 @@ function HarnessRow({
   onChange,
   isLast = false,
 }: {
-  lane: IdeationHarnessLaneView;
+  lane: AgentHarnessLaneView;
   disabled: boolean;
   onChange: (value: Harness) => void;
   isLast?: boolean;
@@ -230,10 +279,10 @@ function HarnessSubsection({
     isPlaceholderData,
     updateLane,
     saveError,
-  } = useIdeationHarnessSettings(projectId);
+  } = useAgentHarnessSettings(projectId);
   const isDisabled = projectId === null && title !== "Global Defaults";
 
-  const handleHarnessChange = (lane: IdeationLane, harness: Harness) => {
+  const handleHarnessChange = (lane: AgentLane, harness: Harness) => {
     if (isDisabled) {
       return;
     }
@@ -254,30 +303,52 @@ function HarnessSubsection({
         <h4 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h4>
         <p className="text-xs text-[var(--text-muted)] mt-1">
           {title === "Global Defaults"
-            ? "Harness selection for ideation lanes. These overrides take precedence over the legacy ideation model and effort screens."
+            ? "Harness selection for ideation and execution lanes. These overrides take precedence over the legacy ideation model and effort screens."
             : projectId
               ? `Project overrides for ${projectName ?? "the active project"}.`
-              : "Select a project to override harnesses for specific ideation lanes."}
+              : "Select a project to override harnesses for specific ideation and execution lanes."}
         </p>
       </div>
 
       {showError && saveError && (
         <ErrorBanner
-          error={saveError.message ?? "Failed to save ideation harness settings"}
+          error={saveError.message ?? "Failed to save agent harness settings"}
           onDismiss={() => setShowError(false)}
         />
       )}
 
       <div className={isDisabled ? "opacity-50 pointer-events-none" : undefined}>
-        {lanes.map((lane, index) => (
-          <HarnessRow
-            key={`${title}-${lane.lane}`}
-            lane={lane}
-            disabled={isDisabled || isPlaceholderData}
-            onChange={(value) => handleHarnessChange(lane.lane, value)}
-            isLast={index === lanes.length - 1}
-          />
-        ))}
+        {LANE_GROUPS.map((group, groupIndex) => {
+          const groupLanes = lanes.filter((lane) => group.lanes.includes(lane.lane));
+          if (groupLanes.length === 0) {
+            return null;
+          }
+
+          return (
+            <div key={`${title}-${group.id}`}>
+              {groupIndex > 0 && (
+                <Separator className="my-4 bg-[var(--border-subtle)]" />
+              )}
+              <div className="px-2 pb-2">
+                <h5 className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-secondary)]">
+                  {group.title}
+                </h5>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">
+                  {group.description}
+                </p>
+              </div>
+              {groupLanes.map((lane, index) => (
+                <HarnessRow
+                  key={`${title}-${lane.lane}`}
+                  lane={lane}
+                  disabled={isDisabled || isPlaceholderData}
+                  onChange={(value) => handleHarnessChange(lane.lane, value)}
+                  isLast={index === groupLanes.length - 1}
+                />
+              ))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -291,8 +362,8 @@ export function IdeationHarnessSection() {
   return (
     <SectionCard
       icon={<Cpu className="w-5 h-5 text-[var(--accent-primary)]" />}
-      title="Ideation Harnesses"
-      description="Choose Claude or Codex per ideation lane. Codex currently runs in solo mode with Codex-native subagents."
+      title="Agent Harnesses"
+      description="Choose Claude or Codex per ideation and execution lane. Codex ideation currently runs in solo mode while execution lanes are configurable independently."
     >
       <div className="space-y-6">
         <HarnessSubsection

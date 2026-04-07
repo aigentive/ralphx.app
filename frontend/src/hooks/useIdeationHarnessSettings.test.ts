@@ -3,16 +3,16 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ideationHarnessApi } from "@/api/ideation-harness";
-import type { IdeationHarnessLaneView } from "@/api/ideation-harness";
-import { useIdeationHarnessSettings } from "./useIdeationHarnessSettings";
+import { agentHarnessApi } from "@/api/ideation-harness";
+import type { AgentHarnessLaneView } from "@/api/ideation-harness";
+import { useAgentHarnessSettings } from "./useIdeationHarnessSettings";
 
 vi.mock("@/api/ideation-harness", () => ({
-  ideationHarnessApi: {
+  agentHarnessApi: {
     get: vi.fn(),
     update: vi.fn(),
   },
-  defaultIdeationHarnessLanes: [
+  defaultAgentHarnessLanes: [
     {
       lane: "ideation_primary",
       row: null,
@@ -30,7 +30,7 @@ vi.mock("@/api/ideation-harness", () => ({
   ],
 }));
 
-const globalLanes: IdeationHarnessLaneView[] = [
+const globalLanes: AgentHarnessLaneView[] = [
   {
     lane: "ideation_primary",
     row: null,
@@ -81,8 +81,8 @@ describe("useIdeationHarnessSettings", () => {
 
   beforeEach(() => {
     queryClient = createTestClient();
-    vi.mocked(ideationHarnessApi.get).mockResolvedValue(globalLanes);
-    vi.mocked(ideationHarnessApi.update).mockResolvedValue({
+    vi.mocked(agentHarnessApi.get).mockResolvedValue(globalLanes);
+    vi.mocked(agentHarnessApi.update).mockResolvedValue({
       lane: "ideation_primary",
       harness: "codex",
       model: "gpt-5.4",
@@ -96,7 +96,7 @@ describe("useIdeationHarnessSettings", () => {
   });
 
   it("loads merged lane data", async () => {
-    const { result } = renderHook(() => useIdeationHarnessSettings(null), {
+    const { result } = renderHook(() => useAgentHarnessSettings(null), {
       wrapper: createWrapper(queryClient),
     });
 
@@ -109,7 +109,7 @@ describe("useIdeationHarnessSettings", () => {
 
   it("invalidates ideation harness queries after a successful update", async () => {
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
-    const { result } = renderHook(() => useIdeationHarnessSettings(null), {
+    const { result } = renderHook(() => useAgentHarnessSettings(null), {
       wrapper: createWrapper(queryClient),
     });
 
@@ -127,7 +127,7 @@ describe("useIdeationHarnessSettings", () => {
 
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ queryKey: ["ideation", "harness"] }),
+        expect.objectContaining({ queryKey: ["agent", "harness"] }),
       );
     });
   });
