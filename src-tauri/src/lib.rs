@@ -50,11 +50,11 @@ use application::ideation_effort_bootstrap::seed_ideation_effort_defaults;
 use application::ideation_model_bootstrap::seed_ideation_model_settings;
 use application::runtime_factory::{
     ChatRuntimeFactoryDeps, RuntimeFactoryDeps, build_chat_service_with_fallback,
-    build_transition_service_with_fallback,
 };
 use application::runtime_wiring::{
     build_http_app_state, create_main_window, register_managed_state,
 };
+use application::startup_transition_factory::StartupTransitionFactory;
 use application::{
     load_or_seed_agent_lane_settings_defaults, load_or_seed_execution_settings_defaults,
     ChatResumptionRunner, ReconciliationRunner,
@@ -599,82 +599,44 @@ pub fn run() {
                 let watchdog_task_repo = Arc::clone(&startup_task_repo);
                 let watchdog_project_repo = Arc::clone(&startup_project_repo);
 
-                let build_transition_service_builder =
-                    |task_repo,
-                     task_dependency_repo,
-                     project_repo,
-                     chat_message_repo,
-                     chat_attachment_repo,
-                     conversation_repo,
-                     agent_run_repo,
-                     ideation_session_repo,
-                     activity_event_repo,
-                     message_queue,
-                     running_agent_registry,
-                     memory_event_repo,
-                     app_handle: tauri::AppHandle| {
-                        let deps = RuntimeFactoryDeps {
-                            task_repo,
-                            task_dependency_repo,
-                            project_repo,
-                            chat_message_repo,
-                            chat_attachment_repo,
-                            conversation_repo,
-                            agent_run_repo,
-                            ideation_session_repo,
-                            activity_event_repo,
-                            message_queue,
-                            running_agent_registry,
-                            memory_event_repo,
-                            execution_settings_repo: Some(Arc::clone(
-                                &startup_execution_settings_repo,
-                            )),
-                            agent_lane_settings_repo: Some(Arc::clone(
-                                &startup_agent_lane_settings_repo,
-                            )),
-                            plan_branch_repo: Some(Arc::clone(&startup_plan_branch_repo)),
-                            interactive_process_registry: Some(Arc::clone(
-                                &startup_interactive_process_registry,
-                            )),
-                        };
-                        let service = build_transition_service_with_fallback(
-                            &Some(app_handle.clone()),
-                            Arc::clone(&startup_execution_state),
-                            &deps,
-                        )
-                        .with_agentic_client(Arc::clone(&startup_agent_client));
-
-                        service
-                            .with_task_scheduler(Arc::clone(&task_scheduler))
-                            .with_step_repo(Arc::clone(&startup_step_repo))
-                    };
+                let startup_transition_factory = StartupTransitionFactory {
+                    execution_state: Arc::clone(&startup_execution_state),
+                    execution_settings_repo: Arc::clone(&startup_execution_settings_repo),
+                    agent_lane_settings_repo: Arc::clone(&startup_agent_lane_settings_repo),
+                    plan_branch_repo: Arc::clone(&startup_plan_branch_repo),
+                    interactive_process_registry: Arc::clone(
+                        &startup_interactive_process_registry,
+                    ),
+                    agent_client: Arc::clone(&startup_agent_client),
+                    task_scheduler: Arc::clone(&task_scheduler),
+                    step_repo: Arc::clone(&startup_step_repo),
+                    external_events_repo: Arc::clone(&startup_external_events_repo),
+                    webhook_publisher: startup_webhook_publisher.clone(),
+                    session_merge_locks: Arc::clone(&startup_session_merge_locks),
+                };
 
                 // Create TaskTransitionService for startup resumption
-                let mut transition_service_builder = build_transition_service_builder(
-                    Arc::clone(&startup_task_repo),
-                    Arc::clone(&startup_task_dependency_repo),
-                    Arc::clone(&startup_project_repo),
-                    Arc::clone(&startup_chat_message_repo),
-                    Arc::clone(&startup_chat_attachment_repo),
-                    Arc::clone(&startup_conversation_repo),
-                    Arc::clone(&startup_agent_run_repo),
-                    Arc::clone(&startup_ideation_session_repo),
-                    Arc::clone(&startup_activity_event_repo),
-                    Arc::clone(&startup_message_queue),
-                    Arc::clone(&startup_running_agent_registry),
-                    Arc::clone(&startup_memory_event_repo),
+                let transition_service = Arc::new(startup_transition_factory.build(
+                    RuntimeFactoryDeps {
+                        task_repo: Arc::clone(&startup_task_repo),
+                        task_dependency_repo: Arc::clone(&startup_task_dependency_repo),
+                        project_repo: Arc::clone(&startup_project_repo),
+                        chat_message_repo: Arc::clone(&startup_chat_message_repo),
+                        chat_attachment_repo: Arc::clone(&startup_chat_attachment_repo),
+                        conversation_repo: Arc::clone(&startup_conversation_repo),
+                        agent_run_repo: Arc::clone(&startup_agent_run_repo),
+                        ideation_session_repo: Arc::clone(&startup_ideation_session_repo),
+                        activity_event_repo: Arc::clone(&startup_activity_event_repo),
+                        message_queue: Arc::clone(&startup_message_queue),
+                        running_agent_registry: Arc::clone(&startup_running_agent_registry),
+                        memory_event_repo: Arc::clone(&startup_memory_event_repo),
+                        execution_settings_repo: None,
+                        agent_lane_settings_repo: None,
+                        plan_branch_repo: None,
+                        interactive_process_registry: None,
+                    },
                     startup_app_handle,
-                );
-
-                if let Some(ref pub_) = startup_webhook_publisher {
-                    transition_service_builder = transition_service_builder.with_webhook_publisher_for_emitter(Arc::clone(pub_));
-                }
-
-                let transition_service = Arc::new(
-                    transition_service_builder
-                        .with_external_events_repo(Arc::clone(&startup_external_events_repo))
-                        .with_session_merge_locks(Arc::clone(&startup_session_merge_locks))
-                );
+                ));
 
                 // PR startup recovery: restart pollers for tasks that were polling when app shut down.
                 // Must run BEFORE StartupJobRunner to prevent reconciler re-entering on_enter(Merging)
@@ -791,34 +753,29 @@ pub fn run() {
 
                 chat_resumption.run().await;
 
-                let reconcile_webhook_publisher = startup_webhook_publisher.clone();
-
-                let mut reconcile_transition_service_builder =
-                    build_transition_service_builder(
-                        Arc::clone(&reconcile_task_repo),
-                        Arc::clone(&reconcile_task_dependency_repo),
-                        Arc::clone(&reconcile_project_repo),
-                        Arc::clone(&reconcile_chat_message_repo),
-                        Arc::clone(&reconcile_chat_attachment_repo),
-                        Arc::clone(&reconcile_conversation_repo),
-                        Arc::clone(&reconcile_agent_run_repo),
-                        Arc::clone(&reconcile_ideation_session_repo),
-                        Arc::clone(&reconcile_activity_event_repo),
-                        Arc::clone(&reconcile_message_queue),
-                        Arc::clone(&reconcile_running_agent_registry),
-                        Arc::clone(&reconcile_memory_event_repo),
-                        reconcile_app_handle.clone(),
-                    );
-
-                if let Some(ref pub_) = reconcile_webhook_publisher {
-                    reconcile_transition_service_builder = reconcile_transition_service_builder.with_webhook_publisher_for_emitter(Arc::clone(pub_));
-                }
-
-                let reconcile_transition_service = Arc::new(
-                    reconcile_transition_service_builder
-                        .with_external_events_repo(Arc::clone(&startup_external_events_repo))
-                        .with_session_merge_locks(Arc::clone(&startup_session_merge_locks))
-                );
+                let reconcile_transition_service = Arc::new(startup_transition_factory.build(
+                    RuntimeFactoryDeps {
+                        task_repo: Arc::clone(&reconcile_task_repo),
+                        task_dependency_repo: Arc::clone(&reconcile_task_dependency_repo),
+                        project_repo: Arc::clone(&reconcile_project_repo),
+                        chat_message_repo: Arc::clone(&reconcile_chat_message_repo),
+                        chat_attachment_repo: Arc::clone(&reconcile_chat_attachment_repo),
+                        conversation_repo: Arc::clone(&reconcile_conversation_repo),
+                        agent_run_repo: Arc::clone(&reconcile_agent_run_repo),
+                        ideation_session_repo: Arc::clone(&reconcile_ideation_session_repo),
+                        activity_event_repo: Arc::clone(&reconcile_activity_event_repo),
+                        message_queue: Arc::clone(&reconcile_message_queue),
+                        running_agent_registry: Arc::clone(
+                            &reconcile_running_agent_registry,
+                        ),
+                        memory_event_repo: Arc::clone(&reconcile_memory_event_repo),
+                        execution_settings_repo: None,
+                        agent_lane_settings_repo: None,
+                        plan_branch_repo: None,
+                        interactive_process_registry: None,
+                    },
+                    reconcile_app_handle.clone(),
+                ));
 
                 let reconcile_runner = ReconciliationRunner::new(
                     reconcile_task_repo,

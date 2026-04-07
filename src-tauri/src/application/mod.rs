@@ -43,6 +43,7 @@ pub mod shutdown;
 pub mod startup_jobs;
 pub mod startup_background;
 pub mod supervisor_service;
+pub mod startup_transition_factory;
 pub mod task_cleanup_service;
 pub mod task_context_service;
 pub mod task_scheduler_service;
