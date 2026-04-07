@@ -1,19 +1,14 @@
 use std::sync::Arc;
 
-use tracing::{info, warn};
-
 use crate::AppState;
 use crate::application;
-use crate::application::runtime_wiring::{
-    build_http_app_state, create_main_window, register_managed_state,
-};
+use crate::application::runtime_wiring::{create_main_window, register_managed_state};
+use crate::application::server_boot::start_server_boot;
 use crate::application::setup_settings::initialize_settings_defaults;
 use crate::application::startup_cleanup::run_startup_cleanup;
 use crate::application::startup_pipeline::StartupPipelineDeps;
 use crate::application::TeamStateTracker;
 use crate::commands::{ActiveProjectState, ExecutionState};
-use crate::http_server;
-use crate::infrastructure;
 
 pub(crate) fn run_app_setup(
     app: &mut tauri::App<tauri::Wry>,
@@ -43,40 +38,12 @@ pub(crate) fn run_app_setup(
     app_state.webhook_publisher = Some(Arc::clone(&webhook_publisher));
     initialize_settings_defaults(&app_state, init_execution_state);
     run_startup_cleanup(&app_state);
-
-    // Start HTTP server for MCP proxy on port 3847
-    // Create a second AppState sharing the Tauri AppState's DB connection,
-    // plus shared in-memory state (question_state, permission_state, message_queue)
-    // so MCP handlers and Tauri commands operate on the same data.
-    let http_app_state = build_http_app_state(&app_state, app_handle)
-        .expect("Failed to initialize AppState for HTTP server");
-    // Spawn HTTP server with pre-cloned state
-    tauri::async_runtime::spawn(async move {
-        if let Err(e) =
-            http_server::start_http_server(http_app_state, http_execution_state, http_team_tracker)
-                .await
-        {
-            tracing::error!("HTTP server failed: {}", e);
-        }
-    });
-
-    // Register configured MCP server with Claude Code CLI
-    // This ensures the MCP tools are available regardless of user's working directory
-    if let (Some(cli_path), Some(plugin_dir)) = (
-        infrastructure::agents::claude::find_claude_cli(),
-        infrastructure::agents::claude::find_plugin_dir(),
-    ) {
-        info!("Registering configured MCP server...");
-        tauri::async_runtime::spawn(async move {
-            match infrastructure::agents::claude::register_mcp_server(&cli_path, &plugin_dir).await
-            {
-                Ok(()) => info!("Configured MCP server registered successfully"),
-                Err(e) => warn!("Failed to register configured MCP server: {}", e),
-            }
-        });
-    } else {
-        warn!("Could not find Claude CLI or plugin directory - MCP server not registered");
-    }
+    start_server_boot(
+        &app_state,
+        app_handle,
+        http_execution_state,
+        http_team_tracker,
+    );
 
     // Spawn startup job runner to resume tasks in agent-active states
     // Clone references needed for the async task

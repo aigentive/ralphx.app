@@ -33,6 +33,7 @@ pub mod reconciliation;
 pub mod recovery_queue;
 pub mod runtime_factory;
 pub mod runtime_wiring;
+pub mod server_boot;
 pub mod resume_validator;
 pub mod services;
 pub mod review_issue_service;
