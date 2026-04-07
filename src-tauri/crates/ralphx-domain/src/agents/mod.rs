@@ -19,6 +19,7 @@ pub use capabilities::{ClientCapabilities, ModelInfo};
 pub use error::{AgentError, AgentResult};
 pub use harness::{
     AgentHarnessKind, AgentLane, AgentLaneSettings, LogicalEffort, ProviderSessionRef,
+    StoredAgentLaneSettings,
 };
 pub use types::{
     AgentConfig, AgentHandle, AgentOutput, AgentResponse, AgentRole, ClientType, ResponseChunk,

@@ -1,6 +1,7 @@
 use std::fmt;
 use std::str::FromStr;
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::types::ClientType;
@@ -198,6 +199,18 @@ impl AgentLaneSettings {
             fallback_harness: None,
         }
     }
+}
+
+/// Persisted lane settings row scoped either globally or to a specific project.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredAgentLaneSettings {
+    pub id: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
+    pub lane: AgentLane,
+    pub settings: AgentLaneSettings,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[cfg(test)]

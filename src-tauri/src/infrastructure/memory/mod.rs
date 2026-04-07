@@ -4,6 +4,7 @@
 pub mod memory_api_key_repo;
 pub mod memory_active_plan_repo;
 pub mod memory_activity_event_repo;
+pub mod memory_agent_lane_settings_repo;
 pub mod memory_agent_profile_repo;
 pub mod memory_agent_run_repo;
 pub mod memory_app_state_repo;
@@ -49,6 +50,7 @@ pub mod memory_workflow_repo;
 pub use memory_api_key_repo::MemoryApiKeyRepository;
 pub use memory_active_plan_repo::MemoryActivePlanRepository;
 pub use memory_activity_event_repo::MemoryActivityEventRepository;
+pub use memory_agent_lane_settings_repo::MemoryAgentLaneSettingsRepository;
 pub use memory_agent_profile_repo::MemoryAgentProfileRepository;
 pub use memory_agent_run_repo::MemoryAgentRunRepository;
 pub use memory_app_state_repo::MemoryAppStateRepository;
