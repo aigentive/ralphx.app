@@ -1645,6 +1645,18 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 self.ideation_effort_settings_repo.as_ref(),
             )
             .await;
+        let runtime_team_mode = chat_service_helpers::effective_team_mode_for_harness(
+            team_mode_val,
+            resolved_spawn_settings.effective_harness,
+        );
+        if team_mode_val && !runtime_team_mode {
+            tracing::info!(
+                %context_type,
+                context_id,
+                harness = %resolved_spawn_settings.effective_harness,
+                "Disabling team mode because the selected harness does not support it"
+            );
+        }
         let stored_provider_session = conversation
             .provider_session_ref()
             .filter(|session_ref| session_ref.harness == resolved_spawn_settings.effective_harness);
@@ -1817,7 +1829,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                             &working_directory,
                             session_id,
                             project_id.as_deref(),
-                            team_mode_val,
+                            runtime_team_mode,
                             Arc::clone(&self.artifact_repo),
                             Arc::clone(&self.ideation_session_repo),
                             Arc::clone(&self.task_repo),
@@ -1842,7 +1854,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                             &working_directory,
                             entity_status.as_deref(),
                             project_id.as_deref(),
-                            team_mode_val,
+                            runtime_team_mode,
                             Arc::clone(&self.chat_attachment_repo),
                             Arc::clone(&self.artifact_repo),
                             &session_messages,
@@ -1949,10 +1961,14 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 
         // 8. Build background context and spawn
         let team_mode_val = self.team_mode.load(Ordering::Relaxed);
+        let runtime_team_mode = chat_service_helpers::effective_team_mode_for_harness(
+            team_mode_val,
+            resolved_spawn_settings.effective_harness,
+        );
         let resolved_agent_name = chat_service_helpers::resolve_agent_with_team_mode(
             &context_type,
             entity_status.as_deref(),
-            team_mode_val,
+            runtime_team_mode,
         )
         .to_string();
 
@@ -1998,7 +2014,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             user_message_content: Some(message.to_string()),
             conversation: Some(conversation.clone()),
             agent_name: Some(resolved_agent_name),
-            team_mode: team_mode_val,
+            team_mode: runtime_team_mode,
             cancellation_token,
             team_service: self.team_service.clone(),
             streaming_state_cache: self.streaming_state_cache.clone(),

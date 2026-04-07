@@ -1,4 +1,5 @@
 use super::*;
+use crate::domain::agents::AgentHarnessKind;
 use crate::infrastructure::agents::claude::agent_names::AGENT_PLAN_VERIFIER;
 
 #[test]
@@ -76,6 +77,30 @@ fn test_resolve_agent_team_mode_status_overrides_team() {
     // Status-specific rules take priority over team_mode
     let agent = resolve_agent_with_team_mode(&ChatContextType::Ideation, Some("accepted"), true);
     assert_eq!(agent, AGENT_ORCHESTRATOR_IDEATION_READONLY);
+}
+
+#[test]
+fn test_effective_team_mode_for_harness_keeps_claude_team_mode() {
+    assert!(effective_team_mode_for_harness(
+        true,
+        AgentHarnessKind::Claude
+    ));
+}
+
+#[test]
+fn test_effective_team_mode_for_harness_disables_codex_team_mode() {
+    assert!(!effective_team_mode_for_harness(
+        true,
+        AgentHarnessKind::Codex
+    ));
+}
+
+#[test]
+fn test_effective_team_mode_for_harness_respects_requested_false() {
+    assert!(!effective_team_mode_for_harness(
+        false,
+        AgentHarnessKind::Claude
+    ));
 }
 
 #[test]

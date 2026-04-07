@@ -9,7 +9,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::application::AppState;
 use super::chat_service_context;
-use super::chat_service_helpers::get_assistant_role;
+use super::chat_service_helpers::{effective_team_mode_for_harness, get_assistant_role};
 use super::chat_service_streaming::process_stream_background;
 use super::chat_service_types::{
     AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload, AgentRunStartedPayload,
@@ -401,6 +401,8 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                             ideation_effort_settings_repo.as_ref(),
                         )
                         .await;
+                    let runtime_team_mode =
+                        effective_team_mode_for_harness(team_mode, resolved_spawn_settings.effective_harness);
 
                     match chat_service_context::build_codex_resume_command(
                         &codex_cli_path,
@@ -412,7 +414,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         working_directory,
                         session_id,
                         project_id,
-                        team_mode,
+                        runtime_team_mode,
                         Arc::clone(artifact_repo),
                         Arc::clone(ideation_session_repo),
                         Arc::clone(task_repo),
@@ -465,7 +467,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         question_state.clone(),
                         cancellation_token.clone(),
                         None, // Queue processing doesn't need team events
-                        team_mode,
+                        effective_team_mode_for_harness(team_mode, harness),
                         streaming_state_cache.clone(),
                         None, // Queue processing doesn't have registry in scope
                         None, // Queue processing doesn't complete agent_run

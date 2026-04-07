@@ -3,6 +3,7 @@
 // Extracted from chat_service.rs to improve modularity and reduce file size.
 
 use crate::domain::entities::{ChatContextType, MessageRole};
+use crate::domain::agents::AgentHarnessKind;
 use crate::infrastructure::agents::claude::agent_names::{
     AGENT_CHAT_PROJECT, AGENT_CHAT_TASK, AGENT_IDEATION_TEAM_LEAD, AGENT_MERGER,
     AGENT_ORCHESTRATOR_IDEATION, AGENT_ORCHESTRATOR_IDEATION_READONLY, AGENT_PLAN_VERIFIER,
@@ -86,6 +87,15 @@ pub fn resolve_agent_with_team_mode(
         ChatContextType::Review => AGENT_REVIEWER,
         ChatContextType::Merge => AGENT_MERGER,
     }
+}
+
+/// Codex phase 1 runs in solo mode even if the session metadata still carries
+/// a team-mode value. Claude remains the only harness that honors team mode.
+pub fn effective_team_mode_for_harness(
+    requested_team_mode: bool,
+    harness: AgentHarnessKind,
+) -> bool {
+    requested_team_mode && harness == AgentHarnessKind::Claude
 }
 
 /// Map ChatContextType to process name for team config lookup
