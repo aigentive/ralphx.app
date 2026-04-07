@@ -41,6 +41,7 @@ pub mod session_namer_prompt;
 pub mod session_reopen_service;
 pub mod shutdown;
 pub mod startup_jobs;
+pub mod startup_background;
 pub mod supervisor_service;
 pub mod task_cleanup_service;
 pub mod task_context_service;

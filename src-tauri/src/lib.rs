@@ -41,13 +41,10 @@ mod tests;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tauri::Manager;
 use tracing::{info, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry};
 
 use crate::utils::redacting_writer::RedactingMakeWriter;
-
-use crate::infrastructure::{ExternalMcpHandle, ExternalMcpSupervisor};
 
 use application::ideation_effort_bootstrap::seed_ideation_effort_defaults;
 use application::ideation_model_bootstrap::seed_ideation_model_settings;
@@ -60,7 +57,7 @@ use application::runtime_wiring::{
 };
 use application::{
     load_or_seed_agent_lane_settings_defaults, load_or_seed_execution_settings_defaults,
-    ChatResumptionRunner, EventCleanupService, ReconciliationRunner,
+    ChatResumptionRunner, ReconciliationRunner,
     StartupJobRunner, TaskSchedulerService,
 };
 
@@ -760,41 +757,12 @@ pub fn run() {
 
                 let startup_ideation_recovery_claims = runner.run().await;
 
-                // Recover pending/failed memory archive jobs from previous session
-                // Process any jobs that were interrupted by app shutdown
-                info!("Recovering pending memory archive jobs...");
-                let archive_service = Arc::new(application::MemoryArchiveService::new(
+                application::startup_background::recover_memory_archive_jobs_on_startup(
                     Arc::clone(&startup_memory_archive_repo),
                     Arc::clone(&startup_memory_entry_repo),
                     Arc::clone(&startup_project_repo),
-                    std::path::PathBuf::from("."), // Use current working directory as project root
-                ));
-
-                // Process all pending/failed jobs on startup
-                let recovered_count = match startup_memory_archive_repo.count_claimable().await {
-                    Ok(count) => {
-                        info!(pending_jobs = count, "Found memory archive jobs to recover");
-                        let mut processed = 0;
-                        while processed < count {
-                            match archive_service.process_next_job().await {
-                                Ok(true) => processed += 1,
-                                Ok(false) => break, // No more jobs
-                                Err(e) => {
-                                    tracing::warn!(error = %e, "Failed to process archive job during recovery");
-                                    break;
-                                }
-                            }
-                        }
-                        processed
-                    }
-                    Err(e) => {
-                        tracing::warn!(error = %e, "Failed to count claimable archive jobs");
-                        0
-                    }
-                };
-                if recovered_count > 0 {
-                    info!(recovered = recovered_count, "Completed memory archive job recovery");
-                }
+                )
+                .await;
 
                 // Resume interrupted chat conversations (Ideation, Task, Project, TaskExecution, Review)
                 // This runs after StartupJobRunner to avoid duplicate resumption of task-based chats
@@ -890,16 +858,11 @@ pub fn run() {
 
                 // Spawn scheduler watchdog: periodic safety net for tasks stuck in Ready
                 // and review-parked PendingReview after freshness backoff expiry.
-                let watchdog_scheduler = Arc::clone(&task_scheduler);
-                tauri::async_runtime::spawn(async move {
-                    application::ReadyWatchdog::new(
-                        watchdog_scheduler,
-                        watchdog_task_repo,
-                        watchdog_project_repo,
-                    )
-                        .run_loop()
-                        .await;
-                });
+                application::startup_background::spawn_watchdog(
+                    Arc::clone(&task_scheduler),
+                    watchdog_task_repo,
+                    watchdog_project_repo,
+                );
 
                 // Spawn verification reconciliation service: resets stuck in_progress sessions.
                 // Startup scan runs immediately; periodic scan runs every reconciliation_interval_secs.
@@ -961,9 +924,9 @@ pub fn run() {
                         recovery_config,
                     );
                     let recovery_queue = Arc::new(recovery_queue);
-                    tauri::async_runtime::spawn(async move {
-                        recovery_processor.run().await;
-                    });
+                    application::startup_background::spawn_recovery_queue_processor(
+                        recovery_processor,
+                    );
 
                     let vcfg = infrastructure::agents::claude::verification_config();
                     let ext_cfg = infrastructure::agents::claude::external_mcp_config();
@@ -984,136 +947,25 @@ pub fn run() {
                         .with_recovery_queue(Arc::clone(&recovery_queue))
                         .with_running_agent_registry(Arc::clone(&startup_running_agent_registry)),
                     );
-                    svc.startup_scan_excluding_external_archive_sessions(
+                    application::startup_background::startup_scan_verification_reconciliation(
+                        svc,
                         &startup_ideation_recovery_claims,
                     )
                     .await;
-                    tauri::async_runtime::spawn(async move { svc.run_periodic().await });
                 }
 
-                // Spawn memory archive job background processing loop
-                // Clone required repositories for the archive job processor
-                let archive_job_memory_archive_repo = Arc::clone(&startup_memory_archive_repo);
-                let archive_job_memory_entry_repo = Arc::clone(&startup_memory_entry_repo);
-                let archive_job_project_repo = Arc::clone(&startup_project_repo);
+                application::startup_background::spawn_cleanup_loops(
+                    Arc::clone(&startup_external_events_repo),
+                    Arc::clone(&startup_memory_archive_repo),
+                    Arc::clone(&startup_memory_entry_repo),
+                    Arc::clone(&startup_project_repo),
+                );
 
-                // Spawn external_events cleanup job (hourly pruning of old rows)
-                let cleanup_external_events_repo = Arc::clone(&startup_external_events_repo);
-                tauri::async_runtime::spawn(async move {
-                    EventCleanupService::new(cleanup_external_events_repo)
-                        .run_loop()
-                        .await;
-                });
-
-                tauri::async_runtime::spawn(async move {
-                    let archive_service = Arc::new(application::MemoryArchiveService::new(
-                        archive_job_memory_archive_repo,
-                        archive_job_memory_entry_repo,
-                        archive_job_project_repo,
-                        std::path::PathBuf::from("."),
-                    ));
-
-                    let mut backoff_duration = Duration::from_secs(0);
-
-                    loop {
-                        if !backoff_duration.is_zero() {
-                            tracing::debug!(
-                                backoff_secs = backoff_duration.as_secs(),
-                                "Memory archive job processor backing off after error"
-                            );
-                            tokio::time::sleep(backoff_duration).await;
-                            backoff_duration = Duration::from_secs(0);
-                        }
-
-                        match archive_service.process_next_job().await {
-                            Ok(true) => {
-                                // Job processed successfully, immediately check for more without sleeping
-                                tracing::debug!("Memory archive job processed, checking for more");
-                                backoff_duration = Duration::from_secs(0);
-                                // Loop back immediately without sleep
-                            }
-                            Ok(false) => {
-                                // No jobs available, sleep 30s before next poll
-                                tracing::debug!("No memory archive jobs available, sleeping");
-                                tokio::time::sleep(Duration::from_secs(30)).await;
-                            }
-                            Err(e) => {
-                                tracing::error!(error = %e, "Failed to process memory archive job");
-                                // Back off for 60s on error
-                                backoff_duration = Duration::from_secs(60);
-                                tokio::time::sleep(backoff_duration).await;
-                            }
-                        }
-                    }
-                });
-
-                // ── External MCP auto-start ──────────────────────────────────────────────
-                // Starts the external MCP server (:3848) after :3847 is confirmed ready.
-                // Gated on: config.enabled + TLS validation + entry_path.exists()
-                {
-                    let config = infrastructure::agents::claude::external_mcp_config().clone();
-                    if config.enabled {
-                        // Ensure :3847 is ready before spawning :3848
-                        match wait_for_backend_ready(3847, Duration::from_secs(30)).await {
-                            Err(e) => {
-                                warn!("Backend not ready, skipping external MCP start: {}", e);
-                            }
-                            Ok(()) => {
-                                info!("Backend :3847 ready, starting external MCP server");
-                                // Validate config (TLS enforcement, port/host checks)
-                                match infrastructure::agents::claude::validate_external_mcp_config(
-                                    &config,
-                                ) {
-                                    Err(e) => {
-                                        warn!("External MCP config invalid, skipping start: {}", e);
-                                    }
-                                    Ok(()) => {
-                                        // Resolve entry path: plugin_dir/ralphx-external-mcp/build/index.js
-                                        let entry_path = infrastructure::agents::claude::find_plugin_dir()
-                                            .map(|p| p.join("ralphx-external-mcp/build/index.js"));
-                                        match entry_path {
-                                            None => {
-                                                warn!("Plugin dir not found, cannot start external MCP");
-                                            }
-                                            Some(ep) if !ep.exists() => {
-                                                warn!(
-                                                    path = %ep.display(),
-                                                    "External MCP entry not found — run `npm run build` in plugins/app/ralphx-external-mcp"
-                                                );
-                                            }
-                                            Some(ep) => {
-                                                let node_path = infrastructure::agents::claude::node_utils::find_node_binary();
-                                                let app_data_dir = external_mcp_app_handle
-                                                    .path()
-                                                    .app_data_dir()
-                                                    .unwrap_or_else(|_| PathBuf::from("."));
-                                                let supervisor = Arc::new(ExternalMcpSupervisor::new(
-                                                    config,
-                                                    external_mcp_app_handle.clone(),
-                                                    app_data_dir,
-                                                ));
-                                                match Arc::clone(&supervisor).start(node_path, ep).await {
-                                                    Ok(()) => {
-                                                        let handle = external_mcp_app_handle
-                                                            .state::<ExternalMcpHandle>();
-                                                        if handle.set(supervisor).is_err() {
-                                                            warn!("ExternalMcpHandle already initialized");
-                                                        } else {
-                                                            info!("External MCP supervisor started and registered");
-                                                        }
-                                                    }
-                                                    Err(e) => {
-                                                        warn!("Failed to start external MCP: {}", e);
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                application::startup_background::maybe_start_external_mcp(
+                    external_mcp_app_handle,
+                    |port, timeout| Box::pin(wait_for_backend_ready(port, timeout)),
+                )
+                .await;
 
             });
 
