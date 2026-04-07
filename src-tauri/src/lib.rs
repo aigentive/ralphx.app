@@ -54,11 +54,15 @@ use application::runtime_factory::{
 use application::runtime_wiring::{
     build_http_app_state, create_main_window, register_managed_state,
 };
+use application::startup_runtime_builders::{
+    StartupChatResumptionDeps, StartupReconciliationDeps, StartupSchedulerDeps,
+    build_startup_chat_resumption_runner, build_startup_reconciliation_runner,
+    build_startup_recovery_chat_service, build_startup_task_scheduler,
+};
 use application::startup_transition_factory::StartupTransitionFactory;
 use application::{
     load_or_seed_agent_lane_settings_defaults, load_or_seed_execution_settings_defaults,
-    ChatResumptionRunner, ReconciliationRunner,
-    StartupJobRunner, TaskSchedulerService,
+    StartupJobRunner,
 };
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -501,27 +505,26 @@ pub fn run() {
 
                 info!("Starting startup job runner...");
 
-                // Create TaskSchedulerService for auto-scheduling Ready tasks
-                let scheduler_concrete = Arc::new(TaskSchedulerService::<tauri::Wry>::new(
-                    Arc::clone(&startup_execution_state),
-                    startup_project_repo.clone(),
-                    startup_task_repo.clone(),
-                    startup_task_dependency_repo.clone(),
-                    startup_chat_message_repo.clone(),
-                    startup_chat_attachment_repo.clone(),
-                    startup_conversation_repo.clone(),
-                    startup_agent_run_repo.clone(),
-                    startup_ideation_session_repo.clone(),
-                    startup_activity_event_repo.clone(),
-                    startup_message_queue.clone(),
-                    startup_running_agent_registry.clone(),
-                    startup_memory_event_repo.clone(),
-                    Some(startup_app_handle.clone()),
-                )
-                .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
-                .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry)));
-                scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn domain::state_machine::services::TaskScheduler>);
-                let task_scheduler: Arc<dyn domain::state_machine::services::TaskScheduler> = scheduler_concrete;
+                let task_scheduler = build_startup_task_scheduler(StartupSchedulerDeps {
+                    execution_state: Arc::clone(&startup_execution_state),
+                    project_repo: startup_project_repo.clone(),
+                    task_repo: startup_task_repo.clone(),
+                    task_dependency_repo: startup_task_dependency_repo.clone(),
+                    chat_message_repo: startup_chat_message_repo.clone(),
+                    chat_attachment_repo: startup_chat_attachment_repo.clone(),
+                    conversation_repo: startup_conversation_repo.clone(),
+                    agent_run_repo: startup_agent_run_repo.clone(),
+                    ideation_session_repo: startup_ideation_session_repo.clone(),
+                    activity_event_repo: startup_activity_event_repo.clone(),
+                    message_queue: startup_message_queue.clone(),
+                    running_agent_registry: startup_running_agent_registry.clone(),
+                    memory_event_repo: startup_memory_event_repo.clone(),
+                    plan_branch_repo: Arc::clone(&startup_plan_branch_repo),
+                    interactive_process_registry: Arc::clone(
+                        &startup_interactive_process_registry,
+                    ),
+                    app_handle: startup_app_handle.clone(),
+                });
 
                 // Clone repos for ChatResumptionRunner before they're consumed by TaskTransitionService/StartupJobRunner
                 let chat_resumption_agent_run_repo = Arc::clone(&startup_agent_run_repo);
@@ -652,7 +655,6 @@ pub fn run() {
 
                 // Create chat service for Phase N+1 ideation recovery.
                 // Must be constructed BEFORE StartupJobRunner::new() consumes the repos.
-                let recovery_chat_service_app_handle = startup_runner_app_handle.clone();
                 let recovery_chat_service_deps = ChatRuntimeFactoryDeps {
                     chat_message_repo: Arc::clone(&startup_chat_message_repo),
                     chat_attachment_repo: Arc::clone(&startup_chat_attachment_repo),
@@ -684,12 +686,10 @@ pub fn run() {
                     )),
                     streaming_state_cache: None,
                 };
-                let recovery_chat_service: Arc<dyn application::ChatService> = Arc::new(
-                    build_chat_service_with_fallback(
-                        &Some(recovery_chat_service_app_handle.clone()),
-                        Some(Arc::clone(&startup_execution_state)),
-                        &recovery_chat_service_deps,
-                    ),
+                let recovery_chat_service = build_startup_recovery_chat_service(
+                    startup_runner_app_handle.clone(),
+                    Arc::clone(&startup_execution_state),
+                    recovery_chat_service_deps,
                 );
 
                 let runner = StartupJobRunner::new(
@@ -729,27 +729,31 @@ pub fn run() {
                 // Resume interrupted chat conversations (Ideation, Task, Project, TaskExecution, Review)
                 // This runs after StartupJobRunner to avoid duplicate resumption of task-based chats
                 info!("Starting chat resumption runner...");
-                let chat_resumption = ChatResumptionRunner::<tauri::Wry>::new(
-                    chat_resumption_agent_run_repo,
-                    chat_resumption_conversation_repo,
-                    chat_resumption_task_repo,
-                    chat_resumption_task_dependency_repo,
-                    chat_resumption_chat_message_repo,
-                    chat_resumption_chat_attachment_repo,
-                    chat_resumption_artifact_repo,
-                    chat_resumption_project_repo,
-                    chat_resumption_ideation_session_repo,
-                    chat_resumption_activity_event_repo,
-                    chat_resumption_message_queue,
-                    chat_resumption_running_agent_registry,
-                    chat_resumption_memory_event_repo,
-                    Arc::clone(&startup_execution_state),
-                )
-                .with_app_handle(chat_resumption_app_handle)
-                .with_execution_settings_repo(chat_resumption_execution_settings_repo)
-                .with_agent_lane_settings_repo(chat_resumption_agent_lane_settings_repo)
-                .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
-                .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry));
+                let chat_resumption = build_startup_chat_resumption_runner(
+                    StartupChatResumptionDeps {
+                        agent_run_repo: chat_resumption_agent_run_repo,
+                        conversation_repo: chat_resumption_conversation_repo,
+                        task_repo: chat_resumption_task_repo,
+                        task_dependency_repo: chat_resumption_task_dependency_repo,
+                        chat_message_repo: chat_resumption_chat_message_repo,
+                        chat_attachment_repo: chat_resumption_chat_attachment_repo,
+                        artifact_repo: chat_resumption_artifact_repo,
+                        project_repo: chat_resumption_project_repo,
+                        ideation_session_repo: chat_resumption_ideation_session_repo,
+                        activity_event_repo: chat_resumption_activity_event_repo,
+                        message_queue: chat_resumption_message_queue,
+                        running_agent_registry: chat_resumption_running_agent_registry,
+                        memory_event_repo: chat_resumption_memory_event_repo,
+                        execution_state: Arc::clone(&startup_execution_state),
+                        execution_settings_repo: chat_resumption_execution_settings_repo,
+                        agent_lane_settings_repo: chat_resumption_agent_lane_settings_repo,
+                        plan_branch_repo: Arc::clone(&startup_plan_branch_repo),
+                        interactive_process_registry: Arc::clone(
+                            &startup_interactive_process_registry,
+                        ),
+                        app_handle: chat_resumption_app_handle,
+                    },
+                );
 
                 chat_resumption.run().await;
 
@@ -777,27 +781,32 @@ pub fn run() {
                     reconcile_app_handle.clone(),
                 ));
 
-                let reconcile_runner = ReconciliationRunner::new(
-                    reconcile_task_repo,
-                    reconcile_task_dependency_repo,
-                    reconcile_project_repo,
-                    reconcile_conversation_repo,
-                    reconcile_chat_message_repo,
-                    reconcile_chat_attachment_repo,
-                    reconcile_ideation_session_repo,
-                    reconcile_activity_event_repo,
-                    reconcile_message_queue,
-                    reconcile_running_agent_registry,
-                    reconcile_memory_event_repo,
-                    reconcile_agent_run_repo,
-                    reconcile_transition_service,
-                    Arc::clone(&startup_execution_state),
-                    Some(reconcile_app_handle),
-                )
-                .with_execution_settings_repo(Arc::clone(&startup_execution_settings_repo))
-                .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
-                .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry))
-                .with_review_repo(reconcile_review_repo);
+                let reconcile_runner =
+                    build_startup_reconciliation_runner(StartupReconciliationDeps {
+                        task_repo: reconcile_task_repo,
+                        task_dependency_repo: reconcile_task_dependency_repo,
+                        project_repo: reconcile_project_repo,
+                        conversation_repo: reconcile_conversation_repo,
+                        chat_message_repo: reconcile_chat_message_repo,
+                        chat_attachment_repo: reconcile_chat_attachment_repo,
+                        ideation_session_repo: reconcile_ideation_session_repo,
+                        activity_event_repo: reconcile_activity_event_repo,
+                        message_queue: reconcile_message_queue,
+                        running_agent_registry: reconcile_running_agent_registry,
+                        memory_event_repo: reconcile_memory_event_repo,
+                        agent_run_repo: reconcile_agent_run_repo,
+                        transition_service: reconcile_transition_service,
+                        execution_state: Arc::clone(&startup_execution_state),
+                        execution_settings_repo: Arc::clone(
+                            &startup_execution_settings_repo,
+                        ),
+                        plan_branch_repo: Arc::clone(&startup_plan_branch_repo),
+                        interactive_process_registry: Arc::clone(
+                            &startup_interactive_process_registry,
+                        ),
+                        review_repo: reconcile_review_repo,
+                        app_handle: reconcile_app_handle,
+                    });
 
                 // One-shot startup recovery: re-queue timeout-failed tasks (attempt_count < 3).
                 // Must run before reconcile_stuck_tasks so recovered tasks are visible immediately.

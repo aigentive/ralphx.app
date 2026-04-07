@@ -42,6 +42,7 @@ pub mod session_reopen_service;
 pub mod shutdown;
 pub mod startup_jobs;
 pub mod startup_background;
+pub mod startup_runtime_builders;
 pub mod supervisor_service;
 pub mod startup_transition_factory;
 pub mod task_cleanup_service;
