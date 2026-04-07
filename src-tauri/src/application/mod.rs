@@ -1,9 +1,10 @@
 // Application layer - dependency injection and service orchestration
 // This layer bridges the domain and infrastructure layers
 
-pub mod app_state;
 pub mod agent_lane_settings_bootstrap;
 pub mod agent_lane_resolution;
+pub mod app_setup;
+pub mod app_state;
 pub mod ideation_harness_availability;
 pub mod apply_service;
 pub mod chat_attachment_service;
