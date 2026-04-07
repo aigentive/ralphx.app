@@ -52,11 +52,14 @@ use crate::infrastructure::{ExternalMcpHandle, ExternalMcpSupervisor};
 
 use application::ideation_effort_bootstrap::seed_ideation_effort_defaults;
 use application::ideation_model_bootstrap::seed_ideation_model_settings;
-use application::runtime_factory::{ChatRuntimeFactoryDeps, build_chat_service_with_fallback};
+use application::runtime_factory::{
+    ChatRuntimeFactoryDeps, RuntimeFactoryDeps, build_chat_service_with_fallback,
+    build_transition_service_with_fallback,
+};
 use application::{
     load_or_seed_agent_lane_settings_defaults, load_or_seed_execution_settings_defaults,
     ChatResumptionRunner, EventCleanupService, ReconciliationRunner,
-    StartupJobRunner, TaskSchedulerService, TaskTransitionService,
+    StartupJobRunner, TaskSchedulerService,
 };
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -651,38 +654,36 @@ pub fn run() {
                      running_agent_registry,
                      memory_event_repo,
                      app_handle: tauri::AppHandle| {
-                        let service = if let Some(app_state) = app_handle.try_state::<AppState>()
-                        {
-                            app_state.build_transition_service_for_runtime(
-                                Arc::clone(&startup_execution_state),
-                                Some(app_handle.clone()),
-                            )
-                        } else {
-                            TaskTransitionService::new(
-                                task_repo,
-                                task_dependency_repo,
-                                project_repo,
-                                chat_message_repo,
-                                chat_attachment_repo,
-                                conversation_repo,
-                                agent_run_repo,
-                                ideation_session_repo,
-                                activity_event_repo,
-                                message_queue,
-                                running_agent_registry,
-                                Arc::clone(&startup_execution_state),
-                                Some(app_handle),
-                                memory_event_repo,
-                            )
-                            .with_agentic_client(Arc::clone(&startup_agent_client))
-                            .with_execution_settings_repo(Arc::clone(
+                        let deps = RuntimeFactoryDeps {
+                            task_repo,
+                            task_dependency_repo,
+                            project_repo,
+                            chat_message_repo,
+                            chat_attachment_repo,
+                            conversation_repo,
+                            agent_run_repo,
+                            ideation_session_repo,
+                            activity_event_repo,
+                            message_queue,
+                            running_agent_registry,
+                            memory_event_repo,
+                            execution_settings_repo: Some(Arc::clone(
                                 &startup_execution_settings_repo,
-                            ))
-                            .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
-                            .with_interactive_process_registry(Arc::clone(
+                            )),
+                            agent_lane_settings_repo: Some(Arc::clone(
+                                &startup_agent_lane_settings_repo,
+                            )),
+                            plan_branch_repo: Some(Arc::clone(&startup_plan_branch_repo)),
+                            interactive_process_registry: Some(Arc::clone(
                                 &startup_interactive_process_registry,
-                            ))
+                            )),
                         };
+                        let service = build_transition_service_with_fallback(
+                            &Some(app_handle.clone()),
+                            Arc::clone(&startup_execution_state),
+                            &deps,
+                        )
+                        .with_agentic_client(Arc::clone(&startup_agent_client));
 
                         service
                             .with_task_scheduler(Arc::clone(&task_scheduler))
