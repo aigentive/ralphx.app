@@ -860,6 +860,54 @@ async fn test_merged_to_approved_transition_is_rejected() {
     assert_eq!(persisted.internal_status, InternalStatus::Merged);
 }
 
+#[tokio::test]
+async fn test_transition_task_corrective_allows_blocked_to_failed() {
+    let app_state = AppState::new_test();
+    let service = build_test_service(&app_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Corrective Failed Task".to_string());
+    task.internal_status = InternalStatus::Blocked;
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    let updated = service
+        .transition_task_corrective(&task_id, InternalStatus::Failed, None, "test")
+        .await
+        .unwrap();
+
+    assert_eq!(updated.internal_status, InternalStatus::Failed);
+
+    let persisted = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(persisted.internal_status, InternalStatus::Failed);
+}
+
+#[tokio::test]
+async fn test_transition_task_corrective_allows_pending_review_to_backlog() {
+    let app_state = AppState::new_test();
+    let service = build_test_service(&app_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Corrective Backlog Task".to_string());
+    task.internal_status = InternalStatus::PendingReview;
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    let updated = service
+        .transition_task_corrective(&task_id, InternalStatus::Backlog, None, "test")
+        .await
+        .unwrap();
+
+    assert_eq!(updated.internal_status, InternalStatus::Backlog);
+
+    let persisted = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(persisted.internal_status, InternalStatus::Backlog);
+}
+
 // ============================================================================
 // Wave 3: Git Isolation ExecutionRecoveryMetadata Tests
 // ============================================================================

@@ -283,6 +283,7 @@ pub async fn approve_fix_task(
 pub async fn reject_fix_task(
     input: RejectFixTaskInput,
     state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<Option<String>, String> {
     use crate::commands::emit_queue_changed;
@@ -291,18 +292,36 @@ pub async fn reject_fix_task(
     let original_task_id = TaskId::from_string(input.original_task_id);
     let settings = ReviewSettings::default();
 
-    // Get and update fix task to Failed
-    let mut fix_task = state
+    // Get fix task before corrective transition so we can preserve the old description
+    let fix_task = state
         .task_repo
         .get_by_id(&fix_task_id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Fix task not found: {}", fix_task_id.as_str()))?;
 
-    fix_task.internal_status = InternalStatus::Failed;
-    state
-        .task_repo
-        .update(&fix_task)
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_attachment_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.activity_event_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Arc::clone(&execution_state),
+        Some(app.clone()),
+        Arc::clone(&state.memory_event_repo),
+    )
+    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+
+    transition_service
+        .transition_task_corrective(&fix_task_id, InternalStatus::Failed, None, "review_fix")
         .await
         .map_err(|e| e.to_string())?;
 
@@ -325,12 +344,13 @@ pub async fn reject_fix_task(
 
     // Check if max attempts exceeded
     if settings.exceeded_max_attempts(attempt_count) {
-        // Move original task to backlog
-        let mut original = original_task;
-        original.internal_status = InternalStatus::Backlog;
-        state
-            .task_repo
-            .update(&original)
+        transition_service
+            .transition_task_corrective(
+                &original_task_id,
+                InternalStatus::Backlog,
+                None,
+                "review_fix",
+            )
             .await
             .map_err(|e| e.to_string())?;
 

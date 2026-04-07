@@ -1218,6 +1218,53 @@ impl<R: Runtime> TaskTransitionService<R> {
             .await
     }
 
+    /// Apply an explicit corrective transition for nonstandard repair flows.
+    ///
+    /// Unlike `transition_task*`, this path intentionally bypasses the normal state-machine
+    /// legality guard and should be reserved for recovery/corrective callers that need to
+    /// persist a terminal or repair status not representable as a legal workflow transition.
+    ///
+    /// This wrapper still records status history and uses the same optimistic-lock discipline
+    /// as the internal corrective path, but it deliberately skips the normal entry/exit actions
+    /// and event emission that belong to workflow transitions.
+    pub async fn transition_task_corrective(
+        &self,
+        task_id: &TaskId,
+        target_status: InternalStatus,
+        blocked_reason: Option<String>,
+        history_actor: &str,
+    ) -> AppResult<Task> {
+        let existing = self
+            .task_repo
+            .get_by_id(task_id)
+            .await?
+            .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
+
+        if existing.internal_status == target_status {
+            return Ok(existing);
+        }
+
+        match self
+            .apply_corrective_transition(task_id, target_status, blocked_reason, history_actor)
+            .await
+        {
+            Some(result) => Ok(result.task),
+            None => {
+                let current = self
+                    .task_repo
+                    .get_by_id(task_id)
+                    .await?
+                    .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
+
+                Err(AppError::Conflict(format!(
+                    "Corrective transition to {} did not persist; current status is {}",
+                    target_status.as_str(),
+                    current.internal_status.as_str()
+                )))
+            }
+        }
+    }
+
     /// Build the common TaskServices shared by both entry and exit action handlers.
     ///
     /// Caller-specific fields (merge_lock / merges_in_flight / validation_tokens /
