@@ -366,3 +366,79 @@ async fn verifier_and_primary_subagent_caps_use_lane_rows_when_claude_is_selecte
     assert_eq!(verifier.claude_effort.as_deref(), Some("high"));
     assert_eq!(verifier.subagent_model_cap.as_deref(), Some("haiku"));
 }
+
+#[tokio::test]
+async fn execution_worker_lane_can_resolve_codex_settings() {
+    let lane_repo: Arc<dyn AgentLaneSettingsRepository> =
+        Arc::new(MemoryAgentLaneSettingsRepository::new());
+
+    lane_repo
+        .upsert_global(
+            AgentLane::ExecutionWorker,
+            &codex_lane_settings(
+                "gpt-5.4",
+                Some(LogicalEffort::High),
+                Some("on-request"),
+                Some("workspace-write"),
+            ),
+        )
+        .await
+        .expect("execution worker lane upsert should succeed");
+
+    let resolved = resolve_agent_spawn_settings(
+        "worker",
+        None,
+        ChatContextType::TaskExecution,
+        None,
+        Some(&lane_repo),
+        None,
+        None,
+    )
+    .await;
+
+    assert_eq!(resolved.configured_harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(resolved.effective_harness, AgentHarnessKind::Codex);
+    assert_eq!(resolved.model, "gpt-5.4");
+    assert_eq!(resolved.logical_effort, Some(LogicalEffort::High));
+    assert_eq!(resolved.approval_policy.as_deref(), Some("on-request"));
+    assert_eq!(resolved.sandbox_mode.as_deref(), Some("workspace-write"));
+    assert_eq!(resolved.subagent_model_cap, None);
+}
+
+#[tokio::test]
+async fn execution_worker_codex_without_model_uses_generic_codex_defaults() {
+    let lane_repo: Arc<dyn AgentLaneSettingsRepository> =
+        Arc::new(MemoryAgentLaneSettingsRepository::new());
+
+    lane_repo
+        .upsert_global(
+            AgentLane::ExecutionWorker,
+            &AgentLaneSettings {
+                harness: AgentHarnessKind::Codex,
+                model: None,
+                effort: None,
+                approval_policy: None,
+                sandbox_mode: None,
+                fallback_harness: Some(AgentHarnessKind::Claude),
+            },
+        )
+        .await
+        .expect("execution worker codex lane upsert should succeed");
+
+    let resolved = resolve_agent_spawn_settings(
+        "worker",
+        None,
+        ChatContextType::TaskExecution,
+        None,
+        Some(&lane_repo),
+        None,
+        None,
+    )
+    .await;
+
+    assert_eq!(resolved.effective_harness, AgentHarnessKind::Codex);
+    assert_eq!(resolved.model, "gpt-5.4");
+    assert_eq!(resolved.logical_effort, Some(LogicalEffort::XHigh));
+    assert_eq!(resolved.approval_policy.as_deref(), Some("on-request"));
+    assert_eq!(resolved.sandbox_mode.as_deref(), Some("workspace-write"));
+}

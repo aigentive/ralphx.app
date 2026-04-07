@@ -40,7 +40,10 @@ pub(crate) async fn resolve_agent_spawn_settings(
     ideation_model_settings_repo: Option<&Arc<dyn IdeationModelSettingsRepository>>,
     ideation_effort_settings_repo: Option<&Arc<dyn IdeationEffortSettingsRepository>>,
 ) -> ResolvedAgentSpawnSettings {
-    if context_type != ChatContextType::Ideation {
+    let primary_lane = lane_for_context(agent_name, context_type);
+    let subagent_lane = subagent_lane_for_context(agent_name, context_type);
+
+    if primary_lane.is_none() {
         return ResolvedAgentSpawnSettings {
             configured_harness: None,
             effective_harness: AgentHarnessKind::Claude,
@@ -59,9 +62,6 @@ pub(crate) async fn resolve_agent_spawn_settings(
             subagent_model_cap: None,
         };
     }
-
-    let primary_lane = ideation_lane_for_agent(agent_name);
-    let subagent_lane = ideation_subagent_lane_for_agent(agent_name);
 
     let (primary_project_row, primary_global_row) =
         load_lane_rows(agent_lane_settings_repo, project_id, primary_lane).await;
@@ -179,12 +179,35 @@ fn ideation_lane_for_agent(agent_name: &str) -> Option<AgentLane> {
     }
 }
 
+fn execution_lane_for_context(context_type: ChatContextType) -> Option<AgentLane> {
+    match context_type {
+        ChatContextType::TaskExecution => Some(AgentLane::ExecutionWorker),
+        ChatContextType::Review => Some(AgentLane::ExecutionReviewer),
+        ChatContextType::Merge => Some(AgentLane::ExecutionMerger),
+        ChatContextType::Ideation | ChatContextType::Task | ChatContextType::Project => None,
+    }
+}
+
+fn lane_for_context(agent_name: &str, context_type: ChatContextType) -> Option<AgentLane> {
+    match context_type {
+        ChatContextType::Ideation => ideation_lane_for_agent(agent_name),
+        _ => execution_lane_for_context(context_type),
+    }
+}
+
 fn ideation_subagent_lane_for_agent(agent_name: &str) -> Option<AgentLane> {
     ideation_lane_for_agent(agent_name).map(|lane| match lane {
         AgentLane::IdeationVerifier => AgentLane::IdeationVerifierSubagent,
         AgentLane::IdeationPrimary => AgentLane::IdeationSubagent,
         _ => unreachable!("ideation lane mapper returned a non-ideation lane"),
     })
+}
+
+fn subagent_lane_for_context(agent_name: &str, context_type: ChatContextType) -> Option<AgentLane> {
+    match context_type {
+        ChatContextType::Ideation => ideation_subagent_lane_for_agent(agent_name),
+        _ => None,
+    }
 }
 
 async fn load_lane_rows(
@@ -310,7 +333,12 @@ fn codex_default_lane_settings(
         AgentLane::ExecutionWorker
         | AgentLane::ExecutionReviewer
         | AgentLane::ExecutionReexecutor
-        | AgentLane::ExecutionMerger => return None,
+        | AgentLane::ExecutionMerger => {
+            settings.model = Some("gpt-5.4".to_string());
+            settings.effort = Some(LogicalEffort::XHigh);
+            settings.approval_policy = Some("on-request".to_string());
+            settings.sandbox_mode = Some("workspace-write".to_string());
+        }
     }
 
     Some(settings)

@@ -1,5 +1,5 @@
 use crate::application::AppState;
-use crate::domain::entities::{ChatContextType, IdeationSessionId};
+use crate::domain::entities::{ChatContextType, IdeationSessionId, TaskId};
 use std::sync::Arc;
 
 use crate::domain::agents::{AgentHarnessKind, AgentLane, StoredAgentLaneSettings};
@@ -90,7 +90,7 @@ pub(crate) async fn validate_chat_runtime_for_context(
     context_id: &str,
     surface_name: &str,
 ) -> Result<(), String> {
-    if context_type != ChatContextType::Ideation {
+    let Some(lane) = runtime_lane_for_context(context_type) else {
         let probe = probe_claude_harness();
         if probe.available {
             return Ok(());
@@ -99,21 +99,14 @@ pub(crate) async fn validate_chat_runtime_for_context(
         return Err(probe.error.unwrap_or_else(|| {
             format!("{surface_name} requires Claude CLI but it is not available")
         }));
-    }
+    };
 
-    let project_id = state
-        .ideation_session_repo
-        .get_by_id(&IdeationSessionId::from_string(context_id))
-        .await
-        .ok()
-        .flatten()
-        .map(|session| session.project_id);
-
-    let availability = resolve_primary_ideation_harness_availability(
-        &state.agent_lane_settings_repo,
-        project_id.as_ref().map(|value| value.as_str()),
-    )
-    .await;
+    let project_id = project_id_for_context(state, context_type, context_id).await;
+    let config =
+        resolve_lane_harness_config(&state.agent_lane_settings_repo, project_id.as_deref(), lane)
+            .await;
+    let availability =
+        build_ideation_lane_harness_availability(config, &probe_claude_harness(), &probe_codex_harness());
 
     if availability.available {
         Ok(())
@@ -121,6 +114,40 @@ pub(crate) async fn validate_chat_runtime_for_context(
         Err(availability.error.unwrap_or_else(|| {
             format!("Configured ideation harness is not available for {surface_name}")
         }))
+    }
+}
+
+fn runtime_lane_for_context(context_type: ChatContextType) -> Option<AgentLane> {
+    match context_type {
+        ChatContextType::Ideation => Some(AgentLane::IdeationPrimary),
+        ChatContextType::TaskExecution => Some(AgentLane::ExecutionWorker),
+        ChatContextType::Review => Some(AgentLane::ExecutionReviewer),
+        ChatContextType::Merge => Some(AgentLane::ExecutionMerger),
+        ChatContextType::Task | ChatContextType::Project => None,
+    }
+}
+
+async fn project_id_for_context(
+    state: &AppState,
+    context_type: ChatContextType,
+    context_id: &str,
+) -> Option<String> {
+    match context_type {
+        ChatContextType::Ideation => state
+            .ideation_session_repo
+            .get_by_id(&IdeationSessionId::from_string(context_id))
+            .await
+            .ok()
+            .flatten()
+            .map(|session| session.project_id.as_str().to_string()),
+        ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => state
+            .task_repo
+            .get_by_id(&TaskId::from_string(context_id.to_string()))
+            .await
+            .ok()
+            .flatten()
+            .map(|task| task.project_id.as_str().to_string()),
+        ChatContextType::Task | ChatContextType::Project => None,
     }
 }
 
