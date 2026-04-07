@@ -17,6 +17,7 @@ pub(crate) fn is_local_proposal(proposal: &TaskProposal, project_dir: &Path) -> 
 }
 
 mod ideation_commands_apply;
+mod ideation_commands_agent_lanes;
 mod ideation_commands_chat;
 mod ideation_commands_cross_project;
 mod ideation_commands_dependencies;
@@ -33,6 +34,7 @@ pub use ideation_commands_types::*;
 
 // Re-export all commands
 pub use ideation_commands_apply::*;
+pub use ideation_commands_agent_lanes::*;
 #[doc(hidden)]
 pub use ideation_commands_apply::apply_proposals_core;
 pub use ideation_commands_chat::*;
