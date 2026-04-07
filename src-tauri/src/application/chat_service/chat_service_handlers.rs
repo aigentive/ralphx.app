@@ -170,7 +170,9 @@ fn build_transition_service<R: Runtime>(
 
     if let Some(handle) = app_handle {
         if let Some(app_state) = handle.try_state::<AppState>() {
-            return transition_service.with_agentic_client(Arc::clone(&app_state.agent_client));
+            return transition_service
+                .with_agentic_client(Arc::clone(&app_state.agent_client))
+                .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo));
         }
     }
 

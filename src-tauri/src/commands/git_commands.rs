@@ -473,30 +473,44 @@ async fn execute_merge_retry_background(
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&task_repo),
-        Arc::clone(&task_dependency_repo),
-        Arc::clone(&project_repo),
-        Arc::clone(&chat_message_repo),
-        Arc::clone(&chat_attachment_repo),
-        Arc::clone(&chat_conversation_repo),
-        Arc::clone(&agent_run_repo),
-        Arc::clone(&ideation_session_repo),
-        Arc::clone(&activity_event_repo),
-        Arc::clone(&message_queue),
-        Arc::clone(&running_agent_registry),
-        Arc::clone(&execution_state),
-        app_handle_opt.clone(),
-        Arc::clone(&memory_event_repo),
-    );
     let transition_service = if let Some(handle) = app_handle_opt.as_ref() {
         if let Some(app_state) = handle.try_state::<AppState>() {
-            transition_service.with_agentic_client(Arc::clone(&app_state.agent_client))
+            app_state.build_transition_service_with_execution_state(Arc::clone(&execution_state))
         } else {
-            transition_service
+            TaskTransitionService::new(
+                Arc::clone(&task_repo),
+                Arc::clone(&task_dependency_repo),
+                Arc::clone(&project_repo),
+                Arc::clone(&chat_message_repo),
+                Arc::clone(&chat_attachment_repo),
+                Arc::clone(&chat_conversation_repo),
+                Arc::clone(&agent_run_repo),
+                Arc::clone(&ideation_session_repo),
+                Arc::clone(&activity_event_repo),
+                Arc::clone(&message_queue),
+                Arc::clone(&running_agent_registry),
+                Arc::clone(&execution_state),
+                app_handle_opt.clone(),
+                Arc::clone(&memory_event_repo),
+            )
         }
     } else {
-        transition_service
+        TaskTransitionService::new(
+            Arc::clone(&task_repo),
+            Arc::clone(&task_dependency_repo),
+            Arc::clone(&project_repo),
+            Arc::clone(&chat_message_repo),
+            Arc::clone(&chat_attachment_repo),
+            Arc::clone(&chat_conversation_repo),
+            Arc::clone(&agent_run_repo),
+            Arc::clone(&ideation_session_repo),
+            Arc::clone(&activity_event_repo),
+            Arc::clone(&message_queue),
+            Arc::clone(&running_agent_registry),
+            Arc::clone(&execution_state),
+            None,
+            Arc::clone(&memory_event_repo),
+        )
     }
     .with_execution_settings_repo(Arc::clone(&execution_settings_repo))
     .with_task_scheduler(task_scheduler)

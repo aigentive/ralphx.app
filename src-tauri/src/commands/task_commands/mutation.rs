@@ -63,6 +63,10 @@ fn build_transition_service(
     execution_state: &Arc<ExecutionState>,
     app_handle: Option<&AppHandle>,
 ) -> TaskTransitionService {
+    if app_handle.is_some() || state.app_handle.is_some() {
+        return state.build_transition_service_with_execution_state(Arc::clone(execution_state));
+    }
+
     TaskTransitionService::new(
         Arc::clone(&state.task_repo),
         Arc::clone(&state.task_dependency_repo),
@@ -76,7 +80,7 @@ fn build_transition_service(
         Arc::clone(&state.message_queue),
         Arc::clone(&state.running_agent_registry),
         Arc::clone(execution_state),
-        app_handle.cloned().or_else(|| state.app_handle.clone()),
+        None,
         Arc::clone(&state.memory_event_repo),
     )
     .with_agentic_client(Arc::clone(&state.agent_client))

@@ -104,7 +104,9 @@ impl<'a, R: Runtime> MergeAutoCompleteContext<'a, R> {
         );
         let service = if let Some(handle) = self.app_handle {
             if let Some(app_state) = handle.try_state::<AppState>() {
-                service.with_agentic_client(Arc::clone(&app_state.agent_client))
+                service
+                    .with_agentic_client(Arc::clone(&app_state.agent_client))
+                    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
             } else {
                 service
             }
