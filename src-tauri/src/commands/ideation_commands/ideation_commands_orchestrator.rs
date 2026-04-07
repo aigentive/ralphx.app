@@ -2,46 +2,14 @@
 
 use tauri::State;
 
-use crate::application::AppState;
-use crate::application::ideation_harness_availability::{
-    build_ideation_lane_harness_availability, probe_claude_harness, probe_codex_harness,
-    resolve_lane_harness_config,
+use crate::application::{
+    resolve_primary_ideation_harness_availability, validate_claude_runtime_path, AppState,
 };
-use crate::domain::agents::{AgentHarnessKind, AgentLane};
+use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::{IdeationSessionId, IdeationSessionStatus};
 use crate::domain::ideation::IdeationSettings;
 
 use super::ideation_commands_types::{OrchestratorMessageResponse, SendOrchestratorMessageInput};
-
-async fn resolve_primary_lane_availability(
-    app_state: &AppState,
-    project_id: Option<&str>,
-) -> crate::application::ideation_harness_availability::IdeationLaneHarnessAvailability {
-    let config =
-        resolve_lane_harness_config(&app_state.agent_lane_settings_repo, project_id, AgentLane::IdeationPrimary)
-            .await;
-    build_ideation_lane_harness_availability(config, &probe_claude_harness(), &probe_codex_harness())
-}
-
-pub(crate) fn validate_deprecated_orchestrator_path(
-    availability: &crate::application::ideation_harness_availability::IdeationLaneHarnessAvailability,
-) -> Result<(), String> {
-    if !availability.available {
-        return Err(availability
-            .error
-            .clone()
-            .unwrap_or_else(|| "Configured ideation harness is not available".to_string()));
-    }
-
-    if availability.effective_harness != AgentHarnessKind::Claude {
-        return Err(format!(
-            "Ideation primary lane resolves to {} but the deprecated orchestrator path still routes through the Claude runtime",
-            availability.effective_harness
-        ));
-    }
-
-    Ok(())
-}
 
 // ============================================================================
 // Orchestrator Integration Commands
@@ -80,9 +48,12 @@ pub async fn send_orchestrator_message(
         return Err("Session is not active".to_string());
     }
 
-    let lane_availability =
-        resolve_primary_lane_availability(&state, Some(session.project_id.as_str())).await;
-    validate_deprecated_orchestrator_path(&lane_availability)?;
+    let lane_availability = resolve_primary_ideation_harness_availability(
+        &state.agent_lane_settings_repo,
+        Some(session.project_id.as_str()),
+    )
+    .await;
+    validate_claude_runtime_path(&lane_availability, "the deprecated orchestrator path")?;
 
     // Create unified chat service
     let chat_service: ClaudeChatService<tauri::Wry> = ClaudeChatService::new(
@@ -135,7 +106,8 @@ pub async fn send_orchestrator_message(
 /// DEPRECATED: Use the unified ChatService availability check instead.
 #[tauri::command]
 pub async fn is_orchestrator_available(state: State<'_, AppState>) -> Result<bool, String> {
-    let lane_availability = resolve_primary_lane_availability(&state, None).await;
+    let lane_availability =
+        resolve_primary_ideation_harness_availability(&state.agent_lane_settings_repo, None).await;
     Ok(lane_availability.available && lane_availability.effective_harness == AgentHarnessKind::Claude)
 }
 

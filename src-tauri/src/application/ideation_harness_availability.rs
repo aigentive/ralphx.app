@@ -44,6 +44,43 @@ pub(crate) const IDEATION_LANES: [AgentLane; 4] = [
     AgentLane::IdeationVerifierSubagent,
 ];
 
+pub(crate) async fn resolve_ideation_lane_harness_availability(
+    repo: &Arc<dyn AgentLaneSettingsRepository>,
+    project_id: Option<&str>,
+    lane: AgentLane,
+) -> IdeationLaneHarnessAvailability {
+    let config = resolve_lane_harness_config(repo, project_id, lane).await;
+    build_ideation_lane_harness_availability(config, &probe_claude_harness(), &probe_codex_harness())
+}
+
+pub(crate) async fn resolve_primary_ideation_harness_availability(
+    repo: &Arc<dyn AgentLaneSettingsRepository>,
+    project_id: Option<&str>,
+) -> IdeationLaneHarnessAvailability {
+    resolve_ideation_lane_harness_availability(repo, project_id, AgentLane::IdeationPrimary).await
+}
+
+pub(crate) fn validate_claude_runtime_path(
+    availability: &IdeationLaneHarnessAvailability,
+    surface_name: &str,
+) -> Result<(), String> {
+    if !availability.available {
+        return Err(availability
+            .error
+            .clone()
+            .unwrap_or_else(|| "Configured ideation harness is not available".to_string()));
+    }
+
+    if availability.effective_harness != AgentHarnessKind::Claude {
+        return Err(format!(
+            "Ideation primary lane resolves to {} but {} still routes through the Claude runtime",
+            availability.effective_harness, surface_name
+        ));
+    }
+
+    Ok(())
+}
+
 pub(crate) async fn resolve_lane_harness_config(
     repo: &Arc<dyn AgentLaneSettingsRepository>,
     project_id: Option<&str>,

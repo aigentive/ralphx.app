@@ -1598,6 +1598,26 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         )
         .await;
 
+        if context_type == ChatContextType::Ideation {
+            let lane_repo = self.agent_lane_settings_repo.as_ref().ok_or_else(|| {
+                ChatServiceError::SpawnFailed(
+                    "Unified ideation chat service requires agent lane settings repo".to_string(),
+                )
+            })?;
+            let lane_availability =
+                crate::application::resolve_primary_ideation_harness_availability(
+                    lane_repo,
+                    project_id.as_deref(),
+                )
+                .await;
+            if let Err(error) = crate::application::validate_claude_runtime_path(
+                &lane_availability,
+                "the unified ideation chat service",
+            ) {
+                cleanup_and_err!(ChatServiceError::SpawnFailed(error));
+            }
+        }
+
         // 7. Increment running count for task execution contexts BEFORE spawning
         // This tracks concurrency for agent-active states (Executing, Reviewing, ReExecuting)
         // The count is decremented in TransitionHandler::on_exit when leaving these states

@@ -1,5 +1,5 @@
 use crate::application::ideation_harness_availability::IdeationLaneHarnessAvailability;
-use crate::commands::ideation_commands::ideation_commands_orchestrator::validate_deprecated_orchestrator_path;
+use crate::application::validate_claude_runtime_path;
 use crate::domain::agents::{AgentHarnessKind, AgentLane};
 
 fn availability(
@@ -24,33 +24,33 @@ fn availability(
 
 #[test]
 fn deprecated_orchestrator_path_accepts_claude() {
-    let result = validate_deprecated_orchestrator_path(&availability(
+    let result = validate_claude_runtime_path(&availability(
         AgentHarnessKind::Claude,
         true,
         None,
-    ));
+    ), "the deprecated orchestrator path");
 
     assert!(result.is_ok());
 }
 
 #[test]
 fn deprecated_orchestrator_path_rejects_unavailable_harnesses() {
-    let result = validate_deprecated_orchestrator_path(&availability(
+    let result = validate_claude_runtime_path(&availability(
         AgentHarnessKind::Claude,
         false,
         Some("Claude CLI not found"),
-    ));
+    ), "the deprecated orchestrator path");
 
     assert_eq!(result.unwrap_err(), "Claude CLI not found");
 }
 
 #[test]
 fn deprecated_orchestrator_path_rejects_effective_codex() {
-    let result = validate_deprecated_orchestrator_path(&availability(
+    let result = validate_claude_runtime_path(&availability(
         AgentHarnessKind::Codex,
         true,
         None,
-    ));
+    ), "the deprecated orchestrator path");
 
     assert!(
         result

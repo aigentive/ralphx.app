@@ -1,5 +1,6 @@
 use super::ideation_harness_availability::{
-    build_ideation_lane_harness_availability, HarnessRuntimeProbe, ResolvedLaneHarnessConfig,
+    build_ideation_lane_harness_availability, validate_claude_runtime_path, HarnessRuntimeProbe,
+    IdeationLaneHarnessAvailability, ResolvedLaneHarnessConfig,
 };
 use crate::domain::agents::{AgentHarnessKind, AgentLane};
 
@@ -108,4 +109,44 @@ fn default_lane_without_configuration_defaults_to_claude() {
     assert!(!availability.fallback_activated);
     assert!(!availability.available);
     assert_eq!(availability.error.as_deref(), Some("Claude CLI not found"));
+}
+
+#[test]
+fn validate_claude_runtime_path_accepts_available_claude() {
+    let availability = IdeationLaneHarnessAvailability {
+        lane: AgentLane::IdeationPrimary,
+        configured_harness: Some(AgentHarnessKind::Claude),
+        fallback_harness: None,
+        effective_harness: AgentHarnessKind::Claude,
+        fallback_activated: false,
+        binary_path: None,
+        binary_found: true,
+        probe_succeeded: true,
+        available: true,
+        missing_core_exec_features: Vec::new(),
+        error: None,
+    };
+
+    assert!(validate_claude_runtime_path(&availability, "unified ideation").is_ok());
+}
+
+#[test]
+fn validate_claude_runtime_path_rejects_available_codex() {
+    let availability = IdeationLaneHarnessAvailability {
+        lane: AgentLane::IdeationPrimary,
+        configured_harness: Some(AgentHarnessKind::Codex),
+        fallback_harness: None,
+        effective_harness: AgentHarnessKind::Codex,
+        fallback_activated: false,
+        binary_path: None,
+        binary_found: true,
+        probe_succeeded: true,
+        available: true,
+        missing_core_exec_features: Vec::new(),
+        error: None,
+    };
+
+    let error = validate_claude_runtime_path(&availability, "unified ideation").unwrap_err();
+    assert!(error.contains("unified ideation"));
+    assert!(error.contains("Claude runtime"));
 }
