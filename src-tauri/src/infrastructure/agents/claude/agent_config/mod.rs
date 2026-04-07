@@ -185,6 +185,22 @@ fn default_agent_harness_defaults() -> AgentHarnessDefaultsConfig {
             AgentLane::IdeationVerifierSubagent,
             codex_lane_defaults("gpt-5.4-mini", LogicalEffort::Medium, None, None),
         ),
+        (
+            AgentLane::ExecutionWorker,
+            AgentLaneSettings::new(AgentHarnessKind::Claude),
+        ),
+        (
+            AgentLane::ExecutionReviewer,
+            AgentLaneSettings::new(AgentHarnessKind::Claude),
+        ),
+        (
+            AgentLane::ExecutionReexecutor,
+            AgentLaneSettings::new(AgentHarnessKind::Claude),
+        ),
+        (
+            AgentLane::ExecutionMerger,
+            AgentLaneSettings::new(AgentHarnessKind::Claude),
+        ),
     ])
 }
 
@@ -722,12 +738,14 @@ fn apply_agent_harness_env_overrides_with(
             .clone()
             .unwrap_or_else(|| AgentLaneSettings::new(AgentHarnessKind::Claude));
         let mut changed = false;
+        let mut harness_overridden = false;
 
         if let Some(raw) = normalize_override_value(lookup(&harness_key)) {
             match raw.parse::<AgentHarnessKind>() {
                 Ok(value) => {
                     settings.harness = value;
                     changed = true;
+                    harness_overridden = true;
                 }
                 Err(error) => {
                     tracing::warn!(lane = %lane, env = %harness_key, value = %raw, %error, "Ignoring invalid agent harness env override");
@@ -766,7 +784,7 @@ fn apply_agent_harness_env_overrides_with(
             continue;
         }
 
-        if existing.is_none()
+        if (existing.is_none() || harness_overridden)
             && settings.harness == AgentHarnessKind::Codex
             && settings.fallback_harness.is_none()
         {

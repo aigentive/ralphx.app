@@ -24,6 +24,14 @@ async fn test_load_or_seed_agent_lane_settings_defaults_seeds_missing_global_row
             AgentLane::IdeationVerifier,
             codex_defaults("gpt-5.4-mini", LogicalEffort::Medium),
         ),
+        (
+            AgentLane::ExecutionWorker,
+            AgentLaneSettings::new(AgentHarnessKind::Claude),
+        ),
+        (
+            AgentLane::ExecutionReviewer,
+            AgentLaneSettings::new(AgentHarnessKind::Claude),
+        ),
     ]);
 
     let result = load_or_seed_agent_lane_settings_defaults(
@@ -35,7 +43,12 @@ async fn test_load_or_seed_agent_lane_settings_defaults_seeds_missing_global_row
 
     assert_eq!(
         result.seeded_global_lanes,
-        vec![AgentLane::IdeationPrimary, AgentLane::IdeationVerifier]
+        vec![
+            AgentLane::ExecutionReviewer,
+            AgentLane::ExecutionWorker,
+            AgentLane::IdeationPrimary,
+            AgentLane::IdeationVerifier,
+        ]
     );
     assert_eq!(
         result.global_defaults.get(&AgentLane::IdeationPrimary),
@@ -44,6 +57,14 @@ async fn test_load_or_seed_agent_lane_settings_defaults_seeds_missing_global_row
     assert_eq!(
         result.global_defaults.get(&AgentLane::IdeationVerifier),
         desired_defaults.get(&AgentLane::IdeationVerifier)
+    );
+    assert_eq!(
+        result.global_defaults.get(&AgentLane::ExecutionWorker),
+        desired_defaults.get(&AgentLane::ExecutionWorker)
+    );
+    assert_eq!(
+        result.global_defaults.get(&AgentLane::ExecutionReviewer),
+        desired_defaults.get(&AgentLane::ExecutionReviewer)
     );
 }
 
@@ -60,6 +81,10 @@ async fn test_load_or_seed_agent_lane_settings_defaults_preserves_existing_rows(
             AgentLane::IdeationVerifier,
             codex_defaults("gpt-5.4-mini", LogicalEffort::Medium),
         ),
+        (
+            AgentLane::ExecutionWorker,
+            AgentLaneSettings::new(AgentHarnessKind::Claude),
+        ),
     ]);
 
     app_state
@@ -75,7 +100,10 @@ async fn test_load_or_seed_agent_lane_settings_defaults_preserves_existing_rows(
     .await
     .unwrap();
 
-    assert_eq!(result.seeded_global_lanes, vec![AgentLane::IdeationVerifier]);
+    assert_eq!(
+        result.seeded_global_lanes,
+        vec![AgentLane::ExecutionWorker, AgentLane::IdeationVerifier]
+    );
     assert_eq!(
         result.global_defaults.get(&AgentLane::IdeationPrimary),
         Some(&stored_defaults)
@@ -83,6 +111,10 @@ async fn test_load_or_seed_agent_lane_settings_defaults_preserves_existing_rows(
     assert_eq!(
         result.global_defaults.get(&AgentLane::IdeationVerifier),
         desired_defaults.get(&AgentLane::IdeationVerifier)
+    );
+    assert_eq!(
+        result.global_defaults.get(&AgentLane::ExecutionWorker),
+        desired_defaults.get(&AgentLane::ExecutionWorker)
     );
 }
 

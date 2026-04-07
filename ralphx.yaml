@@ -152,6 +152,14 @@ agent_harness_defaults:
     model: gpt-5.4-mini
     effort: medium
     fallback_harness: claude
+  execution_worker:
+    harness: claude
+  execution_reviewer:
+    harness: claude
+  execution_reexecutor:
+    harness: claude
+  execution_merger:
+    harness: claude
 
 # ── Runtime timeouts & limits ──────────────────────────────────────────────
 # All fields required — no Rust serde defaults. Missing keys cause a deserialization error.
