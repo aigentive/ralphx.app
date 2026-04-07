@@ -1375,6 +1375,7 @@ pub fn run() {
             commands::api_key_commands::update_api_key_permissions,
             commands::api_key_commands::get_api_key_audit_log,
             commands::diagnostic_commands::get_agent_health,
+            commands::diagnostic_commands::get_codex_cli_diagnostics,
             // UI feature flag commands
             commands::ui_commands::get_ui_feature_flags,
             // External MCP config commands

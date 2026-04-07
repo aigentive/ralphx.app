@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
+use ralphx_lib::commands::diagnostic_commands::build_codex_cli_diagnostics_response;
 use ralphx_lib::domain::agents::LogicalEffort;
 use ralphx_lib::infrastructure::agents::{
     build_codex_exec_args, parse_codex_cli_capabilities, parse_codex_version,
-    CodexExecCliConfig,
+    CodexCliCapabilities, CodexExecCliConfig,
 };
 
 const ROOT_HELP: &str = r#"
@@ -130,4 +131,55 @@ fn build_codex_exec_args_rejects_missing_config_override_support() {
         .expect_err("missing config override support must fail");
 
     assert!(error.contains("config_override"));
+}
+
+#[test]
+fn build_codex_cli_diagnostics_response_handles_missing_binary() {
+    let diagnostics = build_codex_cli_diagnostics_response(None, None);
+
+    assert!(!diagnostics.binary_found);
+    assert!(!diagnostics.probe_succeeded);
+    assert_eq!(diagnostics.error.as_deref(), Some("Codex CLI not found"));
+}
+
+#[test]
+fn build_codex_cli_diagnostics_response_handles_successful_probe() {
+    let capabilities = CodexCliCapabilities {
+        version: Some("0.116.0".to_string()),
+        supports_exec_subcommand: true,
+        supports_json_output: true,
+        supports_model_flag: true,
+        supports_config_override: true,
+        supports_sandbox_flag: true,
+        supports_add_dir: true,
+        supports_search_flag: true,
+        supports_resume_subcommand: true,
+        supports_mcp_subcommand: true,
+    };
+
+    let diagnostics = build_codex_cli_diagnostics_response(
+        Some(std::path::Path::new("/opt/homebrew/bin/codex")),
+        Some(Ok(capabilities)),
+    );
+
+    assert!(diagnostics.binary_found);
+    assert!(diagnostics.probe_succeeded);
+    assert!(diagnostics.has_core_exec_support);
+    assert_eq!(diagnostics.version.as_deref(), Some("0.116.0"));
+    assert_eq!(
+        diagnostics.binary_path.as_deref(),
+        Some("/opt/homebrew/bin/codex")
+    );
+}
+
+#[test]
+fn build_codex_cli_diagnostics_response_handles_probe_errors() {
+    let diagnostics = build_codex_cli_diagnostics_response(
+        Some(std::path::Path::new("/opt/homebrew/bin/codex")),
+        Some(Err("help probe failed".to_string())),
+    );
+
+    assert!(diagnostics.binary_found);
+    assert!(!diagnostics.probe_succeeded);
+    assert_eq!(diagnostics.error.as_deref(), Some("help probe failed"));
 }

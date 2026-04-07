@@ -1,9 +1,11 @@
-// Diagnostic commands — agent health inspection for runtime observability
+// Diagnostic commands — agent health and harness availability inspection
 
 use serde::Serialize;
+use std::path::Path;
 use tauri::State;
 
 use crate::application::AppState;
+use crate::infrastructure::agents::{find_codex_cli, probe_codex_cli, CodexCliCapabilities};
 
 /// Serializable IPR entry for agent health report
 #[derive(Debug, Clone, Serialize)]
@@ -32,6 +34,22 @@ pub struct AgentHealthReport {
     pub ipr_entries: Vec<IprEntryResponse>,
     /// All agents currently tracked in the running agent registry
     pub running_agents: Vec<RunningAgentResponse>,
+}
+
+/// Codex CLI diagnostics for backend availability and feature support.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexCliDiagnosticsResponse {
+    pub binary_path: Option<String>,
+    pub binary_found: bool,
+    pub probe_succeeded: bool,
+    pub version: Option<String>,
+    pub has_core_exec_support: bool,
+    pub missing_core_exec_features: Vec<String>,
+    pub supports_search_flag: bool,
+    pub supports_resume_subcommand: bool,
+    pub supports_mcp_subcommand: bool,
+    pub error: Option<String>,
 }
 
 /// Get agent health — IPR entries + running agents for runtime inspection.
@@ -68,4 +86,65 @@ pub async fn get_agent_health(state: State<'_, AppState>) -> Result<AgentHealthR
         ipr_entries,
         running_agents,
     })
+}
+
+pub fn build_codex_cli_diagnostics_response(
+    cli_path: Option<&Path>,
+    probe_result: Option<Result<CodexCliCapabilities, String>>,
+) -> CodexCliDiagnosticsResponse {
+    let binary_path = cli_path.map(|path| path.to_string_lossy().into_owned());
+
+    match probe_result {
+        Some(Ok(capabilities)) => CodexCliDiagnosticsResponse {
+            binary_path,
+            binary_found: true,
+            probe_succeeded: true,
+            version: capabilities.version.clone(),
+            has_core_exec_support: capabilities.has_core_exec_support(),
+            missing_core_exec_features: capabilities
+                .missing_core_exec_features()
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            supports_search_flag: capabilities.supports_search_flag,
+            supports_resume_subcommand: capabilities.supports_resume_subcommand,
+            supports_mcp_subcommand: capabilities.supports_mcp_subcommand,
+            error: None,
+        },
+        Some(Err(error)) => CodexCliDiagnosticsResponse {
+            binary_path,
+            binary_found: true,
+            probe_succeeded: false,
+            version: None,
+            has_core_exec_support: false,
+            missing_core_exec_features: Vec::new(),
+            supports_search_flag: false,
+            supports_resume_subcommand: false,
+            supports_mcp_subcommand: false,
+            error: Some(error),
+        },
+        None => CodexCliDiagnosticsResponse {
+            binary_path: None,
+            binary_found: false,
+            probe_succeeded: false,
+            version: None,
+            has_core_exec_support: false,
+            missing_core_exec_features: Vec::new(),
+            supports_search_flag: false,
+            supports_resume_subcommand: false,
+            supports_mcp_subcommand: false,
+            error: Some("Codex CLI not found".to_string()),
+        },
+    }
+}
+
+/// Get Codex CLI diagnostics without requiring the frontend to shell out locally.
+#[tauri::command]
+pub fn get_codex_cli_diagnostics() -> Result<CodexCliDiagnosticsResponse, String> {
+    let cli_path = find_codex_cli();
+    let probe_result = cli_path.as_deref().map(probe_codex_cli);
+    Ok(build_codex_cli_diagnostics_response(
+        cli_path.as_deref(),
+        probe_result,
+    ))
 }

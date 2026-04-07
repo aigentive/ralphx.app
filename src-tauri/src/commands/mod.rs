@@ -65,7 +65,10 @@ pub use chat_attachment_commands::{
     UploadChatAttachmentInput,
 };
 pub use chat_responses::ChatMessageResponse;
-pub use diagnostic_commands::{get_agent_health, AgentHealthReport, IprEntryResponse, RunningAgentResponse};
+pub use diagnostic_commands::{
+    get_agent_health, get_codex_cli_diagnostics, AgentHealthReport,
+    CodexCliDiagnosticsResponse, IprEntryResponse, RunningAgentResponse,
+};
 pub use diff_commands::{
     detect_merge_conflicts, get_conflict_file_diff, get_file_diff, get_task_file_changes,
 };
