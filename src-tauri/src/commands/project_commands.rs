@@ -913,27 +913,9 @@ async fn handle_pr_mode_switch(
 fn build_mode_switch_transition_service(
     state: &AppState,
     execution_state: &Arc<ExecutionState>,
-    app_handle: tauri::AppHandle,
+    _app_handle: tauri::AppHandle,
 ) -> TaskTransitionService {
-    let mut svc = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(execution_state),
-        Some(app_handle),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let mut svc = state.build_transition_service_with_execution_state(Arc::clone(execution_state));
 
     if let Some(github_svc) = &state.github_service {
         svc = svc.with_github_service(Arc::clone(github_svc));

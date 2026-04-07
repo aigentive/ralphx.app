@@ -10,7 +10,9 @@ use tokio::sync::Mutex;
 use crate::application::PermissionState;
 use crate::application::QuestionState;
 use crate::application::ResumeValidator;
+use crate::application::TaskTransitionService;
 use crate::application::chat_service::ClaudeChatService;
+use crate::commands::ExecutionState;
 use crate::domain::agents::AgenticClient;
 use crate::domain::qa::QASettings;
 use crate::domain::repositories::{
@@ -251,10 +253,36 @@ impl AppState {
 
     pub fn build_chat_service_with_execution_state(
         &self,
-        execution_state: Arc<crate::commands::ExecutionState>,
+        execution_state: Arc<ExecutionState>,
     ) -> ClaudeChatService {
         self.build_chat_service()
             .with_execution_state(execution_state)
+    }
+
+    pub fn build_transition_service_with_execution_state(
+        &self,
+        execution_state: Arc<ExecutionState>,
+    ) -> TaskTransitionService {
+        TaskTransitionService::new(
+            Arc::clone(&self.task_repo),
+            Arc::clone(&self.task_dependency_repo),
+            Arc::clone(&self.project_repo),
+            Arc::clone(&self.chat_message_repo),
+            Arc::clone(&self.chat_attachment_repo),
+            Arc::clone(&self.chat_conversation_repo),
+            Arc::clone(&self.agent_run_repo),
+            Arc::clone(&self.ideation_session_repo),
+            Arc::clone(&self.activity_event_repo),
+            Arc::clone(&self.message_queue),
+            Arc::clone(&self.running_agent_registry),
+            execution_state,
+            self.app_handle.clone(),
+            Arc::clone(&self.memory_event_repo),
+        )
+        .with_agentic_client(Arc::clone(&self.agent_client))
+        .with_execution_settings_repo(Arc::clone(&self.execution_settings_repo))
+        .with_plan_branch_repo(Arc::clone(&self.plan_branch_repo))
+        .with_interactive_process_registry(Arc::clone(&self.interactive_process_registry))
     }
 
     /// Create AppState for production use with SQLite repositories.

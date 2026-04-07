@@ -57,29 +57,9 @@ pub async fn external_task_transition_http(
         }
     };
 
-    let mut transition_service_builder = crate::application::TaskTransitionService::new(
-        std::sync::Arc::clone(&state.app_state.task_repo),
-        std::sync::Arc::clone(&state.app_state.task_dependency_repo),
-        std::sync::Arc::clone(&state.app_state.project_repo),
-        std::sync::Arc::clone(&state.app_state.chat_message_repo),
-        std::sync::Arc::clone(&state.app_state.chat_attachment_repo),
-        std::sync::Arc::clone(&state.app_state.chat_conversation_repo),
-        std::sync::Arc::clone(&state.app_state.agent_run_repo),
-        std::sync::Arc::clone(&state.app_state.ideation_session_repo),
-        std::sync::Arc::clone(&state.app_state.activity_event_repo),
-        std::sync::Arc::clone(&state.app_state.message_queue),
-        std::sync::Arc::clone(&state.app_state.running_agent_registry),
-        std::sync::Arc::clone(&state.execution_state),
-        state.app_state.app_handle.clone(),
-        std::sync::Arc::clone(&state.app_state.memory_event_repo),
-    )
-    .with_execution_settings_repo(std::sync::Arc::clone(
-        &state.app_state.execution_settings_repo,
-    ))
-    .with_plan_branch_repo(std::sync::Arc::clone(&state.app_state.plan_branch_repo))
-    .with_interactive_process_registry(std::sync::Arc::clone(
-        &state.app_state.interactive_process_registry,
-    ));
+    let mut transition_service_builder = state
+        .app_state
+        .build_transition_service_with_execution_state(std::sync::Arc::clone(&state.execution_state));
 
     if let Some(ref pub_) = state.app_state.webhook_publisher {
         transition_service_builder = transition_service_builder
@@ -508,29 +488,9 @@ pub async fn review_action_http(
         }
     };
 
-    let mut transition_service_builder = crate::application::TaskTransitionService::new(
-        std::sync::Arc::clone(&state.app_state.task_repo),
-        std::sync::Arc::clone(&state.app_state.task_dependency_repo),
-        std::sync::Arc::clone(&state.app_state.project_repo),
-        std::sync::Arc::clone(&state.app_state.chat_message_repo),
-        std::sync::Arc::clone(&state.app_state.chat_attachment_repo),
-        std::sync::Arc::clone(&state.app_state.chat_conversation_repo),
-        std::sync::Arc::clone(&state.app_state.agent_run_repo),
-        std::sync::Arc::clone(&state.app_state.ideation_session_repo),
-        std::sync::Arc::clone(&state.app_state.activity_event_repo),
-        std::sync::Arc::clone(&state.app_state.message_queue),
-        std::sync::Arc::clone(&state.app_state.running_agent_registry),
-        std::sync::Arc::clone(&state.execution_state),
-        state.app_state.app_handle.clone(),
-        std::sync::Arc::clone(&state.app_state.memory_event_repo),
-    )
-    .with_execution_settings_repo(std::sync::Arc::clone(
-        &state.app_state.execution_settings_repo,
-    ))
-    .with_plan_branch_repo(std::sync::Arc::clone(&state.app_state.plan_branch_repo))
-    .with_interactive_process_registry(std::sync::Arc::clone(
-        &state.app_state.interactive_process_registry,
-    ));
+    let mut transition_service_builder = state
+        .app_state
+        .build_transition_service_with_execution_state(std::sync::Arc::clone(&state.execution_state));
 
     if let Some(ref pub_) = state.app_state.webhook_publisher {
         transition_service_builder = transition_service_builder.with_webhook_publisher_for_emitter(std::sync::Arc::clone(pub_));

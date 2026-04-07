@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::State;
+use tauri::{Manager, State};
 
 use crate::application::git_service::{CommitInfo, DiffStats, GitService};
 use crate::application::task_scheduler_service::TaskSchedulerService;
@@ -486,9 +486,18 @@ async fn execute_merge_retry_background(
         Arc::clone(&message_queue),
         Arc::clone(&running_agent_registry),
         Arc::clone(&execution_state),
-        app_handle_opt,
+        app_handle_opt.clone(),
         Arc::clone(&memory_event_repo),
-    )
+    );
+    let transition_service = if let Some(handle) = app_handle_opt.as_ref() {
+        if let Some(app_state) = handle.try_state::<AppState>() {
+            transition_service.with_agentic_client(Arc::clone(&app_state.agent_client))
+        } else {
+            transition_service
+        }
+    } else {
+        transition_service
+    }
     .with_execution_settings_repo(Arc::clone(&execution_settings_repo))
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&plan_branch_repo))
@@ -788,27 +797,10 @@ fn create_transition_service(
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
-    let mut svc = TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
-        Arc::clone(execution_state),
-        state.app_handle.clone(),
-        Arc::clone(&state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_task_scheduler(task_scheduler)
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_pr_poller_registry(Arc::clone(&state.pr_poller_registry))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let mut svc = state
+        .build_transition_service_with_execution_state(Arc::clone(execution_state))
+        .with_task_scheduler(task_scheduler)
+        .with_pr_poller_registry(Arc::clone(&state.pr_poller_registry));
     if let Some(ref github_svc) = state.github_service {
         svc = svc.with_github_service(Arc::clone(github_svc));
     }

@@ -48,25 +48,8 @@ pub async fn pause_execution(
     app_state.interactive_process_registry.clear().await;
 
     // Build transition service for proper state machine transitions
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&app_state.task_repo),
-        Arc::clone(&app_state.task_dependency_repo),
-        Arc::clone(&app_state.project_repo),
-        Arc::clone(&app_state.chat_message_repo),
-        Arc::clone(&app_state.chat_attachment_repo),
-        Arc::clone(&app_state.chat_conversation_repo),
-        Arc::clone(&app_state.agent_run_repo),
-        Arc::clone(&app_state.ideation_session_repo),
-        Arc::clone(&app_state.activity_event_repo),
-        Arc::clone(&app_state.message_queue),
-        Arc::clone(&app_state.running_agent_registry),
-        Arc::clone(&execution_state),
-        app_state.app_handle.clone(),
-        Arc::clone(&app_state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
+    let transition_service =
+        app_state.build_transition_service_with_execution_state(Arc::clone(&execution_state));
 
     // Find all tasks in agent-active states (scoped to project if specified)
     let projects_to_process = if let Some(ref pid) = effective_project_id {
@@ -195,25 +178,8 @@ pub async fn resume_execution(
     persist_execution_halt_mode(&app_state, ExecutionHaltMode::Running).await?;
 
     // Build transition service for proper state machine transitions
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&app_state.task_repo),
-        Arc::clone(&app_state.task_dependency_repo),
-        Arc::clone(&app_state.project_repo),
-        Arc::clone(&app_state.chat_message_repo),
-        Arc::clone(&app_state.chat_attachment_repo),
-        Arc::clone(&app_state.chat_conversation_repo),
-        Arc::clone(&app_state.agent_run_repo),
-        Arc::clone(&app_state.ideation_session_repo),
-        Arc::clone(&app_state.activity_event_repo),
-        Arc::clone(&app_state.message_queue),
-        Arc::clone(&app_state.running_agent_registry),
-        Arc::clone(&execution_state),
-        app_state.app_handle.clone(),
-        Arc::clone(&app_state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
+    let transition_service =
+        app_state.build_transition_service_with_execution_state(Arc::clone(&execution_state));
 
     // Find all Paused tasks (scoped to project if specified) and restore them
     // Note: Stopped tasks are NOT restored - they require manual restart
@@ -556,25 +522,8 @@ pub async fn stop_execution(
     }
 
     // Build transition service for proper state machine transitions
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&app_state.task_repo),
-        Arc::clone(&app_state.task_dependency_repo),
-        Arc::clone(&app_state.project_repo),
-        Arc::clone(&app_state.chat_message_repo),
-        Arc::clone(&app_state.chat_attachment_repo),
-        Arc::clone(&app_state.chat_conversation_repo),
-        Arc::clone(&app_state.agent_run_repo),
-        Arc::clone(&app_state.ideation_session_repo),
-        Arc::clone(&app_state.activity_event_repo),
-        Arc::clone(&app_state.message_queue),
-        Arc::clone(&app_state.running_agent_registry),
-        Arc::clone(&execution_state),
-        app_state.app_handle.clone(),
-        Arc::clone(&app_state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
+    let transition_service =
+        app_state.build_transition_service_with_execution_state(Arc::clone(&execution_state));
 
     // Find all tasks in agent-active states (scoped to project if specified)
     let projects_to_process = if let Some(ref pid) = effective_project_id {

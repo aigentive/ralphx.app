@@ -2794,20 +2794,40 @@ async fn test_running_count_decrements_for_all_agent_active_states() {
 
     // Create tasks in different agent-active states
     let test_cases = [
-        (InternalStatus::Executing, "Executing Task"),
-        (InternalStatus::QaRefining, "QaRefining Task"),
-        (InternalStatus::QaTesting, "QaTesting Task"),
-        (InternalStatus::Reviewing, "Reviewing Task"),
-        (InternalStatus::ReExecuting, "ReExecuting Task"),
+        (
+            InternalStatus::Executing,
+            InternalStatus::Failed,
+            "Executing Task",
+        ),
+        (
+            InternalStatus::QaRefining,
+            InternalStatus::Stopped,
+            "QaRefining Task",
+        ),
+        (
+            InternalStatus::QaTesting,
+            InternalStatus::Stopped,
+            "QaTesting Task",
+        ),
+        (
+            InternalStatus::Reviewing,
+            InternalStatus::Stopped,
+            "Reviewing Task",
+        ),
+        (
+            InternalStatus::ReExecuting,
+            InternalStatus::Failed,
+            "ReExecuting Task",
+        ),
     ];
 
     // Create all tasks and increment running count for each
-    let mut task_ids = Vec::new();
-    for (status, title) in &test_cases {
+    let mut transitions = Vec::new();
+    for (status, target_status, title) in &test_cases {
         let mut task = Task::new(project.id.clone(), title.to_string());
         task.internal_status = *status;
         app_state.task_repo.create(task.clone()).await.unwrap();
-        task_ids.push(task.id);
+        transitions.push((task.id, *target_status));
         execution_state.increment_running();
     }
 
@@ -2831,10 +2851,10 @@ async fn test_running_count_decrements_for_all_agent_active_states() {
         Arc::clone(&app_state.memory_event_repo),
     );
 
-    // Transition each task to Failed (all should decrement running count)
-    for task_id in &task_ids {
+    // Transition each task out of its agent-active state using a valid target.
+    for (task_id, target_status) in &transitions {
         let _ = transition_service
-            .transition_task(task_id, InternalStatus::Failed)
+            .transition_task(task_id, *target_status)
             .await;
     }
 

@@ -1539,6 +1539,87 @@ impl<R: Runtime> TaskTransitionService<R> {
         }
     }
 
+    /// Apply a corrective transition while still honoring exit actions and status-change emission.
+    ///
+    /// Use this for repair flows that must bypass the normal legality guard but still need
+    /// side effects tied to leaving the current state, such as decrementing `running_count`
+    /// when a task exits an agent-active state.
+    #[track_caller]
+    pub fn transition_task_corrective_with_exit<'a>(
+        &'a self,
+        task_id: &'a TaskId,
+        target_status: InternalStatus,
+        blocked_reason: Option<String>,
+        history_actor: &'a str,
+    ) -> impl Future<Output = AppResult<Task>> + 'a {
+        let caller = Location::caller();
+        async move {
+            let existing = self
+                .task_repo
+                .get_by_id(task_id)
+                .await?
+                .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
+
+            if existing.internal_status == target_status {
+                return Ok(existing);
+            }
+
+            self.execute_exit_actions(task_id, &existing, existing.internal_status, target_status)
+                .await;
+
+            match self
+                .apply_corrective_transition(task_id, target_status, blocked_reason, history_actor)
+                .await
+            {
+                Some(result) => {
+                    if let Some(ref handle) = self._app_handle {
+                        let _ = handle.emit(
+                            "task:event",
+                            serde_json::json!({
+                                "type": "status_changed",
+                                "taskId": task_id.as_str(),
+                                "from": result.from_status.as_str(),
+                                "to": target_status.as_str(),
+                                "changedBy": history_actor,
+                            }),
+                        );
+                    }
+                    self.event_emitter
+                        .emit_status_change(
+                            task_id.as_str(),
+                            result.from_status.as_str(),
+                            target_status.as_str(),
+                        )
+                        .await;
+                    Ok(result.task)
+                }
+                None => {
+                    let current = self
+                        .task_repo
+                        .get_by_id(task_id)
+                        .await?
+                        .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
+
+                    tracing::warn!(
+                        task_id = task_id.as_str(),
+                        target_status = target_status.as_str(),
+                        current_status = current.internal_status.as_str(),
+                        caller_file = caller.file(),
+                        caller_line = caller.line(),
+                        caller_column = caller.column(),
+                        "Corrective transition with exit actions did not persist"
+                    );
+
+                    Err(AppError::Conflict(format!(
+                        "Corrective transition to {} did not persist; current status is {}",
+                        target_status.as_str(),
+                        current.internal_status.as_str(),
+                    )))
+                }
+            }
+        }
+    }
+
     /// Execute entry actions for a given status, including auto-transitions.
     ///
     /// This method delegates to TransitionHandler::on_enter() to ensure we use

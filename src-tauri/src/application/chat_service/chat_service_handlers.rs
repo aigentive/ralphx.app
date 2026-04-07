@@ -135,6 +135,48 @@ fn execution_completion_action(
     }
 }
 
+fn build_transition_service<R: Runtime>(
+    app_handle: &Option<AppHandle<R>>,
+    task_repo: Arc<dyn TaskRepository>,
+    task_dependency_repo: Arc<dyn TaskDependencyRepository>,
+    project_repo: Arc<dyn ProjectRepository>,
+    chat_message_repo: Arc<dyn ChatMessageRepository>,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    conversation_repo: Arc<dyn ChatConversationRepository>,
+    agent_run_repo: Arc<dyn AgentRunRepository>,
+    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    activity_event_repo: Arc<dyn ActivityEventRepository>,
+    message_queue: Arc<MessageQueue>,
+    running_agent_registry: Arc<dyn RunningAgentRegistry>,
+    execution_state: Arc<ExecutionState>,
+    memory_event_repo: Arc<dyn MemoryEventRepository>,
+) -> TaskTransitionService<R> {
+    let transition_service = TaskTransitionService::new(
+        task_repo,
+        task_dependency_repo,
+        project_repo,
+        chat_message_repo,
+        chat_attachment_repo,
+        conversation_repo,
+        agent_run_repo,
+        ideation_session_repo,
+        activity_event_repo,
+        message_queue,
+        running_agent_registry,
+        execution_state,
+        app_handle.clone(),
+        memory_event_repo,
+    );
+
+    if let Some(handle) = app_handle {
+        if let Some(app_state) = handle.try_state::<AppState>() {
+            return transition_service.with_agentic_client(Arc::clone(&app_state.agent_client));
+        }
+    }
+
+    transition_service
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum IncompleteReviewAction {
     SkipDuringShutdown,
@@ -191,25 +233,8 @@ pub(super) async fn apply_system_wide_provider_pause<R: Runtime>(
     app_state.running_agent_registry.stop_all().await;
     app_state.interactive_process_registry.clear().await;
 
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(&app_state.task_repo),
-        Arc::clone(&app_state.task_dependency_repo),
-        Arc::clone(&app_state.project_repo),
-        Arc::clone(&app_state.chat_message_repo),
-        Arc::clone(&app_state.chat_attachment_repo),
-        Arc::clone(&app_state.chat_conversation_repo),
-        Arc::clone(&app_state.agent_run_repo),
-        Arc::clone(&app_state.ideation_session_repo),
-        Arc::clone(&app_state.activity_event_repo),
-        Arc::clone(&app_state.message_queue),
-        Arc::clone(&app_state.running_agent_registry),
-        Arc::clone(execution_state.inner()),
-        app_state.app_handle.clone(),
-        Arc::clone(&app_state.memory_event_repo),
-    )
-    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
+    let transition_service = app_state
+        .build_transition_service_with_execution_state(Arc::clone(execution_state.inner()));
 
     let paused_at = chrono::Utc::now().to_rfc3339();
     let projects = match app_state.project_repo.get_all().await {
@@ -405,7 +430,8 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         .set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
                     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
-                    let transition_service = TaskTransitionService::new(
+                    let transition_service = build_transition_service(
+                        app_handle,
                         Arc::clone(task_repo),
                         Arc::clone(task_dependency_repo),
                         Arc::clone(project_repo),
@@ -418,7 +444,6 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         Arc::clone(message_queue),
                         Arc::clone(running_agent_registry),
                         Arc::clone(exec_state),
-                        app_handle.clone(),
                         Arc::clone(memory_event_repo),
                     )
                     .with_task_scheduler(task_scheduler);
@@ -608,7 +633,8 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                     }
 
                     // Transition to Escalated (no scheduler needed)
-                    let transition_service = TaskTransitionService::new(
+                    let transition_service = build_transition_service(
+                        app_handle,
                         Arc::clone(task_repo),
                         Arc::clone(task_dependency_repo),
                         Arc::clone(project_repo),
@@ -621,7 +647,6 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         Arc::clone(message_queue),
                         Arc::clone(running_agent_registry),
                         Arc::clone(exec_state),
-                        app_handle.clone(),
                         Arc::clone(memory_event_repo),
                     );
                     let transition_service = if let Some(ref repo) = execution_settings_repo {
@@ -1762,7 +1787,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         target_status
                     };
 
-                    let transition_service = TaskTransitionService::new(
+                    let transition_service = build_transition_service(
+                        app_handle,
                         Arc::clone(task_repo),
                         Arc::clone(task_dependency_repo),
                         Arc::clone(project_repo),
@@ -1775,7 +1801,6 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         Arc::clone(message_queue),
                         Arc::clone(running_agent_registry),
                         Arc::clone(exec_state),
-                        app_handle.clone(),
                         Arc::clone(memory_event_repo),
                     );
                     let transition_service = if let Some(ref repo) = execution_settings_repo {
@@ -2126,7 +2151,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     }
 
                     // Transition to Escalated
-                    let transition_service = TaskTransitionService::new(
+                    let transition_service = build_transition_service(
+                        app_handle,
                         Arc::clone(task_repo),
                         Arc::clone(task_dependency_repo),
                         Arc::clone(project_repo),
@@ -2139,7 +2165,6 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         Arc::clone(message_queue),
                         Arc::clone(running_agent_registry),
                         Arc::clone(exec_state),
-                        app_handle.clone(),
                         Arc::clone(memory_event_repo),
                     );
                     let transition_service = if let Some(ref repo) = execution_settings_repo {
