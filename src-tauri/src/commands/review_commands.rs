@@ -202,14 +202,13 @@ use crate::domain::review::config::ReviewSettings;
 pub async fn approve_fix_task(
     input: ApproveFixTaskInput,
     state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    use crate::commands::emit_queue_changed;
-
     let fix_task_id = TaskId::from_string(input.fix_task_id);
 
     // Get the fix task
-    let mut fix_task = state
+    let fix_task = state
         .task_repo
         .get_by_id(&fix_task_id)
         .await
@@ -225,18 +224,55 @@ pub async fn approve_fix_task(
         ));
     }
 
-    let project_id = fix_task.project_id.clone();
+    let scheduler_concrete = Arc::new(
+        TaskSchedulerService::new(
+            Arc::clone(&execution_state),
+            Arc::clone(&state.project_repo),
+            Arc::clone(&state.task_repo),
+            Arc::clone(&state.task_dependency_repo),
+            Arc::clone(&state.chat_message_repo),
+            Arc::clone(&state.chat_attachment_repo),
+            Arc::clone(&state.chat_conversation_repo),
+            Arc::clone(&state.agent_run_repo),
+            Arc::clone(&state.ideation_session_repo),
+            Arc::clone(&state.activity_event_repo),
+            Arc::clone(&state.message_queue),
+            Arc::clone(&state.running_agent_registry),
+            Arc::clone(&state.memory_event_repo),
+            Some(app.clone()),
+        )
+        .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
+        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
+    );
+    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
+    let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
-    // Change to Ready status
-    fix_task.internal_status = InternalStatus::Ready;
-    state
-        .task_repo
-        .update(&fix_task)
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_attachment_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.activity_event_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Arc::clone(&execution_state),
+        Some(app),
+        Arc::clone(&state.memory_event_repo),
+    )
+    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
+    .with_task_scheduler(task_scheduler)
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+
+    transition_service
+        .transition_task(&fix_task_id, InternalStatus::Ready)
         .await
         .map_err(|e| e.to_string())?;
-
-    // Emit queue_changed since we're transitioning a task to Ready status
-    emit_queue_changed(&state, &project_id, &app).await;
 
     Ok(())
 }
