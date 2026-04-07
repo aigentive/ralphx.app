@@ -16,5 +16,10 @@ pub use codex::{
     build_spawnable_codex_resume_command, find_codex_cli, parse_codex_cli_capabilities,
     parse_codex_version, probe_codex_cli, CodexCliCapabilities, CodexExecCliConfig,
 };
+pub use codex::stream_processor::{
+    extract_codex_agent_message, extract_codex_command_execution, extract_codex_error_message,
+    extract_codex_tool_call, extract_codex_usage, parse_codex_event_line, CodexCommandExecution,
+    CodexItem, CodexItemError, CodexStreamEvent, CodexUsage,
+};
 pub use mock::{MockAgenticClient, MockCall, MockCallType};
 pub use spawner::AgenticClientSpawner;
