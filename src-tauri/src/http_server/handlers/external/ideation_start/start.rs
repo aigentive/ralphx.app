@@ -355,10 +355,12 @@ pub async fn start_ideation_http(
             Ok(_) => {
                 agent_spawned = true;
                 spawn_session_namer(
-                    Arc::clone(&state.app_state.agent_client),
+                    &state.app_state,
+                    project_id.as_str(),
                     session_id_str.clone(),
                     prompt_str.clone(),
-                );
+                )
+                .await;
             }
             Err(e) => {
                 error!(

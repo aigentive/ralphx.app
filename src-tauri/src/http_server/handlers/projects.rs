@@ -4,7 +4,6 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use tauri::Emitter;
 
 use super::*;
@@ -141,11 +140,12 @@ pub async fn get_project_analysis(
     // Check if analysis has been run — lazy spawn if not
     if project.analyzed_at.is_none() && project.custom_analysis.is_none() {
         crate::commands::project_commands::spawn_project_analyzer(
+            &state.app_state,
             project_id.as_str(),
             &project.working_directory,
-            std::sync::Arc::clone(&state.app_state.agent_client),
             state.app_state.app_handle.clone(),
-        );
+        )
+        .await;
         return Ok(Json(AnalysisResponse {
             status: "analyzing".to_string(),
             retry_after_secs: Some(30),
@@ -396,11 +396,12 @@ pub async fn register_project_external(
 
     // 10. Fire-and-forget: spawn project analyzer (non-blocking)
     crate::commands::project_commands::spawn_project_analyzer(
+        &state.app_state,
         &response_id,
         &canonical_str,
-        Arc::clone(&state.app_state.agent_client),
         state.app_state.app_handle.clone(),
-    );
+    )
+    .await;
 
     Ok(Json(RegisterProjectExternalResponse {
         id: response_id,

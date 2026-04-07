@@ -542,6 +542,7 @@ pub async fn spawn_session_namer(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     use crate::domain::agents::{AgentConfig, AgentRole};
+    use crate::domain::entities::IdeationSessionId;
     use crate::infrastructure::agents::claude::{agent_names, mcp_agent_type};
 
     // Build the prompt with session context (XML-delineated to prevent injection)
@@ -564,24 +565,34 @@ pub async fn spawn_session_namer(
         mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string(),
     );
 
+    let project_id = state
+        .ideation_session_repo
+        .get_by_id(&IdeationSessionId::from_string(session_id.clone()))
+        .await
+        .map_err(|e| e.to_string())?
+        .map(|session| session.project_id.as_str().to_string());
+    let runtime = state
+        .resolve_ideation_background_agent_runtime(project_id.as_deref())
+        .await;
+
     let config = AgentConfig {
         role: AgentRole::Custom(mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string()),
         prompt,
         working_directory,
         plugin_dir: Some(plugin_dir),
         agent: Some(agent_names::AGENT_SESSION_NAMER.to_string()),
-        model: None, // Agent file specifies haiku
-        harness: None,
-        logical_effort: None,
-        approval_policy: None,
-        sandbox_mode: None,
+        model: runtime.model,
+        harness: runtime.harness,
+        logical_effort: runtime.logical_effort,
+        approval_policy: runtime.approval_policy,
+        sandbox_mode: runtime.sandbox_mode,
         max_tokens: None,
         timeout_secs: Some(60), // 60 second timeout for title generation
         env,
     };
 
     // Clone the agent client for the background task
-    let agent_client = Arc::clone(&state.agent_client);
+    let agent_client = Arc::clone(&runtime.client);
 
     // Spawn in background (fire-and-forget)
     tokio::spawn(async move {

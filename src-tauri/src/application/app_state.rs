@@ -13,7 +13,8 @@ use crate::application::ResumeValidator;
 use crate::application::TaskTransitionService;
 use crate::application::chat_service::ClaudeChatService;
 use crate::commands::ExecutionState;
-use crate::domain::agents::AgenticClient;
+use crate::domain::agents::{AgentHarnessKind, AgenticClient, LogicalEffort};
+use crate::domain::entities::ChatContextType;
 use crate::domain::qa::QASettings;
 use crate::domain::repositories::{
     ActivePlanRepository, ActivityEventRepository, AgentLaneSettingsRepository,
@@ -80,6 +81,16 @@ use crate::infrastructure::sqlite::{
     SqliteWebhookRegistrationRepository, SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, GhCliGithubService, MockAgenticClient};
+use crate::infrastructure::agents::CodexCliClient;
+
+pub(crate) struct ResolvedBackgroundAgentRuntime {
+    pub client: Arc<dyn AgenticClient>,
+    pub harness: Option<AgentHarnessKind>,
+    pub model: Option<String>,
+    pub logical_effort: Option<LogicalEffort>,
+    pub approval_policy: Option<String>,
+    pub sandbox_mode: Option<String>,
+}
 
 /// Application state container for dependency injection
 /// Holds repository trait objects that can be swapped for testing vs production
@@ -283,6 +294,50 @@ impl AppState {
         .with_execution_settings_repo(Arc::clone(&self.execution_settings_repo))
         .with_plan_branch_repo(Arc::clone(&self.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&self.interactive_process_registry))
+    }
+
+    pub(crate) async fn resolve_ideation_background_agent_runtime(
+        &self,
+        project_id: Option<&str>,
+    ) -> ResolvedBackgroundAgentRuntime {
+        let resolved = crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
+            crate::infrastructure::agents::claude::agent_names::AGENT_ORCHESTRATOR_IDEATION,
+            project_id,
+            ChatContextType::Ideation,
+            None,
+            Some(&self.agent_lane_settings_repo),
+            Some(&self.ideation_model_settings_repo),
+            Some(&self.ideation_effort_settings_repo),
+        )
+        .await;
+
+        if resolved.effective_harness == AgentHarnessKind::Codex {
+            let codex_client: Arc<dyn AgenticClient> = Arc::new(CodexCliClient::new());
+            if codex_client.is_available().await.unwrap_or(false) {
+                return ResolvedBackgroundAgentRuntime {
+                    client: codex_client,
+                    harness: Some(AgentHarnessKind::Codex),
+                    model: Some(resolved.model),
+                    logical_effort: resolved.logical_effort,
+                    approval_policy: resolved.approval_policy,
+                    sandbox_mode: resolved.sandbox_mode,
+                };
+            }
+
+            tracing::warn!(
+                project_id = project_id.unwrap_or(""),
+                "Codex ideation sidecar unavailable; falling back to Claude client"
+            );
+        }
+
+        ResolvedBackgroundAgentRuntime {
+            client: Arc::clone(&self.agent_client),
+            harness: None,
+            model: None,
+            logical_effort: None,
+            approval_policy: None,
+            sandbox_mode: None,
+        }
     }
 
     /// Create AppState for production use with SQLite repositories.

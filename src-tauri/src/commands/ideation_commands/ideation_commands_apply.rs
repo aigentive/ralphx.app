@@ -957,8 +957,11 @@ pub async fn apply_proposals_to_kanban(
     if !result.is_user_title {
         let proposals_context = result.proposal_titles.join("; ");
         let session_id_str = result.session_id.clone();
+        let runtime = state
+            .resolve_ideation_background_agent_runtime(Some(result.project_id.as_str()))
+            .await;
 
-        let agent_client = Arc::clone(&state.agent_client);
+        let agent_client = Arc::clone(&runtime.client);
         let working_directory = std::env::current_dir()
             .map(|cwd| cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd))
             .unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -988,11 +991,11 @@ pub async fn apply_proposals_to_kanban(
                 working_directory,
                 plugin_dir: Some(plugin_dir),
                 agent: Some(agent_names::AGENT_SESSION_NAMER.to_string()),
-                model: None,
-                harness: None,
-                logical_effort: None,
-                approval_policy: None,
-                sandbox_mode: None,
+                model: runtime.model,
+                harness: runtime.harness,
+                logical_effort: runtime.logical_effort,
+                approval_policy: runtime.approval_policy,
+                sandbox_mode: runtime.sandbox_mode,
                 max_tokens: None,
                 timeout_secs: Some(60),
                 env,

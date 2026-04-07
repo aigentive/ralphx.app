@@ -252,12 +252,8 @@ pub async fn create_project(
         .map_err(|e| e.to_string())?;
 
     // Fire-and-forget: spawn project analyzer to detect build systems
-    spawn_project_analyzer(
-        created.id.as_str(),
-        &created.working_directory,
-        Arc::clone(&state.agent_client),
-        state.app_handle.clone(),
-    );
+    spawn_project_analyzer(&state, created.id.as_str(), &created.working_directory, state.app_handle.clone())
+        .await;
 
     Ok(ProjectResponse::from(created))
 }
@@ -518,10 +514,10 @@ pub async fn get_git_branches(working_directory: String) -> Result<Vec<String>, 
 /// and calls save_project_analysis with the detected entries.
 ///
 /// Used by: create_project (auto), get_project_analysis HTTP handler (lazy), reanalyze_project (manual).
-pub fn spawn_project_analyzer(
+pub async fn spawn_project_analyzer(
+    state: &AppState,
     project_id: &str,
     working_directory: &str,
-    agent_client: Arc<dyn crate::domain::agents::AgenticClient>,
     app_handle: Option<tauri::AppHandle>,
 ) {
     use crate::domain::agents::{AgentConfig, AgentRole};
@@ -551,17 +547,22 @@ pub fn spawn_project_analyzer(
     let pid = project_id.to_string();
     env.insert("RALPHX_PROJECT_ID".to_string(), pid.clone());
 
+    let runtime = state
+        .resolve_ideation_background_agent_runtime(Some(project_id))
+        .await;
+    let agent_client = Arc::clone(&runtime.client);
+
     let config = AgentConfig {
         role: AgentRole::Custom(mcp_agent_type(agent_names::AGENT_PROJECT_ANALYZER).to_string()),
         prompt,
         working_directory,
         plugin_dir: Some(plugin_dir),
         agent: Some(agent_names::AGENT_PROJECT_ANALYZER.to_string()),
-        model: None, // Agent file specifies haiku
-        harness: None,
-        logical_effort: None,
-        approval_policy: None,
-        sandbox_mode: None,
+        model: runtime.model,
+        harness: runtime.harness,
+        logical_effort: runtime.logical_effort,
+        approval_policy: runtime.approval_policy,
+        sandbox_mode: runtime.sandbox_mode,
         max_tokens: None,
         timeout_secs: Some(120),
         env,
@@ -618,12 +619,7 @@ pub async fn reanalyze_project(id: String, state: State<'_, AppState>) -> Result
         .await
         .map_err(|e| e.to_string())?;
 
-    spawn_project_analyzer(
-        &id,
-        &project.working_directory,
-        Arc::clone(&state.agent_client),
-        state.app_handle.clone(),
-    );
+    spawn_project_analyzer(&state, &id, &project.working_directory, state.app_handle.clone()).await;
 
     Ok(())
 }

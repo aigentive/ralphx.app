@@ -12,11 +12,16 @@ pub(crate) fn build_chat_service(
 }
 
 /// Fire-and-forget: spawn the session namer agent to auto-name the session.
-pub(super) fn spawn_session_namer(
-    agent_client: Arc<dyn crate::domain::agents::AgenticClient>,
+pub(super) async fn spawn_session_namer(
+    app: &crate::application::AppState,
+    project_id: &str,
     session_id: String,
     prompt: String,
 ) {
+    let runtime = app
+        .resolve_ideation_background_agent_runtime(Some(project_id))
+        .await;
+    let agent_client = Arc::clone(&runtime.client);
     tokio::spawn(async move {
         use crate::domain::agents::{AgentConfig, AgentRole};
         use crate::infrastructure::agents::claude::{agent_names, mcp_agent_type};
@@ -47,11 +52,11 @@ pub(super) fn spawn_session_namer(
             working_directory,
             plugin_dir: Some(plugin_dir),
             agent: Some(agent_names::AGENT_SESSION_NAMER.to_string()),
-            model: None,
-            harness: None,
-            logical_effort: None,
-            approval_policy: None,
-            sandbox_mode: None,
+            model: runtime.model,
+            harness: runtime.harness,
+            logical_effort: runtime.logical_effort,
+            approval_policy: runtime.approval_policy,
+            sandbox_mode: runtime.sandbox_mode,
             max_tokens: None,
             timeout_secs: Some(60),
             env,
