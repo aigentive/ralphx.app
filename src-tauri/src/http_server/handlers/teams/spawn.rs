@@ -42,6 +42,7 @@ pub async fn request_teammate_spawn(
         error!(error = %e, "No active team found for teammate spawn");
         (StatusCode::CONFLICT, e)
     })?;
+    ensure_team_mode_supported_for_context(&state, &context_type, &context_id).await?;
 
     // Resolve working directory (worktree-aware for task contexts)
     let working_dir = resolve_teammate_working_dir(&state, &context_type, &context_id).await;

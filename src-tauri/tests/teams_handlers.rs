@@ -1,13 +1,15 @@
 use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
 use axum::{extract::{Path, State}, Json};
+use ralphx_lib::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings};
 use ralphx_lib::domain::entities::{
     ideation::{IdeationSession, IdeationSessionStatus, SessionPurpose},
-    ArtifactType, IdeationSessionId, ProjectId,
+    ArtifactType, IdeationSessionId, Project, ProjectId,
 };
 use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::types::{
-    CreateTeamArtifactRequest, GetTeamArtifactsResponse, HttpServerState, TeamPlanTeammate,
+    CreateTeamArtifactRequest, GetTeamArtifactsResponse, HttpServerState,
+    RequestTeamPlanRequest, RequestTeammateSpawnRequest, TeamPlanTeammate,
 };
 use ralphx_lib::infrastructure::agents::claude::TeammateSpawnRequest;
 use std::sync::Arc;
@@ -186,6 +188,34 @@ fn test_state() -> HttpServerState {
     }
 }
 
+async fn seed_codex_ideation_context(state: &HttpServerState) -> IdeationSessionId {
+    let project = state
+        .app_state
+        .project_repo
+        .create(Project::new(
+            "Codex Team Project".to_string(),
+            "/tmp/codex-team-project".to_string(),
+        ))
+        .await
+        .unwrap();
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .create(IdeationSession::new(project.id.clone()))
+        .await
+        .unwrap();
+    state
+        .app_state
+        .agent_lane_settings_repo
+        .upsert_global(
+            AgentLane::IdeationPrimary,
+            &AgentLaneSettings::new(AgentHarnessKind::Codex),
+        )
+        .await
+        .unwrap();
+    session.id
+}
+
 #[tokio::test]
 async fn test_find_active_team_none_found() {
     let state = test_state();
@@ -240,6 +270,60 @@ async fn test_find_active_team_skips_disbanded() {
 
     let result = find_active_team(&state).await;
     assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_request_team_plan_register_rejects_codex_ideation_context() {
+    let state = test_state();
+    let session_id = seed_codex_ideation_context(&state).await;
+    let request = RequestTeamPlanRequest {
+        context_type: "ideation".to_string(),
+        context_id: session_id.to_string(),
+        process: "ideation-research".to_string(),
+        team_name: "codex-team".to_string(),
+        teammates: vec![TeamPlanTeammate {
+            role: "researcher".to_string(),
+            tools: vec!["Read".to_string()],
+            mcp_tools: vec![],
+            model: "sonnet".to_string(),
+            preset: None,
+            prompt_summary: "Research the implementation".to_string(),
+            prompt: Some("Research the implementation".to_string()),
+        }],
+        lead_session_id: None,
+    };
+
+    let result = request_team_plan_register(State(state), Json(request)).await;
+    let (status, message) = result.expect_err("Codex ideation should reject team plans");
+    assert_eq!(status, axum::http::StatusCode::CONFLICT);
+    assert!(message.contains("solo mode"));
+    assert!(message.contains("Codex"));
+}
+
+#[tokio::test]
+async fn test_request_teammate_spawn_rejects_codex_active_team_context() {
+    let state = test_state();
+    let session_id = seed_codex_ideation_context(&state).await;
+    state
+        .team_tracker
+        .create_team("codex-team", &session_id.to_string(), "ideation")
+        .await
+        .unwrap();
+
+    let request = RequestTeammateSpawnRequest {
+        role: "researcher".to_string(),
+        prompt: "Research the implementation".to_string(),
+        model: "sonnet".to_string(),
+        tools: vec!["Read".to_string()],
+        mcp_tools: vec![],
+        preset: None,
+    };
+
+    let result = request_teammate_spawn(State(state), Json(request)).await;
+    let (status, message) = result.expect_err("Codex ideation should reject teammate spawns");
+    assert_eq!(status, axum::http::StatusCode::CONFLICT);
+    assert!(message.contains("solo mode"));
+    assert!(message.contains("Codex"));
 }
 
 // ── generate_unique_teammate_name tests ──────────────────────────

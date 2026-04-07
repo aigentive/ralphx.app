@@ -28,6 +28,8 @@ pub(super) async fn execute_team_spawn(
     plan: PendingTeamPlan,
     plan_id: &str,
 ) -> Result<TeamSpawnResult, (StatusCode, String)> {
+    ensure_team_mode_supported_for_context(state, &plan.context_type, &plan.context_id).await?;
+
     // 1. Create team (or find existing) — via TeamService for DB persistence + events
     // team_name comes from the lead agent's TeamCreate call (required field).
     let team_name = plan.team_name.clone();

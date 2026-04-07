@@ -4,6 +4,35 @@ use super::*;
 /// Context types where context_id is a task ID (worktree resolution applies).
 const TASK_CONTEXT_TYPES: &[&str] = &["task_execution", "task", "review", "merge"];
 
+pub(super) async fn ensure_team_mode_supported_for_context(
+    state: &HttpServerState,
+    context_type: &str,
+    context_id: &str,
+) -> Result<(), (StatusCode, String)> {
+    use crate::domain::entities::chat_conversation::ChatContextType;
+
+    let Ok(context_type_enum) = context_type.parse::<ChatContextType>() else {
+        return Ok(());
+    };
+
+    if crate::application::team_mode_supported_for_context(
+        &state.app_state,
+        context_type_enum,
+        context_id,
+    )
+    .await
+    {
+        return Ok(());
+    }
+
+    Err((
+        StatusCode::CONFLICT,
+        format!(
+            "Team mode is not supported when the effective harness for {context_type} resolves to Codex. Codex currently operates in solo mode for this context."
+        ),
+    ))
+}
+
 pub(super) async fn resolve_teammate_working_dir(
     state: &HttpServerState,
     context_type: &str,

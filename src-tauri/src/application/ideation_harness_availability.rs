@@ -138,6 +138,25 @@ pub(crate) async fn validate_chat_runtime_for_context(
     }
 }
 
+pub(crate) async fn team_mode_supported_for_context(
+    state: &AppState,
+    context_type: ChatContextType,
+    context_id: &str,
+) -> bool {
+    let Some(lane) = runtime_lane_for_context(context_type) else {
+        return true;
+    };
+
+    let project_id = project_id_for_context(state, context_type, context_id).await;
+    let config =
+        resolve_lane_harness_config(&state.agent_lane_settings_repo, project_id.as_deref(), lane)
+            .await;
+    let availability =
+        build_ideation_lane_harness_availability(config, &probe_claude_harness(), &probe_codex_harness());
+
+    availability.effective_harness == AgentHarnessKind::Claude
+}
+
 fn runtime_lane_for_context(context_type: ChatContextType) -> Option<AgentLane> {
     match context_type {
         ChatContextType::Ideation => Some(AgentLane::IdeationPrimary),

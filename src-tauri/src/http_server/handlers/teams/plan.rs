@@ -16,6 +16,8 @@ pub async fn request_team_plan_register(
     State(state): State<HttpServerState>,
     Json(req): Json<RequestTeamPlanRequest>,
 ) -> Result<Json<TeamPlanRegisterResponse>, (StatusCode, String)> {
+    ensure_team_mode_supported_for_context(&state, &req.context_type, &req.context_id).await?;
+
     info!(
         process = %req.process,
         teammate_count = req.teammates.len(),
