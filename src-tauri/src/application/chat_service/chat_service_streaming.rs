@@ -1138,7 +1138,7 @@ pub async fn process_stream_background<R: Runtime>(
                                 (&session_id, &conversation_repo)
                             {
                                 let session_ref = ProviderSessionRef {
-                                    harness: AgentHarnessKind::Claude,
+                                    harness,
                                     provider_session_id: sess_id.clone(),
                                 };
                                 if let Err(e) = repo
@@ -1186,7 +1186,7 @@ pub async fn process_stream_background<R: Runtime>(
                                     conversation_id: conversation_id_str.clone(),
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
-                                    provider_harness: Some(AgentHarnessKind::Claude.to_string()),
+                                    provider_harness: Some(harness.to_string()),
                                     provider_session_id: provider_session_id.clone(),
                                     claude_session_id: provider_session_id,
                                     run_chain_id: None,

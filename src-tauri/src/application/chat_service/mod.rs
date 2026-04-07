@@ -1103,9 +1103,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 
                     // Emit run_started so frontend shows activity spinner
                     let interactive_run_id = uuid::Uuid::new_v4().to_string();
-                    let existing_provider_session_id = conversation
-                        .provider_session_ref()
-                        .map(|session_ref| session_ref.provider_session_id);
+                    let existing_provider_session_ref = conversation.provider_session_ref();
                     self.emit_event(
                         "agent:run_started",
                         AgentRunStartedPayload {
@@ -1117,8 +1115,15 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                             parent_run_id: None,
                             effective_model_id: None,
                             effective_model_label: None,
-                            provider_harness: Some(AgentHarnessKind::Claude.to_string()),
-                            provider_session_id: existing_provider_session_id,
+                            provider_harness: Some(
+                                existing_provider_session_ref
+                                    .as_ref()
+                                    .map(|session_ref| session_ref.harness)
+                                    .unwrap_or(AgentHarnessKind::Claude)
+                                    .to_string(),
+                            ),
+                            provider_session_id: existing_provider_session_ref
+                                .map(|session_ref| session_ref.provider_session_id),
                         },
                     );
 
