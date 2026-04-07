@@ -4,6 +4,8 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use super::harness::{AgentHarnessKind, LogicalEffort};
+
 /// Role of an agent in the RalphX system
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AgentRole {
@@ -79,6 +81,14 @@ pub struct AgentConfig {
     pub agent: Option<String>,
     /// Optional model override (e.g., "claude-sonnet-4-5-20250929")
     pub model: Option<String>,
+    /// Optional provider harness override for the spawn.
+    pub harness: Option<AgentHarnessKind>,
+    /// Optional provider-neutral reasoning effort.
+    pub logical_effort: Option<LogicalEffort>,
+    /// Optional provider approval policy.
+    pub approval_policy: Option<String>,
+    /// Optional provider sandbox mode.
+    pub sandbox_mode: Option<String>,
     /// Optional max tokens for response
     pub max_tokens: Option<u32>,
     /// Optional timeout in seconds
@@ -96,6 +106,10 @@ impl Default for AgentConfig {
             plugin_dir: Some(PathBuf::from("./plugins/app")),
             agent: None,
             model: None,
+            harness: None,
+            logical_effort: None,
+            approval_policy: None,
+            sandbox_mode: None,
             max_tokens: None,
             timeout_secs: None,
             env: HashMap::new(),
@@ -140,6 +154,30 @@ impl AgentConfig {
     /// Set the model
     pub fn with_model(mut self, model: impl Into<String>) -> Self {
         self.model = Some(model.into());
+        self
+    }
+
+    /// Set the provider harness.
+    pub fn with_harness(mut self, harness: AgentHarnessKind) -> Self {
+        self.harness = Some(harness);
+        self
+    }
+
+    /// Set the provider-neutral reasoning effort.
+    pub fn with_logical_effort(mut self, effort: LogicalEffort) -> Self {
+        self.logical_effort = Some(effort);
+        self
+    }
+
+    /// Set the provider approval policy.
+    pub fn with_approval_policy(mut self, approval_policy: impl Into<String>) -> Self {
+        self.approval_policy = Some(approval_policy.into());
+        self
+    }
+
+    /// Set the provider sandbox mode.
+    pub fn with_sandbox_mode(mut self, sandbox_mode: impl Into<String>) -> Self {
+        self.sandbox_mode = Some(sandbox_mode.into());
         self
     }
 

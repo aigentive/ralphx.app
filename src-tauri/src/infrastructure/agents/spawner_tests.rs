@@ -1,5 +1,9 @@
 use super::*;
 use crate::commands::ExecutionState;
+use crate::domain::agents::{
+    AgentConfig, AgentHandle, AgentHarnessKind, AgentLane, AgentLaneSettings, AgentOutput,
+    AgentResponse, AgentResult, AgenticClient, ClientCapabilities, ClientType, ResponseChunk,
+};
 use crate::domain::execution::ExecutionSettings;
 use crate::domain::entities::{GitMode, Project, ProjectId, Task, TaskId};
 use crate::domain::repositories::{
@@ -8,10 +12,14 @@ use crate::domain::repositories::{
 use crate::domain::services::{MemoryRunningAgentRegistry, RunningAgentRegistry, RunningAgentKey};
 use crate::error::AppResult;
 use crate::infrastructure::memory::{
-    MemoryExecutionSettingsRepository, MemoryIdeationSessionRepository, MemoryProjectRepository,
-    MemoryTaskRepository,
+    MemoryAgentLaneSettingsRepository, MemoryExecutionSettingsRepository,
+    MemoryIdeationSessionRepository, MemoryProjectRepository, MemoryTaskRepository,
 };
 use crate::infrastructure::MockAgenticClient;
+use async_trait::async_trait;
+use futures::Stream;
+use std::pin::Pin;
+use tokio::sync::RwLock;
 
 // ==================== Mock Repos for CWD Tests ====================
 
@@ -174,6 +182,74 @@ impl ProjectRepository for MockProjectRepoForSpawner {
 
     async fn archive(&self, _id: &ProjectId) -> AppResult<Project> {
         unimplemented!()
+    }
+}
+
+struct TestAgentClient {
+    client_type: ClientType,
+    available: bool,
+    spawns: Arc<RwLock<Vec<AgentConfig>>>,
+    capabilities: ClientCapabilities,
+}
+
+impl TestAgentClient {
+    fn new(client_type: ClientType, available: bool) -> Self {
+        let capabilities = match client_type {
+            ClientType::Codex => ClientCapabilities::codex(),
+            ClientType::ClaudeCode => ClientCapabilities::claude_code(),
+            ClientType::Mock => ClientCapabilities::mock(),
+            _ => ClientCapabilities::mock(),
+        };
+        Self {
+            client_type,
+            available,
+            spawns: Arc::new(RwLock::new(Vec::new())),
+            capabilities,
+        }
+    }
+
+    async fn spawn_count(&self) -> usize {
+        self.spawns.read().await.len()
+    }
+
+    async fn last_spawn(&self) -> Option<AgentConfig> {
+        self.spawns.read().await.last().cloned()
+    }
+}
+
+#[async_trait]
+impl AgenticClient for TestAgentClient {
+    async fn spawn_agent(&self, config: AgentConfig) -> AgentResult<AgentHandle> {
+        self.spawns.write().await.push(config.clone());
+        Ok(AgentHandle::new(self.client_type.clone(), config.role))
+    }
+
+    async fn stop_agent(&self, _handle: &AgentHandle) -> AgentResult<()> {
+        Ok(())
+    }
+
+    async fn wait_for_completion(&self, _handle: &AgentHandle) -> AgentResult<AgentOutput> {
+        Ok(AgentOutput::success("ok"))
+    }
+
+    async fn send_prompt(&self, _handle: &AgentHandle, prompt: &str) -> AgentResult<AgentResponse> {
+        Ok(AgentResponse::new(prompt))
+    }
+
+    fn stream_response(
+        &self,
+        _handle: &AgentHandle,
+        _prompt: &str,
+    ) -> Pin<Box<dyn Stream<Item = AgentResult<ResponseChunk>> + Send>> {
+        Box::pin(futures::stream::empty())
+    }
+
+    fn capabilities(&self) -> &ClientCapabilities {
+        &self.capabilities
+    }
+
+    async fn is_available(&self) -> AgentResult<bool> {
+        Ok(self.available)
     }
 }
 
@@ -454,6 +530,7 @@ async fn test_spawn_blocked_when_same_project_capacity_reached() {
     let project_repo = Arc::new(MemoryProjectRepository::new());
     let settings_repo = Arc::new(MemoryExecutionSettingsRepository::new());
     let ideation_session_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let agent_lane_settings_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
     let running_agent_registry = Arc::new(MemoryRunningAgentRegistry::new());
 
     let project_id = ProjectId::from_string("project-a".to_string());
@@ -499,6 +576,7 @@ async fn test_spawn_blocked_when_same_project_capacity_reached() {
         .with_execution_state(exec_state)
         .with_runtime_admission_context(
             settings_repo,
+            agent_lane_settings_repo,
             ideation_session_repo,
             running_agent_registry,
         )
@@ -518,6 +596,7 @@ async fn test_spawn_ignores_other_project_capacity_usage() {
     let project_repo = Arc::new(MemoryProjectRepository::new());
     let settings_repo = Arc::new(MemoryExecutionSettingsRepository::new());
     let ideation_session_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let agent_lane_settings_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
     let running_agent_registry = Arc::new(MemoryRunningAgentRegistry::new());
 
     let project_a_id = ProjectId::from_string("project-a".to_string());
@@ -578,6 +657,7 @@ async fn test_spawn_ignores_other_project_capacity_usage() {
         .with_execution_state(exec_state)
         .with_runtime_admission_context(
             settings_repo,
+            agent_lane_settings_repo,
             ideation_session_repo,
             running_agent_registry,
         )
@@ -762,11 +842,16 @@ fn test_build_agent_config_for_mock_client_omits_claude_plugin_wiring() {
     let spawner = AgenticClientSpawner::new(mock);
 
     let config = spawner.build_agent_config(
+        ClientType::Mock,
         AgentRole::Worker,
         "worker",
         "task-123",
         PathBuf::from("/tmp/task-123"),
         Some("project-123".to_string()),
+        None,
+        None,
+        None,
+        None,
     );
 
     assert_eq!(config.role, AgentRole::Worker);
@@ -786,10 +871,15 @@ fn test_build_agent_config_for_claude_client_sets_plugin_and_agent() {
     let spawner = AgenticClientSpawner::new(client);
 
     let config = spawner.build_agent_config(
+        ClientType::ClaudeCode,
         AgentRole::QaRefiner,
         "qa-refiner",
         "task-456",
         PathBuf::from("/tmp/task-456"),
+        None,
+        None,
+        None,
+        None,
         None,
     );
 
@@ -797,7 +887,89 @@ fn test_build_agent_config_for_claude_client_sets_plugin_and_agent() {
     assert_eq!(config.prompt, "Execute task task-456");
     assert_eq!(
         config.agent.as_deref(),
-        Some(crate::infrastructure::agents::claude::agent_names::AGENT_QA_REFINER)
+        Some("ralphx:ralphx-qa-executor")
     );
     assert!(config.plugin_dir.is_some());
+}
+
+#[test]
+fn test_build_agent_config_for_codex_client_uses_process_mapping() {
+    let default_client = Arc::new(MockAgenticClient::new());
+    let spawner = AgenticClientSpawner::new(default_client);
+
+    let config = spawner.build_agent_config(
+        ClientType::Codex,
+        AgentRole::QaRefiner,
+        "qa-refiner",
+        "task-789",
+        PathBuf::from("/tmp/task-789"),
+        None,
+        Some("gpt-5.4".to_string()),
+        Some(crate::domain::agents::LogicalEffort::XHigh),
+        Some("on-request".to_string()),
+        Some("workspace-write".to_string()),
+    );
+
+    assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-qa-executor"));
+    assert_eq!(config.model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(
+        config.logical_effort,
+        Some(crate::domain::agents::LogicalEffort::XHigh)
+    );
+}
+
+#[tokio::test]
+async fn test_spawn_uses_codex_client_when_execution_lane_resolves_to_codex() {
+    let default_client = Arc::new(TestAgentClient::new(ClientType::ClaudeCode, true));
+    let codex_client = Arc::new(TestAgentClient::new(ClientType::Codex, true));
+    let exec_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let settings_repo = Arc::new(MemoryExecutionSettingsRepository::new());
+    let ideation_session_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let agent_lane_settings_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
+    let running_agent_registry = Arc::new(MemoryRunningAgentRegistry::new());
+
+    let project_id = ProjectId::from_string("project-codex".to_string());
+    let mut project = Project::new("Project Codex".to_string(), "/tmp/project-codex".to_string());
+    project.id = project_id.clone();
+    project_repo.create(project).await.unwrap();
+
+    let mut task = Task::new(project_id.clone(), "Codex lane task".to_string());
+    task.id = TaskId::from_string("task-codex".to_string());
+    task.worktree_path = Some("/tmp/task-codex".to_string());
+    task_repo.create(task).await.unwrap();
+
+    let mut lane_settings = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    lane_settings.model = Some("gpt-5.4".to_string());
+    lane_settings.effort = Some(crate::domain::agents::LogicalEffort::XHigh);
+    lane_settings.approval_policy = Some("on-request".to_string());
+    lane_settings.sandbox_mode = Some("workspace-write".to_string());
+    lane_settings.fallback_harness = Some(AgentHarnessKind::Claude);
+    agent_lane_settings_repo
+        .upsert_for_project(project_id.as_str(), AgentLane::ExecutionWorker, &lane_settings)
+        .await
+        .unwrap();
+
+    let spawner = AgenticClientSpawner::new(default_client.clone())
+        .with_codex_client(codex_client.clone())
+        .with_repos(task_repo, project_repo)
+        .with_execution_state(exec_state)
+        .with_runtime_admission_context(
+            settings_repo,
+            agent_lane_settings_repo,
+            ideation_session_repo,
+            running_agent_registry,
+        )
+        .with_working_dir("/tmp");
+
+    spawner.spawn("worker", "task-codex").await;
+
+    assert_eq!(default_client.spawn_count().await, 0);
+    assert_eq!(codex_client.spawn_count().await, 1);
+    let config = codex_client.last_spawn().await.expect("codex spawn config");
+    assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-worker"));
+    assert_eq!(config.model.as_deref(), Some("gpt-5.4"));
 }

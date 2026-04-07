@@ -571,6 +571,10 @@ pub async fn spawn_session_namer(
         plugin_dir: Some(plugin_dir),
         agent: Some(agent_names::AGENT_SESSION_NAMER.to_string()),
         model: None, // Agent file specifies haiku
+        harness: None,
+        logical_effort: None,
+        approval_policy: None,
+        sandbox_mode: None,
         max_tokens: None,
         timeout_secs: Some(60), // 60 second timeout for title generation
         env,

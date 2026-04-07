@@ -558,6 +558,10 @@ pub fn spawn_project_analyzer(
         plugin_dir: Some(plugin_dir),
         agent: Some(agent_names::AGENT_PROJECT_ANALYZER.to_string()),
         model: None, // Agent file specifies haiku
+        harness: None,
+        logical_effort: None,
+        approval_policy: None,
+        sandbox_mode: None,
         max_tokens: None,
         timeout_secs: Some(120),
         env,

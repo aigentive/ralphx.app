@@ -15,6 +15,7 @@ pub use agent_config::team_config::{
     env_variant_override, get_team_constraints, validate_child_team_config, validate_team_plan,
     ApprovedTeamPlan, ApprovedTeammate, ProcessMapping, ProcessSlot, TeamConstraintError,
     TeamConstraints, TeamConstraintsConfig, TeamMode, TeammateSpawnRequest,
+    resolve_process_agent,
 };
 pub use agent_config::{
     agent_configs, agent_harness_defaults_config, claude_runtime_config, config_path, defer_merge_enabled,
@@ -296,7 +297,10 @@ pub fn build_base_cli_command(
     Ok(cmd)
 }
 
-fn resolve_agent_system_prompt_path(plugin_dir: &Path, agent_name: &str) -> Option<PathBuf> {
+pub(crate) fn resolve_agent_system_prompt_path(
+    plugin_dir: &Path,
+    agent_name: &str,
+) -> Option<PathBuf> {
     let short = mcp_agent_type(agent_name);
     let project_root = plugin_repo_root(plugin_dir);
     let agents_dir = plugin_dir.join("agents");
@@ -320,7 +324,7 @@ fn resolve_agent_system_prompt_path(plugin_dir: &Path, agent_name: &str) -> Opti
         .or_else(|| fallback.filter(|p| p.exists()))
 }
 
-fn load_agent_system_prompt(plugin_dir: &Path, agent_name: &str) -> Option<String> {
+pub(crate) fn load_agent_system_prompt(plugin_dir: &Path, agent_name: &str) -> Option<String> {
     let path = resolve_agent_system_prompt_path(plugin_dir, agent_name)?;
     let raw = std::fs::read_to_string(path).ok()?;
     if let Some(after_first) = raw.strip_prefix("---") {

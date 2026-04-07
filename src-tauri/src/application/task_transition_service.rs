@@ -27,7 +27,8 @@ use crate::domain::entities::{
 };
 use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
+    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository,
+    ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, ExternalEventsRepository,
     ExecutionSettingsRepository, IdeationSessionRepository, MemoryEventRepository,
     PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
@@ -672,6 +673,7 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     /// Passed to TaskServices so TransitionHandler can build descriptive plan merge commit messages.
     ideation_session_repo: Option<Arc<dyn IdeationSessionRepository>>,
     execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+    agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
 
     /// Activity event repository for emitting merge pipeline audit events.
     /// Cloned before being passed to ClaudeChatService so the transition handler also has access.
@@ -751,6 +753,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         project_repo: Arc<dyn ProjectRepository>,
         execution_state: Arc<ExecutionState>,
         execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+        agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
         ideation_session_repo: Arc<dyn IdeationSessionRepository>,
         running_agent_registry: Arc<dyn RunningAgentRegistry>,
     ) -> Arc<dyn AgentSpawner> {
@@ -758,8 +761,15 @@ impl<R: Runtime> TaskTransitionService<R> {
         let spawner = AgenticClientSpawner::new(agent_client)
             .with_repos(Arc::clone(&task_repo), Arc::clone(&project_repo))
             .with_execution_state(Arc::clone(&execution_state));
-        let spawner = if let Some(repo) = execution_settings_repo {
-            spawner.with_runtime_admission_context(repo, ideation_session_repo, running_agent_registry)
+        let spawner = if let (Some(execution_repo), Some(agent_lane_repo)) =
+            (execution_settings_repo, agent_lane_settings_repo)
+        {
+            spawner.with_runtime_admission_context(
+                execution_repo,
+                agent_lane_repo,
+                ideation_session_repo,
+                running_agent_registry,
+            )
         } else {
             spawner
         };
@@ -816,6 +826,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             Arc::clone(&task_repo),
             Arc::clone(&project_repo),
             Arc::clone(&execution_state),
+            None,
             None,
             Arc::clone(&ideation_session_repo),
             Arc::clone(&running_agent_registry),
@@ -884,6 +895,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             step_repo: None,
             ideation_session_repo: Some(ideation_session_repo),
             execution_settings_repo: None,
+            agent_lane_settings_repo: None,
             activity_event_repo: activity_event_repo_for_services,
             team_mode: None,
             interactive_process_registry: None,
@@ -942,6 +954,15 @@ impl<R: Runtime> TaskTransitionService<R> {
         mut self,
         repo: Arc<dyn ExecutionSettingsRepository>,
     ) -> Self {
+        let app_agent_lane_settings_repo = self
+            ._app_handle
+            .as_ref()
+            .and_then(|handle| handle.try_state::<AppState>())
+            .map(|app_state| Arc::clone(&app_state.agent_lane_settings_repo));
+        if let Some(agent_lane_settings_repo) = app_agent_lane_settings_repo.as_ref() {
+            self.agent_lane_settings_repo = Some(Arc::clone(agent_lane_settings_repo));
+        }
+
         if let Some(handle) = self._app_handle.as_ref() {
             if let Some(app_state) = handle.try_state::<AppState>() {
                 self.chat_service = Arc::new(
@@ -977,6 +998,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             Arc::clone(&self.project_repo),
             Arc::clone(&self.execution_state),
             Some(Arc::clone(&repo)),
+            self.agent_lane_settings_repo.as_ref().map(Arc::clone),
             Arc::clone(
                 self.ideation_session_repo
                     .as_ref()
@@ -1003,6 +1025,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             Arc::clone(&self.project_repo),
             Arc::clone(&self.execution_state),
             self.execution_settings_repo.as_ref().map(Arc::clone),
+            self.agent_lane_settings_repo.as_ref().map(Arc::clone),
             Arc::clone(
                 self.ideation_session_repo
                     .as_ref()
