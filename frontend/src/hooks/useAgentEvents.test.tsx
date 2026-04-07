@@ -18,6 +18,7 @@ import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useUiStore } from "@/stores/uiStore";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
+import type { ChatConversation } from "@/types/chat-conversation";
 
 // ============================================================================
 // Mock EventBus
@@ -84,6 +85,23 @@ function createWrapperWithClient() {
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
   return { queryClient, wrapper };
+}
+
+function makeConversation(overrides: Partial<ChatConversation> = {}): ChatConversation {
+  return {
+    id: "conv-1",
+    contextType: "task_execution",
+    contextId: "task-123",
+    claudeSessionId: null,
+    providerSessionId: null,
+    providerHarness: null,
+    title: "Execution",
+    messageCount: 0,
+    lastMessageAt: null,
+    createdAt: "2026-04-07T10:00:00.000Z",
+    updatedAt: "2026-04-07T10:00:00.000Z",
+    ...overrides,
+  };
 }
 
 describe("useAgentEvents", () => {
@@ -192,6 +210,49 @@ describe("useAgentEvents", () => {
 
       const state = useChatStore.getState();
       expect(state.agentStatus["session:session-789"]).toBe("generating");
+    });
+
+    it("merges provider metadata into cached conversation state", () => {
+      const { queryClient, wrapper } = createWrapperWithClient();
+      const conversation = makeConversation();
+      queryClient.setQueryData(
+        ["chat", "conversation", "conv-1"],
+        { conversation, messages: [] }
+      );
+      queryClient.setQueryData(
+        ["chat", "conversations", "task_execution", "task-123"],
+        [conversation]
+      );
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_started", {
+          run_id: "run-1",
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          providerHarness: "codex",
+          providerSessionId: "thread-7",
+        });
+      });
+
+      const conversationQuery = queryClient.getQueryData<{
+        conversation: ChatConversation;
+        messages: unknown[];
+      }>(["chat", "conversation", "conv-1"]);
+      const listQuery = queryClient.getQueryData<ChatConversation[]>([
+        "chat",
+        "conversations",
+        "task_execution",
+        "task-123",
+      ]);
+
+      expect(conversationQuery?.conversation.providerHarness).toBe("codex");
+      expect(conversationQuery?.conversation.providerSessionId).toBe("thread-7");
+      expect(conversationQuery?.conversation.claudeSessionId).toBeNull();
+      expect(listQuery?.[0]?.providerHarness).toBe("codex");
+      expect(listQuery?.[0]?.providerSessionId).toBe("thread-7");
     });
   });
 
@@ -736,6 +797,51 @@ describe("useAgentEvents", () => {
 
       // No queries invalidated — teammate event was skipped
       expect(invalidateSpy).not.toHaveBeenCalled();
+    });
+
+    it("merges Claude provider metadata into cached conversation state", () => {
+      const { queryClient, wrapper } = createWrapperWithClient();
+      const conversation = makeConversation();
+      queryClient.setQueryData(
+        ["chat", "conversation", "conv-1"],
+        { conversation, messages: [] }
+      );
+      queryClient.setQueryData(
+        ["chat", "conversations", "task_execution", "task-123"],
+        [conversation]
+      );
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:turn_completed", {
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          status: "turn_complete",
+          provider_harness: "claude",
+          provider_session_id: "session-42",
+          claude_session_id: "session-42",
+        });
+      });
+
+      const conversationQuery = queryClient.getQueryData<{
+        conversation: ChatConversation;
+        messages: unknown[];
+      }>(["chat", "conversation", "conv-1"]);
+      const listQuery = queryClient.getQueryData<ChatConversation[]>([
+        "chat",
+        "conversations",
+        "task_execution",
+        "task-123",
+      ]);
+
+      expect(conversationQuery?.conversation.providerHarness).toBe("claude");
+      expect(conversationQuery?.conversation.providerSessionId).toBe("session-42");
+      expect(conversationQuery?.conversation.claudeSessionId).toBe("session-42");
+      expect(listQuery?.[0]?.providerHarness).toBe("claude");
+      expect(listQuery?.[0]?.providerSessionId).toBe("session-42");
+      expect(listQuery?.[0]?.claudeSessionId).toBe("session-42");
     });
   });
 
