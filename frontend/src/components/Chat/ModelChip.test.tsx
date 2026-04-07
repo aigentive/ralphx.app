@@ -10,6 +10,11 @@ function renderWithProvider(ui: React.ReactElement) {
 }
 
 describe("ModelChip", () => {
+  it("renders without requiring an external TooltipProvider", () => {
+    render(<ModelChip model={{ id: "claude-sonnet-4-6", label: "Sonnet 4.6" }} />);
+    expect(screen.getByText("Sonnet 4.6")).toBeDefined();
+  });
+
   it("renders short label without truncation", () => {
     renderWithProvider(<ModelChip model={{ id: "claude-sonnet-4-6", label: "Sonnet 4.6" }} />);
     expect(screen.getByText("Sonnet 4.6")).toBeDefined();
