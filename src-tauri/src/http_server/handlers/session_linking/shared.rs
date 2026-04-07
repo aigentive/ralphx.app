@@ -41,6 +41,10 @@ pub(super) fn validate_resolved_team_config(
         None => return (None, None),
     };
 
+    if team_mode == "solo" {
+        return (Some(team_mode), None);
+    }
+
     let resolved_constraints = parse_team_config_json(resolved_team_config_json);
     let config = team_constraints_config();
     let yaml_constraints = get_team_constraints(config, "ideation");

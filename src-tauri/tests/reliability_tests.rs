@@ -8,6 +8,7 @@
 use axum::{extract::State, Json};
 use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings};
 use ralphx_lib::domain::entities::{
     Artifact, ArtifactId, ArtifactType, Complexity, IdeationSession, IdeationSessionId,
     IdeationSessionStatus, Priority, Project, ProjectId, ProposalCategory, ProposalStatus,
@@ -308,6 +309,67 @@ async fn c3_team_mode_inherited_for_external_session_with_inherit_context() {
         SessionOrigin::Internal,
         "General child origin is Internal when is_external_trigger is not set"
     );
+}
+
+#[tokio::test]
+async fn c3_team_mode_downgraded_to_solo_for_codex_project() {
+    let state = setup_sqlite_state().await;
+
+    let project_id = ProjectId::from_string("proj-c3-codex".to_string());
+    state
+        .app_state
+        .agent_lane_settings_repo
+        .upsert_for_project(
+            project_id.as_str(),
+            AgentLane::IdeationPrimary,
+            &AgentLaneSettings::new(AgentHarnessKind::Codex),
+        )
+        .await
+        .unwrap();
+
+    let parent = make_external_session(&project_id, Some("debate"), None);
+    let parent_id = parent.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    let req = CreateChildSessionRequest {
+        parent_session_id: parent_id.as_str().to_string(),
+        title: Some("Codex Follow-up".to_string()),
+        description: None,
+        inherit_context: true,
+        initial_prompt: None,
+        team_mode: None,
+        team_config: None,
+        purpose: None,
+        is_external_trigger: false,
+        source_task_id: None,
+        source_context_type: None,
+        source_context_id: None,
+        spawn_reason: None,
+        blocker_fingerprint: None,
+    };
+
+    let result = create_child_session(State(state.clone()), Json(req)).await;
+    assert!(result.is_ok(), "create_child_session must succeed");
+
+    let response = result.unwrap().0;
+    assert_eq!(response.team_mode.as_deref(), Some("solo"));
+    assert!(response.team_config.is_none());
+
+    let child = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&IdeationSessionId::from_string(response.session_id.clone()))
+        .await
+        .unwrap()
+        .expect("Child session must exist in DB");
+
+    assert_eq!(child.team_mode.as_deref(), Some("solo"));
+    assert!(child.team_config_json.is_none());
 }
 
 /// C3b: External session with team_mode → child does NOT inherit when inherit_context=false.

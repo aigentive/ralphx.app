@@ -366,6 +366,26 @@ pub(crate) async fn create_child_session_impl(
     } else {
         (None, None)
     };
+    let team_mode_requested = resolved_team_mode
+        .as_deref()
+        .is_some_and(|mode| mode != "solo");
+    let team_mode_supported =
+        crate::application::ideation_harness_availability::ideation_team_mode_supported_for_project(
+            &state.app_state.agent_lane_settings_repo,
+            Some(parent.project_id.as_str()),
+        )
+        .await;
+    let (resolved_team_mode, resolved_team_config_json) =
+        if team_mode_requested && !team_mode_supported {
+            tracing::info!(
+                parent_session_id = %parent_id.as_str(),
+                project_id = %parent.project_id,
+                "Downgrading child ideation session team mode to solo because the primary harness does not support team mode"
+            );
+            (Some("solo".to_string()), None)
+        } else {
+            (resolved_team_mode, resolved_team_config_json)
+        };
 
     let (team_mode, team_config_json) = validate_resolved_team_config(
         resolved_team_mode.as_ref(),

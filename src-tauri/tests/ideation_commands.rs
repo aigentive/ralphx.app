@@ -1,5 +1,6 @@
 use ralphx_lib::application::AppState;
 use ralphx_lib::commands::ideation_commands::*;
+use ralphx_lib::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings};
 use ralphx_lib::domain::entities::{
     ChatMessage, IdeationSession, IdeationSessionId, IdeationSessionStatus, Priority, ProjectId,
     ProposalCategory, TaskProposal, TaskProposalId,
@@ -2166,6 +2167,56 @@ async fn test_create_ideation_session_emits_session_created_event() {
         result.id,
         "event payload sessionId should match created session id"
     );
+}
+
+#[tokio::test]
+async fn test_create_ideation_session_downgrades_team_mode_to_solo_for_codex() {
+    use ralphx_lib::testing::create_mock_app;
+
+    let app = create_mock_app();
+    let handle = app.handle().clone();
+    let state = setup_apply_test_state();
+    let project_id = ProjectId::new();
+
+    state
+        .agent_lane_settings_repo
+        .upsert_for_project(
+            project_id.as_str(),
+            AgentLane::IdeationPrimary,
+            &AgentLaneSettings::new(AgentHarnessKind::Codex),
+        )
+        .await
+        .expect("configure codex ideation lane");
+
+    let input = CreateSessionInput {
+        project_id: project_id.to_string(),
+        title: Some("Codex Solo Session".to_string()),
+        seed_task_id: None,
+        team_mode: Some("research".to_string()),
+        team_config: Some(TeamConfigInput {
+            max_teammates: 3,
+            model_ceiling: "sonnet".to_string(),
+            budget_limit: None,
+            composition_mode: "balanced".to_string(),
+        }),
+    };
+
+    let result = create_ideation_session_impl(&handle, &state, input)
+        .await
+        .expect("create_ideation_session_impl should succeed");
+
+    assert_eq!(result.team_mode.as_deref(), Some("solo"));
+    assert!(result.team_config.is_none());
+
+    let stored = state
+        .ideation_session_repo
+        .get_by_id(&IdeationSessionId::from_string(result.id.clone()))
+        .await
+        .expect("load stored ideation session")
+        .expect("stored ideation session should exist");
+
+    assert_eq!(stored.team_mode.as_deref(), Some("solo"));
+    assert!(stored.team_config_json.is_none());
 }
 
 // ============================================================================

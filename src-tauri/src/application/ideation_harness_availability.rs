@@ -62,6 +62,16 @@ pub(crate) async fn resolve_primary_ideation_harness_availability(
     resolve_ideation_lane_harness_availability(repo, project_id, AgentLane::IdeationPrimary).await
 }
 
+pub(crate) async fn ideation_team_mode_supported_for_project(
+    repo: &Arc<dyn AgentLaneSettingsRepository>,
+    project_id: Option<&str>,
+) -> bool {
+    resolve_primary_ideation_harness_availability(repo, project_id)
+        .await
+        .effective_harness
+        == AgentHarnessKind::Claude
+}
+
 #[cfg(test)]
 pub(crate) fn validate_claude_runtime_path(
     availability: &IdeationLaneHarnessAvailability,
