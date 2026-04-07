@@ -31,6 +31,7 @@ Primary project docs:
 | Rust std API stability (NON-NEGOTIABLE) | Do not use unstable std APIs in production Rust (example: `is_multiple_of`). Use stable equivalents such as `%` with a zero guard where needed. Source of truth: `.claude/rules/rust-stable-apis.md`. |
 | Worktree safety (NON-NEGOTIABLE) | In Worktree mode, task/review flows must never silently fall back to the user’s main repo checkout. Prefer hard failure and repair/self-heal paths. |
 | Verify before commit | Review `git diff` for every file you touched against `HEAD` and confirm only intended hunks remain before committing. |
+| Refactor tracker hygiene | When any agent notices a high-value architectural/refactor hotspot, update `## High-Value Refactor Targets` in this file in the same slice; do not leave major debt only in chat context. |
 
 ## Backend
 
