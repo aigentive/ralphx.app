@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Cpu, TriangleAlert } from "lucide-react";
 
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
   Select,
@@ -36,6 +37,33 @@ const HARNESS_OPTIONS: {
     description: "Provider-neutral Codex harness with solo ideation and lane-level execution routing",
   },
 ];
+
+const EFFORT_OPTIONS = [
+  { value: "inherit", label: "Inherit" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "xhigh", label: "XHigh" },
+] as const;
+
+const APPROVAL_POLICY_OPTIONS = [
+  { value: "inherit", label: "Inherit" },
+  { value: "untrusted", label: "Untrusted" },
+  { value: "on-request", label: "On Request" },
+  { value: "never", label: "Never" },
+] as const;
+
+const SANDBOX_MODE_OPTIONS = [
+  { value: "inherit", label: "Inherit" },
+  { value: "read-only", label: "Read Only" },
+  { value: "workspace-write", label: "Workspace Write" },
+  { value: "danger-full-access", label: "Danger Full Access" },
+] as const;
+
+const FALLBACK_HARNESS_OPTIONS = [
+  { value: "inherit", label: "Inherit" },
+  { value: "claude", label: "Claude" },
+] as const;
 
 const LANE_META: Record<
   AgentLane,
@@ -183,23 +211,55 @@ function availabilityCopy(lane: AgentHarnessLaneView): string {
   return `${lane.effectiveHarness} is the current effective harness for this lane.`;
 }
 
+function selectValue(value: string | null | undefined): string {
+  return value ?? "inherit";
+}
+
+function fromSelectValue(value: string): string | null {
+  return value === "inherit" ? null : value;
+}
+
+function baseLaneUpdate(lane: AgentHarnessLaneView) {
+  return {
+    lane: lane.lane,
+    harness: lane.configuredHarness ?? lane.effectiveHarness,
+    model: lane.row?.model ?? null,
+    effort: lane.row?.effort ?? null,
+    approvalPolicy: lane.row?.approvalPolicy ?? null,
+    sandboxMode: lane.row?.sandboxMode ?? null,
+    fallbackHarness: lane.row?.fallbackHarness ?? null,
+  };
+}
+
 function HarnessRow({
   lane,
   disabled,
-  onChange,
+  onHarnessChange,
+  onLaneChange,
   isLast = false,
 }: {
   lane: AgentHarnessLaneView;
   disabled: boolean;
-  onChange: (value: Harness) => void;
+  onHarnessChange: (value: Harness) => void;
+  onLaneChange: (
+    patch: Partial<{
+      model: string | null;
+      effort: string | null;
+      approvalPolicy: string | null;
+      sandboxMode: string | null;
+      fallbackHarness: Harness | null;
+    }>,
+  ) => void;
   isLast?: boolean;
 }) {
   const meta = LANE_META[lane.lane];
-  const selectValue = lane.configuredHarness ?? lane.effectiveHarness;
+  const configuredHarness = lane.configuredHarness ?? lane.effectiveHarness;
   const showWarning =
     lane.fallbackActivated ||
     !!lane.error ||
     lane.missingCoreExecFeatures.length > 0;
+  const modelKey = `${lane.lane}-${lane.row?.model ?? ""}-${configuredHarness}`;
+  const showCodexControls = configuredHarness === "codex";
 
   return (
     <div className={isLast ? undefined : "border-b border-[var(--border-subtle)]"}>
@@ -216,7 +276,7 @@ function HarnessRow({
           </p>
         </div>
         <div className="shrink-0">
-          <Select value={selectValue} onValueChange={onChange} disabled={disabled}>
+          <Select value={configuredHarness} onValueChange={onHarnessChange} disabled={disabled}>
             <SelectTrigger
               id={`harness-${lane.lane}`}
               data-testid={`harness-${lane.lane}`}
@@ -248,6 +308,124 @@ function HarnessRow({
           Effective:{" "}
           <span className="text-[var(--text-secondary)]">{lane.effectiveHarness}</span>
         </p>
+        <div className="grid gap-2 pt-1 md:grid-cols-2">
+          <div className="space-y-1">
+            <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
+              Model
+            </p>
+            <Input
+              key={modelKey}
+              defaultValue={lane.row?.model ?? ""}
+              placeholder={configuredHarness === "codex" ? "gpt-5.4" : "sonnet"}
+              disabled={disabled}
+              className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]"
+              onBlur={(event) => {
+                const nextValue = event.target.value.trim();
+                const currentValue = lane.row?.model ?? "";
+                if (nextValue === currentValue) {
+                  return;
+                }
+                onLaneChange({ model: nextValue || null });
+              }}
+            />
+          </div>
+          <div className="space-y-1">
+            <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
+              Effort
+            </p>
+            <Select
+              value={selectValue(lane.row?.effort)}
+              onValueChange={(value) => onLaneChange({ effort: fromSelectValue(value) })}
+              disabled={disabled}
+            >
+              <SelectTrigger className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]">
+                <SelectValue placeholder="Select effort" />
+              </SelectTrigger>
+              <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
+                {EFFORT_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {showCodexControls && (
+            <>
+              <div className="space-y-1">
+                <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                  Approval
+                </p>
+                <Select
+                  value={selectValue(lane.row?.approvalPolicy)}
+                  onValueChange={(value) =>
+                    onLaneChange({ approvalPolicy: fromSelectValue(value) })
+                  }
+                  disabled={disabled}
+                >
+                  <SelectTrigger className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]">
+                    <SelectValue placeholder="Select approval policy" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
+                    {APPROVAL_POLICY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                  Sandbox
+                </p>
+                <Select
+                  value={selectValue(lane.row?.sandboxMode)}
+                  onValueChange={(value) =>
+                    onLaneChange({ sandboxMode: fromSelectValue(value) })
+                  }
+                  disabled={disabled}
+                >
+                  <SelectTrigger className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]">
+                    <SelectValue placeholder="Select sandbox mode" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
+                    {SANDBOX_MODE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1 md:col-span-2">
+                <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                  Fallback Harness
+                </p>
+                <Select
+                  value={selectValue(lane.row?.fallbackHarness)}
+                  onValueChange={(value) =>
+                    onLaneChange({
+                      fallbackHarness: (fromSelectValue(value) as Harness | null),
+                    })
+                  }
+                  disabled={disabled}
+                >
+                  <SelectTrigger className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]">
+                    <SelectValue placeholder="Select fallback harness" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
+                    {FALLBACK_HARNESS_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
+        </div>
         <p
           className={[
             "text-xs",
@@ -292,6 +470,30 @@ function HarnessSubsection({
       {
         lane,
         ...defaultsForHarness(lane, harness),
+      },
+      { onError: () => setShowError(true) },
+    );
+  };
+
+  const handleLaneSettingsChange = (
+    laneView: AgentHarnessLaneView,
+    patch: Partial<{
+      model: string | null;
+      effort: string | null;
+      approvalPolicy: string | null;
+      sandboxMode: string | null;
+      fallbackHarness: Harness | null;
+    }>,
+  ) => {
+    if (isDisabled) {
+      return;
+    }
+
+    setShowError(false);
+    updateLane(
+      {
+        ...baseLaneUpdate(laneView),
+        ...patch,
       },
       { onError: () => setShowError(true) },
     );
@@ -342,7 +544,8 @@ function HarnessSubsection({
                   key={`${title}-${lane.lane}`}
                   lane={lane}
                   disabled={isDisabled || isPlaceholderData}
-                  onChange={(value) => handleHarnessChange(lane.lane, value)}
+                  onHarnessChange={(value) => handleHarnessChange(lane.lane, value)}
+                  onLaneChange={(patch) => handleLaneSettingsChange(lane, patch)}
                   isLast={index === groupLanes.length - 1}
                 />
               ))}
