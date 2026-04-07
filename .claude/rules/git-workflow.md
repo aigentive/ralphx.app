@@ -2,13 +2,11 @@
 
 # Git Workflow Rules
 
-**Required Context:** code-quality-standards.md | commit-lock.md
+**Required Context:** code-quality-standards.md
 
 ## Critical Rules
 
 1. **NEVER use git stash** — parallel agents run simultaneously; stashing causes conflicts and lost work
-2. **Use commit lock protocol** — see commit-lock.md for full details
-
 ## Commit Message Conventions
 
 | Prefix | Use Case | Example |
@@ -26,9 +24,7 @@
 |------|--------|
 | Atomic commits | New files + deletions in same commit |
 | No partial commits | Code must compile after each commit |
-| Commit lock | Acquire `.commit-lock` before `git add`, release after commit — see commit-lock.md |
 
 ## Reference
 
-- Full commit lock protocol: commit-lock.md
 - Code quality standards: code-quality-standards.md

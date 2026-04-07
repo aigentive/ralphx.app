@@ -179,6 +179,5 @@ For each task N:
 
 ## Reference
 
-- Commit lock protocol: commit-lock.md
 - Git workflow: git-workflow.md
 - Code quality: code-quality-standards.md

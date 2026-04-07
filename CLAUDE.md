@@ -130,7 +130,7 @@ Plugin: `claude --plugin-dir ./plugins/app --agent worker -p "Execute"` | Tool c
 | 10 | Implementation playbook: `DEVELOPMENT.md` — read alongside CLAUDE.md files for placement, naming, recipes, and debugging. |
 | 11 | New pattern → add one-liner to relevant CLAUDE.md. Pattern name + rule only. |
 | 12 | Complex work → TaskCreate/TaskUpdate/TaskList (MANDATORY) → `.claude/rules/task-management.md` |
-| 13 | Parallel commits → acquire `.commit-lock` before, release after. Stale = same content >30s → `.claude/rules/commit-lock.md` |
+| 13 | Parallel commits → coordinate via normal git hygiene and verify `git status` / `git diff` before committing; no lock-file protocol |
 | 14 | Tauri invoke: camelCase fields. ✅ `contextId` ❌ `context_id` |
 | 15 | New `.claude/rules/*.md` \| `**/CLAUDE.md` → include this maintainer note at top |
 | 16 | **DbConnection (NON-NEGOTIABLE):** All SQLite repo methods MUST use `db.run(\|conn\| { ... })` via `DbConnection` for non-blocking access. ❌ Direct `conn.lock().await` / `conn.query_row()` in async methods. See `db_connection.rs`. |
@@ -174,7 +174,7 @@ style={{ boxShadow: "none", outline: "none" }}
 - **Plan Verification** — Automated adversarial review loop for ideation plans. Docs: `docs/features/plan-verification.md`
 
 ## Git Conventions
-❌ git init/push/remotes | Prefixes: `docs:` | `feat:` | `fix:` | `chore:` | Co-author: `Co-Authored-By: Claude <MODEL> <noreply@anthropic.com>`
+❌ git init/push/remotes | Prefixes: `docs:` | `feat:` | `fix:` | `chore:`
 
 ## Misc
 - DB: `sqlite3 src-tauri/ralphx.db "SELECT * FROM table_name;"`
