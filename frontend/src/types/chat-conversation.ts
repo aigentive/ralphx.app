@@ -45,6 +45,8 @@ export const AGENT_RUN_STATUS_VALUES = [
 
 export const AgentRunStatusSchema = z.enum(AGENT_RUN_STATUS_VALUES);
 export type AgentRunStatus = z.infer<typeof AgentRunStatusSchema>;
+export const ProviderHarnessSchema = z.enum(["claude", "codex"]);
+export type ProviderHarness = z.infer<typeof ProviderHarnessSchema>;
 
 // ============================================================================
 // Chat Conversation
@@ -58,6 +60,8 @@ export const ChatConversationSchema = z.object({
   contextType: ContextTypeSchema,
   contextId: z.string().min(1),
   claudeSessionId: z.string().nullable(),
+  providerSessionId: z.string().nullable().optional(),
+  providerHarness: ProviderHarnessSchema.nullable().optional(),
   title: z.string().nullable(),
   messageCount: z.number().int().min(0),
   lastMessageAt: z.string().datetime().nullable(),

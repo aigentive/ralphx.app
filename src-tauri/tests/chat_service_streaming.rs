@@ -627,6 +627,8 @@ fn test_turn_completed_payload_shape_matches_run_completed() {
         context_type: "task_execution".to_string(),
         context_id: "task-42".to_string(),
         claude_session_id: Some("session-abc".to_string()),
+        provider_harness: Some("claude".to_string()),
+        provider_session_id: Some("session-abc".to_string()),
         run_chain_id: None,
     };
 
@@ -635,6 +637,8 @@ fn test_turn_completed_payload_shape_matches_run_completed() {
     assert_eq!(json["context_type"], "task_execution");
     assert_eq!(json["context_id"], "task-42");
     assert_eq!(json["claude_session_id"], "session-abc");
+    assert_eq!(json["provider_harness"], "claude");
+    assert_eq!(json["provider_session_id"], "session-abc");
     // run_chain_id is None → should be absent (skip_serializing_if)
     assert!(
         json.get("run_chain_id").is_none(),
@@ -650,6 +654,8 @@ fn test_turn_completed_payload_with_no_session_id() {
         context_type: "ideation".to_string(),
         context_id: "session-7".to_string(),
         claude_session_id: None,
+        provider_harness: Some("codex".to_string()),
+        provider_session_id: Some("thread-7".to_string()),
         run_chain_id: None,
     };
 
@@ -657,6 +663,8 @@ fn test_turn_completed_payload_with_no_session_id() {
     assert_eq!(json["conversation_id"], "conv-interactive-2");
     assert_eq!(json["context_type"], "ideation");
     assert_eq!(json["context_id"], "session-7");
+    assert_eq!(json["provider_harness"], "codex");
+    assert_eq!(json["provider_session_id"], "thread-7");
     // claude_session_id=None → serializes as null (no skip_serializing_if on this field)
     assert!(
         json["claude_session_id"].is_null(),
@@ -673,6 +681,8 @@ fn test_non_interactive_run_completed_includes_run_chain_id() {
         context_type: "task_execution".to_string(),
         context_id: "task-99".to_string(),
         claude_session_id: Some("session-xyz".to_string()),
+        provider_harness: Some("claude".to_string()),
+        provider_session_id: Some("session-xyz".to_string()),
         run_chain_id: Some("chain-abc".to_string()),
     };
 

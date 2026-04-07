@@ -534,4 +534,6 @@ export interface AgentRunStartedPayload {
   teammate_name?: string | null;
   effectiveModelId?: string;
   effectiveModelLabel?: string;
+  providerHarness?: "claude" | "codex";
+  providerSessionId?: string | null;
 }

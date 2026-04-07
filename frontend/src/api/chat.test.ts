@@ -44,6 +44,8 @@ describe("chat api", () => {
         context_type: "project",
         context_id: "p1",
         claude_session_id: null,
+        provider_session_id: "thread-1",
+        provider_harness: "codex",
         title: "Title",
         message_count: 2,
         last_message_at: null,
@@ -58,7 +60,12 @@ describe("chat api", () => {
       contextType: "project",
       contextId: "p1",
     });
-    expect(result[0]).toMatchObject({ contextType: "project", contextId: "p1" });
+    expect(result[0]).toMatchObject({
+      contextType: "project",
+      contextId: "p1",
+      providerSessionId: "thread-1",
+      providerHarness: "codex",
+    });
   });
 
   it("gets conversation with transformed messages", async () => {
@@ -68,6 +75,8 @@ describe("chat api", () => {
         context_type: "project",
         context_id: "p1",
         claude_session_id: null,
+        provider_session_id: "thread-2",
+        provider_harness: "codex",
         title: null,
         message_count: 1,
         last_message_at: null,
@@ -98,6 +107,8 @@ describe("chat api", () => {
       context_type: "task",
       context_id: "t1",
       claude_session_id: null,
+      provider_session_id: null,
+      provider_harness: null,
       title: null,
       message_count: 0,
       last_message_at: null,

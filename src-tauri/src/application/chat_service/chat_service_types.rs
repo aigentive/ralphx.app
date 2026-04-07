@@ -131,6 +131,10 @@ pub struct AgentRunStartedPayload {
     /// Human-readable label for the effective model (e.g. "Sonnet 4.6").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effective_model_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_harness: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_session_id: Option<String>,
 }
 
 /// Payload for agent:chunk event
@@ -184,6 +188,10 @@ pub struct AgentRunCompletedPayload {
     pub context_type: String,
     pub context_id: String,
     pub claude_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_harness: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub run_chain_id: Option<String>,
 }

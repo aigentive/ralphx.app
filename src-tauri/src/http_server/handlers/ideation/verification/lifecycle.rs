@@ -117,6 +117,8 @@ pub(crate) async fn stop_and_archive_children(
                                 context_type: "ideation".to_string(),
                                 context_id: child.id.as_str().to_string(),
                                 claude_session_id: None,
+                                provider_harness: None,
+                                provider_session_id: None,
                                 run_chain_id: None,
                             },
                         )

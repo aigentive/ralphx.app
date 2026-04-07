@@ -1114,6 +1114,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                             parent_run_id: None,
                             effective_model_id: None,
                             effective_model_label: None,
+                            provider_harness: Some(AgentHarnessKind::Claude.to_string()),
+                            provider_session_id: conversation.claude_session_id.clone(),
                         },
                     );
 
@@ -1700,6 +1702,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 parent_run_id: None,
                 effective_model_id: Some(effective_model_id.clone()),
                 effective_model_label,
+                provider_harness: Some(resolved_spawn_settings.effective_harness.to_string()),
+                provider_session_id: stored_session_id.clone(),
             },
         );
 
@@ -2291,6 +2295,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                         context_type: context_type.to_string(),
                         context_id: context_id.to_string(),
                         claude_session_id: None,
+                        provider_harness: None,
+                        provider_session_id: None,
                         run_chain_id: None,
                     },
                 );

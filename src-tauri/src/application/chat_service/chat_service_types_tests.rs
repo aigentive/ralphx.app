@@ -11,6 +11,8 @@ fn agent_run_started_payload_serde_camel_case() {
         parent_run_id: None,
         effective_model_id: Some("claude-sonnet-4-6".to_string()),
         effective_model_label: Some("Sonnet 4.6".to_string()),
+        provider_harness: Some("claude".to_string()),
+        provider_session_id: Some("session-123".to_string()),
     };
 
     let value = serde_json::to_value(&payload).expect("serialization failed");
@@ -18,6 +20,8 @@ fn agent_run_started_payload_serde_camel_case() {
     // Fields must be camelCase (serde rename_all = "camelCase")
     assert_eq!(value["effectiveModelId"], "claude-sonnet-4-6");
     assert_eq!(value["effectiveModelLabel"], "Sonnet 4.6");
+    assert_eq!(value["providerHarness"], "claude");
+    assert_eq!(value["providerSessionId"], "session-123");
 
     // Confirm snake_case keys are NOT present
     assert!(value.get("effective_model_id").is_none());
@@ -41,6 +45,8 @@ fn agent_run_started_payload_serde_skips_none_fields() {
         parent_run_id: None,
         effective_model_id: None,
         effective_model_label: None,
+        provider_harness: None,
+        provider_session_id: None,
     };
 
     let value = serde_json::to_value(&payload).expect("serialization failed");
@@ -48,6 +54,8 @@ fn agent_run_started_payload_serde_skips_none_fields() {
     // None fields with skip_serializing_if should be absent
     assert!(value.get("effectiveModelId").is_none());
     assert!(value.get("effectiveModelLabel").is_none());
+    assert!(value.get("providerHarness").is_none());
+    assert!(value.get("providerSessionId").is_none());
     assert!(value.get("runChainId").is_none());
     assert!(value.get("parentRunId").is_none());
 }

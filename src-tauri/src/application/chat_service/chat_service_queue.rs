@@ -232,6 +232,8 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         parent_run_id: parent_run_id.map(|s| s.to_string()),
                         effective_model_id: None,
                         effective_model_label: None,
+                        provider_harness: Some(harness.to_string()),
+                        provider_session_id: Some(session_id.to_string()),
                     },
                 );
             }

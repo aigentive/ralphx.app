@@ -906,6 +906,20 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
         Arc<super::verification_child_process_registry::VerificationChildProcessRegistry>,
     >,
 ) -> bool {
+    let stored_provider_harness = conversation
+        .and_then(|conv| conv.provider_session_ref().map(|session_ref| session_ref.harness))
+        .or_else(|| {
+            stored_session_id.map(|_| crate::domain::agents::AgentHarnessKind::Claude)
+        });
+    let stored_provider_session_id = stored_session_id.map(|session_id| session_id.to_string());
+    let stored_claude_session_id = if stored_provider_harness
+        == Some(crate::domain::agents::AgentHarnessKind::Claude)
+    {
+        stored_provider_session_id.clone()
+    } else {
+        None
+    };
+
     // Handle cancellation — distinguish "cancelled after normal completion" from "user stop"
     if let Some(StreamError::Cancelled {
         turns_finalized,
@@ -985,7 +999,10 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         conversation_id: conversation_id.as_str().to_string(),
                         context_type: context_type.to_string(),
                         context_id: context_id.to_string(),
-                        claude_session_id: stored_session_id.map(|s| s.to_string()),
+                        claude_session_id: stored_claude_session_id.clone(),
+                        provider_harness: stored_provider_harness
+                            .map(|harness| harness.to_string()),
+                        provider_session_id: stored_provider_session_id.clone(),
                         run_chain_id: run_chain_id.clone(),
                     },
                 );
@@ -1053,7 +1070,10 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         conversation_id: conversation_id.as_str().to_string(),
                         context_type: context_type.to_string(),
                         context_id: context_id.to_string(),
-                        claude_session_id: stored_session_id.map(|s| s.to_string()),
+                        claude_session_id: stored_claude_session_id.clone(),
+                        provider_harness: stored_provider_harness
+                            .map(|harness| harness.to_string()),
+                        provider_session_id: stored_provider_session_id.clone(),
                         run_chain_id: run_chain_id.clone(),
                     },
                 );

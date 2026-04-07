@@ -1181,6 +1181,8 @@ pub async fn process_stream_background<R: Runtime>(
                                     conversation_id: conversation_id_str.clone(),
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
+                                    provider_harness: Some(AgentHarnessKind::Claude.to_string()),
+                                    provider_session_id: session_id.clone(),
                                     claude_session_id: session_id,
                                     run_chain_id: None,
                                 },

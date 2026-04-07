@@ -322,6 +322,8 @@ impl TaskCleanupService {
                             context_type: matched_context_type.to_string(),
                             context_id: session_id.to_string(),
                             claude_session_id: None,
+                            provider_harness: None,
+                            provider_session_id: None,
                             run_chain_id: None,
                         },
                     );

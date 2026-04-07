@@ -103,6 +103,8 @@ pub struct AgentConversationResponse {
     pub context_type: String,
     pub context_id: String,
     pub claude_session_id: Option<String>,
+    pub provider_session_id: Option<String>,
+    pub provider_harness: Option<String>,
     pub title: Option<String>,
     pub message_count: i64,
     pub last_message_at: Option<String>,
@@ -117,6 +119,8 @@ impl From<ChatConversation> for AgentConversationResponse {
             context_type: c.context_type.to_string(),
             context_id: c.context_id,
             claude_session_id: c.claude_session_id,
+            provider_session_id: c.provider_session_id,
+            provider_harness: c.provider_harness.map(|harness| harness.to_string()),
             title: c.title,
             message_count: c.message_count,
             last_message_at: c.last_message_at.map(|dt| dt.to_rfc3339()),
@@ -429,6 +433,8 @@ pub async fn list_agent_conversations(
                     context_type: c.context_type.to_string(),
                     context_id: c.context_id,
                     claude_session_id: c.claude_session_id,
+                    provider_session_id: c.provider_session_id,
+                    provider_harness: c.provider_harness.map(|harness| harness.to_string()),
                     title: c.title,
                     message_count: c.message_count,
                     last_message_at: c.last_message_at.map(|dt| dt.to_rfc3339()),
@@ -464,6 +470,11 @@ pub async fn get_agent_conversation(
                     context_type: cwm.conversation.context_type.to_string(),
                     context_id: cwm.conversation.context_id,
                     claude_session_id: cwm.conversation.claude_session_id,
+                    provider_session_id: cwm.conversation.provider_session_id,
+                    provider_harness: cwm
+                        .conversation
+                        .provider_harness
+                        .map(|harness| harness.to_string()),
                     title: cwm.conversation.title,
                     message_count: cwm.conversation.message_count,
                     last_message_at: cwm.conversation.last_message_at.map(|dt| dt.to_rfc3339()),
