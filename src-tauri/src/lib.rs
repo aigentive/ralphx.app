@@ -55,6 +55,9 @@ use application::runtime_factory::{
     ChatRuntimeFactoryDeps, RuntimeFactoryDeps, build_chat_service_with_fallback,
     build_transition_service_with_fallback,
 };
+use application::runtime_wiring::{
+    build_http_app_state, create_main_window, register_managed_state,
+};
 use application::{
     load_or_seed_agent_lane_settings_defaults, load_or_seed_execution_settings_defaults,
     ChatResumptionRunner, EventCleanupService, ReconciliationRunner,
@@ -261,28 +264,7 @@ pub fn run() {
             let app_handle = app.handle().clone();
 
             // Create the main window programmatically to set traffic light position
-            {
-                use tauri::{WebviewUrl, WebviewWindowBuilder, TitleBarStyle, LogicalPosition, Position};
-
-                let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
-                    .title("")
-                    .inner_size(1200.0, 800.0)
-                    .decorations(true)
-                    .hidden_title(true)
-                    .visible(false); // Start hidden to avoid resize flash
-
-                #[cfg(target_os = "macos")]
-                {
-                    builder = builder
-                        .title_bar_style(TitleBarStyle::Overlay)
-                        .traffic_light_position(Position::Logical(LogicalPosition { x: 20.0, y: 30.0 }));
-                }
-
-                let webview_window = builder.build()?;
-
-                // Plugin with with_state_flags auto-restores, just show the window
-                let _ = webview_window.show();
-            }
+            create_main_window(app)?;
 
             // Create application state with production SQLite repositories
             let mut app_state =
@@ -448,27 +430,8 @@ pub fn run() {
             // Create a second AppState sharing the Tauri AppState's DB connection,
             // plus shared in-memory state (question_state, permission_state, message_queue)
             // so MCP handlers and Tauri commands operate on the same data.
-            let shared_db_conn = Arc::clone(app_state.db.inner());
-            let shared_question_state = Arc::clone(&app_state.question_state);
-            let shared_permission_state = Arc::clone(&app_state.permission_state);
-            let shared_message_queue = Arc::clone(&app_state.message_queue);
-            let shared_interactive_process_registry = Arc::clone(&app_state.interactive_process_registry);
-            let shared_github_service = app_state.github_service.clone();
-            let shared_pr_poller_registry = Arc::clone(&app_state.pr_poller_registry);
-            let mut http_app_state_inner =
-                AppState::new_production_shared(app_handle, shared_db_conn).expect("Failed to initialize AppState for HTTP server");
-            http_app_state_inner.question_state = shared_question_state;
-            http_app_state_inner.permission_state = shared_permission_state;
-            http_app_state_inner.message_queue = shared_message_queue;
-            http_app_state_inner.interactive_process_registry = shared_interactive_process_registry;
-            http_app_state_inner.github_service = shared_github_service;
-            http_app_state_inner.pr_poller_registry = shared_pr_poller_registry;
-            // INVARIANT: streaming_state_cache uses Arc internally — .clone() shares the same data.
-            // Do NOT change StreamingStateCache to deep-clone without updating this sharing.
-            http_app_state_inner.streaming_state_cache = app_state.streaming_state_cache.clone();
-            http_app_state_inner.webhook_publisher = app_state.webhook_publisher.clone();
-            http_app_state_inner.session_merge_locks = Arc::clone(&app_state.session_merge_locks);
-            let http_app_state = Arc::new(http_app_state_inner);
+            let http_app_state = build_http_app_state(&app_state, app_handle)
+                .expect("Failed to initialize AppState for HTTP server");
             // Spawn HTTP server with pre-cloned state
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = http_server::start_http_server(http_app_state, http_execution_state, http_team_tracker).await {
@@ -1154,30 +1117,7 @@ pub fn run() {
 
             });
 
-            // Clone team repos before app_state is moved into Tauri state
-            let team_session_repo = Arc::clone(&app_state.team_session_repo);
-            let team_message_repo = Arc::clone(&app_state.team_message_repo);
-
-            // Register ThrottledEmitter for batching rapid event emissions.
-            // Must be registered before app_state since services read it via try_state().
-            let throttled_emitter = application::ThrottledEmitter::new(app.handle().clone());
-            app.manage(throttled_emitter);
-
-            // Register app_state with Tauri's state management
-            app.manage(app_state);
-
-            // Register team service (wraps tracker with event emission + persistence)
-            let team_service = std::sync::Arc::new(application::TeamService::new_with_repos(
-                std::sync::Arc::new(service_team_tracker),
-                app.handle().clone(),
-                team_session_repo,
-                team_message_repo,
-            ));
-            app.manage(team_service);
-
-            // Pre-register ExternalMcpHandle (OnceLock) — populated later in startup_jobs.
-            // Must be registered here (before build()) so app.state::<ExternalMcpHandle>() works.
-            app.manage(ExternalMcpHandle::new());
+            register_managed_state(app, app_state, service_team_tracker);
 
             Ok(())
         })
