@@ -38,13 +38,9 @@ pub use error::{AppError, AppResult};
 #[cfg(test)]
 mod tests;
 
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{info, warn};
-use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry};
-
-use crate::utils::redacting_writer::RedactingMakeWriter;
 
 use application::ideation_effort_bootstrap::seed_ideation_effort_defaults;
 use application::ideation_model_bootstrap::seed_ideation_model_settings;
@@ -52,6 +48,7 @@ use application::runtime_wiring::{
     build_http_app_state, create_main_window, register_managed_state,
 };
 use application::startup_pipeline::StartupPipelineDeps;
+use application::startup_bootstrap::initialize_process_bootstrap;
 use application::{
     load_or_seed_agent_lane_settings_defaults, load_or_seed_execution_settings_defaults,
 };
@@ -156,75 +153,7 @@ async fn probe_backend_health(port: u16) -> BackendReadyProbeResult {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Startup hardening: increase per-thread minimum stack when not explicitly set.
-    // Tokio runtime workers execute deeply nested async recovery paths at startup,
-    // and the platform default stack can be too small for worst-case futures.
-    if std::env::var_os("RUST_MIN_STACK").is_none() {
-        std::env::set_var("RUST_MIN_STACK", "8388608");
-    }
-
-    // Initialize layered tracing subscriber: console + optional per-launch log file.
-    // Respects RUST_LOG env var; defaults to ralphx=info plus warn for everything else.
-    // File logging controlled by RALPHX_FILE_LOGGING env / ralphx.yaml `file_logging` (default: true).
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("ralphx=info,warn"));
-
-    let file_logging_enabled =
-        infrastructure::agents::claude::resolve_file_logging_early();
-
-    let (_log_guard, file_layer) = if file_logging_enabled {
-        // Determine log directory: dev → {repo_root}/.artifacts/logs/, prod → ~/Library/Application Support/com.ralphx.app/logs/
-        let log_dir = if cfg!(debug_assertions) {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.artifacts/logs")
-        } else {
-            let home = std::env::var("HOME").expect("HOME environment variable not set");
-            PathBuf::from(home).join("Library/Application Support/com.ralphx.app/logs")
-        };
-        std::fs::create_dir_all(&log_dir).expect("Failed to create log directory");
-
-        let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S");
-        let log_filename = format!("ralphx_{timestamp}.log");
-        let log_file = std::fs::File::create(log_dir.join(&log_filename))
-            .expect("Failed to create log file");
-
-        let (non_blocking_writer, guard) = tracing_appender::non_blocking(log_file);
-        let layer = fmt::layer()
-            .with_writer(RedactingMakeWriter::new(non_blocking_writer))
-            .with_ansi(false);
-
-        // Log path is printed after subscriber init below
-        eprintln!("File logging: {}", log_dir.join(&log_filename).display());
-
-        (Some(guard), Some(layer))
-    } else {
-        (None, None)
-    };
-
-    let console_layer = fmt::layer().with_writer(RedactingMakeWriter::new(std::io::stdout));
-
-    Registry::default()
-        .with(env_filter)
-        .with(console_layer)
-        .with(file_layer)
-        .init();
-
-    // Load local runtime overrides from project-root/.env and src-tauri/.env when present.
-    // These can drive claude settings profile env mappings (RALPHX_* -> settings.env.*).
-    let dotenv_paths = [
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.env"),
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".env"),
-    ];
-    for dotenv_path in dotenv_paths {
-        match dotenvy::from_path(&dotenv_path) {
-            Ok(_) => info!(path = %dotenv_path.display(), "Loaded local environment overrides"),
-            Err(dotenvy::Error::Io(err)) if err.kind() == std::io::ErrorKind::NotFound => {}
-            Err(err) => warn!(
-                path = %dotenv_path.display(),
-                error = %err,
-                "Failed to load local environment overrides"
-            ),
-        }
-    }
+    let _log_guard = initialize_process_bootstrap();
 
     // Create execution state for global execution control
     let execution_state = Arc::new(commands::ExecutionState::new());
