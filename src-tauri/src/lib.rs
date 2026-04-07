@@ -735,9 +735,10 @@ pub fn run() {
                         recovery_chat_service_app_handle.try_state::<AppState>()
                     {
                         Arc::new(
-                            app_state.build_chat_service_with_execution_state(Arc::clone(
-                                &startup_execution_state,
-                            )),
+                            app_state.build_chat_service_for_runtime(
+                                Some(Arc::clone(&startup_execution_state)),
+                                Some(recovery_chat_service_app_handle.clone()),
+                            ),
                         )
                     } else {
                         Arc::new(

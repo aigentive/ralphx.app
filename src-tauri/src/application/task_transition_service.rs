@@ -53,6 +53,47 @@ use crate::infrastructure::ClaudeCodeClient;
 
 type AgenticClientFactory = dyn Fn() -> Arc<dyn AgenticClient> + Send + Sync;
 
+#[allow(clippy::too_many_arguments)]
+fn build_transition_chat_service_fallback<R: Runtime>(
+    chat_message_repo: Arc<dyn ChatMessageRepository>,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    conversation_repo: Arc<dyn ChatConversationRepository>,
+    agent_run_repo: Arc<dyn AgentRunRepository>,
+    project_repo: Arc<dyn ProjectRepository>,
+    task_repo: Arc<dyn TaskRepository>,
+    task_dep_repo: Arc<dyn TaskDependencyRepository>,
+    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    activity_event_repo: Arc<dyn ActivityEventRepository>,
+    message_queue: Arc<MessageQueue>,
+    running_agent_registry: Arc<dyn RunningAgentRegistry>,
+    memory_event_repo: Arc<dyn MemoryEventRepository>,
+    execution_state: Arc<ExecutionState>,
+    app_handle: Option<AppHandle<R>>,
+) -> ClaudeChatService<R> {
+    let mut service = ClaudeChatService::new(
+        chat_message_repo,
+        chat_attachment_repo,
+        Arc::new(crate::infrastructure::memory::MemoryArtifactRepository::new()),
+        conversation_repo,
+        agent_run_repo,
+        project_repo,
+        task_repo,
+        task_dep_repo,
+        ideation_session_repo,
+        activity_event_repo,
+        message_queue,
+        running_agent_registry,
+        memory_event_repo,
+    )
+    .with_execution_state(execution_state);
+
+    if let Some(handle) = app_handle {
+        service = service.with_app_handle(handle);
+    }
+
+    service
+}
+
 // ============================================================================
 // No-op service implementations (for services not yet fully implemented)
 // ============================================================================
@@ -845,10 +886,9 @@ impl<R: Runtime> TaskTransitionService<R> {
                         app_handle.clone(),
                     )
                 } else {
-                    let mut fallback = ClaudeChatService::new(
+                    build_transition_chat_service_fallback(
                         Arc::clone(&chat_message_repo),
                         Arc::clone(&chat_attachment_repo),
-                        Arc::new(crate::infrastructure::memory::MemoryArtifactRepository::new()),
                         Arc::clone(&conversation_repo),
                         Arc::clone(&agent_run_repo),
                         Arc::clone(&project_repo),
@@ -859,28 +899,27 @@ impl<R: Runtime> TaskTransitionService<R> {
                         Arc::clone(&message_queue),
                         Arc::clone(&running_agent_registry),
                         Arc::clone(&memory_event_repo),
+                        Arc::clone(&execution_state),
+                        Some(handle.clone()),
                     )
-                    .with_execution_state(Arc::clone(&execution_state));
-                    fallback = fallback.with_app_handle(handle.clone());
-                    fallback
                 }
             } else {
-                ClaudeChatService::new(
+                build_transition_chat_service_fallback(
                     Arc::clone(&chat_message_repo),
                     Arc::clone(&chat_attachment_repo),
-                    Arc::new(crate::infrastructure::memory::MemoryArtifactRepository::new()),
                     Arc::clone(&conversation_repo),
                     Arc::clone(&agent_run_repo),
                     Arc::clone(&project_repo),
                     Arc::clone(&task_repo),
                     Arc::clone(&task_dep_repo),
                     Arc::clone(&ideation_session_repo),
-                    activity_event_repo,
-                    message_queue,
+                    Arc::clone(&activity_event_repo),
+                    Arc::clone(&message_queue),
                     Arc::clone(&running_agent_registry),
-                    memory_event_repo,
+                    Arc::clone(&memory_event_repo),
+                    Arc::clone(&execution_state),
+                    None,
                 )
-                .with_execution_state(Arc::clone(&execution_state))
             };
             // Global env var override: RALPHX_PROCESS_VARIANT_EXECUTION=team
             use crate::infrastructure::agents::claude::env_variant_override;
@@ -991,9 +1030,10 @@ impl<R: Runtime> TaskTransitionService<R> {
         if let Some(handle) = self._app_handle.as_ref() {
             if let Some(app_state) = handle.try_state::<AppState>() {
                 self.chat_service = Arc::new(
-                    app_state.build_chat_service_with_execution_state(Arc::clone(
-                        &self.execution_state,
-                    )),
+                    app_state.build_chat_service_for_runtime(
+                        Some(Arc::clone(&self.execution_state)),
+                        self._app_handle.clone(),
+                    ),
                 );
             }
         }
