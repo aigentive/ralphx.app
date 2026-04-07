@@ -13,7 +13,7 @@ use tauri::{AppHandle, Emitter, Wry};
 use crate::application::chat_service::uses_execution_slot;
 use crate::commands::execution_commands::context_matches_running_status_for_gc;
 use crate::commands::ExecutionState;
-use crate::domain::agents::{AgentConfig, AgentHandle, AgentRole, AgenticClient};
+use crate::domain::agents::{AgentConfig, AgentHandle, AgentRole, AgenticClient, ClientType};
 use crate::domain::entities::{ChatContextType, IdeationSessionId, TaskId};
 use crate::domain::repositories::{
     ExecutionSettingsRepository, IdeationSessionRepository, ProjectRepository, TaskRepository,
@@ -283,6 +283,44 @@ impl AgenticClientSpawner {
         // Fallback to the spawner's default working directory
         self.working_directory.clone()
     }
+
+    fn build_agent_config(
+        &self,
+        role: AgentRole,
+        agent_type: &str,
+        task_id: &str,
+        working_dir: PathBuf,
+        project_id: Option<String>,
+    ) -> AgentConfig {
+        let mut env = std::collections::HashMap::new();
+        if let Some(pid) = project_id {
+            env.insert("RALPHX_PROJECT_ID".to_string(), pid);
+        }
+
+        let mut config = AgentConfig {
+            role,
+            prompt: format!("Execute task {}", task_id),
+            working_directory: working_dir.clone(),
+            plugin_dir: None,
+            agent: None,
+            model: None,
+            max_tokens: None,
+            timeout_secs: None,
+            env,
+        };
+
+        if self.client.capabilities().client_type == ClientType::ClaudeCode {
+            let plugin_dir =
+                crate::infrastructure::agents::claude::resolve_plugin_dir(&working_dir);
+            config.plugin_dir = Some(plugin_dir);
+            config.agent = Some(
+                crate::infrastructure::agents::claude::agent_names::spawner_agent_name(agent_type)
+                    .to_string(),
+            );
+        }
+
+        config
+    }
 }
 
 #[async_trait]
@@ -361,29 +399,7 @@ impl AgentSpawner for AgenticClientSpawner {
 
         // Resolve project ID for RALPHX_PROJECT_ID env var
         let project_id = self.resolve_project_id(task_id).await;
-
-        // Resolve plugin dir robustly for both dev and release runs.
-        let plugin_dir = crate::infrastructure::agents::claude::resolve_plugin_dir(&working_dir);
-
-        let mut env = std::collections::HashMap::new();
-        if let Some(pid) = project_id {
-            env.insert("RALPHX_PROJECT_ID".to_string(), pid);
-        }
-
-        let config = AgentConfig {
-            role,
-            prompt: format!("Execute task {}", task_id),
-            working_directory: working_dir,
-            plugin_dir: Some(plugin_dir),
-            agent: Some(
-                crate::infrastructure::agents::claude::agent_names::spawner_agent_name(agent_type)
-                    .to_string(),
-            ),
-            model: None,
-            max_tokens: None,
-            timeout_secs: None,
-            env,
-        };
+        let config = self.build_agent_config(role, agent_type, task_id, working_dir, project_id);
 
         // Spawn and handle errors
         match self.client.spawn_agent(config).await {

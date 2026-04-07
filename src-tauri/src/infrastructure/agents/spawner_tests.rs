@@ -755,3 +755,49 @@ async fn test_resolve_working_directory_fallback_task_not_found() {
     let resolved = spawner.resolve_working_directory("nonexistent-task").await;
     assert_eq!(resolved, PathBuf::from("/fallback"));
 }
+
+#[test]
+fn test_build_agent_config_for_mock_client_omits_claude_plugin_wiring() {
+    let mock = Arc::new(MockAgenticClient::new());
+    let spawner = AgenticClientSpawner::new(mock);
+
+    let config = spawner.build_agent_config(
+        AgentRole::Worker,
+        "worker",
+        "task-123",
+        PathBuf::from("/tmp/task-123"),
+        Some("project-123".to_string()),
+    );
+
+    assert_eq!(config.role, AgentRole::Worker);
+    assert_eq!(config.prompt, "Execute task task-123");
+    assert_eq!(config.working_directory, PathBuf::from("/tmp/task-123"));
+    assert!(config.plugin_dir.is_none());
+    assert!(config.agent.is_none());
+    assert_eq!(
+        config.env.get("RALPHX_PROJECT_ID").map(String::as_str),
+        Some("project-123")
+    );
+}
+
+#[test]
+fn test_build_agent_config_for_claude_client_sets_plugin_and_agent() {
+    let client = Arc::new(crate::infrastructure::ClaudeCodeClient::new());
+    let spawner = AgenticClientSpawner::new(client);
+
+    let config = spawner.build_agent_config(
+        AgentRole::QaRefiner,
+        "qa-refiner",
+        "task-456",
+        PathBuf::from("/tmp/task-456"),
+        None,
+    );
+
+    assert_eq!(config.role, AgentRole::QaRefiner);
+    assert_eq!(config.prompt, "Execute task task-456");
+    assert_eq!(
+        config.agent.as_deref(),
+        Some(crate::infrastructure::agents::claude::agent_names::AGENT_QA_REFINER)
+    );
+    assert!(config.plugin_dir.is_some());
+}
