@@ -1,5 +1,5 @@
 use super::*;
-use crate::domain::agents::{AgentHarnessKind, LogicalEffort};
+use crate::domain::agents::{AgentHarnessKind, LogicalEffort, ProviderSessionRef};
 use crate::domain::entities::IdeationSessionId;
 use crate::testing::SqliteTestDb;
 
@@ -12,6 +12,15 @@ fn setup_repo() -> (SqliteTestDb, SqliteAgentRunRepository) {
 fn seed_ideation_conversation(db: &SqliteTestDb, claude_session_id: Option<&str>) -> ChatConversation {
     let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
     conversation.claude_session_id = claude_session_id.map(str::to_string);
+    db.insert_conversation(conversation)
+}
+
+fn seed_codex_ideation_conversation(db: &SqliteTestDb, provider_session_id: &str) -> ChatConversation {
+    let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
+    conversation.set_provider_session_ref(ProviderSessionRef {
+        harness: AgentHarnessKind::Codex,
+        provider_session_id: provider_session_id.to_string(),
+    });
     db.insert_conversation(conversation)
 }
 
@@ -49,6 +58,36 @@ async fn test_get_interrupted_conversations_returns_orphaned_conversation() {
         result[0].last_run.error_message,
         Some("Orphaned on app restart".to_string())
     );
+}
+
+#[tokio::test]
+async fn test_get_interrupted_conversations_returns_orphaned_codex_conversation() {
+    let (db, agent_run_repo) = setup_repo();
+    let conversation = seed_codex_ideation_conversation(&db, "codex-thread-1");
+
+    let mut run = AgentRun::new(conversation.id);
+    let run_id = run.id;
+    run.status = AgentRunStatus::Cancelled;
+    run.completed_at = Some(Utc::now());
+    run.error_message = Some("Orphaned on app restart".to_string());
+    run.harness = Some(AgentHarnessKind::Codex);
+    run.provider_session_id = Some("codex-thread-1".to_string());
+    agent_run_repo.create(run).await.unwrap();
+
+    let result = agent_run_repo
+        .get_interrupted_conversations()
+        .await
+        .unwrap();
+
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].conversation.id, conversation.id);
+    assert_eq!(result[0].conversation.provider_harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(
+        result[0].conversation.provider_session_id.as_deref(),
+        Some("codex-thread-1")
+    );
+    assert_eq!(result[0].last_run.id, run_id);
+    assert_eq!(result[0].last_run.harness, Some(AgentHarnessKind::Codex));
 }
 
 #[tokio::test]

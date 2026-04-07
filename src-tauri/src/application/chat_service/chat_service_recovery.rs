@@ -1,4 +1,4 @@
-// Session recovery logic for stale Claude sessions.
+// Session recovery logic for stale provider sessions.
 //
 // Extracted from chat_service_send_background.rs to reduce file size.
 // Handles rebuilding conversation history and spawning fresh sessions.
@@ -12,6 +12,8 @@ use super::chat_service_replay::{
 };
 use super::chat_service_streaming::process_stream_background;
 use super::streaming_state_cache::StreamingStateCache;
+use crate::application::agent_lane_resolution::resolve_agent_spawn_settings;
+use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::entities::{ChatContextType, ChatConversation, ChatConversationId};
 use crate::domain::repositories::{
     ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
@@ -23,7 +25,7 @@ use crate::domain::services::emit_verification_status_changed;
 use crate::error::{AppError, AppResult};
 use tauri::{Manager, Runtime};
 
-/// Attempt to recover from a stale Claude session by rebuilding conversation history
+/// Attempt to recover from a stale provider session by rebuilding conversation history
 /// and spawning a fresh session.
 ///
 /// # Arguments
@@ -48,6 +50,7 @@ use tauri::{Manager, Runtime};
 pub(super) async fn attempt_session_recovery<R: Runtime>(
     conversation_id: &ChatConversationId,
     conversation: &ChatConversation,
+    harness: AgentHarnessKind,
     context_type: ChatContextType,
     context_id: &str,
     new_message: &str,
@@ -134,33 +137,89 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
         Arc::clone(&app_state.ideation_effort_settings_repo)
     });
 
-    // 4. Spawn fresh Claude session with history
-    let spawnable = match chat_service_context::build_command(
-        cli_path,
-        plugin_dir,
-        conversation,
-        &bootstrap_prompt,
-        working_directory,
-        None, // entity_status
-        _resolved_project_id.as_deref(),
-        team_mode,
-        chat_attachment_repo,
-        artifact_repo,
-        agent_lane_settings_repo,
-        ideation_effort_settings_repo,
-        ideation_model_settings_repo,
-        &[], // recovery path already builds its own bootstrap_prompt with history
-        0,   // total_available: not needed here — session_messages is empty
-        None, // effort_override: recovery uses default
-        None, // model_override: recovery uses resolved ideation settings when available
-    )
-    .await
-    {
-        Ok(s) => s,
-        Err(e) => {
-            let err = AppError::Infrastructure(format!("Failed to build recovery command: {}", e));
-            log_failure(&err);
-            return Err(err);
+    // 4. Spawn fresh provider session with history
+    let spawnable = match harness {
+        AgentHarnessKind::Claude => match chat_service_context::build_command(
+            cli_path,
+            plugin_dir,
+            conversation,
+            &bootstrap_prompt,
+            working_directory,
+            None,
+            _resolved_project_id.as_deref(),
+            team_mode,
+            chat_attachment_repo,
+            artifact_repo,
+            agent_lane_settings_repo,
+            ideation_effort_settings_repo,
+            ideation_model_settings_repo,
+            &[],
+            0,
+            None,
+            None,
+        )
+        .await
+        {
+            Ok(spawnable) => spawnable,
+            Err(error) => {
+                let err =
+                    AppError::Infrastructure(format!("Failed to build recovery command: {error}"));
+                log_failure(&err);
+                return Err(err);
+            }
+        },
+        AgentHarnessKind::Codex => {
+            let capabilities = match crate::infrastructure::agents::probe_codex_cli(cli_path) {
+                Ok(capabilities) => capabilities,
+                Err(error) => {
+                    let err = AppError::Infrastructure(format!(
+                        "Failed to probe Codex CLI for recovery: {error}"
+                    ));
+                    log_failure(&err);
+                    return Err(err);
+                }
+            };
+            let agent_name =
+                super::resolve_agent_with_team_mode(&conversation.context_type, None, false);
+            let resolved_spawn_settings = resolve_agent_spawn_settings(
+                agent_name,
+                _resolved_project_id.as_deref(),
+                conversation.context_type,
+                None,
+                agent_lane_settings_repo.as_ref(),
+                ideation_model_settings_repo.as_ref(),
+                ideation_effort_settings_repo.as_ref(),
+            )
+            .await;
+
+            match chat_service_context::build_codex_command(
+                cli_path,
+                plugin_dir,
+                &capabilities,
+                conversation,
+                &bootstrap_prompt,
+                working_directory,
+                None,
+                _resolved_project_id.as_deref(),
+                false,
+                chat_attachment_repo,
+                artifact_repo,
+                &[],
+                0,
+                false,
+                &resolved_spawn_settings,
+            )
+            .await
+            {
+                Ok(spawnable) => spawnable,
+                Err(error) => {
+                    let err = AppError::Infrastructure(format!(
+                        "Failed to build Codex recovery command: {error}"
+                    ));
+                    log_failure(&err);
+                    return Err(err);
+                }
+            }
         }
     };
 
@@ -176,7 +235,7 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
     // 5. Process stream to capture new session ID
     let outcome = match process_stream_background::<tauri::Wry>(
         child,
-        crate::domain::agents::AgentHarnessKind::Claude,
+        harness,
         context_type,
         context_id,
         conversation_id,
@@ -215,9 +274,15 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
         }
     };
 
-    // 6. Update conversation with new session ID
+    // 6. Update conversation with new provider session ID
     if let Err(e) = conversation_repo
-        .update_claude_session_id(conversation_id, &new_session_id)
+        .update_provider_session_ref(
+            conversation_id,
+            &ProviderSessionRef {
+                harness,
+                provider_session_id: new_session_id.clone(),
+            },
+        )
         .await
     {
         let err = AppError::Database(format!("Failed to update session ID: {}", e));
@@ -229,6 +294,7 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
     tracing::info!(
         event = "rehydrate_success",
         conversation_id = conversation_id.as_str(),
+        harness = %harness,
         old_session_id = old_session_id,
         new_session_id = %new_session_id,
         replay_turns = replay.turns.len(),

@@ -346,8 +346,8 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                     FROM chat_conversations c
                     INNER JOIN agent_runs ar ON c.id = ar.conversation_id
                     WHERE (
-                        c.claude_session_id IS NOT NULL
-                        OR (c.provider_harness = 'claude' AND c.provider_session_id IS NOT NULL)
+                        c.provider_session_id IS NOT NULL
+                        OR c.claude_session_id IS NOT NULL
                     )
                       AND ar.status = 'cancelled'
                       AND ar.error_message = 'Orphaned on app restart'

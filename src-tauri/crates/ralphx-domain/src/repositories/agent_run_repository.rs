@@ -1,7 +1,7 @@
 // Agent run repository trait - domain layer abstraction
 //
 // This trait defines the contract for agent run persistence.
-// Agent runs track the execution status of Claude agents for conversations.
+// Agent runs track the execution status of provider-backed agents for conversations.
 
 use async_trait::async_trait;
 
@@ -73,7 +73,7 @@ pub trait AgentRunRepository: Send + Sync {
     /// Get conversations that were interrupted during app shutdown
     ///
     /// Returns conversations where:
-    /// - claude_session_id is NOT NULL (can use --resume)
+    /// - a provider session ID is present (can use provider-specific resume)
     /// - latest agent_run status is 'cancelled'
     /// - latest agent_run error_message is 'Orphaned on app restart'
     ///

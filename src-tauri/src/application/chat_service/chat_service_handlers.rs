@@ -1148,14 +1148,14 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
 
     match classified_error {
         AppError::StaleSession { session_id, .. } => {
-            tracing::warn!(
-                event = "stale_session_detected",
-                session_id = %session_id,
-                conversation_id = conversation_id.as_str(),
-                context_type = %context_type,
-                context_id = %context_id,
-                "Detected stale Claude session"
-            );
+                tracing::warn!(
+                    event = "stale_session_detected",
+                    session_id = %session_id,
+                    conversation_id = conversation_id.as_str(),
+                    context_type = %context_type,
+                    context_id = %context_id,
+                    "Detected stale provider session"
+                );
 
             // Feature flag check
             let recovery_enabled = std::env::var("ENABLE_SESSION_RECOVERY")
@@ -1175,10 +1175,15 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 );
                 // Fall through to clear session
             } else if let (Some(msg), Some(conv)) = (user_message_content, conversation) {
+                let recovery_harness = conv
+                    .provider_session_ref()
+                    .map(|session_ref| session_ref.harness)
+                    .unwrap_or(crate::domain::agents::AgentHarnessKind::Claude);
                 // Attempt recovery
                 match super::chat_service_recovery::attempt_session_recovery(
                     &conversation_id,
                     conv,
+                    recovery_harness,
                     context_type,
                     context_id,
                     msg,
@@ -1219,7 +1224,12 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
 
                         // Retry send with fresh session (set is_retry=true)
                         let mut retry_conv = conv.clone();
-                        retry_conv.claude_session_id = Some(new_session_id.clone());
+                        retry_conv.set_provider_session_ref(
+                            crate::domain::agents::ProviderSessionRef {
+                                harness: recovery_harness,
+                                provider_session_id: new_session_id.clone(),
+                            },
+                        );
                         let ideation_effort_settings_repo = app_handle.as_ref().map(|handle| {
                             let app_state = handle.state::<AppState>();
                             Arc::clone(&app_state.ideation_effort_settings_repo)
@@ -1234,36 +1244,93 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         });
 
                         // Build command for retry
-                        if let Ok(spawnable) = chat_service_context::build_command(
-                            cli_path,
-                            plugin_dir,
-                            &retry_conv,
-                            msg,
-                            working_directory,
-                            None,
-                            resolved_project_id.as_deref(),
-                            team_mode,
-                            Arc::clone(chat_attachment_repo),
-                            Arc::clone(artifact_repo),
-                            agent_lane_settings_repo.clone(),
-                            ideation_effort_settings_repo.clone(),
-                            ideation_model_settings_repo.clone(),
-                            &[],  // retry path — no session history injection needed
-                            0,    // total_available: not needed here — session_messages is empty
-                            None, // effort_override: recovery retry uses default
-                            None, // model_override: recovery retry uses resolved ideation settings when available
-                        )
-                        .await
-                        {
+                        let retry_spawnable = match recovery_harness {
+                            crate::domain::agents::AgentHarnessKind::Claude => {
+                                chat_service_context::build_command(
+                                    cli_path,
+                                    plugin_dir,
+                                    &retry_conv,
+                                    msg,
+                                    working_directory,
+                                    None,
+                                    resolved_project_id.as_deref(),
+                                    team_mode,
+                                    Arc::clone(chat_attachment_repo),
+                                    Arc::clone(artifact_repo),
+                                    agent_lane_settings_repo.clone(),
+                                    ideation_effort_settings_repo.clone(),
+                                    ideation_model_settings_repo.clone(),
+                                    &[],
+                                    0,
+                                    None,
+                                    None,
+                                )
+                                .await
+                            }
+                            crate::domain::agents::AgentHarnessKind::Codex => {
+                                let capabilities = match crate::infrastructure::agents::probe_codex_cli(cli_path) {
+                                    Ok(capabilities) => capabilities,
+                                    Err(error) => {
+                                        tracing::error!(%error, "Failed to probe Codex CLI for recovery retry");
+                                        return false;
+                                    }
+                                };
+                                let entity_status = chat_service_context::get_entity_status_for_resume(
+                                    context_type,
+                                    context_id,
+                                    Arc::clone(ideation_session_repo),
+                                    Arc::clone(task_repo),
+                                )
+                                .await;
+                                let resolved_agent_name = super::resolve_agent_with_team_mode(
+                                    &context_type,
+                                    entity_status.as_deref(),
+                                    false,
+                                );
+                                let resolved_spawn_settings =
+                                    crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
+                                        resolved_agent_name,
+                                        resolved_project_id.as_deref(),
+                                        context_type,
+                                        None,
+                                        agent_lane_settings_repo.as_ref(),
+                                        ideation_model_settings_repo.as_ref(),
+                                        ideation_effort_settings_repo.as_ref(),
+                                    )
+                                    .await;
+
+                                chat_service_context::build_codex_resume_command(
+                                    cli_path,
+                                    plugin_dir,
+                                    &capabilities,
+                                    context_type,
+                                    context_id,
+                                    msg,
+                                    working_directory,
+                                    &new_session_id,
+                                    resolved_project_id.as_deref(),
+                                    false,
+                                    Arc::clone(artifact_repo),
+                                    Arc::clone(ideation_session_repo),
+                                    Arc::clone(task_repo),
+                                    &[],
+                                    0,
+                                    false,
+                                    &resolved_spawn_settings,
+                                )
+                                .await
+                            }
+                        };
+
+                        if let Ok(spawnable) = retry_spawnable {
                             if let Ok(retry_child) = spawnable.spawn().await {
                                 use super::chat_service_send_background::{
                                     BackgroundRunContext, BackgroundRunRepos,
                                 };
-                                // Recursive call with is_retry_attempt=true
                                 super::chat_service_send_background::spawn_send_message_background(
                                     BackgroundRunContext {
                                         child: retry_child,
-                                        harness: crate::domain::agents::AgentHarnessKind::Claude,
+                                        harness: recovery_harness,
                                         context_type,
                                         context_id: context_id.to_string(),
                                         conversation_id,
@@ -1315,14 +1382,14 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                         team_mode,
                                         cancellation_token:
                                             tokio_util::sync::CancellationToken::new(),
-                                        team_service: None, // Recovery retries don't need team events
-                                        streaming_state_cache: super::StreamingStateCache::new(), // Fresh cache for retry
-                                        interactive_process_registry: None, // Retries don't use interactive mode
-                                        verification_child_registry: None, // Retries don't kill verification processes
+                                        team_service: None,
+                                        streaming_state_cache: super::StreamingStateCache::new(),
+                                        interactive_process_registry: None,
+                                        verification_child_registry: None,
                                     },
                                 );
 
-                                return true; // Recovery spawned retry, caller should return early
+                                return true;
                             }
                         }
 
