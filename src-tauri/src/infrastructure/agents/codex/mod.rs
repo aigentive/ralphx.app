@@ -6,7 +6,8 @@ use std::process::Command as StdCommand;
 
 use crate::infrastructure::agents::claude::{
     claude_runtime_config, filter_interactive_tools, format_allowed_tools_arg_value,
-    get_agent_config, mcp_agent_type, node_utils, validate_mcp_tool_name,
+    get_agent_config, load_agent_system_prompt, mcp_agent_type, node_utils,
+    validate_mcp_tool_name,
 };
 use crate::domain::agents::LogicalEffort;
 use crate::infrastructure::agents::claude::SpawnableCommand;
@@ -159,6 +160,26 @@ pub fn build_codex_mcp_overrides(
     }
 
     Ok(overrides)
+}
+
+pub fn compose_codex_prompt(
+    prompt: &str,
+    plugin_dir: Option<&Path>,
+    agent_name: Option<&str>,
+) -> String {
+    let Some(plugin_dir) = plugin_dir else {
+        return prompt.to_string();
+    };
+    let Some(agent_name) = agent_name else {
+        return prompt.to_string();
+    };
+    let Some(system_prompt) = load_agent_system_prompt(plugin_dir, agent_name) else {
+        return prompt.to_string();
+    };
+
+    format!(
+        "<ralphx_agent_instructions>\n{system_prompt}\n</ralphx_agent_instructions>\n\n{prompt}"
+    )
 }
 
 pub fn find_codex_cli() -> Option<PathBuf> {

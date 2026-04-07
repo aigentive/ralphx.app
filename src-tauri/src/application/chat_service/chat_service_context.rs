@@ -28,6 +28,7 @@ use crate::infrastructure::agents::claude::agent_names;
 use crate::infrastructure::agents::{
     build_codex_mcp_overrides, build_spawnable_codex_exec_command,
     build_spawnable_codex_resume_command, CodexCliCapabilities, CodexExecCliConfig,
+    compose_codex_prompt,
 };
 use crate::utils::truncate_str;
 
@@ -1191,7 +1192,11 @@ pub async fn build_codex_command(
         ideation_subagent_model_cap.as_deref(),
     )
     .await?;
-    let prompt = format!("{}{}", initial_prompt, attachment_context);
+    let prompt = compose_codex_prompt(
+        &format!("{}{}", initial_prompt, attachment_context),
+        Some(plugin_dir),
+        Some(agent_name),
+    );
 
     let config_overrides = build_codex_mcp_overrides(plugin_dir, agent_name, is_external_mcp)?;
     let codex_config =
@@ -1511,6 +1516,7 @@ pub async fn build_codex_resume_command(
     )
     .await?;
 
+    let prompt = compose_codex_prompt(&resume_prompt, Some(plugin_dir), Some(agent_name));
     let config_overrides = build_codex_mcp_overrides(plugin_dir, agent_name, is_external_mcp)?;
     let codex_config =
         build_codex_cli_config(working_directory, resolved_spawn_settings, config_overrides);
@@ -1518,7 +1524,7 @@ pub async fn build_codex_resume_command(
     let mut spawnable = build_spawnable_codex_resume_command(
         cli_path,
         session_id,
-        &resume_prompt,
+        &prompt,
         capabilities,
         &codex_config,
     )?;

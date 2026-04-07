@@ -4,8 +4,8 @@ use ralphx_lib::commands::diagnostic_commands::build_codex_cli_diagnostics_respo
 use ralphx_lib::domain::agents::LogicalEffort;
 use ralphx_lib::infrastructure::agents::{
     build_codex_exec_args, build_codex_exec_resume_args, build_spawnable_codex_exec_command,
-    build_spawnable_codex_resume_command, parse_codex_cli_capabilities, parse_codex_version,
-    CodexCliCapabilities, CodexExecCliConfig,
+    build_spawnable_codex_resume_command, compose_codex_prompt, parse_codex_cli_capabilities,
+    parse_codex_version, CodexCliCapabilities, CodexExecCliConfig,
 };
 
 const ROOT_HELP: &str = r#"
@@ -224,6 +224,35 @@ fn build_spawnable_codex_resume_command_uses_resume_subcommand_and_prompt_arg() 
         spawnable.get_args_for_test(),
         vec!["exec", "resume", "session-123", "--json", "--", "Continue the plan"]
     );
+}
+
+#[test]
+fn compose_codex_prompt_injects_agent_prompt_body_when_available() {
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let plugin_dir = temp_dir.path().join("plugins/app");
+    let agents_dir = plugin_dir.join("agents");
+    std::fs::create_dir_all(&agents_dir).expect("agents dir");
+    std::fs::write(
+        agents_dir.join("worker.md"),
+        "---\nname: ralphx-worker\n---\nYou are the worker agent.\n",
+    )
+    .expect("agent file");
+
+    let prompt = compose_codex_prompt(
+        "Execute task task-123",
+        Some(plugin_dir.as_path()),
+        Some("ralphx:worker"),
+    );
+
+    assert!(prompt.contains("<ralphx_agent_instructions>"));
+    assert!(prompt.contains("You are the worker agent."));
+    assert!(prompt.contains("Execute task task-123"));
+}
+
+#[test]
+fn compose_codex_prompt_returns_original_prompt_when_agent_prompt_missing() {
+    let prompt = compose_codex_prompt("Execute task task-123", None, Some("ralphx:worker"));
+    assert_eq!(prompt, "Execute task task-123");
 }
 
 #[test]

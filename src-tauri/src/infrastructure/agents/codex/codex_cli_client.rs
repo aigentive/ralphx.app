@@ -11,11 +11,10 @@ use crate::domain::agents::{
     AgentConfig, AgentError, AgentHandle, AgentOutput, AgentResponse, AgentResult, AgenticClient,
     ClientCapabilities, ClientType, ResponseChunk,
 };
-use crate::infrastructure::agents::claude::load_agent_system_prompt;
 
 use super::{
-    build_codex_mcp_overrides, build_spawnable_codex_exec_command, find_codex_cli, probe_codex_cli,
-    CodexExecCliConfig,
+    build_codex_mcp_overrides, build_spawnable_codex_exec_command, compose_codex_prompt,
+    find_codex_cli, probe_codex_cli, CodexExecCliConfig,
 };
 
 lazy_static! {
@@ -48,19 +47,10 @@ impl CodexCliClient {
     }
 
     fn build_prompt(&self, config: &AgentConfig) -> String {
-        let Some(plugin_dir) = config.plugin_dir.as_ref() else {
-            return config.prompt.clone();
-        };
-        let Some(agent_name) = config.agent.as_deref() else {
-            return config.prompt.clone();
-        };
-        let Some(system_prompt) = load_agent_system_prompt(plugin_dir, agent_name) else {
-            return config.prompt.clone();
-        };
-
-        format!(
-            "<ralphx_agent_instructions>\n{system_prompt}\n</ralphx_agent_instructions>\n\n{}",
-            config.prompt
+        compose_codex_prompt(
+            &config.prompt,
+            config.plugin_dir.as_deref(),
+            config.agent.as_deref(),
         )
     }
 
