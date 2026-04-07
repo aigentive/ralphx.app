@@ -130,6 +130,16 @@ When working in `src-tauri/`, also follow:
 | P1 | Logging / auditability | Investigating | Standardize per-harness prompt capture, raw event logs, parsed event traces, provider session ids, and spawn metadata so failures remain debuggable across Claude and Codex |
 | P1 | Regression coverage | Planned | Build compatibility tests that replay Codex/Claude raw events through the shared parser contract and cover settings, availability, recovery, queueing, UI payload transforms, and compatibility migrations |
 
+## High-Value Refactor Targets
+
+| Priority | Area | Why It Matters | Next Step |
+|---|---|---|---|
+| P0 | `src-tauri/src/application/task_transition_service.rs` | Oversized, high-churn orchestration root for execution/review/merge; every Codex parity slice keeps paying rebuild + context costs here | Split provider-aware chat/spawn rebuilding, merge/review corrective routing, and builder/factory wiring into support modules before more feature work piles onto the root |
+| P0 | `src-tauri/src/application/chat_service/mod.rs` + `chat_service_*` builder seams | Multi-harness branching is spread across send/resume/recovery/queue paths, so duplication keeps reappearing when Claude/Codex behavior diverges | Establish a clearer runtime-factory boundary for provider-aware chat service construction and keep raw `ClaudeChatService::new(...)` fallbacks shrinking each slice |
+| P1 | `src-tauri/src/application/task_scheduler_service/mod.rs` | Scheduler now carries readiness selection, retries, contention logic, and transition-service construction; Codex lane threading increases coupling further | Extract retry/contention and transition-builder support so scheduler focuses on task selection/orchestration only |
+| P1 | `src-tauri/src/commands/git_commands.rs` | Merge retry and merge-control flows still own a lot of runtime wiring and background-service assembly | Move background merge-retry builder/runtime setup behind shared helpers so Codex lane parity and transition rules do not need to be patched in command code |
+| P1 | Provider-aware runtime factories (`AppState`, transition/chat fallbacks, scheduler fallbacks) | Current behavior depends too much on whether `AppState` is discoverable from an `AppHandle`; non-AppState fallbacks still need explicit parity work | Keep converging on one provider-aware factory path and thread explicit lane/runtime deps only where true fallback construction is unavoidable |
+
 ## Cross-Session Tracker Notes
 
 | Tracker | Current Guardrails |
