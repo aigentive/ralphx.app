@@ -146,6 +146,7 @@ pub async fn external_apply_proposals(
             state.app_state.app_handle.as_ref().cloned(),
         )
         .with_execution_settings_repo(Arc::clone(&state.app_state.execution_settings_repo))
+        .with_agent_lane_settings_repo(Arc::clone(&state.app_state.agent_lane_settings_repo))
         .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo));
         let settle_ms = scheduler_config().ready_settle_ms;
         tokio::spawn(async move {

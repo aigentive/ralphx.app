@@ -287,6 +287,7 @@ pub async fn complete_review(
             state.app_state.app_handle.as_ref().cloned(),
         )
         .with_execution_settings_repo(Arc::clone(&state.app_state.execution_settings_repo))
+        .with_agent_lane_settings_repo(Arc::clone(&state.app_state.agent_lane_settings_repo))
         .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&state.app_state.interactive_process_registry)),
     );

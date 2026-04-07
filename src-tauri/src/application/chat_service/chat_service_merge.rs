@@ -167,6 +167,18 @@ impl<'a, R: Runtime> MergeAutoCompleteContext<'a, R> {
         } else {
             scheduler
         };
+        let scheduler = if let Some(repo) = self
+            .app_handle
+            .and_then(|handle| {
+                handle
+                    .try_state::<AppState>()
+                    .map(|app_state| Arc::clone(&app_state.agent_lane_settings_repo))
+            })
+        {
+            scheduler.with_agent_lane_settings_repo(repo)
+        } else {
+            scheduler
+        };
         let scheduler = if let Some(ref repo) = self.plan_branch_repo {
             scheduler.with_plan_branch_repo(Arc::clone(repo))
         } else {

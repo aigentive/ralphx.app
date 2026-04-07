@@ -336,6 +336,7 @@ pub async fn resume_execution(
             app_state.app_handle.clone(),
         )
         .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
+        .with_agent_lane_settings_repo(Arc::clone(&app_state.agent_lane_settings_repo))
         .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
     );

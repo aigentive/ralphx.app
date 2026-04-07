@@ -417,6 +417,14 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         scheduler_svc =
                             scheduler_svc.with_execution_settings_repo(Arc::clone(repo));
                     }
+                    if let Some(ref repo) = app_handle.as_ref().and_then(|handle| {
+                        handle
+                            .try_state::<AppState>()
+                            .map(|app_state| Arc::clone(&app_state.agent_lane_settings_repo))
+                    }) {
+                        scheduler_svc =
+                            scheduler_svc.with_agent_lane_settings_repo(Arc::clone(repo));
+                    }
                     if let Some(ref repo) = plan_branch_repo {
                         scheduler_svc = scheduler_svc.with_plan_branch_repo(Arc::clone(repo));
                     }

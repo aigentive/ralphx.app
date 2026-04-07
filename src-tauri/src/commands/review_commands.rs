@@ -242,6 +242,7 @@ pub async fn approve_fix_task(
             Some(app.clone()),
         )
         .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
+        .with_agent_lane_settings_repo(Arc::clone(&state.agent_lane_settings_repo))
         .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
     );
@@ -468,6 +469,7 @@ pub async fn approve_task_for_review(
             Some(app.clone()),
         )
         .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
+        .with_agent_lane_settings_repo(Arc::clone(&state.agent_lane_settings_repo))
         .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
     );
