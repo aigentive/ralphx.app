@@ -40,6 +40,7 @@ use crate::domain::repositories::{
     TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::state_machine::services::TaskScheduler;
+use crate::error::AppResult;
 
 use super::TaskTransitionService;
 
@@ -143,6 +144,26 @@ pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
 }
 
 impl<R: Runtime> StartupJobRunner<R> {
+    async fn persist_startup_status_change(
+        &self,
+        task: &crate::domain::entities::Task,
+        from_status: InternalStatus,
+        trigger: &str,
+    ) -> AppResult<bool> {
+        let updated = self
+            .task_repo
+            .update_with_expected_status(task, from_status)
+            .await?;
+
+        if updated {
+            self.task_repo
+                .persist_status_change(&task.id, from_status, task.internal_status, trigger)
+                .await?;
+        }
+
+        Ok(updated)
+    }
+
     /// Create a new StartupJobRunner with all required dependencies.
     /// Phase 82: Now requires active_project_state for per-project scoping.
     /// Phase 90: Now requires app_state_repo for reading persisted active project from DB.
@@ -1204,20 +1225,29 @@ impl<R: Runtime> StartupJobRunner<R> {
                 task.internal_status = recovery_target;
                 task.touch();
 
-                if let Err(e) = self.task_repo.update(&task).await {
-                    tracing::error!(
-                        error = %e,
-                        task_id = task.id.as_str(),
-                        "Phase 0.8: Failed to persist crash recovery transition"
-                    );
-                    continue;
+                match self
+                    .persist_startup_status_change(&task, from_status, "crash_recovery")
+                    .await
+                {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        tracing::info!(
+                            task_id = task.id.as_str(),
+                            from = from_status.as_str(),
+                            to = recovery_target.as_str(),
+                            "Phase 0.8: Crash recovery skipped — task already transitioned"
+                        );
+                        continue;
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            error = %e,
+                            task_id = task.id.as_str(),
+                            "Phase 0.8: Failed to persist crash recovery transition"
+                        );
+                        continue;
+                    }
                 }
-
-                // Persist status change for audit trail
-                let _ = self
-                    .task_repo
-                    .persist_status_change(&task.id, from_status, recovery_target, "crash_recovery")
-                    .await;
 
                 // Add ReviewNote so the frontend can display the auto-recovery reason
                 if let Some(ref repo) = self.review_repo {
@@ -1342,13 +1372,26 @@ impl<R: Runtime> StartupJobRunner<R> {
                 task.blocked_reason = None;
                 task.touch();
 
-                if let Err(e) = self.task_repo.update(&task).await {
-                    tracing::error!(
-                        error = %e,
-                        task_id = task.id.as_str(),
-                        "Failed to unblock task on startup"
-                    );
-                    continue;
+                match self
+                    .persist_startup_status_change(&task, InternalStatus::Blocked, "startup_unblock")
+                    .await
+                {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        tracing::info!(
+                            task_id = task.id.as_str(),
+                            "Startup unblock skipped — task already transitioned"
+                        );
+                        continue;
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            error = %e,
+                            task_id = task.id.as_str(),
+                            "Failed to unblock task on startup"
+                        );
+                        continue;
+                    }
                 }
 
                 tracing::info!(
@@ -1523,20 +1566,29 @@ impl<R: Runtime> StartupJobRunner<R> {
                     task.blocked_reason = Some(reason);
                     task.touch();
 
-                    if let Err(e) = self.task_repo.update(&task).await {
-                        tracing::error!(
-                            error = %e,
-                            task_id = task.id.as_str(),
-                            "Failed to reconcile dependency violation"
-                        );
-                        continue;
+                    match self
+                        .persist_startup_status_change(&task, from_status, "dep_reconciliation")
+                        .await
+                    {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            tracing::info!(
+                                task_id = task.id.as_str(),
+                                from = from_status.as_str(),
+                                to = target.as_str(),
+                                "Dependency reconciliation skipped — task already transitioned"
+                            );
+                            continue;
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                error = %e,
+                                task_id = task.id.as_str(),
+                                "Failed to reconcile dependency violation"
+                            );
+                            continue;
+                        }
                     }
-
-                    // Record state transition for timeline
-                    let _ = self
-                        .task_repo
-                        .persist_status_change(&task.id, from_status, target, "dep_reconciliation")
-                        .await;
 
                     // Emit event for UI
                     if let Some(ref handle) = self.app_handle {
