@@ -1,5 +1,6 @@
 use super::*;
 use crate::application::chat_service::{ChatService, MockChatService};
+use crate::commands::execution_commands::lifecycle::determine_paused_restore_status;
 use crate::domain::entities::{GitMode, IdeationSession};
 use crate::domain::services::RunningAgentKey;
 use std::sync::Arc;
@@ -3074,6 +3075,118 @@ async fn test_resume_restores_paused_tasks_to_previous_status() {
         .unwrap()
         .unwrap();
     assert_eq!(restored_task.internal_status, InternalStatus::Failed);
+}
+
+#[tokio::test]
+async fn test_determine_paused_restore_status_falls_back_to_history_when_metadata_invalid() {
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let app_state = AppState::new_test();
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Paused Task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.task_dependency_repo),
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.chat_message_repo),
+        Arc::clone(&app_state.chat_attachment_repo),
+        Arc::clone(&app_state.chat_conversation_repo),
+        Arc::clone(&app_state.agent_run_repo),
+        Arc::clone(&app_state.ideation_session_repo),
+        Arc::clone(&app_state.activity_event_repo),
+        Arc::clone(&app_state.message_queue),
+        Arc::clone(&app_state.running_agent_registry),
+        Arc::clone(&execution_state),
+        None,
+        Arc::clone(&app_state.memory_event_repo),
+    );
+
+    execution_state.pause();
+    transition_service
+        .transition_task(&task_id, InternalStatus::Paused)
+        .await
+        .expect("Failed to transition to Paused");
+
+    let mut paused_task = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
+    paused_task.metadata = Some(
+        serde_json::json!({
+            "pause_reason": {
+                "kind": "user_initiated",
+                "previous_status": "not-a-real-status",
+                "paused_at": chrono::Utc::now().to_rfc3339(),
+                "scope": "global"
+            }
+        })
+        .to_string(),
+    );
+    paused_task.touch();
+    app_state.task_repo.update(&paused_task).await.unwrap();
+
+    let refreshed = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let restore_status = determine_paused_restore_status(&refreshed, app_state.task_repo.as_ref())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        restore_status,
+        Some(InternalStatus::Executing),
+        "Malformed pause metadata should fall back to the real pre-pause status from history"
+    );
+}
+
+#[tokio::test]
+async fn test_determine_paused_restore_status_skips_when_no_valid_metadata_or_history() {
+    let app_state = AppState::new_test();
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Paused Task Without History".to_string());
+    task.internal_status = InternalStatus::Paused;
+    task.metadata = Some(
+        serde_json::json!({
+            "pause_reason": {
+                "kind": "user_initiated",
+                "previous_status": "not-a-real-status",
+                "paused_at": chrono::Utc::now().to_rfc3339(),
+                "scope": "global"
+            }
+        })
+        .to_string(),
+    );
+    let task = app_state.task_repo.create(task).await.unwrap();
+
+    let restore_status = determine_paused_restore_status(&task, app_state.task_repo.as_ref())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        restore_status, None,
+        "Malformed pause metadata without pause history should skip restore instead of inventing Executing"
+    );
 }
 
 #[tokio::test]
