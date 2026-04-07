@@ -116,6 +116,47 @@ fn should_transition_task_execution_to_pending_review(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExecutionCompletionAction {
+    PendingReview,
+    Failed,
+}
+
+fn execution_completion_action(
+    has_output: bool,
+    steps_tracked: bool,
+    all_steps_done: bool,
+) -> ExecutionCompletionAction {
+    if should_transition_task_execution_to_pending_review(has_output, steps_tracked, all_steps_done)
+    {
+        ExecutionCompletionAction::PendingReview
+    } else {
+        ExecutionCompletionAction::Failed
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IncompleteReviewAction {
+    SkipDuringShutdown,
+    Escalate,
+    IgnoreAlreadyTransitioned,
+}
+
+fn incomplete_review_action(
+    current_status: InternalStatus,
+    is_shutting_down: bool,
+) -> IncompleteReviewAction {
+    if current_status != InternalStatus::Reviewing {
+        return IncompleteReviewAction::IgnoreAlreadyTransitioned;
+    }
+
+    if is_shutting_down {
+        IncompleteReviewAction::SkipDuringShutdown
+    } else {
+        IncompleteReviewAction::Escalate
+    }
+}
+
 pub(super) async fn apply_system_wide_provider_pause<R: Runtime>(
     app_handle: &Option<AppHandle<R>>,
     category: &super::ProviderErrorCategory,
@@ -397,25 +438,14 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         transition_service
                     };
                     let all_steps_done = all_steps_completed(task_step_repo, &task_id).await;
-                    let should_transition_to_review =
-                        should_transition_task_execution_to_pending_review(
-                            has_output,
-                            task_step_repo.is_some(),
-                            all_steps_done,
-                        );
+                    let completion_action = execution_completion_action(
+                        has_output,
+                        task_step_repo.is_some(),
+                        all_steps_done,
+                    );
 
-                    if should_transition_to_review {
-                        if let Err(e) = transition_service
-                            .transition_task(&task_id, InternalStatus::PendingReview)
-                            .await
-                        {
-                            tracing::error!(
-                                "Failed to transition task {} to PendingReview: {}",
-                                task_id.as_str(),
-                                e
-                            );
-                        }
-                    } else if all_steps_done {
+                    if completion_action == ExecutionCompletionAction::PendingReview && all_steps_done
+                    {
                         tracing::info!(
                                 task_id = task_id.as_str(),
                                 "Worker run ended with all steps completed; transitioning to PendingReview"
@@ -426,6 +456,17 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         {
                             tracing::error!(
                                 "Failed to transition all-steps-done task {} to PendingReview: {}",
+                                task_id.as_str(),
+                                e
+                            );
+                        }
+                    } else if completion_action == ExecutionCompletionAction::PendingReview {
+                        if let Err(e) = transition_service
+                            .transition_task(&task_id, InternalStatus::PendingReview)
+                            .await
+                        {
+                            tracing::error!(
+                                "Failed to transition task {} to PendingReview: {}",
                                 task_id.as_str(),
                                 e
                             );
@@ -488,10 +529,13 @@ pub(super) async fn handle_stream_success<R: Runtime>(
         if let Some(ref exec_state) = execution_state {
             let task_id = TaskId::from_string(context_id.to_string());
             if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
-                if task.internal_status == InternalStatus::Reviewing {
+                match incomplete_review_action(
+                    task.internal_status,
+                    exec_state.is_shutting_down.load(Ordering::SeqCst),
+                ) {
+                    IncompleteReviewAction::SkipDuringShutdown => {
                     // L1 shutdown guard: skip escalation during clean app shutdown.
                     // The task stays in Reviewing so StartupJobRunner Phase 2 can respawn it.
-                    if exec_state.is_shutting_down.load(Ordering::SeqCst) {
                         tracing::info!(
                             task_id = task_id.as_str(),
                             "Shutdown detected — skipping review escalation; task stays in Reviewing for auto-recovery"
@@ -511,7 +555,7 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         let _ = task_repo.update(&updated_task).await;
                         return;
                     }
-
+                    IncompleteReviewAction::Escalate => {
                     tracing::info!(
                         task_id = task_id.as_str(),
                         "Review agent completed without calling complete_review; escalating"
@@ -606,7 +650,8 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                             "Failed to transition reviewing task to Escalated after incomplete review"
                         );
                     }
-                } else {
+                    }
+                    IncompleteReviewAction::IgnoreAlreadyTransitioned => {
                     // Task has already transitioned past Reviewing (e.g. PendingMerge, Merging).
                     // chat_service_send_background.rs re-incremented running_count before this
                     // handler ran IFF execution_slot_held == false (interactive mode where
@@ -633,6 +678,7 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                             status = ?task.internal_status,
                             "Review context: task past Reviewing but execution_slot_held=true — skipping decrement (no re-increment occurred)"
                         );
+                    }
                     }
                 }
             }

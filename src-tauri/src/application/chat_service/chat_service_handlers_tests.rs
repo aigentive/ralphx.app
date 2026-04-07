@@ -349,6 +349,46 @@ fn test_execution_completion_falls_back_to_output_when_step_tracking_missing() {
     ));
 }
 
+#[test]
+fn test_execution_completion_action_prefers_pending_review_for_output_or_completed_steps() {
+    assert_eq!(
+        execution_completion_action(true, false, false),
+        ExecutionCompletionAction::PendingReview
+    );
+    assert_eq!(
+        execution_completion_action(false, true, true),
+        ExecutionCompletionAction::PendingReview
+    );
+}
+
+#[test]
+fn test_execution_completion_action_fails_empty_incomplete_execution() {
+    assert_eq!(
+        execution_completion_action(false, true, false),
+        ExecutionCompletionAction::Failed
+    );
+    assert_eq!(
+        execution_completion_action(false, false, false),
+        ExecutionCompletionAction::Failed
+    );
+}
+
+#[test]
+fn test_incomplete_review_action_escalates_only_for_live_reviewing_tasks() {
+    assert_eq!(
+        incomplete_review_action(InternalStatus::Reviewing, false),
+        IncompleteReviewAction::Escalate
+    );
+    assert_eq!(
+        incomplete_review_action(InternalStatus::Reviewing, true),
+        IncompleteReviewAction::SkipDuringShutdown
+    );
+    assert_eq!(
+        incomplete_review_action(InternalStatus::PendingMerge, false),
+        IncompleteReviewAction::IgnoreAlreadyTransitioned
+    );
+}
+
 #[tokio::test]
 async fn test_apply_system_wide_provider_pause_pauses_mixed_active_task_states() {
     let app_state = AppState::new_test();
