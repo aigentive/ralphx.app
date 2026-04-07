@@ -593,6 +593,8 @@ pub fn run() {
                 let recovery_cs_running_reg = Arc::clone(&startup_running_agent_registry);
                 let recovery_cs_memory_event_repo = Arc::clone(&startup_memory_event_repo);
                 let recovery_cs_ipr = Arc::clone(&startup_interactive_process_registry);
+                let recovery_cs_execution_settings_repo =
+                    Arc::clone(&startup_execution_settings_repo);
                 let recovery_cs_agent_lane_repo = Arc::clone(&startup_agent_lane_settings_repo);
                 let recovery_cs_ideation_effort_repo = Arc::clone(&startup_ideation_effort_settings_repo);
                 let recovery_cs_ideation_model_repo = Arc::clone(&startup_ideation_model_settings_repo);
@@ -886,6 +888,7 @@ pub fn run() {
                                 recovery_cs_memory_event_repo,
                             )
                             .with_execution_state(Arc::clone(&startup_execution_state))
+                            .with_execution_settings_repo(recovery_cs_execution_settings_repo)
                             .with_agent_lane_settings_repo(recovery_cs_agent_lane_repo)
                             .with_ideation_effort_settings_repo(recovery_cs_ideation_effort_repo)
                             .with_ideation_model_settings_repo(recovery_cs_ideation_model_repo)
