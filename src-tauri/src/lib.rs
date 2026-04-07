@@ -649,31 +649,43 @@ pub fn run() {
                      message_queue,
                      running_agent_registry,
                      memory_event_repo,
-                     app_handle| {
-                        TaskTransitionService::new(
-                            task_repo,
-                            task_dependency_repo,
-                            project_repo,
-                            chat_message_repo,
-                            chat_attachment_repo,
-                            conversation_repo,
-                            agent_run_repo,
-                            ideation_session_repo,
-                            activity_event_repo,
-                            message_queue,
-                            running_agent_registry,
-                            Arc::clone(&startup_execution_state),
-                            Some(app_handle),
-                            memory_event_repo,
-                        )
-                        .with_agentic_client(Arc::clone(&startup_agent_client))
-                        .with_execution_settings_repo(Arc::clone(&startup_execution_settings_repo))
-                        .with_task_scheduler(Arc::clone(&task_scheduler))
-                        .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
-                        .with_step_repo(Arc::clone(&startup_step_repo))
-                        .with_interactive_process_registry(Arc::clone(
-                            &startup_interactive_process_registry,
-                        ))
+                     app_handle: tauri::AppHandle| {
+                        let service = if let Some(app_state) = app_handle.try_state::<AppState>()
+                        {
+                            app_state.build_transition_service_for_runtime(
+                                Arc::clone(&startup_execution_state),
+                                Some(app_handle.clone()),
+                            )
+                        } else {
+                            TaskTransitionService::new(
+                                task_repo,
+                                task_dependency_repo,
+                                project_repo,
+                                chat_message_repo,
+                                chat_attachment_repo,
+                                conversation_repo,
+                                agent_run_repo,
+                                ideation_session_repo,
+                                activity_event_repo,
+                                message_queue,
+                                running_agent_registry,
+                                Arc::clone(&startup_execution_state),
+                                Some(app_handle),
+                                memory_event_repo,
+                            )
+                            .with_agentic_client(Arc::clone(&startup_agent_client))
+                            .with_execution_settings_repo(Arc::clone(
+                                &startup_execution_settings_repo,
+                            ))
+                            .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
+                            .with_interactive_process_registry(Arc::clone(
+                                &startup_interactive_process_registry,
+                            ))
+                        };
+
+                        service
+                            .with_task_scheduler(Arc::clone(&task_scheduler))
+                            .with_step_repo(Arc::clone(&startup_step_repo))
                     };
 
                 // Create TaskTransitionService for startup resumption

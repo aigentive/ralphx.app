@@ -317,27 +317,48 @@ impl<R: Runtime> TaskSchedulerService<R> {
     where
         R: Runtime,
     {
-        let mut service = TaskTransitionService::new(
-            Arc::clone(&self.task_repo),
-            Arc::clone(&self.task_dependency_repo),
-            Arc::clone(&self.project_repo),
-            Arc::clone(&self.chat_message_repo),
-            Arc::clone(&self.chat_attachment_repo),
-            Arc::clone(&self.conversation_repo),
-            Arc::clone(&self.agent_run_repo),
-            Arc::clone(&self.ideation_session_repo),
-            Arc::clone(&self.activity_event_repo),
-            Arc::clone(&self.message_queue),
-            Arc::clone(&self.running_agent_registry),
-            Arc::clone(&self.execution_state),
-            self.app_handle.clone(),
-            Arc::clone(&self.memory_event_repo),
-        );
-        if let Some(handle) = self.app_handle.as_ref() {
+        let mut service = if let Some(handle) = self.app_handle.as_ref() {
             if let Some(app_state) = handle.try_state::<AppState>() {
-                service = service.with_agentic_client(Arc::clone(&app_state.agent_client));
+                app_state.build_transition_service_for_runtime(
+                    Arc::clone(&self.execution_state),
+                    self.app_handle.clone(),
+                )
+            } else {
+                TaskTransitionService::new(
+                    Arc::clone(&self.task_repo),
+                    Arc::clone(&self.task_dependency_repo),
+                    Arc::clone(&self.project_repo),
+                    Arc::clone(&self.chat_message_repo),
+                    Arc::clone(&self.chat_attachment_repo),
+                    Arc::clone(&self.conversation_repo),
+                    Arc::clone(&self.agent_run_repo),
+                    Arc::clone(&self.ideation_session_repo),
+                    Arc::clone(&self.activity_event_repo),
+                    Arc::clone(&self.message_queue),
+                    Arc::clone(&self.running_agent_registry),
+                    Arc::clone(&self.execution_state),
+                    self.app_handle.clone(),
+                    Arc::clone(&self.memory_event_repo),
+                )
             }
-        }
+        } else {
+            TaskTransitionService::new(
+                Arc::clone(&self.task_repo),
+                Arc::clone(&self.task_dependency_repo),
+                Arc::clone(&self.project_repo),
+                Arc::clone(&self.chat_message_repo),
+                Arc::clone(&self.chat_attachment_repo),
+                Arc::clone(&self.conversation_repo),
+                Arc::clone(&self.agent_run_repo),
+                Arc::clone(&self.ideation_session_repo),
+                Arc::clone(&self.activity_event_repo),
+                Arc::clone(&self.message_queue),
+                Arc::clone(&self.running_agent_registry),
+                Arc::clone(&self.execution_state),
+                self.app_handle.clone(),
+                Arc::clone(&self.memory_event_repo),
+            )
+        };
         if let Some(ref repo) = self.execution_settings_repo {
             service = service.with_execution_settings_repo(Arc::clone(repo));
         }

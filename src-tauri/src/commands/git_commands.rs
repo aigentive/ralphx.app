@@ -475,7 +475,10 @@ async fn execute_merge_retry_background(
 
     let transition_service = if let Some(handle) = app_handle_opt.as_ref() {
         if let Some(app_state) = handle.try_state::<AppState>() {
-            app_state.build_transition_service_with_execution_state(Arc::clone(&execution_state))
+            app_state.build_transition_service_for_runtime(
+                Arc::clone(&execution_state),
+                app_handle_opt.clone(),
+            )
         } else {
             TaskTransitionService::new(
                 Arc::clone(&task_repo),

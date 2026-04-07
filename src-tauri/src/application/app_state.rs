@@ -284,6 +284,14 @@ impl AppState {
         &self,
         execution_state: Arc<ExecutionState>,
     ) -> TaskTransitionService {
+        self.build_transition_service_for_runtime(execution_state, self.app_handle.clone())
+    }
+
+    pub fn build_transition_service_for_runtime<R: Runtime>(
+        &self,
+        execution_state: Arc<ExecutionState>,
+        app_handle: Option<AppHandle<R>>,
+    ) -> TaskTransitionService<R> {
         TaskTransitionService::new(
             Arc::clone(&self.task_repo),
             Arc::clone(&self.task_dependency_repo),
@@ -297,7 +305,7 @@ impl AppState {
             Arc::clone(&self.message_queue),
             Arc::clone(&self.running_agent_registry),
             execution_state,
-            self.app_handle.clone(),
+            app_handle,
             Arc::clone(&self.memory_event_repo),
         )
         .with_agentic_client(Arc::clone(&self.agent_client))

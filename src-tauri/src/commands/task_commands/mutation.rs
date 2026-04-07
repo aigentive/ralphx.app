@@ -63,30 +63,10 @@ fn build_transition_service(
     execution_state: &Arc<ExecutionState>,
     app_handle: Option<&AppHandle>,
 ) -> TaskTransitionService {
-    if app_handle.is_some() || state.app_handle.is_some() {
-        return state.build_transition_service_with_execution_state(Arc::clone(execution_state));
-    }
-
-    TaskTransitionService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.task_dependency_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.chat_message_repo),
-        Arc::clone(&state.chat_attachment_repo),
-        Arc::clone(&state.chat_conversation_repo),
-        Arc::clone(&state.agent_run_repo),
-        Arc::clone(&state.ideation_session_repo),
-        Arc::clone(&state.activity_event_repo),
-        Arc::clone(&state.message_queue),
-        Arc::clone(&state.running_agent_registry),
+    state.build_transition_service_for_runtime(
         Arc::clone(execution_state),
-        None,
-        Arc::clone(&state.memory_event_repo),
+        app_handle.cloned().or_else(|| state.app_handle.clone()),
     )
-    .with_agentic_client(Arc::clone(&state.agent_client))
-    .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry))
 }
 
 fn build_task_scheduler(

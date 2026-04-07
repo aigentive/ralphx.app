@@ -151,7 +151,14 @@ fn build_transition_service<R: Runtime>(
     execution_state: Arc<ExecutionState>,
     memory_event_repo: Arc<dyn MemoryEventRepository>,
 ) -> TaskTransitionService<R> {
-    let transition_service = TaskTransitionService::new(
+    if let Some(handle) = app_handle {
+        if let Some(app_state) = handle.try_state::<AppState>() {
+            return app_state
+                .build_transition_service_for_runtime(execution_state, app_handle.clone());
+        }
+    }
+
+    TaskTransitionService::new(
         task_repo,
         task_dependency_repo,
         project_repo,
@@ -166,17 +173,7 @@ fn build_transition_service<R: Runtime>(
         execution_state,
         app_handle.clone(),
         memory_event_repo,
-    );
-
-    if let Some(handle) = app_handle {
-        if let Some(app_state) = handle.try_state::<AppState>() {
-            return transition_service
-                .with_agentic_client(Arc::clone(&app_state.agent_client))
-                .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo));
-        }
-    }
-
-    transition_service
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
