@@ -4,8 +4,8 @@ use ralphx_lib::commands::diagnostic_commands::build_codex_cli_diagnostics_respo
 use ralphx_lib::domain::agents::LogicalEffort;
 use ralphx_lib::infrastructure::agents::{
     build_codex_exec_args, build_codex_exec_resume_args, build_spawnable_codex_exec_command,
-    build_spawnable_codex_resume_command, compose_codex_prompt, parse_codex_cli_capabilities,
-    parse_codex_version, CodexCliCapabilities, CodexExecCliConfig,
+    build_spawnable_codex_resume_command, compose_codex_prompt, normalize_codex_exec_output,
+    parse_codex_cli_capabilities, parse_codex_version, CodexCliCapabilities, CodexExecCliConfig,
 };
 
 const ROOT_HELP: &str = r#"
@@ -253,6 +253,39 @@ fn compose_codex_prompt_injects_agent_prompt_body_when_available() {
 fn compose_codex_prompt_returns_original_prompt_when_agent_prompt_missing() {
     let prompt = compose_codex_prompt("Execute task task-123", None, Some("ralphx:worker"));
     assert_eq!(prompt, "Execute task task-123");
+}
+
+#[test]
+fn normalize_codex_exec_output_prefers_completed_agent_messages() {
+    let stdout = concat!(
+        "{\"type\":\"thread.started\",\"thread_id\":\"thread-1\"}\n",
+        "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"First answer\"}}\n",
+        "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"Second answer\"}}\n",
+    );
+
+    assert_eq!(
+        normalize_codex_exec_output(stdout),
+        "First answer\n\nSecond answer"
+    );
+}
+
+#[test]
+fn normalize_codex_exec_output_falls_back_to_structured_errors() {
+    let stdout = concat!(
+        "{\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"exit_code\":1,\"aggregated_output\":\"npm test failed\"}}\n",
+        "{\"type\":\"item.completed\",\"item\":{\"type\":\"error\",\"error\":{\"message\":\"agent crashed\"}}}\n",
+    );
+
+    assert_eq!(
+        normalize_codex_exec_output(stdout),
+        "npm test failed\n\nagent crashed"
+    );
+}
+
+#[test]
+fn normalize_codex_exec_output_keeps_raw_stdout_when_not_jsonl() {
+    let stdout = "plain stdout from a non-json fallback";
+    assert_eq!(normalize_codex_exec_output(stdout), stdout);
 }
 
 #[test]

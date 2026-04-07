@@ -14,7 +14,7 @@ pub use claude::{
 pub use codex::{
     build_codex_exec_args, build_codex_exec_resume_args, build_spawnable_codex_exec_command,
     build_spawnable_codex_resume_command, build_codex_mcp_overrides, compose_codex_prompt,
-    find_codex_cli,
+    find_codex_cli, normalize_codex_exec_output,
     parse_codex_cli_capabilities,
     parse_codex_version, probe_codex_cli, CodexCliCapabilities, CodexExecCliConfig,
     CodexCliClient,

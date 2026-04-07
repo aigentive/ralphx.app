@@ -14,7 +14,7 @@ use crate::domain::agents::{
 
 use super::{
     build_codex_mcp_overrides, build_spawnable_codex_exec_command, compose_codex_prompt,
-    find_codex_cli, probe_codex_cli, CodexExecCliConfig,
+    find_codex_cli, normalize_codex_exec_output, probe_codex_cli, CodexExecCliConfig,
 };
 
 lazy_static! {
@@ -149,9 +149,18 @@ impl AgenticClient for CodexCliClient {
             .await
             .map_err(|error| AgentError::CommunicationFailed(error.to_string()))?;
 
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let normalized_stdout = normalize_codex_exec_output(&stdout);
+        let content = if normalized_stdout.trim().is_empty() && !stderr.trim().is_empty() {
+            stderr
+        } else {
+            normalized_stdout
+        };
+
         Ok(AgentOutput {
             success: output.status.success(),
-            content: String::from_utf8_lossy(&output.stdout).to_string(),
+            content,
             exit_code: output.status.code(),
             duration_ms: Some(start_time.elapsed().as_millis() as u64),
         })

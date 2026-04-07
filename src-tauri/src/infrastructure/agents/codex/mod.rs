@@ -182,6 +182,64 @@ pub fn compose_codex_prompt(
     )
 }
 
+pub fn normalize_codex_exec_output(raw_stdout: &str) -> String {
+    let mut parsed_any = false;
+    let mut messages = Vec::new();
+    let mut errors = Vec::new();
+
+    for line in raw_stdout.lines() {
+        let Some(event) = stream_processor::parse_codex_event_line(line) else {
+            continue;
+        };
+        parsed_any = true;
+
+        if let Some(text) = stream_processor::extract_codex_agent_message(&event) {
+            let trimmed = text.trim();
+            if !trimmed.is_empty() {
+                messages.push(trimmed.to_string());
+            }
+        }
+
+        if let Some(command_execution) = stream_processor::extract_codex_command_execution(&event) {
+            if let Some(exit_code) = command_execution.exit_code {
+                if exit_code != 0 {
+                    let error = command_execution
+                        .aggregated_output
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|text| !text.is_empty())
+                        .map(str::to_string)
+                        .unwrap_or_else(|| {
+                            format!("Codex command_execution failed with exit code {exit_code}")
+                        });
+                    errors.push(error);
+                }
+            }
+        }
+
+        if let Some(error) = stream_processor::extract_codex_error_message(&event) {
+            let trimmed = error.trim();
+            if !trimmed.is_empty() {
+                errors.push(trimmed.to_string());
+            }
+        }
+    }
+
+    if !messages.is_empty() {
+        return messages.join("\n\n");
+    }
+
+    if !errors.is_empty() {
+        return errors.join("\n\n");
+    }
+
+    if parsed_any {
+        return raw_stdout.trim().to_string();
+    }
+
+    raw_stdout.to_string()
+}
+
 pub fn find_codex_cli() -> Option<PathBuf> {
     if let Ok(path) = std::env::var("CODEX_CLI_PATH") {
         let candidate = PathBuf::from(path);
