@@ -16,6 +16,7 @@ Updated: 2026-04-07
 - `specs/codex-cli-implementation-plan.md`
 - `specs/codex-cli-migrations.md`
 - `specs/codex-cli-test-plan.md`
+- `specs/codex-cli-backlog.md`
 - `docs/ai-docs/codex-cli/README.md`
 - `docs/ai-docs/codex-cli/index.txt`
 - `docs/ai-docs/codex-cli/cli-overview.md`

@@ -6,6 +6,7 @@ Parent references:
 
 - `specs/codex-cli.md`
 - `specs/codex-cli-contract.md`
+- `specs/codex-cli-backlog.md`
 - `docs/ai-docs/reefagent-codex-cli.md`
 - `docs/ai-docs/reefagent-codex-responses.md`
 
