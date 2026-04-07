@@ -8,6 +8,7 @@ use crate::domain::entities::{
 use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
 use crate::domain::services::{MemoryRunningAgentRegistry, MessageQueue};
 use crate::domain::state_machine::transition_handler::metadata_builder::MetadataUpdate;
+use crate::error::AppError;
 use serde_json::Value;
 
 #[test]
@@ -797,6 +798,66 @@ async fn test_review_passed_to_approved_transition_succeeds() {
         InternalStatus::Approved,
         "RC5: ReviewPassed → Approved must succeed and persist"
     );
+}
+
+#[tokio::test]
+async fn test_reviewing_to_approved_transition_is_rejected() {
+    let app_state = AppState::new_test();
+    let service = build_test_service(&app_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Invalid Reviewing Approval".to_string());
+    task.internal_status = InternalStatus::Reviewing;
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    let result = service
+        .transition_task_with_metadata(&task_id, InternalStatus::Approved, None)
+        .await;
+
+    assert!(
+        matches!(
+            result,
+            Err(AppError::InvalidTransition { ref from, ref to })
+                if from == "reviewing" && to == "approved"
+        ),
+        "reviewing -> approved must be rejected with InvalidTransition"
+    );
+
+    let persisted = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(persisted.internal_status, InternalStatus::Reviewing);
+}
+
+#[tokio::test]
+async fn test_merged_to_approved_transition_is_rejected() {
+    let app_state = AppState::new_test();
+    let service = build_test_service(&app_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Invalid Merged Approval".to_string());
+    task.internal_status = InternalStatus::Merged;
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    let result = service
+        .transition_task_with_metadata(&task_id, InternalStatus::Approved, None)
+        .await;
+
+    assert!(
+        matches!(
+            result,
+            Err(AppError::InvalidTransition { ref from, ref to })
+                if from == "merged" && to == "approved"
+        ),
+        "merged -> approved must be rejected with InvalidTransition"
+    );
+
+    let persisted = app_state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(persisted.internal_status, InternalStatus::Merged);
 }
 
 // ============================================================================

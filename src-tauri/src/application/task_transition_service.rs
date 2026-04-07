@@ -735,6 +735,29 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
 }
 
 impl<R: Runtime> TaskTransitionService<R> {
+    fn validate_status_transition(
+        &self,
+        task_id: &TaskId,
+        from: InternalStatus,
+        to: InternalStatus,
+    ) -> AppResult<()> {
+        if from.can_transition_to(to) {
+            return Ok(());
+        }
+
+        tracing::warn!(
+            task_id = task_id.as_str(),
+            from = from.as_str(),
+            to = to.as_str(),
+            "Rejected invalid task status transition"
+        );
+
+        Err(AppError::InvalidTransition {
+            from: from.as_str().to_string(),
+            to: to.as_str().to_string(),
+        })
+    }
+
     /// Create a new TaskTransitionService with all required dependencies.
     pub fn new(
         task_repo: Arc<dyn TaskRepository>,
@@ -1062,6 +1085,8 @@ impl<R: Runtime> TaskTransitionService<R> {
             to = new_status.as_str(),
             "Transitioning task status"
         );
+
+        self.validate_status_transition(task_id, old_status, new_status)?;
 
         // 3. Update the task status
         task.internal_status = new_status;
@@ -1531,10 +1556,34 @@ impl<R: Runtime> TaskTransitionService<R> {
         // enables Wave 2A's `continue` semantics for PendingReview re-entry after corrective routing.
         let mut current_state = state;
         loop {
-            let auto_state = match handler.check_auto_transition(&current_state) {
+            let mut auto_state = match handler.check_auto_transition(&current_state) {
                 Some(s) => s,
                 None => break,
             };
+
+            if matches!(current_state, crate::domain::state_machine::State::Approved)
+                && matches!(auto_state, crate::domain::state_machine::State::PendingMerge)
+            {
+                if let Ok(Some(task)) = self.task_repo.get_by_id(task_id).await {
+                    let is_branchless = task.task_branch.is_none();
+                    let has_no_changes = crate::domain::state_machine::transition_handler::has_no_code_changes_metadata(&task);
+
+                    if is_branchless || has_no_changes {
+                        let reason = if has_no_changes {
+                            "no_code_changes metadata"
+                        } else {
+                            "no task branch"
+                        };
+                        tracing::info!(
+                            task_id = task_id.as_str(),
+                            reason = reason,
+                            "Skipping merge pipeline during auto-transition"
+                        );
+                        auto_state = crate::domain::state_machine::State::Merged;
+                    }
+                }
+            }
+
             let current_status = state_to_internal_status(&current_state);
             let auto_status = state_to_internal_status(&auto_state);
             tracing::info!(

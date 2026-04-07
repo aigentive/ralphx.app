@@ -189,6 +189,64 @@ async fn seed_task_with_status(state: &HttpServerState, status: InternalStatus) 
     task
 }
 
+#[tokio::test]
+async fn test_complete_review_approved_without_human_review_succeeds_for_branchless_task() {
+    let state = setup_review_test_state().await;
+
+    let project = Project::new("Branchless Review Project".to_string(), "/tmp/test".to_string());
+    state
+        .app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .review_settings_repo
+        .update_settings(&ReviewSettings {
+            require_human_review: false,
+            ..ReviewSettings::default()
+        })
+        .await
+        .expect("review settings update should succeed");
+
+    let mut task = Task::new(project.id.clone(), "Branchless reviewed task".to_string());
+    task.internal_status = InternalStatus::Reviewing;
+    state.app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let req = CompleteReviewRequest {
+        task_id: task.id.as_str().to_string(),
+        decision: "approved".to_string(),
+        summary: Some("AI approved without human gate".to_string()),
+        feedback: None,
+        issues: None,
+        escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
+    };
+
+    let response = complete_review(State(state.clone()), ProjectScope(None), Json(req))
+        .await
+        .expect("approved review without human gate should succeed")
+        .0;
+
+    assert!(
+        matches!(response.new_status.as_str(), "approved" | "pending_merge" | "merged"),
+        "approved review without human gate must advance past reviewing; got {}",
+        response.new_status
+    );
+
+    let persisted = state
+        .app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(persisted.internal_status, InternalStatus::Reviewing);
+}
+
 /// RC#3 guard 1: complete_review on a ReviewPassed task returns 400.
 ///
 /// Scenario: reviewer agent stream completed AFTER the task auto-transitioned from

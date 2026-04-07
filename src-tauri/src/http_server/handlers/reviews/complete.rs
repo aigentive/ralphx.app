@@ -362,14 +362,13 @@ pub async fn complete_review(
                 .map(|s| s.require_human_review)
                 .unwrap_or(false);
 
-            let target_status = approved_target_status(require_human);
-
-            transition_service
-                .transition_task(&task_id, target_status.clone())
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-            target_status
+            transition_ai_review_approval(
+                &state,
+                &transition_service,
+                &task_id,
+                require_human,
+            )
+            .await?
         }
         ReviewToolOutcome::NeedsChanges => {
             ensure_task_still_reviewing_before_transition(&state, &task_id, &req.decision)
@@ -454,12 +453,13 @@ pub async fn complete_review(
 
             if has_code_changes {
                 // Fall back to standard Approved flow (reviewer decision treated as regular Approved)
-                let target_status = approved_target_status(require_human);
-                transition_service
-                    .transition_task(&task_id, target_status.clone())
-                    .await
-                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-                target_status
+                transition_ai_review_approval(
+                    &state,
+                    &transition_service,
+                    &task_id,
+                    require_human,
+                )
+                .await?
             } else {
                 // No code changes confirmed — set metadata and skip merge pipeline.
                 // Re-fetch task for a fresh mutable copy to avoid borrow conflicts.
@@ -484,12 +484,13 @@ pub async fn complete_review(
                     .await
                     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-                let target_status = approved_no_changes_target_status(require_human);
-
-                transition_service
-                    .transition_task(&task_id, target_status.clone())
-                    .await
-                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                let target_status = transition_ai_review_approval(
+                    &state,
+                    &transition_service,
+                    &task_id,
+                    require_human,
+                )
+                .await?;
 
                 // Direct-to-Merged path: clear merge progress + spawn deferred cleanup
                 if !require_human {
@@ -575,6 +576,36 @@ pub async fn complete_review(
         fix_task_id: fix_task_id.map(|id| id.as_str().to_string()),
         followup_session_id,
     }))
+}
+
+async fn transition_ai_review_approval(
+    state: &HttpServerState,
+    transition_service: &TaskTransitionService<tauri::Wry>,
+    task_id: &TaskId,
+    require_human_review: bool,
+) -> Result<InternalStatus, (StatusCode, String)> {
+    transition_service
+        .transition_task(task_id, InternalStatus::ReviewPassed)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if require_human_review {
+        return Ok(InternalStatus::ReviewPassed);
+    }
+
+    transition_service
+        .transition_task(task_id, InternalStatus::Approved)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    state
+        .app_state
+        .task_repo
+        .get_by_id(task_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .map(|task| task.internal_status)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found after approval transition".to_string()))
 }
 
 async fn persist_review_scope_snapshot(
