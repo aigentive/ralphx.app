@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 use tokio::sync::Mutex;
 
 use crate::application::PermissionState;
@@ -229,6 +229,14 @@ impl AppState {
     }
 
     pub fn build_chat_service(&self) -> ClaudeChatService {
+        self.build_chat_service_for_runtime(None, self.app_handle.clone())
+    }
+
+    pub fn build_chat_service_for_runtime<R: Runtime>(
+        &self,
+        execution_state: Option<Arc<ExecutionState>>,
+        app_handle: Option<AppHandle<R>>,
+    ) -> ClaudeChatService<R> {
         let mut service = ClaudeChatService::new(
             Arc::clone(&self.chat_message_repo),
             Arc::clone(&self.chat_attachment_repo),
@@ -255,7 +263,10 @@ impl AppState {
         .with_interactive_process_registry(Arc::clone(&self.interactive_process_registry))
         .with_review_repo(Arc::clone(&self.review_repo));
 
-        if let Some(ref handle) = self.app_handle {
+        if let Some(execution_state) = execution_state {
+            service = service.with_execution_state(execution_state);
+        }
+        if let Some(ref handle) = app_handle {
             service = service.with_app_handle(handle.clone());
         }
 
@@ -266,8 +277,7 @@ impl AppState {
         &self,
         execution_state: Arc<ExecutionState>,
     ) -> ClaudeChatService {
-        self.build_chat_service()
-            .with_execution_state(execution_state)
+        self.build_chat_service_for_runtime(Some(execution_state), self.app_handle.clone())
     }
 
     pub fn build_transition_service_with_execution_state(

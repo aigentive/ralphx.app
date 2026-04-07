@@ -838,25 +838,50 @@ impl<R: Runtime> TaskTransitionService<R> {
 
         // Create the unified chat service for worker spawning
         let chat_service: Arc<dyn ChatService> = {
-            let mut service = ClaudeChatService::new(
-                Arc::clone(&chat_message_repo),
-                Arc::clone(&chat_attachment_repo),
-                Arc::new(crate::infrastructure::memory::MemoryArtifactRepository::new()),
-                Arc::clone(&conversation_repo),
-                Arc::clone(&agent_run_repo),
-                Arc::clone(&project_repo),
-                Arc::clone(&task_repo),
-                Arc::clone(&task_dep_repo),
-                Arc::clone(&ideation_session_repo),
-                activity_event_repo,
-                message_queue,
-                Arc::clone(&running_agent_registry),
-                memory_event_repo,
-            )
-            .with_execution_state(Arc::clone(&execution_state));
-            if let Some(ref handle) = app_handle {
-                service = service.with_app_handle(handle.clone());
-            }
+            let mut service = if let Some(ref handle) = app_handle {
+                if let Some(app_state) = handle.try_state::<AppState>() {
+                    app_state.build_chat_service_for_runtime(
+                        Some(Arc::clone(&execution_state)),
+                        app_handle.clone(),
+                    )
+                } else {
+                    let mut fallback = ClaudeChatService::new(
+                        Arc::clone(&chat_message_repo),
+                        Arc::clone(&chat_attachment_repo),
+                        Arc::new(crate::infrastructure::memory::MemoryArtifactRepository::new()),
+                        Arc::clone(&conversation_repo),
+                        Arc::clone(&agent_run_repo),
+                        Arc::clone(&project_repo),
+                        Arc::clone(&task_repo),
+                        Arc::clone(&task_dep_repo),
+                        Arc::clone(&ideation_session_repo),
+                        Arc::clone(&activity_event_repo),
+                        Arc::clone(&message_queue),
+                        Arc::clone(&running_agent_registry),
+                        Arc::clone(&memory_event_repo),
+                    )
+                    .with_execution_state(Arc::clone(&execution_state));
+                    fallback = fallback.with_app_handle(handle.clone());
+                    fallback
+                }
+            } else {
+                ClaudeChatService::new(
+                    Arc::clone(&chat_message_repo),
+                    Arc::clone(&chat_attachment_repo),
+                    Arc::new(crate::infrastructure::memory::MemoryArtifactRepository::new()),
+                    Arc::clone(&conversation_repo),
+                    Arc::clone(&agent_run_repo),
+                    Arc::clone(&project_repo),
+                    Arc::clone(&task_repo),
+                    Arc::clone(&task_dep_repo),
+                    Arc::clone(&ideation_session_repo),
+                    activity_event_repo,
+                    message_queue,
+                    Arc::clone(&running_agent_registry),
+                    memory_event_repo,
+                )
+                .with_execution_state(Arc::clone(&execution_state))
+            };
             // Global env var override: RALPHX_PROCESS_VARIANT_EXECUTION=team
             use crate::infrastructure::agents::claude::env_variant_override;
             if env_variant_override("execution").as_deref() == Some("team") {

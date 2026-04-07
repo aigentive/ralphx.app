@@ -13,7 +13,7 @@
 // - Sends "Continue where you left off." message to resume Claude session
 
 use std::sync::Arc;
-use tauri::{AppHandle, Runtime};
+use tauri::{AppHandle, Manager, Runtime};
 use tracing::{info, warn};
 
 use crate::application::{ChatService, ClaudeChatService, InteractiveProcessRegistry};
@@ -287,6 +287,15 @@ impl<R: Runtime> ChatResumptionRunner<R> {
 
     /// Create a ChatService instance for resumption.
     fn create_chat_service(&self) -> ClaudeChatService<R> {
+        if let Some(ref handle) = self.app_handle {
+            if let Some(app_state) = handle.try_state::<crate::application::AppState>() {
+                return app_state.build_chat_service_for_runtime(
+                    Some(Arc::clone(&self.execution_state)),
+                    self.app_handle.clone(),
+                );
+            }
+        }
+
         let mut service = ClaudeChatService::new(
             Arc::clone(&self.chat_message_repo),
             Arc::clone(&self.chat_attachment_repo),
