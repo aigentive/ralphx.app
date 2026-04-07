@@ -621,6 +621,7 @@ pub fn run() {
                     Some(startup_app_handle),
                     Arc::clone(&startup_memory_event_repo),
                 )
+                .with_execution_settings_repo(Arc::clone(&startup_execution_settings_repo))
                 .with_task_scheduler(Arc::clone(&task_scheduler))
                 .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
                 .with_step_repo(Arc::clone(&startup_step_repo))
@@ -784,6 +785,7 @@ pub fn run() {
                         Some(reconcile_app_handle.clone()),
                         Arc::clone(&reconcile_memory_event_repo),
                     )
+                    .with_execution_settings_repo(Arc::clone(&startup_execution_settings_repo))
                     .with_task_scheduler(Arc::clone(&task_scheduler))
                     .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
                     .with_step_repo(Arc::clone(&startup_step_repo))

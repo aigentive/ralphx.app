@@ -17,7 +17,7 @@ use std::panic::Location;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-use crate::application::{ChatService, ClaudeChatService, InteractiveProcessRegistry};
+use crate::application::{AppState, ChatService, ClaudeChatService, InteractiveProcessRegistry};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
@@ -912,6 +912,35 @@ impl<R: Runtime> TaskTransitionService<R> {
         mut self,
         repo: Arc<dyn ExecutionSettingsRepository>,
     ) -> Self {
+        if let Some(handle) = self._app_handle.as_ref() {
+            if let Some(app_state) = handle.try_state::<AppState>() {
+                self.chat_service = Arc::new(
+                    ClaudeChatService::new(
+                        Arc::clone(&app_state.chat_message_repo),
+                        Arc::clone(&app_state.chat_attachment_repo),
+                        Arc::new(crate::infrastructure::memory::MemoryArtifactRepository::new()),
+                        Arc::clone(&app_state.chat_conversation_repo),
+                        Arc::clone(&app_state.agent_run_repo),
+                        Arc::clone(&app_state.project_repo),
+                        Arc::clone(&app_state.task_repo),
+                        Arc::clone(&app_state.task_dependency_repo),
+                        Arc::clone(&app_state.ideation_session_repo),
+                        Arc::clone(&app_state.activity_event_repo),
+                        Arc::clone(&app_state.message_queue),
+                        Arc::clone(&app_state.running_agent_registry),
+                        Arc::clone(&app_state.memory_event_repo),
+                    )
+                    .with_execution_state(Arc::clone(&self.execution_state))
+                    .with_execution_settings_repo(Arc::clone(&repo))
+                    .with_agent_lane_settings_repo(Arc::clone(&app_state.agent_lane_settings_repo))
+                    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
+                    .with_task_step_repo(Arc::clone(&app_state.task_step_repo))
+                    .with_review_repo(Arc::clone(&app_state.review_repo))
+                    .with_app_handle(handle.clone()),
+                );
+            }
+        }
+
         let agent_client = Arc::new(ClaudeCodeClient::new());
         let spawner = AgenticClientSpawner::new(agent_client)
             .with_repos(Arc::clone(&self.task_repo), Arc::clone(&self.project_repo))
