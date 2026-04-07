@@ -185,6 +185,7 @@ pub(crate) fn create_chat_service(
     .with_app_handle(app_handle)
     .with_execution_state(Arc::clone(execution_state))
     .with_execution_settings_repo(state.execution_settings_repo.clone())
+    .with_agent_lane_settings_repo(state.agent_lane_settings_repo.clone())
     .with_ideation_effort_settings_repo(state.ideation_effort_settings_repo.clone())
     .with_ideation_model_settings_repo(state.ideation_model_settings_repo.clone())
     .with_plan_branch_repo(state.plan_branch_repo.clone())

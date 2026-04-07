@@ -1204,6 +1204,10 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             let app_state = handle.state::<AppState>();
                             Arc::clone(&app_state.ideation_effort_settings_repo)
                         });
+                        let agent_lane_settings_repo = app_handle.as_ref().map(|handle| {
+                            let app_state = handle.state::<AppState>();
+                            Arc::clone(&app_state.agent_lane_settings_repo)
+                        });
                         let ideation_model_settings_repo = app_handle.as_ref().map(|handle| {
                             let app_state = handle.state::<AppState>();
                             Arc::clone(&app_state.ideation_model_settings_repo)
@@ -1221,6 +1225,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             team_mode,
                             Arc::clone(chat_attachment_repo),
                             Arc::clone(artifact_repo),
+                            agent_lane_settings_repo.clone(),
+                            ideation_effort_settings_repo.clone(),
                             ideation_model_settings_repo.clone(),
                             &[],  // retry path — no session history injection needed
                             0,    // total_available: not needed here — session_messages is empty
@@ -1259,6 +1265,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                             ),
                                             execution_settings_repo: execution_settings_repo
                                                 .clone(),
+                                            agent_lane_settings_repo:
+                                                agent_lane_settings_repo.clone(),
                                             ideation_effort_settings_repo:
                                                 ideation_effort_settings_repo.clone(),
                                             ideation_model_settings_repo:

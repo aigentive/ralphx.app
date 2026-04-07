@@ -125,6 +125,14 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
         let app_state = handle.state::<AppState>();
         Arc::clone(&app_state.ideation_model_settings_repo)
     });
+    let agent_lane_settings_repo = app_handle.map(|handle| {
+        let app_state = handle.state::<AppState>();
+        Arc::clone(&app_state.agent_lane_settings_repo)
+    });
+    let ideation_effort_settings_repo = app_handle.map(|handle| {
+        let app_state = handle.state::<AppState>();
+        Arc::clone(&app_state.ideation_effort_settings_repo)
+    });
 
     // 4. Spawn fresh Claude session with history
     let spawnable = match chat_service_context::build_command(
@@ -138,6 +146,8 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
         team_mode,
         chat_attachment_repo,
         artifact_repo,
+        agent_lane_settings_repo,
+        ideation_effort_settings_repo,
         ideation_model_settings_repo,
         &[], // recovery path already builds its own bootstrap_prompt with history
         0,   // total_available: not needed here — session_messages is empty

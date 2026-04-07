@@ -38,12 +38,12 @@ use crate::domain::entities::{
 };
 use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ArtifactRepository, ChatAttachmentRepository,
-    ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
-    IdeationEffortSettingsRepository, IdeationModelSettingsRepository, IdeationSessionRepository,
-    MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
-    StateHistoryMetadata, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
-    TaskStepRepository,
+    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository,
+    ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
+    ChatMessageRepository, ExecutionSettingsRepository, IdeationEffortSettingsRepository,
+    IdeationModelSettingsRepository, IdeationSessionRepository, MemoryEventRepository,
+    PlanBranchRepository, ProjectRepository, ReviewRepository, StateHistoryMetadata,
+    TaskDependencyRepository, TaskProposalRepository, TaskRepository, TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, QueuedMessage, RunningAgentKey, RunningAgentRegistry};
 use async_trait::async_trait;
@@ -353,6 +353,7 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     task_repo: Arc<dyn TaskRepository>,
     task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+    agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
     ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
     ideation_model_settings_repo: Option<Arc<dyn IdeationModelSettingsRepository>>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
@@ -425,6 +426,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             task_repo,
             task_dependency_repo,
             execution_settings_repo: None,
+            agent_lane_settings_repo: None,
             ideation_effort_settings_repo: None,
             ideation_model_settings_repo: None,
             ideation_session_repo,
@@ -458,6 +460,14 @@ impl<R: Runtime> ClaudeChatService<R> {
         repo: Arc<dyn ExecutionSettingsRepository>,
     ) -> Self {
         self.execution_settings_repo = Some(repo);
+        self
+    }
+
+    pub fn with_agent_lane_settings_repo(
+        mut self,
+        repo: Arc<dyn AgentLaneSettingsRepository>,
+    ) -> Self {
+        self.agent_lane_settings_repo = Some(repo);
         self
     }
 
@@ -833,6 +843,8 @@ impl<R: Runtime> ClaudeChatService<R> {
             self.team_mode.load(Ordering::Relaxed),
             Arc::clone(&self.chat_attachment_repo),
             Arc::clone(&self.artifact_repo),
+            self.agent_lane_settings_repo.clone(),
+            self.ideation_effort_settings_repo.clone(),
             self.ideation_model_settings_repo.clone(),
             session_messages,
             total_available,
@@ -1617,107 +1629,27 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             cli_path = %self.cli_path.display(),
             "chat_service.send_message building interactive command"
         );
-        // 7b-pre. Pre-resolve effort for ideation contexts from DB settings.
-        // For non-ideation contexts (or when ideation_effort_settings_repo is not set),
-        // pass None to let the YAML-based resolver handle it.
-        let resolved_effort: Option<String> = if context_type == ChatContextType::Ideation {
-            if let Some(ref repo) = self.ideation_effort_settings_repo {
-                let team_mode_val = self.team_mode.load(Ordering::Relaxed);
-                let agent_name = chat_service_helpers::resolve_agent_with_team_mode(
-                    &context_type,
-                    entity_status.as_deref(),
-                    team_mode_val,
-                );
-                let effort = crate::infrastructure::agents::claude::resolve_ideation_effort(
-                    agent_name,
-                    project_id.as_deref(),
-                    repo.as_ref(),
-                )
-                .await;
-                Some(effort)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        // 7b-pre2. Pre-resolve model for ideation contexts from DB settings.
-        // For non-ideation contexts (or when ideation_model_settings_repo is not set),
-        // pass None to let the YAML-based resolver handle it.
-        let resolved_model: Option<String> = if context_type == ChatContextType::Ideation {
-            if let Some(ref repo) = self.ideation_model_settings_repo {
-                let team_mode_val = self.team_mode.load(Ordering::Relaxed);
-                let agent_name = chat_service_helpers::resolve_agent_with_team_mode(
-                    &context_type,
-                    entity_status.as_deref(),
-                    team_mode_val,
-                );
-                let resolved = crate::infrastructure::agents::claude::resolve_ideation_model(
-                    agent_name,
-                    project_id.as_deref(),
-                    repo.as_ref(),
-                )
-                .await;
-                Some(resolved.model)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        // 7b-pre3. For plan-verifier sessions, pre-resolve the subagent cap from the
-        // separate verifier_subagent_model field so critics/specialists run on the
-        // configured cheaper model rather than the verifier's own model.
-        let resolved_verifier_subagent_cap: Option<String> =
-            if context_type == ChatContextType::Ideation {
-                let team_mode_val = self.team_mode.load(Ordering::Relaxed);
-                let agent_name = chat_service_helpers::resolve_agent_with_team_mode(
-                    &context_type,
-                    entity_status.as_deref(),
-                    team_mode_val,
-                );
-                if agent_name
-                    == crate::infrastructure::agents::claude::agent_names::AGENT_PLAN_VERIFIER
-                {
-                    if let Some(ref repo) = self.ideation_model_settings_repo {
-                        let project_row = if let Some(pid) = project_id.as_deref() {
-                            repo.get_for_project(pid).await.ok().flatten()
-                        } else {
-                            None
-                        };
-                        let global_row = repo.get_global().await.ok().flatten();
-                        let (cap, _) = crate::infrastructure::agents::claude::resolve_verifier_subagent_model_with_source(
-                            project_row.as_ref().map(|r| &r.verifier_subagent_model),
-                            global_row.as_ref().map(|r| &r.verifier_subagent_model),
-                        );
-                        Some(cap)
-                    } else {
-                        Some("haiku".to_string())
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-        // 7b-pre4. Resolve effective model for run_started event and registry.
-        // For ideation, resolved_model was already computed above. For other contexts, call
-        // resolve_model_config() once using the entity_status we have now.
-        let (effective_model_id, _) = chat_service_context::resolve_model_config(
-            chat_service_helpers::resolve_agent_with_team_mode(
-                &context_type,
-                entity_status.as_deref(),
-                self.team_mode.load(Ordering::Relaxed),
-            ),
-            project_id.as_deref(),
-            context_type,
-            resolved_model.as_deref(),
-            self.ideation_model_settings_repo.as_ref(),
-        )
-        .await;
+        let team_mode_val = self.team_mode.load(Ordering::Relaxed);
+        let agent_name = chat_service_helpers::resolve_agent_with_team_mode(
+            &context_type,
+            entity_status.as_deref(),
+            team_mode_val,
+        );
+        let resolved_spawn_settings =
+            crate::application::agent_lane_resolution::resolve_claude_spawn_settings(
+                agent_name,
+                project_id.as_deref(),
+                context_type,
+                None,
+                self.agent_lane_settings_repo.as_ref(),
+                self.ideation_model_settings_repo.as_ref(),
+                self.ideation_effort_settings_repo.as_ref(),
+            )
+            .await;
+        let resolved_effort = resolved_spawn_settings.effort.clone();
+        let resolved_model = Some(resolved_spawn_settings.model.clone());
+        let resolved_subagent_model_cap = resolved_spawn_settings.subagent_model_cap.clone();
+        let effective_model_id = resolved_spawn_settings.model;
         let effective_model_label =
             crate::infrastructure::agents::claude::model_labels::model_id_to_label(
                 &effective_model_id,
@@ -1776,7 +1708,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 options.is_external_mcp,
                 resolved_effort.as_deref(),
                 resolved_model.as_deref(),
-                resolved_verifier_subagent_cap.as_deref(),
+                resolved_subagent_model_cap.as_deref(),
             )
             .await
         {
@@ -1910,6 +1842,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 project_repo: Arc::clone(&self.project_repo),
                 ideation_session_repo: Arc::clone(&self.ideation_session_repo),
                 execution_settings_repo: self.execution_settings_repo.clone(),
+                agent_lane_settings_repo: self.agent_lane_settings_repo.clone(),
                 ideation_effort_settings_repo: self.ideation_effort_settings_repo.clone(),
                 ideation_model_settings_repo: self.ideation_model_settings_repo.clone(),
                 activity_event_repo: Arc::clone(&self.activity_event_repo),

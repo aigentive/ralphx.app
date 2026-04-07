@@ -63,6 +63,7 @@ pub async fn send_orchestrator_message(
     )
     .with_app_handle(app)
     .with_execution_settings_repo(state.execution_settings_repo.clone())
+    .with_agent_lane_settings_repo(state.agent_lane_settings_repo.clone())
     .with_ideation_effort_settings_repo(state.ideation_effort_settings_repo.clone())
     .with_ideation_model_settings_repo(state.ideation_model_settings_repo.clone())
     .with_plan_branch_repo(state.plan_branch_repo.clone())
@@ -113,6 +114,7 @@ pub async fn is_orchestrator_available(state: State<'_, AppState>) -> Result<boo
         state.memory_event_repo.clone(),
     )
     .with_execution_settings_repo(state.execution_settings_repo.clone())
+    .with_agent_lane_settings_repo(state.agent_lane_settings_repo.clone())
     .with_ideation_effort_settings_repo(state.ideation_effort_settings_repo.clone())
     .with_ideation_model_settings_repo(state.ideation_model_settings_repo.clone())
     .with_task_proposal_repo(state.task_proposal_repo.clone())

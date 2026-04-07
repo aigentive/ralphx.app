@@ -316,6 +316,14 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 let app_state = handle.state::<AppState>();
                 Arc::clone(&app_state.ideation_model_settings_repo)
             });
+            let agent_lane_settings_repo = app_handle.as_ref().map(|handle| {
+                let app_state = handle.state::<AppState>();
+                Arc::clone(&app_state.agent_lane_settings_repo)
+            });
+            let ideation_effort_settings_repo = app_handle.as_ref().map(|handle| {
+                let app_state = handle.state::<AppState>();
+                Arc::clone(&app_state.ideation_effort_settings_repo)
+            });
 
             // Build and spawn resume command
             let spawnable = match chat_service_context::build_resume_command(
@@ -330,6 +338,8 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 team_mode,
                 Arc::clone(chat_attachment_repo),
                 Arc::clone(artifact_repo),
+                agent_lane_settings_repo,
+                ideation_effort_settings_repo,
                 ideation_model_settings_repo,
                 Arc::clone(ideation_session_repo),
                 Arc::clone(task_repo),

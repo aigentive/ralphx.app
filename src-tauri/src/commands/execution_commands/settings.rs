@@ -136,7 +136,8 @@ pub async fn update_execution_settings(
                 Arc::clone(&app_state.memory_event_repo),
             )
             .with_execution_state(Arc::clone(&execution_state))
-            .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo));
+            .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
+            .with_agent_lane_settings_repo(Arc::clone(&app_state.agent_lane_settings_repo));
             svc = svc
                 .with_ideation_effort_settings_repo(Arc::clone(&app_state.ideation_effort_settings_repo))
                 .with_ideation_model_settings_repo(Arc::clone(&app_state.ideation_model_settings_repo));

@@ -15,16 +15,16 @@ use crate::domain::entities::{
 };
 use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::repositories::{
-    ArtifactRepository, ChatAttachmentRepository, IdeationModelSettingsRepository,
+    AgentLaneSettingsRepository, ArtifactRepository, ChatAttachmentRepository,
+    IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
     IdeationSessionRepository, ProjectRepository, TaskRepository,
 };
 use crate::infrastructure::agents::claude::{
     build_spawnable_command, build_spawnable_interactive_command, mcp_agent_type,
     ContentBlockItem, SpawnableCommand, ToolCall,
 };
-use crate::utils::truncate_str;
-
 use crate::infrastructure::agents::claude::agent_names;
+use crate::utils::truncate_str;
 
 use super::chat_service_helpers::resolve_agent_with_team_mode;
 
@@ -940,79 +940,6 @@ fn apply_ralphx_env_vars(
     }
 }
 
-/// Resolve the effective model and subagent cap for a given agent spawn context.
-///
-/// Infallible — always returns a non-empty model string via the fallback chain:
-///   1. Explicit `model_override` (if provided)
-///   2. DB-stored ideation model setting (for Ideation contexts only)
-///   3. YAML agent config default
-///   4. Hardcoded `"sonnet"`
-///
-/// Returns `(resolved_model, subagent_cap)` where:
-///   - `resolved_model`: the model string to pass via `--model`
-///   - `subagent_cap`: for Ideation contexts, the model cap for spawned subagents; `None` otherwise
-///
-/// Logs `WARN` on repo errors and continues with the next fallback level.
-pub(crate) async fn resolve_model_config(
-    agent_name: &str,
-    project_id: Option<&str>,
-    context_type: ChatContextType,
-    model_override: Option<&str>,
-    ideation_model_settings_repo: Option<&Arc<dyn IdeationModelSettingsRepository>>,
-) -> (String, Option<String>) {
-    let resolved_model = if context_type == ChatContextType::Ideation {
-        match model_override {
-            Some(model) => model.to_string(),
-            None => {
-                if let Some(repo) = ideation_model_settings_repo {
-                    crate::infrastructure::agents::claude::resolve_ideation_model(
-                        agent_name,
-                        project_id,
-                        repo.as_ref(),
-                    )
-                    .await
-                    .model
-                } else {
-                    crate::infrastructure::agents::claude::resolve_model(Some(agent_name))
-                }
-            }
-        }
-    } else {
-        model_override
-            .map(str::to_string)
-            .unwrap_or_else(|| crate::infrastructure::agents::claude::resolve_model(Some(agent_name)))
-    };
-
-    let subagent_cap = if context_type == ChatContextType::Ideation {
-        if agent_name == agent_names::AGENT_PLAN_VERIFIER {
-            // For plan-verifier, the subagent cap comes from verifier_subagent_model
-            // (a separate DB field from the verifier's own model).
-            if let Some(repo) = ideation_model_settings_repo {
-                let project_row = if let Some(pid) = project_id {
-                    repo.get_for_project(pid).await.ok().flatten()
-                } else {
-                    None
-                };
-                let global_row = repo.get_global().await.ok().flatten();
-                let (cap, _) =
-                    crate::infrastructure::agents::claude::resolve_verifier_subagent_model_with_source(
-                        project_row.as_ref().map(|r| &r.verifier_subagent_model),
-                        global_row.as_ref().map(|r| &r.verifier_subagent_model),
-                    );
-                Some(cap)
-            } else {
-                Some("haiku".to_string())
-            }
-        } else {
-            Some(resolved_model.clone())
-        }
-    } else {
-        None
-    };
-
-    (resolved_model, subagent_cap)
-}
-
 /// Create a spawnable Claude CLI command.
 ///
 /// `entity_status` is optional and enables dynamic agent resolution based on state.
@@ -1033,6 +960,8 @@ pub async fn build_command(
     team_mode: bool,
     chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     artifact_repo: Arc<dyn ArtifactRepository>,
+    agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
+    ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
     ideation_model_settings_repo: Option<Arc<dyn IdeationModelSettingsRepository>>,
     session_messages: &[ChatMessage],
     total_available: usize,
@@ -1068,65 +997,19 @@ pub async fn build_command(
         .collect::<Vec<_>>();
 
     let attachment_context = format_attachments_for_agent(&attachments).await?;
-    let (resolved_model, precomputed_cap) = resolve_model_config(
-        agent_name,
-        project_id,
-        conversation.context_type,
-        model_override,
-        ideation_model_settings_repo.as_ref(),
-    )
-    .await;
-
-    // VERIFIER_DISPATCH_ENTRY — AGENT_PLAN_VERIFIER subagent cap resolved from verifier_subagent_model
-    let ideation_subagent_model_cap =
-        if conversation.context_type == ChatContextType::Ideation {
-            if agent_name == agent_names::AGENT_PLAN_VERIFIER {
-                precomputed_cap
-            } else {
-                // IDEATION_DISPATCH_ENTRY — non-verifier ideation: resolve from ideation_subagent_model DB field
-                let project_settings = if let Some(repo) = ideation_model_settings_repo.as_ref() {
-                    if let Some(pid) = project_id {
-                        repo.get_for_project(pid)
-                            .await
-                            .inspect_err(|e| {
-                                tracing::warn!(
-                                    "Failed to fetch ideation model settings for project {}: {}",
-                                    pid,
-                                    e
-                                )
-                            })
-                            .ok()
-                            .flatten()
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-                let global_settings = if let Some(repo) = ideation_model_settings_repo.as_ref() {
-                    repo.get_global()
-                        .await
-                        .inspect_err(|e| {
-                            tracing::warn!(
-                                "Failed to fetch global ideation model settings: {}",
-                                e
-                            )
-                        })
-                        .ok()
-                        .flatten()
-                } else {
-                    None
-                };
-                let (ideation_subagent_cap, _source) =
-                    crate::infrastructure::agents::claude::resolve_ideation_subagent_model_with_source(
-                        project_settings.as_ref().map(|s| &s.ideation_subagent_model),
-                        global_settings.as_ref().map(|s| &s.ideation_subagent_model),
-                    );
-                Some(ideation_subagent_cap)
-            }
-        } else {
-            None
-        };
+    let resolved_spawn_settings =
+        crate::application::agent_lane_resolution::resolve_claude_spawn_settings(
+            agent_name,
+            project_id,
+            conversation.context_type,
+            model_override,
+            agent_lane_settings_repo.as_ref(),
+            ideation_model_settings_repo.as_ref(),
+            ideation_effort_settings_repo.as_ref(),
+        )
+        .await;
+    let resolved_model = resolved_spawn_settings.model;
+    let ideation_subagent_model_cap = resolved_spawn_settings.subagent_model_cap;
 
     let (prompt, resume_session) = if should_resume {
         let session_id = conversation.claude_session_id.as_ref().unwrap();
@@ -1345,6 +1228,8 @@ pub async fn build_resume_command(
     team_mode: bool,
     _chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     artifact_repo: Arc<dyn ArtifactRepository>,
+    agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
+    ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
     ideation_model_settings_repo: Option<Arc<dyn IdeationModelSettingsRepository>>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     task_repo: Arc<dyn TaskRepository>,
@@ -1360,65 +1245,19 @@ pub async fn build_resume_command(
 
     let agent_name =
         resolve_agent_with_team_mode(&context_type, entity_status.as_deref(), team_mode);
-    let (resolved_model, precomputed_cap) = resolve_model_config(
-        agent_name,
-        project_id,
-        context_type,
-        model_override,
-        ideation_model_settings_repo.as_ref(),
-    )
-    .await;
-
-    // VERIFIER_DISPATCH_ENTRY — AGENT_PLAN_VERIFIER subagent cap resolved from verifier_subagent_model
-    let ideation_subagent_model_cap =
-        if context_type == ChatContextType::Ideation {
-            if agent_name == agent_names::AGENT_PLAN_VERIFIER {
-                precomputed_cap
-            } else {
-                // IDEATION_DISPATCH_ENTRY — non-verifier ideation: resolve from ideation_subagent_model DB field
-                let project_settings = if let Some(repo) = ideation_model_settings_repo.as_ref() {
-                    if let Some(pid) = project_id {
-                        repo.get_for_project(pid)
-                            .await
-                            .inspect_err(|e| {
-                                tracing::warn!(
-                                    "Failed to fetch ideation model settings for project {}: {}",
-                                    pid,
-                                    e
-                                )
-                            })
-                            .ok()
-                            .flatten()
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-                let global_settings = if let Some(repo) = ideation_model_settings_repo.as_ref() {
-                    repo.get_global()
-                        .await
-                        .inspect_err(|e| {
-                            tracing::warn!(
-                                "Failed to fetch global ideation model settings: {}",
-                                e
-                            )
-                        })
-                        .ok()
-                        .flatten()
-                } else {
-                    None
-                };
-                let (ideation_subagent_cap, _source) =
-                    crate::infrastructure::agents::claude::resolve_ideation_subagent_model_with_source(
-                        project_settings.as_ref().map(|s| &s.ideation_subagent_model),
-                        global_settings.as_ref().map(|s| &s.ideation_subagent_model),
-                    );
-                Some(ideation_subagent_cap)
-            }
-        } else {
-            None
-        };
+    let resolved_spawn_settings =
+        crate::application::agent_lane_resolution::resolve_claude_spawn_settings(
+            agent_name,
+            project_id,
+            context_type,
+            model_override,
+            agent_lane_settings_repo.as_ref(),
+            ideation_model_settings_repo.as_ref(),
+            ideation_effort_settings_repo.as_ref(),
+        )
+        .await;
+    let resolved_model = resolved_spawn_settings.model;
+    let ideation_subagent_model_cap = resolved_spawn_settings.subagent_model_cap;
 
     // Re-inject context_id on resume so the agent can detect session mismatches.
     // For Ideation context, session_history is injected programmatically.

@@ -24,6 +24,7 @@ pub(crate) fn build_chat_service(
     )
     .with_execution_state(Arc::clone(execution_state))
     .with_execution_settings_repo(Arc::clone(&app.execution_settings_repo))
+    .with_agent_lane_settings_repo(Arc::clone(&app.agent_lane_settings_repo))
     .with_ideation_effort_settings_repo(Arc::clone(&app.ideation_effort_settings_repo))
     .with_ideation_model_settings_repo(Arc::clone(&app.ideation_model_settings_repo))
     .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo))

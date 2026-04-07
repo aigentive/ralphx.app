@@ -2,6 +2,7 @@
 // This layer bridges the domain and infrastructure layers
 
 pub mod app_state;
+pub mod agent_lane_resolution;
 pub mod apply_service;
 pub mod chat_attachment_service;
 pub mod chat_resumption;
@@ -105,6 +106,8 @@ pub use webhook_service::WebhookService;
 
 #[cfg(test)]
 mod app_state_shared_state_tests;
+#[cfg(test)]
+mod agent_lane_resolution_tests;
 #[cfg(test)]
 mod recovery_queue_tests;
 #[cfg(test)]
