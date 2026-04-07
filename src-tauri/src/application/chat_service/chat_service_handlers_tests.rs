@@ -2,17 +2,20 @@ use super::*;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
-use tauri::Manager;
 use tauri::test::{mock_builder, mock_context, noop_assets, MockRuntime};
+use tauri::Manager;
 
 use crate::application::{chat_service::ProviderErrorCategory, AppState};
-use crate::domain::entities::{app_state::ExecutionHaltMode, IdeationSessionId, InternalStatus, Project, ProjectId, Task};
+use crate::domain::entities::{
+    app_state::ExecutionHaltMode, IdeationSessionId, InternalStatus, Project, ProjectId, Task,
+};
 use crate::domain::repositories::{StateHistoryMetadata, StatusTransition};
 use crate::error::AppResult;
 
 /// Configurable mock: `get_by_id` returns the stored task (or None).
 struct StubTaskRepo {
     task: Option<Task>,
+    status_entered_at: Option<DateTime<Utc>>,
 }
 
 #[async_trait]
@@ -60,7 +63,7 @@ impl TaskRepository for StubTaskRepo {
         _: &TaskId,
         _: InternalStatus,
     ) -> AppResult<Option<DateTime<Utc>>> {
-        Ok(None)
+        Ok(self.status_entered_at)
     }
     async fn get_next_executable(&self, _: &ProjectId) -> AppResult<Option<Task>> {
         Ok(None)
@@ -97,7 +100,13 @@ impl TaskRepository for StubTaskRepo {
     ) -> AppResult<Vec<Task>> {
         Ok(vec![])
     }
-    async fn count_tasks(&self, _: &ProjectId, _: bool, _: Option<&str>, _: Option<&str>) -> AppResult<u32> {
+    async fn count_tasks(
+        &self,
+        _: &ProjectId,
+        _: bool,
+        _: Option<&str>,
+        _: Option<&str>,
+    ) -> AppResult<u32> {
         Ok(0)
     }
     async fn search(&self, _: &ProjectId, _: &str, _: bool) -> AppResult<Vec<Task>> {
@@ -125,12 +134,8 @@ impl TaskRepository for StubTaskRepo {
     async fn get_status_history_batch(
         &self,
         _task_ids: &[crate::domain::entities::TaskId],
-    ) -> AppResult<
-        std::collections::HashMap<
-            crate::domain::entities::TaskId,
-            Vec<StatusTransition>,
-        >,
-    > {
+    ) -> AppResult<std::collections::HashMap<crate::domain::entities::TaskId, Vec<StatusTransition>>>
+    {
         Ok(std::collections::HashMap::new())
     }
 }
@@ -146,6 +151,7 @@ async fn test_still_needs_recovery_when_executing() {
     let task_id = TaskId::new();
     let repo: Arc<dyn TaskRepository> = Arc::new(StubTaskRepo {
         task: Some(make_task(InternalStatus::Executing)),
+        status_entered_at: None,
     });
     assert!(task_still_needs_execution_recovery(&task_id, &repo).await);
 }
@@ -155,6 +161,7 @@ async fn test_still_needs_recovery_when_re_executing() {
     let task_id = TaskId::new();
     let repo: Arc<dyn TaskRepository> = Arc::new(StubTaskRepo {
         task: Some(make_task(InternalStatus::ReExecuting)),
+        status_entered_at: None,
     });
     assert!(task_still_needs_execution_recovery(&task_id, &repo).await);
 }
@@ -165,6 +172,7 @@ async fn test_no_recovery_when_already_transitioned() {
     let task_id = TaskId::new();
     let repo: Arc<dyn TaskRepository> = Arc::new(StubTaskRepo {
         task: Some(make_task(InternalStatus::PendingReview)),
+        status_entered_at: None,
     });
     assert!(!task_still_needs_execution_recovery(&task_id, &repo).await);
 }
@@ -174,6 +182,7 @@ async fn test_no_recovery_when_failed() {
     let task_id = TaskId::new();
     let repo: Arc<dyn TaskRepository> = Arc::new(StubTaskRepo {
         task: Some(make_task(InternalStatus::Failed)),
+        status_entered_at: None,
     });
     assert!(!task_still_needs_execution_recovery(&task_id, &repo).await);
 }
@@ -183,6 +192,7 @@ async fn test_no_recovery_when_cancelled() {
     let task_id = TaskId::new();
     let repo: Arc<dyn TaskRepository> = Arc::new(StubTaskRepo {
         task: Some(make_task(InternalStatus::Cancelled)),
+        status_entered_at: None,
     });
     assert!(!task_still_needs_execution_recovery(&task_id, &repo).await);
 }
@@ -191,8 +201,77 @@ async fn test_no_recovery_when_cancelled() {
 async fn test_no_recovery_when_task_not_found() {
     // Task not found (e.g., deleted) → skip retry safely
     let task_id = TaskId::new();
-    let repo: Arc<dyn TaskRepository> = Arc::new(StubTaskRepo { task: None });
+    let repo: Arc<dyn TaskRepository> = Arc::new(StubTaskRepo {
+        task: None,
+        status_entered_at: None,
+    });
     assert!(!task_still_needs_execution_recovery(&task_id, &repo).await);
+}
+
+#[tokio::test]
+async fn test_execution_attempt_guard_rejects_stale_run_after_restart() {
+    use crate::domain::entities::{AgentRun, ChatConversationId};
+    use crate::infrastructure::memory::MemoryAgentRunRepository;
+
+    let task_id = TaskId::new();
+    let mut task = make_task(InternalStatus::Executing);
+    task.id = task_id.clone();
+    let status_entered_at = Utc::now();
+    let task_repo: Arc<dyn TaskRepository> = Arc::new(StubTaskRepo {
+        task: Some(task),
+        status_entered_at: Some(status_entered_at),
+    });
+
+    let run_repo = Arc::new(MemoryAgentRunRepository::new());
+    let mut stale_run = AgentRun::new(ChatConversationId::new());
+    stale_run.started_at = status_entered_at - chrono::Duration::minutes(5);
+    let stale_run_id = stale_run.id.as_str().to_string();
+    run_repo.create(stale_run).await.unwrap();
+    let run_repo: Arc<dyn AgentRunRepository> = run_repo;
+
+    assert!(
+        !task_execution_attempt_matches_current_status(
+            &task_id,
+            stale_run_id.as_str(),
+            &task_repo,
+            &run_repo,
+        )
+        .await,
+        "Older execution run must not transition a newer restarted attempt",
+    );
+}
+
+#[tokio::test]
+async fn test_execution_attempt_guard_allows_current_run() {
+    use crate::domain::entities::{AgentRun, ChatConversationId};
+    use crate::infrastructure::memory::MemoryAgentRunRepository;
+
+    let task_id = TaskId::new();
+    let mut task = make_task(InternalStatus::Executing);
+    task.id = task_id.clone();
+    let status_entered_at = Utc::now();
+    let task_repo: Arc<dyn TaskRepository> = Arc::new(StubTaskRepo {
+        task: Some(task),
+        status_entered_at: Some(status_entered_at),
+    });
+
+    let run_repo = Arc::new(MemoryAgentRunRepository::new());
+    let mut current_run = AgentRun::new(ChatConversationId::new());
+    current_run.started_at = status_entered_at + chrono::Duration::milliseconds(100);
+    let current_run_id = current_run.id.as_str().to_string();
+    run_repo.create(current_run).await.unwrap();
+    let run_repo: Arc<dyn AgentRunRepository> = run_repo;
+
+    assert!(
+        task_execution_attempt_matches_current_status(
+            &task_id,
+            current_run_id.as_str(),
+            &task_repo,
+            &run_repo,
+        )
+        .await,
+        "Current execution run must still be allowed to transition the task",
+    );
 }
 
 // ========================================
@@ -275,7 +354,10 @@ async fn test_apply_system_wide_provider_pause_pauses_mixed_active_task_states()
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
 
-    let project = Project::new("Provider Pause".to_string(), "/tmp/provider-pause".to_string());
+    let project = Project::new(
+        "Provider Pause".to_string(),
+        "/tmp/provider-pause".to_string(),
+    );
     let project_id = project.id.clone();
     app_state.project_repo.create(project).await.unwrap();
 
@@ -320,9 +402,24 @@ async fn test_apply_system_wide_provider_pause_pauses_mixed_active_task_states()
     let persisted = state.app_state_repo.get().await.unwrap();
     assert_eq!(persisted.execution_halt_mode, ExecutionHaltMode::Paused);
 
-    let executing_after = state.task_repo.get_by_id(&executing.id).await.unwrap().unwrap();
-    let reviewing_after = state.task_repo.get_by_id(&reviewing.id).await.unwrap().unwrap();
-    let merging_after = state.task_repo.get_by_id(&merging.id).await.unwrap().unwrap();
+    let executing_after = state
+        .task_repo
+        .get_by_id(&executing.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let reviewing_after = state
+        .task_repo
+        .get_by_id(&reviewing.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let merging_after = state
+        .task_repo
+        .get_by_id(&merging.id)
+        .await
+        .unwrap()
+        .unwrap();
     let ready_after = state.task_repo.get_by_id(&ready.id).await.unwrap().unwrap();
 
     assert_eq!(executing_after.internal_status, InternalStatus::Paused);
@@ -458,8 +555,7 @@ fn test_agent_exit_all_steps_complete_overrides_to_pending_review() {
         make_step(&task_id, TaskStepStatus::Completed),
         make_step(&task_id, TaskStepStatus::Skipped),
     ];
-    let step_repo: Option<Arc<dyn TaskStepRepository>> =
-        Some(Arc::new(StubTaskStepRepo { steps }));
+    let step_repo: Option<Arc<dyn TaskStepRepository>> = Some(Arc::new(StubTaskStepRepo { steps }));
 
     let result = run(all_steps_completed(&step_repo, &task_id));
     assert!(result, "All Completed+Skipped steps → should return true");
@@ -474,11 +570,13 @@ fn test_agent_exit_incomplete_steps_stays_failed() {
         make_step(&task_id, TaskStepStatus::InProgress), // not done
         make_step(&task_id, TaskStepStatus::Pending),    // not done
     ];
-    let step_repo: Option<Arc<dyn TaskStepRepository>> =
-        Some(Arc::new(StubTaskStepRepo { steps }));
+    let step_repo: Option<Arc<dyn TaskStepRepository>> = Some(Arc::new(StubTaskStepRepo { steps }));
 
     let result = run(all_steps_completed(&step_repo, &task_id));
-    assert!(!result, "InProgress/Pending steps present → should return false");
+    assert!(
+        !result,
+        "InProgress/Pending steps present → should return false"
+    );
 }
 
 /// AgentExit with no steps at all should remain Failed.
@@ -489,7 +587,10 @@ fn test_agent_exit_no_steps_stays_failed() {
         Some(Arc::new(StubTaskStepRepo { steps: vec![] }));
 
     let result = run(all_steps_completed(&step_repo, &task_id));
-    assert!(!result, "Empty step list → should return false (guard against trivially true)");
+    assert!(
+        !result,
+        "Empty step list → should return false (guard against trivially true)"
+    );
 }
 
 /// Non-AgentExit errors should not trigger the override, even with complete steps.
@@ -545,8 +646,7 @@ fn test_no_output_path_all_steps_complete() {
         make_step(&task_id, TaskStepStatus::Completed),
         make_step(&task_id, TaskStepStatus::Skipped),
     ];
-    let step_repo: Option<Arc<dyn TaskStepRepository>> =
-        Some(Arc::new(StubTaskStepRepo { steps }));
+    let step_repo: Option<Arc<dyn TaskStepRepository>> = Some(Arc::new(StubTaskStepRepo { steps }));
 
     let result = run(all_steps_completed(&step_repo, &task_id));
     assert!(
@@ -559,8 +659,7 @@ fn test_no_output_path_all_steps_complete() {
 #[test]
 fn test_step_repo_error_falls_through() {
     let task_id = TaskId::new();
-    let step_repo: Option<Arc<dyn TaskStepRepository>> =
-        Some(Arc::new(StubErrorTaskStepRepo));
+    let step_repo: Option<Arc<dyn TaskStepRepository>> = Some(Arc::new(StubErrorTaskStepRepo));
 
     let result = run(all_steps_completed(&step_repo, &task_id));
     assert!(
@@ -579,8 +678,7 @@ fn test_all_skipped_no_completed() {
         make_step(&task_id, TaskStepStatus::Skipped),
         make_step(&task_id, TaskStepStatus::Skipped),
     ];
-    let step_repo: Option<Arc<dyn TaskStepRepository>> =
-        Some(Arc::new(StubTaskStepRepo { steps }));
+    let step_repo: Option<Arc<dyn TaskStepRepository>> = Some(Arc::new(StubTaskStepRepo { steps }));
 
     let result = run(all_steps_completed(&step_repo, &task_id));
     assert!(result, "All Skipped → helper returns true");
@@ -608,7 +706,9 @@ fn test_cancelled_with_turns_takes_success_path_not_error_path() {
         completion_tool_called: false,
     };
     let goes_to_success_path = match &cancelled_with_turns {
-        StreamError::Cancelled { turns_finalized, .. } => *turns_finalized > 0,
+        StreamError::Cancelled {
+            turns_finalized, ..
+        } => *turns_finalized > 0,
         _ => false,
     };
     assert!(
@@ -632,7 +732,9 @@ fn test_cancelled_with_turns_takes_success_path_not_error_path() {
         completion_tool_called: false,
     };
     let goes_to_stop_path = match &cancelled_no_turns {
-        StreamError::Cancelled { turns_finalized, .. } => *turns_finalized == 0,
+        StreamError::Cancelled {
+            turns_finalized, ..
+        } => *turns_finalized == 0,
         _ => false,
     };
     assert!(
@@ -659,9 +761,7 @@ fn test_cancelled_with_turns_takes_success_path_not_error_path() {
 /// Helper that calls handle_stream_error with the given Cancelled variant and
 /// returns (recovery_spawned, running_count_after). Uses Ideation context and
 /// memory repos so the Cancelled handler paths can exercise without side effects.
-async fn invoke_handle_stream_error_cancelled(
-    cancelled: &StreamError,
-) -> (bool, u32) {
+async fn invoke_handle_stream_error_cancelled(cancelled: &StreamError) -> (bool, u32) {
     let state = AppState::new_test();
     let exec = Arc::new(ExecutionState::new());
     let execution_state = Some(Arc::clone(&exec));
@@ -686,11 +786,11 @@ async fn invoke_handle_stream_error_cancelled(
         "run-id-1",
         "msg-id-1",
         &event_ctx,
-        None,                    // stored_session_id
-        false,                   // is_retry_attempt
-        None,                    // user_message_content
-        None,                    // conversation
-        None,                    // resolved_project_id
+        None,  // stored_session_id
+        false, // is_retry_attempt
+        None,  // user_message_content
+        None,  // conversation
+        None,  // resolved_project_id
         cli_path,
         plugin_dir,
         working_dir,
@@ -703,23 +803,23 @@ async fn invoke_handle_stream_error_cancelled(
         &state.task_dependency_repo,
         &state.project_repo,
         &state.ideation_session_repo,
-        &None,                   // task_proposal_repo — not used in Cancelled path
+        &None, // task_proposal_repo — not used in Cancelled path
         &state.activity_event_repo,
         &state.message_queue,
         &state.running_agent_registry,
         &state.memory_event_repo,
         &execution_state,
-        &None,                   // question_state — not used in Cancelled path
-        &None,                   // plan_branch_repo — not used for Ideation
-        &None,                   // execution_settings_repo — not used for Ideation
+        &None, // question_state — not used in Cancelled path
+        &None, // plan_branch_repo — not used for Ideation
+        &None, // execution_settings_repo — not used for Ideation
         &None::<tauri::AppHandle<MockRuntime>>,
-        None,                    // agent_name
-        false,                   // team_mode
-        None,                    // run_chain_id
-        &None,                   // interactive_process_registry
-        &None,                   // review_repo
-        &None,                   // task_step_repo
-        &None,                   // verification_child_registry
+        None,  // agent_name
+        false, // team_mode
+        None,  // run_chain_id
+        &None, // interactive_process_registry
+        &None, // review_repo
+        &None, // task_step_repo
+        &None, // verification_child_registry
     )
     .await;
 
@@ -745,8 +845,7 @@ async fn test_handle_stream_error_cancelled_completion_tool_called_skips_slot_re
         "Sub-branch B must return false (success path, no retry)"
     );
     assert_eq!(
-        count_after,
-        0,
+        count_after, 0,
         "completion_tool_called=true path must skip slot re-increment (TurnComplete never fired)"
     );
 }
@@ -765,13 +864,9 @@ async fn test_handle_stream_error_cancelled_false_completion_takes_agent_stopped
     };
     let (recovery_spawned, count_after) = invoke_handle_stream_error_cancelled(&cancelled).await;
 
-    assert!(
-        !recovery_spawned,
-        "[Agent stopped] path must return false"
-    );
+    assert!(!recovery_spawned, "[Agent stopped] path must return false");
     assert_eq!(
-        count_after,
-        0,
+        count_after, 0,
         "User-stop path must NOT touch the execution slot"
     );
 }
@@ -812,7 +907,9 @@ async fn test_handle_stream_error_cancelled_turns_finalized_re_increments_slot()
 fn test_execution_state_shutdown_flag_starts_false() {
     let exec = ExecutionState::new();
     assert!(
-        !exec.is_shutting_down.load(std::sync::atomic::Ordering::SeqCst),
+        !exec
+            .is_shutting_down
+            .load(std::sync::atomic::Ordering::SeqCst),
         "is_shutting_down must start as false so normal agent exits are escalated"
     );
 }
@@ -825,7 +922,8 @@ fn test_execution_state_shutdown_flag_can_be_set() {
     exec.is_shutting_down
         .store(true, std::sync::atomic::Ordering::SeqCst);
     assert!(
-        exec.is_shutting_down.load(std::sync::atomic::Ordering::SeqCst),
+        exec.is_shutting_down
+            .load(std::sync::atomic::Ordering::SeqCst),
         "is_shutting_down must reflect store(true)"
     );
 }
@@ -840,7 +938,9 @@ fn test_execution_state_shutdown_flag_can_be_cleared() {
     exec.is_shutting_down
         .store(false, std::sync::atomic::Ordering::SeqCst);
     assert!(
-        !exec.is_shutting_down.load(std::sync::atomic::Ordering::SeqCst),
+        !exec
+            .is_shutting_down
+            .load(std::sync::atomic::Ordering::SeqCst),
         "is_shutting_down must reflect store(false) after being cleared"
     );
 }
@@ -858,10 +958,7 @@ fn test_shutdown_interrupted_metadata_key_added_when_shutdown_flag_set() {
 
     // Simulate the guard's metadata write
     if let Some(obj) = meta.as_object_mut() {
-        obj.insert(
-            "shutdown_interrupted".to_string(),
-            serde_json::json!(true),
-        );
+        obj.insert("shutdown_interrupted".to_string(), serde_json::json!(true));
     }
 
     assert_eq!(
@@ -879,9 +976,7 @@ fn test_shutdown_interrupted_metadata_value_is_bool() {
         "shutdown_interrupted": true,
         "last_agent_error_context": "review"
     });
-    let flag = meta
-        .get("shutdown_interrupted")
-        .and_then(|v| v.as_bool());
+    let flag = meta.get("shutdown_interrupted").and_then(|v| v.as_bool());
     assert_eq!(
         flag,
         Some(true),
@@ -902,11 +997,15 @@ fn test_execution_state_shutdown_flags_are_independent() {
         .store(true, std::sync::atomic::Ordering::SeqCst);
 
     assert!(
-        exec_a.is_shutting_down.load(std::sync::atomic::Ordering::SeqCst),
+        exec_a
+            .is_shutting_down
+            .load(std::sync::atomic::Ordering::SeqCst),
         "exec_a flag should be true"
     );
     assert!(
-        !exec_b.is_shutting_down.load(std::sync::atomic::Ordering::SeqCst),
+        !exec_b
+            .is_shutting_down
+            .load(std::sync::atomic::Ordering::SeqCst),
         "exec_b flag must remain false — instances are independent"
     );
 }
@@ -939,7 +1038,10 @@ async fn test_no_agent_error_on_timeout_for_terminal_verification_child() {
         .session_purpose(SessionPurpose::Verification)
         .parent_session_id(parent_id.clone())
         .build();
-    repo_trait.create(child_session).await.expect("create verification child session");
+    repo_trait
+        .create(child_session)
+        .await
+        .expect("create verification child session");
 
     // Gate B: is_verification_child must return true for verification sessions.
     // When this returns true, handle_stream_error skips agent:error — which is the
@@ -973,7 +1075,10 @@ async fn test_normal_completion_unaffected_by_verification_guards() {
         .project_id(ProjectId::new())
         .session_purpose(SessionPurpose::General)
         .build();
-    repo_trait.create(general_session).await.expect("create general session");
+    repo_trait
+        .create(general_session)
+        .await
+        .expect("create general session");
 
     // Gate B must NOT fire for General sessions.
     // handle_stream_error proceeds to emit agent:error normally.

@@ -21,7 +21,9 @@ use crate::application::memory_orchestration::trigger_memory_pipelines;
 use crate::application::question_state::QuestionState;
 use crate::commands::ExecutionState;
 use crate::domain::entities::ChatConversation;
-use crate::domain::entities::{AgentRunId, ChatContextType, ChatConversationId, InternalStatus, TaskId};
+use crate::domain::entities::{
+    AgentRunId, ChatContextType, ChatConversationId, InternalStatus, TaskId,
+};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ArtifactRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
@@ -94,7 +96,8 @@ pub(super) struct BackgroundRunContext<R: Runtime> {
     // Interactive process registry for stdin cleanup on process exit
     pub interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
     // Verification child process registry for PID-based cleanup after reconciliation
-    pub verification_child_registry: Option<Arc<super::verification_child_process_registry::VerificationChildProcessRegistry>>,
+    pub verification_child_registry:
+        Option<Arc<super::verification_child_process_registry::VerificationChildProcessRegistry>>,
 }
 
 /// Returns true when `--resume` was used (stored is Some) AND the stream returned a different
@@ -572,6 +575,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
 
                 // Handle task state transitions and merge auto-completion
                 super::chat_service_handlers::handle_stream_success(
+                    &agent_run_id,
                     context_type,
                     &context_id,
                     effective_has_output,

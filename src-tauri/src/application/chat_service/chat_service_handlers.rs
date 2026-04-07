@@ -12,37 +12,36 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-use crate::application::AppState;
 use crate::application::question_state::QuestionState;
 use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::application::task_transition_service::TaskTransitionService;
+use crate::application::AppState;
+use crate::application::InteractiveProcessRegistry;
 use crate::commands::{execution_commands::AGENT_ACTIVE_STATUSES, ExecutionState};
 use crate::domain::entities::{
     app_state::ExecutionHaltMode, AgentRunId, ChatContextType, ChatConversation,
     ChatConversationId, ChatMessageId, IdeationSessionId, InternalStatus, MergeFailureSource,
-    MergeRecoveryEvent,
-    MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode, MergeRecoverySource,
-    MergeRecoveryState, ReviewNote, ReviewOutcome, ReviewerType, SessionPurpose, TaskId,
-    TaskStepStatus, VerificationGap, VerificationStatus,
+    MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
+    MergeRecoverySource, MergeRecoveryState, ReviewNote, ReviewOutcome, ReviewerType,
+    SessionPurpose, TaskId, TaskStepStatus, VerificationGap, VerificationStatus,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ArtifactRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
-    IdeationSessionRepository,
-    MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
-    TaskDependencyRepository, TaskProposalRepository, TaskRepository, TaskStepRepository,
+    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
+    ReviewRepository, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
+    TaskStepRepository,
 };
-use crate::application::InteractiveProcessRegistry;
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::error::AppError;
 
 use super::chat_service_context;
-use crate::application::reconciliation::verification_handoff;
 use super::chat_service_errors::{classify_agent_error, StreamError};
 use super::chat_service_helpers::get_assistant_role;
 use super::chat_service_types::{AgentErrorPayload, AgentRunCompletedPayload};
 use super::EventContextPayload;
+use crate::application::reconciliation::verification_handoff;
 use crate::utils::secret_redactor::redact;
 
 fn should_requeue_after_provider_pause(context_type: ChatContextType) -> bool {
@@ -270,6 +269,7 @@ async fn read_existing_message_content(
 /// - Attempts merge auto-completion via git state inspection
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn handle_stream_success<R: Runtime>(
+    agent_run_id: &str,
     context_type: ChatContextType,
     context_id: &str,
     has_output: bool,
@@ -293,7 +293,9 @@ pub(super) async fn handle_stream_success<R: Runtime>(
     app_handle: &Option<AppHandle<R>>,
     interactive_process_registry: &Option<Arc<InteractiveProcessRegistry>>,
     review_repo: &Option<Arc<dyn ReviewRepository>>,
-    verification_child_registry: &Option<Arc<super::verification_child_process_registry::VerificationChildProcessRegistry>>,
+    verification_child_registry: &Option<
+        Arc<super::verification_child_process_registry::VerificationChildProcessRegistry>,
+    >,
 ) {
     // Handle task state transition (only for TaskExecution)
     if context_type == ChatContextType::TaskExecution {
@@ -309,6 +311,22 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         tracing::info!(
                             task_id = task_id.as_str(),
                             "Shutdown detected — skipping task execution transition; task stays in Executing for auto-recovery"
+                        );
+                        return;
+                    }
+
+                    if !task_execution_attempt_matches_current_status(
+                        &task_id,
+                        agent_run_id,
+                        task_repo,
+                        agent_run_repo,
+                    )
+                    .await
+                    {
+                        tracing::info!(
+                            task_id = task_id.as_str(),
+                            agent_run_id,
+                            "Skipping stale task-execution completion for an older attempt"
                         );
                         return;
                     }
@@ -338,7 +356,8 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         scheduler_svc = scheduler_svc.with_plan_branch_repo(Arc::clone(repo));
                     }
                     if let Some(ref ipr) = interactive_process_registry {
-                        scheduler_svc = scheduler_svc.with_interactive_process_registry(Arc::clone(ipr));
+                        scheduler_svc =
+                            scheduler_svc.with_interactive_process_registry(Arc::clone(ipr));
                     }
                     let scheduler_concrete = Arc::new(scheduler_svc);
                     scheduler_concrete
@@ -397,63 +416,63 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                             );
                         }
                     } else if all_steps_done {
-                            tracing::info!(
+                        tracing::info!(
                                 task_id = task_id.as_str(),
                                 "Worker run ended with all steps completed; transitioning to PendingReview"
                             );
-                            if let Err(e) = transition_service
-                                .transition_task(&task_id, InternalStatus::PendingReview)
-                                .await
-                            {
-                                tracing::error!(
-                                    "Failed to transition all-steps-done task {} to PendingReview: {}",
-                                    task_id.as_str(),
-                                    e
-                                );
-                            }
-                        } else {
-                            // Store last_agent_error for empty-output failure
-                            let mut metadata_obj = task
-                                .metadata
-                                .as_deref()
-                                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-                                .unwrap_or_else(|| serde_json::json!({}));
-                            if let Some(obj) = metadata_obj.as_object_mut() {
-                                obj.insert(
-                                    "last_agent_error".to_string(),
-                                    serde_json::json!("Agent ended without completing all task steps"),
-                                );
-                                obj.insert(
-                                    "last_agent_error_context".to_string(),
-                                    serde_json::json!("execution"),
-                                );
-                                obj.insert(
-                                    "last_agent_error_at".to_string(),
-                                    serde_json::json!(chrono::Utc::now().to_rfc3339()),
-                                );
-                            }
-                            let mut updated_task = task.clone();
-                            updated_task.metadata =
-                                Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
-                            updated_task.touch();
-                            let _ = task_repo.update(&updated_task).await;
-
-                            if let Err(e) = transition_service
-                                .transition_task(&task_id, InternalStatus::Failed)
-                                .await
-                            {
-                                tracing::error!(
-                                    "Failed to transition empty-output task {} to Failed: {}",
-                                    task_id.as_str(),
-                                    e
-                                );
-                            } else {
-                                tracing::warn!(
-                                    task_id = task_id.as_str(),
-                                    "Task execution produced no output; transitioned to Failed"
-                                );
-                            }
+                        if let Err(e) = transition_service
+                            .transition_task(&task_id, InternalStatus::PendingReview)
+                            .await
+                        {
+                            tracing::error!(
+                                "Failed to transition all-steps-done task {} to PendingReview: {}",
+                                task_id.as_str(),
+                                e
+                            );
                         }
+                    } else {
+                        // Store last_agent_error for empty-output failure
+                        let mut metadata_obj = task
+                            .metadata
+                            .as_deref()
+                            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                            .unwrap_or_else(|| serde_json::json!({}));
+                        if let Some(obj) = metadata_obj.as_object_mut() {
+                            obj.insert(
+                                "last_agent_error".to_string(),
+                                serde_json::json!("Agent ended without completing all task steps"),
+                            );
+                            obj.insert(
+                                "last_agent_error_context".to_string(),
+                                serde_json::json!("execution"),
+                            );
+                            obj.insert(
+                                "last_agent_error_at".to_string(),
+                                serde_json::json!(chrono::Utc::now().to_rfc3339()),
+                            );
+                        }
+                        let mut updated_task = task.clone();
+                        updated_task.metadata =
+                            Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
+                        updated_task.touch();
+                        let _ = task_repo.update(&updated_task).await;
+
+                        if let Err(e) = transition_service
+                            .transition_task(&task_id, InternalStatus::Failed)
+                            .await
+                        {
+                            tracing::error!(
+                                "Failed to transition empty-output task {} to Failed: {}",
+                                task_id.as_str(),
+                                e
+                            );
+                        } else {
+                            tracing::warn!(
+                                task_id = task_id.as_str(),
+                                "Task execution produced no output; transitioned to Failed"
+                            );
+                        }
+                    }
                 }
             }
         } else {
@@ -483,10 +502,7 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                             .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
                             .unwrap_or_else(|| serde_json::json!({}));
                         if let Some(obj) = metadata_obj.as_object_mut() {
-                            obj.insert(
-                                "shutdown_interrupted".to_string(),
-                                serde_json::json!(true),
-                            );
+                            obj.insert("shutdown_interrupted".to_string(), serde_json::json!(true));
                         }
                         let mut updated_task = task.clone();
                         updated_task.metadata =
@@ -749,6 +765,46 @@ pub(super) async fn task_still_needs_execution_recovery(
     }
 }
 
+async fn task_execution_attempt_matches_current_status(
+    task_id: &TaskId,
+    agent_run_id: &str,
+    task_repo: &Arc<dyn TaskRepository>,
+    agent_run_repo: &Arc<dyn AgentRunRepository>,
+) -> bool {
+    let task = match task_repo.get_by_id(task_id).await {
+        Ok(Some(task)) => task,
+        Ok(None) => return false,
+        Err(_) => return true,
+    };
+
+    if !matches!(
+        task.internal_status,
+        InternalStatus::Executing | InternalStatus::ReExecuting
+    ) {
+        return false;
+    }
+
+    let Some(status_entered_at) = task_repo
+        .get_status_entered_at(task_id, task.internal_status)
+        .await
+        .ok()
+        .flatten()
+    else {
+        return true;
+    };
+
+    let Some(agent_run) = agent_run_repo
+        .get_by_id(&AgentRunId::from_string(agent_run_id))
+        .await
+        .ok()
+        .flatten()
+    else {
+        return true;
+    };
+
+    agent_run.started_at + chrono::Duration::seconds(1) >= status_entered_at
+}
+
 /// Handle stream error: classify error, attempt stale session recovery,
 /// fail agent run, finalize message, emit error event, and transition task to Failed.
 ///
@@ -800,7 +856,9 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     interactive_process_registry: &Option<Arc<InteractiveProcessRegistry>>,
     review_repo: &Option<Arc<dyn ReviewRepository>>,
     task_step_repo: &Option<Arc<dyn TaskStepRepository>>,
-    verification_child_registry: &Option<Arc<super::verification_child_process_registry::VerificationChildProcessRegistry>>,
+    verification_child_registry: &Option<
+        Arc<super::verification_child_process_registry::VerificationChildProcessRegistry>,
+    >,
 ) -> bool {
     // Handle cancellation — distinguish "cancelled after normal completion" from "user stop"
     if let Some(StreamError::Cancelled {
@@ -836,9 +894,10 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
             }
 
             handle_stream_success(
+                agent_run_id,
                 context_type,
                 context_id,
-                true, // effective_has_output: turns were finalized → agent produced output
+                true,  // effective_has_output: turns were finalized → agent produced output
                 false, // execution_slot_held=false: re-increment happened above at line ~570
                 execution_state,
                 task_repo,
@@ -912,6 +971,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
             // decrement happened that we need to compensate for.
 
             handle_stream_success(
+                agent_run_id,
                 context_type,
                 context_id,
                 true, // effective_has_output: completion tool was called → agent produced output
@@ -1116,8 +1176,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             Arc::clone(chat_attachment_repo),
                             Arc::clone(artifact_repo),
                             ideation_model_settings_repo.clone(),
-                            &[], // retry path — no session history injection needed
-                            0,   // total_available: not needed here — session_messages is empty
+                            &[],  // retry path — no session history injection needed
+                            0,    // total_available: not needed here — session_messages is empty
                             None, // effort_override: recovery retry uses default
                             None, // model_override: recovery retry uses resolved ideation settings when available
                         )
@@ -1151,8 +1211,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                             ideation_session_repo: Arc::clone(
                                                 ideation_session_repo,
                                             ),
-                                            execution_settings_repo:
-                                                execution_settings_repo.clone(),
+                                            execution_settings_repo: execution_settings_repo
+                                                .clone(),
                                             ideation_effort_settings_repo:
                                                 ideation_effort_settings_repo.clone(),
                                             ideation_model_settings_repo:
@@ -1241,12 +1301,9 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     if context_type == ChatContextType::Ideation
         && is_verification_child(context_id, ideation_session_repo).await
     {
-        if let Some(parent_state) = fetch_parent_verification_state(
-            context_id,
-            ideation_session_repo,
-            conversation_repo,
-        )
-        .await
+        if let Some(parent_state) =
+            fetch_parent_verification_state(context_id, ideation_session_repo, conversation_repo)
+                .await
         {
             if !parent_state.in_progress
                 && matches!(
@@ -1355,6 +1412,22 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         return false;
                     }
 
+                    if !task_execution_attempt_matches_current_status(
+                        &task_id,
+                        agent_run_id,
+                        task_repo,
+                        agent_run_repo,
+                    )
+                    .await
+                    {
+                        tracing::info!(
+                            task_id = task_id.as_str(),
+                            agent_run_id,
+                            "Skipping stale task-execution failure for an older attempt"
+                        );
+                        return false;
+                    }
+
                     // Store last_agent_error in metadata (mirrors review pattern)
                     {
                         let mut metadata_obj = task
@@ -1363,7 +1436,10 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
                             .unwrap_or_else(|| serde_json::json!({}));
                         if let Some(obj) = metadata_obj.as_object_mut() {
-                            obj.insert("last_agent_error".to_string(), serde_json::json!(redacted_error));
+                            obj.insert(
+                                "last_agent_error".to_string(),
+                                serde_json::json!(redacted_error),
+                            );
                             obj.insert(
                                 "last_agent_error_context".to_string(),
                                 serde_json::json!("execution"),
@@ -1376,7 +1452,10 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             // Pre-compute failure metadata for timeouts so on_enter(Failed)
                             // skip guard preserves is_timeout=true via the failure_error key
                             if matches!(stream_error, Some(StreamError::Timeout { .. })) {
-                                obj.insert("failure_error".to_string(), serde_json::json!(redacted_error));
+                                obj.insert(
+                                    "failure_error".to_string(),
+                                    serde_json::json!(redacted_error),
+                                );
                                 obj.insert("is_timeout".to_string(), serde_json::json!(true));
                             }
 
@@ -1526,8 +1605,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     let target_status = if target_status == InternalStatus::Failed
                         && matches!(stream_error, Some(StreamError::AgentExit { .. }))
                     {
-                        let all_steps_done =
-                            all_steps_completed(task_step_repo, &task_id).await;
+                        let all_steps_done = all_steps_completed(task_step_repo, &task_id).await;
 
                         if all_steps_done {
                             tracing::info!(
@@ -1836,10 +1914,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
                             .unwrap_or_else(|| serde_json::json!({}));
                         if let Some(obj) = metadata_obj.as_object_mut() {
-                            obj.insert(
-                                "shutdown_interrupted".to_string(),
-                                serde_json::json!(true),
-                            );
+                            obj.insert("shutdown_interrupted".to_string(), serde_json::json!(true));
                         }
                         let mut updated_task = task.clone();
                         updated_task.metadata =
@@ -2143,7 +2218,9 @@ async fn fetch_parent_verification_state(
     let (convergence_reason, current_gaps) = parent_session
         .verification_metadata
         .as_deref()
-        .and_then(|json| serde_json::from_str::<crate::domain::entities::VerificationMetadata>(json).ok())
+        .and_then(|json| {
+            serde_json::from_str::<crate::domain::entities::VerificationMetadata>(json).ok()
+        })
         .map(|meta| (meta.convergence_reason.clone(), meta.current_gaps.clone()))
         .unwrap_or_else(|| (None, vec![]));
 

@@ -23,9 +23,8 @@ pub(super) fn build_transition_service_for_recovery(
         )
         .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
         .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(
-            &app_state.interactive_process_registry,
-        )),
+        .with_step_repo(Arc::clone(&app_state.task_step_repo))
+        .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
     )
 }
 
@@ -174,7 +173,6 @@ pub enum RestartResult {
         stopped_from_status: String,
     },
 }
-
 
 /// Validate resume for Validated category states.
 ///

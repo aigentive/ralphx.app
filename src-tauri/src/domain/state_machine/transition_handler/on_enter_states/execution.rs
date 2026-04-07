@@ -1,11 +1,28 @@
 use super::*;
-use crate::domain::state_machine::TransitionHandler;
+use crate::domain::entities::InternalStatus;
 use crate::domain::state_machine::transition_handler::merge_validation;
 use crate::domain::state_machine::transition_handler::{
     is_merge_worktree_path, restore_task_worktree,
 };
+use crate::domain::state_machine::TransitionHandler;
 
 impl<'a> TransitionHandler<'a> {
+    async fn task_still_allows_execution_spawn(
+        &self,
+        task_id_str: &str,
+        expected_status: InternalStatus,
+    ) -> bool {
+        let Some(task_repo) = &self.machine.context.services.task_repo else {
+            return true;
+        };
+        let task_id = TaskId::from_string(task_id_str.to_string());
+        match task_repo.get_by_id(&task_id).await {
+            Ok(Some(task)) => task.internal_status == expected_status,
+            Ok(None) => false,
+            Err(_) => true,
+        }
+    }
+
     /// Check that the task's plan branch is still Active.
     /// Returns Err(ExecutionBlocked) if the branch is Merged or Abandoned.
     /// No-op for non-plan tasks or when repos are unavailable.
@@ -198,7 +215,9 @@ impl<'a> TransitionHandler<'a> {
                     let cleared = MetadataUpdate::new()
                         .with_null("preserve_steps")
                         .merge_into(task.metadata.as_deref());
-                    let _ = task_repo.update_metadata(&task_id_typed, Some(cleared)).await;
+                    let _ = task_repo
+                        .update_metadata(&task_id_typed, Some(cleared))
+                        .await;
                     // Emit step:updated so the UI refreshes the preserved step timeline
                     self.machine
                         .context
@@ -651,6 +670,16 @@ impl<'a> TransitionHandler<'a> {
         let prompt = self
             .build_execution_prompt(task_id_str, format!("Execute task: {}", task_id_str))
             .await;
+        if !self
+            .task_still_allows_execution_spawn(task_id_str, InternalStatus::Executing)
+            .await
+        {
+            tracing::info!(
+                task_id = task_id_str,
+                "Skipping task_execution spawn because task status drifted during executing setup"
+            );
+            return Ok(());
+        }
         tracing::debug!(
             task_id = task_id_str,
             prompt_len = prompt.len(),
@@ -692,6 +721,16 @@ impl<'a> TransitionHandler<'a> {
                 format!("Re-execute task (revision): {}", task_id_str),
             )
             .await;
+        if !self
+            .task_still_allows_execution_spawn(task_id_str, InternalStatus::ReExecuting)
+            .await
+        {
+            tracing::info!(
+                task_id = task_id_str,
+                "Skipping task_execution spawn because task status drifted during re-executing setup"
+            );
+            return Ok(());
+        }
         let result = self
             .send_task_execution_message(
                 task_id_str,

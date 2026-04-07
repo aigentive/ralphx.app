@@ -1,5 +1,6 @@
 // Tests for task_commands module
 
+use chrono::Utc;
 use ralphx_lib::application::AppState;
 use ralphx_lib::commands::task_commands::{helpers, types};
 use ralphx_lib::domain::entities::{
@@ -7,7 +8,6 @@ use ralphx_lib::domain::entities::{
 };
 use ralphx_lib::domain::repositories::ProjectRepository;
 use ralphx_lib::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
-use chrono::Utc;
 use std::sync::Arc;
 
 async fn setup_test_state() -> AppState {
@@ -1466,20 +1466,19 @@ mod ipc_contract {
 // exact logic using the same helper functions and MemoryTaskRepository.
 #[cfg(test)]
 mod layer1_restart_tests {
+    use chrono::Utc;
     use ralphx_lib::domain::entities::{
-        ExecutionRecoveryMetadata, ExecutionRecoveryState, InternalStatus, ProjectId, Task,
+        ExecutionRecoveryMetadata, ExecutionRecoveryState, InternalStatus, ProjectId, Task, TaskId,
+        TaskStep, TaskStepStatus,
     };
-    use ralphx_lib::domain::repositories::TaskRepository;
+    use ralphx_lib::domain::repositories::{TaskRepository, TaskStepRepository};
     use ralphx_lib::domain::state_machine::transition_handler::{
         parse_metadata, set_trigger_origin,
     };
-    use ralphx_lib::infrastructure::memory::MemoryTaskRepository;
+    use ralphx_lib::infrastructure::memory::{MemoryTaskRepository, MemoryTaskStepRepository};
     use std::sync::Arc;
 
-    async fn create_task_in_repo(
-        task_repo: &Arc<MemoryTaskRepository>,
-        task: Task,
-    ) -> Task {
+    async fn create_task_in_repo(task_repo: &Arc<MemoryTaskRepository>, task: Task) -> Task {
         task_repo.create(task).await.unwrap()
     }
 
@@ -1499,6 +1498,14 @@ mod layer1_restart_tests {
         let mut task_mut = task.clone();
         set_trigger_origin(&mut task_mut, "retry");
 
+        if task.internal_status == InternalStatus::Failed {
+            let mut meta = parse_metadata(&task_mut).unwrap_or_else(|| serde_json::json!({}));
+            if let Some(obj) = meta.as_object_mut() {
+                obj.insert("preserve_steps".to_string(), serde_json::json!(true));
+            }
+            task_mut.metadata = Some(meta.to_string());
+        }
+
         // Clear stale git refs
         task_mut.task_branch = None;
         task_mut.worktree_path = None;
@@ -1512,9 +1519,7 @@ mod layer1_restart_tests {
             recovery.last_state = ExecutionRecoveryState::Retrying;
             recovery.events.clear();
             recovery.unrecoverable_reason = None;
-            if let Ok(updated_meta) =
-                recovery.update_task_metadata(task_mut.metadata.as_deref())
-            {
+            if let Ok(updated_meta) = recovery.update_task_metadata(task_mut.metadata.as_deref()) {
                 task_mut.metadata = Some(updated_meta);
             }
         }
@@ -1535,6 +1540,26 @@ mod layer1_restart_tests {
         task_mut
     }
 
+    async fn clear_failed_steps_in_repo(
+        step_repo: &Arc<MemoryTaskStepRepository>,
+        task_id: &TaskId,
+    ) -> u32 {
+        let mut cleared = 0;
+        for mut step in step_repo.get_by_task(task_id).await.unwrap() {
+            if step.status != TaskStepStatus::Failed {
+                continue;
+            }
+
+            step.status = TaskStepStatus::Pending;
+            step.started_at = None;
+            step.completed_at = None;
+            step.completion_note = None;
+            step_repo.update(&step).await.unwrap();
+            cleared += 1;
+        }
+        cleared
+    }
+
     #[tokio::test]
     async fn test_terminal_to_ready_clears_git_refs() {
         let task_repo = Arc::new(MemoryTaskRepository::new());
@@ -1545,7 +1570,10 @@ mod layer1_restart_tests {
 
         let saved = task_repo.get_by_id(&original.id).await.unwrap().unwrap();
         assert!(saved.task_branch.is_none(), "task_branch should be cleared");
-        assert!(saved.worktree_path.is_none(), "worktree_path should be cleared");
+        assert!(
+            saved.worktree_path.is_none(),
+            "worktree_path should be cleared"
+        );
         assert!(
             saved.merge_commit_sha.is_none(),
             "merge_commit_sha should be cleared"
@@ -1630,6 +1658,11 @@ mod layer1_restart_tests {
             Some("team"),
             "agent_variant should be set to 'team'"
         );
+        assert_eq!(
+            meta.get("preserve_steps").and_then(|v| v.as_bool()),
+            Some(true),
+            "failed-task restart must set preserve_steps so on_enter keeps prior progress"
+        );
 
         // Verify execution_recovery reset was NOT clobbered by agent_variant write
         let final_recovery =
@@ -1647,6 +1680,85 @@ mod layer1_restart_tests {
         );
     }
 
+    #[tokio::test]
+    async fn test_failed_restart_clears_only_failed_steps_and_preserves_progress() {
+        let task_repo = Arc::new(MemoryTaskRepository::new());
+        let step_repo = Arc::new(MemoryTaskStepRepository::new());
+        let original = create_task_in_repo(&task_repo, make_task_with_git_refs()).await;
+
+        let mut completed = TaskStep::new(
+            original.id.clone(),
+            "Completed".to_string(),
+            0,
+            "user".to_string(),
+        );
+        completed.status = TaskStepStatus::Completed;
+        completed.started_at = Some(Utc::now());
+        completed.completed_at = Some(Utc::now());
+        completed.completion_note = Some("done".to_string());
+        step_repo.create(completed).await.unwrap();
+
+        let mut failed = TaskStep::new(
+            original.id.clone(),
+            "Failed".to_string(),
+            1,
+            "user".to_string(),
+        );
+        failed.status = TaskStepStatus::Failed;
+        failed.started_at = Some(Utc::now());
+        failed.completed_at = Some(Utc::now());
+        failed.completion_note = Some("provider limit".to_string());
+        step_repo.create(failed).await.unwrap();
+
+        let mut skipped = TaskStep::new(
+            original.id.clone(),
+            "Skipped".to_string(),
+            2,
+            "user".to_string(),
+        );
+        skipped.status = TaskStepStatus::Skipped;
+        skipped.completed_at = Some(Utc::now());
+        skipped.completion_note = Some("not needed".to_string());
+        step_repo.create(skipped).await.unwrap();
+
+        let restarted = apply_restart_block(&original, None);
+        task_repo.update(&restarted).await.unwrap();
+        let cleared = clear_failed_steps_in_repo(&step_repo, &original.id).await;
+
+        assert_eq!(cleared, 1, "only failed steps should be cleared on restart");
+
+        let saved = task_repo.get_by_id(&original.id).await.unwrap().unwrap();
+        let meta = parse_metadata(&saved).expect("metadata should be present");
+        assert_eq!(
+            meta.get("preserve_steps").and_then(|v| v.as_bool()),
+            Some(true),
+            "failed-task restart must preserve previously completed progress"
+        );
+
+        let steps = step_repo.get_by_task(&original.id).await.unwrap();
+        assert_eq!(steps.len(), 3);
+
+        let completed = steps.iter().find(|step| step.title == "Completed").unwrap();
+        assert_eq!(completed.status, TaskStepStatus::Completed);
+        assert_eq!(completed.completion_note.as_deref(), Some("done"));
+        assert!(completed.completed_at.is_some());
+
+        let failed = steps.iter().find(|step| step.title == "Failed").unwrap();
+        assert_eq!(failed.status, TaskStepStatus::Pending);
+        assert!(
+            failed.started_at.is_none() && failed.completed_at.is_none(),
+            "restarted failed steps must lose stale timing"
+        );
+        assert!(
+            failed.completion_note.is_none(),
+            "restarted failed steps must lose stale failure note"
+        );
+
+        let skipped = steps.iter().find(|step| step.title == "Skipped").unwrap();
+        assert_eq!(skipped.status, TaskStepStatus::Skipped);
+        assert_eq!(skipped.completion_note.as_deref(), Some("not needed"));
+    }
+
     /// Verifies block 2 (agent_variant update for non-restart transitions) still works.
     /// When old_status is NOT terminal, block 2 should fire and update agent_variant.
     #[tokio::test]
@@ -1655,7 +1767,7 @@ mod layer1_restart_tests {
         let project_id = ProjectId::from_string("test-project".to_string());
         let mut task = Task::new(project_id, "Agent Variant Non-Restart Test".to_string());
         task.internal_status = InternalStatus::Ready; // non-terminal
-        // Set an old agent_variant in metadata
+                                                      // Set an old agent_variant in metadata
         task.metadata = Some(r#"{"agent_variant":"team"}"#.to_string());
 
         let original = create_task_in_repo(&task_repo, task).await;

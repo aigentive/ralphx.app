@@ -6,8 +6,10 @@ use crate::application::chat_service::MockChatService;
 use crate::application::{AppState, TaskTransitionService};
 use crate::commands::execution_commands::{ActiveProjectState, ExecutionState};
 use crate::domain::entities::app_state::ExecutionHaltMode;
-use crate::domain::entities::{IdeationSession, InternalStatus, Project, ProjectId, SessionOrigin, Task};
 use crate::domain::entities::ideation::IdeationSessionStatus;
+use crate::domain::entities::{
+    IdeationSession, InternalStatus, Project, ProjectId, SessionOrigin, Task,
+};
 use crate::domain::services::RunningAgentKey;
 
 // ======= Unit tests for should_auto_recover() =======
@@ -182,12 +184,142 @@ fn make_escalated_task(project_id: &ProjectId, metadata: serde_json::Value) -> T
     task
 }
 
+fn make_active_task(
+    project_id: &ProjectId,
+    status: InternalStatus,
+    metadata: serde_json::Value,
+) -> Task {
+    let mut task = Task::new(project_id.clone(), "active test task".into());
+    task.internal_status = status;
+    task.metadata = Some(metadata.to_string());
+    task
+}
+
+#[tokio::test]
+async fn test_prepare_active_task_startup_resume_marks_execution_for_resume() {
+    let app_state = AppState::new_test();
+    let project = Project::new("Test Project".into(), "/tmp/test-project".into());
+    let project_id = project.id.clone();
+    app_state.project_repo.create(project).await.unwrap();
+
+    let meta = serde_json::json!({
+        "shutdown_interrupted": true,
+        "last_agent_error_context": "execution",
+        "startup_recovery_attempts": 0
+    });
+    let task = make_active_task(&project_id, InternalStatus::Executing, meta);
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    let runner = build_runner_for_tests(&app_state);
+    let stored = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+
+    let resumed = runner
+        .prepare_active_task_startup_resume(&stored, InternalStatus::Executing)
+        .await
+        .expect("shutdown-interrupted execution task should be resumed");
+
+    assert_eq!(resumed.internal_status, InternalStatus::Executing);
+    let resumed_meta: serde_json::Value = resumed
+        .metadata
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    assert_eq!(
+        resumed_meta
+            .get("startup_recovery_attempts")
+            .and_then(|v| v.as_u64()),
+        Some(1),
+        "startup auto-resume must increment the attempt counter"
+    );
+    assert!(
+        resumed_meta.get("shutdown_interrupted").is_none(),
+        "startup auto-resume must clear the shutdown_interrupted flag"
+    );
+
+    let persisted = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task should still exist");
+    assert_eq!(persisted.metadata, resumed.metadata);
+}
+
+#[tokio::test]
+async fn test_prepare_active_task_startup_resume_rejects_mismatched_context() {
+    let app_state = AppState::new_test();
+    let project = Project::new("Test Project".into(), "/tmp/test-project".into());
+    let project_id = project.id.clone();
+    app_state.project_repo.create(project).await.unwrap();
+
+    let meta = serde_json::json!({
+        "shutdown_interrupted": true,
+        "last_agent_error_context": "review",
+        "startup_recovery_attempts": 0
+    });
+    let task = make_active_task(&project_id, InternalStatus::Executing, meta);
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task).await.unwrap();
+
+    let runner = build_runner_for_tests(&app_state);
+    let stored = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+
+    let resumed = runner
+        .prepare_active_task_startup_resume(&stored, InternalStatus::Executing)
+        .await;
+    assert!(
+        resumed.is_none(),
+        "review recovery metadata must not auto-resume an executing task"
+    );
+
+    let persisted = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task should still exist");
+    let persisted_meta: serde_json::Value = persisted
+        .metadata
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    assert_eq!(
+        persisted_meta
+            .get("startup_recovery_attempts")
+            .and_then(|v| v.as_u64()),
+        Some(0),
+        "non-resumable active tasks must not consume the startup retry budget"
+    );
+    assert_eq!(
+        persisted_meta
+            .get("shutdown_interrupted")
+            .and_then(|v| v.as_bool()),
+        Some(true),
+        "non-resumable active tasks must keep the interruption marker unchanged"
+    );
+}
+
 #[tokio::test]
 async fn test_recovery_shutdown_interrupted_review_transitions_to_pending_review() {
     let app_state = AppState::new_test();
     let project = Project::new("Test Project".into(), "/tmp/test-project".into());
     let project_id = project.id.clone();
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let meta = serde_json::json!({
         "shutdown_interrupted": true,
@@ -220,7 +352,11 @@ async fn test_recovery_crash_execution_transitions_to_ready() {
     let app_state = AppState::new_test();
     let project = Project::new("Test Project".into(), "/tmp/test-project".into());
     let project_id = project.id.clone();
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let meta = serde_json::json!({
         "last_agent_error": "Agent completed without calling execution_complete",
@@ -253,7 +389,11 @@ async fn test_recovery_shutdown_interrupted_merge_transitions_to_pending_merge()
     let app_state = AppState::new_test();
     let project = Project::new("Test Project".into(), "/tmp/test-project".into());
     let project_id = project.id.clone();
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let meta = serde_json::json!({
         "shutdown_interrupted": true,
@@ -286,7 +426,11 @@ async fn test_no_recovery_genuine_escalation_stays_escalated() {
     let app_state = AppState::new_test();
     let project = Project::new("Test Project".into(), "/tmp/test-project".into());
     let project_id = project.id.clone();
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // No shutdown_interrupted, no crash indicator → genuine escalation
     let meta = serde_json::json!({
@@ -320,7 +464,11 @@ async fn test_no_recovery_retry_limit_stays_escalated() {
     let app_state = AppState::new_test();
     let project = Project::new("Test Project".into(), "/tmp/test-project".into());
     let project_id = project.id.clone();
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let meta = serde_json::json!({
         "shutdown_interrupted": true,
@@ -357,7 +505,11 @@ async fn test_recovery_increments_startup_recovery_attempts() {
     let app_state = AppState::new_test();
     let project = Project::new("Test Project".into(), "/tmp/test-project".into());
     let project_id = project.id.clone();
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let meta = serde_json::json!({
         "shutdown_interrupted": true,
@@ -400,7 +552,11 @@ async fn test_recovery_clears_shutdown_interrupted_flag() {
     let app_state = AppState::new_test();
     let project = Project::new("Test Project".into(), "/tmp/test-project".into());
     let project_id = project.id.clone();
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let meta = serde_json::json!({
         "shutdown_interrupted": true,
@@ -437,7 +593,11 @@ async fn test_no_recovery_missing_error_context_stays_escalated() {
     let app_state = AppState::new_test();
     let project = Project::new("Test Project".into(), "/tmp/test-project".into());
     let project_id = project.id.clone();
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Has the crash indicator but NO last_agent_error_context → can't determine target state
     let meta = serde_json::json!({
@@ -474,7 +634,11 @@ async fn test_recovery_multiple_tasks_counts_correctly() {
     let app_state = AppState::new_test();
     let project = Project::new("Test Project".into(), "/tmp/test-project".into());
     let project_id = project.id.clone();
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Task 1: recoverable (shutdown interrupted)
     let meta1 = serde_json::json!({
@@ -502,10 +666,7 @@ async fn test_recovery_multiple_tasks_counts_correctly() {
     let runner = build_runner_for_tests(&app_state);
     let recovered = runner.recover_crash_escalated_tasks(&[project]).await;
 
-    assert_eq!(
-        recovered, 2,
-        "Exactly 2 of the 3 tasks should be recovered"
-    );
+    assert_eq!(recovered, 2, "Exactly 2 of the 3 tasks should be recovered");
 }
 
 #[tokio::test]
@@ -513,7 +674,11 @@ async fn test_no_recovery_archived_task_skipped() {
     let app_state = AppState::new_test();
     let project = Project::new("Test Project".into(), "/tmp/test-project".into());
     let project_id = project.id.clone();
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let meta = serde_json::json!({
         "shutdown_interrupted": true,
@@ -609,14 +774,19 @@ async fn create_session(
 async fn test_recover_ideation_session_active_calls_send_message() {
     let app_state = AppState::new_test();
     let project = Project::new("Test Project".into(), "/tmp/test-project".into());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create an active ideation session.
     let session = create_session(&app_state, &project.id, IdeationSessionStatus::Active).await;
     let session_id = session.id.as_str().to_string();
 
     let mock = Arc::new(MockChatService::new());
-    let _runner = build_runner_with_chat_service(&app_state, Arc::clone(&mock) as Arc<dyn ChatService>);
+    let _runner =
+        build_runner_with_chat_service(&app_state, Arc::clone(&mock) as Arc<dyn ChatService>);
 
     // Call recover_ideation_session directly (tests the helper without spinning up the full runner).
     let item = crate::application::recovery_queue::RecoveryItem {
@@ -662,7 +832,10 @@ async fn test_recover_ideation_session_skips_when_not_found() {
     .await;
 
     // Should return Ok (intentional skip), not an error.
-    assert!(result.is_ok(), "Not-found session should be silently skipped");
+    assert!(
+        result.is_ok(),
+        "Not-found session should be silently skipped"
+    );
     assert_eq!(mock.call_count(), 0, "send_message should NOT be called");
 }
 
@@ -670,7 +843,11 @@ async fn test_recover_ideation_session_skips_when_not_found() {
 async fn test_recover_ideation_session_skips_when_archived() {
     let app_state = AppState::new_test();
     let project = Project::new("Test Project".into(), "/tmp/test-project".into());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create an archived (non-active) session.
     let session = create_session(&app_state, &project.id, IdeationSessionStatus::Archived).await;
@@ -708,7 +885,11 @@ async fn test_recover_ideation_session_skips_when_archived() {
 async fn test_recover_ideation_session_skips_when_accepted() {
     let app_state = AppState::new_test();
     let project = Project::new("Test Project".into(), "/tmp/test-project".into());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let session = create_session(&app_state, &project.id, IdeationSessionStatus::Accepted).await;
 
@@ -745,7 +926,11 @@ async fn test_recover_ideation_session_skips_when_accepted() {
 async fn test_run_skips_ideation_recovery_when_persisted_stop_barrier_is_set() {
     let app_state = AppState::new_test();
     let project = Project::new("Test Project".into(), "/tmp/test-project".into());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let session = create_session(&app_state, &project.id, IdeationSessionStatus::Active).await;
 
@@ -788,7 +973,11 @@ async fn test_run_skips_ideation_recovery_when_persisted_stop_barrier_is_set() {
 async fn test_run_refreshes_phase_n1_ideation_sessions_before_recovery() {
     let app_state = AppState::new_test();
     let project = Project::new("Test Project".into(), "/tmp/test-project".into());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     let mut session = IdeationSession::new(project.id.clone());
     session.status = IdeationSessionStatus::Active;

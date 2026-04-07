@@ -10,12 +10,41 @@ use crate::commands::execution_commands::project_has_execution_capacity_for_stat
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     ExecutionRecoveryMetadata, ExecutionRecoveryState, InternalStatus, ProjectId, Task,
-    TaskCategory, TaskId,
+    TaskCategory, TaskId, TaskStepStatus,
 };
 use crate::domain::state_machine::transition_handler::metadata_builder::build_restart_metadata;
 use crate::domain::state_machine::transition_handler::{parse_metadata, set_trigger_origin};
 use std::sync::Arc;
 use tauri::{Emitter, Manager, State};
+
+async fn clear_failed_steps_for_failed_restart(
+    task_step_repo: &Arc<dyn crate::domain::repositories::TaskStepRepository>,
+    task_id: &TaskId,
+) -> Result<u32, String> {
+    let steps = task_step_repo
+        .get_by_task(task_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut cleared = 0u32;
+    for mut step in steps {
+        if step.status != TaskStepStatus::Failed {
+            continue;
+        }
+
+        step.status = TaskStepStatus::Pending;
+        step.started_at = None;
+        step.completed_at = None;
+        step.completion_note = None;
+        task_step_repo
+            .update(&step)
+            .await
+            .map_err(|e| e.to_string())?;
+        cleared += 1;
+    }
+
+    Ok(cleared)
+}
 
 /// Create a new task
 #[tauri::command]
@@ -207,9 +236,7 @@ pub async fn move_task(
             recovery.events.clear();
             recovery.unrecoverable_reason = None;
             // auto_recovery_count intentionally preserved
-            if let Ok(updated_meta) =
-                recovery.update_task_metadata(task_mut.metadata.as_deref())
-            {
+            if let Ok(updated_meta) = recovery.update_task_metadata(task_mut.metadata.as_deref()) {
                 task_mut.metadata = Some(updated_meta);
             }
         }
@@ -218,9 +245,11 @@ pub async fn move_task(
         //    Block 2 calls parse_metadata(&old_task) — the pre-write snapshot — then
         //    update_metadata() which overwrites the entire metadata string, erasing the
         //    execution_recovery reset above. Handle agent_variant in this block instead.
-        let mut meta =
-            parse_metadata(&task_mut).unwrap_or_else(|| serde_json::json!({}));
+        let mut meta = parse_metadata(&task_mut).unwrap_or_else(|| serde_json::json!({}));
         if let Some(obj) = meta.as_object_mut() {
+            if old_status == InternalStatus::Failed {
+                obj.insert("preserve_steps".to_string(), serde_json::json!(true));
+            }
             match agent_variant.as_deref() {
                 Some(variant) if !variant.is_empty() => {
                     obj.insert("agent_variant".to_string(), serde_json::json!(variant));
@@ -238,6 +267,26 @@ pub async fn move_task(
                 error = %e,
                 "Failed to clear git refs and reset execution_recovery on task restart"
             );
+        }
+
+        if old_status == InternalStatus::Failed {
+            match clear_failed_steps_for_failed_restart(&state.task_step_repo, &task_id).await {
+                Ok(cleared) if cleared > 0 => {
+                    tracing::info!(
+                        task_id = task_id.as_str(),
+                        cleared,
+                        "Cleared failed steps while preserving completed progress for failed-task restart"
+                    );
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        task_id = task_id.as_str(),
+                        error = %error,
+                        "Failed to clear failed steps for failed-task restart"
+                    );
+                }
+            }
         }
     }
 
@@ -325,6 +374,7 @@ pub async fn move_task(
     // ALWAYS set team_mode based on explicit UI selection so it overrides
     // env var defaults and stale metadata. Some(true) = team, Some(false) = solo.
     transition_service = transition_service.with_team_mode(is_team_mode);
+    transition_service = transition_service.with_step_repo(Arc::clone(&state.task_step_repo));
 
     // Transition the task - this triggers entry actions like spawning workers!
     // When a note is provided and the task is moving to Ready (restart/reopen flow),
@@ -441,7 +491,8 @@ pub async fn inject_task(
         "priority": created.priority,
         "injected": true,
     });
-    if let Some(throttled) = app.try_state::<std::sync::Arc<crate::application::ThrottledEmitter>>() {
+    if let Some(throttled) = app.try_state::<std::sync::Arc<crate::application::ThrottledEmitter>>()
+    {
         throttled.emit("task:created", created_payload);
     } else {
         let _ = app.emit("task:created", created_payload);
@@ -1392,8 +1443,7 @@ pub async fn resume_task(
     if !execution_state.can_start_any_execution_context() {
         return Err("Cannot resume: max concurrent task limit reached".to_string());
     }
-    if !project_has_execution_capacity_for_state(&state, &execution_state, &task.project_id)
-        .await?
+    if !project_has_execution_capacity_for_state(&state, &execution_state, &task.project_id).await?
     {
         return Err("Cannot resume: project execution capacity reached".to_string());
     }
@@ -1579,9 +1629,8 @@ pub async fn pause_tasks_in_group(
             scope: "task".to_string(),
         };
         let mut task_to_update = task.clone();
-        task_to_update.metadata = Some(
-            pause_reason.write_to_task_metadata(task_to_update.metadata.as_deref()),
-        );
+        task_to_update.metadata =
+            Some(pause_reason.write_to_task_metadata(task_to_update.metadata.as_deref()));
         task_to_update.touch();
         let _ = state.task_repo.update(&task_to_update).await;
 
@@ -1745,15 +1794,13 @@ pub async fn resume_tasks_in_group(
             if let Some(reason) = PauseReason::from_task_metadata(task.metadata.as_deref()) {
                 match reason.previous_status().parse::<InternalStatus>() {
                     Ok(status) => status,
-                    Err(_) => {
-                        match get_restore_status_from_history(&state, &task.id).await {
-                            Ok(s) => s,
-                            Err(e) => {
-                                tracing::warn!(task_id = %task.id, error = %e, "Cannot restore task");
-                                continue;
-                            }
+                    Err(_) => match get_restore_status_from_history(&state, &task.id).await {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tracing::warn!(task_id = %task.id, error = %e, "Cannot restore task");
+                            continue;
                         }
-                    }
+                    },
                 }
             } else {
                 match get_restore_status_from_history(&state, &task.id).await {

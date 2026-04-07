@@ -14,26 +14,25 @@
 // - Re-executes entry actions to respawn agents
 // - Stops early if max_concurrent is reached
 
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
-use std::collections::HashSet;
 use tauri::{AppHandle, Emitter, Runtime};
 use tracing::{debug, info};
 
+use crate::application::chat_service::uses_execution_slot;
 use crate::application::chat_service::{ChatService, SendCallerContext, SendMessageOptions};
 use crate::application::git_service::GitService;
 use crate::application::recovery_queue::{RecoveryItem, RecoveryPriority, RecoveryQueue};
 use crate::application::ReconciliationRunner;
-use crate::application::chat_service::uses_execution_slot;
 use crate::commands::execution_commands::{
     context_matches_running_status_for_gc, ActiveProjectState, ExecutionState,
     AGENT_ACTIVE_STATUSES, AUTO_TRANSITION_STATES,
 };
 use crate::domain::entities::ideation::IdeationSessionStatus;
 use crate::domain::entities::{
-    app_state::ExecutionHaltMode,
-    ChatContextType, IdeationSessionId, InternalStatus, ProjectId, ReviewNote, ReviewOutcome,
-    ReviewerType,
+    app_state::ExecutionHaltMode, ChatContextType, IdeationSessionId, InternalStatus, ProjectId,
+    ReviewNote, ReviewOutcome, ReviewerType,
 };
 use crate::domain::repositories::{
     AgentRunRepository, AppStateRepository, ChatConversationRepository,
@@ -89,6 +88,18 @@ fn should_auto_recover(meta: &serde_json::Value) -> bool {
         .unwrap_or(0);
 
     (shutdown_interrupted || crash_indicator) && recovery_attempts < 1
+}
+
+fn startup_resume_context_for_status(status: InternalStatus) -> Option<&'static str> {
+    match status {
+        InternalStatus::Executing
+        | InternalStatus::ReExecuting
+        | InternalStatus::QaRefining
+        | InternalStatus::QaTesting => Some("execution"),
+        InternalStatus::Reviewing => Some("review"),
+        InternalStatus::PendingMerge | InternalStatus::Merging => Some("merge"),
+        _ => None,
+    }
 }
 
 /// Runs startup jobs, primarily task resumption.
@@ -266,7 +277,11 @@ impl<R: Runtime> StartupJobRunner<R> {
     }
 
     async fn project_has_execution_capacity(&self, project_id: &ProjectId) -> bool {
-        let settings = match self.execution_settings_repo.get_settings(Some(project_id)).await {
+        let settings = match self
+            .execution_settings_repo
+            .get_settings(Some(project_id))
+            .await
+        {
             Ok(settings) => settings,
             Err(error) => {
                 tracing::warn!(
@@ -287,6 +302,65 @@ impl<R: Runtime> StartupJobRunner<R> {
 
         self.execution_state
             .can_start_execution_context(running_project_total, settings.max_concurrent_tasks)
+    }
+
+    async fn prepare_active_task_startup_resume(
+        &self,
+        task: &crate::domain::entities::Task,
+        status: InternalStatus,
+    ) -> Option<crate::domain::entities::Task> {
+        let expected_context = startup_resume_context_for_status(status)?;
+        let mut meta: serde_json::Value = task
+            .metadata
+            .as_deref()
+            .and_then(|raw| serde_json::from_str(raw).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        if !should_auto_recover(&meta) {
+            return None;
+        }
+
+        let actual_context = meta
+            .get("last_agent_error_context")
+            .and_then(|value| value.as_str())?;
+        if actual_context != expected_context {
+            return None;
+        }
+
+        if let Some(obj) = meta.as_object_mut() {
+            let attempts = obj
+                .get("startup_recovery_attempts")
+                .and_then(|value| value.as_u64())
+                .unwrap_or(0);
+            obj.insert(
+                "startup_recovery_attempts".to_string(),
+                serde_json::json!(attempts + 1),
+            );
+            obj.remove("shutdown_interrupted");
+        }
+
+        let mut updated_task = task.clone();
+        updated_task.metadata = Some(meta.to_string());
+        updated_task.touch();
+
+        if let Err(error) = self.task_repo.update(&updated_task).await {
+            tracing::warn!(
+                task_id = task.id.as_str(),
+                status = status.as_str(),
+                error = %error,
+                "Failed to persist startup auto-resume metadata for active task"
+            );
+            return None;
+        }
+
+        tracing::info!(
+            task_id = task.id.as_str(),
+            status = status.as_str(),
+            context = expected_context,
+            "Startup recovery: resuming shutdown-interrupted active task without reconciliation timeout"
+        );
+
+        Some(updated_task)
     }
 
     /// Set the task scheduler for auto-starting Ready tasks (builder pattern).
@@ -469,7 +543,8 @@ impl<R: Runtime> StartupJobRunner<R> {
             }
         }
 
-        self.refresh_phase_n1_snapshot_sessions(&phase_n1_snapshot).await;
+        self.refresh_phase_n1_snapshot_sessions(&phase_n1_snapshot)
+            .await;
 
         // Check if execution is paused - skip resumption if so
         if self.execution_state.is_paused() {
@@ -591,11 +666,20 @@ impl<R: Runtime> StartupJobRunner<R> {
                         }
                     }
 
-                    let reconciled = self.reconciler.reconcile_task(&task, *status).await;
+                    let task = if let Some(updated_task) = self
+                        .prepare_active_task_startup_resume(&task, *status)
+                        .await
+                    {
+                        updated_task
+                    } else {
+                        let reconciled = self.reconciler.reconcile_task(&task, *status).await;
 
-                    if reconciled {
-                        continue;
-                    }
+                        if reconciled {
+                            continue;
+                        }
+
+                        task
+                    };
 
                     if !self.execution_state.can_start_any_execution_context() {
                         info!(
@@ -676,11 +760,20 @@ impl<R: Runtime> StartupJobRunner<R> {
                         continue;
                     }
 
-                    let reconciled = self.reconciler.reconcile_task(&task, *status).await;
+                    let task = if let Some(updated_task) = self
+                        .prepare_active_task_startup_resume(&task, *status)
+                        .await
+                    {
+                        updated_task
+                    } else {
+                        let reconciled = self.reconciler.reconcile_task(&task, *status).await;
 
-                    if reconciled {
-                        continue;
-                    }
+                        if reconciled {
+                            continue;
+                        }
+
+                        task
+                    };
 
                     // Check if we can start another task
                     if !self.execution_state.can_start_any_execution_context() {
@@ -833,8 +926,7 @@ impl<R: Runtime> StartupJobRunner<R> {
             if let Some(chat_service) = phase_n1_chat_service {
                 phase_n1_claimed_sessions =
                     Self::collect_phase_n1_snapshot_session_ids(&phase_n1_snapshot);
-                let mut recovery_queue =
-                    RecoveryQueue::new(std::time::Duration::from_secs(2));
+                let mut recovery_queue = RecoveryQueue::new(std::time::Duration::from_secs(2));
                 for (key, info) in phase_n1_snapshot {
                     let item = RecoveryItem {
                         context_type: key.context_type,
@@ -899,7 +991,10 @@ impl<R: Runtime> StartupJobRunner<R> {
 
     async fn refresh_phase_n1_snapshot_sessions(
         &self,
-        phase_n1_snapshot: &[(crate::domain::services::RunningAgentKey, crate::domain::services::RunningAgentInfo)],
+        phase_n1_snapshot: &[(
+            crate::domain::services::RunningAgentKey,
+            crate::domain::services::RunningAgentInfo,
+        )],
     ) {
         if phase_n1_snapshot.is_empty() || self.chat_service.is_none() {
             return;
@@ -913,7 +1008,11 @@ impl<R: Runtime> StartupJobRunner<R> {
                 continue;
             }
 
-            match self.ideation_session_repo.touch_updated_at(&key.context_id).await {
+            match self
+                .ideation_session_repo
+                .touch_updated_at(&key.context_id)
+                .await
+            {
                 Ok(()) => {
                     refreshed += 1;
                 }
@@ -1050,7 +1149,10 @@ impl<R: Runtime> StartupJobRunner<R> {
 
             for mut task in escalated_tasks {
                 if task.archived_at.is_some() {
-                    debug!(task_id = task.id.as_str(), "Phase 0.8: Skipping archived task");
+                    debug!(
+                        task_id = task.id.as_str(),
+                        "Phase 0.8: Skipping archived task"
+                    );
                     continue;
                 }
 
@@ -1150,7 +1252,10 @@ impl<R: Runtime> StartupJobRunner<R> {
         }
 
         if recovered > 0 {
-            info!(count = recovered, "Phase 0.8: Crash-escalated task recovery complete");
+            info!(
+                count = recovered,
+                "Phase 0.8: Crash-escalated task recovery complete"
+            );
         } else {
             debug!("Phase 0.8: No crash-escalated tasks found for auto-recovery");
         }
@@ -1483,10 +1588,7 @@ impl<R: Runtime> StartupJobRunner<R> {
     /// Abort stale rebase/merge operations on project repos.
     /// Called before any task recovery to ensure clean git state.
     #[doc(hidden)]
-    pub async fn cleanup_stale_git_state(
-        &self,
-        projects: &[crate::domain::entities::Project],
-    ) {
+    pub async fn cleanup_stale_git_state(&self, projects: &[crate::domain::entities::Project]) {
         for project in projects {
             let repo_path = Path::new(&project.working_directory);
             if !repo_path.exists() {
@@ -1788,7 +1890,9 @@ impl<R: Runtime> StartupJobRunner<R> {
                 project_id = %project_id,
                 "Startup pending drain: draining pending sessions for project"
             );
-            drain_service.try_drain_pending_for_project(project_id).await;
+            drain_service
+                .try_drain_pending_for_project(project_id)
+                .await;
         }
 
         info!(
