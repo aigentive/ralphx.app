@@ -385,6 +385,7 @@ pub async fn retry_merge(
     let plan_branch_repo = Arc::clone(&state.plan_branch_repo);
     let memory_event_repo = Arc::clone(&state.memory_event_repo);
     let execution_settings_repo = Arc::clone(&state.execution_settings_repo);
+    let agent_lane_settings_repo = Arc::clone(&state.agent_lane_settings_repo);
     let execution_state_clone = Arc::clone(execution_state.inner());
     let app_handle_opt = state.app_handle.clone();
     let task_id_for_spawn = task_id_parsed.clone();
@@ -408,6 +409,7 @@ pub async fn retry_merge(
             plan_branch_repo,
             memory_event_repo,
             execution_settings_repo,
+            agent_lane_settings_repo,
             execution_state_clone,
             app_handle_opt,
             ipr,
@@ -439,6 +441,7 @@ async fn execute_merge_retry_background(
     plan_branch_repo: Arc<dyn crate::domain::repositories::PlanBranchRepository>,
     memory_event_repo: Arc<dyn crate::domain::repositories::MemoryEventRepository>,
     execution_settings_repo: Arc<dyn ExecutionSettingsRepository>,
+    agent_lane_settings_repo: Arc<dyn crate::domain::repositories::AgentLaneSettingsRepository>,
     execution_state: Arc<ExecutionState>,
     app_handle_opt: Option<tauri::AppHandle>,
     interactive_process_registry: Arc<crate::application::InteractiveProcessRegistry>,
@@ -467,6 +470,7 @@ async fn execute_merge_retry_background(
             app_handle_opt.clone(),
         )
         .with_execution_settings_repo(Arc::clone(&execution_settings_repo))
+        .with_agent_lane_settings_repo(Arc::clone(&agent_lane_settings_repo))
         .with_plan_branch_repo(Arc::clone(&plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&interactive_process_registry)),
     );
@@ -516,6 +520,7 @@ async fn execute_merge_retry_background(
         )
     }
     .with_execution_settings_repo(Arc::clone(&execution_settings_repo))
+    .with_agent_lane_settings_repo(Arc::clone(&agent_lane_settings_repo))
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&plan_branch_repo))
     .with_interactive_process_registry(Arc::clone(&interactive_process_registry));
@@ -808,6 +813,7 @@ fn create_transition_service(
             state.app_handle.clone(),
         )
         .with_execution_settings_repo(Arc::clone(&state.execution_settings_repo))
+        .with_agent_lane_settings_repo(Arc::clone(&state.agent_lane_settings_repo))
         .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
     );

@@ -591,6 +591,28 @@ fn test_with_team_mode_overrides_previous_value() {
     );
 }
 
+#[test]
+fn test_lane_settings_repo_can_be_applied_before_execution_settings_repo() {
+    let app_state = AppState::new_test();
+    let service = build_test_service(&app_state)
+        .with_agent_lane_settings_repo(Arc::clone(&app_state.agent_lane_settings_repo))
+        .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo));
+
+    assert!(service.agent_lane_settings_repo.is_some());
+    assert!(service.execution_settings_repo.is_some());
+}
+
+#[test]
+fn test_lane_settings_repo_can_be_applied_after_execution_settings_repo() {
+    let app_state = AppState::new_test();
+    let service = build_test_service(&app_state)
+        .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
+        .with_agent_lane_settings_repo(Arc::clone(&app_state.agent_lane_settings_repo));
+
+    assert!(service.agent_lane_settings_repo.is_some());
+    assert!(service.execution_settings_repo.is_some());
+}
+
 // ============================================================================
 // Hard-block dependents when a blocker fails
 // ============================================================================

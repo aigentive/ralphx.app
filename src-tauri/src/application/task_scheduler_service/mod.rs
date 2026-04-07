@@ -39,7 +39,7 @@ use crate::domain::entities::{
     ChatContextType, IdeationSessionId, InternalStatus, ProjectId, Task, TaskCategory,
 };
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
+    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
     IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
     TaskDependencyRepository, TaskRepository,
@@ -79,6 +79,8 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     pub(super) interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
     /// Optional per-project execution settings repository for project-aware admission checks.
     pub(super) execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+    /// Optional lane settings repository so fallback transition services can resolve Codex lanes.
+    pub(super) agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
     /// Self-reference for propagating scheduler through build_transition_service().
     /// Set after Arc-wrapping via set_self_ref(). Uses Mutex since it's written once at init.
     pub(super) self_ref: Mutex<Option<Arc<dyn TaskScheduler>>>,
@@ -134,6 +136,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
             plan_branch_repo: None,
             interactive_process_registry: None,
             execution_settings_repo: None,
+            agent_lane_settings_repo: None,
             self_ref: Mutex::new(None),
             active_project_id: RwLock::new(None),
             scheduling_lock: TokioMutex::new(()),
@@ -161,6 +164,14 @@ impl<R: Runtime> TaskSchedulerService<R> {
         repo: Arc<dyn ExecutionSettingsRepository>,
     ) -> Self {
         self.execution_settings_repo = Some(repo);
+        self
+    }
+
+    pub fn with_agent_lane_settings_repo(
+        mut self,
+        repo: Arc<dyn AgentLaneSettingsRepository>,
+    ) -> Self {
+        self.agent_lane_settings_repo = Some(repo);
         self
     }
 
@@ -361,6 +372,9 @@ impl<R: Runtime> TaskSchedulerService<R> {
         };
         if let Some(ref repo) = self.execution_settings_repo {
             service = service.with_execution_settings_repo(Arc::clone(repo));
+        }
+        if let Some(ref repo) = self.agent_lane_settings_repo {
+            service = service.with_agent_lane_settings_repo(Arc::clone(repo));
         }
         if let Some(ref repo) = self.plan_branch_repo {
             service = service.with_plan_branch_repo(Arc::clone(repo));

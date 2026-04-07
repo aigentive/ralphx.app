@@ -688,7 +688,12 @@ pub(crate) struct CorrectionResult {
 /// the appropriate side effects are triggered (e.g., spawning worker agents).
 pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     task_repo: Arc<dyn TaskRepository>,
+    task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     project_repo: Arc<dyn ProjectRepository>,
+    chat_message_repo: Arc<dyn ChatMessageRepository>,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    conversation_repo: Arc<dyn ChatConversationRepository>,
+    agent_run_repo: Arc<dyn AgentRunRepository>,
     agent_spawner: Arc<dyn AgentSpawner>,
     agent_client_factory: Arc<AgenticClientFactory>,
     event_emitter: Arc<dyn EventEmitter>,
@@ -696,6 +701,8 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     dependency_manager: Arc<dyn DependencyManager>,
     review_starter: Arc<dyn ReviewStarter>,
     chat_service: Arc<dyn ChatService>,
+    message_queue: Arc<MessageQueue>,
+    memory_event_repo: Arc<dyn MemoryEventRepository>,
     execution_state: Arc<ExecutionState>,
     _app_handle: Option<AppHandle<R>>,
     /// Task scheduler for auto-scheduling Ready tasks when slots are available.
@@ -844,6 +851,65 @@ impl<R: Runtime> TaskTransitionService<R> {
         })
     }
 
+    fn rebuild_chat_service(&mut self) {
+        if let Some(handle) = self._app_handle.as_ref() {
+            if let Some(app_state) = handle.try_state::<AppState>() {
+                self.chat_service = Arc::new(app_state.build_chat_service_for_runtime(
+                    Some(Arc::clone(&self.execution_state)),
+                    self._app_handle.clone(),
+                ));
+                return;
+            }
+        }
+
+        let mut service = build_transition_chat_service_fallback(
+            Arc::clone(&self.chat_message_repo),
+            Arc::clone(&self.chat_attachment_repo),
+            Arc::clone(&self.conversation_repo),
+            Arc::clone(&self.agent_run_repo),
+            Arc::clone(&self.project_repo),
+            Arc::clone(&self.task_repo),
+            Arc::clone(&self.task_dependency_repo),
+            Arc::clone(
+                self.ideation_session_repo
+                    .as_ref()
+                    .expect("ideation_session_repo set in new"),
+            ),
+            Arc::clone(&self.activity_event_repo),
+            Arc::clone(&self.message_queue),
+            Arc::clone(&self.running_agent_registry),
+            Arc::clone(&self.memory_event_repo),
+            Arc::clone(&self.execution_state),
+            self._app_handle.clone(),
+        );
+
+        if let Some(repo) = self.execution_settings_repo.as_ref() {
+            service = service.with_execution_settings_repo(Arc::clone(repo));
+        }
+        if let Some(repo) = self.agent_lane_settings_repo.as_ref() {
+            service = service.with_agent_lane_settings_repo(Arc::clone(repo));
+        }
+        if let Some(repo) = self.plan_branch_repo.as_ref() {
+            service = service.with_plan_branch_repo(Arc::clone(repo));
+        }
+        if let Some(ipr) = self.interactive_process_registry.as_ref() {
+            service = service.with_interactive_process_registry(Arc::clone(ipr));
+        }
+        match self.team_mode {
+            Some(explicit) => {
+                service = service.with_team_mode(explicit);
+            }
+            None => {
+                use crate::infrastructure::agents::claude::env_variant_override;
+                if env_variant_override("execution").as_deref() == Some("team") {
+                    service = service.with_team_mode(true);
+                }
+            }
+        }
+
+        self.chat_service = Arc::new(service);
+    }
+
     /// Create a new TaskTransitionService with all required dependencies.
     pub fn new(
         task_repo: Arc<dyn TaskRepository>,
@@ -936,7 +1002,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         // Use real dependency manager for automatic blocking/unblocking based on dependency graph
         let dependency_manager: Arc<dyn DependencyManager> =
             Arc::new(RepoBackedDependencyManager::new(
-                task_dep_repo,
+                Arc::clone(&task_dep_repo),
                 Arc::clone(&task_repo),
                 app_handle.clone(),
             ));
@@ -944,7 +1010,12 @@ impl<R: Runtime> TaskTransitionService<R> {
 
         Self {
             task_repo,
+            task_dependency_repo: task_dep_repo,
             project_repo,
+            chat_message_repo,
+            chat_attachment_repo,
+            conversation_repo,
+            agent_run_repo,
             agent_spawner,
             agent_client_factory,
             event_emitter,
@@ -952,6 +1023,8 @@ impl<R: Runtime> TaskTransitionService<R> {
             dependency_manager,
             review_starter,
             chat_service,
+            message_queue,
+            memory_event_repo,
             execution_state,
             _app_handle: app_handle,
             task_scheduler: None,
@@ -1027,16 +1100,8 @@ impl<R: Runtime> TaskTransitionService<R> {
             self.agent_lane_settings_repo = Some(Arc::clone(agent_lane_settings_repo));
         }
 
-        if let Some(handle) = self._app_handle.as_ref() {
-            if let Some(app_state) = handle.try_state::<AppState>() {
-                self.chat_service = Arc::new(
-                    app_state.build_chat_service_for_runtime(
-                        Some(Arc::clone(&self.execution_state)),
-                        self._app_handle.clone(),
-                    ),
-                );
-            }
-        }
+        self.execution_settings_repo = Some(Arc::clone(&repo));
+        self.rebuild_chat_service();
 
         self.agent_spawner = Self::build_agent_spawner(
             &self.agent_client_factory,
@@ -1052,7 +1117,35 @@ impl<R: Runtime> TaskTransitionService<R> {
             ),
             Arc::clone(&self.running_agent_registry),
         );
-        self.execution_settings_repo = Some(repo);
+        self
+    }
+
+    /// Inject provider-neutral lane settings so the transition chat/spawn paths can
+    /// resolve Codex-vs-Claude behavior even when no AppState is available.
+    pub fn with_agent_lane_settings_repo(
+        mut self,
+        repo: Arc<dyn AgentLaneSettingsRepository>,
+    ) -> Self {
+        self.agent_lane_settings_repo = Some(Arc::clone(&repo));
+        self.rebuild_chat_service();
+
+        if let Some(execution_settings_repo) = self.execution_settings_repo.as_ref() {
+            self.agent_spawner = Self::build_agent_spawner(
+                &self.agent_client_factory,
+                Arc::clone(&self.task_repo),
+                Arc::clone(&self.project_repo),
+                Arc::clone(&self.execution_state),
+                Some(Arc::clone(execution_settings_repo)),
+                Some(repo),
+                Arc::clone(
+                    self.ideation_session_repo
+                        .as_ref()
+                        .expect("ideation_session_repo set in new"),
+                ),
+                Arc::clone(&self.running_agent_registry),
+            );
+        }
+
         self
     }
 
