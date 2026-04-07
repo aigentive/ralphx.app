@@ -544,6 +544,10 @@ pub fn run() {
                 let chat_resumption_message_queue = Arc::clone(&startup_message_queue);
                 let chat_resumption_running_agent_registry = Arc::clone(&startup_running_agent_registry);
                 let chat_resumption_memory_event_repo = Arc::clone(&startup_memory_event_repo);
+                let chat_resumption_execution_settings_repo =
+                    Arc::clone(&startup_execution_settings_repo);
+                let chat_resumption_agent_lane_settings_repo =
+                    Arc::clone(&startup_agent_lane_settings_repo);
                 let chat_resumption_app_handle = startup_app_handle.clone();
 
                 let startup_runner_chat_message_repo = Arc::clone(&startup_chat_message_repo);
@@ -755,6 +759,8 @@ pub fn run() {
                     Arc::clone(&startup_execution_state),
                 )
                 .with_app_handle(chat_resumption_app_handle)
+                .with_execution_settings_repo(chat_resumption_execution_settings_repo)
+                .with_agent_lane_settings_repo(chat_resumption_agent_lane_settings_repo)
                 .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
                 .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry));
 

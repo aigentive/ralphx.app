@@ -20,8 +20,10 @@ use crate::application::{ChatService, ClaudeChatService, InteractiveProcessRegis
 use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
 use crate::domain::entities::{ChatContextType, InterruptedConversation, TaskId};
 use crate::domain::repositories::{
+    AgentLaneSettingsRepository,
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
-    ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
+    ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
+    IdeationSessionRepository,
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
     TaskRepository,
 };
@@ -46,6 +48,8 @@ pub struct ChatResumptionRunner<R: Runtime = tauri::Wry> {
     running_agent_registry: Arc<dyn RunningAgentRegistry>,
     memory_event_repo: Arc<dyn MemoryEventRepository>,
     execution_state: Arc<ExecutionState>,
+    execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+    agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
     app_handle: Option<AppHandle<R>>,
@@ -85,6 +89,8 @@ impl<R: Runtime> ChatResumptionRunner<R> {
             running_agent_registry,
             memory_event_repo,
             execution_state,
+            execution_settings_repo: None,
+            agent_lane_settings_repo: None,
             plan_branch_repo: None,
             interactive_process_registry: None,
             app_handle: None,
@@ -93,6 +99,22 @@ impl<R: Runtime> ChatResumptionRunner<R> {
 
     pub fn with_plan_branch_repo(mut self, repo: Arc<dyn PlanBranchRepository>) -> Self {
         self.plan_branch_repo = Some(repo);
+        self
+    }
+
+    pub fn with_execution_settings_repo(
+        mut self,
+        repo: Arc<dyn ExecutionSettingsRepository>,
+    ) -> Self {
+        self.execution_settings_repo = Some(repo);
+        self
+    }
+
+    pub fn with_agent_lane_settings_repo(
+        mut self,
+        repo: Arc<dyn AgentLaneSettingsRepository>,
+    ) -> Self {
+        self.agent_lane_settings_repo = Some(repo);
         self
     }
 
@@ -284,6 +306,12 @@ impl<R: Runtime> ChatResumptionRunner<R> {
 
         if let Some(ref handle) = self.app_handle {
             service = service.with_app_handle(handle.clone());
+        }
+        if let Some(ref repo) = self.execution_settings_repo {
+            service = service.with_execution_settings_repo(Arc::clone(repo));
+        }
+        if let Some(ref repo) = self.agent_lane_settings_repo {
+            service = service.with_agent_lane_settings_repo(Arc::clone(repo));
         }
         if let Some(ref repo) = self.plan_branch_repo {
             service = service.with_plan_branch_repo(Arc::clone(repo));
