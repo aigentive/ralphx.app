@@ -106,6 +106,26 @@ When working in `src-tauri/`, also follow:
 | Docs + rules | Rewrite architectural/docs references after runtime/config changes are stable | Completed | Docs/rules now point at `plugins/app`; only explicit legacy fallback explanations still mention `ralphx-plugin` |
 | Validation | Run targeted runtime/config checks after the move and only then commit | Completed | `cargo test --manifest-path src-tauri/Cargo.toml test_resolve_plugin_dir_ --lib`, `cargo test --manifest-path src-tauri/Cargo.toml test_plugin_repo_root_supports_nested_plugins_app_layout --lib`, `cargo test --manifest-path src-tauri/Cargo.toml test_teammate_spawn_config_new_defaults --lib`, `cargo test --manifest-path src-tauri/Cargo.toml -p ralphx-domain test_agent_config_default`, `cargo test --manifest-path src-tauri/Cargo.toml test_all_system_prompt_files_exist --lib`, and `bash -n scripts/build-release.sh scripts/count-loc.sh plugins/app/skills/rule-manager/scripts/rule-suggest-paths.sh` passed |
 
+## Codex CLI Project Tracker
+
+| Priority | Stream | Status | Next Step |
+|---|---|---|---|
+| P0 | Cross-session source of truth | Started | Keep this tracker, `specs/codex-cli.md`, `docs/ai-docs/codex-cli/`, `docs/ai-docs/reefagent-codex-cli.md`, and `docs/ai-docs/reefagent-codex-responses.md` updated together so Codex parity research survives across sessions |
+| P0 | Vendor doc snapshot | Started | Maintain a local Codex CLI doc index under `docs/ai-docs/codex-cli/` covering CLI, config, approvals/security, sandboxing, AGENTS/rules/hooks, MCP, skills, subagents, models, auth, and non-interactive mode; note version skew between installed CLI help and current official docs |
+| P0 | Harness abstraction | Investigating | Design a first-class multi-harness layer above Claude/Codex process differences: spawn args, resume/session semantics, MCP wiring, event parsing, raw logging, availability checks, and capability flags |
+| P0 | Core milestone | Target defined | First implementation milestone is Codex-backed ideation + verification with subagents while execution/review/merge may stay on Claude; no team-mode parity for Codex, so Codex runs operate in explicit solo mode |
+| P0 | Config/settings matrix | Investigating | Support harness selection per area (`ideation`, `ideation_verification`, execution pipeline phases) across `ralphx.yaml`, env overrides, DB-persisted global/project settings, and frontend settings UI |
+| P0 | Prompt / agent source of truth | Investigating | Evaluate replacing Claude-only prompt/plugin layout with centralized agent metadata that can generate Claude plugin assets and Codex-compatible spawn config from one source |
+| P0 | Event normalization | Investigating | Keep recording all raw provider events, but add a provider-neutral event model so chat services, reconciliation, telemetry, and UI renderers stop depending on Claude-specific stream shapes |
+| P0 | MCP / internal tools bridge | Investigating | Map how RalphX internal MCP currently reaches Claude and define the Codex equivalent, likely via HTTP/Streamable HTTP config injection rather than Claude plugin-dir semantics |
+| P0 | Recovery / capacity / reconciliation | Investigating | Audit all places that assume Claude session ids, Claude run states, Claude resume behavior, or Claude-only provider errors; define Codex-compatible recovery and observability contracts |
+| P0 | Schema / compatibility migration | Investigating | Replace Claude-shaped persisted/API fields such as `claude_session_id`, Claude-only model enums, and `claudeCode` profile payloads with provider-neutral contracts plus temporary compatibility shims where needed |
+| P0 | Lane settings matrix | Investigating | Define per-lane `harness + model + effort + approval + sandbox` settings for ideation, verifier, ideation subagents, verifier subagents, execution, review, re-execution, and merge-conflict handling across YAML, env, DB, and UI |
+| P1 | Model / effort defaults | Investigating | Default Codex to `gpt-5.4` with `xhigh` reasoning where supported; map Claude effort semantics vs Codex reasoning config and define per-phase overrides and downgrade rules |
+| P1 | Execution pipeline compatibility | Investigating | Audit all Claude process spawn sites, required args, consumer expectations, and fallback behavior for worker/reviewer/merger/team flows before any execution-lane Codex rollout |
+| P1 | Logging / auditability | Investigating | Standardize per-harness prompt capture, raw event logs, parsed event traces, provider session ids, and spawn metadata so failures remain debuggable across Claude and Codex |
+| P1 | Regression coverage | Planned | Build compatibility tests that replay Codex/Claude raw events through the shared parser contract and cover settings, availability, recovery, queueing, UI payload transforms, and compatibility migrations |
+
 ## Cross-Session Tracker Notes
 
 | Tracker | Current Guardrails |
