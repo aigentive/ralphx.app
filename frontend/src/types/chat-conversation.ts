@@ -59,9 +59,9 @@ export const ChatConversationSchema = z.object({
   id: z.string().min(1),
   contextType: ContextTypeSchema,
   contextId: z.string().min(1),
-  claudeSessionId: z.string().nullable(),
-  providerSessionId: z.string().nullable().optional(),
-  providerHarness: ProviderHarnessSchema.nullable().optional(),
+  claudeSessionId: z.string().nullable().optional(),
+  providerSessionId: z.string().nullable(),
+  providerHarness: ProviderHarnessSchema.nullable(),
   title: z.string().nullable(),
   messageCount: z.number().int().min(0),
   lastMessageAt: z.string().datetime().nullable(),
@@ -191,9 +191,9 @@ export type ToolCallResponse = z.infer<typeof ToolCallResponseSchema>;
 export const SendContextMessageResponseSchema = z.object({
   response_text: z.string(),
   tool_calls: z.array(ToolCallResponseSchema),
-  claude_session_id: z.string().nullable(),
-  provider_session_id: z.string().nullable().optional(),
-  provider_harness: ProviderHarnessSchema.nullable().optional(),
+  claude_session_id: z.string().nullable().optional(),
+  provider_session_id: z.string().nullable(),
+  provider_harness: ProviderHarnessSchema.nullable(),
   conversation_id: z.string().nullable(),
 });
 

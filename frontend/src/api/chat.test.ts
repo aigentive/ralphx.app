@@ -65,6 +65,59 @@ describe("chat api", () => {
       contextId: "p1",
       providerSessionId: "thread-1",
       providerHarness: "codex",
+      claudeSessionId: null,
+    });
+  });
+
+  it("does not infer claude harness from provider session id alone", async () => {
+    mockInvoke.mockResolvedValue([
+      {
+        id: "c2",
+        context_type: "project",
+        context_id: "p2",
+        claude_session_id: null,
+        provider_session_id: "thread-legacy",
+        provider_harness: null,
+        title: "Legacy provider row",
+        message_count: 1,
+        last_message_at: null,
+        created_at: "2026-01-24T10:00:00Z",
+        updated_at: "2026-01-24T10:00:00Z",
+      },
+    ]);
+
+    const result = await listConversations("project", "p2");
+
+    expect(result[0]).toMatchObject({
+      providerSessionId: "thread-legacy",
+      providerHarness: null,
+      claudeSessionId: null,
+    });
+  });
+
+  it("infers claude harness only from the legacy claude session id", async () => {
+    mockInvoke.mockResolvedValue([
+      {
+        id: "c3",
+        context_type: "project",
+        context_id: "p3",
+        claude_session_id: "claude-thread-1",
+        provider_session_id: null,
+        provider_harness: null,
+        title: "Legacy claude row",
+        message_count: 1,
+        last_message_at: null,
+        created_at: "2026-01-24T10:00:00Z",
+        updated_at: "2026-01-24T10:00:00Z",
+      },
+    ]);
+
+    const result = await listConversations("project", "p3");
+
+    expect(result[0]).toMatchObject({
+      providerSessionId: "claude-thread-1",
+      providerHarness: "claude",
+      claudeSessionId: "claude-thread-1",
     });
   });
 
