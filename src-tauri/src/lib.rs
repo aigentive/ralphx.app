@@ -1240,6 +1240,7 @@ pub fn run() {
             commands::ideation_commands::update_ideation_settings,
             // Agent lane settings commands
             commands::ideation_commands::get_agent_lane_settings,
+            commands::ideation_commands::get_ideation_harness_availability,
             commands::ideation_commands::update_agent_lane_settings,
             // Ideation effort commands
             commands::ideation_commands::get_ideation_effort_settings,

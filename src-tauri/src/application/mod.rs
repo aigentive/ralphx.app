@@ -3,6 +3,7 @@
 
 pub mod app_state;
 pub mod agent_lane_resolution;
+pub mod ideation_harness_availability;
 pub mod apply_service;
 pub mod chat_attachment_service;
 pub mod chat_resumption;
@@ -50,6 +51,10 @@ pub mod webhook_service;
 
 // Re-export commonly used items
 pub use app_state::AppState;
+pub(crate) use ideation_harness_availability::{
+    build_ideation_lane_harness_availability, probe_claude_harness, probe_codex_harness,
+    resolve_lane_harness_config, IDEATION_LANES,
+};
 pub use apply_service::{
     ApplyProposalsOptions, ApplyProposalsResult, ApplyService, SelectionValidation, TargetColumn,
 };
@@ -108,6 +113,8 @@ pub use webhook_service::WebhookService;
 mod app_state_shared_state_tests;
 #[cfg(test)]
 mod agent_lane_resolution_tests;
+#[cfg(test)]
+mod ideation_harness_availability_tests;
 #[cfg(test)]
 mod recovery_queue_tests;
 #[cfg(test)]
