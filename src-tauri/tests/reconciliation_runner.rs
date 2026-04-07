@@ -5,7 +5,8 @@ use ralphx_lib::application::interactive_process_registry::{
 use ralphx_lib::application::{AppState, TaskTransitionService};
 use ralphx_lib::commands::execution_commands::ExecutionState;
 use ralphx_lib::domain::entities::{
-    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, ChatConversationId, ExecutionRecoveryMetadata,
+    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, ChatConversation,
+    ChatConversationId, ExecutionRecoveryMetadata,
     InternalStatus, MergeFailureSource, Project, Task, TaskId,
 };
 use ralphx_lib::domain::services::{MemoryRunningAgentRegistry, RunningAgentKey, RunningAgentRegistry};
@@ -4790,6 +4791,72 @@ async fn reconcile_execution_skips_for_live_ipr() {
 }
 
 #[tokio::test]
+async fn reconcile_completed_execution_records_pending_review_transition_for_completed_run() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let reconciler = build_reconciler(&app_state, &execution_state);
+    let worktree = tempfile::TempDir::new().expect("create temp dir for reviewable worktree");
+
+    let project = Project::new("Test Project".to_string(), "/tmp/test".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+    let mut task = Task::new(project.id.clone(), "Completed Execution Task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    task.worktree_path = Some(worktree.path().to_string_lossy().into_owned());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let conversation = ChatConversation::new_task_execution(task.id.clone());
+    let conversation = app_state
+        .chat_conversation_repo
+        .create(conversation)
+        .await
+        .unwrap();
+    let mut seeded_run = AgentRun::new(conversation.id.clone());
+    seeded_run.started_at = chrono::Utc::now() - chrono::Duration::minutes(1);
+    let run = app_state.agent_run_repo.create(seeded_run).await.unwrap();
+    app_state.agent_run_repo.complete(&run.id).await.unwrap();
+
+    app_state
+        .task_repo
+        .persist_status_change(&task.id, InternalStatus::Ready, InternalStatus::Executing, "test")
+        .await
+        .unwrap();
+
+    let reconciled = reconciler
+        .reconcile_completed_execution(&task, InternalStatus::Executing)
+        .await;
+    assert!(
+        reconciled,
+        "Completed execution run should be processed by reconciliation"
+    );
+
+    let history = app_state
+        .task_repo
+        .get_status_history(&task.id)
+        .await
+        .unwrap();
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should still exist");
+    assert!(
+        matches!(
+            updated.internal_status,
+            InternalStatus::PendingReview | InternalStatus::Reviewing
+        ),
+        "Completed execution reconciliation should advance into the review pipeline, got {:?}",
+        updated.internal_status
+    );
+    assert!(
+        history
+            .iter()
+            .any(|t| t.from == InternalStatus::Executing && t.to == InternalStatus::PendingReview),
+        "Completed execution reconciliation must record Executing -> PendingReview"
+    );
+}
+
+#[tokio::test]
 async fn reconcile_review_proceeds_with_stale_ipr() {
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
@@ -8342,4 +8409,3 @@ async fn recover_timeout_failures_classifier_overlap_blocked_by_stop_retrying_ga
         "Task with stop_retrying=true must NOT be recovered even when error matches both classifiers"
     );
 }
-
