@@ -30,6 +30,7 @@ pub mod qa_service;
 pub mod question_state;
 pub mod reconciliation;
 pub mod recovery_queue;
+pub mod runtime_factory;
 pub mod resume_validator;
 pub mod services;
 pub mod review_issue_service;

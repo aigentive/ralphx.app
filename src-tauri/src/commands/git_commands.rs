@@ -4,10 +4,13 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::{Manager, State};
+use tauri::State;
 
 use crate::application::git_service::{CommitInfo, DiffStats, GitService};
-use crate::application::task_scheduler_service::TaskSchedulerService;
+use crate::application::runtime_factory::{
+    RuntimeFactoryDeps, build_task_scheduler_with_fallback,
+    build_transition_service_with_fallback,
+};
 use crate::application::{AppState, TaskTransitionService};
 use crate::commands::execution_commands::AGENT_ACTIVE_STATUSES;
 use crate::commands::ExecutionState;
@@ -451,109 +454,40 @@ async fn execute_merge_retry_background(
         "Background merge retry execution started"
     );
 
+    let deps = RuntimeFactoryDeps {
+        task_repo: Arc::clone(&task_repo),
+        task_dependency_repo: Arc::clone(&task_dependency_repo),
+        project_repo: Arc::clone(&project_repo),
+        chat_message_repo: Arc::clone(&chat_message_repo),
+        chat_attachment_repo: Arc::clone(&chat_attachment_repo),
+        conversation_repo: Arc::clone(&chat_conversation_repo),
+        agent_run_repo: Arc::clone(&agent_run_repo),
+        ideation_session_repo: Arc::clone(&ideation_session_repo),
+        activity_event_repo: Arc::clone(&activity_event_repo),
+        message_queue: Arc::clone(&message_queue),
+        running_agent_registry: Arc::clone(&running_agent_registry),
+        memory_event_repo: Arc::clone(&memory_event_repo),
+        execution_settings_repo: Some(Arc::clone(&execution_settings_repo)),
+        agent_lane_settings_repo: Some(Arc::clone(&agent_lane_settings_repo)),
+        plan_branch_repo: Some(Arc::clone(&plan_branch_repo)),
+        interactive_process_registry: Some(Arc::clone(&interactive_process_registry)),
+    };
+
     // Create transition service with all necessary dependencies
-    let scheduler_concrete = Arc::new(
-        if let Some(handle) = app_handle_opt.as_ref() {
-            if let Some(app_state) = handle.try_state::<AppState>() {
-                app_state.build_task_scheduler_for_runtime(
-                    Arc::clone(&execution_state),
-                    app_handle_opt.clone(),
-                )
-            } else {
-                TaskSchedulerService::new(
-                    Arc::clone(&execution_state),
-                    Arc::clone(&project_repo),
-                    Arc::clone(&task_repo),
-                    Arc::clone(&task_dependency_repo),
-                    Arc::clone(&chat_message_repo),
-                    Arc::clone(&chat_attachment_repo),
-                    Arc::clone(&chat_conversation_repo),
-                    Arc::clone(&agent_run_repo),
-                    Arc::clone(&ideation_session_repo),
-                    Arc::clone(&activity_event_repo),
-                    Arc::clone(&message_queue),
-                    Arc::clone(&running_agent_registry),
-                    Arc::clone(&memory_event_repo),
-                    app_handle_opt.clone(),
-                )
-                .with_execution_settings_repo(Arc::clone(&execution_settings_repo))
-                .with_agent_lane_settings_repo(Arc::clone(&agent_lane_settings_repo))
-                .with_plan_branch_repo(Arc::clone(&plan_branch_repo))
-                .with_interactive_process_registry(Arc::clone(&interactive_process_registry))
-            }
-        } else {
-            TaskSchedulerService::new(
-                Arc::clone(&execution_state),
-                Arc::clone(&project_repo),
-                Arc::clone(&task_repo),
-                Arc::clone(&task_dependency_repo),
-                Arc::clone(&chat_message_repo),
-                Arc::clone(&chat_attachment_repo),
-                Arc::clone(&chat_conversation_repo),
-                Arc::clone(&agent_run_repo),
-                Arc::clone(&ideation_session_repo),
-                Arc::clone(&activity_event_repo),
-                Arc::clone(&message_queue),
-                Arc::clone(&running_agent_registry),
-                Arc::clone(&memory_event_repo),
-                None,
-            )
-            .with_execution_settings_repo(Arc::clone(&execution_settings_repo))
-            .with_agent_lane_settings_repo(Arc::clone(&agent_lane_settings_repo))
-            .with_plan_branch_repo(Arc::clone(&plan_branch_repo))
-            .with_interactive_process_registry(Arc::clone(&interactive_process_registry))
-        },
-    );
+    let scheduler_concrete = Arc::new(build_task_scheduler_with_fallback(
+        &app_handle_opt,
+        Arc::clone(&execution_state),
+        &deps,
+    ));
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
-    let transition_service = if let Some(handle) = app_handle_opt.as_ref() {
-        if let Some(app_state) = handle.try_state::<AppState>() {
-            app_state.build_transition_service_for_runtime(
-                Arc::clone(&execution_state),
-                app_handle_opt.clone(),
-            )
-        } else {
-            TaskTransitionService::new(
-                Arc::clone(&task_repo),
-                Arc::clone(&task_dependency_repo),
-                Arc::clone(&project_repo),
-                Arc::clone(&chat_message_repo),
-                Arc::clone(&chat_attachment_repo),
-                Arc::clone(&chat_conversation_repo),
-                Arc::clone(&agent_run_repo),
-                Arc::clone(&ideation_session_repo),
-                Arc::clone(&activity_event_repo),
-                Arc::clone(&message_queue),
-                Arc::clone(&running_agent_registry),
-                Arc::clone(&execution_state),
-                app_handle_opt.clone(),
-                Arc::clone(&memory_event_repo),
-            )
-        }
-    } else {
-        TaskTransitionService::new(
-            Arc::clone(&task_repo),
-            Arc::clone(&task_dependency_repo),
-            Arc::clone(&project_repo),
-            Arc::clone(&chat_message_repo),
-            Arc::clone(&chat_attachment_repo),
-            Arc::clone(&chat_conversation_repo),
-            Arc::clone(&agent_run_repo),
-            Arc::clone(&ideation_session_repo),
-            Arc::clone(&activity_event_repo),
-            Arc::clone(&message_queue),
-            Arc::clone(&running_agent_registry),
-            Arc::clone(&execution_state),
-            None,
-            Arc::clone(&memory_event_repo),
-        )
-    }
-    .with_execution_settings_repo(Arc::clone(&execution_settings_repo))
-    .with_agent_lane_settings_repo(Arc::clone(&agent_lane_settings_repo))
-    .with_task_scheduler(task_scheduler)
-    .with_plan_branch_repo(Arc::clone(&plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&interactive_process_registry));
+    let transition_service = build_transition_service_with_fallback(
+        &app_handle_opt,
+        Arc::clone(&execution_state),
+        &deps,
+    )
+    .with_task_scheduler(task_scheduler);
 
     let result = transition_service
         .transition_task(&task_id, InternalStatus::PendingMerge)

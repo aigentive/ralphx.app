@@ -22,13 +22,13 @@ use std::sync::{
     atomic::{AtomicU32, Ordering},
     Arc, Mutex,
 };
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Runtime};
 use tokio::sync::{Mutex as TokioMutex, RwLock};
 
 use crate::infrastructure::agents::claude::scheduler_config;
 
 use crate::commands::ExecutionState;
-use crate::application::AppState;
+use crate::application::runtime_factory::{RuntimeFactoryDeps, build_transition_service_with_fallback};
 use crate::application::chat_service::uses_execution_slot;
 use crate::commands::execution_commands::context_matches_running_status_for_gc;
 use crate::domain::entities::{
@@ -328,60 +328,32 @@ impl<R: Runtime> TaskSchedulerService<R> {
     where
         R: Runtime,
     {
-        let mut service = if let Some(handle) = self.app_handle.as_ref() {
-            if let Some(app_state) = handle.try_state::<AppState>() {
-                app_state.build_transition_service_for_runtime(
-                    Arc::clone(&self.execution_state),
-                    self.app_handle.clone(),
-                )
-            } else {
-                TaskTransitionService::new(
-                    Arc::clone(&self.task_repo),
-                    Arc::clone(&self.task_dependency_repo),
-                    Arc::clone(&self.project_repo),
-                    Arc::clone(&self.chat_message_repo),
-                    Arc::clone(&self.chat_attachment_repo),
-                    Arc::clone(&self.conversation_repo),
-                    Arc::clone(&self.agent_run_repo),
-                    Arc::clone(&self.ideation_session_repo),
-                    Arc::clone(&self.activity_event_repo),
-                    Arc::clone(&self.message_queue),
-                    Arc::clone(&self.running_agent_registry),
-                    Arc::clone(&self.execution_state),
-                    self.app_handle.clone(),
-                    Arc::clone(&self.memory_event_repo),
-                )
-            }
-        } else {
-            TaskTransitionService::new(
-                Arc::clone(&self.task_repo),
-                Arc::clone(&self.task_dependency_repo),
-                Arc::clone(&self.project_repo),
-                Arc::clone(&self.chat_message_repo),
-                Arc::clone(&self.chat_attachment_repo),
-                Arc::clone(&self.conversation_repo),
-                Arc::clone(&self.agent_run_repo),
-                Arc::clone(&self.ideation_session_repo),
-                Arc::clone(&self.activity_event_repo),
-                Arc::clone(&self.message_queue),
-                Arc::clone(&self.running_agent_registry),
-                Arc::clone(&self.execution_state),
-                self.app_handle.clone(),
-                Arc::clone(&self.memory_event_repo),
-            )
+        let deps = RuntimeFactoryDeps {
+            task_repo: Arc::clone(&self.task_repo),
+            task_dependency_repo: Arc::clone(&self.task_dependency_repo),
+            project_repo: Arc::clone(&self.project_repo),
+            chat_message_repo: Arc::clone(&self.chat_message_repo),
+            chat_attachment_repo: Arc::clone(&self.chat_attachment_repo),
+            conversation_repo: Arc::clone(&self.conversation_repo),
+            agent_run_repo: Arc::clone(&self.agent_run_repo),
+            ideation_session_repo: Arc::clone(&self.ideation_session_repo),
+            activity_event_repo: Arc::clone(&self.activity_event_repo),
+            message_queue: Arc::clone(&self.message_queue),
+            running_agent_registry: Arc::clone(&self.running_agent_registry),
+            memory_event_repo: Arc::clone(&self.memory_event_repo),
+            execution_settings_repo: self.execution_settings_repo.as_ref().map(Arc::clone),
+            agent_lane_settings_repo: self.agent_lane_settings_repo.as_ref().map(Arc::clone),
+            plan_branch_repo: self.plan_branch_repo.as_ref().map(Arc::clone),
+            interactive_process_registry: self
+                .interactive_process_registry
+                .as_ref()
+                .map(Arc::clone),
         };
-        if let Some(ref repo) = self.execution_settings_repo {
-            service = service.with_execution_settings_repo(Arc::clone(repo));
-        }
-        if let Some(ref repo) = self.agent_lane_settings_repo {
-            service = service.with_agent_lane_settings_repo(Arc::clone(repo));
-        }
-        if let Some(ref repo) = self.plan_branch_repo {
-            service = service.with_plan_branch_repo(Arc::clone(repo));
-        }
-        if let Some(ref ipr) = self.interactive_process_registry {
-            service = service.with_interactive_process_registry(Arc::clone(ipr));
-        }
+        let mut service = build_transition_service_with_fallback(
+            &self.app_handle,
+            Arc::clone(&self.execution_state),
+            &deps,
+        );
         if let Some(ref sched) = *self.self_ref.lock().unwrap() {
             service = service.with_task_scheduler(Arc::clone(sched));
         }

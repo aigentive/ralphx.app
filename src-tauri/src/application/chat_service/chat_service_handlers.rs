@@ -13,6 +13,10 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::application::question_state::QuestionState;
+use crate::application::runtime_factory::{
+    RuntimeFactoryDeps, build_task_scheduler_with_fallback,
+    build_transition_service_with_fallback,
+};
 use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::application::task_transition_service::TaskTransitionService;
 use crate::application::AppState;
@@ -151,14 +155,7 @@ fn build_transition_service<R: Runtime>(
     execution_state: Arc<ExecutionState>,
     memory_event_repo: Arc<dyn MemoryEventRepository>,
 ) -> TaskTransitionService<R> {
-    if let Some(handle) = app_handle {
-        if let Some(app_state) = handle.try_state::<AppState>() {
-            return app_state
-                .build_transition_service_for_runtime(execution_state, app_handle.clone());
-        }
-    }
-
-    TaskTransitionService::new(
+    let deps = RuntimeFactoryDeps {
         task_repo,
         task_dependency_repo,
         project_repo,
@@ -170,10 +167,13 @@ fn build_transition_service<R: Runtime>(
         activity_event_repo,
         message_queue,
         running_agent_registry,
-        execution_state,
-        app_handle.clone(),
         memory_event_repo,
-    )
+        execution_settings_repo: None,
+        agent_lane_settings_repo: None,
+        plan_branch_repo: None,
+        interactive_process_registry: None,
+    };
+    build_transition_service_with_fallback(app_handle, execution_state, &deps)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -196,17 +196,7 @@ fn build_task_scheduler_service<R: Runtime>(
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
 ) -> TaskSchedulerService<R> {
-    if let Some(handle) = app_handle {
-        if let Some(app_state) = handle.try_state::<AppState>() {
-            return app_state.build_task_scheduler_for_runtime(
-                execution_state,
-                app_handle.clone(),
-            );
-        }
-    }
-
-    let mut scheduler = TaskSchedulerService::new(
-        execution_state,
+    let deps = RuntimeFactoryDeps {
         project_repo,
         task_repo,
         task_dependency_repo,
@@ -219,25 +209,15 @@ fn build_task_scheduler_service<R: Runtime>(
         message_queue,
         running_agent_registry,
         memory_event_repo,
-        app_handle.clone(),
-    );
-    if let Some(repo) = execution_settings_repo.as_ref() {
-        scheduler = scheduler.with_execution_settings_repo(Arc::clone(repo));
-    }
-    if let Some(repo) = app_handle.as_ref().and_then(|handle| {
-        handle
-            .try_state::<AppState>()
-            .map(|app_state| Arc::clone(&app_state.agent_lane_settings_repo))
-    }) {
-        scheduler = scheduler.with_agent_lane_settings_repo(repo);
-    }
-    if let Some(repo) = plan_branch_repo.as_ref() {
-        scheduler = scheduler.with_plan_branch_repo(Arc::clone(repo));
-    }
-    if let Some(ipr) = interactive_process_registry.as_ref() {
-        scheduler = scheduler.with_interactive_process_registry(Arc::clone(ipr));
-    }
-    scheduler
+        execution_settings_repo,
+        agent_lane_settings_repo: app_handle
+            .as_ref()
+            .and_then(|handle| handle.try_state::<AppState>())
+            .map(|app_state| Arc::clone(&app_state.agent_lane_settings_repo)),
+        plan_branch_repo,
+        interactive_process_registry,
+    };
+    build_task_scheduler_with_fallback(app_handle, execution_state, &deps)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

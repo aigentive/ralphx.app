@@ -13,6 +13,10 @@ use crate::application::AppState;
 use crate::application::git_service::{GitService, StaleRebaseResult};
 use crate::application::git_service::checkout_free::update_branch_ref;
 use crate::application::interactive_process_registry::InteractiveProcessKey;
+use crate::application::runtime_factory::{
+    RuntimeFactoryDeps, build_task_scheduler_with_fallback,
+    build_transition_service_with_fallback,
+};
 use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::application::task_transition_service::TaskTransitionService;
 use crate::commands::ExecutionState;
@@ -86,118 +90,67 @@ pub(crate) struct MergeAutoCompleteContext<'a, R: Runtime> {
 
 impl<'a, R: Runtime> MergeAutoCompleteContext<'a, R> {
     fn build_transition_service(&self) -> TaskTransitionService<R> {
-        let service = if let Some(handle) = self.app_handle {
-            if let Some(app_state) = handle.try_state::<AppState>() {
-                app_state.build_transition_service_for_runtime(
-                    Arc::clone(self.execution_state),
-                    self.app_handle.cloned(),
-                )
-            } else {
-                TaskTransitionService::new(
-                    Arc::clone(self.task_repo),
-                    Arc::clone(self.task_dependency_repo),
-                    Arc::clone(self.project_repo),
-                    Arc::clone(self.chat_message_repo),
-                    Arc::clone(self.chat_attachment_repo),
-                    Arc::clone(self.conversation_repo),
-                    Arc::clone(self.agent_run_repo),
-                    Arc::clone(self.ideation_session_repo),
-                    Arc::clone(self.activity_event_repo),
-                    Arc::clone(self.message_queue),
-                    Arc::clone(self.running_agent_registry),
-                    Arc::clone(self.execution_state),
-                    self.app_handle.cloned(),
-                    Arc::clone(self.memory_event_repo),
-                )
-            }
-        } else {
-            TaskTransitionService::new(
-                Arc::clone(self.task_repo),
-                Arc::clone(self.task_dependency_repo),
-                Arc::clone(self.project_repo),
-                Arc::clone(self.chat_message_repo),
-                Arc::clone(self.chat_attachment_repo),
-                Arc::clone(self.conversation_repo),
-                Arc::clone(self.agent_run_repo),
-                Arc::clone(self.ideation_session_repo),
-                Arc::clone(self.activity_event_repo),
-                Arc::clone(self.message_queue),
-                Arc::clone(self.running_agent_registry),
-                Arc::clone(self.execution_state),
-                self.app_handle.cloned(),
-                Arc::clone(self.memory_event_repo),
-            )
+        let deps = RuntimeFactoryDeps {
+            task_repo: Arc::clone(self.task_repo),
+            task_dependency_repo: Arc::clone(self.task_dependency_repo),
+            project_repo: Arc::clone(self.project_repo),
+            chat_message_repo: Arc::clone(self.chat_message_repo),
+            chat_attachment_repo: Arc::clone(self.chat_attachment_repo),
+            conversation_repo: Arc::clone(self.conversation_repo),
+            agent_run_repo: Arc::clone(self.agent_run_repo),
+            ideation_session_repo: Arc::clone(self.ideation_session_repo),
+            activity_event_repo: Arc::clone(self.activity_event_repo),
+            message_queue: Arc::clone(self.message_queue),
+            running_agent_registry: Arc::clone(self.running_agent_registry),
+            memory_event_repo: Arc::clone(self.memory_event_repo),
+            execution_settings_repo: self.execution_settings_repo.map(Arc::clone),
+            agent_lane_settings_repo: self
+                .app_handle
+                .and_then(|handle| {
+                    handle
+                        .try_state::<AppState>()
+                        .map(|app_state| Arc::clone(&app_state.agent_lane_settings_repo))
+                }),
+            plan_branch_repo: self.plan_branch_repo.clone(),
+            interactive_process_registry: self.interactive_process_registry.clone(),
         };
-        let service = if let Some(repo) = self.execution_settings_repo {
-            service.with_execution_settings_repo(Arc::clone(repo))
-        } else {
-            service
-        };
-        let service = if let Some(ref repo) = self.plan_branch_repo {
-            service.with_plan_branch_repo(Arc::clone(repo))
-        } else {
-            service
-        };
-        if let Some(ref ipr) = self.interactive_process_registry {
-            service.with_interactive_process_registry(Arc::clone(ipr))
-        } else {
-            service
-        }
+        build_transition_service_with_fallback(
+            &self.app_handle.cloned(),
+            Arc::clone(self.execution_state),
+            &deps,
+        )
     }
 
     fn build_scheduler_service(&self) -> TaskSchedulerService<R> {
-        if let Some(handle) = self.app_handle {
-            if let Some(app_state) = handle.try_state::<AppState>() {
-                return app_state.build_task_scheduler_for_runtime(
-                    Arc::clone(self.execution_state),
-                    self.app_handle.cloned(),
-                );
-            }
-        }
-
-        let scheduler = TaskSchedulerService::new(
+        let deps = RuntimeFactoryDeps {
+            task_repo: Arc::clone(self.task_repo),
+            task_dependency_repo: Arc::clone(self.task_dependency_repo),
+            project_repo: Arc::clone(self.project_repo),
+            chat_message_repo: Arc::clone(self.chat_message_repo),
+            chat_attachment_repo: Arc::clone(self.chat_attachment_repo),
+            conversation_repo: Arc::clone(self.conversation_repo),
+            agent_run_repo: Arc::clone(self.agent_run_repo),
+            ideation_session_repo: Arc::clone(self.ideation_session_repo),
+            activity_event_repo: Arc::clone(self.activity_event_repo),
+            message_queue: Arc::clone(self.message_queue),
+            running_agent_registry: Arc::clone(self.running_agent_registry),
+            memory_event_repo: Arc::clone(self.memory_event_repo),
+            execution_settings_repo: self.execution_settings_repo.map(Arc::clone),
+            agent_lane_settings_repo: self
+                .app_handle
+                .and_then(|handle| {
+                    handle
+                        .try_state::<AppState>()
+                        .map(|app_state| Arc::clone(&app_state.agent_lane_settings_repo))
+                }),
+            plan_branch_repo: self.plan_branch_repo.clone(),
+            interactive_process_registry: self.interactive_process_registry.clone(),
+        };
+        build_task_scheduler_with_fallback(
+            &self.app_handle.cloned(),
             Arc::clone(self.execution_state),
-            Arc::clone(self.project_repo),
-            Arc::clone(self.task_repo),
-            Arc::clone(self.task_dependency_repo),
-            Arc::clone(self.chat_message_repo),
-            Arc::clone(self.chat_attachment_repo),
-            Arc::clone(self.conversation_repo),
-            Arc::clone(self.agent_run_repo),
-            Arc::clone(self.ideation_session_repo),
-            Arc::clone(self.activity_event_repo),
-            Arc::clone(self.message_queue),
-            Arc::clone(self.running_agent_registry),
-            Arc::clone(self.memory_event_repo),
-            self.app_handle.cloned(),
-        );
-        let scheduler = if let Some(repo) = self.execution_settings_repo {
-            scheduler.with_execution_settings_repo(Arc::clone(repo))
-        } else {
-            scheduler
-        };
-        let scheduler = if let Some(repo) = self
-            .app_handle
-            .and_then(|handle| {
-                handle
-                    .try_state::<AppState>()
-                    .map(|app_state| Arc::clone(&app_state.agent_lane_settings_repo))
-            })
-        {
-            scheduler.with_agent_lane_settings_repo(repo)
-        } else {
-            scheduler
-        };
-        let scheduler = if let Some(ref repo) = self.plan_branch_repo {
-            scheduler.with_plan_branch_repo(Arc::clone(repo))
-        } else {
-            scheduler
-        };
-        if let Some(ref ipr) = self.interactive_process_registry {
-            scheduler.with_interactive_process_registry(Arc::clone(ipr))
-        } else {
-            scheduler
-        }
+            &deps,
+        )
     }
 
     async fn transition_incomplete(&self, reason: &str) {
