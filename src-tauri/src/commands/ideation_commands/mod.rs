@@ -53,3 +53,6 @@ pub use ideation_commands_session::create_ideation_session_impl;
 
 // Re-export helper function for tests
 pub use ideation_commands_dependencies::build_dependency_graph;
+
+#[cfg(test)]
+mod ideation_commands_orchestrator_tests;
