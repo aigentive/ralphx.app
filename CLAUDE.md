@@ -124,7 +124,7 @@ Plugin: `claude --plugin-dir ./plugins/app --agent worker -p "Execute"` | Tool c
 | 4 | Type safety — strict TS, newtype IDs in Rust |
 | 5 | ❌ Fragile string comparisons — use enum variants (`matches!(err, MyError::Variant)`), error codes, or named constants for external strings |
 | 6 | Full timestamps in activity log |
-| 7 | Status changes → TransitionHandler ONLY. ❌ Direct DB update |
+| 7 | Live workflow status changes → validated `TaskTransitionService::transition_task*` or canonical state-machine/merge-engine writes only. ❌ Direct repo/DB `internal_status` mutation. Nonstandard repair jumps → explicit `transition_task_corrective()` / `apply_corrective_transition()` only |
 | 8 | **Zero lint/test warnings (NON-NEGOTIABLE):** Fix ALL lint warnings and test failures before completing work — including pre-existing ones. ❌ "It's pre-existing" is not an excuse. Stale warnings delay future work and compound. `src-tauri/` → cargo clippy \| broad Rust runs → `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci` \| doctests → `cargo test --manifest-path src-tauri/Cargo.toml --doc` \| pinpoint Rust runs → see `.claude/rules/rust-test-execution.md`. ❌ `cargo check` \| ❌ full `cargo test` (hang) |
 | 9 | ❌ Start/stop dev server — user manages manually |
 | 10 | Implementation playbook: `DEVELOPMENT.md` — read alongside CLAUDE.md files for placement, naming, recipes, and debugging. |

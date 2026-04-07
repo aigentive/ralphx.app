@@ -88,6 +88,8 @@ paths:
 | `needs_changes` | `reviewing` → `revision_needed` → (auto) `re_executing` |
 | `escalate` | `reviewing` → `escalated` |
 
+`approved` never means direct `reviewing → approved`. When `require_human_review=false`, backend approval continues from `review_passed → approved`. `approved_no_changes` is the separate no-code / skip-merge path.
+
 ## Merger (`ralphx-merger`)
 
 | Aspect | Detail |

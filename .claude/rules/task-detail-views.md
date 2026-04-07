@@ -26,7 +26,7 @@ paths:
 | `qa_failed` | BasicTaskDetail | QA failed (no specialized view) |
 | `pending_review` | WaitingTaskDetail | Work done, awaiting AI review |
 | `reviewing` | ReviewingTaskDetail | AI review in progress |
-| `review_passed` | HumanReviewTaskDetail | AI approved, human confirmation |
+| `review_passed` | HumanReviewTaskDetail | AI approved, human confirmation if required |
 | `escalated` | EscalatedTaskDetail | AI escalated to human |
 | `revision_needed` | RevisionTaskDetail | Changes requested |
 | `approved` | CompletedTaskDetail | Task completed |
