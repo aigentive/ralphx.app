@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use uuid::Uuid;
 
+use crate::agents::{AgentHarnessKind, LogicalEffort};
+
 use super::{ChatConversation, ChatConversationId};
 
 /// Unique identifier for an agent run
@@ -139,6 +141,30 @@ pub struct AgentRun {
     pub completed_at: Option<DateTime<Utc>>,
     /// Error message (if failed)
     pub error_message: Option<String>,
+    /// Harness that executed this run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub harness: Option<AgentHarnessKind>,
+    /// Provider session ID associated with this run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_session_id: Option<String>,
+    /// User-facing configured model for the run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_model: Option<String>,
+    /// Resolved provider model ID used at runtime.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_model_id: Option<String>,
+    /// Logical reasoning effort used for cross-provider configuration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_effort: Option<LogicalEffort>,
+    /// Resolved provider-specific effort actually used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_effort: Option<String>,
+    /// Approval policy used for the run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approval_policy: Option<String>,
+    /// Sandbox mode used for the run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sandbox_mode: Option<String>,
     /// Correlation ID linking all runs in a single message chain
     /// (initial run + all queue continuations via --resume)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -159,6 +185,14 @@ impl AgentRun {
             started_at: Utc::now(),
             completed_at: None,
             error_message: None,
+            harness: None,
+            provider_session_id: None,
+            logical_model: None,
+            effective_model_id: None,
+            logical_effort: None,
+            effective_effort: None,
+            approval_policy: None,
+            sandbox_mode: None,
             run_chain_id: Some(chain_id),
             parent_run_id: None,
         }
@@ -177,6 +211,14 @@ impl AgentRun {
             started_at: Utc::now(),
             completed_at: None,
             error_message: None,
+            harness: None,
+            provider_session_id: None,
+            logical_model: None,
+            effective_model_id: None,
+            logical_effort: None,
+            effective_effort: None,
+            approval_policy: None,
+            sandbox_mode: None,
             run_chain_id: Some(run_chain_id),
             parent_run_id: Some(parent_run_id),
         }

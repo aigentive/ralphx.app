@@ -1,4 +1,5 @@
 use super::*;
+use crate::agents::AgentHarnessKind;
 
 #[test]
 fn test_conversation_id_creation() {
@@ -58,6 +59,8 @@ fn test_new_ideation_conversation() {
     assert_eq!(conv.context_type, ChatContextType::Ideation);
     assert_eq!(conv.context_id, expected_context_id);
     assert_eq!(conv.claude_session_id, None);
+    assert_eq!(conv.provider_session_id, None);
+    assert_eq!(conv.provider_harness, None);
     assert_eq!(conv.message_count, 0);
     assert!(!conv.has_claude_session());
 }
@@ -73,6 +76,41 @@ fn test_set_claude_session_id() {
         conv.claude_session_id,
         Some("550e8400-e29b-41d4-a716-446655440000".to_string())
     );
+    assert_eq!(
+        conv.provider_session_id,
+        Some("550e8400-e29b-41d4-a716-446655440000".to_string())
+    );
+    assert_eq!(conv.provider_harness, Some(AgentHarnessKind::Claude));
+}
+
+#[test]
+fn test_set_provider_session_ref_for_codex() {
+    let session_id = IdeationSessionId::new();
+    let mut conv = ChatConversation::new_ideation(session_id);
+
+    conv.set_provider_session_ref(crate::agents::ProviderSessionRef {
+        harness: AgentHarnessKind::Codex,
+        provider_session_id: "codex-session-123".to_string(),
+    });
+
+    assert_eq!(conv.provider_harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(
+        conv.provider_session_id,
+        Some("codex-session-123".to_string())
+    );
+    assert_eq!(conv.claude_session_id, None);
+    assert!(!conv.has_claude_session());
+}
+
+#[test]
+fn test_provider_session_ref_falls_back_to_legacy_claude_field() {
+    let session_id = IdeationSessionId::new();
+    let mut conv = ChatConversation::new_ideation(session_id);
+    conv.claude_session_id = Some("legacy-session".to_string());
+
+    let session_ref = conv.provider_session_ref().expect("provider session");
+    assert_eq!(session_ref.harness, AgentHarnessKind::Claude);
+    assert_eq!(session_ref.provider_session_id, "legacy-session");
 }
 
 #[test]
@@ -100,6 +138,7 @@ fn test_new_task_execution_conversation() {
     assert_eq!(conv.context_type, ChatContextType::TaskExecution);
     assert_eq!(conv.context_id, expected_context_id);
     assert_eq!(conv.claude_session_id, None);
+    assert_eq!(conv.provider_session_id, None);
     assert_eq!(conv.message_count, 0);
     assert!(!conv.has_claude_session());
 }
@@ -113,6 +152,7 @@ fn test_new_review_conversation() {
     assert_eq!(conv.context_type, ChatContextType::Review);
     assert_eq!(conv.context_id, expected_context_id);
     assert_eq!(conv.claude_session_id, None);
+    assert_eq!(conv.provider_session_id, None);
     assert_eq!(conv.message_count, 0);
     assert!(!conv.has_claude_session());
 }

@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use uuid::Uuid;
 
+use crate::agents::{AgentHarnessKind, ProviderSessionRef};
+
 use super::{IdeationSessionId, ProjectId, TaskId};
 
 /// Unique identifier for a chat conversation
@@ -116,7 +118,8 @@ impl std::str::FromStr for ChatContextType {
 /// A chat conversation linked to a context (ideation session, task, or project)
 ///
 /// Multiple conversations can exist per context to support conversation history.
-/// Each conversation tracks its own Claude CLI session ID for --resume support.
+/// Each conversation tracks provider-neutral session metadata plus a temporary
+/// Claude compatibility field during the migration window.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatConversation {
     /// Unique identifier for this conversation
@@ -128,6 +131,10 @@ pub struct ChatConversation {
     /// Claude CLI session UUID for --resume flag
     /// This is captured from Claude's response and enables conversation continuity
     pub claude_session_id: Option<String>,
+    /// Provider-neutral session identifier used for both Claude and Codex.
+    pub provider_session_id: Option<String>,
+    /// Harness that owns the provider session.
+    pub provider_harness: Option<AgentHarnessKind>,
     /// Auto-generated or user-set title for this conversation
     pub title: Option<String>,
     /// Number of messages in this conversation
@@ -152,6 +159,8 @@ impl ChatConversation {
             context_type: ChatContextType::Ideation,
             context_id: session_id.as_str().to_string(),
             claude_session_id: None,
+            provider_session_id: None,
+            provider_harness: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -169,6 +178,8 @@ impl ChatConversation {
             context_type: ChatContextType::Task,
             context_id: task_id.as_str().to_string(),
             claude_session_id: None,
+            provider_session_id: None,
+            provider_harness: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -186,6 +197,8 @@ impl ChatConversation {
             context_type: ChatContextType::Project,
             context_id: project_id.as_str().to_string(),
             claude_session_id: None,
+            provider_session_id: None,
+            provider_harness: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -204,6 +217,8 @@ impl ChatConversation {
             context_type: ChatContextType::TaskExecution,
             context_id: task_id.as_str().to_string(),
             claude_session_id: None,
+            provider_session_id: None,
+            provider_harness: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -221,6 +236,8 @@ impl ChatConversation {
             context_type: ChatContextType::Review,
             context_id: task_id.as_str().to_string(),
             claude_session_id: None,
+            provider_session_id: None,
+            provider_harness: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -238,6 +255,8 @@ impl ChatConversation {
             context_type: ChatContextType::Merge,
             context_id: task_id.as_str().to_string(),
             claude_session_id: None,
+            provider_session_id: None,
+            provider_harness: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -247,9 +266,35 @@ impl ChatConversation {
         }
     }
 
+    /// Update the canonical provider session reference.
+    pub fn set_provider_session_ref(&mut self, session_ref: ProviderSessionRef) {
+        let ProviderSessionRef {
+            harness,
+            provider_session_id,
+        } = session_ref;
+        self.provider_harness = Some(harness);
+        self.provider_session_id = Some(provider_session_id.clone());
+        self.claude_session_id = if harness == AgentHarnessKind::Claude {
+            Some(provider_session_id)
+        } else {
+            None
+        };
+        self.updated_at = Utc::now();
+    }
+
     /// Update the Claude session ID (after first message in conversation)
     pub fn set_claude_session_id(&mut self, session_id: impl Into<String>) {
-        self.claude_session_id = Some(session_id.into());
+        self.set_provider_session_ref(ProviderSessionRef {
+            harness: AgentHarnessKind::Claude,
+            provider_session_id: session_id.into(),
+        });
+    }
+
+    /// Clear any provider session reference.
+    pub fn clear_provider_session_ref(&mut self) {
+        self.claude_session_id = None;
+        self.provider_session_id = None;
+        self.provider_harness = None;
         self.updated_at = Utc::now();
     }
 
@@ -262,6 +307,27 @@ impl ChatConversation {
     /// Check if this conversation has a Claude session (can use --resume)
     pub fn has_claude_session(&self) -> bool {
         self.claude_session_id.is_some()
+            || matches!(self.provider_harness, Some(AgentHarnessKind::Claude))
+                && self.provider_session_id.is_some()
+    }
+
+    /// Get the effective provider session reference for this conversation.
+    pub fn provider_session_ref(&self) -> Option<ProviderSessionRef> {
+        if let (Some(harness), Some(provider_session_id)) =
+            (self.provider_harness, self.provider_session_id.clone())
+        {
+            return Some(ProviderSessionRef {
+                harness,
+                provider_session_id,
+            });
+        }
+
+        self.claude_session_id
+            .clone()
+            .map(|provider_session_id| ProviderSessionRef {
+                harness: AgentHarnessKind::Claude,
+                provider_session_id,
+            })
     }
 
     /// Get a display title for this conversation

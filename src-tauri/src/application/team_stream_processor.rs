@@ -96,6 +96,8 @@ pub fn start_teammate_stream<R: Runtime>(
                     context_type: context_type.parse::<ChatContextType>().unwrap_or(ChatContextType::Ideation),
                     context_id: teammate_ctx_id,
                     claude_session_id: None,
+                    provider_session_id: None,
+                    provider_harness: None,
                     title: Some(format!("Teammate: {}", teammate_name)),
                     message_count: 0,
                     last_message_at: None,

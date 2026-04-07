@@ -71,6 +71,7 @@ pub enum LogicalEffort {
     Low,
     Medium,
     High,
+    #[serde(rename = "xhigh")]
     XHigh,
 }
 

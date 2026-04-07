@@ -1,4 +1,5 @@
 use super::*;
+use crate::agents::{AgentHarnessKind, LogicalEffort};
 use crate::entities::ChatConversationId;
 
 #[test]
@@ -72,6 +73,14 @@ fn test_new_agent_run() {
     assert!(!run.is_terminal());
     assert_eq!(run.completed_at, None);
     assert_eq!(run.error_message, None);
+    assert_eq!(run.harness, None);
+    assert_eq!(run.provider_session_id, None);
+    assert_eq!(run.logical_model, None);
+    assert_eq!(run.effective_model_id, None);
+    assert_eq!(run.logical_effort, None);
+    assert_eq!(run.effective_effort, None);
+    assert_eq!(run.approval_policy, None);
+    assert_eq!(run.sandbox_mode, None);
     assert!(run.run_chain_id.is_some());
     assert_eq!(run.parent_run_id, None);
 }
@@ -87,6 +96,26 @@ fn test_new_continuation_run() {
     assert_eq!(run.status, AgentRunStatus::Running);
     assert_eq!(run.run_chain_id, Some(chain_id));
     assert_eq!(run.parent_run_id, Some(parent_id));
+}
+
+#[test]
+fn test_agent_run_provider_metadata_serialization() {
+    let conversation_id = ChatConversationId::new();
+    let mut run = AgentRun::new(conversation_id);
+    run.harness = Some(AgentHarnessKind::Codex);
+    run.provider_session_id = Some("session-123".to_string());
+    run.logical_model = Some("gpt-5.4".to_string());
+    run.effective_model_id = Some("gpt-5.4".to_string());
+    run.logical_effort = Some(LogicalEffort::XHigh);
+    run.effective_effort = Some("high".to_string());
+    run.approval_policy = Some("on-request".to_string());
+    run.sandbox_mode = Some("workspace-write".to_string());
+
+    let serialized = serde_json::to_value(&run).expect("serialize agent run");
+    assert_eq!(serialized["harness"], "codex");
+    assert_eq!(serialized["provider_session_id"], "session-123");
+    assert_eq!(serialized["logical_effort"], "xhigh");
+    assert_eq!(serialized["sandbox_mode"], "workspace-write");
 }
 
 #[test]

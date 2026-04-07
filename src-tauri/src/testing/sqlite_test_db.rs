@@ -171,13 +171,20 @@ impl SqliteTestDb {
     pub fn insert_conversation(&self, conversation: ChatConversation) -> ChatConversation {
         self.with_connection(|conn| {
             conn.execute(
-                "INSERT INTO chat_conversations (id, context_type, context_id, claude_session_id, title, message_count, last_message_at, created_at, updated_at, parent_conversation_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                "INSERT INTO chat_conversations (
+                    id, context_type, context_id, claude_session_id, provider_session_id,
+                    provider_harness, title, message_count, last_message_at, created_at,
+                    updated_at, parent_conversation_id
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 rusqlite::params![
                     conversation.id.as_str(),
                     conversation.context_type.to_string(),
                     conversation.context_id.as_str(),
                     conversation.claude_session_id.as_deref(),
+                    conversation.provider_session_id.as_deref(),
+                    conversation
+                        .provider_harness
+                        .map(|value| value.to_string()),
                     conversation.title.as_deref(),
                     conversation.message_count,
                     conversation.last_message_at.as_ref().map(|dt| dt.to_rfc3339()),

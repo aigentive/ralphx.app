@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use rusqlite::Connection;
 
+use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::entities::{ChatContextType, ChatConversation, ChatConversationId};
 use crate::domain::repositories::ChatConversationRepository;
 use crate::error::AppResult;
@@ -31,9 +32,26 @@ fn parse_datetime(s: &str) -> DateTime<Utc> {
 
 fn row_to_conversation(row: &rusqlite::Row) -> rusqlite::Result<ChatConversation> {
     let context_type_str: String = row.get("context_type")?;
+    let mut claude_session_id: Option<String> = row.get("claude_session_id")?;
+    let mut provider_session_id: Option<String> = row.get("provider_session_id")?;
+    let mut provider_harness = row
+        .get::<_, Option<String>>("provider_harness")?
+        .and_then(|value| value.parse::<AgentHarnessKind>().ok());
     let last_message_at_str: Option<String> = row.get("last_message_at")?;
     let created_at_str: String = row.get("created_at")?;
     let updated_at_str: String = row.get("updated_at")?;
+
+    if provider_session_id.is_none() && claude_session_id.is_some() {
+        provider_session_id = claude_session_id.clone();
+        provider_harness = Some(AgentHarnessKind::Claude);
+    }
+
+    if claude_session_id.is_none()
+        && matches!(provider_harness, Some(AgentHarnessKind::Claude))
+        && provider_session_id.is_some()
+    {
+        claude_session_id = provider_session_id.clone();
+    }
 
     let created_at = parse_datetime(&created_at_str);
     let updated_at = parse_datetime(&updated_at_str);
@@ -42,7 +60,9 @@ fn row_to_conversation(row: &rusqlite::Row) -> rusqlite::Result<ChatConversation
         id: ChatConversationId::from_string(row.get::<_, String>("id")?),
         context_type: context_type_str.parse().unwrap_or(ChatContextType::Ideation),
         context_id: row.get("context_id")?,
-        claude_session_id: row.get("claude_session_id")?,
+        claude_session_id,
+        provider_session_id,
+        provider_harness,
         title: row.get("title")?,
         message_count: row.get("message_count")?,
         last_message_at: last_message_at_str.and_then(|s| {
@@ -84,6 +104,8 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
         let context_type = conversation.context_type.to_string();
         let context_id = conversation.context_id.clone();
         let claude_session_id = conversation.claude_session_id.clone();
+        let provider_session_id = conversation.provider_session_id.clone();
+        let provider_harness = conversation.provider_harness.map(|value| value.to_string());
         let title = conversation.title.clone();
         let message_count = conversation.message_count;
         let last_message_at = conversation.last_message_at.map(|dt| dt.to_rfc3339());
@@ -93,11 +115,15 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
 
         self.db.run(move |conn| {
             conn.execute(
-                "INSERT INTO chat_conversations (id, context_type, context_id, claude_session_id, title, message_count, last_message_at, created_at, updated_at, parent_conversation_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                "INSERT INTO chat_conversations (
+                    id, context_type, context_id, claude_session_id, provider_session_id,
+                    provider_harness, title, message_count, last_message_at, created_at,
+                    updated_at, parent_conversation_id
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 rusqlite::params![
-                    id, context_type, context_id, claude_session_id, title,
-                    message_count, last_message_at, created_at, updated_at, parent_conversation_id,
+                    id, context_type, context_id, claude_session_id, provider_session_id,
+                    provider_harness, title, message_count, last_message_at, created_at,
+                    updated_at, parent_conversation_id,
                 ],
             )?;
             Ok(())
@@ -110,7 +136,9 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
         let id_str = id.as_str().to_string();
         self.db.query_optional(move |conn| {
             conn.query_row(
-                "SELECT id, context_type, context_id, claude_session_id, title, message_count, last_message_at, created_at, updated_at, parent_conversation_id
+                "SELECT id, context_type, context_id, claude_session_id, provider_session_id,
+                        provider_harness, title, message_count, last_message_at, created_at,
+                        updated_at, parent_conversation_id
                  FROM chat_conversations WHERE id = ?1",
                 [&id_str],
                 row_to_conversation,
@@ -127,7 +155,9 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
         let context_id_str = context_id.to_string();
         self.db.run(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, context_type, context_id, claude_session_id, title, message_count, last_message_at, created_at, updated_at, parent_conversation_id
+                "SELECT id, context_type, context_id, claude_session_id, provider_session_id,
+                        provider_harness, title, message_count, last_message_at, created_at,
+                        updated_at, parent_conversation_id
                  FROM chat_conversations WHERE context_type = ?1 AND context_id = ?2 ORDER BY created_at DESC",
             )?;
             let conversations = stmt
@@ -146,7 +176,9 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
         let context_id_str = context_id.to_string();
         self.db.query_optional(move |conn| {
             conn.query_row(
-                "SELECT id, context_type, context_id, claude_session_id, title, message_count, last_message_at, created_at, updated_at, parent_conversation_id
+                "SELECT id, context_type, context_id, claude_session_id, provider_session_id,
+                        provider_harness, title, message_count, last_message_at, created_at,
+                        updated_at, parent_conversation_id
                  FROM chat_conversations WHERE context_type = ?1 AND context_id = ?2 ORDER BY created_at DESC LIMIT 1",
                 [context_type_str, context_id_str],
                 row_to_conversation,
@@ -154,27 +186,49 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
         }).await
     }
 
-    async fn update_claude_session_id(
+    async fn update_provider_session_ref(
         &self,
         id: &ChatConversationId,
-        claude_session_id: &str,
+        session_ref: &ProviderSessionRef,
     ) -> AppResult<()> {
         let id_str = id.as_str().to_string();
-        let session_id = claude_session_id.to_string();
+        let session_id = session_ref.provider_session_id.clone();
+        let harness = session_ref.harness.to_string();
+        let claude_session_id = if session_ref.harness == AgentHarnessKind::Claude {
+            Some(session_id.clone())
+        } else {
+            None
+        };
         self.db.run(move |conn| {
             conn.execute(
-                "UPDATE chat_conversations SET claude_session_id = ?1, updated_at = ?2 WHERE id = ?3",
-                rusqlite::params![session_id, Utc::now().to_rfc3339(), id_str],
+                "UPDATE chat_conversations
+                 SET claude_session_id = ?1,
+                     provider_session_id = ?2,
+                     provider_harness = ?3,
+                     updated_at = ?4
+                 WHERE id = ?5",
+                rusqlite::params![
+                    claude_session_id,
+                    session_id,
+                    harness,
+                    Utc::now().to_rfc3339(),
+                    id_str
+                ],
             )?;
             Ok(())
         }).await
     }
 
-    async fn clear_claude_session_id(&self, id: &ChatConversationId) -> AppResult<()> {
+    async fn clear_provider_session_ref(&self, id: &ChatConversationId) -> AppResult<()> {
         let id_str = id.as_str().to_string();
         self.db.run(move |conn| {
             conn.execute(
-                "UPDATE chat_conversations SET claude_session_id = NULL, updated_at = ?1 WHERE id = ?2",
+                "UPDATE chat_conversations
+                 SET claude_session_id = NULL,
+                     provider_session_id = NULL,
+                     provider_harness = NULL,
+                     updated_at = ?1
+                 WHERE id = ?2",
                 rusqlite::params![Utc::now().to_rfc3339(), id_str],
             )?;
             Ok(())

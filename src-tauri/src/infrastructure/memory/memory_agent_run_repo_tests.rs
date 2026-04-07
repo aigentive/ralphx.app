@@ -1,16 +1,23 @@
 use super::*;
+use crate::domain::agents::{AgentHarnessKind, LogicalEffort};
 
 #[tokio::test]
 async fn test_create_and_get() {
     let repo = MemoryAgentRunRepository::new();
     let conversation_id = ChatConversationId::new();
-    let run = AgentRun::new(conversation_id);
+    let mut run = AgentRun::new(conversation_id);
+    run.harness = Some(AgentHarnessKind::Codex);
+    run.provider_session_id = Some("session-123".to_string());
+    run.logical_effort = Some(LogicalEffort::Medium);
     let id = run.id;
 
     repo.create(run.clone()).await.unwrap();
 
     let retrieved = repo.get_by_id(&id).await.unwrap().unwrap();
     assert_eq!(retrieved.id, id);
+    assert_eq!(retrieved.harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(retrieved.provider_session_id, Some("session-123".to_string()));
+    assert_eq!(retrieved.logical_effort, Some(LogicalEffort::Medium));
 }
 
 #[tokio::test]

@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use rusqlite::Connection;
 
+use crate::domain::agents::{AgentHarnessKind, LogicalEffort};
 /// Parse datetime string handling both RFC3339 and SQLite's CURRENT_TIMESTAMP formats
 fn parse_datetime(s: &str) -> DateTime<Utc> {
     // Try RFC3339 first (e.g., "2026-01-26T06:42:37.662598+00:00")
@@ -30,7 +31,9 @@ use crate::domain::entities::{
 };
 
 /// Map a SQLite row to an AgentRun (expects columns: id, conversation_id, status,
-/// started_at, completed_at, error_message, run_chain_id, parent_run_id)
+/// started_at, completed_at, error_message, harness, provider_session_id,
+/// logical_model, effective_model_id, logical_effort, effective_effort,
+/// approval_policy, sandbox_mode, run_chain_id, parent_run_id)
 fn row_to_agent_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentRun> {
     let status_str: String = row.get("status")?;
     let started_at_str: String = row.get("started_at")?;
@@ -43,6 +46,18 @@ fn row_to_agent_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentRun> {
         started_at: parse_datetime(&started_at_str),
         completed_at: completed_at_str.map(|s| parse_datetime(&s)),
         error_message: row.get("error_message")?,
+        harness: row
+            .get::<_, Option<String>>("harness")?
+            .and_then(|value| value.parse::<AgentHarnessKind>().ok()),
+        provider_session_id: row.get("provider_session_id")?,
+        logical_model: row.get("logical_model")?,
+        effective_model_id: row.get("effective_model_id")?,
+        logical_effort: row
+            .get::<_, Option<String>>("logical_effort")?
+            .and_then(|value| value.parse::<LogicalEffort>().ok()),
+        effective_effort: row.get("effective_effort")?,
+        approval_policy: row.get("approval_policy")?,
+        sandbox_mode: row.get("sandbox_mode")?,
         run_chain_id: row.get("run_chain_id")?,
         parent_run_id: row.get("parent_run_id")?,
     })
@@ -79,8 +94,12 @@ impl AgentRunRepository for SqliteAgentRunRepository {
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "INSERT INTO agent_runs (id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    "INSERT INTO agent_runs (
+                        id, conversation_id, status, started_at, completed_at, error_message,
+                        harness, provider_session_id, logical_model, effective_model_id,
+                        logical_effort, effective_effort, approval_policy, sandbox_mode,
+                        run_chain_id, parent_run_id
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
                     rusqlite::params![
                         run.id.as_str(),
                         run.conversation_id.as_str(),
@@ -88,6 +107,14 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                         run.started_at.to_rfc3339(),
                         run.completed_at.map(|dt| dt.to_rfc3339()),
                         run.error_message,
+                        run.harness.map(|value| value.to_string()),
+                        run.provider_session_id,
+                        run.logical_model,
+                        run.effective_model_id,
+                        run.logical_effort.map(|value| value.to_string()),
+                        run.effective_effort,
+                        run.approval_policy,
+                        run.sandbox_mode,
                         run.run_chain_id,
                         run.parent_run_id,
                     ],
@@ -102,7 +129,10 @@ impl AgentRunRepository for SqliteAgentRunRepository {
         self.db
             .query_optional(move |conn| {
                 conn.query_row(
-                    "SELECT id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id
+                    "SELECT id, conversation_id, status, started_at, completed_at, error_message,
+                            harness, provider_session_id, logical_model, effective_model_id,
+                            logical_effort, effective_effort, approval_policy, sandbox_mode,
+                            run_chain_id, parent_run_id
                      FROM agent_runs WHERE id = ?1",
                     [&id],
                     |row| row_to_agent_run(row),
@@ -119,7 +149,10 @@ impl AgentRunRepository for SqliteAgentRunRepository {
         self.db
             .query_optional(move |conn| {
                 conn.query_row(
-                    "SELECT id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id
+                    "SELECT id, conversation_id, status, started_at, completed_at, error_message,
+                            harness, provider_session_id, logical_model, effective_model_id,
+                            logical_effort, effective_effort, approval_policy, sandbox_mode,
+                            run_chain_id, parent_run_id
                      FROM agent_runs WHERE conversation_id = ?1 ORDER BY started_at DESC LIMIT 1",
                     [&conversation_id],
                     |row| row_to_agent_run(row),
@@ -136,7 +169,10 @@ impl AgentRunRepository for SqliteAgentRunRepository {
         self.db
             .query_optional(move |conn| {
                 conn.query_row(
-                    "SELECT id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id
+                    "SELECT id, conversation_id, status, started_at, completed_at, error_message,
+                            harness, provider_session_id, logical_model, effective_model_id,
+                            logical_effort, effective_effort, approval_policy, sandbox_mode,
+                            run_chain_id, parent_run_id
                      FROM agent_runs WHERE conversation_id = ?1 AND status = 'running' ORDER BY started_at DESC LIMIT 1",
                     [&conversation_id],
                     |row| row_to_agent_run(row),
@@ -153,7 +189,10 @@ impl AgentRunRepository for SqliteAgentRunRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id
+                    "SELECT id, conversation_id, status, started_at, completed_at, error_message,
+                            harness, provider_session_id, logical_model, effective_model_id,
+                            logical_effort, effective_effort, approval_policy, sandbox_mode,
+                            run_chain_id, parent_run_id
                      FROM agent_runs WHERE conversation_id = ?1 ORDER BY started_at DESC",
                 )?;
                 let runs = stmt
@@ -281,6 +320,8 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                         c.context_type,
                         c.context_id,
                         c.claude_session_id,
+                        c.provider_session_id as conv_provider_session_id,
+                        c.provider_harness as conv_provider_harness,
                         c.title,
                         c.message_count,
                         c.last_message_at,
@@ -292,11 +333,22 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                         ar.started_at,
                         ar.completed_at,
                         ar.error_message,
+                        ar.harness as run_harness,
+                        ar.provider_session_id as run_provider_session_id,
+                        ar.logical_model,
+                        ar.effective_model_id,
+                        ar.logical_effort,
+                        ar.effective_effort,
+                        ar.approval_policy,
+                        ar.sandbox_mode,
                         ar.run_chain_id,
                         ar.parent_run_id
                     FROM chat_conversations c
                     INNER JOIN agent_runs ar ON c.id = ar.conversation_id
-                    WHERE c.claude_session_id IS NOT NULL
+                    WHERE (
+                        c.claude_session_id IS NOT NULL
+                        OR (c.provider_harness = 'claude' AND c.provider_session_id IS NOT NULL)
+                    )
                       AND ar.status = 'cancelled'
                       AND ar.error_message = 'Orphaned on app restart'
                       AND ar.id = (
@@ -310,15 +362,35 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                 let results = stmt
                     .query_map([], |row| {
                         let context_type_str: String = row.get("context_type")?;
+                        let mut claude_session_id: Option<String> = row.get("claude_session_id")?;
+                        let mut provider_session_id: Option<String> =
+                            row.get("conv_provider_session_id")?;
+                        let mut provider_harness = row
+                            .get::<_, Option<String>>("conv_provider_harness")?
+                            .and_then(|value| value.parse::<AgentHarnessKind>().ok());
                         let conv_created_at_str: String = row.get("conv_created_at")?;
                         let conv_updated_at_str: String = row.get("conv_updated_at")?;
                         let last_message_at_str: Option<String> = row.get("last_message_at")?;
+
+                        if provider_session_id.is_none() && claude_session_id.is_some() {
+                            provider_session_id = claude_session_id.clone();
+                            provider_harness = Some(AgentHarnessKind::Claude);
+                        }
+
+                        if claude_session_id.is_none()
+                            && matches!(provider_harness, Some(AgentHarnessKind::Claude))
+                            && provider_session_id.is_some()
+                        {
+                            claude_session_id = provider_session_id.clone();
+                        }
 
                         let conversation = ChatConversation {
                             id: ChatConversationId::from_string(row.get::<_, String>("conv_id")?),
                             context_type: context_type_str.parse().unwrap_or(ChatContextType::Project),
                             context_id: row.get("context_id")?,
-                            claude_session_id: row.get("claude_session_id")?,
+                            claude_session_id,
+                            provider_session_id,
+                            provider_harness,
                             title: row.get("title")?,
                             message_count: row.get("message_count")?,
                             last_message_at: last_message_at_str.map(|s| parse_datetime(&s)),
@@ -340,6 +412,18 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                             started_at: parse_datetime(&started_at_str),
                             completed_at: completed_at_str.map(|s| parse_datetime(&s)),
                             error_message: row.get("error_message")?,
+                            harness: row
+                                .get::<_, Option<String>>("run_harness")?
+                                .and_then(|value| value.parse::<AgentHarnessKind>().ok()),
+                            provider_session_id: row.get("run_provider_session_id")?,
+                            logical_model: row.get("logical_model")?,
+                            effective_model_id: row.get("effective_model_id")?,
+                            logical_effort: row
+                                .get::<_, Option<String>>("logical_effort")?
+                                .and_then(|value| value.parse::<LogicalEffort>().ok()),
+                            effective_effort: row.get("effective_effort")?,
+                            approval_policy: row.get("approval_policy")?,
+                            sandbox_mode: row.get("sandbox_mode")?,
                             run_chain_id: row.get("run_chain_id")?,
                             parent_run_id: row.get("parent_run_id")?,
                         };

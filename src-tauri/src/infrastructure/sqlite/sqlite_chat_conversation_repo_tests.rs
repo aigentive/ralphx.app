@@ -2,6 +2,7 @@
 // Included via #[cfg(test)] mod in mod.rs
 
 use crate::domain::entities::{ChatContextType, ChatConversation, ChatConversationId};
+use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::repositories::ChatConversationRepository;
 use crate::infrastructure::sqlite::SqliteChatConversationRepository;
 use crate::testing::SqliteTestDb;
@@ -20,6 +21,8 @@ fn make_conversation(context_type: ChatContextType, context_id: &str) -> ChatCon
         context_type,
         context_id: context_id.to_string(),
         claude_session_id: None,
+        provider_session_id: None,
+        provider_harness: None,
         title: None,
         message_count: 0,
         last_message_at: None,
@@ -62,6 +65,8 @@ async fn test_create_preserves_optional_fields() {
         context_type: ChatContextType::Task,
         context_id: "task-42".to_string(),
         claude_session_id: Some("session-xyz".to_string()),
+        provider_session_id: Some("session-xyz".to_string()),
+        provider_harness: Some(AgentHarnessKind::Claude),
         title: Some("My Conversation".to_string()),
         message_count: 5,
         last_message_at: Some(now),
@@ -74,6 +79,8 @@ async fn test_create_preserves_optional_fields() {
     let loaded = repo.get_by_id(&conv.id).await.unwrap().unwrap();
 
     assert_eq!(loaded.claude_session_id, Some("session-xyz".to_string()));
+    assert_eq!(loaded.provider_session_id, Some("session-xyz".to_string()));
+    assert_eq!(loaded.provider_harness, Some(AgentHarnessKind::Claude));
     assert_eq!(loaded.title, Some("My Conversation".to_string()));
     assert_eq!(loaded.message_count, 5);
     assert!(loaded.last_message_at.is_some());
@@ -204,6 +211,36 @@ async fn test_update_claude_session_id() {
 
     let loaded = repo.get_by_id(&conv_id).await.unwrap().unwrap();
     assert_eq!(loaded.claude_session_id, Some("new-session-id".to_string()));
+    assert_eq!(loaded.provider_session_id, Some("new-session-id".to_string()));
+    assert_eq!(loaded.provider_harness, Some(AgentHarnessKind::Claude));
+}
+
+#[tokio::test]
+async fn test_update_provider_session_ref_for_codex() {
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
+
+    let conv = make_conversation(ChatContextType::Ideation, "ctx-1");
+    let conv_id = conv.id;
+    repo.create(conv).await.unwrap();
+
+    repo.update_provider_session_ref(
+        &conv_id,
+        &ProviderSessionRef {
+            harness: AgentHarnessKind::Codex,
+            provider_session_id: "codex-session-id".to_string(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let loaded = repo.get_by_id(&conv_id).await.unwrap().unwrap();
+    assert_eq!(loaded.provider_harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(
+        loaded.provider_session_id,
+        Some("codex-session-id".to_string())
+    );
+    assert_eq!(loaded.claude_session_id, None);
 }
 
 // --- clear_claude_session_id ---
@@ -219,6 +256,8 @@ async fn test_clear_claude_session_id() {
         context_type: ChatContextType::Ideation,
         context_id: "ctx-1".to_string(),
         claude_session_id: Some("existing-session".to_string()),
+        provider_session_id: Some("existing-session".to_string()),
+        provider_harness: Some(AgentHarnessKind::Claude),
         title: None,
         message_count: 0,
         last_message_at: None,
@@ -233,6 +272,8 @@ async fn test_clear_claude_session_id() {
 
     let loaded = repo.get_by_id(&conv_id).await.unwrap().unwrap();
     assert!(loaded.claude_session_id.is_none());
+    assert!(loaded.provider_session_id.is_none());
+    assert!(loaded.provider_harness.is_none());
 }
 
 // --- update_title ---

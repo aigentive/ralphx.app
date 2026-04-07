@@ -1,4 +1,5 @@
 use super::*;
+use crate::domain::agents::{AgentHarnessKind, LogicalEffort};
 use crate::domain::entities::IdeationSessionId;
 use crate::testing::SqliteTestDb;
 
@@ -144,7 +145,15 @@ async fn test_create_and_get_by_id() {
     let (db, repo) = setup_repo();
     let conv = db.seed_ideation_conversation();
 
-    let run = AgentRun::new(conv.id);
+    let mut run = AgentRun::new(conv.id);
+    run.harness = Some(AgentHarnessKind::Codex);
+    run.provider_session_id = Some("session-123".to_string());
+    run.logical_model = Some("gpt-5.4".to_string());
+    run.effective_model_id = Some("gpt-5.4".to_string());
+    run.logical_effort = Some(LogicalEffort::XHigh);
+    run.effective_effort = Some("high".to_string());
+    run.approval_policy = Some("on-request".to_string());
+    run.sandbox_mode = Some("workspace-write".to_string());
     let run_id = run.id;
     repo.create(run).await.unwrap();
 
@@ -154,6 +163,14 @@ async fn test_create_and_get_by_id() {
     assert_eq!(r.id, run_id);
     assert_eq!(r.conversation_id, conv.id);
     assert_eq!(r.status, AgentRunStatus::Running);
+    assert_eq!(r.harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(r.provider_session_id, Some("session-123".to_string()));
+    assert_eq!(r.logical_model, Some("gpt-5.4".to_string()));
+    assert_eq!(r.effective_model_id, Some("gpt-5.4".to_string()));
+    assert_eq!(r.logical_effort, Some(LogicalEffort::XHigh));
+    assert_eq!(r.effective_effort, Some("high".to_string()));
+    assert_eq!(r.approval_policy, Some("on-request".to_string()));
+    assert_eq!(r.sandbox_mode, Some("workspace-write".to_string()));
 }
 
 #[tokio::test]

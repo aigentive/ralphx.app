@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 
+use crate::domain::agents::ProviderSessionRef;
 use crate::domain::entities::{ChatContextType, ChatConversation, ChatConversationId};
 use crate::domain::repositories::ChatConversationRepository;
 use crate::error::AppResult;
@@ -68,24 +69,22 @@ impl ChatConversationRepository for MemoryChatConversationRepository {
             .cloned())
     }
 
-    async fn update_claude_session_id(
+    async fn update_provider_session_ref(
         &self,
         id: &ChatConversationId,
-        claude_session_id: &str,
+        session_ref: &ProviderSessionRef,
     ) -> AppResult<()> {
         let mut convos = self.conversations.write().await;
         if let Some(conv) = convos.get_mut(id) {
-            conv.claude_session_id = Some(claude_session_id.to_string());
-            conv.updated_at = Utc::now();
+            conv.set_provider_session_ref(session_ref.clone());
         }
         Ok(())
     }
 
-    async fn clear_claude_session_id(&self, id: &ChatConversationId) -> AppResult<()> {
+    async fn clear_provider_session_ref(&self, id: &ChatConversationId) -> AppResult<()> {
         let mut convos = self.conversations.write().await;
         if let Some(conversation) = convos.get_mut(id) {
-            conversation.claude_session_id = None;
-            conversation.updated_at = Utc::now();
+            conversation.clear_provider_session_ref();
         }
         Ok(())
     }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::agents::ProviderSessionRef;
 use crate::domain::entities::{ChatContextType, ChatConversation, IdeationSessionId};
 use std::sync::Arc;
 
@@ -55,15 +56,15 @@ impl ChatConversationRepository for MockChatConversationRepository {
             .cloned())
     }
 
-    async fn update_claude_session_id(
+    async fn update_provider_session_ref(
         &self,
         _id: &ChatConversationId,
-        _claude_session_id: &str,
+        _session_ref: &ProviderSessionRef,
     ) -> AppResult<()> {
         Ok(())
     }
 
-    async fn clear_claude_session_id(&self, _id: &ChatConversationId) -> AppResult<()> {
+    async fn clear_provider_session_ref(&self, _id: &ChatConversationId) -> AppResult<()> {
         Ok(())
     }
 
