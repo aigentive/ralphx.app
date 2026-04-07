@@ -192,6 +192,8 @@ export const SendContextMessageResponseSchema = z.object({
   response_text: z.string(),
   tool_calls: z.array(ToolCallResponseSchema),
   claude_session_id: z.string().nullable(),
+  provider_session_id: z.string().nullable().optional(),
+  provider_harness: ProviderHarnessSchema.nullable().optional(),
   conversation_id: z.string().nullable(),
 });
 

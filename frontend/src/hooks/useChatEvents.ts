@@ -21,6 +21,7 @@ import { useEventBus } from "@/providers/EventProvider";
 import { chatKeys } from "@/hooks/useChat";
 import { getContextConfig } from "@/lib/chat-context-registry";
 import type { ContextType } from "@/types/chat-conversation";
+import type { AgentRunCompletedPayload } from "@/types/events";
 import type { ToolCall } from "@/components/Chat/ToolCallIndicator";
 import type { StreamingTask, StreamingContentBlock } from "@/types/streaming-task";
 import type { Unsubscribe } from "@/lib/event-bus";
@@ -513,11 +514,7 @@ export function useChatEvents({
     // Clear all streaming state on run completion.
     // Query invalidation is owned by useAgentEvents to avoid duplicate refetches.
     unsubscribes.push(
-      bus.subscribe<{
-        conversation_id: string;
-        context_id?: string;
-        context_type?: string;
-      }>("agent:run_completed", (payload) => {
+      bus.subscribe<AgentRunCompletedPayload>("agent:run_completed", (payload) => {
         if (!isRelevant(payload)) return;
 
         setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
@@ -537,11 +534,7 @@ export function useChatEvents({
     // Clear streaming state on turn completion (agent still alive in interactive mode).
     // Query invalidation is owned by useAgentEvents to avoid duplicate refetches.
     unsubscribes.push(
-      bus.subscribe<{
-        conversation_id: string;
-        context_id?: string;
-        context_type?: string;
-      }>("agent:turn_completed", (payload) => {
+      bus.subscribe<AgentRunCompletedPayload>("agent:turn_completed", (payload) => {
         if (!isRelevant(payload)) return;
 
         setStreamingToolCalls(prev => prev.length === 0 ? prev : []);

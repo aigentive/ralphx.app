@@ -537,3 +537,18 @@ export interface AgentRunStartedPayload {
   providerHarness?: "claude" | "codex";
   providerSessionId?: string | null;
 }
+
+/**
+ * Payload emitted with the agent:run_completed and agent:turn_completed Tauri events.
+ * Fields remain snake_case to match the backend serializer for these payloads.
+ */
+export interface AgentRunCompletedPayload {
+  conversation_id: string;
+  context_type: string;
+  context_id: string;
+  claude_session_id?: string | null;
+  provider_harness?: "claude" | "codex" | null;
+  provider_session_id?: string | null;
+  run_chain_id?: string | null;
+  teammate_name?: string | null;
+}

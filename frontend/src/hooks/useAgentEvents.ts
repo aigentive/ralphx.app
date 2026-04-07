@@ -13,6 +13,10 @@ import { toast } from "sonner";
 import { useEventBus } from "@/providers/EventProvider";
 import type { ChatMessageResponse } from "@/api/chat";
 import type { ChatConversation, ContextType } from "@/types/chat-conversation";
+import type {
+  AgentRunCompletedPayload,
+  AgentRunStartedPayload,
+} from "@/types/events";
 import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useUiStore } from "@/stores/uiStore";
@@ -131,13 +135,7 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
     // Listen for run started - set agent running state to true and update conversation cache
     // Skip teammate events — useTeamEvents handles those independently
     unsubscribes.push(
-      bus.subscribe<{
-        run_id: string;
-        context_type: string;
-        context_id: string;
-        conversation_id: string;
-        teammate_name?: string | null;
-      }>("agent:run_started", (payload) => {
+      bus.subscribe<AgentRunStartedPayload>("agent:run_started", (payload) => {
         if (payload.teammate_name) return;
         const { context_type, context_id: eventContextId, conversation_id } = payload;
 
@@ -246,13 +244,7 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
     // Unified event: agent:run_completed (replaces chat:run_completed)
     // Skip teammate events — useTeamEvents handles those independently
     unsubscribes.push(
-      bus.subscribe<{
-        context_type: string;
-        context_id: string;
-        conversation_id: string;
-        status: string;
-        teammate_name?: string | null;
-      }>("agent:run_completed", (payload) => {
+      bus.subscribe<AgentRunCompletedPayload>("agent:run_completed", (payload) => {
         if (payload.teammate_name) return;
         const { conversation_id, context_type, context_id: eventContextId } = payload;
 
@@ -276,13 +268,7 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
     // (not "generating"), while the process remains alive.
     // Skip teammate events — useTeamEvents handles those independently
     unsubscribes.push(
-      bus.subscribe<{
-        context_type: string;
-        context_id: string;
-        conversation_id: string;
-        status: string;
-        teammate_name?: string | null;
-      }>("agent:turn_completed", (payload) => {
+      bus.subscribe<AgentRunCompletedPayload>("agent:turn_completed", (payload) => {
         if (payload.teammate_name) return;
         const { conversation_id, context_type, context_id: eventContextId } = payload;
 
