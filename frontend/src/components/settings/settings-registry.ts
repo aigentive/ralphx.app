@@ -8,6 +8,7 @@ export type SettingsSectionId =
   | "github"
   | "project-analysis"
   | "ideation-workflow"
+  | "ideation-harnesses"
   | "ideation-effort"
   | "ideation-models"
   | "api-keys"
@@ -38,6 +39,7 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
   { id: "github", groupId: "workspace", label: "GitHub" },
   { id: "project-analysis", groupId: "workspace", label: "Project Analysis" },
   { id: "ideation-workflow", groupId: "ideation", label: "Workflow" },
+  { id: "ideation-harnesses", groupId: "ideation", label: "Harnesses" },
   { id: "ideation-effort", groupId: "ideation", label: "Effort" },
   { id: "ideation-models", groupId: "ideation", label: "Models" },
   { id: "api-keys", groupId: "access", label: "API Keys" },

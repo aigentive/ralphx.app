@@ -69,10 +69,19 @@ pub(crate) async fn resolve_agent_spawn_settings(
         lane_settings_value(primary_project_row.as_ref(), primary_global_row.as_ref());
     let configured_harness = lane_harness(primary_project_row.as_ref(), primary_global_row.as_ref());
     let effective_harness = configured_harness.unwrap_or(AgentHarnessKind::Claude);
+    let codex_primary_defaults = primary_lane.and_then(|lane| codex_default_lane_settings(
+        lane,
+        effective_harness,
+    ));
 
     let model = if let Some(model_override) = model_override {
         model_override.to_string()
     } else if let Some(model) = lane_model_value(primary_project_row.as_ref(), primary_global_row.as_ref()) {
+        model
+    } else if let Some(model) = codex_primary_defaults
+        .as_ref()
+        .and_then(|settings| settings.model.clone())
+    {
         model
     } else {
         resolve_legacy_ideation_model(agent_name, project_id, ideation_model_settings_repo).await
@@ -84,6 +93,8 @@ pub(crate) async fn resolve_agent_spawn_settings(
             primary_global_row.as_ref(),
         ) {
             Some(effort)
+        } else if let Some(defaults) = codex_primary_defaults.as_ref() {
+            defaults.effort
         } else {
             resolve_legacy_ideation_effort(agent_name, project_id, ideation_effort_settings_repo)
                 .await
@@ -102,6 +113,10 @@ pub(crate) async fn resolve_agent_spawn_settings(
         .and_then(|settings| settings.model);
 
         let subagent_model_cap = if let Some(model) = configured_subagent_model_cap.clone() {
+            model
+        } else if let Some(model) = codex_default_lane_settings(subagent_lane, effective_harness)
+            .and_then(|settings| settings.model)
+        {
             model
         } else {
             resolve_legacy_subagent_model_cap(agent_name, project_id, ideation_model_settings_repo)
@@ -133,10 +148,20 @@ pub(crate) async fn resolve_agent_spawn_settings(
         claude_effort: logical_effort.map(|effort| effort.to_legacy_claude_effort().to_string()),
         approval_policy: configured_primary_settings
             .as_ref()
-            .and_then(|settings| settings.approval_policy.clone()),
+            .and_then(|settings| settings.approval_policy.clone())
+            .or_else(|| {
+                codex_primary_defaults
+                    .as_ref()
+                    .and_then(|settings| settings.approval_policy.clone())
+            }),
         sandbox_mode: configured_primary_settings
             .as_ref()
-            .and_then(|settings| settings.sandbox_mode.clone()),
+            .and_then(|settings| settings.sandbox_mode.clone())
+            .or_else(|| {
+                codex_primary_defaults
+                    .as_ref()
+                    .and_then(|settings| settings.sandbox_mode.clone())
+            }),
         configured_subagent_model_cap,
         subagent_model_cap,
     }
@@ -252,6 +277,43 @@ fn lane_logical_effort_value(
     }
 
     global_row.and_then(|row| row.settings.effort)
+}
+
+fn codex_default_lane_settings(
+    lane: AgentLane,
+    harness: AgentHarnessKind,
+) -> Option<AgentLaneSettings> {
+    if harness != AgentHarnessKind::Codex {
+        return None;
+    }
+
+    let mut settings = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    settings.fallback_harness = Some(AgentHarnessKind::Claude);
+
+    match lane {
+        AgentLane::IdeationPrimary => {
+            settings.model = Some("gpt-5.4".to_string());
+            settings.effort = Some(LogicalEffort::XHigh);
+            settings.approval_policy = Some("on-request".to_string());
+            settings.sandbox_mode = Some("workspace-write".to_string());
+        }
+        AgentLane::IdeationVerifier => {
+            settings.model = Some("gpt-5.4-mini".to_string());
+            settings.effort = Some(LogicalEffort::Medium);
+            settings.approval_policy = Some("on-request".to_string());
+            settings.sandbox_mode = Some("workspace-write".to_string());
+        }
+        AgentLane::IdeationSubagent | AgentLane::IdeationVerifierSubagent => {
+            settings.model = Some("gpt-5.4-mini".to_string());
+            settings.effort = Some(LogicalEffort::Medium);
+        }
+        AgentLane::ExecutionWorker
+        | AgentLane::ExecutionReviewer
+        | AgentLane::ExecutionReexecutor
+        | AgentLane::ExecutionMerger => return None,
+    }
+
+    Some(settings)
 }
 
 async fn resolve_legacy_ideation_model(

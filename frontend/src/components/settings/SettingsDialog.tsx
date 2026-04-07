@@ -19,6 +19,7 @@ import { ExternalMcpSettingsPanel } from "./ExternalMcpSettingsPanel";
 import { GitSettingsSection } from "./GitSettingsSection";
 import { GitHubSettingsSection } from "./GitHubSettingsSection";
 import { IdeationEffortSection } from "./IdeationEffortSection";
+import { IdeationHarnessSection } from "./IdeationHarnessSection";
 import { IdeationModelSection } from "./IdeationModelSection";
 import { IdeationSettingsPanel } from "./IdeationSettingsPanel";
 import { ProjectAnalysisSection } from "./ProjectAnalysisSection";
@@ -110,6 +111,7 @@ export default function SettingsDialog({
     github: () => <GitHubSettingsSection />,
     "project-analysis": () => <ProjectAnalysisSection />,
     "ideation-workflow": () => <IdeationSettingsPanel />,
+    "ideation-harnesses": () => <IdeationHarnessSection />,
     "ideation-effort": () => <IdeationEffortSection />,
     "ideation-models": () => <IdeationModelSection />,
     "api-keys": () => <ApiKeysSection />,
