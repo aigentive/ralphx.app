@@ -304,12 +304,13 @@ export function PlanningView({
   useEffect(() => { fetchPlanArtifactRef.current = fetchPlanArtifact; }, [fetchPlanArtifact]);
 
   const planArtifactId = planArtifact?.id ?? null;
+  const effectivePlanId = session?.planArtifactId ?? session?.inheritedPlanArtifactId ?? null;
   useEffect(() => {
-    if (!session?.planArtifactId) return;
-    if (planArtifactId !== session.planArtifactId) {
-      fetchPlanArtifactRef.current(session.planArtifactId);
+    if (!effectivePlanId) return;
+    if (planArtifactId !== effectivePlanId) {
+      fetchPlanArtifactRef.current(effectivePlanId);
     }
-  }, [session?.planArtifactId, planArtifactId]);
+  }, [effectivePlanId, planArtifactId, session?.planArtifactId, session?.inheritedPlanArtifactId]);
 
   // Fetch plan branch to show preserved branch config in reopen dialog
   const { data: planBranch } = useQuery({
@@ -639,10 +640,10 @@ export function PlanningView({
       userOverrideRef.current = false;
       prevProposalAddedAtRef.current = lastProposalAddedAt;
       lastDependencyToastAtRef.current = null;
-      setIsPlanExpanded(!!session.planArtifactId);
+      setIsPlanExpanded(!!(session.planArtifactId ?? session.inheritedPlanArtifactId));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.id, session?.planArtifactId]);
+  }, [session?.id, session?.planArtifactId, session?.inheritedPlanArtifactId]);
 
   const handlePlanExpandedChange = useCallback((expanded: boolean) => {
     autoOpenedPlanRef.current = false;

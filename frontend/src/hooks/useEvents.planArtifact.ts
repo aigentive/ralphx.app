@@ -172,19 +172,33 @@ export function usePlanArtifactEvents() {
           // Match against previousArtifactId because the store's session
           // still holds the old artifact ID when this event arrives.
           // Immediately update planArtifactId so rapid subsequent events still match.
+          // Also checks inheritedPlanArtifactId for followup sessions that inherit
+          // a plan but never set planArtifactId themselves.
           let tier2Matched = false;
           for (const session of Object.values(currentSessions)) {
-            if (
+            const matchedOnOwn =
               session.planArtifactId === previousArtifactId ||
-              session.planArtifactId === artifactId
-            ) {
+              session.planArtifactId === artifactId;
+            const matchedOnInherited =
+              !matchedOnOwn &&
+              (session.inheritedPlanArtifactId === previousArtifactId ||
+                session.inheritedPlanArtifactId === artifactId);
+
+            if (matchedOnOwn || matchedOnInherited) {
               tier2Matched = true;
               if (session.id === currentActiveSessionId) {
                 setPlanArtifactRef.current(planArtifact);
               }
-              if (session.planArtifactId !== artifact.id) {
+              if (matchedOnOwn && session.planArtifactId !== artifact.id) {
                 updateSessionRef.current(session.id, {
                   planArtifactId: artifact.id,
+                });
+              } else if (
+                matchedOnInherited &&
+                session.inheritedPlanArtifactId !== artifact.id
+              ) {
+                updateSessionRef.current(session.id, {
+                  inheritedPlanArtifactId: artifact.id,
                 });
               }
               queryClientRef.current.invalidateQueries({

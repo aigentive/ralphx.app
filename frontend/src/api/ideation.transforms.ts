@@ -43,6 +43,7 @@ export function transformSession(raw: z.infer<typeof IdeationSessionResponseSche
     titleSource: raw.title_source ?? null,
     status: raw.status as IdeationSessionStatus,
     planArtifactId: raw.plan_artifact_id,
+    inheritedPlanArtifactId: raw.inherited_plan_artifact_id ?? null,
     seedTaskId: raw.seed_task_id ?? null,
     parentSessionId: raw.parent_session_id,
     teamMode: raw.team_mode ?? null,

@@ -282,7 +282,7 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   const enqueuePendingVerification = useUiStore((s) => s.enqueuePendingVerification);
 
   const verificationStatus = session.verificationStatus ?? "unverified";
-  const hasPlan = !!session.planArtifactId;
+  const hasPlan = !!(session.planArtifactId || session.inheritedPlanArtifactId);
   const isApproved = session.status === "accepted";
   const isInProgress = (session.verificationInProgress ?? false) || !!activeVerificationChildId;
 
