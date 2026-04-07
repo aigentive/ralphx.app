@@ -9,6 +9,7 @@ use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
 use crate::domain::services::{MemoryRunningAgentRegistry, MessageQueue};
 use crate::domain::state_machine::transition_handler::metadata_builder::MetadataUpdate;
 use crate::error::AppError;
+use crate::infrastructure::{MockAgenticClient, MockCallType};
 use serde_json::Value;
 
 #[test]
@@ -304,6 +305,51 @@ async fn test_qa_testing_transition_auto_adds_trigger_origin() {
         parsed.get("trigger_origin").unwrap(),
         &Value::String("qa".to_string())
     );
+}
+
+#[tokio::test]
+async fn test_qa_transition_uses_injected_agentic_client_factory() {
+    let app_state = AppState::new_test();
+    let mock_client = Arc::new(MockAgenticClient::new());
+    let service = build_test_service(&app_state).with_agentic_client_factory({
+        let mock_client = Arc::clone(&mock_client);
+        move || mock_client.clone() as Arc<dyn crate::domain::agents::AgenticClient>
+    });
+
+    let repo_dir = tempfile::tempdir().unwrap();
+    init_git_repo(repo_dir.path());
+
+    let project = Project::new(
+        "Test Project".to_string(),
+        repo_dir.path().to_string_lossy().into_owned(),
+    );
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Test Task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    task.worktree_path = Some(repo_dir.path().to_string_lossy().into_owned());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let updated_task = service
+        .transition_task_with_metadata(&task.id, InternalStatus::QaRefining, None)
+        .await
+        .unwrap();
+
+    assert_eq!(updated_task.internal_status, InternalStatus::QaRefining);
+
+    let calls = mock_client.get_spawn_calls().await;
+    assert_eq!(calls.len(), 1);
+    match &calls[0].call_type {
+        MockCallType::Spawn { role, prompt } => {
+            assert_eq!(*role, crate::domain::agents::AgentRole::QaRefiner);
+            assert!(prompt.contains(task.id.as_str()));
+        }
+        other => panic!("expected spawn call, got {other:?}"),
+    }
 }
 
 #[tokio::test]

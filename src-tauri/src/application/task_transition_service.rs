@@ -19,6 +19,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::application::{AppState, ChatService, ClaudeChatService, InteractiveProcessRegistry};
 use crate::commands::ExecutionState;
+use crate::domain::agents::AgenticClient;
 use crate::domain::entities::{
     ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
     ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource, InternalStatus,
@@ -48,6 +49,8 @@ use crate::domain::state_machine::transition_handler::set_trigger_origin;
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::spawner::AgenticClientSpawner;
 use crate::infrastructure::ClaudeCodeClient;
+
+type AgenticClientFactory = dyn Fn() -> Arc<dyn AgenticClient> + Send + Sync;
 
 // ============================================================================
 // No-op service implementations (for services not yet fully implemented)
@@ -645,6 +648,7 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     task_repo: Arc<dyn TaskRepository>,
     project_repo: Arc<dyn ProjectRepository>,
     agent_spawner: Arc<dyn AgentSpawner>,
+    agent_client_factory: Arc<AgenticClientFactory>,
     event_emitter: Arc<dyn EventEmitter>,
     notifier: Arc<dyn Notifier>,
     dependency_manager: Arc<dyn DependencyManager>,
@@ -737,6 +741,31 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
 }
 
 impl<R: Runtime> TaskTransitionService<R> {
+    fn default_agent_client_factory() -> Arc<AgenticClientFactory> {
+        Arc::new(|| Arc::new(ClaudeCodeClient::new()) as Arc<dyn AgenticClient>)
+    }
+
+    fn build_agent_spawner(
+        agent_client_factory: &Arc<AgenticClientFactory>,
+        task_repo: Arc<dyn TaskRepository>,
+        project_repo: Arc<dyn ProjectRepository>,
+        execution_state: Arc<ExecutionState>,
+        execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+        ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+        running_agent_registry: Arc<dyn RunningAgentRegistry>,
+    ) -> Arc<dyn AgentSpawner> {
+        let agent_client = (agent_client_factory.as_ref())();
+        let spawner = AgenticClientSpawner::new(agent_client)
+            .with_repos(Arc::clone(&task_repo), Arc::clone(&project_repo))
+            .with_execution_state(Arc::clone(&execution_state));
+        let spawner = if let Some(repo) = execution_settings_repo {
+            spawner.with_runtime_admission_context(repo, ideation_session_repo, running_agent_registry)
+        } else {
+            spawner
+        };
+        Arc::new(spawner)
+    }
+
     fn validate_status_transition(
         &self,
         task_id: &TaskId,
@@ -781,15 +810,15 @@ impl<R: Runtime> TaskTransitionService<R> {
         app_handle: Option<AppHandle<R>>,
         memory_event_repo: Arc<dyn MemoryEventRepository>,
     ) -> Self {
-        // Create the agent client for spawning
-        let agent_client = Arc::new(ClaudeCodeClient::new());
-
-        // Create the agent spawner with execution state for spawn gating
-        // and task/project repos for per-task CWD resolution (worktree-aware)
-        let agent_spawner: Arc<dyn AgentSpawner> = Arc::new(
-            AgenticClientSpawner::new(agent_client)
-                .with_repos(Arc::clone(&task_repo), Arc::clone(&project_repo))
-                .with_execution_state(Arc::clone(&execution_state)),
+        let agent_client_factory = Self::default_agent_client_factory();
+        let agent_spawner = Self::build_agent_spawner(
+            &agent_client_factory,
+            Arc::clone(&task_repo),
+            Arc::clone(&project_repo),
+            Arc::clone(&execution_state),
+            None,
+            Arc::clone(&ideation_session_repo),
+            Arc::clone(&running_agent_registry),
         );
 
         // Clone activity_event_repo before consuming it in the chat service
@@ -842,6 +871,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             task_repo,
             project_repo,
             agent_spawner,
+            agent_client_factory,
             event_emitter,
             notifier,
             dependency_manager,
@@ -941,21 +971,45 @@ impl<R: Runtime> TaskTransitionService<R> {
             }
         }
 
-        let agent_client = Arc::new(ClaudeCodeClient::new());
-        let spawner = AgenticClientSpawner::new(agent_client)
-            .with_repos(Arc::clone(&self.task_repo), Arc::clone(&self.project_repo))
-            .with_execution_state(Arc::clone(&self.execution_state))
-            .with_runtime_admission_context(
-                Arc::clone(&repo),
-                Arc::clone(
-                    self.ideation_session_repo
-                        .as_ref()
-                        .expect("ideation_session_repo set in new"),
-                ),
-                Arc::clone(&self.running_agent_registry),
-            );
-        self.agent_spawner = Arc::new(spawner);
+        self.agent_spawner = Self::build_agent_spawner(
+            &self.agent_client_factory,
+            Arc::clone(&self.task_repo),
+            Arc::clone(&self.project_repo),
+            Arc::clone(&self.execution_state),
+            Some(Arc::clone(&repo)),
+            Arc::clone(
+                self.ideation_session_repo
+                    .as_ref()
+                    .expect("ideation_session_repo set in new"),
+            ),
+            Arc::clone(&self.running_agent_registry),
+        );
         self.execution_settings_repo = Some(repo);
+        self
+    }
+
+    /// Override the agentic client factory used by the state-machine spawner.
+    ///
+    /// Defaults to `ClaudeCodeClient`; tests and future harness integrations can inject
+    /// another provider without changing the transition-service callsites.
+    pub fn with_agentic_client_factory<F>(mut self, factory: F) -> Self
+    where
+        F: Fn() -> Arc<dyn AgenticClient> + Send + Sync + 'static,
+    {
+        self.agent_client_factory = Arc::new(factory);
+        self.agent_spawner = Self::build_agent_spawner(
+            &self.agent_client_factory,
+            Arc::clone(&self.task_repo),
+            Arc::clone(&self.project_repo),
+            Arc::clone(&self.execution_state),
+            self.execution_settings_repo.as_ref().map(Arc::clone),
+            Arc::clone(
+                self.ideation_session_repo
+                    .as_ref()
+                    .expect("ideation_session_repo set in new"),
+            ),
+            Arc::clone(&self.running_agent_registry),
+        );
         self
     }
 
