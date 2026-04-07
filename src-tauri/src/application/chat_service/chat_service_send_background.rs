@@ -650,19 +650,9 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                         execution_state.as_ref().cloned(),
                         execution_settings_repo.as_ref().cloned(),
                     ) {
-                        let chat_svc: Arc<dyn super::ChatService> = if let Some(ref ah) = app_handle
-                        {
-                            if let Some(app_state) =
-                                ah.try_state::<crate::application::AppState>()
-                            {
-                                Arc::new(
-                                    app_state.build_chat_service_with_execution_state(
-                                        Arc::clone(&exec_state),
-                                    ),
-                                )
-                            } else {
-                                let mut svc: super::ClaudeChatService<R> =
-                                    super::ClaudeChatService::new(
+                        let build_fallback_chat_service =
+                            |app_handle_override: Option<AppHandle<R>>| {
+                                let mut svc: super::ClaudeChatService<R> = super::ClaudeChatService::new(
                                     Arc::clone(&chat_message_repo),
                                     Arc::clone(&chat_attachment_repo),
                                     Arc::clone(&artifact_repo),
@@ -676,9 +666,10 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                                     Arc::clone(&message_queue),
                                     Arc::clone(&running_agent_registry),
                                     Arc::clone(&memory_event_repo),
-                                    )
-                                    .with_execution_state(Arc::clone(&exec_state))
-                                    .with_execution_settings_repo(Arc::clone(&exec_settings));
+                                )
+                                .with_execution_state(Arc::clone(&exec_state))
+                                .with_execution_settings_repo(Arc::clone(&exec_settings));
+
                                 if let Some(ref lane_repo) = agent_lane_settings_repo {
                                     svc = svc.with_agent_lane_settings_repo(Arc::clone(lane_repo));
                                 }
@@ -689,38 +680,28 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                                 if let Some(ref model_repo) = ideation_model_settings_repo {
                                     svc = svc.with_ideation_model_settings_repo(Arc::clone(model_repo));
                                 }
-                                Arc::new(svc.with_app_handle(ah.clone()))
+                                if let Some(ah) = app_handle_override {
+                                    svc = svc.with_app_handle(ah);
+                                }
+
+                                Arc::new(svc) as Arc<dyn super::ChatService>
+                            };
+
+                        let chat_svc: Arc<dyn super::ChatService> = if let Some(ref ah) = app_handle {
+                            if let Some(app_state) =
+                                ah.try_state::<crate::application::AppState>()
+                            {
+                                Arc::new(
+                                    app_state.build_chat_service_for_runtime(
+                                        Some(Arc::clone(&exec_state)),
+                                        app_handle.clone(),
+                                    ),
+                                )
+                            } else {
+                                build_fallback_chat_service(Some(ah.clone()))
                             }
                         } else {
-                            let mut svc: super::ClaudeChatService<R> =
-                                super::ClaudeChatService::new(
-                                Arc::clone(&chat_message_repo),
-                                Arc::clone(&chat_attachment_repo),
-                                Arc::clone(&artifact_repo),
-                                Arc::clone(&conversation_repo),
-                                Arc::clone(&agent_run_repo),
-                                Arc::clone(&project_repo),
-                                Arc::clone(&task_repo),
-                                Arc::clone(&task_dependency_repo),
-                                Arc::clone(&ideation_session_repo),
-                                Arc::clone(&activity_event_repo),
-                                Arc::clone(&message_queue),
-                                Arc::clone(&running_agent_registry),
-                                Arc::clone(&memory_event_repo),
-                                )
-                                .with_execution_state(Arc::clone(&exec_state))
-                                .with_execution_settings_repo(Arc::clone(&exec_settings));
-                            if let Some(ref lane_repo) = agent_lane_settings_repo {
-                                svc = svc.with_agent_lane_settings_repo(Arc::clone(lane_repo));
-                            }
-                            if let Some(ref effort_repo) = ideation_effort_settings_repo {
-                                svc = svc
-                                    .with_ideation_effort_settings_repo(Arc::clone(effort_repo));
-                            }
-                            if let Some(ref model_repo) = ideation_model_settings_repo {
-                                svc = svc.with_ideation_model_settings_repo(Arc::clone(model_repo));
-                            }
-                            Arc::new(svc)
+                            build_fallback_chat_service(None)
                         };
 
                         let drain = Arc::new(
