@@ -39,7 +39,6 @@ pub use error::{AppError, AppResult};
 mod tests;
 
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::Manager;
@@ -1493,73 +1492,6 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|app_handle, event| {
-            if matches!(event, tauri::RunEvent::Exit) {
-                let app_state = app_handle.state::<AppState>();
-
-                // Set shutdown flag FIRST — before killing agents — so that any stream handlers
-                // still in flight can detect the shutdown and skip escalation. SeqCst ensures
-                // immediate visibility across all threads.
-                let exec_state = app_handle.state::<Arc<commands::ExecutionState>>();
-                exec_state.is_shutting_down.store(true, Ordering::SeqCst);
-
-                let registry = Arc::clone(&app_state.running_agent_registry);
-                let interactive = Arc::clone(&app_state.interactive_process_registry);
-                let db = app_state.db.clone();
-
-                // Step 1: Agent shutdown — capped at 2.5s so MCP + WAL fit within macOS 5s window.
-                // If agents are slow, they are abandoned and the OS will clean up.
-                tauri::async_runtime::block_on(async {
-                    let _ = tokio::time::timeout(Duration::from_millis(2500), async move {
-                        let ipr_dump = interactive.dump_state().await;
-                        tracing::info!(
-                            count = ipr_dump.len(),
-                            "[IPR_EXIT_DUMP] IPR entries at shutdown: {:?}",
-                            ipr_dump
-                        );
-                        interactive.clear().await;
-                        let stopped = registry.stop_all().await;
-                        crate::infrastructure::agents::claude::kill_all_tracked_processes().await;
-                        if !stopped.is_empty() {
-                            tracing::info!(
-                                count = stopped.len(),
-                                "Killed running agents on app exit"
-                            );
-                        }
-                    })
-                    .await;
-                });
-
-                // Step 2: External MCP shutdown — separate OS thread to avoid nested block_on deadlock.
-                // Supervisor.shutdown() is internally capped at 2s (SIGTERM → SIGKILL).
-                if let Some(supervisor) = app_handle.state::<ExternalMcpHandle>().get() {
-                    let supervisor = supervisor.clone();
-                    std::thread::spawn(move || {
-                        let rt = tokio::runtime::Builder::new_current_thread()
-                            .enable_all()
-                            .build()
-                            .unwrap();
-                        rt.block_on(supervisor.shutdown());
-                    })
-                    .join()
-                    .ok();
-                }
-
-                // Step 3: WAL checkpoint — runs last, ~100ms. Total budget: 2.5 + 2 + 0.1 = 4.6s < 5s.
-                tauri::async_runtime::block_on(async {
-                    let checkpoint_result = db
-                        .run(|conn| {
-                            conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
-                                .map_err(|e| {
-                                    crate::error::AppError::Database(format!(
-                                        "WAL checkpoint failed: {e}"
-                                    ))
-                                })
-                        })
-                        .await;
-                    if let Err(e) = checkpoint_result {
-                        tracing::warn!(error = %e, "WAL checkpoint on exit failed");
-                    }
-                });
-            }
+            application::shutdown::handle_run_event(app_handle, &event);
         });
 }
