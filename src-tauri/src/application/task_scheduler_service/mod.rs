@@ -22,12 +22,13 @@ use std::sync::{
     atomic::{AtomicU32, Ordering},
     Arc, Mutex,
 };
-use tauri::{AppHandle, Runtime};
+use tauri::{AppHandle, Manager, Runtime};
 use tokio::sync::{Mutex as TokioMutex, RwLock};
 
 use crate::infrastructure::agents::claude::scheduler_config;
 
 use crate::commands::ExecutionState;
+use crate::application::AppState;
 use crate::application::chat_service::uses_execution_slot;
 use crate::commands::execution_commands::context_matches_running_status_for_gc;
 use crate::domain::entities::{
@@ -332,6 +333,11 @@ impl<R: Runtime> TaskSchedulerService<R> {
             self.app_handle.clone(),
             Arc::clone(&self.memory_event_repo),
         );
+        if let Some(handle) = self.app_handle.as_ref() {
+            if let Some(app_state) = handle.try_state::<AppState>() {
+                service = service.with_agentic_client(Arc::clone(&app_state.agent_client));
+            }
+        }
         if let Some(ref repo) = self.execution_settings_repo {
             service = service.with_execution_settings_repo(Arc::clone(repo));
         }

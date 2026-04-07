@@ -6,9 +6,10 @@
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tokio::time::Duration;
 
+use crate::application::AppState;
 use crate::application::git_service::{GitService, StaleRebaseResult};
 use crate::application::git_service::checkout_free::update_branch_ref;
 use crate::application::interactive_process_registry::InteractiveProcessKey;
@@ -101,6 +102,15 @@ impl<'a, R: Runtime> MergeAutoCompleteContext<'a, R> {
             self.app_handle.cloned(),
             Arc::clone(self.memory_event_repo),
         );
+        let service = if let Some(handle) = self.app_handle {
+            if let Some(app_state) = handle.try_state::<AppState>() {
+                service.with_agentic_client(Arc::clone(&app_state.agent_client))
+            } else {
+                service
+            }
+        } else {
+            service
+        };
         let service = if let Some(repo) = self.execution_settings_repo {
             service.with_execution_settings_repo(Arc::clone(repo))
         } else {
