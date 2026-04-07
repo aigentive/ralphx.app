@@ -40,6 +40,7 @@ pub mod review_service;
 pub mod session_export_service;
 pub mod session_namer_prompt;
 pub mod session_reopen_service;
+pub mod setup_settings;
 pub mod shutdown;
 pub mod startup_jobs;
 pub mod startup_background;

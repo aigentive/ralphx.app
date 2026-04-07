@@ -4,16 +4,12 @@ use tracing::{info, warn};
 
 use crate::AppState;
 use crate::application;
-use crate::application::ideation_effort_bootstrap::seed_ideation_effort_defaults;
-use crate::application::ideation_model_bootstrap::seed_ideation_model_settings;
 use crate::application::runtime_wiring::{
     build_http_app_state, create_main_window, register_managed_state,
 };
+use crate::application::setup_settings::initialize_settings_defaults;
 use crate::application::startup_pipeline::StartupPipelineDeps;
-use crate::application::{
-    TeamStateTracker, load_or_seed_agent_lane_settings_defaults,
-    load_or_seed_execution_settings_defaults,
-};
+use crate::application::TeamStateTracker;
 use crate::commands::{ActiveProjectState, ExecutionState};
 use crate::http_server;
 use crate::infrastructure;
@@ -44,104 +40,7 @@ pub(crate) fn run_app_setup(
             Arc::new(crate::infrastructure::HyperWebhookClient::new()),
         ));
     app_state.webhook_publisher = Some(Arc::clone(&webhook_publisher));
-
-    // Load execution settings from database and apply to ExecutionState
-    // This must happen before HTTP server starts to ensure consistent configuration
-    let init_settings_repo = Arc::clone(&app_state.execution_settings_repo);
-    let init_global_settings_repo = Arc::clone(&app_state.global_execution_settings_repo);
-    let init_agent_lane_settings_repo = Arc::clone(&app_state.agent_lane_settings_repo);
-    let execution_defaults = infrastructure::agents::claude::execution_defaults_config().clone();
-    let agent_harness_defaults =
-        infrastructure::agents::claude::agent_harness_defaults_config().clone();
-    tauri::async_runtime::block_on(async move {
-        match load_or_seed_execution_settings_defaults(
-            init_settings_repo,
-            init_global_settings_repo,
-            &execution_defaults.project,
-            &execution_defaults.global,
-        )
-        .await
-        {
-            Ok(result) => {
-                init_execution_state
-                    .set_max_concurrent(result.project_defaults.max_concurrent_tasks);
-                init_execution_state
-                    .set_global_max_concurrent(result.global_defaults.global_max_concurrent);
-                init_execution_state
-                    .set_global_ideation_max(result.global_defaults.global_ideation_max);
-                init_execution_state.set_allow_ideation_borrow_idle_execution(
-                    result.global_defaults.allow_ideation_borrow_idle_execution,
-                );
-                info!(
-                    seeded_project_defaults = result.seeded_project_defaults,
-                    seeded_global_defaults = result.seeded_global_defaults,
-                    max_concurrent = result.project_defaults.max_concurrent_tasks,
-                    project_ideation_max = result.project_defaults.project_ideation_max,
-                    global_max_concurrent = result.global_defaults.global_max_concurrent,
-                    global_ideation_max = result.global_defaults.global_ideation_max,
-                    allow_ideation_borrow_idle_execution =
-                        result.global_defaults.allow_ideation_borrow_idle_execution,
-                    "Initialized execution settings from DB/YAML defaults"
-                );
-            }
-            Err(e) => {
-                warn!(
-                    "Failed to load/seed execution settings from database, using defaults: {}",
-                    e
-                );
-            }
-        }
-
-        match load_or_seed_agent_lane_settings_defaults(
-            init_agent_lane_settings_repo,
-            &agent_harness_defaults,
-        )
-        .await
-        {
-            Ok(result) => {
-                info!(
-                    seeded_global_lane_count = result.seeded_global_lanes.len(),
-                    seeded_global_lanes = ?result
-                        .seeded_global_lanes
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect::<Vec<_>>(),
-                    configured_global_lane_count = result.global_defaults.len(),
-                    "Initialized agent harness defaults from DB/YAML defaults"
-                );
-            }
-            Err(e) => {
-                warn!(
-                    "Failed to load/seed agent harness defaults from database, using runtime fallbacks: {}",
-                    e
-                );
-            }
-        }
-    });
-
-    // Seed ideation effort defaults (idempotent — only seeds when no global row exists)
-    let init_effort_repo = Arc::clone(&app_state.ideation_effort_settings_repo);
-    tauri::async_runtime::block_on(async move {
-        match seed_ideation_effort_defaults(init_effort_repo).await {
-            Ok(result) => {
-                if result.seeded_global {
-                    tracing::info!("Seeded global ideation effort defaults (inherit/inherit)");
-                }
-            }
-            Err(e) => tracing::warn!("Failed to seed ideation effort defaults: {}", e),
-        }
-    });
-
-    // Seed ideation model defaults (idempotent — only seeds when no global row exists)
-    let init_model_repo = Arc::clone(&app_state.ideation_model_settings_repo);
-    tauri::async_runtime::block_on(async move {
-        match seed_ideation_model_settings(init_model_repo).await {
-            Ok(_) => {
-                tracing::debug!("Ideation model settings seeded (or already existed)");
-            }
-            Err(e) => tracing::warn!("Failed to seed ideation model settings: {}", e),
-        }
-    });
+    initialize_settings_defaults(&app_state, init_execution_state);
 
     // Expire stale pending questions/permissions from previous runs.
     // Must happen before the HTTP server starts accepting agent requests.
