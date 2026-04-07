@@ -42,9 +42,9 @@ const mockConversations: ChatConversation[] = [
     id: "conv-2",
     contextType: "ideation",
     contextId: "session-1",
-    providerSessionId: "claude-session-2",
-    providerHarness: "claude",
-    claudeSessionId: "claude-session-2",
+    providerSessionId: "thread-codex-2",
+    providerHarness: "codex",
+    claudeSessionId: null,
     title: "API refactoring discussion",
     messageCount: 8,
     lastMessageAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
@@ -149,6 +149,17 @@ describe("ConversationSelector", () => {
 
     expect(screen.getByText("Dark mode implementation")).toBeInTheDocument();
     expect(screen.getByText("API refactoring discussion")).toBeInTheDocument();
+  });
+
+  it("shows provider harness badges when available", async () => {
+    const user = userEvent.setup();
+    render(<ConversationSelector {...defaultProps} />);
+
+    const trigger = screen.getByTestId("conversation-selector-trigger");
+    await user.click(trigger);
+
+    expect(screen.getByText("Claude")).toBeInTheDocument();
+    expect(screen.getByText("Codex")).toBeInTheDocument();
   });
 
   it("generates fallback title for conversations without title", async () => {

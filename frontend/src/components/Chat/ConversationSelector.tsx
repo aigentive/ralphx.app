@@ -126,6 +126,18 @@ function formatExecutionDate(createdAt: string): string {
   }
 }
 
+function getHarnessLabel(conversation: ChatConversation): string | null {
+  if (conversation.providerHarness === "codex") {
+    return "Codex";
+  }
+
+  if (conversation.providerHarness === "claude") {
+    return "Claude";
+  }
+
+  return null;
+}
+
 // ============================================================================
 // Component
 // ============================================================================
@@ -243,6 +255,7 @@ export function ConversationSelector({
           sortedConversations.map((conversation, index) => {
             const isActive = conversation.id === activeConversationId;
             const title = getConversationTitle(conversation, index);
+            const harnessLabel = getHarnessLabel(conversation);
 
             // Get agent run status for agent context conversations (execution/review)
             const agentRunStatus = isAgentContext && statusQueries[index]
@@ -288,6 +301,27 @@ export function ConversationSelector({
                       >
                         {title}
                       </div>
+                      {harnessLabel && (
+                        <span
+                          className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]"
+                          style={{
+                            color:
+                              conversation.providerHarness === "codex"
+                                ? "hsl(14 100% 68%)"
+                                : "hsl(220 10% 68%)",
+                            backgroundColor:
+                              conversation.providerHarness === "codex"
+                                ? "hsla(14 100% 60% / 0.12)"
+                                : "hsla(220 10% 100% / 0.06)",
+                            border:
+                              conversation.providerHarness === "codex"
+                                ? "1px solid hsla(14 100% 60% / 0.18)"
+                                : "1px solid hsla(220 10% 100% / 0.08)",
+                          }}
+                        >
+                          {harnessLabel}
+                        </span>
+                      )}
                       {agentRunStatus === "running" && (
                         <span
                           className="text-[10px] font-medium uppercase tracking-wide"
@@ -352,7 +386,28 @@ export function ConversationSelector({
                       className="text-[13px] font-medium truncate"
                       style={{ color: isActive ? "hsl(220 10% 95%)" : "hsl(220 10% 75%)" }}
                     >
-                      {title}
+                      <span>{title}</span>
+                      {harnessLabel && (
+                        <span
+                          className="ml-2 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]"
+                          style={{
+                            color:
+                              conversation.providerHarness === "codex"
+                                ? "hsl(14 100% 68%)"
+                                : "hsl(220 10% 68%)",
+                            backgroundColor:
+                              conversation.providerHarness === "codex"
+                                ? "hsla(14 100% 60% / 0.12)"
+                                : "hsla(220 10% 100% / 0.06)",
+                            border:
+                              conversation.providerHarness === "codex"
+                                ? "1px solid hsla(14 100% 60% / 0.18)"
+                                : "1px solid hsla(220 10% 100% / 0.08)",
+                          }}
+                        >
+                          {harnessLabel}
+                        </span>
+                      )}
                     </div>
 
                     {/* Date and Message Count */}
