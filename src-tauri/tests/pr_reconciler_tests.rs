@@ -322,14 +322,18 @@ async fn test_mode_switch_bypasses_guards() {
         "mode_switch=true should bypass circuit_breaker_active and return true"
     );
 
-    // The task was transitioned out of MergeIncomplete (to PendingMerge) by mode_switch bypass.
-    // The merge pipeline entry actions may re-transition it again, but it was NOT skipped.
-    // We just verify it is no longer in the original MergeIncomplete state OR that the
-    // transition was attempted (result = true already confirms transition_task was called).
-    //
-    // Note: In a test environment the PendingMerge entry action fires immediately and may
-    // transition back to MergeIncomplete (no real git repo). That's expected — what matters
-    // is that the circuit_breaker did NOT prevent the transition attempt.
+    let history = app_state
+        .task_repo
+        .get_status_history(&task.id)
+        .await
+        .unwrap();
+    assert!(
+        history.iter().any(|entry| {
+            entry.from == InternalStatus::MergeIncomplete
+                && entry.to == InternalStatus::PendingMerge
+        }),
+        "mode_switch bypass must record MergeIncomplete -> PendingMerge before entry actions run"
+    );
 }
 
 // ============================================================================
