@@ -10,6 +10,7 @@ use tokio::sync::Mutex;
 use crate::application::PermissionState;
 use crate::application::QuestionState;
 use crate::application::ResumeValidator;
+use crate::application::chat_service::ClaudeChatService;
 use crate::domain::agents::AgenticClient;
 use crate::domain::qa::QASettings;
 use crate::domain::repositories::{
@@ -212,6 +213,48 @@ pub struct AppState {
 impl AppState {
     fn enable_claude_test_mode() {
         std::env::set_var("RALPHX_TEST_MODE", "1");
+    }
+
+    pub fn build_chat_service(&self) -> ClaudeChatService {
+        let mut service = ClaudeChatService::new(
+            Arc::clone(&self.chat_message_repo),
+            Arc::clone(&self.chat_attachment_repo),
+            Arc::clone(&self.artifact_repo),
+            Arc::clone(&self.chat_conversation_repo),
+            Arc::clone(&self.agent_run_repo),
+            Arc::clone(&self.project_repo),
+            Arc::clone(&self.task_repo),
+            Arc::clone(&self.task_dependency_repo),
+            Arc::clone(&self.ideation_session_repo),
+            Arc::clone(&self.activity_event_repo),
+            Arc::clone(&self.message_queue),
+            Arc::clone(&self.running_agent_registry),
+            Arc::clone(&self.memory_event_repo),
+        )
+        .with_execution_settings_repo(Arc::clone(&self.execution_settings_repo))
+        .with_agent_lane_settings_repo(Arc::clone(&self.agent_lane_settings_repo))
+        .with_ideation_effort_settings_repo(Arc::clone(&self.ideation_effort_settings_repo))
+        .with_ideation_model_settings_repo(Arc::clone(&self.ideation_model_settings_repo))
+        .with_plan_branch_repo(Arc::clone(&self.plan_branch_repo))
+        .with_task_proposal_repo(Arc::clone(&self.task_proposal_repo))
+        .with_task_step_repo(Arc::clone(&self.task_step_repo))
+        .with_streaming_state_cache(self.streaming_state_cache.clone())
+        .with_interactive_process_registry(Arc::clone(&self.interactive_process_registry))
+        .with_review_repo(Arc::clone(&self.review_repo));
+
+        if let Some(ref handle) = self.app_handle {
+            service = service.with_app_handle(handle.clone());
+        }
+
+        service
+    }
+
+    pub fn build_chat_service_with_execution_state(
+        &self,
+        execution_state: Arc<crate::commands::ExecutionState>,
+    ) -> ClaudeChatService {
+        self.build_chat_service()
+            .with_execution_state(execution_state)
     }
 
     /// Create AppState for production use with SQLite repositories.

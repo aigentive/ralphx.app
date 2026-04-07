@@ -1,5 +1,5 @@
 use crate::application::ideation_harness_availability::IdeationLaneHarnessAvailability;
-use crate::application::validate_claude_runtime_path;
+use crate::application::ideation_harness_availability::validate_claude_runtime_path;
 use crate::domain::agents::{AgentHarnessKind, AgentLane};
 
 fn availability(

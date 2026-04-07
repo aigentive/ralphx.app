@@ -171,33 +171,10 @@ pub(crate) fn create_chat_service(
     execution_state: &Arc<ExecutionState>,
     team_service: Option<std::sync::Arc<crate::application::TeamService>>,
 ) -> ClaudeChatService<tauri::Wry> {
-    let mut service = ClaudeChatService::new(
-        state.chat_message_repo.clone(),
-        state.chat_attachment_repo.clone(),
-        state.artifact_repo.clone(),
-        state.chat_conversation_repo.clone(),
-        state.agent_run_repo.clone(),
-        state.project_repo.clone(),
-        state.task_repo.clone(),
-        state.task_dependency_repo.clone(),
-        state.ideation_session_repo.clone(),
-        state.activity_event_repo.clone(),
-        state.message_queue.clone(),
-        state.running_agent_registry.clone(),
-        state.memory_event_repo.clone(),
-    )
-    .with_app_handle(app_handle)
-    .with_execution_state(Arc::clone(execution_state))
-    .with_execution_settings_repo(state.execution_settings_repo.clone())
-    .with_agent_lane_settings_repo(state.agent_lane_settings_repo.clone())
-    .with_ideation_effort_settings_repo(state.ideation_effort_settings_repo.clone())
-    .with_ideation_model_settings_repo(state.ideation_model_settings_repo.clone())
-    .with_plan_branch_repo(state.plan_branch_repo.clone())
-    .with_task_proposal_repo(state.task_proposal_repo.clone())
-    .with_task_step_repo(state.task_step_repo.clone())
-    .with_streaming_state_cache(state.streaming_state_cache.clone())
-    .with_interactive_process_registry(state.interactive_process_registry.clone())
-    .with_review_repo(state.review_repo.clone());
+    let mut service = state
+        .build_chat_service_with_execution_state(Arc::clone(execution_state))
+        .with_app_handle(app_handle)
+        .with_interactive_process_registry(state.interactive_process_registry.clone());
     if let Some(svc) = team_service {
         service = service.with_team_service(svc);
     }
@@ -283,12 +260,13 @@ pub async fn send_agent_message(
         }
     }
 
-    if !service.is_available().await {
-        return Err(
-            "Claude CLI is not available. Please ensure 'claude' is installed and in your PATH."
-                .to_string(),
-        );
-    }
+    crate::application::validate_chat_runtime_for_context(
+        &state,
+        context_type,
+        &input.context_id,
+        "send_agent_message",
+    )
+    .await?;
 
     // Route to teammate stdin when target is a specific teammate (not "lead")
     let target = input.target.as_deref();

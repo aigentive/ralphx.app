@@ -1,3 +1,5 @@
+use crate::application::AppState;
+use crate::domain::entities::{ChatContextType, IdeationSessionId};
 use std::sync::Arc;
 
 use crate::domain::agents::{AgentHarnessKind, AgentLane, StoredAgentLaneSettings};
@@ -60,6 +62,7 @@ pub(crate) async fn resolve_primary_ideation_harness_availability(
     resolve_ideation_lane_harness_availability(repo, project_id, AgentLane::IdeationPrimary).await
 }
 
+#[cfg(test)]
 pub(crate) fn validate_claude_runtime_path(
     availability: &IdeationLaneHarnessAvailability,
     surface_name: &str,
@@ -79,6 +82,46 @@ pub(crate) fn validate_claude_runtime_path(
     }
 
     Ok(())
+}
+
+pub(crate) async fn validate_chat_runtime_for_context(
+    state: &AppState,
+    context_type: ChatContextType,
+    context_id: &str,
+    surface_name: &str,
+) -> Result<(), String> {
+    if context_type != ChatContextType::Ideation {
+        let probe = probe_claude_harness();
+        if probe.available {
+            return Ok(());
+        }
+
+        return Err(probe.error.unwrap_or_else(|| {
+            format!("{surface_name} requires Claude CLI but it is not available")
+        }));
+    }
+
+    let project_id = state
+        .ideation_session_repo
+        .get_by_id(&IdeationSessionId::from_string(context_id))
+        .await
+        .ok()
+        .flatten()
+        .map(|session| session.project_id);
+
+    let availability = resolve_primary_ideation_harness_availability(
+        &state.agent_lane_settings_repo,
+        project_id.as_ref().map(|value| value.as_str()),
+    )
+    .await;
+
+    if availability.available {
+        Ok(())
+    } else {
+        Err(availability.error.unwrap_or_else(|| {
+            format!("Configured ideation harness is not available for {surface_name}")
+        }))
+    }
 }
 
 pub(crate) async fn resolve_lane_harness_config(

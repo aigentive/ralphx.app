@@ -8,9 +8,7 @@ use axum::{
 use tracing::error;
 
 use crate::application::app_state::AppState;
-use crate::application::chat_service::{
-    AgentRunCompletedPayload, ChatService, ClaudeChatService, SendMessageOptions,
-};
+use crate::application::chat_service::{AgentRunCompletedPayload, ChatService, SendMessageOptions};
 use crate::application::InteractiveProcessKey;
 use crate::domain::entities::{ChatContextType, IdeationSessionId, IdeationSessionStatus};
 use crate::domain::repositories::ExternalEventsRepository;

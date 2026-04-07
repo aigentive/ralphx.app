@@ -394,36 +394,13 @@ pub async fn resume_execution(
             &execution_state_arc,
             || {
                 Arc::new(
-                    ClaudeChatService::new(
-                        Arc::clone(&app_state.chat_message_repo),
-                        Arc::clone(&app_state.chat_attachment_repo),
-                        Arc::clone(&app_state.artifact_repo),
-                        Arc::clone(&app_state.chat_conversation_repo),
-                        Arc::clone(&app_state.agent_run_repo),
-                        Arc::clone(&app_state.project_repo),
-                        Arc::clone(&app_state.task_repo),
-                        Arc::clone(&app_state.task_dependency_repo),
-                        Arc::clone(&app_state.ideation_session_repo),
-                        Arc::clone(&app_state.activity_event_repo),
-                        Arc::clone(&app_state.message_queue),
-                        Arc::clone(&app_state.running_agent_registry),
-                        Arc::clone(&app_state.memory_event_repo),
-                    )
-                    .with_app_handle(handle.clone())
-                    .with_execution_state(Arc::clone(&execution_state_arc))
-                    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-                    .with_agent_lane_settings_repo(Arc::clone(&app_state.agent_lane_settings_repo))
-                    .with_ideation_effort_settings_repo(Arc::clone(&app_state.ideation_effort_settings_repo))
-                    .with_ideation_model_settings_repo(Arc::clone(&app_state.ideation_model_settings_repo))
-                    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-                    .with_task_proposal_repo(Arc::clone(&app_state.task_proposal_repo))
-                    .with_task_step_repo(Arc::clone(&app_state.task_step_repo))
-                    .with_streaming_state_cache(app_state.streaming_state_cache.clone())
-                    .with_interactive_process_registry(Arc::clone(
-                        &app_state.interactive_process_registry,
-                    ))
-                    .with_review_repo(Arc::clone(&app_state.review_repo))
-                    .with_team_service(Arc::clone(&team_service)),
+                    app_state
+                        .build_chat_service_with_execution_state(Arc::clone(&execution_state_arc))
+                        .with_app_handle(handle.clone())
+                        .with_interactive_process_registry(Arc::clone(
+                            &app_state.interactive_process_registry,
+                        ))
+                        .with_team_service(Arc::clone(&team_service)),
                 ) as Arc<dyn ChatService>
             },
         )
@@ -440,36 +417,13 @@ pub async fn resume_execution(
             &app_state,
             &execution_state_arc,
             |is_team_mode| {
-                let mut service = ClaudeChatService::new(
-                    Arc::clone(&app_state.chat_message_repo),
-                    Arc::clone(&app_state.chat_attachment_repo),
-                    Arc::clone(&app_state.artifact_repo),
-                    Arc::clone(&app_state.chat_conversation_repo),
-                    Arc::clone(&app_state.agent_run_repo),
-                    Arc::clone(&app_state.project_repo),
-                    Arc::clone(&app_state.task_repo),
-                    Arc::clone(&app_state.task_dependency_repo),
-                    Arc::clone(&app_state.ideation_session_repo),
-                    Arc::clone(&app_state.activity_event_repo),
-                    Arc::clone(&app_state.message_queue),
-                    Arc::clone(&app_state.running_agent_registry),
-                    Arc::clone(&app_state.memory_event_repo),
-                )
-                .with_app_handle(handle.clone())
-                .with_execution_state(Arc::clone(&execution_state_arc))
-                .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-                .with_agent_lane_settings_repo(Arc::clone(&app_state.agent_lane_settings_repo))
-                .with_ideation_effort_settings_repo(Arc::clone(&app_state.ideation_effort_settings_repo))
-                .with_ideation_model_settings_repo(Arc::clone(&app_state.ideation_model_settings_repo))
-                .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-                .with_task_proposal_repo(Arc::clone(&app_state.task_proposal_repo))
-                .with_task_step_repo(Arc::clone(&app_state.task_step_repo))
-                .with_streaming_state_cache(app_state.streaming_state_cache.clone())
-                .with_interactive_process_registry(Arc::clone(
-                    &app_state.interactive_process_registry,
-                ))
-                .with_review_repo(Arc::clone(&app_state.review_repo))
-                .with_team_service(Arc::clone(&team_service));
+                let mut service = app_state
+                    .build_chat_service_with_execution_state(Arc::clone(&execution_state_arc))
+                    .with_app_handle(handle.clone())
+                    .with_interactive_process_registry(Arc::clone(
+                        &app_state.interactive_process_registry,
+                    ))
+                    .with_team_service(Arc::clone(&team_service));
                 if is_team_mode {
                     service = service.with_team_mode(true);
                 }
@@ -486,36 +440,13 @@ pub async fn resume_execution(
             &app_state,
             || {
                 Arc::new(
-                    ClaudeChatService::new(
-                        Arc::clone(&app_state.chat_message_repo),
-                        Arc::clone(&app_state.chat_attachment_repo),
-                        Arc::clone(&app_state.artifact_repo),
-                        Arc::clone(&app_state.chat_conversation_repo),
-                        Arc::clone(&app_state.agent_run_repo),
-                        Arc::clone(&app_state.project_repo),
-                        Arc::clone(&app_state.task_repo),
-                        Arc::clone(&app_state.task_dependency_repo),
-                        Arc::clone(&app_state.ideation_session_repo),
-                        Arc::clone(&app_state.activity_event_repo),
-                        Arc::clone(&app_state.message_queue),
-                        Arc::clone(&app_state.running_agent_registry),
-                        Arc::clone(&app_state.memory_event_repo),
-                    )
-                    .with_app_handle(handle.clone())
-                    .with_execution_state(Arc::clone(&execution_state_arc))
-                    .with_execution_settings_repo(Arc::clone(&app_state.execution_settings_repo))
-                    .with_agent_lane_settings_repo(Arc::clone(&app_state.agent_lane_settings_repo))
-                    .with_ideation_effort_settings_repo(Arc::clone(&app_state.ideation_effort_settings_repo))
-                    .with_ideation_model_settings_repo(Arc::clone(&app_state.ideation_model_settings_repo))
-                    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
-                    .with_task_proposal_repo(Arc::clone(&app_state.task_proposal_repo))
-                    .with_task_step_repo(Arc::clone(&app_state.task_step_repo))
-                    .with_streaming_state_cache(app_state.streaming_state_cache.clone())
-                    .with_interactive_process_registry(Arc::clone(
-                        &app_state.interactive_process_registry,
-                    ))
-                    .with_review_repo(Arc::clone(&app_state.review_repo))
-                    .with_team_service(Arc::clone(&team_service)),
+                    app_state
+                        .build_chat_service_with_execution_state(Arc::clone(&execution_state_arc))
+                        .with_app_handle(handle.clone())
+                        .with_interactive_process_registry(Arc::clone(
+                            &app_state.interactive_process_registry,
+                        ))
+                        .with_team_service(Arc::clone(&team_service)),
                 ) as Arc<dyn ChatService>
             },
         )

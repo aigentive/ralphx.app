@@ -10,9 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use tauri::{AppHandle, Emitter, Runtime, State};
 use tokio::sync::RwLock;
 
-use crate::application::chat_service::{
-    ChatService, ClaudeChatService, SendMessageOptions, uses_execution_slot,
-};
+use crate::application::chat_service::{ChatService, SendMessageOptions, uses_execution_slot};
 use crate::application::reconciliation::UserRecoveryAction;
 use crate::application::team_state_tracker::TeamStateTracker;
 use crate::application::{
