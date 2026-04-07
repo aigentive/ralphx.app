@@ -12,6 +12,10 @@ Updated: 2026-04-07
 
 - `AGENTS.md`
 - `specs/codex-cli.md`
+- `specs/codex-cli-contract.md`
+- `specs/codex-cli-implementation-plan.md`
+- `specs/codex-cli-migrations.md`
+- `specs/codex-cli-test-plan.md`
 - `docs/ai-docs/codex-cli/README.md`
 - `docs/ai-docs/codex-cli/index.txt`
 - `docs/ai-docs/codex-cli/cli-overview.md`
@@ -230,7 +234,7 @@ Updated: 2026-04-07
 
 ## Highest-value next edits after compaction
 
-1. Finish folding any remaining backend/frontend/runtime seam details into `specs/codex-cli.md`.
-2. Add a compact compatibility-migration section to `docs/ai-docs/reefagent-codex-cli.md` if more Codex-vs-Claude delta evidence is needed.
-3. Keep `AGENTS.md` tracker aligned with the spec appendices as the implementation plan is prepared.
-4. Run `git diff --stat` and `git status --short`, then stop before implementation unless the user expands scope.
+1. Convert `specs/codex-cli-contract.md` into actual coding tasks for phase 1 harness abstraction.
+2. Translate the contract into concrete DB migration tasks and replay fixture tasks.
+3. Keep `AGENTS.md` tracker aligned with the contract as runtime work begins.
+4. Commit and push each major implementation milestone separately.

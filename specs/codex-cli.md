@@ -600,6 +600,7 @@ Design consequence:
 - `docs/ai-docs/codex-cli/`
 - `docs/ai-docs/reefagent-codex-cli.md`
 - `docs/ai-docs/reefagent-codex-responses.md`
+- `specs/codex-cli-contract.md`
 
 ## 16. Lane-by-lane settings, storage, and UI matrix
 

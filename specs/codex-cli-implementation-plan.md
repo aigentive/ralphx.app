@@ -5,6 +5,7 @@ Status: planning phase. This document turns the discovery spec into the concrete
 Parent references:
 
 - `specs/codex-cli.md`
+- `specs/codex-cli-contract.md`
 - `docs/ai-docs/reefagent-codex-cli.md`
 - `docs/ai-docs/reefagent-codex-responses.md`
 
@@ -287,6 +288,7 @@ Do not include in the first implementation milestone:
 Coding should start only after these docs are accepted:
 
 - `specs/codex-cli.md`
+- `specs/codex-cli-contract.md`
 - `specs/codex-cli-implementation-plan.md`
 - `specs/codex-cli-migrations.md`
 - `specs/codex-cli-test-plan.md`
