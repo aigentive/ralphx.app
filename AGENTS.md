@@ -67,6 +67,14 @@ When working in `src-tauri/`, also follow:
 | P0 | Model-agnostic MCP/tool UX | Landed: high-friction MCP tools now document parent-vs-child session rules plus concrete payload examples, child-status / session-message tools now show verification-debug usage explicitly, the MCP proxy now appends tool-specific repair hints/examples on backend errors, the verifier path now has narrower `report_verification_round` / `complete_plan_verification` helpers plus `get_verification_round_artifacts`, and verification/artifact endpoints now auto-remap verification-child session ids to the parent where the mapping is deterministic; next extend that repair-oriented treatment to more brittle workflows |
 | P0 | Startup external-session archival safety | Landed: cold boot now respects the external-session TTL, startup recovery explicitly hands claimed Phase N+1 ideation session ids into cold-boot archival, and verified external sessions are preserved; next observe real runs before widening recovery-specific heuristics further |
 
+## Active Transition Hardening Tracker
+
+| Priority | Stream | Next Step |
+|---|---|---|
+| P0 | Validated task transitions by default | Investigated: `TaskTransitionService::transition_task*` still persists direct status writes without checking `InternalStatus::can_transition_to`, while product/API callers across reviews, git/merge, external task ops, scheduling, chat-service, reconciliation, and execution lifecycle assume state-machine enforcement; next add central transition validation in `task_transition_service.rs`, keep same-status no-op behavior, and return structured invalid-transition errors before persistence/side effects |
+| P0 | Corrective-path separation | Investigated: `apply_corrective_transition()` is already the explicit nonstandard path and its production callsites are contained inside `task_transition_service.rs`; next preserve it as the repair/reconciliation escape hatch, document that normal workflow callers must not use it, and migrate any recovery callers still leaning on permissive `transition_task*` semantics onto explicit corrective APIs |
+| P0 | Direct status-mutation audit | Investigated: production-only direct `internal_status` setters remain outside `transition_task*`, including task mutation commands, startup recovery/unblock flows, review fix-task helpers, merge pipeline internals, and a few task/apply helpers; next classify each as bootstrap-only, legitimate corrective/internal, or technical debt that should be rerouted through validated transitions before claiming the state machine is globally enforced |
+
 ## Active Migration Tracker
 
 | Stream | Goal | Status | Notes |
