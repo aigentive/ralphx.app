@@ -48,21 +48,12 @@ use crate::utils::redacting_writer::RedactingMakeWriter;
 
 use application::ideation_effort_bootstrap::seed_ideation_effort_defaults;
 use application::ideation_model_bootstrap::seed_ideation_model_settings;
-use application::runtime_factory::{
-    ChatRuntimeFactoryDeps, RuntimeFactoryDeps, build_chat_service_with_fallback,
-};
 use application::runtime_wiring::{
     build_http_app_state, create_main_window, register_managed_state,
 };
-use application::startup_runtime_builders::{
-    StartupChatResumptionDeps, StartupReconciliationDeps, StartupSchedulerDeps,
-    build_startup_chat_resumption_runner, build_startup_reconciliation_runner,
-    build_startup_recovery_chat_service, build_startup_task_scheduler,
-};
-use application::startup_transition_factory::StartupTransitionFactory;
+use application::startup_pipeline::StartupPipelineDeps;
 use application::{
     load_or_seed_agent_lane_settings_defaults, load_or_seed_execution_settings_defaults,
-    StartupJobRunner,
 };
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -73,7 +64,7 @@ fn greet(name: &str) -> String {
 
 /// Wait for the local HTTP backend at `port` to respond with HTTP 200 on `/health`.
 /// Retries every 200ms until `timeout` elapses (2s per-request timeout).
-async fn wait_for_backend_ready(port: u16, timeout: Duration) -> Result<(), String> {
+pub(crate) async fn wait_for_backend_ready(port: u16, timeout: Duration) -> Result<(), String> {
     wait_for_backend_ready_with_probe(port, timeout, probe_backend_health).await
 }
 
@@ -492,447 +483,46 @@ pub fn run() {
             let startup_app_handle = app.handle().clone();
 
             tauri::async_runtime::spawn(async move {
-                // Wait for HTTP server to be ready
-                tokio::time::sleep(Duration::from_millis(500)).await;
-
-                if application::startup_jobs::is_startup_recovery_disabled() {
-                    info!(
-                        env_var = application::startup_jobs::RALPHX_DISABLE_STARTUP_RECOVERY_ENV,
-                        "Startup recovery disabled via environment; skipping startup recovery pipeline"
-                    );
-                    return;
-                }
-
-                info!("Starting startup job runner...");
-
-                let task_scheduler = build_startup_task_scheduler(StartupSchedulerDeps {
-                    execution_state: Arc::clone(&startup_execution_state),
-                    project_repo: startup_project_repo.clone(),
-                    task_repo: startup_task_repo.clone(),
-                    task_dependency_repo: startup_task_dependency_repo.clone(),
-                    chat_message_repo: startup_chat_message_repo.clone(),
-                    chat_attachment_repo: startup_chat_attachment_repo.clone(),
-                    conversation_repo: startup_conversation_repo.clone(),
-                    agent_run_repo: startup_agent_run_repo.clone(),
-                    ideation_session_repo: startup_ideation_session_repo.clone(),
-                    activity_event_repo: startup_activity_event_repo.clone(),
-                    message_queue: startup_message_queue.clone(),
-                    running_agent_registry: startup_running_agent_registry.clone(),
-                    memory_event_repo: startup_memory_event_repo.clone(),
-                    plan_branch_repo: Arc::clone(&startup_plan_branch_repo),
-                    interactive_process_registry: Arc::clone(
-                        &startup_interactive_process_registry,
-                    ),
-                    app_handle: startup_app_handle.clone(),
-                });
-
-                // Clone repos for ChatResumptionRunner before they're consumed by TaskTransitionService/StartupJobRunner
-                let chat_resumption_agent_run_repo = Arc::clone(&startup_agent_run_repo);
-                let chat_resumption_task_repo = Arc::clone(&startup_task_repo);
-                let chat_resumption_task_dependency_repo = Arc::clone(&startup_task_dependency_repo);
-                let chat_resumption_project_repo = Arc::clone(&startup_project_repo);
-                let chat_resumption_chat_message_repo = Arc::clone(&startup_chat_message_repo);
-                let chat_resumption_chat_attachment_repo = Arc::clone(&startup_chat_attachment_repo);
-                let chat_resumption_artifact_repo = Arc::clone(&startup_artifact_repo);
-                let chat_resumption_conversation_repo = Arc::clone(&startup_conversation_repo);
-                let chat_resumption_ideation_session_repo = Arc::clone(&startup_ideation_session_repo);
-                let chat_resumption_activity_event_repo = Arc::clone(&startup_activity_event_repo);
-                let chat_resumption_message_queue = Arc::clone(&startup_message_queue);
-                let chat_resumption_running_agent_registry = Arc::clone(&startup_running_agent_registry);
-                let chat_resumption_memory_event_repo = Arc::clone(&startup_memory_event_repo);
-                let chat_resumption_execution_settings_repo =
-                    Arc::clone(&startup_execution_settings_repo);
-                let chat_resumption_agent_lane_settings_repo =
-                    Arc::clone(&startup_agent_lane_settings_repo);
-                let chat_resumption_app_handle = startup_app_handle.clone();
-
-                let startup_runner_chat_message_repo = Arc::clone(&startup_chat_message_repo);
-                let startup_runner_ideation_session_repo = Arc::clone(&startup_ideation_session_repo);
-                let startup_runner_activity_event_repo = Arc::clone(&startup_activity_event_repo);
-                let startup_runner_message_queue = Arc::clone(&startup_message_queue);
-                let startup_runner_running_agent_registry =
-                    Arc::clone(&startup_running_agent_registry);
-
-                // Clone repos for periodic reconciliation runner
-                let reconcile_task_repo = Arc::clone(&startup_task_repo);
-                let reconcile_task_dependency_repo = Arc::clone(&startup_task_dependency_repo);
-                let reconcile_project_repo = Arc::clone(&startup_project_repo);
-                let reconcile_chat_message_repo = Arc::clone(&startup_chat_message_repo);
-                let reconcile_chat_attachment_repo = Arc::clone(&startup_chat_attachment_repo);
-                let reconcile_conversation_repo = Arc::clone(&startup_conversation_repo);
-                let reconcile_agent_run_repo = Arc::clone(&startup_agent_run_repo);
-                let reconcile_ideation_session_repo = Arc::clone(&startup_ideation_session_repo);
-                let reconcile_activity_event_repo = Arc::clone(&startup_activity_event_repo);
-                let reconcile_message_queue = Arc::clone(&startup_message_queue);
-                let reconcile_running_agent_registry = Arc::clone(&startup_running_agent_registry);
-                let reconcile_memory_event_repo = Arc::clone(&startup_memory_event_repo);
-                let reconcile_review_repo = Arc::clone(&startup_review_repo);
-                let reconcile_app_handle = startup_app_handle.clone();
-                let verification_recon_app_handle = startup_app_handle.clone();
-                // Clone for external MCP startup (after HTTP server ready, at end of startup_jobs)
-                let external_mcp_app_handle = startup_app_handle.clone();
-                // Clone for recovery queue processor's chat service and event emission
-                let recovery_cs_app_handle = startup_app_handle.clone();
-                // Pre-clone repos for recovery queue processor's ClaudeChatService
-                // (must happen before StartupJobRunner moves some of these originals)
-                let recovery_cs_chat_message_repo = Arc::clone(&startup_chat_message_repo);
-                let recovery_cs_chat_attachment_repo = Arc::clone(&startup_chat_attachment_repo);
-                let recovery_cs_artifact_repo = Arc::clone(&startup_artifact_repo);
-                let recovery_cs_conversation_repo = Arc::clone(&startup_conversation_repo);
-                let recovery_cs_agent_run_repo = Arc::clone(&startup_agent_run_repo);
-                let recovery_cs_project_repo = Arc::clone(&startup_project_repo);
-                let recovery_cs_task_repo = Arc::clone(&startup_task_repo);
-                let recovery_cs_task_dep_repo = Arc::clone(&startup_task_dependency_repo);
-                let recovery_cs_ideation_repo = Arc::clone(&startup_ideation_session_repo);
-                let recovery_cs_activity_repo = Arc::clone(&startup_activity_event_repo);
-                let recovery_cs_message_queue = Arc::clone(&startup_message_queue);
-                let recovery_cs_running_reg = Arc::clone(&startup_running_agent_registry);
-                let recovery_cs_memory_event_repo = Arc::clone(&startup_memory_event_repo);
-                let recovery_cs_ipr = Arc::clone(&startup_interactive_process_registry);
-                let recovery_cs_execution_settings_repo =
-                    Arc::clone(&startup_execution_settings_repo);
-                let recovery_cs_agent_lane_repo = Arc::clone(&startup_agent_lane_settings_repo);
-                let recovery_cs_ideation_effort_repo = Arc::clone(&startup_ideation_effort_settings_repo);
-                let recovery_cs_ideation_model_repo = Arc::clone(&startup_ideation_model_settings_repo);
-
-                // Clone task_dependency_repo for StartupJobRunner (before TaskTransitionService consumes it)
-                let startup_runner_task_dep_repo = Arc::clone(&startup_task_dependency_repo);
-                let startup_runner_app_handle = startup_app_handle.clone();
-                // Clone task_repo for watchdog (before StartupJobRunner moves it)
-                let watchdog_task_repo = Arc::clone(&startup_task_repo);
-                let watchdog_project_repo = Arc::clone(&startup_project_repo);
-
-                let startup_transition_factory = StartupTransitionFactory {
-                    execution_state: Arc::clone(&startup_execution_state),
-                    execution_settings_repo: Arc::clone(&startup_execution_settings_repo),
-                    agent_lane_settings_repo: Arc::clone(&startup_agent_lane_settings_repo),
-                    plan_branch_repo: Arc::clone(&startup_plan_branch_repo),
-                    interactive_process_registry: Arc::clone(
-                        &startup_interactive_process_registry,
-                    ),
-                    agent_client: Arc::clone(&startup_agent_client),
-                    task_scheduler: Arc::clone(&task_scheduler),
-                    step_repo: Arc::clone(&startup_step_repo),
-                    external_events_repo: Arc::clone(&startup_external_events_repo),
-                    webhook_publisher: startup_webhook_publisher.clone(),
-                    session_merge_locks: Arc::clone(&startup_session_merge_locks),
-                };
-
-                // Create TaskTransitionService for startup resumption
-                let transition_service = Arc::new(startup_transition_factory.build(
-                    RuntimeFactoryDeps {
-                        task_repo: Arc::clone(&startup_task_repo),
-                        task_dependency_repo: Arc::clone(&startup_task_dependency_repo),
-                        project_repo: Arc::clone(&startup_project_repo),
-                        chat_message_repo: Arc::clone(&startup_chat_message_repo),
-                        chat_attachment_repo: Arc::clone(&startup_chat_attachment_repo),
-                        conversation_repo: Arc::clone(&startup_conversation_repo),
-                        agent_run_repo: Arc::clone(&startup_agent_run_repo),
-                        ideation_session_repo: Arc::clone(&startup_ideation_session_repo),
-                        activity_event_repo: Arc::clone(&startup_activity_event_repo),
-                        message_queue: Arc::clone(&startup_message_queue),
-                        running_agent_registry: Arc::clone(&startup_running_agent_registry),
-                        memory_event_repo: Arc::clone(&startup_memory_event_repo),
-                        execution_settings_repo: None,
-                        agent_lane_settings_repo: None,
-                        plan_branch_repo: None,
-                        interactive_process_registry: None,
-                    },
-                    startup_app_handle,
-                ));
-
-                // PR startup recovery: restart pollers for tasks that were polling when app shut down.
-                // Must run BEFORE StartupJobRunner to prevent reconciler re-entering on_enter(Merging)
-                // for PR-mode tasks before their pollers exist.
-                tracing::info!("Running PR startup recovery...");
-                crate::application::pr_startup_recovery::recover_pr_pollers(
-                    Arc::clone(&startup_task_repo),
-                    Arc::clone(&startup_plan_branch_repo),
-                    Arc::clone(&startup_pr_poller_registry),
-                    Arc::clone(&startup_project_repo),
-                    Arc::clone(&transition_service),
-                ).await;
-
-                // Create chat service for Phase N+1 ideation recovery.
-                // Must be constructed BEFORE StartupJobRunner::new() consumes the repos.
-                let recovery_chat_service_deps = ChatRuntimeFactoryDeps {
-                    chat_message_repo: Arc::clone(&startup_chat_message_repo),
-                    chat_attachment_repo: Arc::clone(&startup_chat_attachment_repo),
-                    artifact_repo: Arc::clone(&startup_artifact_repo),
-                    conversation_repo: Arc::clone(&startup_conversation_repo),
-                    agent_run_repo: Arc::clone(&startup_agent_run_repo),
-                    project_repo: Arc::clone(&startup_project_repo),
-                    task_repo: Arc::clone(&startup_task_repo),
-                    task_dependency_repo: Arc::clone(&startup_task_dependency_repo),
-                    ideation_session_repo: Arc::clone(&startup_ideation_session_repo),
-                    activity_event_repo: Arc::clone(&startup_activity_event_repo),
-                    message_queue: Arc::clone(&startup_message_queue),
-                    running_agent_registry: Arc::clone(&startup_running_agent_registry),
-                    memory_event_repo: Arc::clone(&startup_memory_event_repo),
-                    execution_settings_repo: Some(Arc::clone(&startup_execution_settings_repo)),
-                    agent_lane_settings_repo: Some(Arc::clone(&startup_agent_lane_settings_repo)),
-                    ideation_effort_settings_repo: Some(Arc::clone(
-                        &startup_ideation_effort_settings_repo,
-                    )),
-                    ideation_model_settings_repo: Some(Arc::clone(
-                        &startup_ideation_model_settings_repo,
-                    )),
-                    plan_branch_repo: None,
-                    task_proposal_repo: None,
-                    task_step_repo: None,
-                    review_repo: None,
-                    interactive_process_registry: Some(Arc::clone(
-                        &startup_interactive_process_registry,
-                    )),
-                    streaming_state_cache: None,
-                };
-                let recovery_chat_service = build_startup_recovery_chat_service(
-                    startup_runner_app_handle.clone(),
-                    Arc::clone(&startup_execution_state),
-                    recovery_chat_service_deps,
-                );
-
-                let runner = StartupJobRunner::new(
-                    startup_task_repo,
-                    startup_runner_task_dep_repo,
-                    Arc::clone(&startup_project_repo),
-                    startup_conversation_repo.clone(),
-                    startup_runner_chat_message_repo,
-                    Arc::clone(&startup_chat_attachment_repo),
-                    startup_runner_ideation_session_repo,
-                    startup_runner_activity_event_repo,
-                    startup_runner_message_queue,
-                    startup_runner_running_agent_registry,
-                    Arc::clone(&startup_memory_event_repo),
-                    startup_agent_run_repo,
-                    Arc::clone(&transition_service),
-                    Arc::clone(&startup_execution_state),
-                    Arc::clone(&startup_active_project_state),
-                    startup_app_state_repo,
-                    Arc::clone(&startup_execution_settings_repo),
-                    Some(Arc::clone(&startup_plan_branch_repo)),
-                )
-                .with_task_scheduler(Arc::clone(&task_scheduler))
-                .with_app_handle(startup_runner_app_handle)
-                .with_review_repo(Arc::clone(&startup_review_repo))
-                .with_chat_service(recovery_chat_service);
-
-                let startup_ideation_recovery_claims = runner.run().await;
-
-                application::startup_background::recover_memory_archive_jobs_on_startup(
-                    Arc::clone(&startup_memory_archive_repo),
-                    Arc::clone(&startup_memory_entry_repo),
-                    Arc::clone(&startup_project_repo),
-                )
-                .await;
-
-                // Resume interrupted chat conversations (Ideation, Task, Project, TaskExecution, Review)
-                // This runs after StartupJobRunner to avoid duplicate resumption of task-based chats
-                info!("Starting chat resumption runner...");
-                let chat_resumption = build_startup_chat_resumption_runner(
-                    StartupChatResumptionDeps {
-                        agent_run_repo: chat_resumption_agent_run_repo,
-                        conversation_repo: chat_resumption_conversation_repo,
-                        task_repo: chat_resumption_task_repo,
-                        task_dependency_repo: chat_resumption_task_dependency_repo,
-                        chat_message_repo: chat_resumption_chat_message_repo,
-                        chat_attachment_repo: chat_resumption_chat_attachment_repo,
-                        artifact_repo: chat_resumption_artifact_repo,
-                        project_repo: chat_resumption_project_repo,
-                        ideation_session_repo: chat_resumption_ideation_session_repo,
-                        activity_event_repo: chat_resumption_activity_event_repo,
-                        message_queue: chat_resumption_message_queue,
-                        running_agent_registry: chat_resumption_running_agent_registry,
-                        memory_event_repo: chat_resumption_memory_event_repo,
+                if let Err(error) = application::startup_pipeline::run_startup_pipeline(
+                    StartupPipelineDeps {
                         execution_state: Arc::clone(&startup_execution_state),
-                        execution_settings_repo: chat_resumption_execution_settings_repo,
-                        agent_lane_settings_repo: chat_resumption_agent_lane_settings_repo,
-                        plan_branch_repo: Arc::clone(&startup_plan_branch_repo),
-                        interactive_process_registry: Arc::clone(
-                            &startup_interactive_process_registry,
-                        ),
-                        app_handle: chat_resumption_app_handle,
+                        active_project_state: Arc::clone(&startup_active_project_state),
+                        task_repo: startup_task_repo,
+                        project_repo: startup_project_repo,
+                        task_dependency_repo: startup_task_dependency_repo,
+                        plan_branch_repo: startup_plan_branch_repo,
+                        step_repo: startup_step_repo,
+                        chat_message_repo: startup_chat_message_repo,
+                        chat_attachment_repo: startup_chat_attachment_repo,
+                        artifact_repo: startup_artifact_repo,
+                        conversation_repo: startup_conversation_repo,
+                        agent_run_repo: startup_agent_run_repo,
+                        ideation_session_repo: startup_ideation_session_repo,
+                        activity_event_repo: startup_activity_event_repo,
+                        message_queue: startup_message_queue,
+                        running_agent_registry: startup_running_agent_registry,
+                        memory_event_repo: startup_memory_event_repo,
+                        app_state_repo: startup_app_state_repo,
+                        memory_archive_repo: startup_memory_archive_repo,
+                        memory_entry_repo: startup_memory_entry_repo,
+                        execution_settings_repo: startup_execution_settings_repo,
+                        agent_lane_settings_repo: startup_agent_lane_settings_repo,
+                        ideation_effort_settings_repo: startup_ideation_effort_settings_repo,
+                        ideation_model_settings_repo: startup_ideation_model_settings_repo,
+                        interactive_process_registry: startup_interactive_process_registry,
+                        review_repo: startup_review_repo,
+                        external_events_repo: startup_external_events_repo,
+                        pr_poller_registry: startup_pr_poller_registry,
+                        agent_client: startup_agent_client,
+                        webhook_publisher: startup_webhook_publisher,
+                        session_merge_locks: startup_session_merge_locks,
+                        app_handle: startup_app_handle,
                     },
-                );
-
-                chat_resumption.run().await;
-
-                let reconcile_transition_service = Arc::new(startup_transition_factory.build(
-                    RuntimeFactoryDeps {
-                        task_repo: Arc::clone(&reconcile_task_repo),
-                        task_dependency_repo: Arc::clone(&reconcile_task_dependency_repo),
-                        project_repo: Arc::clone(&reconcile_project_repo),
-                        chat_message_repo: Arc::clone(&reconcile_chat_message_repo),
-                        chat_attachment_repo: Arc::clone(&reconcile_chat_attachment_repo),
-                        conversation_repo: Arc::clone(&reconcile_conversation_repo),
-                        agent_run_repo: Arc::clone(&reconcile_agent_run_repo),
-                        ideation_session_repo: Arc::clone(&reconcile_ideation_session_repo),
-                        activity_event_repo: Arc::clone(&reconcile_activity_event_repo),
-                        message_queue: Arc::clone(&reconcile_message_queue),
-                        running_agent_registry: Arc::clone(
-                            &reconcile_running_agent_registry,
-                        ),
-                        memory_event_repo: Arc::clone(&reconcile_memory_event_repo),
-                        execution_settings_repo: None,
-                        agent_lane_settings_repo: None,
-                        plan_branch_repo: None,
-                        interactive_process_registry: None,
-                    },
-                    reconcile_app_handle.clone(),
-                ));
-
-                let reconcile_runner =
-                    build_startup_reconciliation_runner(StartupReconciliationDeps {
-                        task_repo: reconcile_task_repo,
-                        task_dependency_repo: reconcile_task_dependency_repo,
-                        project_repo: reconcile_project_repo,
-                        conversation_repo: reconcile_conversation_repo,
-                        chat_message_repo: reconcile_chat_message_repo,
-                        chat_attachment_repo: reconcile_chat_attachment_repo,
-                        ideation_session_repo: reconcile_ideation_session_repo,
-                        activity_event_repo: reconcile_activity_event_repo,
-                        message_queue: reconcile_message_queue,
-                        running_agent_registry: reconcile_running_agent_registry,
-                        memory_event_repo: reconcile_memory_event_repo,
-                        agent_run_repo: reconcile_agent_run_repo,
-                        transition_service: reconcile_transition_service,
-                        execution_state: Arc::clone(&startup_execution_state),
-                        execution_settings_repo: Arc::clone(
-                            &startup_execution_settings_repo,
-                        ),
-                        plan_branch_repo: Arc::clone(&startup_plan_branch_repo),
-                        interactive_process_registry: Arc::clone(
-                            &startup_interactive_process_registry,
-                        ),
-                        review_repo: reconcile_review_repo,
-                        app_handle: reconcile_app_handle,
-                    });
-
-                // One-shot startup recovery: re-queue timeout-failed tasks (attempt_count < 3).
-                // Must run before reconcile_stuck_tasks so recovered tasks are visible immediately.
-                reconcile_runner.recover_timeout_failures().await;
-
-                reconcile_runner.reconcile_stuck_tasks().await;
-
-                tauri::async_runtime::spawn(async move {
-                    let interval = Duration::from_secs(30);
-                    loop {
-                        tokio::time::sleep(interval).await;
-                        reconcile_runner.reconcile_stuck_tasks().await;
-                    }
-                });
-
-                // Spawn scheduler watchdog: periodic safety net for tasks stuck in Ready
-                // and review-parked PendingReview after freshness backoff expiry.
-                application::startup_background::spawn_watchdog(
-                    Arc::clone(&task_scheduler),
-                    watchdog_task_repo,
-                    watchdog_project_repo,
-                );
-
-                // Spawn verification reconciliation service: resets stuck in_progress sessions.
-                // Startup scan runs immediately; periodic scan runs every reconciliation_interval_secs.
+                )
+                .await
                 {
-                    use application::reconciliation::recovery_queue::{
-                        create_recovery_queue, RecoveryQueueConfig,
-                    };
-                    use application::reconciliation::verification_reconciliation::{
-                        VerificationReconciliationConfig, VerificationReconciliationService,
-                    };
-
-                    // PDM-172 Phase 1: Construct shared RecoveryQueue infrastructure.
-                    // Spawn ordering (NON-NEGOTIABLE — Constraint 9):
-                    //   1. Construct queue + processor
-                    //   2. Spawn processor task (receiver must be ready before items are submitted)
-                    //   3. Call startup_scan() which may submit recovery items
-                    let recovery_config = RecoveryQueueConfig::default();
-                    // Construct a ClaudeChatService for the recovery queue processor.
-                    // Uses pre-cloned repos (cloned before StartupJobRunner consumed some originals).
-                    let recovery_queue_chat_deps = ChatRuntimeFactoryDeps {
-                        chat_message_repo: recovery_cs_chat_message_repo,
-                        chat_attachment_repo: recovery_cs_chat_attachment_repo,
-                        artifact_repo: recovery_cs_artifact_repo,
-                        conversation_repo: recovery_cs_conversation_repo,
-                        agent_run_repo: recovery_cs_agent_run_repo,
-                        project_repo: recovery_cs_project_repo,
-                        task_repo: recovery_cs_task_repo,
-                        task_dependency_repo: recovery_cs_task_dep_repo,
-                        ideation_session_repo: recovery_cs_ideation_repo,
-                        activity_event_repo: recovery_cs_activity_repo,
-                        message_queue: recovery_cs_message_queue,
-                        running_agent_registry: recovery_cs_running_reg,
-                        memory_event_repo: recovery_cs_memory_event_repo,
-                        execution_settings_repo: Some(recovery_cs_execution_settings_repo),
-                        agent_lane_settings_repo: Some(recovery_cs_agent_lane_repo),
-                        ideation_effort_settings_repo: Some(recovery_cs_ideation_effort_repo),
-                        ideation_model_settings_repo: Some(recovery_cs_ideation_model_repo),
-                        plan_branch_repo: None,
-                        task_proposal_repo: None,
-                        task_step_repo: None,
-                        review_repo: None,
-                        interactive_process_registry: Some(recovery_cs_ipr),
-                        streaming_state_cache: None,
-                    };
-                    let recovery_chat_service: std::sync::Arc<dyn application::chat_service::ChatService> =
-                        std::sync::Arc::new(
-                            build_chat_service_with_fallback(
-                                &Some(recovery_cs_app_handle.clone()),
-                                Some(Arc::clone(&startup_execution_state)),
-                                &recovery_queue_chat_deps,
-                            ),
-                        );
-                    let (recovery_queue, recovery_processor) = create_recovery_queue(
-                        Arc::clone(&startup_running_agent_registry),
-                        Arc::clone(&startup_interactive_process_registry),
-                        Arc::clone(&startup_ideation_session_repo),
-                        recovery_chat_service,
-                        Some(recovery_cs_app_handle),
-                        recovery_config,
-                    );
-                    let recovery_queue = Arc::new(recovery_queue);
-                    application::startup_background::spawn_recovery_queue_processor(
-                        recovery_processor,
-                    );
-
-                    let vcfg = infrastructure::agents::claude::verification_config();
-                    let ext_cfg = infrastructure::agents::claude::external_mcp_config();
-                    let verification_config = VerificationReconciliationConfig {
-                        stale_after_secs: vcfg.reconciliation_stale_after_secs,
-                        auto_verify_stale_secs: vcfg.auto_verify_stale_secs,
-                        interval_secs: vcfg.reconciliation_interval_secs,
-                        external_session_stale_secs: ext_cfg.external_session_stale_secs,
-                        external_session_startup_grace_secs: ext_cfg.external_session_startup_grace_secs,
-                    };
-                    let verification_session_repo = Arc::clone(&startup_ideation_session_repo);
-                    let svc = Arc::new(
-                        VerificationReconciliationService::new(
-                            verification_session_repo,
-                            verification_config,
-                        )
-                        .with_app_handle(verification_recon_app_handle)
-                        .with_recovery_queue(Arc::clone(&recovery_queue))
-                        .with_running_agent_registry(Arc::clone(&startup_running_agent_registry)),
-                    );
-                    application::startup_background::startup_scan_verification_reconciliation(
-                        svc,
-                        &startup_ideation_recovery_claims,
-                    )
-                    .await;
+                    tracing::error!(error = %error, "Startup recovery pipeline failed");
                 }
-
-                application::startup_background::spawn_cleanup_loops(
-                    Arc::clone(&startup_external_events_repo),
-                    Arc::clone(&startup_memory_archive_repo),
-                    Arc::clone(&startup_memory_entry_repo),
-                    Arc::clone(&startup_project_repo),
-                );
-
-                application::startup_background::maybe_start_external_mcp(
-                    external_mcp_app_handle,
-                    |port, timeout| Box::pin(wait_for_backend_ready(port, timeout)),
-                )
-                .await;
-
             });
 
             register_managed_state(app, app_state, service_team_tracker);
