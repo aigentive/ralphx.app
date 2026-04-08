@@ -147,10 +147,7 @@ impl ChatRuntimeFactoryDeps {
         self
     }
 
-    pub(crate) fn with_task_proposal_repo(
-        mut self,
-        repo: Arc<dyn TaskProposalRepository>,
-    ) -> Self {
+    pub(crate) fn with_task_proposal_repo(mut self, repo: Arc<dyn TaskProposalRepository>) -> Self {
         self.task_proposal_repo = Some(repo);
         self
     }
@@ -176,6 +173,98 @@ impl ChatRuntimeFactoryDeps {
     pub(crate) fn with_streaming_state_cache(mut self, cache: StreamingStateCache) -> Self {
         self.streaming_state_cache = Some(cache);
         self
+    }
+
+    pub(crate) fn with_runtime_support(
+        mut self,
+        execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+        agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
+        plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+        interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
+    ) -> Self {
+        if let Some(repo) = execution_settings_repo {
+            self = self.with_execution_settings_repo(repo);
+        }
+        if let Some(repo) = agent_lane_settings_repo {
+            self = self.with_agent_lane_settings_repo(repo);
+        }
+        if let Some(repo) = plan_branch_repo {
+            self = self.with_plan_branch_repo(repo);
+        }
+        if let Some(registry) = interactive_process_registry {
+            self = self.with_interactive_process_registry(registry);
+        }
+        self
+    }
+
+    pub(crate) fn with_ideation_runtime_support(
+        mut self,
+        ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
+        ideation_model_settings_repo: Option<Arc<dyn IdeationModelSettingsRepository>>,
+    ) -> Self {
+        if let Some(repo) = ideation_effort_settings_repo {
+            self = self.with_ideation_effort_settings_repo(repo);
+        }
+        if let Some(repo) = ideation_model_settings_repo {
+            self = self.with_ideation_model_settings_repo(repo);
+        }
+        self
+    }
+
+    pub(crate) fn with_chat_context_support(
+        mut self,
+        task_proposal_repo: Option<Arc<dyn TaskProposalRepository>>,
+        task_step_repo: Option<Arc<dyn TaskStepRepository>>,
+        review_repo: Option<Arc<dyn ReviewRepository>>,
+        streaming_state_cache: Option<StreamingStateCache>,
+    ) -> Self {
+        if let Some(repo) = task_proposal_repo {
+            self = self.with_task_proposal_repo(repo);
+        }
+        if let Some(repo) = task_step_repo {
+            self = self.with_task_step_repo(repo);
+        }
+        if let Some(repo) = review_repo {
+            self = self.with_review_repo(repo);
+        }
+        if let Some(cache) = streaming_state_cache {
+            self = self.with_streaming_state_cache(cache);
+        }
+        self
+    }
+
+    pub(crate) fn from_app_state(state: &AppState) -> Self {
+        Self::from_core(
+            Arc::clone(&state.chat_message_repo),
+            Arc::clone(&state.chat_attachment_repo),
+            Arc::clone(&state.artifact_repo),
+            Arc::clone(&state.chat_conversation_repo),
+            Arc::clone(&state.agent_run_repo),
+            Arc::clone(&state.project_repo),
+            Arc::clone(&state.task_repo),
+            Arc::clone(&state.task_dependency_repo),
+            Arc::clone(&state.ideation_session_repo),
+            Arc::clone(&state.activity_event_repo),
+            Arc::clone(&state.message_queue),
+            Arc::clone(&state.running_agent_registry),
+            Arc::clone(&state.memory_event_repo),
+        )
+        .with_runtime_support(
+            Some(Arc::clone(&state.execution_settings_repo)),
+            Some(Arc::clone(&state.agent_lane_settings_repo)),
+            Some(Arc::clone(&state.plan_branch_repo)),
+            Some(Arc::clone(&state.interactive_process_registry)),
+        )
+        .with_ideation_runtime_support(
+            Some(Arc::clone(&state.ideation_effort_settings_repo)),
+            Some(Arc::clone(&state.ideation_model_settings_repo)),
+        )
+        .with_chat_context_support(
+            Some(Arc::clone(&state.task_proposal_repo)),
+            Some(Arc::clone(&state.task_step_repo)),
+            Some(Arc::clone(&state.review_repo)),
+            Some(state.streaming_state_cache.clone()),
+        )
     }
 }
 

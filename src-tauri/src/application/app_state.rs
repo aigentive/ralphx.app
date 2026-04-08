@@ -8,14 +8,14 @@ use tauri::{AppHandle, Manager, Runtime};
 use tokio::sync::Mutex;
 
 use super::services::PrPollerRegistry;
+use crate::application::chat_service::ClaudeChatService;
+use crate::application::runtime_factory::{build_chat_service_from_deps, ChatRuntimeFactoryDeps};
 use crate::application::AgentClientBundle;
 use crate::application::PermissionState;
 use crate::application::QuestionState;
 use crate::application::ResumeValidator;
 use crate::application::TaskSchedulerService;
 use crate::application::TaskTransitionService;
-use crate::application::chat_service::ClaudeChatService;
-use crate::application::runtime_factory::{ChatRuntimeFactoryDeps, build_chat_service_from_deps};
 use crate::commands::ExecutionState;
 use crate::domain::agents::{AgentHarnessKind, AgenticClient, LogicalEffort};
 use crate::domain::entities::ChatContextType;
@@ -60,6 +60,7 @@ use crate::infrastructure::memory::{
 };
 use crate::infrastructure::sqlite::ReviewIssueRepository;
 use crate::infrastructure::sqlite::{
+    get_app_data_db_path, get_default_db_path, open_connection, run_migrations,
     SqliteActivePlanRepository, SqliteActivityEventRepository, SqliteAgentLaneSettingsRepository,
     SqliteAgentProfileRepository, SqliteAgentRunRepository, SqliteApiKeyRepository,
     SqliteAppStateRepository, SqliteArtifactBucketRepository, SqliteArtifactFlowRepository,
@@ -76,8 +77,7 @@ use crate::infrastructure::sqlite::{
     SqliteSessionLinkRepository, SqliteTaskDependencyRepository, SqliteTaskProposalRepository,
     SqliteTaskQARepository, SqliteTaskRepository, SqliteTaskStepRepository,
     SqliteTeamMessageRepository, SqliteTeamSessionRepository, SqliteWebhookRegistrationRepository,
-    SqliteWorkflowRepository, get_app_data_db_path, get_default_db_path, open_connection,
-    run_migrations,
+    SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, GhCliGithubService, MockAgenticClient};
 
@@ -258,31 +258,7 @@ impl AppState {
         execution_state: Option<Arc<ExecutionState>>,
         app_handle: Option<AppHandle<R>>,
     ) -> ClaudeChatService<R> {
-        let deps = ChatRuntimeFactoryDeps::from_core(
-            Arc::clone(&self.chat_message_repo),
-            Arc::clone(&self.chat_attachment_repo),
-            Arc::clone(&self.artifact_repo),
-            Arc::clone(&self.chat_conversation_repo),
-            Arc::clone(&self.agent_run_repo),
-            Arc::clone(&self.project_repo),
-            Arc::clone(&self.task_repo),
-            Arc::clone(&self.task_dependency_repo),
-            Arc::clone(&self.ideation_session_repo),
-            Arc::clone(&self.activity_event_repo),
-            Arc::clone(&self.message_queue),
-            Arc::clone(&self.running_agent_registry),
-            Arc::clone(&self.memory_event_repo),
-        )
-        .with_execution_settings_repo(Arc::clone(&self.execution_settings_repo))
-        .with_agent_lane_settings_repo(Arc::clone(&self.agent_lane_settings_repo))
-        .with_ideation_effort_settings_repo(Arc::clone(&self.ideation_effort_settings_repo))
-        .with_ideation_model_settings_repo(Arc::clone(&self.ideation_model_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&self.plan_branch_repo))
-        .with_task_proposal_repo(Arc::clone(&self.task_proposal_repo))
-        .with_task_step_repo(Arc::clone(&self.task_step_repo))
-        .with_review_repo(Arc::clone(&self.review_repo))
-        .with_interactive_process_registry(Arc::clone(&self.interactive_process_registry))
-        .with_streaming_state_cache(self.streaming_state_cache.clone());
+        let deps = ChatRuntimeFactoryDeps::from_app_state(self);
 
         build_chat_service_from_deps(app_handle, execution_state, &deps)
     }

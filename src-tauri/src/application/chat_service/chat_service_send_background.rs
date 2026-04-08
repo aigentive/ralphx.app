@@ -19,7 +19,9 @@ use crate::application::interactive_process_registry::{
 };
 use crate::application::memory_orchestration::trigger_memory_pipelines;
 use crate::application::question_state::QuestionState;
-use crate::application::runtime_factory::{ChatRuntimeFactoryDeps, build_chat_service_with_fallback};
+use crate::application::runtime_factory::{
+    build_chat_service_with_fallback, ChatRuntimeFactoryDeps,
+};
 use crate::commands::ExecutionState;
 use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::entities::ChatConversation;
@@ -651,7 +653,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                         execution_state.as_ref().cloned(),
                         execution_settings_repo.as_ref().cloned(),
                     ) {
-                        let mut deps = ChatRuntimeFactoryDeps::from_core(
+                        let deps = ChatRuntimeFactoryDeps::from_core(
                             Arc::clone(&chat_message_repo),
                             Arc::clone(&chat_attachment_repo),
                             Arc::clone(&artifact_repo),
@@ -666,16 +668,16 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                             Arc::clone(&running_agent_registry),
                             Arc::clone(&memory_event_repo),
                         )
-                        .with_execution_settings_repo(exec_settings.clone());
-                        if let Some(repo) = agent_lane_settings_repo.as_ref() {
-                            deps = deps.with_agent_lane_settings_repo(Arc::clone(repo));
-                        }
-                        if let Some(repo) = ideation_effort_settings_repo.as_ref() {
-                            deps = deps.with_ideation_effort_settings_repo(Arc::clone(repo));
-                        }
-                        if let Some(repo) = ideation_model_settings_repo.as_ref() {
-                            deps = deps.with_ideation_model_settings_repo(Arc::clone(repo));
-                        }
+                        .with_runtime_support(
+                            Some(exec_settings.clone()),
+                            agent_lane_settings_repo.as_ref().map(Arc::clone),
+                            None,
+                            None,
+                        )
+                        .with_ideation_runtime_support(
+                            ideation_effort_settings_repo.as_ref().map(Arc::clone),
+                            ideation_model_settings_repo.as_ref().map(Arc::clone),
+                        );
 
                         let chat_svc: Arc<dyn super::ChatService> = Arc::new(
                             build_chat_service_with_fallback(

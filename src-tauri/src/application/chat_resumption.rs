@@ -16,7 +16,9 @@ use std::sync::Arc;
 use tauri::{AppHandle, Runtime};
 use tracing::{info, warn};
 
-use crate::application::runtime_factory::{ChatRuntimeFactoryDeps, build_chat_service_with_fallback};
+use crate::application::runtime_factory::{
+    build_chat_service_with_fallback, ChatRuntimeFactoryDeps,
+};
 use crate::application::{ChatService, ClaudeChatService, InteractiveProcessRegistry};
 use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
 use crate::domain::entities::{ChatContextType, InterruptedConversation, TaskId};
@@ -84,7 +86,10 @@ impl<R: Runtime> ChatResumptionRunner<R> {
     }
 
     /// Set the shared InteractiveProcessRegistry (builder pattern).
-    pub fn with_interactive_process_registry(mut self, ipr: Arc<InteractiveProcessRegistry>) -> Self {
+    pub fn with_interactive_process_registry(
+        mut self,
+        ipr: Arc<InteractiveProcessRegistry>,
+    ) -> Self {
         self.interactive_process_registry = Some(ipr);
         self
     }
@@ -252,19 +257,12 @@ impl<R: Runtime> ChatResumptionRunner<R> {
 
     /// Create a ChatService instance for resumption.
     fn create_chat_service(&self) -> ClaudeChatService<R> {
-        let mut deps = self.chat_runtime_deps.clone();
-        if let Some(repo) = self.execution_settings_repo.as_ref() {
-            deps = deps.with_execution_settings_repo(Arc::clone(repo));
-        }
-        if let Some(repo) = self.agent_lane_settings_repo.as_ref() {
-            deps = deps.with_agent_lane_settings_repo(Arc::clone(repo));
-        }
-        if let Some(repo) = self.plan_branch_repo.as_ref() {
-            deps = deps.with_plan_branch_repo(Arc::clone(repo));
-        }
-        if let Some(registry) = self.interactive_process_registry.as_ref() {
-            deps = deps.with_interactive_process_registry(Arc::clone(registry));
-        }
+        let deps = self.chat_runtime_deps.clone().with_runtime_support(
+            self.execution_settings_repo.as_ref().map(Arc::clone),
+            self.agent_lane_settings_repo.as_ref().map(Arc::clone),
+            self.plan_branch_repo.as_ref().map(Arc::clone),
+            self.interactive_process_registry.as_ref().map(Arc::clone),
+        );
         build_chat_service_with_fallback(
             &self.app_handle,
             Some(Arc::clone(&self.execution_state)),

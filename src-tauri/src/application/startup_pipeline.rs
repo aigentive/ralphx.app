@@ -5,14 +5,14 @@ use tracing::info;
 
 use crate::application::runtime_factory::{ChatRuntimeFactoryDeps, RuntimeFactoryDeps};
 use crate::application::startup_runtime_builders::{
-    StartupChatResumptionDeps, StartupReconciliationDeps, StartupSchedulerDeps,
     build_startup_chat_resumption_runner, build_startup_reconciliation_runner,
-    build_startup_recovery_chat_service, build_startup_task_scheduler,
+    build_startup_recovery_chat_service, build_startup_task_scheduler, StartupChatResumptionDeps,
+    StartupReconciliationDeps, StartupSchedulerDeps,
 };
 use crate::application::startup_transition_factory::StartupTransitionFactory;
 use crate::application::{
-    AgentClientBundle, InteractiveProcessRegistry, StartupJobRunner, startup_background,
-    startup_jobs,
+    startup_background, startup_jobs, AgentClientBundle, InteractiveProcessRegistry,
+    StartupJobRunner,
 };
 use crate::commands::{ActiveProjectState, ExecutionState};
 use crate::domain::repositories::{
@@ -193,11 +193,16 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         Arc::clone(&running_agent_registry),
         Arc::clone(&memory_event_repo),
     )
-    .with_execution_settings_repo(Arc::clone(&execution_settings_repo))
-    .with_agent_lane_settings_repo(Arc::clone(&agent_lane_settings_repo))
-    .with_ideation_effort_settings_repo(Arc::clone(&ideation_effort_settings_repo))
-    .with_ideation_model_settings_repo(Arc::clone(&ideation_model_settings_repo))
-    .with_interactive_process_registry(Arc::clone(&interactive_process_registry));
+    .with_runtime_support(
+        Some(Arc::clone(&execution_settings_repo)),
+        Some(Arc::clone(&agent_lane_settings_repo)),
+        None,
+        Some(Arc::clone(&interactive_process_registry)),
+    )
+    .with_ideation_runtime_support(
+        Some(Arc::clone(&ideation_effort_settings_repo)),
+        Some(Arc::clone(&ideation_model_settings_repo)),
+    );
     let recovery_chat_service = build_startup_recovery_chat_service(
         app_handle.clone(),
         Arc::clone(&execution_state),
@@ -316,7 +321,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
 
     {
         use crate::application::reconciliation::recovery_queue::{
-            RecoveryQueueConfig, create_recovery_queue,
+            create_recovery_queue, RecoveryQueueConfig,
         };
         use crate::application::reconciliation::verification_reconciliation::{
             VerificationReconciliationConfig, VerificationReconciliationService,
