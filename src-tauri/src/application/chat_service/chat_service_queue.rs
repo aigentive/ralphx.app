@@ -223,18 +223,18 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
             if let Some(ref handle) = app_handle {
                 let _ = handle.emit(
                     "agent:run_started",
-                    AgentRunStartedPayload {
-                        run_id: queued_run_id.clone(),
-                        conversation_id: conversation_id.as_str().to_string(),
-                        context_type: context_type.to_string(),
-                        context_id: context_id.to_string(),
-                        run_chain_id: run_chain_id.map(|s| s.to_string()),
-                        parent_run_id: parent_run_id.map(|s| s.to_string()),
-                        effective_model_id: None,
-                        effective_model_label: None,
-                        provider_harness: Some(harness.to_string()),
-                        provider_session_id: Some(session_id.to_string()),
-                    },
+                    AgentRunStartedPayload::with_provider_session(
+                        queued_run_id.clone(),
+                        conversation_id.as_str().to_string(),
+                        context_type.to_string(),
+                        context_id.to_string(),
+                        run_chain_id.map(|s| s.to_string()),
+                        parent_run_id.map(|s| s.to_string()),
+                        None,
+                        None,
+                        Some(harness),
+                        Some(session_id.to_string()),
+                    ),
                 );
             }
 

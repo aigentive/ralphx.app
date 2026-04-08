@@ -138,6 +138,35 @@ pub struct AgentRunStartedPayload {
     pub provider_session_id: Option<String>,
 }
 
+impl AgentRunStartedPayload {
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_provider_session(
+        run_id: impl Into<String>,
+        conversation_id: impl Into<String>,
+        context_type: impl Into<String>,
+        context_id: impl Into<String>,
+        run_chain_id: Option<String>,
+        parent_run_id: Option<String>,
+        effective_model_id: Option<String>,
+        effective_model_label: Option<String>,
+        harness: Option<AgentHarnessKind>,
+        provider_session_id: Option<String>,
+    ) -> Self {
+        Self {
+            run_id: run_id.into(),
+            conversation_id: conversation_id.into(),
+            context_type: context_type.into(),
+            context_id: context_id.into(),
+            run_chain_id,
+            parent_run_id,
+            effective_model_id,
+            effective_model_label,
+            provider_harness: harness.map(|value| value.to_string()),
+            provider_session_id,
+        }
+    }
+}
+
 /// Payload for agent:chunk event
 #[derive(Debug, Clone, Serialize)]
 pub struct AgentChunkPayload {

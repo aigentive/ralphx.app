@@ -62,6 +62,27 @@ fn agent_run_started_payload_serde_skips_none_fields() {
 }
 
 #[test]
+fn agent_run_started_payload_helper_serializes_provider_metadata() {
+    let payload = AgentRunStartedPayload::with_provider_session(
+        "run-1",
+        "conv-1",
+        "task_execution",
+        "task-1",
+        None,
+        None,
+        Some("gpt-4.5".to_string()),
+        Some("GPT-4.5".to_string()),
+        Some(AgentHarnessKind::Codex),
+        Some("thread-123".to_string()),
+    );
+
+    assert_eq!(payload.provider_harness, Some("codex".to_string()));
+    assert_eq!(payload.provider_session_id, Some("thread-123".to_string()));
+    assert_eq!(payload.effective_model_id, Some("gpt-4.5".to_string()));
+    assert_eq!(payload.effective_model_label, Some("GPT-4.5".to_string()));
+}
+
+#[test]
 fn agent_run_completed_payload_sets_legacy_claude_alias_only_for_claude() {
     let claude_payload = AgentRunCompletedPayload::with_provider_session(
         "conv-1",

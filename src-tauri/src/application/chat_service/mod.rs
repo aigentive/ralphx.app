@@ -1106,25 +1106,24 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                     let existing_provider_session_ref = conversation.provider_session_ref();
                     self.emit_event(
                         "agent:run_started",
-                        AgentRunStartedPayload {
-                            run_id: interactive_run_id,
-                            conversation_id: conversation.id.as_str().to_string(),
-                            context_type: context_type.to_string(),
-                            context_id: context_id.to_string(),
-                            run_chain_id: None,
-                            parent_run_id: None,
-                            effective_model_id: None,
-                            effective_model_label: None,
-                            provider_harness: Some(
+                        AgentRunStartedPayload::with_provider_session(
+                            interactive_run_id,
+                            conversation.id.as_str().to_string(),
+                            context_type.to_string(),
+                            context_id.to_string(),
+                            None,
+                            None,
+                            None,
+                            None,
+                            Some(
                                 existing_provider_session_ref
                                     .as_ref()
                                     .map(|session_ref| session_ref.harness)
-                                    .unwrap_or(AgentHarnessKind::Claude)
-                                    .to_string(),
+                                    .unwrap_or(AgentHarnessKind::Claude),
                             ),
-                            provider_session_id: existing_provider_session_ref
+                            existing_provider_session_ref
                                 .map(|session_ref| session_ref.provider_session_id),
-                        },
+                        ),
                     );
 
                     return Ok(SendResult {
@@ -1716,18 +1715,18 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         // 3. Emit run started event (deferred from step 3 to include effective model info)
         self.emit_event(
             "agent:run_started",
-            AgentRunStartedPayload {
-                run_id: agent_run_id.clone(),
-                conversation_id: conversation_id.as_str().to_string(),
-                context_type: context_type.to_string(),
-                context_id: context_id.to_string(),
-                run_chain_id: run_chain_id.clone(),
-                parent_run_id: None,
-                effective_model_id: Some(effective_model_id.clone()),
+            AgentRunStartedPayload::with_provider_session(
+                agent_run_id.clone(),
+                conversation_id.as_str().to_string(),
+                context_type.to_string(),
+                context_id.to_string(),
+                run_chain_id.clone(),
+                None,
+                Some(effective_model_id.clone()),
                 effective_model_label,
-                provider_harness: Some(resolved_spawn_settings.effective_harness.to_string()),
-                provider_session_id: stored_session_id.clone(),
-            },
+                Some(resolved_spawn_settings.effective_harness),
+                stored_session_id.clone(),
+            ),
         );
 
         // Fetch recent session messages for Ideation context ONLY when spawning a new process.
