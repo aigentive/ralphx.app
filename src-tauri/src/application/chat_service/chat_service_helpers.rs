@@ -3,7 +3,9 @@
 // Extracted from chat_service.rs to improve modularity and reduce file size.
 
 use crate::domain::agents::{AgentHarnessKind, LogicalEffort};
-use crate::domain::entities::{ChatContextType, MessageRole};
+use crate::domain::entities::{
+    normalize_provider_session_compatibility, ChatContextType, MessageRole,
+};
 use crate::infrastructure::agents::claude::agent_names::{
     AGENT_CHAT_PROJECT, AGENT_CHAT_TASK, AGENT_IDEATION_TEAM_LEAD, AGENT_MERGER,
     AGENT_ORCHESTRATOR_IDEATION, AGENT_ORCHESTRATOR_IDEATION_READONLY, AGENT_PLAN_VERIFIER,
@@ -108,9 +110,13 @@ pub fn provider_harness_or_default(
     default_harness: AgentHarnessKind,
 ) -> AgentHarnessKind {
     provider_harness.unwrap_or_else(|| {
-        legacy_claude_session_id
-            .map(|_| AgentHarnessKind::Claude)
-            .unwrap_or(default_harness)
+        normalize_provider_session_compatibility(
+            legacy_claude_session_id.map(str::to_string),
+            None,
+            None,
+        )
+        .2
+        .unwrap_or(default_harness)
     })
 }
 

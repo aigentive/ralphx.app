@@ -10,9 +10,9 @@ use std::sync::Arc;
 
 use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::{
-    Artifact, ArtifactContent, ArtifactId, ArtifactType, ChatAttachment, ChatContextType,
-    ChatConversation, ChatConversationId, ChatMessage, ChatMessageId, GitMode, IdeationSessionId,
-    MessageRole, ProjectId, TaskId,
+    legacy_claude_session_alias, Artifact, ArtifactContent, ArtifactId, ArtifactType,
+    ChatAttachment, ChatContextType, ChatConversation, ChatConversationId, ChatMessage,
+    ChatMessageId, GitMode, IdeationSessionId, MessageRole, ProjectId, TaskId,
 };
 use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::repositories::{
@@ -53,7 +53,10 @@ pub struct ProviderSpawnableCommand {
 
 fn claude_resume_session_id(conversation: &ChatConversation) -> Option<String> {
     conversation.provider_session_ref().and_then(|session_ref| {
-        (session_ref.harness == AgentHarnessKind::Claude).then_some(session_ref.provider_session_id)
+        legacy_claude_session_alias(
+            Some(session_ref.harness),
+            Some(session_ref.provider_session_id.as_str()),
+        )
     })
 }
 
@@ -1852,6 +1855,7 @@ pub fn create_assistant_message(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
     use crate::infrastructure::memory::MemoryArtifactRepository;
 
     #[test]
@@ -1944,5 +1948,27 @@ mod tests {
             prompt.contains(&format!("<session_id>{}</session_id>", session_id.as_str())),
             "Ideation prompt should expose an explicit session_id alias"
         );
+    }
+
+    #[test]
+    fn claude_resume_session_id_respects_harness_compatibility_rules() {
+        let mut claude_conversation =
+            ChatConversation::new_project(ProjectId::from_string("project-claude".to_string()));
+        claude_conversation.provider_harness = Some(AgentHarnessKind::Claude);
+        claude_conversation.provider_session_id = Some("claude-session".to_string());
+        claude_conversation.claude_session_id = None;
+
+        let mut codex_conversation =
+            ChatConversation::new_project(ProjectId::from_string("project-codex".to_string()));
+        codex_conversation.set_provider_session_ref(ProviderSessionRef {
+            harness: AgentHarnessKind::Codex,
+            provider_session_id: "codex-session".to_string(),
+        });
+
+        assert_eq!(
+            claude_resume_session_id(&claude_conversation),
+            Some("claude-session".to_string())
+        );
+        assert_eq!(claude_resume_session_id(&codex_conversation), None);
     }
 }
