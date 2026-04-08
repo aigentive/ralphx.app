@@ -1,6 +1,9 @@
 use super::ideation_harness_availability::{
-    build_lane_harness_availability, standard_harness_probe_registry, validate_claude_runtime_path,
-    HarnessRuntimeProbe, LaneHarnessAvailability, ResolvedLaneHarnessConfig,
+    build_lane_harness_availability, validate_claude_runtime_path, LaneHarnessAvailability,
+    ResolvedLaneHarnessConfig,
+};
+use crate::application::harness_runtime_registry::{
+    standard_harness_probe_registry, HarnessRuntimeProbe,
 };
 use crate::domain::agents::{AgentHarnessKind, AgentLane};
 use std::collections::HashMap;

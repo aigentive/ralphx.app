@@ -31,7 +31,7 @@ pub(crate) mod verification_child_process_registry;
 use crate::application::interactive_process_registry::{
     InteractiveProcessKey, InteractiveProcessMetadata, InteractiveProcessRegistry,
 };
-use crate::application::ideation_harness_availability::probe_harness;
+use crate::application::harness_runtime_registry::probe_harness;
 use crate::application::question_state::QuestionState;
 use crate::domain::agents::{AgentHarnessKind, DEFAULT_AGENT_HARNESS};
 use crate::domain::entities::{

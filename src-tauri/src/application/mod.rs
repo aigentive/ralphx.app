@@ -68,14 +68,14 @@ pub mod webhook_service;
 // Re-export commonly used items
 pub use app_state::AppState;
 pub(crate) use agent_client_bundle::AgentClientBundle;
+pub(crate) use harness_runtime_registry::probe_supported_harnesses;
 pub use agent_lane_settings_bootstrap::{
     load_or_seed_agent_lane_settings_defaults, AgentLaneSettingsBootstrapResult,
 };
 pub(crate) use ideation_harness_availability::{
-    build_lane_harness_availability, probe_supported_harnesses,
-    resolve_lane_harness_config, resolve_primary_ideation_harness_availability,
-    team_mode_supported_for_context, validate_chat_runtime_for_context, AGENT_LANES,
-    IDEATION_LANES,
+    build_lane_harness_availability, resolve_lane_harness_config,
+    resolve_primary_ideation_harness_availability, team_mode_supported_for_context,
+    validate_chat_runtime_for_context, AGENT_LANES, IDEATION_LANES,
 };
 pub use apply_service::{
     ApplyProposalsOptions, ApplyProposalsResult, ApplyService, SelectionValidation, TargetColumn,

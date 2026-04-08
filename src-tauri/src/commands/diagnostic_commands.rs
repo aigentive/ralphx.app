@@ -3,8 +3,8 @@
 use serde::Serialize;
 use tauri::State;
 
+use crate::application::harness_runtime_registry::probe_harness;
 use crate::application::AppState;
-use crate::application::ideation_harness_availability::probe_harness;
 use crate::domain::agents::AgentHarnessKind;
 use crate::infrastructure::agents::{resolve_codex_cli, CodexCliCapabilities};
 
@@ -139,7 +139,9 @@ pub fn build_codex_cli_diagnostics_response(
 #[tauri::command]
 pub fn get_codex_cli_diagnostics() -> Result<CodexCliDiagnosticsResponse, String> {
     let probe = probe_harness(AgentHarnessKind::Codex);
-    let capabilities = resolve_codex_cli().ok().map(|resolved| resolved.capabilities);
+    let capabilities = resolve_codex_cli()
+        .ok()
+        .map(|resolved| resolved.capabilities);
     Ok(build_codex_cli_diagnostics_response(
         CodexCliProbeStatus {
             binary_path: probe.binary_path,

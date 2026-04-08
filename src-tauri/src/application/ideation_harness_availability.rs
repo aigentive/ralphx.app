@@ -1,6 +1,6 @@
 use crate::application::chat_service::harness_supports_team_mode;
-pub(crate) use crate::application::harness_runtime_registry::{
-    probe_harness, probe_supported_harnesses, standard_harness_probe_registry, HarnessRuntimeProbe,
+use crate::application::harness_runtime_registry::{
+    probe_harness, probe_supported_harnesses, HarnessRuntimeProbe,
 };
 use crate::application::AppState;
 use crate::domain::entities::{ChatContextType, IdeationSessionId, TaskId};
