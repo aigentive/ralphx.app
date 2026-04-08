@@ -1266,6 +1266,28 @@ pub async fn build_codex_command(
     Ok(spawnable)
 }
 
+async fn resolve_noninteractive_spawn_settings(
+    context_type: ChatContextType,
+    entity_status: Option<&str>,
+    project_id: Option<&str>,
+    model_override: Option<&str>,
+    agent_lane_settings_repo: Option<&Arc<dyn AgentLaneSettingsRepository>>,
+    ideation_model_settings_repo: Option<&Arc<dyn IdeationModelSettingsRepository>>,
+    ideation_effort_settings_repo: Option<&Arc<dyn IdeationEffortSettingsRepository>>,
+) -> ResolvedAgentSpawnSettings {
+    crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
+        resolve_agent_with_team_mode(&context_type, entity_status, false),
+        project_id,
+        context_type,
+        entity_status,
+        model_override,
+        agent_lane_settings_repo,
+        ideation_model_settings_repo,
+        ideation_effort_settings_repo,
+    )
+    .await
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn build_command_for_harness(
     harness: AgentHarnessKind,
@@ -1317,18 +1339,16 @@ pub async fn build_command_for_harness(
             cli_path,
             capabilities,
         } => {
-            let resolved_spawn_settings =
-                crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
-                    resolve_agent_with_team_mode(&conversation.context_type, entity_status, false),
-                    project_id,
-                    conversation.context_type,
-                    entity_status,
-                    model_override,
-                    agent_lane_settings_repo.as_ref(),
-                    ideation_model_settings_repo.as_ref(),
-                    ideation_effort_settings_repo.as_ref(),
-                )
-                .await;
+            let resolved_spawn_settings = resolve_noninteractive_spawn_settings(
+                conversation.context_type,
+                entity_status,
+                project_id,
+                model_override,
+                agent_lane_settings_repo.as_ref(),
+                ideation_model_settings_repo.as_ref(),
+                ideation_effort_settings_repo.as_ref(),
+            )
+            .await;
 
             Ok(ProviderSpawnableCommand {
                 spawnable: build_codex_command(
@@ -1743,18 +1763,16 @@ pub async fn build_resume_command_for_harness(
                 Arc::clone(&task_repo),
             )
             .await;
-            let resolved_spawn_settings =
-                crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
-                    resolve_agent_with_team_mode(&context_type, entity_status.as_deref(), false),
-                    project_id,
-                    context_type,
-                    entity_status.as_deref(),
-                    model_override,
-                    agent_lane_settings_repo.as_ref(),
-                    ideation_model_settings_repo.as_ref(),
-                    ideation_effort_settings_repo.as_ref(),
-                )
-                .await;
+            let resolved_spawn_settings = resolve_noninteractive_spawn_settings(
+                context_type,
+                entity_status.as_deref(),
+                project_id,
+                model_override,
+                agent_lane_settings_repo.as_ref(),
+                ideation_model_settings_repo.as_ref(),
+                ideation_effort_settings_repo.as_ref(),
+            )
+            .await;
 
             Ok(ProviderSpawnableCommand {
                 spawnable: build_codex_resume_command(
