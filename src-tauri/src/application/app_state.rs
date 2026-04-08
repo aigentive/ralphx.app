@@ -353,12 +353,17 @@ impl AppState {
         )
         .await;
 
-        if resolved.effective_harness == AgentHarnessKind::Codex {
-            let codex_client = self.resolve_harness_agent_client(AgentHarnessKind::Codex);
-            if codex_client.is_available().await.unwrap_or(false) {
+        if resolved.effective_harness != self.agent_clients.default_harness
+            && self
+                .agent_clients
+                .harness_clients
+                .contains_key(&resolved.effective_harness)
+        {
+            let harness_client = self.resolve_harness_agent_client(resolved.effective_harness);
+            if harness_client.is_available().await.unwrap_or(false) {
                 return ResolvedBackgroundAgentRuntime {
-                    client: codex_client,
-                    harness: Some(AgentHarnessKind::Codex),
+                    client: harness_client,
+                    harness: Some(resolved.effective_harness),
                     model: Some(resolved.model),
                     logical_effort: resolved.logical_effort,
                     approval_policy: resolved.approval_policy,
@@ -368,7 +373,8 @@ impl AppState {
 
             tracing::warn!(
                 project_id = project_id.unwrap_or(""),
-                "Codex ideation sidecar unavailable; falling back to Claude client"
+                harness = %resolved.effective_harness,
+                "Configured ideation sidecar harness unavailable; falling back to default client"
             );
         }
 

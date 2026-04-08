@@ -298,6 +298,67 @@ async fn test_build_transition_service_with_execution_state_uses_app_codex_clien
 }
 
 #[tokio::test]
+async fn test_resolve_ideation_background_agent_runtime_uses_registered_harness_client() {
+    let default_mock: Arc<dyn AgenticClient> = Arc::new(MockAgenticClient::new());
+    let codex_mock: Arc<dyn AgenticClient> = Arc::new(MockAgenticClient::new());
+    let state = AppState::new_test()
+        .with_agent_client(default_mock)
+        .with_harness_agent_client(AgentHarnessKind::Codex, codex_mock.clone());
+
+    let project = Project::new("Codex Ideation Project".to_string(), "/tmp".to_string());
+    state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut codex_lane = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    codex_lane.model = Some("gpt-5.4".to_string());
+    codex_lane.effort = Some(LogicalEffort::XHigh);
+    codex_lane.fallback_harness = Some(AgentHarnessKind::Claude);
+    state
+        .agent_lane_settings_repo
+        .upsert_for_project(project.id.as_str(), AgentLane::IdeationPrimary, &codex_lane)
+        .await
+        .unwrap();
+
+    let runtime = state
+        .resolve_ideation_background_agent_runtime(Some(project.id.as_str()))
+        .await;
+
+    assert!(Arc::ptr_eq(&runtime.client, &codex_mock));
+    assert_eq!(runtime.harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(runtime.model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(runtime.logical_effort, Some(LogicalEffort::XHigh));
+}
+
+#[tokio::test]
+async fn test_resolve_ideation_background_agent_runtime_falls_back_without_registered_harness_client()
+{
+    let default_mock: Arc<dyn AgenticClient> = Arc::new(MockAgenticClient::new());
+    let mut state = AppState::new_test().with_agent_client(default_mock.clone());
+    state.agent_clients.harness_clients.clear();
+
+    let project = Project::new("Fallback Ideation Project".to_string(), "/tmp".to_string());
+    state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut codex_lane = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    codex_lane.model = Some("gpt-5.4".to_string());
+    codex_lane.effort = Some(LogicalEffort::XHigh);
+    codex_lane.fallback_harness = Some(AgentHarnessKind::Claude);
+    state
+        .agent_lane_settings_repo
+        .upsert_for_project(project.id.as_str(), AgentLane::IdeationPrimary, &codex_lane)
+        .await
+        .unwrap();
+
+    let runtime = state
+        .resolve_ideation_background_agent_runtime(Some(project.id.as_str()))
+        .await;
+
+    assert_eq!(runtime.client.capabilities().client_type, ClientType::Mock);
+    assert_eq!(runtime.harness, None);
+    assert_eq!(runtime.model, None);
+    assert_eq!(runtime.logical_effort, None);
+}
+
+#[tokio::test]
 async fn test_ideation_repos_accessible() {
     let state = AppState::new_test();
     let project_id = ProjectId::new();
