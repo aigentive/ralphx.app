@@ -110,34 +110,6 @@ fn test_effective_team_mode_for_harness_respects_requested_false() {
 }
 
 #[test]
-fn test_provider_harness_or_default_prefers_provider_harness() {
-    assert_eq!(
-        provider_harness_or_default(
-            Some(AgentHarnessKind::Codex),
-            Some("legacy-claude-session"),
-            AgentHarnessKind::Claude,
-        ),
-        AgentHarnessKind::Codex
-    );
-}
-
-#[test]
-fn test_provider_harness_or_default_uses_legacy_claude_session() {
-    assert_eq!(
-        provider_harness_or_default(None, Some("legacy-claude-session"), AgentHarnessKind::Codex),
-        AgentHarnessKind::Claude
-    );
-}
-
-#[test]
-fn test_provider_harness_or_default_uses_default_without_session() {
-    assert_eq!(
-        provider_harness_or_default(None, None, AgentHarnessKind::Codex),
-        AgentHarnessKind::Codex
-    );
-}
-
-#[test]
 fn test_effective_effort_for_claude_prefers_claude_effort() {
     assert_eq!(
         effective_effort_for_harness(

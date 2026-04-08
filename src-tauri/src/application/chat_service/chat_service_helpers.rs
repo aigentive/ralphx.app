@@ -6,9 +6,7 @@ use crate::domain::agents::{
     standard_harness_behavior, AgentHarnessKind, HarnessEffortStrategy, HarnessModelLabelStrategy,
     LogicalEffort,
 };
-use crate::domain::entities::{
-    normalize_provider_session_compatibility, ChatContextType, MessageRole,
-};
+use crate::domain::entities::{ChatContextType, MessageRole};
 use crate::infrastructure::agents::claude::agent_names::{
     AGENT_CHAT_PROJECT, AGENT_CHAT_TASK, AGENT_IDEATION_TEAM_LEAD, AGENT_MERGER,
     AGENT_ORCHESTRATOR_IDEATION, AGENT_ORCHESTRATOR_IDEATION_READONLY, AGENT_PLAN_VERIFIER,
@@ -105,26 +103,6 @@ pub fn effective_team_mode_for_harness(
 
 pub fn harness_supports_team_mode(harness: AgentHarnessKind) -> bool {
     standard_harness_behavior(harness).honors_team_mode
-}
-
-/// Resolve a provider harness while preserving legacy pre-Codex Claude sessions.
-///
-/// During the additive migration window, a persisted `claude_session_id` without a
-/// provider-neutral harness still implies Claude.
-pub fn provider_harness_or_default(
-    provider_harness: Option<AgentHarnessKind>,
-    legacy_claude_session_id: Option<&str>,
-    default_harness: AgentHarnessKind,
-) -> AgentHarnessKind {
-    provider_harness.unwrap_or_else(|| {
-        normalize_provider_session_compatibility(
-            legacy_claude_session_id.map(str::to_string),
-            None,
-            None,
-        )
-        .2
-        .unwrap_or(default_harness)
-    })
 }
 
 pub fn effective_effort_for_harness(
