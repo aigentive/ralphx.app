@@ -29,11 +29,11 @@ mod streaming_state_cache;
 pub(crate) mod verification_child_process_registry;
 
 use crate::application::interactive_process_registry::{
-    InteractiveProcessKey, InteractiveProcessRegistry,
+    InteractiveProcessKey, InteractiveProcessMetadata, InteractiveProcessRegistry,
 };
 use crate::application::ideation_harness_availability::probe_harness;
 use crate::application::question_state::QuestionState;
-use crate::domain::agents::DEFAULT_AGENT_HARNESS;
+use crate::domain::agents::{AgentHarnessKind, DEFAULT_AGENT_HARNESS};
 use crate::domain::entities::{
     AgentRun, ChatContextType, ChatConversation, ChatConversationId, ChatMessageId,
     IdeationSessionId, InternalStatus, ProjectId, TaskId,
@@ -197,6 +197,26 @@ pub(crate) fn event_context(
         context_type: context_type.to_string(),
         context_id: context_id.to_string(),
     }
+}
+
+fn interactive_run_started_provider_session(
+    conversation: &ChatConversation,
+    process_metadata: Option<&InteractiveProcessMetadata>,
+) -> (AgentHarnessKind, Option<String>) {
+    let conversation_session_ref = conversation.provider_session_ref();
+    let harness = process_metadata
+        .and_then(|metadata| metadata.harness)
+        .or_else(|| conversation_session_ref.as_ref().map(|session_ref| session_ref.harness))
+        .unwrap_or(DEFAULT_AGENT_HARNESS);
+    let provider_session_id = process_metadata
+        .and_then(|metadata| metadata.provider_session_id.clone())
+        .or_else(|| {
+            conversation_session_ref
+                .as_ref()
+                .map(|session_ref| session_ref.provider_session_id.clone())
+        });
+
+    (harness, provider_session_id)
 }
 
 // ============================================================================
@@ -928,7 +948,14 @@ impl<R: Runtime> ClaudeChatService<R> {
                 "[IPR_REGISTER] Registering lead stdin in InteractiveProcessRegistry"
             );
             self.ipr()
-                .register(interactive_key_for_register, child_stdin)
+                .register_with_metadata(
+                    interactive_key_for_register,
+                    child_stdin,
+                    InteractiveProcessMetadata {
+                        harness: Some(resolved_spawn_settings.effective_harness),
+                        provider_session_id: stored_session_id.map(str::to_string),
+                    },
+                )
                 .await;
 
             Ok((launched.cli_path, launched.child, Some(self.ipr())))
@@ -1151,7 +1178,12 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 
                     // Emit run_started so frontend shows activity spinner
                     let interactive_run_id = uuid::Uuid::new_v4().to_string();
-                    let existing_provider_session_ref = conversation.provider_session_ref();
+                    let process_metadata = ipr_ref.get_metadata(&interactive_key).await;
+                    let (provider_harness, provider_session_id) =
+                        interactive_run_started_provider_session(
+                            &conversation,
+                            process_metadata.as_ref(),
+                        );
                     self.emit_event(
                         "agent:run_started",
                         AgentRunStartedPayload::with_provider_session(
@@ -1163,17 +1195,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                             None,
                             None,
                             None,
-                            Some(
-                                chat_service_helpers::provider_harness_or_default(
-                                    existing_provider_session_ref
-                                        .as_ref()
-                                        .map(|session_ref| session_ref.harness),
-                                    conversation.claude_session_id.as_deref(),
-                                    DEFAULT_AGENT_HARNESS,
-                                ),
-                            ),
-                            existing_provider_session_ref
-                                .map(|session_ref| session_ref.provider_session_id),
+                            Some(provider_harness),
+                            provider_session_id,
                         ),
                     );
 
@@ -2286,3 +2309,5 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 mod chat_service_redaction_tests;
 #[cfg(test)]
 mod freshness_routing_tests;
+#[cfg(test)]
+mod interactive_runtime_tests;
