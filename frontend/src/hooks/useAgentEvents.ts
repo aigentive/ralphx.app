@@ -65,7 +65,7 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
       conversationId: string;
       contextType: ContextType;
       contextId: string;
-      providerHarness?: "claude" | "codex" | null | undefined;
+      providerHarness?: string | null | undefined;
       providerSessionId?: string | null | undefined;
       claudeSessionId?: string | null | undefined;
     }) {

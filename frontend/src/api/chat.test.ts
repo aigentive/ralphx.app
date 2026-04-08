@@ -69,6 +69,32 @@ describe("chat api", () => {
     });
   });
 
+  it("preserves unknown provider harness values", async () => {
+    mockInvoke.mockResolvedValue([
+      {
+        id: "c-unknown",
+        context_type: "project",
+        context_id: "p-unknown",
+        claude_session_id: null,
+        provider_session_id: "thread-unknown",
+        provider_harness: "openai",
+        title: "Unknown provider row",
+        message_count: 1,
+        last_message_at: null,
+        created_at: "2026-01-24T10:00:00Z",
+        updated_at: "2026-01-24T10:00:00Z",
+      },
+    ]);
+
+    const result = await listConversations("project", "p-unknown");
+
+    expect(result[0]).toMatchObject({
+      providerSessionId: "thread-unknown",
+      providerHarness: "openai",
+      claudeSessionId: null,
+    });
+  });
+
   it("does not infer claude harness from provider session id alone", async () => {
     mockInvoke.mockResolvedValue([
       {

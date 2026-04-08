@@ -45,7 +45,7 @@ export const AGENT_RUN_STATUS_VALUES = [
 
 export const AgentRunStatusSchema = z.enum(AGENT_RUN_STATUS_VALUES);
 export type AgentRunStatus = z.infer<typeof AgentRunStatusSchema>;
-export const ProviderHarnessSchema = z.enum(["claude", "codex"]);
+export const ProviderHarnessSchema = z.string().min(1);
 export type ProviderHarness = z.infer<typeof ProviderHarnessSchema>;
 
 // ============================================================================

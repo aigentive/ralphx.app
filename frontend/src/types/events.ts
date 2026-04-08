@@ -534,7 +534,7 @@ export interface AgentRunStartedPayload {
   teammate_name?: string | null;
   effectiveModelId?: string;
   effectiveModelLabel?: string;
-  providerHarness?: "claude" | "codex";
+  providerHarness?: string;
   providerSessionId?: string | null;
 }
 
@@ -547,7 +547,7 @@ export interface AgentRunCompletedPayload {
   context_type: string;
   context_id: string;
   claude_session_id?: string | null;
-  provider_harness?: "claude" | "codex" | null;
+  provider_harness?: string | null;
   provider_session_id?: string | null;
   run_chain_id?: string | null;
   teammate_name?: string | null;

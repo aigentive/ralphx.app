@@ -64,6 +64,19 @@ const mockConversations: ChatConversation[] = [
     createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(), // 30 min ago
     updatedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
   },
+  {
+    id: "conv-4",
+    contextType: "ideation",
+    contextId: "session-1",
+    providerSessionId: "thread-openai-4",
+    providerHarness: "openai",
+    claudeSessionId: null,
+    title: "Cross-provider exploration",
+    messageCount: 5,
+    lastMessageAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+    createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+  },
 ];
 
 // ============================================================================
@@ -160,6 +173,7 @@ describe("ConversationSelector", () => {
 
     expect(screen.getByText("Claude")).toBeInTheDocument();
     expect(screen.getByText("Codex")).toBeInTheDocument();
+    expect(screen.getByText("Openai")).toBeInTheDocument();
   });
 
   it("generates fallback title for conversations without title", async () => {
@@ -272,10 +286,12 @@ describe("ConversationSelector", () => {
 
     // conv-1 (2 hours ago) should be first
     expect(items[0]).toHaveAttribute("data-testid", "conversation-item-conv-1");
-    // conv-2 (1 day ago) should be second
-    expect(items[1]).toHaveAttribute("data-testid", "conversation-item-conv-2");
+    // conv-4 (4 hours ago) should be second
+    expect(items[1]).toHaveAttribute("data-testid", "conversation-item-conv-4");
+    // conv-2 (1 day ago) should be third
+    expect(items[2]).toHaveAttribute("data-testid", "conversation-item-conv-2");
     // conv-3 (no messages) should be last
-    expect(items[2]).toHaveAttribute("data-testid", "conversation-item-conv-3");
+    expect(items[3]).toHaveAttribute("data-testid", "conversation-item-conv-3");
   });
 
   it("shows loading state", async () => {

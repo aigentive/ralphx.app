@@ -135,7 +135,15 @@ function getHarnessLabel(conversation: ChatConversation): string | null {
     return "Claude";
   }
 
-  return null;
+  if (!conversation.providerHarness) {
+    return null;
+  }
+
+  return conversation.providerHarness
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 // ============================================================================
@@ -308,15 +316,21 @@ export function ConversationSelector({
                             color:
                               conversation.providerHarness === "codex"
                                 ? "hsl(14 100% 68%)"
-                                : "hsl(220 10% 68%)",
+                                : conversation.providerHarness === "claude"
+                                  ? "hsl(220 10% 68%)"
+                                  : "hsl(150 55% 63%)",
                             backgroundColor:
                               conversation.providerHarness === "codex"
                                 ? "hsla(14 100% 60% / 0.12)"
-                                : "hsla(220 10% 100% / 0.06)",
+                                : conversation.providerHarness === "claude"
+                                  ? "hsla(220 10% 100% / 0.06)"
+                                  : "hsla(150 55% 45% / 0.12)",
                             border:
                               conversation.providerHarness === "codex"
                                 ? "1px solid hsla(14 100% 60% / 0.18)"
-                                : "1px solid hsla(220 10% 100% / 0.08)",
+                                : conversation.providerHarness === "claude"
+                                  ? "1px solid hsla(220 10% 100% / 0.08)"
+                                  : "1px solid hsla(150 55% 45% / 0.2)",
                           }}
                         >
                           {harnessLabel}
@@ -394,15 +408,21 @@ export function ConversationSelector({
                             color:
                               conversation.providerHarness === "codex"
                                 ? "hsl(14 100% 68%)"
-                                : "hsl(220 10% 68%)",
+                                : conversation.providerHarness === "claude"
+                                  ? "hsl(220 10% 68%)"
+                                  : "hsl(150 55% 63%)",
                             backgroundColor:
                               conversation.providerHarness === "codex"
                                 ? "hsla(14 100% 60% / 0.12)"
-                                : "hsla(220 10% 100% / 0.06)",
+                                : conversation.providerHarness === "claude"
+                                  ? "hsla(220 10% 100% / 0.06)"
+                                  : "hsla(150 55% 45% / 0.12)",
                             border:
                               conversation.providerHarness === "codex"
                                 ? "1px solid hsla(14 100% 60% / 0.18)"
-                                : "1px solid hsla(220 10% 100% / 0.08)",
+                                : conversation.providerHarness === "claude"
+                                  ? "1px solid hsla(220 10% 100% / 0.08)"
+                                  : "1px solid hsla(150 55% 45% / 0.2)",
                           }}
                         >
                           {harnessLabel}

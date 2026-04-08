@@ -6,7 +6,6 @@ import type {
   ChatConversation,
   AgentRun,
   ContextType,
-  ProviderHarness,
 } from "../types/chat-conversation";
 import type { ToolCall } from "../components/Chat/ToolCallIndicator";
 import type { ContentBlockItem } from "../components/Chat/MessageItem";
@@ -256,7 +255,7 @@ const ChatConversationResponseSchema = z.object({
   context_id: z.string(),
   claude_session_id: z.string().nullable(),
   provider_session_id: z.string().nullable().optional(),
-  provider_harness: z.enum(["claude", "codex"]).nullable().optional(),
+  provider_harness: z.string().min(1).nullable().optional(),
   title: z.string().nullable(),
   message_count: z.number(),
   last_message_at: z.string().nullable(),
@@ -289,7 +288,7 @@ function transformConversation(raw: RawConversation): ChatConversation {
     contextId: raw.context_id,
     claudeSessionId: raw.claude_session_id,
     providerSessionId,
-    providerHarness: providerHarness as ProviderHarness | null,
+    providerHarness,
     title: raw.title,
     messageCount: raw.message_count,
     lastMessageAt: raw.last_message_at,
