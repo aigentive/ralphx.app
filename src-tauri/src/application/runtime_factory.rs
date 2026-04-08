@@ -39,6 +39,66 @@ pub(crate) struct RuntimeFactoryDeps {
     pub interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
 }
 
+impl RuntimeFactoryDeps {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_core(
+        task_repo: Arc<dyn TaskRepository>,
+        task_dependency_repo: Arc<dyn TaskDependencyRepository>,
+        project_repo: Arc<dyn ProjectRepository>,
+        chat_message_repo: Arc<dyn ChatMessageRepository>,
+        chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+        conversation_repo: Arc<dyn ChatConversationRepository>,
+        agent_run_repo: Arc<dyn AgentRunRepository>,
+        ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+        activity_event_repo: Arc<dyn ActivityEventRepository>,
+        message_queue: Arc<MessageQueue>,
+        running_agent_registry: Arc<dyn RunningAgentRegistry>,
+        memory_event_repo: Arc<dyn MemoryEventRepository>,
+    ) -> Self {
+        Self {
+            task_repo,
+            task_dependency_repo,
+            project_repo,
+            chat_message_repo,
+            chat_attachment_repo,
+            conversation_repo,
+            agent_run_repo,
+            ideation_session_repo,
+            activity_event_repo,
+            message_queue,
+            running_agent_registry,
+            memory_event_repo,
+            agent_clients: None,
+            execution_settings_repo: None,
+            agent_lane_settings_repo: None,
+            plan_branch_repo: None,
+            interactive_process_registry: None,
+        }
+    }
+
+    pub(crate) fn with_agent_clients(
+        mut self,
+        agent_clients: Option<AgentClientBundle>,
+    ) -> Self {
+        self.agent_clients = agent_clients;
+        self
+    }
+
+    pub(crate) fn with_runtime_support(
+        mut self,
+        execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+        agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
+        plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+        interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
+    ) -> Self {
+        self.execution_settings_repo = execution_settings_repo;
+        self.agent_lane_settings_repo = agent_lane_settings_repo;
+        self.plan_branch_repo = plan_branch_repo;
+        self.interactive_process_registry = interactive_process_registry;
+        self
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct ChatRuntimeFactoryDeps {
     pub chat_message_repo: Arc<dyn ChatMessageRepository>,

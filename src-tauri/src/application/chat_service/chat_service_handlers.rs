@@ -155,7 +155,8 @@ fn build_transition_service<R: Runtime>(
     execution_state: Arc<ExecutionState>,
     memory_event_repo: Arc<dyn MemoryEventRepository>,
 ) -> TaskTransitionService<R> {
-    let deps = RuntimeFactoryDeps {
+    let deps = build_runtime_factory_deps(
+        app_handle,
         task_repo,
         task_dependency_repo,
         project_repo,
@@ -168,12 +169,10 @@ fn build_transition_service<R: Runtime>(
         message_queue,
         running_agent_registry,
         memory_event_repo,
-        agent_clients: None,
-        execution_settings_repo: None,
-        agent_lane_settings_repo: None,
-        plan_branch_repo: None,
-        interactive_process_registry: None,
-    };
+        None,
+        None,
+        None,
+    );
     build_transition_service_with_fallback(app_handle, execution_state, &deps)
 }
 
@@ -197,10 +196,11 @@ fn build_task_scheduler_service<R: Runtime>(
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
 ) -> TaskSchedulerService<R> {
-    let deps = RuntimeFactoryDeps {
-        project_repo,
+    let deps = build_runtime_factory_deps(
+        app_handle,
         task_repo,
         task_dependency_repo,
+        project_repo,
         chat_message_repo,
         chat_attachment_repo,
         conversation_repo,
@@ -210,16 +210,55 @@ fn build_task_scheduler_service<R: Runtime>(
         message_queue,
         running_agent_registry,
         memory_event_repo,
-        agent_clients: None,
         execution_settings_repo,
-        agent_lane_settings_repo: app_handle
+        plan_branch_repo,
+        interactive_process_registry,
+    );
+    build_task_scheduler_with_fallback(app_handle, execution_state, &deps)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_runtime_factory_deps<R: Runtime>(
+    app_handle: &Option<AppHandle<R>>,
+    task_repo: Arc<dyn TaskRepository>,
+    task_dependency_repo: Arc<dyn TaskDependencyRepository>,
+    project_repo: Arc<dyn ProjectRepository>,
+    chat_message_repo: Arc<dyn ChatMessageRepository>,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    conversation_repo: Arc<dyn ChatConversationRepository>,
+    agent_run_repo: Arc<dyn AgentRunRepository>,
+    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    activity_event_repo: Arc<dyn ActivityEventRepository>,
+    message_queue: Arc<MessageQueue>,
+    running_agent_registry: Arc<dyn RunningAgentRegistry>,
+    memory_event_repo: Arc<dyn MemoryEventRepository>,
+    execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
+    plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+    interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
+) -> RuntimeFactoryDeps {
+    RuntimeFactoryDeps::from_core(
+        task_repo,
+        task_dependency_repo,
+        project_repo,
+        chat_message_repo,
+        chat_attachment_repo,
+        conversation_repo,
+        agent_run_repo,
+        ideation_session_repo,
+        activity_event_repo,
+        message_queue,
+        running_agent_registry,
+        memory_event_repo,
+    )
+    .with_runtime_support(
+        execution_settings_repo,
+        app_handle
             .as_ref()
             .and_then(|handle| handle.try_state::<AppState>())
             .map(|app_state| Arc::clone(&app_state.agent_lane_settings_repo)),
         plan_branch_repo,
         interactive_process_registry,
-    };
-    build_task_scheduler_with_fallback(app_handle, execution_state, &deps)
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

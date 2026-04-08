@@ -89,32 +89,35 @@ pub(crate) struct MergeAutoCompleteContext<'a, R: Runtime> {
 }
 
 impl<'a, R: Runtime> MergeAutoCompleteContext<'a, R> {
+    fn build_runtime_factory_deps(&self) -> RuntimeFactoryDeps {
+        RuntimeFactoryDeps::from_core(
+            Arc::clone(self.task_repo),
+            Arc::clone(self.task_dependency_repo),
+            Arc::clone(self.project_repo),
+            Arc::clone(self.chat_message_repo),
+            Arc::clone(self.chat_attachment_repo),
+            Arc::clone(self.conversation_repo),
+            Arc::clone(self.agent_run_repo),
+            Arc::clone(self.ideation_session_repo),
+            Arc::clone(self.activity_event_repo),
+            Arc::clone(self.message_queue),
+            Arc::clone(self.running_agent_registry),
+            Arc::clone(self.memory_event_repo),
+        )
+        .with_runtime_support(
+            self.execution_settings_repo.map(Arc::clone),
+            self.app_handle.and_then(|handle| {
+                handle
+                    .try_state::<AppState>()
+                    .map(|app_state| Arc::clone(&app_state.agent_lane_settings_repo))
+            }),
+            self.plan_branch_repo.clone(),
+            self.interactive_process_registry.clone(),
+        )
+    }
+
     fn build_transition_service(&self) -> TaskTransitionService<R> {
-        let deps = RuntimeFactoryDeps {
-            task_repo: Arc::clone(self.task_repo),
-            task_dependency_repo: Arc::clone(self.task_dependency_repo),
-            project_repo: Arc::clone(self.project_repo),
-            chat_message_repo: Arc::clone(self.chat_message_repo),
-            chat_attachment_repo: Arc::clone(self.chat_attachment_repo),
-            conversation_repo: Arc::clone(self.conversation_repo),
-            agent_run_repo: Arc::clone(self.agent_run_repo),
-            ideation_session_repo: Arc::clone(self.ideation_session_repo),
-            activity_event_repo: Arc::clone(self.activity_event_repo),
-            message_queue: Arc::clone(self.message_queue),
-            running_agent_registry: Arc::clone(self.running_agent_registry),
-            memory_event_repo: Arc::clone(self.memory_event_repo),
-            agent_clients: None,
-            execution_settings_repo: self.execution_settings_repo.map(Arc::clone),
-            agent_lane_settings_repo: self
-                .app_handle
-                .and_then(|handle| {
-                    handle
-                        .try_state::<AppState>()
-                        .map(|app_state| Arc::clone(&app_state.agent_lane_settings_repo))
-                }),
-            plan_branch_repo: self.plan_branch_repo.clone(),
-            interactive_process_registry: self.interactive_process_registry.clone(),
-        };
+        let deps = self.build_runtime_factory_deps();
         build_transition_service_with_fallback(
             &self.app_handle.cloned(),
             Arc::clone(self.execution_state),
@@ -123,31 +126,7 @@ impl<'a, R: Runtime> MergeAutoCompleteContext<'a, R> {
     }
 
     fn build_scheduler_service(&self) -> TaskSchedulerService<R> {
-        let deps = RuntimeFactoryDeps {
-            task_repo: Arc::clone(self.task_repo),
-            task_dependency_repo: Arc::clone(self.task_dependency_repo),
-            project_repo: Arc::clone(self.project_repo),
-            chat_message_repo: Arc::clone(self.chat_message_repo),
-            chat_attachment_repo: Arc::clone(self.chat_attachment_repo),
-            conversation_repo: Arc::clone(self.conversation_repo),
-            agent_run_repo: Arc::clone(self.agent_run_repo),
-            ideation_session_repo: Arc::clone(self.ideation_session_repo),
-            activity_event_repo: Arc::clone(self.activity_event_repo),
-            message_queue: Arc::clone(self.message_queue),
-            running_agent_registry: Arc::clone(self.running_agent_registry),
-            memory_event_repo: Arc::clone(self.memory_event_repo),
-            agent_clients: None,
-            execution_settings_repo: self.execution_settings_repo.map(Arc::clone),
-            agent_lane_settings_repo: self
-                .app_handle
-                .and_then(|handle| {
-                    handle
-                        .try_state::<AppState>()
-                        .map(|app_state| Arc::clone(&app_state.agent_lane_settings_repo))
-                }),
-            plan_branch_repo: self.plan_branch_repo.clone(),
-            interactive_process_registry: self.interactive_process_registry.clone(),
-        };
+        let deps = self.build_runtime_factory_deps();
         build_task_scheduler_with_fallback(
             &self.app_handle.cloned(),
             Arc::clone(self.execution_state),

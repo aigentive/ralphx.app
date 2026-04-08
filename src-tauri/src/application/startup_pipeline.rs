@@ -145,26 +145,23 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         session_merge_locks: Arc::clone(&session_merge_locks),
     };
 
+    let core_runtime_deps = RuntimeFactoryDeps::from_core(
+        Arc::clone(&task_repo),
+        Arc::clone(&task_dependency_repo),
+        Arc::clone(&project_repo),
+        Arc::clone(&chat_message_repo),
+        Arc::clone(&chat_attachment_repo),
+        Arc::clone(&conversation_repo),
+        Arc::clone(&agent_run_repo),
+        Arc::clone(&ideation_session_repo),
+        Arc::clone(&activity_event_repo),
+        Arc::clone(&message_queue),
+        Arc::clone(&running_agent_registry),
+        Arc::clone(&memory_event_repo),
+    );
+
     let transition_service = Arc::new(startup_transition_factory.build(
-        RuntimeFactoryDeps {
-            task_repo: Arc::clone(&task_repo),
-            task_dependency_repo: Arc::clone(&task_dependency_repo),
-            project_repo: Arc::clone(&project_repo),
-            chat_message_repo: Arc::clone(&chat_message_repo),
-            chat_attachment_repo: Arc::clone(&chat_attachment_repo),
-            conversation_repo: Arc::clone(&conversation_repo),
-            agent_run_repo: Arc::clone(&agent_run_repo),
-            ideation_session_repo: Arc::clone(&ideation_session_repo),
-            activity_event_repo: Arc::clone(&activity_event_repo),
-            message_queue: Arc::clone(&message_queue),
-            running_agent_registry: Arc::clone(&running_agent_registry),
-            memory_event_repo: Arc::clone(&memory_event_repo),
-            agent_clients: None,
-            execution_settings_repo: None,
-            agent_lane_settings_repo: None,
-            plan_branch_repo: None,
-            interactive_process_registry: None,
-        },
+        core_runtime_deps.clone(),
         app_handle.clone(),
     ));
 
@@ -258,25 +255,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
     chat_resumption.run().await;
 
     let reconcile_transition_service = Arc::new(startup_transition_factory.build(
-        RuntimeFactoryDeps {
-            task_repo: Arc::clone(&task_repo),
-            task_dependency_repo: Arc::clone(&task_dependency_repo),
-            project_repo: Arc::clone(&project_repo),
-            chat_message_repo: Arc::clone(&chat_message_repo),
-            chat_attachment_repo: Arc::clone(&chat_attachment_repo),
-            conversation_repo: Arc::clone(&conversation_repo),
-            agent_run_repo: Arc::clone(&agent_run_repo),
-            ideation_session_repo: Arc::clone(&ideation_session_repo),
-            activity_event_repo: Arc::clone(&activity_event_repo),
-            message_queue: Arc::clone(&message_queue),
-            running_agent_registry: Arc::clone(&running_agent_registry),
-            memory_event_repo: Arc::clone(&memory_event_repo),
-            agent_clients: None,
-            execution_settings_repo: None,
-            agent_lane_settings_repo: None,
-            plan_branch_repo: None,
-            interactive_process_registry: None,
-        },
+        core_runtime_deps,
         app_handle.clone(),
     ));
 
