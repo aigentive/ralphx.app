@@ -15,6 +15,7 @@ use crate::application::ResumeValidator;
 use crate::application::TaskSchedulerService;
 use crate::application::TaskTransitionService;
 use crate::application::chat_service::ClaudeChatService;
+use crate::application::runtime_factory::{ChatRuntimeFactoryDeps, build_chat_service_from_deps};
 use crate::commands::ExecutionState;
 use crate::domain::agents::{AgentHarnessKind, AgenticClient, LogicalEffort};
 use crate::domain::entities::ChatContextType;
@@ -235,40 +236,33 @@ impl AppState {
         execution_state: Option<Arc<ExecutionState>>,
         app_handle: Option<AppHandle<R>>,
     ) -> ClaudeChatService<R> {
-        let mut service = ClaudeChatService::new(
-            Arc::clone(&self.chat_message_repo),
-            Arc::clone(&self.chat_attachment_repo),
-            Arc::clone(&self.artifact_repo),
-            Arc::clone(&self.chat_conversation_repo),
-            Arc::clone(&self.agent_run_repo),
-            Arc::clone(&self.project_repo),
-            Arc::clone(&self.task_repo),
-            Arc::clone(&self.task_dependency_repo),
-            Arc::clone(&self.ideation_session_repo),
-            Arc::clone(&self.activity_event_repo),
-            Arc::clone(&self.message_queue),
-            Arc::clone(&self.running_agent_registry),
-            Arc::clone(&self.memory_event_repo),
-        )
-        .with_execution_settings_repo(Arc::clone(&self.execution_settings_repo))
-        .with_agent_lane_settings_repo(Arc::clone(&self.agent_lane_settings_repo))
-        .with_ideation_effort_settings_repo(Arc::clone(&self.ideation_effort_settings_repo))
-        .with_ideation_model_settings_repo(Arc::clone(&self.ideation_model_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&self.plan_branch_repo))
-        .with_task_proposal_repo(Arc::clone(&self.task_proposal_repo))
-        .with_task_step_repo(Arc::clone(&self.task_step_repo))
-        .with_streaming_state_cache(self.streaming_state_cache.clone())
-        .with_interactive_process_registry(Arc::clone(&self.interactive_process_registry))
-        .with_review_repo(Arc::clone(&self.review_repo));
+        let deps = ChatRuntimeFactoryDeps {
+            chat_message_repo: Arc::clone(&self.chat_message_repo),
+            chat_attachment_repo: Arc::clone(&self.chat_attachment_repo),
+            artifact_repo: Arc::clone(&self.artifact_repo),
+            conversation_repo: Arc::clone(&self.chat_conversation_repo),
+            agent_run_repo: Arc::clone(&self.agent_run_repo),
+            project_repo: Arc::clone(&self.project_repo),
+            task_repo: Arc::clone(&self.task_repo),
+            task_dependency_repo: Arc::clone(&self.task_dependency_repo),
+            ideation_session_repo: Arc::clone(&self.ideation_session_repo),
+            activity_event_repo: Arc::clone(&self.activity_event_repo),
+            message_queue: Arc::clone(&self.message_queue),
+            running_agent_registry: Arc::clone(&self.running_agent_registry),
+            memory_event_repo: Arc::clone(&self.memory_event_repo),
+            execution_settings_repo: Some(Arc::clone(&self.execution_settings_repo)),
+            agent_lane_settings_repo: Some(Arc::clone(&self.agent_lane_settings_repo)),
+            ideation_effort_settings_repo: Some(Arc::clone(&self.ideation_effort_settings_repo)),
+            ideation_model_settings_repo: Some(Arc::clone(&self.ideation_model_settings_repo)),
+            plan_branch_repo: Some(Arc::clone(&self.plan_branch_repo)),
+            task_proposal_repo: Some(Arc::clone(&self.task_proposal_repo)),
+            task_step_repo: Some(Arc::clone(&self.task_step_repo)),
+            review_repo: Some(Arc::clone(&self.review_repo)),
+            interactive_process_registry: Some(Arc::clone(&self.interactive_process_registry)),
+            streaming_state_cache: Some(self.streaming_state_cache.clone()),
+        };
 
-        if let Some(execution_state) = execution_state {
-            service = service.with_execution_state(execution_state);
-        }
-        if let Some(ref handle) = app_handle {
-            service = service.with_app_handle(handle.clone());
-        }
-
-        service
+        build_chat_service_from_deps(app_handle, execution_state, &deps)
     }
 
     pub fn build_chat_service_with_execution_state(

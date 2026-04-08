@@ -66,17 +66,11 @@ pub(crate) struct ChatRuntimeFactoryDeps {
     pub streaming_state_cache: Option<StreamingStateCache>,
 }
 
-pub(crate) fn build_chat_service_with_fallback<R: Runtime>(
-    app_handle: &Option<AppHandle<R>>,
+pub(crate) fn build_chat_service_from_deps<R: Runtime>(
+    app_handle: Option<AppHandle<R>>,
     execution_state: Option<Arc<ExecutionState>>,
     deps: &ChatRuntimeFactoryDeps,
 ) -> ClaudeChatService<R> {
-    if let Some(handle) = app_handle {
-        if let Some(app_state) = handle.try_state::<AppState>() {
-            return app_state.build_chat_service_for_runtime(execution_state, app_handle.clone());
-        }
-    }
-
     let mut service = ClaudeChatService::new(
         Arc::clone(&deps.chat_message_repo),
         Arc::clone(&deps.chat_attachment_repo),
@@ -96,8 +90,8 @@ pub(crate) fn build_chat_service_with_fallback<R: Runtime>(
     if let Some(state) = execution_state {
         service = service.with_execution_state(state);
     }
-    if let Some(handle) = app_handle.as_ref() {
-        service = service.with_app_handle(handle.clone());
+    if let Some(handle) = app_handle {
+        service = service.with_app_handle(handle);
     }
     if let Some(repo) = deps.execution_settings_repo.as_ref() {
         service = service.with_execution_settings_repo(Arc::clone(repo));
@@ -131,6 +125,20 @@ pub(crate) fn build_chat_service_with_fallback<R: Runtime>(
     }
 
     service
+}
+
+pub(crate) fn build_chat_service_with_fallback<R: Runtime>(
+    app_handle: &Option<AppHandle<R>>,
+    execution_state: Option<Arc<ExecutionState>>,
+    deps: &ChatRuntimeFactoryDeps,
+) -> ClaudeChatService<R> {
+    if let Some(handle) = app_handle {
+        if let Some(app_state) = handle.try_state::<AppState>() {
+            return app_state.build_chat_service_for_runtime(execution_state, app_handle.clone());
+        }
+    }
+
+    build_chat_service_from_deps(app_handle.clone(), execution_state, deps)
 }
 
 pub(crate) fn build_transition_service_with_fallback<R: Runtime>(
