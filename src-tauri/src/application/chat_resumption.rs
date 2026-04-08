@@ -7,7 +7,7 @@
 //
 // Usage:
 // - Called once during app initialization after StartupJobRunner completes
-// - Queries for interrupted conversations (orphaned agent runs with claude_session_id)
+// - Queries for interrupted conversations that still carry a resumable provider session
 // - Prioritizes by context type: TaskExecution > Review > Task > Ideation > Project
 // - Skips TaskExecution/Review if task is in AGENT_ACTIVE_STATUSES (handled by StartupJobRunner)
 // - Sends "Continue where you left off." message to resume Claude session
@@ -28,7 +28,7 @@ use crate::domain::repositories::{
 /// Runs chat resumption on startup.
 ///
 /// Finds all conversations that were interrupted when the app shut down
-/// and resumes them by sending a message with --resume to continue the Claude session.
+/// and resumes them by sending a message with `--resume` to continue the provider session.
 pub struct ChatResumptionRunner<R: Runtime = tauri::Wry> {
     agent_run_repo: Arc<dyn AgentRunRepository>,
     chat_runtime_deps: ChatRuntimeFactoryDeps,

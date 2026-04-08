@@ -14,12 +14,12 @@ use super::ideation_commands_types::{OrchestratorMessageResponse, SendOrchestrat
 // Orchestrator Integration Commands
 // ============================================================================
 
-/// Send a message to the orchestrator agent and get a response
-/// This invokes the Claude CLI with the orchestrator-ideation agent
+/// Send a message to the orchestrator agent and get a response.
+/// This delegates to the configured harness for the ideation lane.
 ///
 /// The service now:
-/// - Automatically manages conversations (creates/resumes based on claude_session_id)
-/// - Uses --resume flag for follow-up messages (Claude manages conversation context)
+/// - Automatically manages conversations using the persisted provider session metadata
+/// - Uses the harness-specific resume flow for follow-up messages
 /// - Delegates tool execution to MCP server
 /// - Emits Tauri events for real-time UI updates
 ///

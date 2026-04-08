@@ -176,7 +176,7 @@ impl ChatService for MockChatService {
         Ok(SendResult {
             conversation_id: conversation.id.as_str().to_string(),
             agent_run_id: agent_run.id.as_str().to_string(),
-            is_new_conversation: conversation.claude_session_id.is_none(),
+            is_new_conversation: conversation.provider_session_ref().is_none(),
             ..Default::default()
         })
     }

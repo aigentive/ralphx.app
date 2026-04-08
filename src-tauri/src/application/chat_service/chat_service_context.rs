@@ -1257,7 +1257,7 @@ pub async fn build_interactive_command(
 
     // Interactive mode: never resume with --resume session_id because the process stays
     // alive. Resume is only needed when re-spawning after a process death. For the first
-    // spawn, the conversation.claude_session_id is set after the stream reports it.
+    // spawn, the persisted provider session ref is set after the stream reports it.
     let resume_session: Option<&str> = None;
 
     // Fetch pending attachments

@@ -691,7 +691,7 @@ impl ClaudeCodeClient {
     /// The caller is responsible for:
     /// 1. Processing stdout for stream-json events
     /// 2. Waiting for the process to complete
-    /// 3. Capturing the claude_session_id from the Result event
+    /// 3. Capturing the provider session id from the Result event
     ///
     /// This is used by ExecutionChatService to persist stream events to the database
     /// while emitting Tauri events for real-time UI updates.
