@@ -17,7 +17,9 @@ use std::panic::Location;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-use crate::application::agent_client_bundle::{AgentClientFactory, AgentClientFactoryBundle};
+use crate::application::agent_client_bundle::{
+    AgentClientBundle, AgentClientFactory, AgentClientFactoryBundle,
+};
 use crate::application::{AppState, ChatService, ClaudeChatService, InteractiveProcessRegistry};
 use crate::commands::ExecutionState;
 use crate::domain::agents::{AgentHarnessKind, AgenticClient};
@@ -1199,6 +1201,26 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// This is a convenience wrapper for callers that already hold the client in AppState.
     pub fn with_agentic_client(self, client: Arc<dyn AgenticClient>) -> Self {
         self.with_agentic_client_factory(move || Arc::clone(&client))
+    }
+
+    /// Override the full harness client bundle used by the state-machine spawner.
+    pub fn with_agent_clients(mut self, clients: AgentClientBundle) -> Self {
+        self.agent_client_factories = AgentClientFactoryBundle::from_client_bundle(&clients);
+        self.agent_spawner = Self::build_agent_spawner(
+            &self.agent_client_factories,
+            Arc::clone(&self.task_repo),
+            Arc::clone(&self.project_repo),
+            Arc::clone(&self.execution_state),
+            self.execution_settings_repo.as_ref().map(Arc::clone),
+            self.agent_lane_settings_repo.as_ref().map(Arc::clone),
+            Arc::clone(
+                self.ideation_session_repo
+                    .as_ref()
+                    .expect("ideation_session_repo set in new"),
+            ),
+            Arc::clone(&self.running_agent_registry),
+        );
+        self
     }
 
     /// Override the agentic client factory used for a specific harness.

@@ -165,10 +165,7 @@ pub(crate) fn build_transition_service_with_fallback<R: Runtime>(
         service = service.with_execution_settings_repo(Arc::clone(repo));
     }
     if let Some(agent_clients) = deps.agent_clients.as_ref() {
-        service = service.with_agentic_client(Arc::clone(&agent_clients.default_client));
-        for (harness, client) in &agent_clients.harness_clients {
-            service = service.with_harness_agentic_client(*harness, Arc::clone(client));
-        }
+        service = service.with_agent_clients(agent_clients.clone());
     }
     if let Some(repo) = deps.agent_lane_settings_repo.as_ref() {
         service = service.with_agent_lane_settings_repo(Arc::clone(repo));

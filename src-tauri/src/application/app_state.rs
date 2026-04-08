@@ -290,7 +290,7 @@ impl AppState {
         execution_state: Arc<ExecutionState>,
         app_handle: Option<AppHandle<R>>,
     ) -> TaskTransitionService<R> {
-        let mut service = TaskTransitionService::new(
+        let service = TaskTransitionService::new(
             Arc::clone(&self.task_repo),
             Arc::clone(&self.task_dependency_repo),
             Arc::clone(&self.project_repo),
@@ -306,15 +306,11 @@ impl AppState {
             app_handle,
             Arc::clone(&self.memory_event_repo),
         )
-        .with_agentic_client(Arc::clone(&self.agent_clients.default_client))
+        .with_agent_clients(self.agent_client_bundle())
         .with_execution_settings_repo(Arc::clone(&self.execution_settings_repo))
         .with_agent_lane_settings_repo(Arc::clone(&self.agent_lane_settings_repo))
         .with_plan_branch_repo(Arc::clone(&self.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&self.interactive_process_registry));
-
-        for (harness, client) in &self.agent_clients.harness_clients {
-            service = service.with_harness_agentic_client(*harness, Arc::clone(client));
-        }
 
         service
     }

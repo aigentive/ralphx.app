@@ -66,4 +66,25 @@ impl AgentClientFactoryBundle {
             harness_clients,
         )
     }
+
+    pub fn from_client_bundle(clients: &AgentClientBundle) -> Self {
+        let default_client = Arc::clone(&clients.default_client);
+        let harness_factories = clients
+            .harness_clients
+            .iter()
+            .map(|(harness, client)| {
+                let client = Arc::clone(client);
+                (
+                    *harness,
+                    Arc::new(move || Arc::clone(&client)) as Arc<AgentClientFactory>,
+                )
+            })
+            .collect();
+
+        Self::from_parts(
+            clients.default_harness,
+            Arc::new(move || Arc::clone(&default_client)),
+            harness_factories,
+        )
+    }
 }
