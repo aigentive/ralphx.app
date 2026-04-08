@@ -110,10 +110,8 @@ pub struct AppState {
     pub review_settings_repo: Arc<dyn ReviewSettingsRepository>,
     /// Review issue repository for tracking structured issues from reviews
     pub review_issue_repo: Arc<dyn ReviewIssueRepository>,
-    /// Primary/default agent client (Claude in production, Mock for tests)
-    pub agent_client: Arc<dyn AgenticClient>,
-    /// Harness-specific agent clients used when execution or sidecar lanes resolve away from the default.
-    pub harness_agent_clients: HashMap<AgentHarnessKind, Arc<dyn AgenticClient>>,
+    /// Provider-neutral agent clients used by runtime construction and harness routing.
+    pub agent_clients: AgentClientBundle,
     /// Global QA settings
     pub qa_settings: Arc<tokio::sync::RwLock<QASettings>>,
     /// Execution settings repository (per-project settings)
@@ -308,13 +306,13 @@ impl AppState {
             app_handle,
             Arc::clone(&self.memory_event_repo),
         )
-        .with_agentic_client(Arc::clone(&self.agent_client))
+        .with_agentic_client(Arc::clone(&self.agent_clients.default_client))
         .with_execution_settings_repo(Arc::clone(&self.execution_settings_repo))
         .with_agent_lane_settings_repo(Arc::clone(&self.agent_lane_settings_repo))
         .with_plan_branch_repo(Arc::clone(&self.plan_branch_repo))
         .with_interactive_process_registry(Arc::clone(&self.interactive_process_registry));
 
-        for (harness, client) in &self.harness_agent_clients {
+        for (harness, client) in &self.agent_clients.harness_clients {
             service = service.with_harness_agentic_client(*harness, Arc::clone(client));
         }
 
@@ -384,7 +382,7 @@ impl AppState {
         }
 
         ResolvedBackgroundAgentRuntime {
-            client: Arc::clone(&self.agent_client),
+            client: Arc::clone(&self.agent_clients.default_client),
             harness: None,
             model: None,
             logical_effort: None,
@@ -473,11 +471,13 @@ impl AppState {
             review_issue_repo: Arc::new(SqliteReviewIssueRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
-            agent_client: Arc::new(ClaudeCodeClient::new()),
-            harness_agent_clients: HashMap::from([(
-                AgentHarnessKind::Codex,
-                Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>,
-            )]),
+            agent_clients: AgentClientBundle::from_parts(
+                Arc::new(ClaudeCodeClient::new()),
+                HashMap::from([(
+                    AgentHarnessKind::Codex,
+                    Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>,
+                )]),
+            ),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(SqliteExecutionSettingsRepository::from_shared(
                 Arc::clone(&shared_conn),
@@ -660,11 +660,13 @@ impl AppState {
             review_repo: Arc::new(MemoryReviewRepository::new()),
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
-            agent_client: Arc::new(MockAgenticClient::new()),
-            harness_agent_clients: HashMap::from([(
-                AgentHarnessKind::Codex,
-                Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
-            )]),
+            agent_clients: AgentClientBundle::from_parts(
+                Arc::new(MockAgenticClient::new()),
+                HashMap::from([(
+                    AgentHarnessKind::Codex,
+                    Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
+                )]),
+            ),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
@@ -765,11 +767,13 @@ impl AppState {
             review_repo: Arc::new(MemoryReviewRepository::new()),
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
-            agent_client: Arc::new(MockAgenticClient::new()),
-            harness_agent_clients: HashMap::from([(
-                AgentHarnessKind::Codex,
-                Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
-            )]),
+            agent_clients: AgentClientBundle::from_parts(
+                Arc::new(MockAgenticClient::new()),
+                HashMap::from([(
+                    AgentHarnessKind::Codex,
+                    Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
+                )]),
+            ),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
@@ -880,11 +884,13 @@ impl AppState {
             review_repo: Arc::new(MemoryReviewRepository::new()),
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
-            agent_client: Arc::new(MockAgenticClient::new()),
-            harness_agent_clients: HashMap::from([(
-                AgentHarnessKind::Codex,
-                Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
-            )]),
+            agent_clients: AgentClientBundle::from_parts(
+                Arc::new(MockAgenticClient::new()),
+                HashMap::from([(
+                    AgentHarnessKind::Codex,
+                    Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
+                )]),
+            ),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
@@ -989,11 +995,13 @@ impl AppState {
             review_repo: Arc::new(MemoryReviewRepository::new()),
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
-            agent_client: Arc::new(MockAgenticClient::new()),
-            harness_agent_clients: HashMap::from([(
-                AgentHarnessKind::Codex,
-                Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
-            )]),
+            agent_clients: AgentClientBundle::from_parts(
+                Arc::new(MockAgenticClient::new()),
+                HashMap::from([(
+                    AgentHarnessKind::Codex,
+                    Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
+                )]),
+            ),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
@@ -1065,15 +1073,12 @@ impl AppState {
 
     /// Swap the agent client to a different implementation
     pub fn with_agent_client(mut self, client: Arc<dyn AgenticClient>) -> Self {
-        self.agent_client = client;
+        self.agent_clients.default_client = client;
         self
     }
 
     pub fn agent_client_bundle(&self) -> AgentClientBundle {
-        AgentClientBundle::from_parts(
-            Arc::clone(&self.agent_client),
-            self.harness_agent_clients.clone(),
-        )
+        self.agent_clients.clone()
     }
 
     /// Resolve the client for a specific harness, falling back to the default client.
@@ -1090,7 +1095,7 @@ impl AppState {
         harness: AgentHarnessKind,
         client: Arc<dyn AgenticClient>,
     ) -> Self {
-        self.harness_agent_clients.insert(harness, client);
+        self.agent_clients.harness_clients.insert(harness, client);
         self
     }
 

@@ -100,11 +100,16 @@ async fn test_new_test_creates_mock_agent_client() {
     let state = AppState::new_test();
 
     // Agent client should be mock and available
-    let available = state.agent_client.is_available().await.unwrap();
+    let available = state
+        .agent_clients
+        .default_client
+        .is_available()
+        .await
+        .unwrap();
     assert!(available);
 
     // Check capabilities indicate mock
-    let caps = state.agent_client.capabilities();
+    let caps = state.agent_clients.default_client.capabilities();
     assert_eq!(caps.client_type, ClientType::Mock);
 }
 
@@ -114,7 +119,11 @@ async fn test_with_agent_client_swaps_client() {
 
     // Default is mock
     assert_eq!(
-        state.agent_client.capabilities().client_type,
+        state
+            .agent_clients
+            .default_client
+            .capabilities()
+            .client_type,
         ClientType::Mock
     );
 
