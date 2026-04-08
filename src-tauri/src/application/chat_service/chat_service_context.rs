@@ -5,7 +5,6 @@
 // - Initial prompt building for different contexts
 // - Claude CLI command building
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -32,10 +31,12 @@ use crate::infrastructure::agents::{
     CodexExecCliConfig,
 };
 use crate::utils::truncate_str;
-use which::which;
 
 use super::super::agent_lane_resolution::ResolvedAgentSpawnSettings;
 use super::chat_service_helpers::resolve_agent_with_team_mode;
+use crate::application::harness_runtime_registry::{
+    resolve_chat_harness_cli, standard_chat_harness_cli_resolvers, ResolvedChatHarnessCli,
+};
 
 /// Maximum number of recent messages to inject into the bootstrap prompt.
 pub const SESSION_HISTORY_LIMIT: usize = 50;
@@ -175,17 +176,6 @@ impl ResolvedChatHarnessLaunch {
             }
         }
     }
-}
-
-#[derive(Debug)]
-pub enum ResolvedChatHarnessCli {
-    Claude {
-        cli_path: PathBuf,
-    },
-    Codex {
-        cli_path: PathBuf,
-        capabilities: CodexCliCapabilities,
-    },
 }
 
 impl ResolvedChatHarnessCli {
@@ -418,51 +408,6 @@ impl ResolvedChatHarnessCli {
             }
         }
     }
-}
-
-type ChatHarnessCliResolver = fn(&Path) -> Result<ResolvedChatHarnessCli, String>;
-
-fn resolve_claude_chat_harness_cli(
-    claude_cli_path: &Path,
-) -> Result<ResolvedChatHarnessCli, String> {
-    if !claude_cli_path.exists() && which(claude_cli_path).is_err() {
-        return Err(format!(
-            "Claude CLI not found at {}",
-            claude_cli_path.display()
-        ));
-    }
-
-    Ok(ResolvedChatHarnessCli::Claude {
-        cli_path: claude_cli_path.to_path_buf(),
-    })
-}
-
-fn resolve_codex_chat_harness_cli(_: &Path) -> Result<ResolvedChatHarnessCli, String> {
-    let resolved_codex = crate::infrastructure::agents::resolve_codex_cli()?;
-    Ok(ResolvedChatHarnessCli::Codex {
-        cli_path: resolved_codex.path,
-        capabilities: resolved_codex.capabilities,
-    })
-}
-
-pub(crate) fn standard_chat_harness_cli_resolvers(
-) -> HashMap<AgentHarnessKind, ChatHarnessCliResolver> {
-    crate::domain::agents::standard_harness_registry(|harness| match harness {
-        AgentHarnessKind::Claude => resolve_claude_chat_harness_cli as ChatHarnessCliResolver,
-        AgentHarnessKind::Codex => resolve_codex_chat_harness_cli as ChatHarnessCliResolver,
-    })
-}
-
-pub fn resolve_chat_harness_cli(
-    harness: AgentHarnessKind,
-    claude_cli_path: &Path,
-) -> Result<ResolvedChatHarnessCli, String> {
-    let resolvers = standard_chat_harness_cli_resolvers();
-    let resolver = resolvers
-        .get(&harness)
-        .copied()
-        .ok_or_else(|| format!("No chat harness CLI resolver registered for {}", harness))?;
-    resolver(claude_cli_path)
 }
 
 fn claude_resume_session_id(conversation: &ChatConversation) -> Option<String> {
