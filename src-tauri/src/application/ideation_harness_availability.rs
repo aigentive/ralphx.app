@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::domain::agents::{AgentHarnessKind, AgentLane, StoredAgentLaneSettings};
 use crate::domain::repositories::AgentLaneSettingsRepository;
 use crate::infrastructure::agents::claude::find_claude_cli;
-use crate::infrastructure::agents::{find_codex_cli, probe_codex_cli};
+use crate::infrastructure::agents::find_codex_cli;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResolvedLaneHarnessConfig {
@@ -63,7 +63,11 @@ pub(crate) async fn resolve_ideation_lane_harness_availability(
     lane: AgentLane,
 ) -> IdeationLaneHarnessAvailability {
     let config = resolve_lane_harness_config(repo, project_id, lane).await;
-    build_ideation_lane_harness_availability(config, &probe_claude_harness(), &probe_codex_harness())
+    build_ideation_lane_harness_availability(
+        config,
+        &probe_claude_harness(),
+        &probe_codex_harness(),
+    )
 }
 
 pub(crate) async fn resolve_primary_ideation_harness_availability(
@@ -126,8 +130,11 @@ pub(crate) async fn validate_chat_runtime_for_context(
     let config =
         resolve_lane_harness_config(&state.agent_lane_settings_repo, project_id.as_deref(), lane)
             .await;
-    let availability =
-        build_ideation_lane_harness_availability(config, &probe_claude_harness(), &probe_codex_harness());
+    let availability = build_ideation_lane_harness_availability(
+        config,
+        &probe_claude_harness(),
+        &probe_codex_harness(),
+    );
 
     if availability.available {
         Ok(())
@@ -151,8 +158,11 @@ pub(crate) async fn team_mode_supported_for_context(
     let config =
         resolve_lane_harness_config(&state.agent_lane_settings_repo, project_id.as_deref(), lane)
             .await;
-    let availability =
-        build_ideation_lane_harness_availability(config, &probe_claude_harness(), &probe_codex_harness());
+    let availability = build_ideation_lane_harness_availability(
+        config,
+        &probe_claude_harness(),
+        &probe_codex_harness(),
+    );
 
     availability.effective_harness == AgentHarnessKind::Claude
 }
@@ -251,20 +261,10 @@ pub(crate) fn probe_claude_harness() -> HarnessRuntimeProbe {
 }
 
 pub(crate) fn probe_codex_harness() -> HarnessRuntimeProbe {
-    let Some(cli_path) = find_codex_cli() else {
-        return HarnessRuntimeProbe {
-            binary_path: None,
-            binary_found: false,
-            probe_succeeded: false,
-            available: false,
-            missing_core_exec_features: Vec::new(),
-            error: Some("Codex CLI not found".to_string()),
-        };
-    };
-
-    let binary_path = Some(cli_path.to_string_lossy().into_owned());
-    match probe_codex_cli(&cli_path) {
-        Ok(capabilities) => {
+    match crate::infrastructure::agents::resolve_codex_cli() {
+        Ok(resolved) => {
+            let binary_path = Some(resolved.path.to_string_lossy().into_owned());
+            let capabilities = resolved.capabilities;
             let missing_core_exec_features = capabilities
                 .missing_core_exec_features()
                 .into_iter()
@@ -288,13 +288,23 @@ pub(crate) fn probe_codex_harness() -> HarnessRuntimeProbe {
                 error,
             }
         }
-        Err(error) => HarnessRuntimeProbe {
-            binary_path,
-            binary_found: true,
-            probe_succeeded: false,
-            available: false,
-            missing_core_exec_features: Vec::new(),
-            error: Some(error),
+        Err(error) => match find_codex_cli() {
+            Some(cli_path) => HarnessRuntimeProbe {
+                binary_path: Some(cli_path.to_string_lossy().into_owned()),
+                binary_found: true,
+                probe_succeeded: false,
+                available: false,
+                missing_core_exec_features: Vec::new(),
+                error: Some(error),
+            },
+            None => HarnessRuntimeProbe {
+                binary_path: None,
+                binary_found: false,
+                probe_succeeded: false,
+                available: false,
+                missing_core_exec_features: Vec::new(),
+                error: Some(error),
+            },
         },
     }
 }
@@ -304,7 +314,9 @@ pub(crate) fn build_ideation_lane_harness_availability(
     claude_probe: &HarnessRuntimeProbe,
     codex_probe: &HarnessRuntimeProbe,
 ) -> IdeationLaneHarnessAvailability {
-    let configured_harness = config.configured_harness.unwrap_or(AgentHarnessKind::Claude);
+    let configured_harness = config
+        .configured_harness
+        .unwrap_or(AgentHarnessKind::Claude);
     let configured_probe = match configured_harness {
         AgentHarnessKind::Claude => claude_probe,
         AgentHarnessKind::Codex => codex_probe,
