@@ -1018,7 +1018,7 @@ impl AppState {
         harness: AgentHarnessKind,
         client: Arc<dyn AgenticClient>,
     ) -> Self {
-        self.agent_clients.harness_clients.insert(harness, client);
+        self.agent_clients = self.agent_clients.with_harness_client(harness, client);
         self
     }
 

@@ -122,6 +122,14 @@ impl AgentClientBundle {
     pub fn has_explicit_harness_client(&self, harness: AgentHarnessKind) -> bool {
         self.harness_clients.contains_key(&harness)
     }
+
+    pub fn iter_explicit_harness_clients(
+        &self,
+    ) -> impl Iterator<Item = (AgentHarnessKind, Arc<dyn AgenticClient>)> + '_ {
+        self.harness_clients
+            .iter()
+            .map(|(harness, client)| (*harness, Arc::clone(client)))
+    }
 }
 
 #[derive(Clone)]

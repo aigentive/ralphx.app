@@ -826,8 +826,8 @@ impl<R: Runtime> TaskTransitionService<R> {
             .with_default_harness(agent_clients.default_harness)
             .with_repos(Arc::clone(&task_repo), Arc::clone(&project_repo))
             .with_execution_state(Arc::clone(&execution_state));
-        for (harness, client) in &agent_clients.harness_clients {
-            spawner = spawner.with_harness_client(*harness, Arc::clone(client));
+        for (harness, client) in agent_clients.iter_explicit_harness_clients() {
+            spawner = spawner.with_harness_client(harness, client);
         }
         let spawner = if let (Some(execution_repo), Some(agent_lane_repo)) =
             (execution_settings_repo, agent_lane_settings_repo)
@@ -1174,9 +1174,10 @@ impl<R: Runtime> TaskTransitionService<R> {
     where
         F: Fn() -> Arc<dyn AgenticClient> + Send + Sync + 'static,
     {
-        self.agent_client_factories
-            .harness_factories
-            .insert(harness, Arc::new(factory));
+        self.agent_client_factories = self
+            .agent_client_factories
+            .clone()
+            .with_harness_factory(harness, Arc::new(factory));
         self.rebuild_agent_spawner();
         self
     }
