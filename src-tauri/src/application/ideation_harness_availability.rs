@@ -58,6 +58,10 @@ pub(crate) const AGENT_LANES: [AgentLane; 8] = [
     AgentLane::ExecutionMerger,
 ];
 
+const DEFAULT_HARNESS: AgentHarnessKind = AgentHarnessKind::Claude;
+const SUPPORTED_HARNESSES: [AgentHarnessKind; 2] =
+    [AgentHarnessKind::Claude, AgentHarnessKind::Codex];
+
 pub(crate) async fn resolve_ideation_lane_harness_availability(
     repo: &Arc<dyn AgentLaneSettingsRepository>,
     project_id: Option<&str>,
@@ -114,7 +118,7 @@ pub(crate) async fn validate_chat_runtime_for_context(
     surface_name: &str,
 ) -> Result<(), String> {
     let Some(lane) = runtime_lane_for_context(context_type) else {
-        let probe = probe_claude_harness();
+        let probe = probe_harness(DEFAULT_HARNESS);
         if probe.available {
             return Ok(());
         }
@@ -235,77 +239,78 @@ pub(crate) async fn resolve_lane_harness_config(
     }
 }
 
-pub(crate) fn probe_claude_harness() -> HarnessRuntimeProbe {
-    let binary_path = find_claude_cli().map(|path| path.to_string_lossy().into_owned());
-    let binary_found = binary_path.is_some();
-    HarnessRuntimeProbe {
-        binary_path,
-        binary_found,
-        probe_succeeded: binary_found,
-        available: binary_found,
-        missing_core_exec_features: Vec::new(),
-        error: if binary_found {
-            None
-        } else {
-            Some("Claude CLI not found".to_string())
-        },
-    }
-}
-
-pub(crate) fn probe_codex_harness() -> HarnessRuntimeProbe {
-    match crate::infrastructure::agents::resolve_codex_cli() {
-        Ok(resolved) => {
-            let binary_path = Some(resolved.path.to_string_lossy().into_owned());
-            let capabilities = resolved.capabilities;
-            let missing_core_exec_features = capabilities
-                .missing_core_exec_features()
-                .into_iter()
-                .map(str::to_string)
-                .collect::<Vec<_>>();
-            let available = missing_core_exec_features.is_empty();
-            let error = if available {
-                None
-            } else {
-                Some(format!(
-                    "Codex CLI is missing required capability: {}",
-                    missing_core_exec_features.join(", ")
-                ))
-            };
+pub(crate) fn probe_harness(harness: AgentHarnessKind) -> HarnessRuntimeProbe {
+    match harness {
+        AgentHarnessKind::Claude => {
+            let binary_path = find_claude_cli().map(|path| path.to_string_lossy().into_owned());
+            let binary_found = binary_path.is_some();
             HarnessRuntimeProbe {
                 binary_path,
-                binary_found: true,
-                probe_succeeded: true,
-                available,
-                missing_core_exec_features,
-                error,
+                binary_found,
+                probe_succeeded: binary_found,
+                available: binary_found,
+                missing_core_exec_features: Vec::new(),
+                error: if binary_found {
+                    None
+                } else {
+                    Some("Claude CLI not found".to_string())
+                },
             }
         }
-        Err(error) => match find_codex_cli() {
-            Some(cli_path) => HarnessRuntimeProbe {
-                binary_path: Some(cli_path.to_string_lossy().into_owned()),
-                binary_found: true,
-                probe_succeeded: false,
-                available: false,
-                missing_core_exec_features: Vec::new(),
-                error: Some(error),
-            },
-            None => HarnessRuntimeProbe {
-                binary_path: None,
-                binary_found: false,
-                probe_succeeded: false,
-                available: false,
-                missing_core_exec_features: Vec::new(),
-                error: Some(error),
+        AgentHarnessKind::Codex => match crate::infrastructure::agents::resolve_codex_cli() {
+            Ok(resolved) => {
+                let binary_path = Some(resolved.path.to_string_lossy().into_owned());
+                let capabilities = resolved.capabilities;
+                let missing_core_exec_features = capabilities
+                    .missing_core_exec_features()
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect::<Vec<_>>();
+                let available = missing_core_exec_features.is_empty();
+                let error = if available {
+                    None
+                } else {
+                    Some(format!(
+                        "Codex CLI is missing required capability: {}",
+                        missing_core_exec_features.join(", ")
+                    ))
+                };
+                HarnessRuntimeProbe {
+                    binary_path,
+                    binary_found: true,
+                    probe_succeeded: true,
+                    available,
+                    missing_core_exec_features,
+                    error,
+                }
+            }
+            Err(error) => match find_codex_cli() {
+                Some(cli_path) => HarnessRuntimeProbe {
+                    binary_path: Some(cli_path.to_string_lossy().into_owned()),
+                    binary_found: true,
+                    probe_succeeded: false,
+                    available: false,
+                    missing_core_exec_features: Vec::new(),
+                    error: Some(error),
+                },
+                None => HarnessRuntimeProbe {
+                    binary_path: None,
+                    binary_found: false,
+                    probe_succeeded: false,
+                    available: false,
+                    missing_core_exec_features: Vec::new(),
+                    error: Some(error),
+                },
             },
         },
     }
 }
 
 pub(crate) fn probe_supported_harnesses() -> HashMap<AgentHarnessKind, HarnessRuntimeProbe> {
-    HashMap::from([
-        (AgentHarnessKind::Claude, probe_claude_harness()),
-        (AgentHarnessKind::Codex, probe_codex_harness()),
-    ])
+    SUPPORTED_HARNESSES
+        .into_iter()
+        .map(|harness| (harness, probe_harness(harness)))
+        .collect()
 }
 
 fn probe_for_harness<'a>(
@@ -314,7 +319,11 @@ fn probe_for_harness<'a>(
 ) -> &'a HarnessRuntimeProbe {
     probes
         .get(&harness)
-        .unwrap_or_else(|| probes.get(&AgentHarnessKind::Claude).expect("Claude probe available"))
+        .unwrap_or_else(|| {
+            probes
+                .get(&DEFAULT_HARNESS)
+                .expect("default harness probe available")
+        })
 }
 
 pub(crate) fn build_ideation_lane_harness_availability(
@@ -323,7 +332,7 @@ pub(crate) fn build_ideation_lane_harness_availability(
 ) -> IdeationLaneHarnessAvailability {
     let configured_harness = config
         .configured_harness
-        .unwrap_or(AgentHarnessKind::Claude);
+        .unwrap_or(DEFAULT_HARNESS);
     let configured_probe = probe_for_harness(probes, configured_harness);
 
     if configured_probe.available {
