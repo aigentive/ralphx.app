@@ -447,10 +447,10 @@ fn resolve_codex_chat_harness_cli(_: &Path) -> Result<ResolvedChatHarnessCli, St
 
 pub(crate) fn standard_chat_harness_cli_resolvers(
 ) -> HashMap<AgentHarnessKind, ChatHarnessCliResolver> {
-    crate::domain::agents::standard_harness_map(
-        resolve_claude_chat_harness_cli as ChatHarnessCliResolver,
-        resolve_codex_chat_harness_cli as ChatHarnessCliResolver,
-    )
+    crate::domain::agents::standard_harness_registry(|harness| match harness {
+        AgentHarnessKind::Claude => resolve_claude_chat_harness_cli as ChatHarnessCliResolver,
+        AgentHarnessKind::Codex => resolve_codex_chat_harness_cli as ChatHarnessCliResolver,
+    })
 }
 
 pub fn resolve_chat_harness_cli(

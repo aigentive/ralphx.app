@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::domain::agents::{
-    standard_harness_map, AgentHarnessKind, AgenticClient, DEFAULT_AGENT_HARNESS,
+    standard_harness_registry, AgentHarnessKind, AgenticClient, DEFAULT_AGENT_HARNESS,
 };
 use crate::infrastructure::agents::CodexCliClient;
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
@@ -85,10 +85,9 @@ impl AgentClientBundle {
     fn standard_runtime_clients_by_harness(
         mock: bool,
     ) -> HashMap<AgentHarnessKind, Arc<dyn AgenticClient>> {
-        standard_harness_map(
-            Self::standard_runtime_client_for_harness(AgentHarnessKind::Claude, mock),
-            Self::standard_runtime_client_for_harness(AgentHarnessKind::Codex, mock),
-        )
+        standard_harness_registry(|harness| {
+            Self::standard_runtime_client_for_harness(harness, mock)
+        })
     }
 
     pub fn standard_production_runtime_clients() -> Self {
@@ -197,10 +196,7 @@ impl AgentClientFactoryBundle {
 
     fn standard_runtime_factories_by_harness() -> HashMap<AgentHarnessKind, Arc<AgentClientFactory>>
     {
-        standard_harness_map(
-            Self::standard_runtime_factory_for_harness(AgentHarnessKind::Claude),
-            Self::standard_runtime_factory_for_harness(AgentHarnessKind::Codex),
-        )
+        standard_harness_registry(Self::standard_runtime_factory_for_harness)
     }
 
     pub fn standard_production_runtime_factories() -> Self {

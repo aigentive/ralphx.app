@@ -154,6 +154,21 @@ fn test_standard_harness_map_keys_first_class_harnesses() {
 }
 
 #[test]
+fn test_standard_harness_registry_builds_all_first_class_harnesses() {
+    let map = standard_harness_registry(|harness| harness.to_string());
+
+    assert_eq!(map.len(), STANDARD_AGENT_HARNESSES.len());
+    assert_eq!(
+        map.get(&AgentHarnessKind::Claude),
+        Some(&"claude".to_string())
+    );
+    assert_eq!(
+        map.get(&AgentHarnessKind::Codex),
+        Some(&"codex".to_string())
+    );
+}
+
+#[test]
 fn test_standard_harness_behavior_for_claude() {
     let behavior = standard_harness_behavior(AgentHarnessKind::Claude);
 

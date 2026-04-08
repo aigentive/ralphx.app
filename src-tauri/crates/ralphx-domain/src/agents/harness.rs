@@ -19,12 +19,24 @@ pub enum AgentHarnessKind {
 }
 
 pub const DEFAULT_AGENT_HARNESS: AgentHarnessKind = AgentHarnessKind::Claude;
+pub const STANDARD_AGENT_HARNESSES: [AgentHarnessKind; 2] =
+    [AgentHarnessKind::Claude, AgentHarnessKind::Codex];
 
 pub fn standard_harness_map<T>(claude: T, codex: T) -> HashMap<AgentHarnessKind, T> {
     HashMap::from([
         (AgentHarnessKind::Claude, claude),
         (AgentHarnessKind::Codex, codex),
     ])
+}
+
+pub fn standard_harness_registry<T, F>(mut builder: F) -> HashMap<AgentHarnessKind, T>
+where
+    F: FnMut(AgentHarnessKind) -> T,
+{
+    STANDARD_AGENT_HARNESSES
+        .into_iter()
+        .map(|harness| (harness, builder(harness)))
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
