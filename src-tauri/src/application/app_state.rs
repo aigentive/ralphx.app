@@ -473,6 +473,7 @@ impl AppState {
                 &shared_conn,
             ))),
             agent_clients: AgentClientBundle::from_parts(
+                AgentHarnessKind::Claude,
                 Arc::new(ClaudeCodeClient::new()),
                 HashMap::from([(
                     AgentHarnessKind::Codex,
@@ -662,6 +663,7 @@ impl AppState {
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
             agent_clients: AgentClientBundle::from_parts(
+                AgentHarnessKind::Claude,
                 Arc::new(MockAgenticClient::new()),
                 HashMap::from([(
                     AgentHarnessKind::Codex,
@@ -769,6 +771,7 @@ impl AppState {
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
             agent_clients: AgentClientBundle::from_parts(
+                AgentHarnessKind::Claude,
                 Arc::new(MockAgenticClient::new()),
                 HashMap::from([(
                     AgentHarnessKind::Codex,
@@ -886,6 +889,7 @@ impl AppState {
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
             agent_clients: AgentClientBundle::from_parts(
+                AgentHarnessKind::Claude,
                 Arc::new(MockAgenticClient::new()),
                 HashMap::from([(
                     AgentHarnessKind::Codex,
@@ -997,6 +1001,7 @@ impl AppState {
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
             agent_clients: AgentClientBundle::from_parts(
+                AgentHarnessKind::Claude,
                 Arc::new(MockAgenticClient::new()),
                 HashMap::from([(
                     AgentHarnessKind::Codex,

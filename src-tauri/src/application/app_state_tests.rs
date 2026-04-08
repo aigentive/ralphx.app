@@ -99,6 +99,11 @@ async fn test_repositories_are_thread_safe() {
 async fn test_new_test_creates_mock_agent_client() {
     let state = AppState::new_test();
 
+    assert_eq!(
+        state.agent_clients.default_harness,
+        AgentHarnessKind::Claude
+    );
+
     // Agent client should be mock and available
     let available = state
         .agent_clients

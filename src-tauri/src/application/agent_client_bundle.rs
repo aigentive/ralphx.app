@@ -5,16 +5,19 @@ use crate::domain::agents::{AgentHarnessKind, AgenticClient};
 
 #[derive(Clone)]
 pub struct AgentClientBundle {
+    pub default_harness: AgentHarnessKind,
     pub default_client: Arc<dyn AgenticClient>,
     pub harness_clients: HashMap<AgentHarnessKind, Arc<dyn AgenticClient>>,
 }
 
 impl AgentClientBundle {
     pub fn from_parts(
+        default_harness: AgentHarnessKind,
         default_client: Arc<dyn AgenticClient>,
         harness_clients: HashMap<AgentHarnessKind, Arc<dyn AgenticClient>>,
     ) -> Self {
         Self {
+            default_harness,
             default_client,
             harness_clients,
         }
