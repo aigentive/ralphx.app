@@ -8,14 +8,23 @@ fn test_agent_harness_display() {
 
 #[test]
 fn test_agent_harness_parse() {
-    assert_eq!("claude".parse::<AgentHarnessKind>().unwrap(), AgentHarnessKind::Claude);
-    assert_eq!("codex".parse::<AgentHarnessKind>().unwrap(), AgentHarnessKind::Codex);
+    assert_eq!(
+        "claude".parse::<AgentHarnessKind>().unwrap(),
+        AgentHarnessKind::Claude
+    );
+    assert_eq!(
+        "codex".parse::<AgentHarnessKind>().unwrap(),
+        AgentHarnessKind::Codex
+    );
     assert!("gemini".parse::<AgentHarnessKind>().is_err());
 }
 
 #[test]
 fn test_harness_to_client_type() {
-    assert_eq!(ClientType::from(AgentHarnessKind::Claude), ClientType::ClaudeCode);
+    assert_eq!(
+        ClientType::from(AgentHarnessKind::Claude),
+        ClientType::ClaudeCode
+    );
     assert_eq!(ClientType::from(AgentHarnessKind::Codex), ClientType::Codex);
 }
 
@@ -40,7 +49,10 @@ fn test_logical_effort_parse_and_display() {
     assert_eq!(LogicalEffort::XHigh.to_string(), "xhigh");
 
     assert_eq!("low".parse::<LogicalEffort>().unwrap(), LogicalEffort::Low);
-    assert_eq!("xhigh".parse::<LogicalEffort>().unwrap(), LogicalEffort::XHigh);
+    assert_eq!(
+        "xhigh".parse::<LogicalEffort>().unwrap(),
+        LogicalEffort::XHigh
+    );
     assert!("max".parse::<LogicalEffort>().is_err());
 }
 
@@ -131,4 +143,12 @@ fn test_standard_agent_lane_defaults_use_expected_harnesses() {
         defaults.get(&AgentLane::ExecutionWorker).unwrap().harness,
         DEFAULT_AGENT_HARNESS
     );
+}
+
+#[test]
+fn test_standard_harness_map_keys_first_class_harnesses() {
+    let map = standard_harness_map("claude", "codex");
+
+    assert_eq!(map.get(&AgentHarnessKind::Claude), Some(&"claude"));
+    assert_eq!(map.get(&AgentHarnessKind::Codex), Some(&"codex"));
 }

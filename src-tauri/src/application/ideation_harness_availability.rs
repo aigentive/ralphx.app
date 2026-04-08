@@ -315,16 +315,10 @@ fn probe_codex_harness() -> HarnessRuntimeProbe {
 }
 
 pub(crate) fn standard_harness_probe_registry() -> HashMap<AgentHarnessKind, HarnessProbeFn> {
-    HashMap::from([
-        (
-            AgentHarnessKind::Claude,
-            probe_claude_harness as HarnessProbeFn,
-        ),
-        (
-            AgentHarnessKind::Codex,
-            probe_codex_harness as HarnessProbeFn,
-        ),
-    ])
+    crate::domain::agents::standard_harness_map(
+        probe_claude_harness as HarnessProbeFn,
+        probe_codex_harness as HarnessProbeFn,
+    )
 }
 
 pub(crate) fn probe_harness(harness: AgentHarnessKind) -> HarnessRuntimeProbe {

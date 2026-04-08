@@ -20,6 +20,13 @@ pub enum AgentHarnessKind {
 
 pub const DEFAULT_AGENT_HARNESS: AgentHarnessKind = AgentHarnessKind::Claude;
 
+pub fn standard_harness_map<T>(claude: T, codex: T) -> HashMap<AgentHarnessKind, T> {
+    HashMap::from([
+        (AgentHarnessKind::Claude, claude),
+        (AgentHarnessKind::Codex, codex),
+    ])
+}
+
 impl fmt::Display for AgentHarnessKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

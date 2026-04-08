@@ -20,10 +20,7 @@ fn probe_map(
     claude_probe: HarnessRuntimeProbe,
     codex_probe: HarnessRuntimeProbe,
 ) -> HashMap<AgentHarnessKind, HarnessRuntimeProbe> {
-    HashMap::from([
-        (AgentHarnessKind::Claude, claude_probe),
-        (AgentHarnessKind::Codex, codex_probe),
-    ])
+    crate::domain::agents::standard_harness_map(claude_probe, codex_probe)
 }
 
 #[test]
