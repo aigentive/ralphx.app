@@ -9,6 +9,36 @@ use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
 pub type AgentClientFactory = dyn Fn() -> Arc<dyn AgenticClient> + Send + Sync;
 
+#[derive(Clone, Copy)]
+struct StandardHarnessRuntimeBuilder {
+    production_client: fn() -> Arc<dyn AgenticClient>,
+    mock_client: fn() -> Arc<dyn AgenticClient>,
+    factory: fn() -> Arc<AgentClientFactory>,
+}
+
+fn build_claude_runtime_factory() -> Arc<AgentClientFactory> {
+    Arc::new(|| Arc::new(ClaudeCodeClient::new()) as Arc<dyn AgenticClient>)
+}
+
+fn build_codex_runtime_factory() -> Arc<AgentClientFactory> {
+    Arc::new(|| Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>)
+}
+
+fn standard_harness_runtime_builder(harness: AgentHarnessKind) -> StandardHarnessRuntimeBuilder {
+    match harness {
+        AgentHarnessKind::Claude => StandardHarnessRuntimeBuilder {
+            production_client: || Arc::new(ClaudeCodeClient::new()),
+            mock_client: || Arc::new(MockAgenticClient::new()),
+            factory: build_claude_runtime_factory,
+        },
+        AgentHarnessKind::Codex => StandardHarnessRuntimeBuilder {
+            production_client: || Arc::new(CodexCliClient::new()),
+            mock_client: || Arc::new(MockAgenticClient::new()),
+            factory: build_codex_runtime_factory,
+        },
+    }
+}
+
 #[derive(Clone)]
 pub struct AgentClientBundle {
     pub default_harness: AgentHarnessKind,
@@ -74,11 +104,11 @@ impl AgentClientBundle {
         harness: AgentHarnessKind,
         mock: bool,
     ) -> Arc<dyn AgenticClient> {
-        match (harness, mock) {
-            (AgentHarnessKind::Claude, false) => Arc::new(ClaudeCodeClient::new()),
-            (AgentHarnessKind::Claude, true) => Arc::new(MockAgenticClient::new()),
-            (AgentHarnessKind::Codex, false) => Arc::new(CodexCliClient::new()),
-            (AgentHarnessKind::Codex, true) => Arc::new(MockAgenticClient::new()),
+        let builder = standard_harness_runtime_builder(harness);
+        if mock {
+            (builder.mock_client)()
+        } else {
+            (builder.production_client)()
         }
     }
 
@@ -184,14 +214,7 @@ impl AgentClientFactoryBundle {
     }
 
     fn standard_runtime_factory_for_harness(harness: AgentHarnessKind) -> Arc<AgentClientFactory> {
-        match harness {
-            AgentHarnessKind::Claude => {
-                Arc::new(|| Arc::new(ClaudeCodeClient::new()) as Arc<dyn AgenticClient>)
-            }
-            AgentHarnessKind::Codex => {
-                Arc::new(|| Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>)
-            }
-        }
+        (standard_harness_runtime_builder(harness).factory)()
     }
 
     fn standard_runtime_factories_by_harness() -> HashMap<AgentHarnessKind, Arc<AgentClientFactory>>
