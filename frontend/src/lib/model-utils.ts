@@ -11,6 +11,9 @@ const MODEL_LABEL_MAP: Record<string, string> = {
   sonnet: "Sonnet 4.6",
   opus: "Opus 4.6",
   haiku: "Haiku 4.5",
+  "gpt-5.4": "GPT-5.4",
+  "gpt-5.4-mini": "GPT-5.4 Mini",
+  "gpt-4.5": "GPT-4.5",
   // Full model IDs (Claude API format)
   "claude-sonnet-4-6": "Sonnet 4.6",
   "claude-opus-4-6": "Opus 4.6",

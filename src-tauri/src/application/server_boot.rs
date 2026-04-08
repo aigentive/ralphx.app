@@ -19,7 +19,7 @@ pub(crate) fn start_server_boot(
     // Create a second AppState sharing the Tauri AppState's DB connection,
     // plus shared in-memory state (question_state, permission_state, message_queue)
     // so MCP handlers and Tauri commands operate on the same data.
-    let http_app_state = build_http_app_state(&app_state, app_handle)
+    let http_app_state = build_http_app_state(app_state, app_handle)
         .expect("Failed to initialize AppState for HTTP server");
     // Spawn HTTP server with pre-cloned state
     tauri::async_runtime::spawn(async move {

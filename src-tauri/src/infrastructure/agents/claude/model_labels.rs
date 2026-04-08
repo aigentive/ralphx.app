@@ -26,6 +26,9 @@ pub(crate) fn model_id_to_label(id: &str) -> String {
         "sonnet" => "Sonnet 4.6",
         "opus" => "Opus 4.6",
         "haiku" => "Haiku 4.5",
+        "gpt-5.4" => "GPT-5.4",
+        "gpt-5.4-mini" => "GPT-5.4 Mini",
+        "gpt-4.5" => "GPT-4.5",
         // Full model IDs (Claude API format)
         "claude-sonnet-4-6" => "Sonnet 4.6",
         "claude-opus-4-6" => "Opus 4.6",
@@ -45,6 +48,9 @@ mod tests {
         assert_eq!(model_id_to_label("sonnet"), "Sonnet 4.6");
         assert_eq!(model_id_to_label("opus"), "Opus 4.6");
         assert_eq!(model_id_to_label("haiku"), "Haiku 4.5");
+        assert_eq!(model_id_to_label("gpt-5.4"), "GPT-5.4");
+        assert_eq!(model_id_to_label("gpt-5.4-mini"), "GPT-5.4 Mini");
+        assert_eq!(model_id_to_label("gpt-4.5"), "GPT-4.5");
     }
 
     #[test]
@@ -76,7 +82,9 @@ mod tests {
             Ok(c) => c,
             Err(e) => {
                 // If ralphx.yaml is missing (e.g. CI isolation), skip gracefully.
-                eprintln!("Skipping test_all_yaml_models_have_labels: could not read ralphx.yaml: {e}");
+                eprintln!(
+                    "Skipping test_all_yaml_models_have_labels: could not read ralphx.yaml: {e}"
+                );
                 return;
             }
         };
