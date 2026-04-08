@@ -10,26 +10,26 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::domain::agents::AgentHarnessKind;
+use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::entities::{
     legacy_claude_session_alias, Artifact, ArtifactContent, ArtifactId, ArtifactType,
     ChatAttachment, ChatContextType, ChatConversation, ChatConversationId, ChatMessage,
     ChatMessageId, GitMode, IdeationSessionId, MessageRole, ProjectId, TaskId,
 };
-use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::repositories::{
     AgentLaneSettingsRepository, ArtifactRepository, ChatAttachmentRepository,
-    IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
-    IdeationSessionRepository, ProjectRepository, TaskRepository,
-};
-use crate::infrastructure::agents::claude::{
-    build_spawnable_command, build_spawnable_interactive_command, ContentBlockItem,
-    SpawnableCommand, ToolCall, mcp_agent_type,
+    IdeationEffortSettingsRepository, IdeationModelSettingsRepository, IdeationSessionRepository,
+    ProjectRepository, TaskRepository,
 };
 use crate::infrastructure::agents::claude::agent_names;
+use crate::infrastructure::agents::claude::{
+    build_spawnable_command, build_spawnable_interactive_command, mcp_agent_type, ContentBlockItem,
+    SpawnableCommand, ToolCall,
+};
 use crate::infrastructure::agents::{
     build_codex_mcp_overrides, build_spawnable_codex_exec_command,
-    build_spawnable_codex_resume_command, CodexCliCapabilities, CodexExecCliConfig,
-    compose_codex_prompt,
+    build_spawnable_codex_resume_command, compose_codex_prompt, CodexCliCapabilities,
+    CodexExecCliConfig,
 };
 use crate::utils::truncate_str;
 use which::which;
@@ -151,7 +151,10 @@ impl ResolvedChatHarnessLaunch {
 
     pub async fn spawn(self) -> Result<LaunchedChatHarnessProcess, std::io::Error> {
         match self {
-            Self::Interactive { cli_path, spawnable } => {
+            Self::Interactive {
+                cli_path,
+                spawnable,
+            } => {
                 let (child, child_stdin) = spawnable.spawn_interactive().await?;
                 Ok(LaunchedChatHarnessProcess {
                     cli_path,
@@ -159,7 +162,10 @@ impl ResolvedChatHarnessLaunch {
                     child_stdin: Some(child_stdin),
                 })
             }
-            Self::Background { cli_path, spawnable } => {
+            Self::Background {
+                cli_path,
+                spawnable,
+            } => {
                 let child = spawnable.spawn().await?;
                 Ok(LaunchedChatHarnessProcess {
                     cli_path,
@@ -182,9 +188,243 @@ pub enum ResolvedChatHarnessCli {
     },
 }
 
+impl ResolvedChatHarnessCli {
+    async fn build_noninteractive_command(
+        self,
+        request: BuildHarnessCommandRequest<'_>,
+    ) -> Result<ProviderSpawnableCommand, String> {
+        match self {
+            Self::Claude { cli_path } => Ok(ProviderSpawnableCommand {
+                spawnable: build_command(
+                    &cli_path,
+                    request.plugin_dir,
+                    request.conversation,
+                    request.user_message,
+                    request.working_directory,
+                    request.entity_status,
+                    request.project_id,
+                    request.team_mode,
+                    request.chat_attachment_repo,
+                    request.artifact_repo,
+                    request.agent_lane_settings_repo,
+                    request.ideation_effort_settings_repo,
+                    request.ideation_model_settings_repo,
+                    request.session_messages,
+                    request.total_available,
+                    request.effort_override,
+                    request.model_override,
+                )
+                .await?,
+            }),
+            Self::Codex {
+                cli_path,
+                capabilities,
+            } => {
+                let resolved_spawn_settings = resolve_noninteractive_spawn_settings(
+                    request.conversation.context_type,
+                    request.entity_status,
+                    request.project_id,
+                    request.model_override,
+                    request.agent_lane_settings_repo.as_ref(),
+                    request.ideation_model_settings_repo.as_ref(),
+                    request.ideation_effort_settings_repo.as_ref(),
+                )
+                .await;
+
+                Ok(ProviderSpawnableCommand {
+                    spawnable: build_codex_command(
+                        &cli_path,
+                        request.plugin_dir,
+                        &capabilities,
+                        request.conversation,
+                        request.user_message,
+                        request.working_directory,
+                        request.entity_status,
+                        request.project_id,
+                        false,
+                        request.chat_attachment_repo,
+                        request.artifact_repo,
+                        request.session_messages,
+                        request.total_available,
+                        request.is_external_mcp,
+                        &resolved_spawn_settings,
+                    )
+                    .await?,
+                })
+            }
+        }
+    }
+
+    async fn build_noninteractive_resume_command(
+        self,
+        request: BuildHarnessResumeCommandRequest<'_>,
+    ) -> Result<ProviderSpawnableCommand, String> {
+        match self {
+            Self::Claude { cli_path } => Ok(ProviderSpawnableCommand {
+                spawnable: build_resume_command(
+                    &cli_path,
+                    request.plugin_dir,
+                    request.context_type,
+                    request.context_id,
+                    request.message,
+                    request.working_directory,
+                    request.session_id,
+                    request.project_id,
+                    request.team_mode,
+                    request.chat_attachment_repo,
+                    request.artifact_repo,
+                    request.agent_lane_settings_repo,
+                    request.ideation_effort_settings_repo,
+                    request.ideation_model_settings_repo,
+                    request.ideation_session_repo,
+                    request.task_repo,
+                    request.session_messages,
+                    request.total_available,
+                    request.effort_override,
+                    request.model_override,
+                )
+                .await?,
+            }),
+            Self::Codex {
+                cli_path,
+                capabilities,
+            } => {
+                let entity_status = get_entity_status_for_resume(
+                    request.context_type,
+                    request.context_id,
+                    Arc::clone(&request.ideation_session_repo),
+                    Arc::clone(&request.task_repo),
+                )
+                .await;
+                let resolved_spawn_settings = resolve_noninteractive_spawn_settings(
+                    request.context_type,
+                    entity_status.as_deref(),
+                    request.project_id,
+                    request.model_override,
+                    request.agent_lane_settings_repo.as_ref(),
+                    request.ideation_model_settings_repo.as_ref(),
+                    request.ideation_effort_settings_repo.as_ref(),
+                )
+                .await;
+
+                Ok(ProviderSpawnableCommand {
+                    spawnable: build_codex_resume_command(
+                        &cli_path,
+                        request.plugin_dir,
+                        &capabilities,
+                        request.context_type,
+                        request.context_id,
+                        request.message,
+                        request.working_directory,
+                        request.session_id,
+                        request.project_id,
+                        false,
+                        request.artifact_repo,
+                        request.ideation_session_repo,
+                        request.task_repo,
+                        request.session_messages,
+                        request.total_available,
+                        request.is_external_mcp,
+                        &resolved_spawn_settings,
+                    )
+                    .await?,
+                })
+            }
+        }
+    }
+
+    async fn build_launch_plan(
+        self,
+        request: BuildHarnessLaunchRequest<'_>,
+    ) -> Result<ResolvedChatHarnessLaunch, String> {
+        match self {
+            Self::Claude { cli_path } => {
+                let spawnable = build_interactive_command(
+                    &cli_path,
+                    request.plugin_dir,
+                    request.conversation,
+                    request.user_message,
+                    request.working_directory,
+                    request.entity_status,
+                    request.project_id,
+                    request.runtime_team_mode,
+                    request.chat_attachment_repo,
+                    request.artifact_repo,
+                    request.session_messages,
+                    request.total_available,
+                    request.is_external_mcp,
+                    request.resolved_spawn_settings,
+                )
+                .await?;
+
+                Ok(ResolvedChatHarnessLaunch::Interactive {
+                    cli_path,
+                    spawnable,
+                })
+            }
+            Self::Codex {
+                cli_path,
+                capabilities,
+            } => {
+                let spawnable = match request.stored_session_id {
+                    Some(session_id) => {
+                        build_codex_resume_command(
+                            &cli_path,
+                            request.plugin_dir,
+                            &capabilities,
+                            request.context_type,
+                            request.context_id,
+                            request.user_message,
+                            request.working_directory,
+                            session_id,
+                            request.project_id,
+                            request.runtime_team_mode,
+                            request.artifact_repo,
+                            request.ideation_session_repo,
+                            request.task_repo,
+                            request.session_messages,
+                            request.total_available,
+                            request.is_external_mcp,
+                            request.resolved_spawn_settings,
+                        )
+                        .await?
+                    }
+                    None => {
+                        build_codex_command(
+                            &cli_path,
+                            request.plugin_dir,
+                            &capabilities,
+                            request.conversation,
+                            request.user_message,
+                            request.working_directory,
+                            request.entity_status,
+                            request.project_id,
+                            request.runtime_team_mode,
+                            request.chat_attachment_repo,
+                            request.artifact_repo,
+                            request.session_messages,
+                            request.total_available,
+                            request.is_external_mcp,
+                            request.resolved_spawn_settings,
+                        )
+                        .await?
+                    }
+                };
+
+                Ok(ResolvedChatHarnessLaunch::Background {
+                    cli_path,
+                    spawnable,
+                })
+            }
+        }
+    }
+}
+
 type ChatHarnessCliResolver = fn(&Path) -> Result<ResolvedChatHarnessCli, String>;
 
-fn resolve_claude_chat_harness_cli(claude_cli_path: &Path) -> Result<ResolvedChatHarnessCli, String> {
+fn resolve_claude_chat_harness_cli(
+    claude_cli_path: &Path,
+) -> Result<ResolvedChatHarnessCli, String> {
     if !claude_cli_path.exists() && which(claude_cli_path).is_err() {
         return Err(format!(
             "Claude CLI not found at {}",
@@ -205,7 +445,8 @@ fn resolve_codex_chat_harness_cli(_: &Path) -> Result<ResolvedChatHarnessCli, St
     })
 }
 
-pub(crate) fn standard_chat_harness_cli_resolvers() -> HashMap<AgentHarnessKind, ChatHarnessCliResolver> {
+pub(crate) fn standard_chat_harness_cli_resolvers(
+) -> HashMap<AgentHarnessKind, ChatHarnessCliResolver> {
     HashMap::from([
         (
             AgentHarnessKind::Claude,
@@ -283,7 +524,11 @@ fn format_tool_summary(tool_calls_json: &str) -> Option<String> {
         .iter()
         .map(|name| {
             let count = counts[name];
-            let fail_suffix = if failed.contains(name) { " (failed)" } else { "" };
+            let fail_suffix = if failed.contains(name) {
+                " (failed)"
+            } else {
+                ""
+            };
             if count > 1 {
                 format!("{} x{}{}", name, count, fail_suffix)
             } else {
@@ -322,15 +567,9 @@ async fn upsert_session_history_artifact(
                 artifact.name = artifact_name;
                 artifact.artifact_type = ArtifactType::Context;
                 artifact.content = ArtifactContent::inline(message.content.clone());
-                artifact
-                    .metadata
-                    .created_by = "chat_service".to_string();
-                artifact
-                    .metadata
-                    .task_id = message.task_id.clone();
-                artifact
-                    .metadata
-                    .version += 1;
+                artifact.metadata.created_by = "chat_service".to_string();
+                artifact.metadata.task_id = message.task_id.clone();
+                artifact.metadata.version += 1;
                 artifact_repo
                     .update(&artifact)
                     .await
@@ -986,7 +1225,13 @@ pub fn build_resume_initial_prompt(
     total_available: usize,
 ) -> String {
     // For resume, delegate to build_initial_prompt which already handles session_history injection.
-    build_initial_prompt(context_type, context_id, user_message, session_messages, total_available)
+    build_initial_prompt(
+        context_type,
+        context_id,
+        user_message,
+        session_messages,
+        total_available,
+    )
 }
 
 /// Determine if a file is text-based from mime type or extension
@@ -1287,10 +1532,7 @@ async fn build_command_from_resolved_settings(
         )
         .await?;
         let prompt_with_attachments = format!("{}{}", resume_prompt, attachment_context);
-        (
-            prompt_with_attachments,
-            Some(session_id.to_string()),
-        )
+        (prompt_with_attachments, Some(session_id.to_string()))
     } else {
         let initial_prompt = build_initial_prompt_with_session_artifacts(
             conversation.context_type,
@@ -1432,220 +1674,23 @@ async fn build_noninteractive_command_from_resolved_cli(
     resolved_cli: ResolvedChatHarnessCli,
     request: BuildHarnessCommandRequest<'_>,
 ) -> Result<ProviderSpawnableCommand, String> {
-    match resolved_cli {
-        ResolvedChatHarnessCli::Claude { cli_path } => Ok(ProviderSpawnableCommand {
-            spawnable: build_command(
-                &cli_path,
-                request.plugin_dir,
-                request.conversation,
-                request.user_message,
-                request.working_directory,
-                request.entity_status,
-                request.project_id,
-                request.team_mode,
-                request.chat_attachment_repo,
-                request.artifact_repo,
-                request.agent_lane_settings_repo,
-                request.ideation_effort_settings_repo,
-                request.ideation_model_settings_repo,
-                request.session_messages,
-                request.total_available,
-                request.effort_override,
-                request.model_override,
-            )
-            .await?,
-        }),
-        ResolvedChatHarnessCli::Codex {
-            cli_path,
-            capabilities,
-        } => {
-            let resolved_spawn_settings = resolve_noninteractive_spawn_settings(
-                request.conversation.context_type,
-                request.entity_status,
-                request.project_id,
-                request.model_override,
-                request.agent_lane_settings_repo.as_ref(),
-                request.ideation_model_settings_repo.as_ref(),
-                request.ideation_effort_settings_repo.as_ref(),
-            )
-            .await;
-
-            Ok(ProviderSpawnableCommand {
-                spawnable: build_codex_command(
-                    &cli_path,
-                    request.plugin_dir,
-                    &capabilities,
-                    request.conversation,
-                    request.user_message,
-                    request.working_directory,
-                    request.entity_status,
-                    request.project_id,
-                    false,
-                    request.chat_attachment_repo,
-                    request.artifact_repo,
-                    request.session_messages,
-                    request.total_available,
-                    request.is_external_mcp,
-                    &resolved_spawn_settings,
-                )
-                .await?,
-            })
-        }
-    }
+    resolved_cli.build_noninteractive_command(request).await
 }
 
 async fn build_noninteractive_resume_command_from_resolved_cli(
     resolved_cli: ResolvedChatHarnessCli,
     request: BuildHarnessResumeCommandRequest<'_>,
 ) -> Result<ProviderSpawnableCommand, String> {
-    match resolved_cli {
-        ResolvedChatHarnessCli::Claude { cli_path } => Ok(ProviderSpawnableCommand {
-            spawnable: build_resume_command(
-                &cli_path,
-                request.plugin_dir,
-                request.context_type,
-                request.context_id,
-                request.message,
-                request.working_directory,
-                request.session_id,
-                request.project_id,
-                request.team_mode,
-                request.chat_attachment_repo,
-                request.artifact_repo,
-                request.agent_lane_settings_repo,
-                request.ideation_effort_settings_repo,
-                request.ideation_model_settings_repo,
-                request.ideation_session_repo,
-                request.task_repo,
-                request.session_messages,
-                request.total_available,
-                request.effort_override,
-                request.model_override,
-            )
-            .await?,
-        }),
-        ResolvedChatHarnessCli::Codex {
-            cli_path,
-            capabilities,
-        } => {
-            let entity_status = get_entity_status_for_resume(
-                request.context_type,
-                request.context_id,
-                Arc::clone(&request.ideation_session_repo),
-                Arc::clone(&request.task_repo),
-            )
-            .await;
-            let resolved_spawn_settings = resolve_noninteractive_spawn_settings(
-                request.context_type,
-                entity_status.as_deref(),
-                request.project_id,
-                request.model_override,
-                request.agent_lane_settings_repo.as_ref(),
-                request.ideation_model_settings_repo.as_ref(),
-                request.ideation_effort_settings_repo.as_ref(),
-            )
-            .await;
-
-            Ok(ProviderSpawnableCommand {
-                spawnable: build_codex_resume_command(
-                    &cli_path,
-                    request.plugin_dir,
-                    &capabilities,
-                    request.context_type,
-                    request.context_id,
-                    request.message,
-                    request.working_directory,
-                    request.session_id,
-                    request.project_id,
-                    false,
-                    request.artifact_repo,
-                    request.ideation_session_repo,
-                    request.task_repo,
-                    request.session_messages,
-                    request.total_available,
-                    request.is_external_mcp,
-                    &resolved_spawn_settings,
-                )
-                .await?,
-            })
-        }
-    }
+    resolved_cli
+        .build_noninteractive_resume_command(request)
+        .await
 }
 
 async fn build_launch_plan_from_resolved_cli(
     resolved_cli: ResolvedChatHarnessCli,
     request: BuildHarnessLaunchRequest<'_>,
 ) -> Result<ResolvedChatHarnessLaunch, String> {
-    match resolved_cli {
-        ResolvedChatHarnessCli::Claude { cli_path } => {
-            let spawnable = build_interactive_command(
-                &cli_path,
-                request.plugin_dir,
-                request.conversation,
-                request.user_message,
-                request.working_directory,
-                request.entity_status,
-                request.project_id,
-                request.runtime_team_mode,
-                request.chat_attachment_repo,
-                request.artifact_repo,
-                request.session_messages,
-                request.total_available,
-                request.is_external_mcp,
-                request.resolved_spawn_settings,
-            )
-            .await?;
-
-            Ok(ResolvedChatHarnessLaunch::Interactive { cli_path, spawnable })
-        }
-        ResolvedChatHarnessCli::Codex {
-            cli_path,
-            capabilities,
-        } => {
-            let spawnable = match request.stored_session_id {
-                Some(session_id) => build_codex_resume_command(
-                    &cli_path,
-                    request.plugin_dir,
-                    &capabilities,
-                    request.context_type,
-                    request.context_id,
-                    request.user_message,
-                    request.working_directory,
-                    session_id,
-                    request.project_id,
-                    request.runtime_team_mode,
-                    request.artifact_repo,
-                    request.ideation_session_repo,
-                    request.task_repo,
-                    request.session_messages,
-                    request.total_available,
-                    request.is_external_mcp,
-                    request.resolved_spawn_settings,
-                )
-                .await?,
-                None => build_codex_command(
-                    &cli_path,
-                    request.plugin_dir,
-                    &capabilities,
-                    request.conversation,
-                    request.user_message,
-                    request.working_directory,
-                    request.entity_status,
-                    request.project_id,
-                    request.runtime_team_mode,
-                    request.chat_attachment_repo,
-                    request.artifact_repo,
-                    request.session_messages,
-                    request.total_available,
-                    request.is_external_mcp,
-                    request.resolved_spawn_settings,
-                )
-                .await?,
-            };
-
-            Ok(ResolvedChatHarnessLaunch::Background { cli_path, spawnable })
-        }
-    }
+    resolved_cli.build_launch_plan(request).await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2275,10 +2320,13 @@ mod tests {
         let msg = ChatMessage::orchestrator_in_session(session_id, long_content.clone());
         let expected_artifact_id = session_history_artifact_id(&msg);
 
-        let history =
-            format_session_history_with_artifacts(std::slice::from_ref(&msg), 1, artifact_repo.clone())
-                .await
-                .expect("history formatting should succeed");
+        let history = format_session_history_with_artifacts(
+            std::slice::from_ref(&msg),
+            1,
+            artifact_repo.clone(),
+        )
+        .await
+        .expect("history formatting should succeed");
 
         assert!(
             history.contains(expected_artifact_id.as_str()),
