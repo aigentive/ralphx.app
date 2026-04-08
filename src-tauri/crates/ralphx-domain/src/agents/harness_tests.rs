@@ -167,6 +167,7 @@ fn test_standard_harness_behavior_for_claude() {
         behavior.effort_strategy,
         HarnessEffortStrategy::ClaudeEffortFirst
     );
+    assert_eq!(behavior.stream_mode, HarnessStreamMode::ClaudeEvents);
 }
 
 #[test]
@@ -180,4 +181,5 @@ fn test_standard_harness_behavior_for_codex() {
         HarnessModelLabelStrategy::RawModelId
     );
     assert_eq!(behavior.effort_strategy, HarnessEffortStrategy::LogicalOnly);
+    assert_eq!(behavior.stream_mode, HarnessStreamMode::CodexJsonl);
 }

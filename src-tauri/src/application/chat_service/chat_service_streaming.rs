@@ -13,7 +13,9 @@ use tracing::info;
 use crate::application::question_state::QuestionState;
 use crate::application::team_events;
 use crate::application::team_state_tracker::TeammateStatus;
-use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
+use crate::domain::agents::{
+    standard_harness_behavior, AgentHarnessKind, HarnessStreamMode, ProviderSessionRef,
+};
 use crate::domain::entities::{
     ActivityEvent, ActivityEventType, AgentRunId, ChatContextType, ChatConversationId,
     ChatMessageId, TaskId,
@@ -41,18 +43,9 @@ use super::{
     AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ChatHarnessStreamMode {
-    ClaudeEvents,
-    CodexJsonl,
-}
-
 #[doc(hidden)]
-pub(crate) fn stream_mode_for_harness(harness: AgentHarnessKind) -> ChatHarnessStreamMode {
-    match harness {
-        AgentHarnessKind::Claude => ChatHarnessStreamMode::ClaudeEvents,
-        AgentHarnessKind::Codex => ChatHarnessStreamMode::CodexJsonl,
-    }
+pub(crate) fn stream_mode_for_harness(harness: AgentHarnessKind) -> HarnessStreamMode {
+    standard_harness_behavior(harness).stream_mode
 }
 
 #[doc(hidden)]
@@ -363,7 +356,7 @@ pub async fn process_stream_background<R: Runtime>(
     execution_state: Option<Arc<crate::commands::ExecutionState>>,
     conversation_repo: Option<Arc<dyn ChatConversationRepository>>,
 ) -> Result<StreamOutcome, StreamError> {
-    if stream_mode_for_harness(harness) == ChatHarnessStreamMode::CodexJsonl {
+    if stream_mode_for_harness(harness) == HarnessStreamMode::CodexJsonl {
         return process_codex_stream_background(
             child,
             context_type,

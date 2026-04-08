@@ -40,11 +40,18 @@ pub enum HarnessEffortStrategy {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HarnessStreamMode {
+    ClaudeEvents,
+    CodexJsonl,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HarnessBehavior {
     pub honors_team_mode: bool,
     pub supports_merge_completion_watcher: bool,
     pub model_label_strategy: HarnessModelLabelStrategy,
     pub effort_strategy: HarnessEffortStrategy,
+    pub stream_mode: HarnessStreamMode,
 }
 
 pub fn standard_harness_behavior(harness: AgentHarnessKind) -> HarnessBehavior {
@@ -54,12 +61,14 @@ pub fn standard_harness_behavior(harness: AgentHarnessKind) -> HarnessBehavior {
             supports_merge_completion_watcher: true,
             model_label_strategy: HarnessModelLabelStrategy::ClaudeMapped,
             effort_strategy: HarnessEffortStrategy::ClaudeEffortFirst,
+            stream_mode: HarnessStreamMode::ClaudeEvents,
         },
         AgentHarnessKind::Codex => HarnessBehavior {
             honors_team_mode: false,
             supports_merge_completion_watcher: false,
             model_label_strategy: HarnessModelLabelStrategy::RawModelId,
             effort_strategy: HarnessEffortStrategy::LogicalOnly,
+            stream_mode: HarnessStreamMode::CodexJsonl,
         },
     }
 }

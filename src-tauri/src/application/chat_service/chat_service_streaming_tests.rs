@@ -1,8 +1,8 @@
 use super::{
     format_agent_exit_stderr, process_exit_details, provider_session_ref_for_harness,
-    stream_mode_for_harness, ChatHarnessStreamMode, ProcessExitDetails,
+    stream_mode_for_harness, ProcessExitDetails,
 };
-use crate::domain::agents::AgentHarnessKind;
+use crate::domain::agents::{AgentHarnessKind, HarnessStreamMode};
 use std::os::unix::process::ExitStatusExt;
 
 #[test]
@@ -52,11 +52,11 @@ fn format_agent_exit_stderr_uses_signal_name_when_available() {
 fn stream_mode_for_harness_routes_known_harnesses() {
     assert_eq!(
         stream_mode_for_harness(AgentHarnessKind::Claude),
-        ChatHarnessStreamMode::ClaudeEvents
+        HarnessStreamMode::ClaudeEvents
     );
     assert_eq!(
         stream_mode_for_harness(AgentHarnessKind::Codex),
-        ChatHarnessStreamMode::CodexJsonl
+        HarnessStreamMode::CodexJsonl
     );
 }
 
