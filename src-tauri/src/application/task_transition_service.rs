@@ -17,6 +17,7 @@ use std::panic::Location;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
+use crate::application::agent_client_bundle::{AgentClientFactory, AgentClientFactoryBundle};
 use crate::application::{AppState, ChatService, ClaudeChatService, InteractiveProcessRegistry};
 use crate::commands::ExecutionState;
 use crate::domain::agents::{AgentHarnessKind, AgenticClient};
@@ -51,8 +52,6 @@ use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::CodexCliClient;
 use crate::infrastructure::agents::spawner::AgenticClientSpawner;
 use crate::infrastructure::ClaudeCodeClient;
-
-type AgenticClientFactory = dyn Fn() -> Arc<dyn AgenticClient> + Send + Sync;
 
 #[allow(clippy::too_many_arguments)]
 fn build_transition_chat_service_fallback<R: Runtime>(
@@ -696,8 +695,7 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     conversation_repo: Arc<dyn ChatConversationRepository>,
     agent_run_repo: Arc<dyn AgentRunRepository>,
     agent_spawner: Arc<dyn AgentSpawner>,
-    agent_client_factory: Arc<AgenticClientFactory>,
-    harness_agent_client_factories: HashMap<AgentHarnessKind, Arc<AgenticClientFactory>>,
+    agent_client_factories: AgentClientFactoryBundle,
     event_emitter: Arc<dyn EventEmitter>,
     notifier: Arc<dyn Notifier>,
     dependency_manager: Arc<dyn DependencyManager>,
@@ -793,25 +791,27 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
 }
 
 impl<R: Runtime> TaskTransitionService<R> {
-    fn default_agent_client_factory() -> Arc<AgenticClientFactory> {
+    fn default_agent_client_factory() -> Arc<AgentClientFactory> {
         Arc::new(|| Arc::new(ClaudeCodeClient::new()) as Arc<dyn AgenticClient>)
     }
 
-    fn default_codex_agent_client_factory() -> Arc<AgenticClientFactory> {
+    fn default_codex_agent_client_factory() -> Arc<AgentClientFactory> {
         Arc::new(|| Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>)
     }
 
-    fn default_harness_agent_client_factories(
-    ) -> HashMap<AgentHarnessKind, Arc<AgenticClientFactory>> {
-        HashMap::from([(
-            AgentHarnessKind::Codex,
-            Self::default_codex_agent_client_factory(),
-        )])
+    fn default_agent_client_factories() -> AgentClientFactoryBundle {
+        AgentClientFactoryBundle::from_parts(
+            AgentHarnessKind::Claude,
+            Self::default_agent_client_factory(),
+            HashMap::from([(
+                AgentHarnessKind::Codex,
+                Self::default_codex_agent_client_factory(),
+            )]),
+        )
     }
 
     fn build_agent_spawner(
-        agent_client_factory: &Arc<AgenticClientFactory>,
-        harness_agent_client_factories: &HashMap<AgentHarnessKind, Arc<AgenticClientFactory>>,
+        agent_client_factories: &AgentClientFactoryBundle,
         task_repo: Arc<dyn TaskRepository>,
         project_repo: Arc<dyn ProjectRepository>,
         execution_state: Arc<ExecutionState>,
@@ -820,13 +820,13 @@ impl<R: Runtime> TaskTransitionService<R> {
         ideation_session_repo: Arc<dyn IdeationSessionRepository>,
         running_agent_registry: Arc<dyn RunningAgentRegistry>,
     ) -> Arc<dyn AgentSpawner> {
-        let agent_client = (agent_client_factory.as_ref())();
+        let agent_clients = agent_client_factories.instantiate();
+        let agent_client = Arc::clone(&agent_clients.default_client);
         let mut spawner = AgenticClientSpawner::new(agent_client)
             .with_repos(Arc::clone(&task_repo), Arc::clone(&project_repo))
             .with_execution_state(Arc::clone(&execution_state));
-        for (harness, factory) in harness_agent_client_factories {
-            let client = (factory.as_ref())();
-            spawner = spawner.with_harness_client(*harness, client);
+        for (harness, client) in &agent_clients.harness_clients {
+            spawner = spawner.with_harness_client(*harness, Arc::clone(client));
         }
         let spawner = if let (Some(execution_repo), Some(agent_lane_repo)) =
             (execution_settings_repo, agent_lane_settings_repo)
@@ -946,11 +946,9 @@ impl<R: Runtime> TaskTransitionService<R> {
         app_handle: Option<AppHandle<R>>,
         memory_event_repo: Arc<dyn MemoryEventRepository>,
     ) -> Self {
-        let agent_client_factory = Self::default_agent_client_factory();
-        let harness_agent_client_factories = Self::default_harness_agent_client_factories();
+        let agent_client_factories = Self::default_agent_client_factories();
         let agent_spawner = Self::build_agent_spawner(
-            &agent_client_factory,
-            &harness_agent_client_factories,
+            &agent_client_factories,
             Arc::clone(&task_repo),
             Arc::clone(&project_repo),
             Arc::clone(&execution_state),
@@ -1038,8 +1036,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             conversation_repo,
             agent_run_repo,
             agent_spawner,
-            agent_client_factory,
-            harness_agent_client_factories,
+            agent_client_factories,
             event_emitter,
             notifier,
             dependency_manager,
@@ -1126,8 +1123,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         self.rebuild_chat_service();
 
         self.agent_spawner = Self::build_agent_spawner(
-            &self.agent_client_factory,
-            &self.harness_agent_client_factories,
+            &self.agent_client_factories,
             Arc::clone(&self.task_repo),
             Arc::clone(&self.project_repo),
             Arc::clone(&self.execution_state),
@@ -1154,8 +1150,7 @@ impl<R: Runtime> TaskTransitionService<R> {
 
         if let Some(execution_settings_repo) = self.execution_settings_repo.as_ref() {
             self.agent_spawner = Self::build_agent_spawner(
-                &self.agent_client_factory,
-                &self.harness_agent_client_factories,
+                &self.agent_client_factories,
                 Arc::clone(&self.task_repo),
                 Arc::clone(&self.project_repo),
                 Arc::clone(&self.execution_state),
@@ -1181,10 +1176,9 @@ impl<R: Runtime> TaskTransitionService<R> {
     where
         F: Fn() -> Arc<dyn AgenticClient> + Send + Sync + 'static,
     {
-        self.agent_client_factory = Arc::new(factory);
+        self.agent_client_factories.default_factory = Arc::new(factory);
         self.agent_spawner = Self::build_agent_spawner(
-            &self.agent_client_factory,
-            &self.harness_agent_client_factories,
+            &self.agent_client_factories,
             Arc::clone(&self.task_repo),
             Arc::clone(&self.project_repo),
             Arc::clone(&self.execution_state),
@@ -1216,11 +1210,11 @@ impl<R: Runtime> TaskTransitionService<R> {
     where
         F: Fn() -> Arc<dyn AgenticClient> + Send + Sync + 'static,
     {
-        self.harness_agent_client_factories
+        self.agent_client_factories
+            .harness_factories
             .insert(harness, Arc::new(factory));
         self.agent_spawner = Self::build_agent_spawner(
-            &self.agent_client_factory,
-            &self.harness_agent_client_factories,
+            &self.agent_client_factories,
             Arc::clone(&self.task_repo),
             Arc::clone(&self.project_repo),
             Arc::clone(&self.execution_state),
