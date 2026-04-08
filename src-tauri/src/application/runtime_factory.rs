@@ -97,6 +97,30 @@ impl RuntimeFactoryDeps {
         self.interactive_process_registry = interactive_process_registry;
         self
     }
+
+    pub(crate) fn from_app_state(state: &AppState) -> Self {
+        Self::from_core(
+            Arc::clone(&state.task_repo),
+            Arc::clone(&state.task_dependency_repo),
+            Arc::clone(&state.project_repo),
+            Arc::clone(&state.chat_message_repo),
+            Arc::clone(&state.chat_attachment_repo),
+            Arc::clone(&state.chat_conversation_repo),
+            Arc::clone(&state.agent_run_repo),
+            Arc::clone(&state.ideation_session_repo),
+            Arc::clone(&state.activity_event_repo),
+            Arc::clone(&state.message_queue),
+            Arc::clone(&state.running_agent_registry),
+            Arc::clone(&state.memory_event_repo),
+        )
+        .with_agent_clients(Some(state.agent_client_bundle()))
+        .with_runtime_support(
+            Some(Arc::clone(&state.execution_settings_repo)),
+            Some(Arc::clone(&state.agent_lane_settings_repo)),
+            Some(Arc::clone(&state.plan_branch_repo)),
+            Some(Arc::clone(&state.interactive_process_registry)),
+        )
+    }
 }
 
 #[derive(Clone)]
@@ -415,6 +439,14 @@ pub(crate) fn build_transition_service_with_fallback<R: Runtime>(
         }
     }
 
+    build_transition_service_from_deps(app_handle.clone(), execution_state, deps)
+}
+
+pub(crate) fn build_transition_service_from_deps<R: Runtime>(
+    app_handle: Option<AppHandle<R>>,
+    execution_state: Arc<ExecutionState>,
+    deps: &RuntimeFactoryDeps,
+) -> TaskTransitionService<R> {
     let mut service = TaskTransitionService::new(
         Arc::clone(&deps.task_repo),
         Arc::clone(&deps.task_dependency_repo),
@@ -428,7 +460,7 @@ pub(crate) fn build_transition_service_with_fallback<R: Runtime>(
         Arc::clone(&deps.message_queue),
         Arc::clone(&deps.running_agent_registry),
         execution_state,
-        app_handle.clone(),
+        app_handle,
         Arc::clone(&deps.memory_event_repo),
     );
     if let Some(repo) = deps.execution_settings_repo.as_ref() {
@@ -460,6 +492,14 @@ pub(crate) fn build_task_scheduler_with_fallback<R: Runtime>(
         }
     }
 
+    build_task_scheduler_from_deps(app_handle.clone(), execution_state, deps)
+}
+
+pub(crate) fn build_task_scheduler_from_deps<R: Runtime>(
+    app_handle: Option<AppHandle<R>>,
+    execution_state: Arc<ExecutionState>,
+    deps: &RuntimeFactoryDeps,
+) -> TaskSchedulerService<R> {
     let mut scheduler = TaskSchedulerService::new(
         execution_state,
         Arc::clone(&deps.project_repo),
@@ -474,7 +514,7 @@ pub(crate) fn build_task_scheduler_with_fallback<R: Runtime>(
         Arc::clone(&deps.message_queue),
         Arc::clone(&deps.running_agent_registry),
         Arc::clone(&deps.memory_event_repo),
-        app_handle.clone(),
+        app_handle,
     );
     if let Some(repo) = deps.execution_settings_repo.as_ref() {
         scheduler = scheduler.with_execution_settings_repo(Arc::clone(repo));

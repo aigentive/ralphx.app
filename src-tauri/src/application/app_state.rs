@@ -9,7 +9,10 @@ use tokio::sync::Mutex;
 
 use super::services::PrPollerRegistry;
 use crate::application::chat_service::ClaudeChatService;
-use crate::application::runtime_factory::{build_chat_service_from_deps, ChatRuntimeFactoryDeps};
+use crate::application::runtime_factory::{
+    ChatRuntimeFactoryDeps, RuntimeFactoryDeps, build_chat_service_from_deps,
+    build_task_scheduler_from_deps, build_transition_service_from_deps,
+};
 use crate::application::AgentClientBundle;
 use crate::application::PermissionState;
 use crate::application::QuestionState;
@@ -282,29 +285,9 @@ impl AppState {
         execution_state: Arc<ExecutionState>,
         app_handle: Option<AppHandle<R>>,
     ) -> TaskTransitionService<R> {
-        let service = TaskTransitionService::new(
-            Arc::clone(&self.task_repo),
-            Arc::clone(&self.task_dependency_repo),
-            Arc::clone(&self.project_repo),
-            Arc::clone(&self.chat_message_repo),
-            Arc::clone(&self.chat_attachment_repo),
-            Arc::clone(&self.chat_conversation_repo),
-            Arc::clone(&self.agent_run_repo),
-            Arc::clone(&self.ideation_session_repo),
-            Arc::clone(&self.activity_event_repo),
-            Arc::clone(&self.message_queue),
-            Arc::clone(&self.running_agent_registry),
-            execution_state,
-            app_handle,
-            Arc::clone(&self.memory_event_repo),
-        )
-        .with_agent_clients(self.agent_client_bundle())
-        .with_execution_settings_repo(Arc::clone(&self.execution_settings_repo))
-        .with_agent_lane_settings_repo(Arc::clone(&self.agent_lane_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&self.plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&self.interactive_process_registry));
+        let deps = RuntimeFactoryDeps::from_app_state(self);
 
-        service
+        build_transition_service_from_deps(app_handle, execution_state, &deps)
     }
 
     pub fn build_task_scheduler_for_runtime<R: Runtime>(
@@ -312,27 +295,9 @@ impl AppState {
         execution_state: Arc<ExecutionState>,
         app_handle: Option<AppHandle<R>>,
     ) -> TaskSchedulerService<R> {
-        TaskSchedulerService::new(
-            execution_state,
-            Arc::clone(&self.project_repo),
-            Arc::clone(&self.task_repo),
-            Arc::clone(&self.task_dependency_repo),
-            Arc::clone(&self.chat_message_repo),
-            Arc::clone(&self.chat_attachment_repo),
-            Arc::clone(&self.chat_conversation_repo),
-            Arc::clone(&self.agent_run_repo),
-            Arc::clone(&self.ideation_session_repo),
-            Arc::clone(&self.activity_event_repo),
-            Arc::clone(&self.message_queue),
-            Arc::clone(&self.running_agent_registry),
-            Arc::clone(&self.memory_event_repo),
-            app_handle,
-        )
-        .with_agent_clients(self.agent_client_bundle())
-        .with_execution_settings_repo(Arc::clone(&self.execution_settings_repo))
-        .with_agent_lane_settings_repo(Arc::clone(&self.agent_lane_settings_repo))
-        .with_plan_branch_repo(Arc::clone(&self.plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&self.interactive_process_registry))
+        let deps = RuntimeFactoryDeps::from_app_state(self);
+
+        build_task_scheduler_from_deps(app_handle, execution_state, &deps)
     }
 
     pub(crate) async fn resolve_ideation_background_agent_runtime(
