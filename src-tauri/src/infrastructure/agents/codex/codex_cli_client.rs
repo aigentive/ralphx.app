@@ -14,7 +14,8 @@ use crate::domain::agents::{
 
 use super::{
     build_codex_mcp_overrides, build_spawnable_codex_exec_command, compose_codex_prompt,
-    find_codex_cli, normalize_codex_exec_output, probe_codex_cli, CodexExecCliConfig,
+    find_codex_cli, normalize_codex_exec_output, probe_codex_cli, resolve_codex_cli,
+    CodexCliCapabilities, CodexExecCliConfig,
 };
 
 lazy_static! {
@@ -46,6 +47,18 @@ impl CodexCliClient {
         })
     }
 
+    fn resolve_cli(&self) -> AgentResult<(PathBuf, CodexCliCapabilities)> {
+        if self.cli_path == PathBuf::from("codex") {
+            let resolved = resolve_codex_cli().map_err(AgentError::CliNotAvailable)?;
+            return Ok((resolved.path, resolved.capabilities));
+        }
+
+        let cli_path = self.resolve_cli_path()?;
+        let capabilities =
+            probe_codex_cli(&cli_path).map_err(|error| AgentError::CliNotAvailable(error))?;
+        Ok((cli_path, capabilities))
+    }
+
     fn build_prompt(&self, config: &AgentConfig) -> String {
         compose_codex_prompt(
             &config.prompt,
@@ -54,7 +67,11 @@ impl CodexCliClient {
         )
     }
 
-    fn build_exec_config(&self, config: &AgentConfig, config_overrides: Vec<String>) -> CodexExecCliConfig {
+    fn build_exec_config(
+        &self,
+        config: &AgentConfig,
+        config_overrides: Vec<String>,
+    ) -> CodexExecCliConfig {
         CodexExecCliConfig {
             model: config.model.clone(),
             reasoning_effort: config.logical_effort,
@@ -79,9 +96,7 @@ impl Default for CodexCliClient {
 #[async_trait]
 impl AgenticClient for CodexCliClient {
     async fn spawn_agent(&self, config: AgentConfig) -> AgentResult<AgentHandle> {
-        let cli_path = self.resolve_cli_path()?;
-        let capabilities =
-            probe_codex_cli(&cli_path).map_err(|error| AgentError::CliNotAvailable(error))?;
+        let (cli_path, capabilities) = self.resolve_cli()?;
         if !capabilities.has_core_exec_support() {
             return Err(AgentError::CliNotAvailable(format!(
                 "Codex CLI is missing required capability: {}",
@@ -100,13 +115,9 @@ impl AgenticClient for CodexCliClient {
 
         let prompt = self.build_prompt(&config);
         let exec_config = self.build_exec_config(&config, config_overrides);
-        let mut spawnable = build_spawnable_codex_exec_command(
-            &cli_path,
-            &prompt,
-            &capabilities,
-            &exec_config,
-        )
-        .map_err(AgentError::SpawnFailed)?;
+        let mut spawnable =
+            build_spawnable_codex_exec_command(&cli_path, &prompt, &capabilities, &exec_config)
+                .map_err(AgentError::SpawnFailed)?;
 
         for (key, value) in &config.env {
             spawnable.env(key, value);
@@ -168,7 +179,10 @@ impl AgenticClient for CodexCliClient {
 
     async fn send_prompt(&self, _handle: &AgentHandle, prompt: &str) -> AgentResult<AgentResponse> {
         let handle = self
-            .spawn_agent(AgentConfig::worker(prompt).with_harness(crate::domain::agents::AgentHarnessKind::Codex))
+            .spawn_agent(
+                AgentConfig::worker(prompt)
+                    .with_harness(crate::domain::agents::AgentHarnessKind::Codex),
+            )
             .await?;
         let output = self.wait_for_completion(&handle).await?;
         Ok(AgentResponse {
@@ -197,13 +211,10 @@ impl AgenticClient for CodexCliClient {
     }
 
     async fn is_available(&self) -> AgentResult<bool> {
-        let Ok(cli_path) = self.resolve_cli_path() else {
+        let Ok((_, capabilities)) = self.resolve_cli() else {
             return Ok(false);
         };
 
-        match probe_codex_cli(&cli_path) {
-            Ok(capabilities) => Ok(capabilities.has_core_exec_support()),
-            Err(_) => Ok(false),
-        }
+        Ok(capabilities.has_core_exec_support())
     }
 }

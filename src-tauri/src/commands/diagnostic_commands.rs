@@ -5,7 +5,7 @@ use std::path::Path;
 use tauri::State;
 
 use crate::application::AppState;
-use crate::infrastructure::agents::{find_codex_cli, probe_codex_cli, CodexCliCapabilities};
+use crate::infrastructure::agents::{find_codex_cli, resolve_codex_cli, CodexCliCapabilities};
 
 /// Serializable IPR entry for agent health report
 #[derive(Debug, Clone, Serialize)]
@@ -141,10 +141,18 @@ pub fn build_codex_cli_diagnostics_response(
 /// Get Codex CLI diagnostics without requiring the frontend to shell out locally.
 #[tauri::command]
 pub fn get_codex_cli_diagnostics() -> Result<CodexCliDiagnosticsResponse, String> {
-    let cli_path = find_codex_cli();
-    let probe_result = cli_path.as_deref().map(probe_codex_cli);
-    Ok(build_codex_cli_diagnostics_response(
-        cli_path.as_deref(),
-        probe_result,
-    ))
+    match resolve_codex_cli() {
+        Ok(resolved) => Ok(build_codex_cli_diagnostics_response(
+            Some(resolved.path.as_path()),
+            Some(Ok(resolved.capabilities)),
+        )),
+        Err(error) => {
+            let cli_path = find_codex_cli();
+            let probe_result = cli_path.as_deref().map(|_| Err(error));
+            Ok(build_codex_cli_diagnostics_response(
+                cli_path.as_deref(),
+                probe_result,
+            ))
+        }
+    }
 }
