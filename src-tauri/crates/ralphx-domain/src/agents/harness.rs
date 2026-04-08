@@ -17,6 +17,8 @@ pub enum AgentHarnessKind {
     Codex,
 }
 
+pub const DEFAULT_AGENT_HARNESS: AgentHarnessKind = AgentHarnessKind::Claude;
+
 impl fmt::Display for AgentHarnessKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

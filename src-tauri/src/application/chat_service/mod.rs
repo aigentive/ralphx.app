@@ -32,7 +32,7 @@ use crate::application::interactive_process_registry::{
     InteractiveProcessKey, InteractiveProcessRegistry,
 };
 use crate::application::question_state::QuestionState;
-use crate::domain::agents::AgentHarnessKind;
+use crate::domain::agents::{AgentHarnessKind, DEFAULT_AGENT_HARNESS};
 use crate::domain::entities::{
     AgentRun, ChatContextType, ChatConversation, ChatConversationId, ChatMessageId,
     IdeationSessionId, InternalStatus, ProjectId, TaskId,
@@ -1240,7 +1240,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                                         .as_ref()
                                         .map(|session_ref| session_ref.harness),
                                     conversation.claude_session_id.as_deref(),
-                                    AgentHarnessKind::Claude,
+                                    DEFAULT_AGENT_HARNESS,
                                 ),
                             ),
                             existing_provider_session_ref

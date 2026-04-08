@@ -18,7 +18,7 @@ pub use agentic_client::AgenticClient;
 pub use capabilities::{ClientCapabilities, ModelInfo};
 pub use error::{AgentError, AgentResult};
 pub use harness::{
-    AgentHarnessKind, AgentLane, AgentLaneSettings, LogicalEffort, ProviderSessionRef,
+    AgentHarnessKind, AgentLane, AgentLaneSettings, DEFAULT_AGENT_HARNESS, LogicalEffort, ProviderSessionRef,
     StoredAgentLaneSettings,
 };
 pub use types::{

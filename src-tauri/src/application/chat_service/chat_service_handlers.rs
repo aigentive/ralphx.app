@@ -1011,7 +1011,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
         super::chat_service_helpers::provider_harness_or_default(
             conversation.and_then(|conv| conv.provider_session_ref().map(|session_ref| session_ref.harness)),
             stored_session_id,
-            crate::domain::agents::AgentHarnessKind::Claude,
+            crate::domain::agents::DEFAULT_AGENT_HARNESS,
         ),
     )
     .filter(|_| conversation.is_some() || stored_session_id.is_some());
@@ -1274,7 +1274,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 let recovery_harness = super::chat_service_helpers::provider_harness_or_default(
                     recovery_provider_harness,
                     conv.claude_session_id.as_deref(),
-                    crate::domain::agents::AgentHarnessKind::Claude,
+                    crate::domain::agents::DEFAULT_AGENT_HARNESS,
                 );
                 // Attempt recovery
                 match super::chat_service_recovery::attempt_session_recovery(

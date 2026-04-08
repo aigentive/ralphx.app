@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::domain::agents::{
     AgentHarnessKind, AgentLane, AgentLaneSettings, LogicalEffort, StoredAgentLaneSettings,
+    DEFAULT_AGENT_HARNESS,
 };
 use crate::domain::entities::ChatContextType;
 use crate::domain::repositories::{
@@ -47,7 +48,7 @@ pub(crate) async fn resolve_agent_spawn_settings(
     if primary_lane.is_none() {
         return ResolvedAgentSpawnSettings {
             configured_harness: None,
-            effective_harness: AgentHarnessKind::Claude,
+            effective_harness: DEFAULT_AGENT_HARNESS,
             configured_model: None,
             configured_logical_effort: None,
             configured_approval_policy: None,
@@ -69,7 +70,7 @@ pub(crate) async fn resolve_agent_spawn_settings(
     let configured_primary_settings =
         lane_settings_value(primary_project_row.as_ref(), primary_global_row.as_ref());
     let configured_harness = lane_harness(primary_project_row.as_ref(), primary_global_row.as_ref());
-    let effective_harness = configured_harness.unwrap_or(AgentHarnessKind::Claude);
+    let effective_harness = configured_harness.unwrap_or(DEFAULT_AGENT_HARNESS);
     let codex_primary_defaults = primary_lane.and_then(|lane| codex_default_lane_settings(
         lane,
         effective_harness,

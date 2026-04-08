@@ -3,7 +3,9 @@ use crate::domain::entities::{ChatContextType, IdeationSessionId, TaskId};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::domain::agents::{AgentHarnessKind, AgentLane, StoredAgentLaneSettings};
+use crate::domain::agents::{
+    AgentHarnessKind, AgentLane, StoredAgentLaneSettings, DEFAULT_AGENT_HARNESS,
+};
 use crate::domain::repositories::AgentLaneSettingsRepository;
 use crate::infrastructure::agents::claude::find_claude_cli;
 use crate::infrastructure::agents::find_codex_cli;
@@ -58,9 +60,8 @@ pub(crate) const AGENT_LANES: [AgentLane; 8] = [
     AgentLane::ExecutionMerger,
 ];
 
-const DEFAULT_HARNESS: AgentHarnessKind = AgentHarnessKind::Claude;
 const SUPPORTED_HARNESSES: [AgentHarnessKind; 2] =
-    [AgentHarnessKind::Claude, AgentHarnessKind::Codex];
+    [DEFAULT_AGENT_HARNESS, AgentHarnessKind::Codex];
 
 pub(crate) async fn resolve_ideation_lane_harness_availability(
     repo: &Arc<dyn AgentLaneSettingsRepository>,
@@ -118,7 +119,7 @@ pub(crate) async fn validate_chat_runtime_for_context(
     surface_name: &str,
 ) -> Result<(), String> {
     let Some(lane) = runtime_lane_for_context(context_type) else {
-        let probe = probe_harness(DEFAULT_HARNESS);
+        let probe = probe_harness(DEFAULT_AGENT_HARNESS);
         if probe.available {
             return Ok(());
         }
@@ -321,7 +322,7 @@ fn probe_for_harness<'a>(
         .get(&harness)
         .unwrap_or_else(|| {
             probes
-                .get(&DEFAULT_HARNESS)
+                .get(&DEFAULT_AGENT_HARNESS)
                 .expect("default harness probe available")
         })
 }
@@ -332,7 +333,7 @@ pub(crate) fn build_ideation_lane_harness_availability(
 ) -> IdeationLaneHarnessAvailability {
     let configured_harness = config
         .configured_harness
-        .unwrap_or(DEFAULT_HARNESS);
+        .unwrap_or(DEFAULT_AGENT_HARNESS);
     let configured_probe = probe_for_harness(probes, configured_harness);
 
     if configured_probe.available {
