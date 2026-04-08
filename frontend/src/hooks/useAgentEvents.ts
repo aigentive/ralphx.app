@@ -12,7 +12,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useEventBus } from "@/providers/EventProvider";
 import type { ChatMessageResponse } from "@/api/chat";
-import type { ChatConversation, ContextType } from "@/types/chat-conversation";
+import {
+  mergeConversationProviderMetadata,
+  type ChatConversation,
+  type ContextType,
+} from "@/types/chat-conversation";
 import type {
   AgentRunCompletedPayload,
   AgentRunStartedPayload,
@@ -78,31 +82,12 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         claudeSessionId,
       } = args;
 
-      const mergeConversation = (conversation: ChatConversation): ChatConversation => {
-        const nextProviderHarness =
-          providerHarness !== undefined
-            ? providerHarness
-            : conversation.providerHarness;
-        const nextProviderSessionId =
-          providerSessionId !== undefined
-            ? providerSessionId
-            : claudeSessionId !== undefined
-              ? claudeSessionId
-              : conversation.providerSessionId;
-        const nextClaudeSessionId =
-          claudeSessionId !== undefined
-            ? claudeSessionId
-            : nextProviderHarness === "claude"
-              ? (nextProviderSessionId ?? conversation.claudeSessionId ?? null)
-              : conversation.claudeSessionId ?? null;
-
-        return {
-          ...conversation,
-          providerHarness: nextProviderHarness ?? null,
-          providerSessionId: nextProviderSessionId ?? null,
-          claudeSessionId: nextClaudeSessionId,
-        };
-      };
+      const mergeConversation = (conversation: ChatConversation): ChatConversation =>
+        mergeConversationProviderMetadata(conversation, {
+          providerHarness,
+          providerSessionId,
+          claudeSessionId,
+        });
 
       queryClient.setQueryData<{ conversation: ChatConversation; messages: ChatMessageResponse[] }>(
         chatKeys.conversation(conversationId),

@@ -19,6 +19,7 @@ use tauri::State;
 
 use crate::application::{AppState, ChatService, ClaudeChatService, SendResult};
 use crate::commands::ExecutionState;
+use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::{ChatContextType, ChatConversation, IdeationSessionId, TaskId};
 use crate::domain::services::QueuedMessage;
 
@@ -114,13 +115,35 @@ pub struct AgentConversationResponse {
 
 impl From<ChatConversation> for AgentConversationResponse {
     fn from(c: ChatConversation) -> Self {
+        let provider_session_ref = c.provider_session_ref();
+        let provider_session_id = provider_session_ref
+            .as_ref()
+            .map(|session_ref| session_ref.provider_session_id.clone())
+            .or(c.provider_session_id.clone());
+        let provider_harness = provider_session_ref
+            .as_ref()
+            .map(|session_ref| session_ref.harness.to_string())
+            .or(c.provider_harness.map(|harness| harness.to_string()));
+        let claude_session_id = c.claude_session_id.clone().or_else(|| {
+            if matches!(
+                provider_session_ref
+                    .as_ref()
+                    .map(|session_ref| session_ref.harness),
+                Some(AgentHarnessKind::Claude)
+            ) {
+                provider_session_id.clone()
+            } else {
+                None
+            }
+        });
+
         Self {
             id: c.id.as_str(),
             context_type: c.context_type.to_string(),
             context_id: c.context_id,
-            claude_session_id: c.claude_session_id,
-            provider_session_id: c.provider_session_id,
-            provider_harness: c.provider_harness.map(|harness| harness.to_string()),
+            claude_session_id,
+            provider_session_id,
+            provider_harness,
             title: c.title,
             message_count: c.message_count,
             last_message_at: c.last_message_at.map(|dt| dt.to_rfc3339()),
@@ -406,19 +429,7 @@ pub async fn list_agent_conversations(
         .map(|convs| {
             convs
                 .into_iter()
-                .map(|c| AgentConversationResponse {
-                    id: c.id.as_str().to_string(),
-                    context_type: c.context_type.to_string(),
-                    context_id: c.context_id,
-                    claude_session_id: c.claude_session_id,
-                    provider_session_id: c.provider_session_id,
-                    provider_harness: c.provider_harness.map(|harness| harness.to_string()),
-                    title: c.title,
-                    message_count: c.message_count,
-                    last_message_at: c.last_message_at.map(|dt| dt.to_rfc3339()),
-                    created_at: c.created_at.to_rfc3339(),
-                    updated_at: c.updated_at.to_rfc3339(),
-                })
+                .map(AgentConversationResponse::from)
                 .collect()
         })
         .map_err(|e| e.to_string())
@@ -443,22 +454,7 @@ pub async fn get_agent_conversation(
         .await
         .map(|opt| {
             opt.map(|cwm| AgentConversationWithMessagesResponse {
-                conversation: AgentConversationResponse {
-                    id: cwm.conversation.id.as_str().to_string(),
-                    context_type: cwm.conversation.context_type.to_string(),
-                    context_id: cwm.conversation.context_id,
-                    claude_session_id: cwm.conversation.claude_session_id,
-                    provider_session_id: cwm.conversation.provider_session_id,
-                    provider_harness: cwm
-                        .conversation
-                        .provider_harness
-                        .map(|harness| harness.to_string()),
-                    title: cwm.conversation.title,
-                    message_count: cwm.conversation.message_count,
-                    last_message_at: cwm.conversation.last_message_at.map(|dt| dt.to_rfc3339()),
-                    created_at: cwm.conversation.created_at.to_rfc3339(),
-                    updated_at: cwm.conversation.updated_at.to_rfc3339(),
-                },
+                conversation: AgentConversationResponse::from(cwm.conversation),
                 messages: cwm
                     .messages
                     .into_iter()
@@ -625,4 +621,49 @@ pub async fn create_agent_conversation(
         .await
         .map(AgentConversationResponse::from)
         .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AgentConversationResponse;
+    use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
+    use crate::domain::entities::{ChatConversation, ProjectId};
+
+    #[test]
+    fn agent_conversation_response_derives_provider_metadata_from_legacy_claude_session() {
+        let mut conversation =
+            ChatConversation::new_project(ProjectId::from_string("project-1".to_string()));
+        conversation.claude_session_id = Some("claude-session-123".to_string());
+
+        let response = AgentConversationResponse::from(conversation);
+
+        assert_eq!(
+            response.claude_session_id,
+            Some("claude-session-123".to_string())
+        );
+        assert_eq!(
+            response.provider_session_id,
+            Some("claude-session-123".to_string())
+        );
+        assert_eq!(response.provider_harness, Some("claude".to_string()));
+    }
+
+    #[test]
+    fn agent_conversation_response_keeps_codex_metadata_without_legacy_alias() {
+        let mut conversation =
+            ChatConversation::new_project(ProjectId::from_string("project-1".to_string()));
+        conversation.set_provider_session_ref(ProviderSessionRef {
+            harness: AgentHarnessKind::Codex,
+            provider_session_id: "codex-thread-123".to_string(),
+        });
+
+        let response = AgentConversationResponse::from(conversation);
+
+        assert_eq!(response.claude_session_id, None);
+        assert_eq!(
+            response.provider_session_id,
+            Some("codex-thread-123".to_string())
+        );
+        assert_eq!(response.provider_harness, Some("codex".to_string()));
+    }
 }

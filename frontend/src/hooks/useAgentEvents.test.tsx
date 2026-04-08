@@ -254,6 +254,47 @@ describe("useAgentEvents", () => {
       expect(listQuery?.[0]?.providerHarness).toBe("codex");
       expect(listQuery?.[0]?.providerSessionId).toBe("thread-7");
     });
+
+    it("clears stale claude alias when provider metadata switches to codex", () => {
+      const { queryClient, wrapper } = createWrapperWithClient();
+      const conversation: ChatConversation = {
+        ...makeConversation(),
+        claudeSessionId: "claude-session-1",
+        providerSessionId: "claude-session-1",
+        providerHarness: "claude",
+      };
+
+      queryClient.setQueryData(
+        ["chat", "conversation", "conv-1"],
+        { conversation, messages: [] }
+      );
+      queryClient.setQueryData(
+        ["chat", "conversations", "task_execution", "task-123"],
+        [conversation]
+      );
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_started", {
+          run_id: "run-2",
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          providerHarness: "codex",
+          providerSessionId: "thread-9",
+        });
+      });
+
+      const conversationQuery = queryClient.getQueryData<{
+        conversation: ChatConversation;
+        messages: unknown[];
+      }>(["chat", "conversation", "conv-1"]);
+
+      expect(conversationQuery?.conversation.providerHarness).toBe("codex");
+      expect(conversationQuery?.conversation.providerSessionId).toBe("thread-9");
+      expect(conversationQuery?.conversation.claudeSessionId).toBeNull();
+    });
   });
 
   describe("agent:run_started — storeKey param", () => {

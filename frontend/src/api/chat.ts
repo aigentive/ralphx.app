@@ -2,11 +2,8 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
-import type {
-  ChatConversation,
-  AgentRun,
-  ContextType,
-} from "../types/chat-conversation";
+import type { ChatConversation, AgentRun, ContextType } from "../types/chat-conversation";
+import { normalizeConversationProviderMetadata } from "../types/chat-conversation";
 import type { ToolCall } from "../components/Chat/ToolCallIndicator";
 import type { ContentBlockItem } from "../components/Chat/MessageItem";
 
@@ -278,17 +275,17 @@ type RawConversation = z.infer<typeof ChatConversationResponseSchema>;
 type RawAgentRun = z.infer<typeof AgentRunResponseSchema>;
 
 function transformConversation(raw: RawConversation): ChatConversation {
-  const providerSessionId = raw.provider_session_id ?? raw.claude_session_id ?? null;
-  const providerHarness =
-    raw.provider_harness ?? (raw.claude_session_id ? "claude" : null);
+  const providerMetadata = normalizeConversationProviderMetadata({
+    claudeSessionId: raw.claude_session_id,
+    providerSessionId: raw.provider_session_id ?? null,
+    providerHarness: raw.provider_harness ?? null,
+  });
 
   return {
     id: raw.id,
     contextType: raw.context_type as ContextType,
     contextId: raw.context_id,
-    claudeSessionId: raw.claude_session_id,
-    providerSessionId,
-    providerHarness,
+    ...providerMetadata,
     title: raw.title,
     messageCount: raw.message_count,
     lastMessageAt: raw.last_message_at,

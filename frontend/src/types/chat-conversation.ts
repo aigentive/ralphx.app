@@ -48,6 +48,12 @@ export type AgentRunStatus = z.infer<typeof AgentRunStatusSchema>;
 export const ProviderHarnessSchema = z.string().min(1);
 export type ProviderHarness = z.infer<typeof ProviderHarnessSchema>;
 
+export type ConversationProviderMetadata = {
+  claudeSessionId?: string | null | undefined;
+  providerSessionId?: string | null | undefined;
+  providerHarness?: ProviderHarness | null | undefined;
+};
+
 // ============================================================================
 // Chat Conversation
 // ============================================================================
@@ -70,6 +76,65 @@ export const ChatConversationSchema = z.object({
 });
 
 export type ChatConversation = z.infer<typeof ChatConversationSchema>;
+
+export function normalizeConversationProviderMetadata(
+  metadata: ConversationProviderMetadata
+): Pick<
+  ChatConversation,
+  "claudeSessionId" | "providerSessionId" | "providerHarness"
+> {
+  const providerSessionId =
+    metadata.providerSessionId ?? metadata.claudeSessionId ?? null;
+  const providerHarness =
+    metadata.providerHarness ?? (metadata.claudeSessionId ? "claude" : null);
+  const claudeSessionId =
+    metadata.claudeSessionId ??
+    (providerHarness === "claude" ? providerSessionId : null);
+
+  return {
+    claudeSessionId,
+    providerSessionId,
+    providerHarness,
+  };
+}
+
+export function mergeConversationProviderMetadata(
+  conversation: ChatConversation,
+  metadata: ConversationProviderMetadata
+): ChatConversation {
+  const providerHarness =
+    metadata.providerHarness !== undefined
+      ? metadata.providerHarness
+      : conversation.providerHarness;
+  const providerSessionId =
+    metadata.providerSessionId !== undefined
+      ? metadata.providerSessionId
+      : metadata.claudeSessionId !== undefined
+        ? metadata.claudeSessionId
+        : conversation.providerSessionId;
+
+  const claudeSessionId =
+    metadata.claudeSessionId !== undefined
+      ? metadata.claudeSessionId
+      : metadata.providerHarness !== undefined
+        ? metadata.providerHarness === "claude"
+          ? (providerSessionId ?? conversation.claudeSessionId ?? null)
+          : metadata.providerHarness === null
+            ? (conversation.claudeSessionId ?? null)
+            : null
+        : metadata.providerSessionId !== undefined && providerHarness === "claude"
+          ? metadata.providerSessionId
+          : conversation.claudeSessionId;
+
+  return {
+    ...conversation,
+    ...normalizeConversationProviderMetadata({
+      claudeSessionId,
+      providerSessionId,
+      providerHarness,
+    }),
+  };
+}
 
 // ============================================================================
 // Agent Run
