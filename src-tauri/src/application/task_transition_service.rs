@@ -18,7 +18,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::application::agent_client_bundle::{
-    AgentClientBundle, AgentClientFactory, AgentClientFactoryBundle,
+    AgentClientBundle, AgentClientFactoryBundle,
 };
 use crate::application::runtime_factory::{
     ChatRuntimeFactoryDeps, build_chat_service_with_fallback,
@@ -54,9 +54,7 @@ use crate::domain::state_machine::transition_handler::metadata_builder::{
 };
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
 use crate::error::{AppError, AppResult};
-use crate::infrastructure::agents::CodexCliClient;
 use crate::infrastructure::agents::spawner::AgenticClientSpawner;
-use crate::infrastructure::ClaudeCodeClient;
 
 #[allow(clippy::too_many_arguments)]
 fn build_transition_chat_service_fallback<R: Runtime>(
@@ -791,22 +789,8 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
 }
 
 impl<R: Runtime> TaskTransitionService<R> {
-    fn default_agent_client_factory() -> Arc<AgentClientFactory> {
-        Arc::new(|| Arc::new(ClaudeCodeClient::new()) as Arc<dyn AgenticClient>)
-    }
-
-    fn default_codex_agent_client_factory() -> Arc<AgentClientFactory> {
-        Arc::new(|| Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>)
-    }
-
     fn default_agent_client_factories() -> AgentClientFactoryBundle {
-        AgentClientFactoryBundle::standard_runtime_factories(
-            Self::default_agent_client_factory(),
-            [(
-                AgentHarnessKind::Codex,
-                Self::default_codex_agent_client_factory(),
-            )],
-        )
+        AgentClientFactoryBundle::standard_production_runtime_factories()
     }
 
     fn rebuild_agent_spawner(&mut self) {

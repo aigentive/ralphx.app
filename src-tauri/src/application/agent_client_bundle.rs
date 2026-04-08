@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::domain::agents::{AgentHarnessKind, AgenticClient, DEFAULT_AGENT_HARNESS};
+use crate::infrastructure::agents::CodexCliClient;
+use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
 pub type AgentClientFactory = dyn Fn() -> Arc<dyn AgenticClient> + Send + Sync;
 
@@ -55,6 +57,26 @@ impl AgentClientBundle {
     ) -> Self {
         Self::from_default_client(DEFAULT_AGENT_HARNESS, default_client)
             .with_harness_clients(extra_clients)
+    }
+
+    pub fn standard_production_runtime_clients() -> Self {
+        Self::standard_runtime_clients(
+            Arc::new(ClaudeCodeClient::new()),
+            [(
+                AgentHarnessKind::Codex,
+                Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>,
+            )],
+        )
+    }
+
+    pub fn standard_mock_runtime_clients() -> Self {
+        Self::standard_runtime_clients(
+            Arc::new(MockAgenticClient::new()),
+            [(
+                AgentHarnessKind::Codex,
+                Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
+            )],
+        )
     }
 
     pub fn resolve(&self, harness: AgentHarnessKind) -> Arc<dyn AgenticClient> {
@@ -115,6 +137,17 @@ impl AgentClientFactoryBundle {
     ) -> Self {
         Self::from_default_factory(DEFAULT_AGENT_HARNESS, default_factory)
             .with_harness_factories(extra_factories)
+    }
+
+    pub fn standard_production_runtime_factories() -> Self {
+        Self::standard_runtime_factories(
+            Arc::new(|| Arc::new(ClaudeCodeClient::new()) as Arc<dyn AgenticClient>),
+            [(
+                AgentHarnessKind::Codex,
+                Arc::new(|| Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>)
+                    as Arc<AgentClientFactory>,
+            )],
+        )
     }
 
     pub fn instantiate(&self) -> AgentClientBundle {

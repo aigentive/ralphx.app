@@ -42,7 +42,6 @@ use crate::domain::services::{
     GithubServiceTrait, MemoryRunningAgentRegistry, MessageQueue, RunningAgentRegistry,
 };
 use crate::error::AppResult;
-use crate::infrastructure::agents::CodexCliClient;
 use crate::infrastructure::memory::{
     InMemoryMemoryEntryRepository, InMemoryMemoryEventRepository, MemoryActivePlanRepository,
     MemoryActivityEventRepository, MemoryAgentLaneSettingsRepository, MemoryAgentProfileRepository,
@@ -82,7 +81,7 @@ use crate::infrastructure::sqlite::{
     SqliteTeamMessageRepository, SqliteTeamSessionRepository, SqliteWebhookRegistrationRepository,
     SqliteWorkflowRepository,
 };
-use crate::infrastructure::{ClaudeCodeClient, GhCliGithubService, MockAgenticClient};
+use crate::infrastructure::GhCliGithubService;
 
 pub(crate) struct ResolvedBackgroundAgentRuntime {
     pub client: Arc<dyn AgenticClient>,
@@ -227,23 +226,11 @@ pub struct AppState {
 
 impl AppState {
     fn production_agent_clients() -> AgentClientBundle {
-        AgentClientBundle::standard_runtime_clients(
-            Arc::new(ClaudeCodeClient::new()),
-            [(
-                AgentHarnessKind::Codex,
-                Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>,
-            )],
-        )
+        AgentClientBundle::standard_production_runtime_clients()
     }
 
     fn mock_agent_clients() -> AgentClientBundle {
-        AgentClientBundle::standard_runtime_clients(
-            Arc::new(MockAgenticClient::new()),
-            [(
-                AgentHarnessKind::Codex,
-                Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
-            )],
-        )
+        AgentClientBundle::standard_mock_runtime_clients()
     }
 
     fn enable_claude_test_mode() {
