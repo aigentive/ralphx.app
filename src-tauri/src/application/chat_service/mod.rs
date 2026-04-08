@@ -32,7 +32,7 @@ use crate::application::interactive_process_registry::{
     InteractiveProcessKey, InteractiveProcessRegistry,
 };
 use crate::application::question_state::QuestionState;
-use crate::domain::agents::{AgentHarnessKind, DEFAULT_AGENT_HARNESS};
+use crate::domain::agents::DEFAULT_AGENT_HARNESS;
 use crate::domain::entities::{
     AgentRun, ChatContextType, ChatConversation, ChatConversationId, ChatMessageId,
     IdeationSessionId, InternalStatus, ProjectId, TaskId,
@@ -305,7 +305,7 @@ pub trait ChatService: Send + Sync {
         conversation_id: &ChatConversationId,
     ) -> Result<Option<AgentRun>, ChatServiceError>;
 
-    /// Check if the chat service (Claude CLI) is available
+    /// Check if the chat service runtime is available
     async fn is_available(&self) -> bool;
 
     /// Stop a running agent for a context
@@ -897,9 +897,12 @@ impl<R: Runtime> ClaudeChatService<R> {
         )
         .await
         .map_err(|error| {
-            if resolved_spawn_settings.effective_harness == AgentHarnessKind::Claude {
-                tracing::warn!(cli_path = %self.cli_path.display(), %error, "chat_service.send_message missing Claude CLI");
-            }
+            tracing::warn!(
+                harness = %resolved_spawn_settings.effective_harness,
+                cli_path = %self.cli_path.display(),
+                %error,
+                "chat_service.send_message missing harness runtime"
+            );
             ChatServiceError::SpawnFailed(error)
         })?;
 

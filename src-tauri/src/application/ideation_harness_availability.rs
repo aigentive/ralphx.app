@@ -91,6 +91,13 @@ pub(crate) async fn ideation_team_mode_supported_for_project(
     )
 }
 
+fn format_harness_runtime_unavailable(surface_name: &str, harness: AgentHarnessKind) -> String {
+    format!(
+        "{surface_name} requires the {} harness runtime but it is not available",
+        harness
+    )
+}
+
 #[cfg(test)]
 pub(crate) fn validate_claude_runtime_path(
     availability: &IdeationLaneHarnessAvailability,
@@ -126,7 +133,7 @@ pub(crate) async fn validate_chat_runtime_for_context(
         }
 
         return Err(probe.error.unwrap_or_else(|| {
-            format!("{surface_name} requires Claude CLI but it is not available")
+            format_harness_runtime_unavailable(surface_name, DEFAULT_AGENT_HARNESS)
         }));
     };
 
