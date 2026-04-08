@@ -227,24 +227,22 @@ pub struct AppState {
 
 impl AppState {
     fn production_agent_clients() -> AgentClientBundle {
-        AgentClientBundle::from_default_client(
-            AgentHarnessKind::Claude,
+        AgentClientBundle::standard_runtime_clients(
             Arc::new(ClaudeCodeClient::new()),
-        )
-        .with_harness_client(
-            AgentHarnessKind::Codex,
-            Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>,
+            [(
+                AgentHarnessKind::Codex,
+                Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>,
+            )],
         )
     }
 
     fn mock_agent_clients() -> AgentClientBundle {
-        AgentClientBundle::from_default_client(
-            AgentHarnessKind::Claude,
+        AgentClientBundle::standard_runtime_clients(
             Arc::new(MockAgenticClient::new()),
-        )
-        .with_harness_client(
-            AgentHarnessKind::Codex,
-            Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
+            [(
+                AgentHarnessKind::Codex,
+                Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
+            )],
         )
     }
 

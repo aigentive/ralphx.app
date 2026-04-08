@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::domain::agents::{AgentHarnessKind, AgenticClient};
+use crate::domain::agents::{AgentHarnessKind, AgenticClient, DEFAULT_AGENT_HARNESS};
 
 pub type AgentClientFactory = dyn Fn() -> Arc<dyn AgenticClient> + Send + Sync;
 
@@ -39,6 +39,22 @@ impl AgentClientBundle {
     ) -> Self {
         self.harness_clients.insert(harness, client);
         self
+    }
+
+    pub fn with_harness_clients<I>(mut self, clients: I) -> Self
+    where
+        I: IntoIterator<Item = (AgentHarnessKind, Arc<dyn AgenticClient>)>,
+    {
+        self.harness_clients.extend(clients);
+        self
+    }
+
+    pub fn standard_runtime_clients(
+        default_client: Arc<dyn AgenticClient>,
+        extra_clients: impl IntoIterator<Item = (AgentHarnessKind, Arc<dyn AgenticClient>)>,
+    ) -> Self {
+        Self::from_default_client(DEFAULT_AGENT_HARNESS, default_client)
+            .with_harness_clients(extra_clients)
     }
 
     pub fn resolve(&self, harness: AgentHarnessKind) -> Arc<dyn AgenticClient> {
@@ -85,6 +101,22 @@ impl AgentClientFactoryBundle {
         self
     }
 
+    pub fn with_harness_factories<I>(mut self, factories: I) -> Self
+    where
+        I: IntoIterator<Item = (AgentHarnessKind, Arc<AgentClientFactory>)>,
+    {
+        self.harness_factories.extend(factories);
+        self
+    }
+
+    pub fn standard_runtime_factories(
+        default_factory: Arc<AgentClientFactory>,
+        extra_factories: impl IntoIterator<Item = (AgentHarnessKind, Arc<AgentClientFactory>)>,
+    ) -> Self {
+        Self::from_default_factory(DEFAULT_AGENT_HARNESS, default_factory)
+            .with_harness_factories(extra_factories)
+    }
+
     pub fn instantiate(&self) -> AgentClientBundle {
         let harness_clients = self
             .harness_factories
@@ -118,5 +150,40 @@ impl AgentClientFactoryBundle {
             Arc::new(move || Arc::clone(&default_client)),
             harness_factories,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infrastructure::agents::mock::MockAgenticClient;
+
+    #[test]
+    fn standard_runtime_clients_uses_domain_default_harness() {
+        let bundle = AgentClientBundle::standard_runtime_clients(
+            Arc::new(MockAgenticClient::new()),
+            [(
+                AgentHarnessKind::Codex,
+                Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
+            )],
+        );
+
+        assert_eq!(bundle.default_harness, DEFAULT_AGENT_HARNESS);
+        assert!(bundle.harness_clients.contains_key(&AgentHarnessKind::Codex));
+    }
+
+    #[test]
+    fn standard_runtime_factories_uses_domain_default_harness() {
+        let bundle = AgentClientFactoryBundle::standard_runtime_factories(
+            Arc::new(|| Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>),
+            [(
+                AgentHarnessKind::Codex,
+                Arc::new(|| Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>)
+                    as Arc<AgentClientFactory>,
+            )],
+        );
+
+        assert_eq!(bundle.default_harness, DEFAULT_AGENT_HARNESS);
+        assert!(bundle.harness_factories.contains_key(&AgentHarnessKind::Codex));
     }
 }

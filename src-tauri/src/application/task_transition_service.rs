@@ -800,13 +800,12 @@ impl<R: Runtime> TaskTransitionService<R> {
     }
 
     fn default_agent_client_factories() -> AgentClientFactoryBundle {
-        AgentClientFactoryBundle::from_default_factory(
-            AgentHarnessKind::Claude,
+        AgentClientFactoryBundle::standard_runtime_factories(
             Self::default_agent_client_factory(),
-        )
-        .with_harness_factory(
-            AgentHarnessKind::Codex,
-            Self::default_codex_agent_client_factory(),
+            [(
+                AgentHarnessKind::Codex,
+                Self::default_codex_agent_client_factory(),
+            )],
         )
     }
 

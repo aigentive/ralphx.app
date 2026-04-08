@@ -16,7 +16,7 @@ use crate::commands::execution_commands::context_matches_running_status_for_gc;
 use crate::commands::ExecutionState;
 use crate::domain::agents::{
     AgentConfig, AgentHandle, AgentHarnessKind, AgentRole, AgenticClient, ClientType,
-    LogicalEffort,
+    LogicalEffort, DEFAULT_AGENT_HARNESS,
 };
 use crate::domain::entities::{ChatContextType, IdeationSessionId, TaskId};
 use crate::domain::repositories::{
@@ -72,7 +72,7 @@ impl AgenticClientSpawner {
 
         Self {
             default_client: client,
-            default_harness: AgentHarnessKind::Claude,
+            default_harness: DEFAULT_AGENT_HARNESS,
             harness_clients: HashMap::new(),
             working_directory,
             task_repo: None,
