@@ -4,7 +4,11 @@
  * Mirrors the interface of src/api/chat.ts with mock implementations.
  */
 
-import type { ChatConversation, ContextType } from "@/types/chat-conversation";
+import {
+  normalizeConversationProviderMetadata,
+  type ChatConversation,
+  type ContextType,
+} from "@/types/chat-conversation";
 import type {
   ChatMessageResponse,
   QueuedMessageResponse,
@@ -43,9 +47,7 @@ export async function mockGetConversation(
       id: conversationId,
       contextType: "project",
       contextId: "mock-project",
-      providerSessionId: null,
-      providerHarness: null,
-      claudeSessionId: null,
+      ...normalizeConversationProviderMetadata({}),
       title: null,
       messageCount: 0,
       lastMessageAt: null,
@@ -68,9 +70,7 @@ export async function mockCreateConversation(
     id: generateTestUuid(),
     contextType,
     contextId,
-    providerSessionId: null,
-    providerHarness: null,
-    claudeSessionId: null,
+    ...normalizeConversationProviderMetadata({}),
     title: null,
     messageCount: 0,
     lastMessageAt: null,
