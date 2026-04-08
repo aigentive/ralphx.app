@@ -12,7 +12,6 @@ use super::chat_service_replay::{
 };
 use super::chat_service_streaming::process_stream_background;
 use super::streaming_state_cache::StreamingStateCache;
-use crate::application::agent_lane_resolution::resolve_agent_spawn_settings;
 use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::entities::{ChatContextType, ChatConversation, ChatConversationId};
 use crate::domain::repositories::{
@@ -155,91 +154,38 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
     };
 
     // 4. Spawn fresh provider session with history
-    let spawnable = match harness {
-        AgentHarnessKind::Claude => match chat_service_context::build_command(
-            cli_path,
-            plugin_dir,
-            conversation,
-            &bootstrap_prompt,
-            working_directory,
-            entity_status.as_deref(),
-            _resolved_project_id.as_deref(),
-            team_mode,
-            chat_attachment_repo,
-            artifact_repo,
-            agent_lane_settings_repo,
-            ideation_effort_settings_repo,
-            ideation_model_settings_repo,
-            &[],
-            0,
-            None,
-            None,
-        )
-        .await
-        {
-            Ok(spawnable) => spawnable,
-            Err(error) => {
-                let err =
-                    AppError::Infrastructure(format!("Failed to build recovery command: {error}"));
-                log_failure(&err);
-                return Err(err);
-            }
-        },
-        AgentHarnessKind::Codex => {
-            let resolved_codex = match crate::infrastructure::agents::resolve_codex_cli() {
-                Ok(resolved) => resolved,
-                Err(error) => {
-                    let err = AppError::Infrastructure(format!(
-                        "Failed to probe Codex CLI for recovery: {error}"
-                    ));
-                    log_failure(&err);
-                    return Err(err);
-                }
-            };
-            let agent_name =
-                super::resolve_agent_with_team_mode(&conversation.context_type, entity_status.as_deref(), false);
-            let resolved_spawn_settings = resolve_agent_spawn_settings(
-                agent_name,
-                _resolved_project_id.as_deref(),
-                conversation.context_type,
-                entity_status.as_deref(),
-                None,
-                agent_lane_settings_repo.as_ref(),
-                ideation_model_settings_repo.as_ref(),
-                ideation_effort_settings_repo.as_ref(),
-            )
-            .await;
-
-            match chat_service_context::build_codex_command(
-                &resolved_codex.path,
-                plugin_dir,
-                &resolved_codex.capabilities,
-                conversation,
-                &bootstrap_prompt,
-                working_directory,
-                None,
-                _resolved_project_id.as_deref(),
-                false,
-                chat_attachment_repo,
-                artifact_repo,
-                &[],
-                0,
-                false,
-                &resolved_spawn_settings,
-            )
-            .await
-            {
-                Ok(spawnable) => spawnable,
-                Err(error) => {
-                    let err = AppError::Infrastructure(format!(
-                        "Failed to build Codex recovery command: {error}"
-                    ));
-                    log_failure(&err);
-                    return Err(err);
-                }
-            }
+    let provider_spawnable = match chat_service_context::build_command_for_harness(
+        harness,
+        cli_path,
+        plugin_dir,
+        conversation,
+        &bootstrap_prompt,
+        working_directory,
+        entity_status.as_deref(),
+        _resolved_project_id.as_deref(),
+        team_mode,
+        chat_attachment_repo,
+        artifact_repo,
+        agent_lane_settings_repo,
+        ideation_effort_settings_repo,
+        ideation_model_settings_repo,
+        &[],
+        0,
+        None,
+        None,
+        false,
+    )
+    .await
+    {
+        Ok(spawnable) => spawnable,
+        Err(error) => {
+            let err =
+                AppError::Infrastructure(format!("Failed to build recovery command: {error}"));
+            log_failure(&err);
+            return Err(err);
         }
     };
+    let spawnable = provider_spawnable.spawnable;
 
     let child = match spawnable.spawn().await {
         Ok(c) => c,

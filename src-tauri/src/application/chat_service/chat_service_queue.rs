@@ -330,110 +330,44 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
             });
 
             // Build and spawn resume command
-            let spawnable = match harness {
-                AgentHarnessKind::Claude => match chat_service_context::build_resume_command(
-                    cli_path,
-                    plugin_dir,
-                    context_type,
-                    context_id,
-                    &queued_msg.content,
-                    working_directory,
-                    session_id,
-                    project_id,
-                    team_mode,
-                    Arc::clone(chat_attachment_repo),
-                    Arc::clone(artifact_repo),
-                    agent_lane_settings_repo,
-                    ideation_effort_settings_repo,
-                    ideation_model_settings_repo,
-                    Arc::clone(ideation_session_repo),
-                    Arc::clone(task_repo),
-                    &[],
-                    0,
-                    None,
-                    None,
-                )
-                .await {
-                    Ok(cmd) => cmd,
-                    Err(err) => {
-                        tracing::warn!(
-                            error = %err,
-                            %context_type,
-                            context_id,
-                            "queue spawn blocked"
-                        );
-                        return total_processed;
-                    }
-                },
-                AgentHarnessKind::Codex => {
-                    let resolved_codex = match crate::infrastructure::agents::resolve_codex_cli() {
-                        Ok(resolved) => resolved,
-                        Err(error) => {
-                            tracing::warn!(%context_type, context_id, %error, "Codex CLI unavailable for queue resume");
-                            return total_processed;
-                        }
-                    };
-
-                    let entity_status = chat_service_context::get_entity_status_for_resume(
-                        context_type,
+            let provider_spawnable = match chat_service_context::build_resume_command_for_harness(
+                harness,
+                cli_path,
+                plugin_dir,
+                context_type,
+                context_id,
+                &queued_msg.content,
+                working_directory,
+                session_id,
+                project_id,
+                team_mode,
+                Arc::clone(chat_attachment_repo),
+                Arc::clone(artifact_repo),
+                agent_lane_settings_repo,
+                ideation_effort_settings_repo,
+                ideation_model_settings_repo,
+                Arc::clone(ideation_session_repo),
+                Arc::clone(task_repo),
+                &[],
+                0,
+                None,
+                None,
+                false,
+            )
+            .await {
+                Ok(spawnable) => spawnable,
+                Err(err) => {
+                    tracing::warn!(
+                        error = %err,
+                        %context_type,
                         context_id,
-                        Arc::clone(ideation_session_repo),
-                        Arc::clone(task_repo),
-                    )
-                    .await;
-                    let agent_name = super::resolve_agent_with_team_mode(
-                        &context_type,
-                        entity_status.as_deref(),
-                        team_mode,
+                        harness = %harness,
+                        "queue spawn blocked"
                     );
-                    let resolved_spawn_settings =
-                        crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
-                            agent_name,
-                            project_id,
-                            context_type,
-                            entity_status.as_deref(),
-                            None,
-                            agent_lane_settings_repo.as_ref(),
-                            ideation_model_settings_repo.as_ref(),
-                            ideation_effort_settings_repo.as_ref(),
-                        )
-                        .await;
-                    let runtime_team_mode =
-                        effective_team_mode_for_harness(team_mode, resolved_spawn_settings.effective_harness);
-
-                    match chat_service_context::build_codex_resume_command(
-                        &resolved_codex.path,
-                        plugin_dir,
-                        &resolved_codex.capabilities,
-                        context_type,
-                        context_id,
-                        &queued_msg.content,
-                        working_directory,
-                        session_id,
-                        project_id,
-                        runtime_team_mode,
-                        Arc::clone(artifact_repo),
-                        Arc::clone(ideation_session_repo),
-                        Arc::clone(task_repo),
-                        &[],
-                        0,
-                        false,
-                        &resolved_spawn_settings,
-                    )
-                    .await {
-                        Ok(cmd) => cmd,
-                        Err(err) => {
-                            tracing::warn!(
-                                error = %err,
-                                %context_type,
-                                context_id,
-                                "codex queue spawn blocked"
-                            );
-                            return total_processed;
-                        }
-                    }
+                    return total_processed;
                 }
             };
+            let spawnable = provider_spawnable.spawnable;
 
             tracing::info!(cmd = ?spawnable, "Spawning CLI agent (queue resume)");
             match spawnable.spawn().await {

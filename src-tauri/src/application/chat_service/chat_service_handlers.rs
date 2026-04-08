@@ -1333,85 +1333,32 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             Arc::clone(&app_state.ideation_model_settings_repo)
                         });
 
-                        // Build command for retry
-                        let retry_spawnable = match recovery_harness {
-                            crate::domain::agents::AgentHarnessKind::Claude => {
-                                chat_service_context::build_command(
-                                    cli_path,
-                                    plugin_dir,
-                                    &retry_conv,
-                                    msg,
-                                    working_directory,
-                                    None,
-                                    resolved_project_id.as_deref(),
-                                    team_mode,
-                                    Arc::clone(chat_attachment_repo),
-                                    Arc::clone(artifact_repo),
-                                    agent_lane_settings_repo.clone(),
-                                    ideation_effort_settings_repo.clone(),
-                                    ideation_model_settings_repo.clone(),
-                                    &[],
-                                    0,
-                                    None,
-                                    None,
-                                )
-                                .await
-                            }
-                            crate::domain::agents::AgentHarnessKind::Codex => {
-                                let resolved_codex = match crate::infrastructure::agents::resolve_codex_cli() {
-                                    Ok(resolved) => resolved,
-                                    Err(error) => {
-                                        tracing::error!(%error, "Failed to probe Codex CLI for recovery retry");
-                                        return false;
-                                    }
-                                };
-                                let entity_status = chat_service_context::get_entity_status_for_resume(
-                                    context_type,
-                                    context_id,
-                                    Arc::clone(ideation_session_repo),
-                                    Arc::clone(task_repo),
-                                )
-                                .await;
-                                let resolved_agent_name = super::resolve_agent_with_team_mode(
-                                    &context_type,
-                                    entity_status.as_deref(),
-                                    false,
-                                );
-                                let resolved_spawn_settings =
-                                    crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
-                                        resolved_agent_name,
-                                        resolved_project_id.as_deref(),
-                                        context_type,
-                                        entity_status.as_deref(),
-                                        None,
-                                        agent_lane_settings_repo.as_ref(),
-                                        ideation_model_settings_repo.as_ref(),
-                                        ideation_effort_settings_repo.as_ref(),
-                                    )
-                                    .await;
-
-                                chat_service_context::build_codex_resume_command(
-                                    &resolved_codex.path,
-                                    plugin_dir,
-                                    &resolved_codex.capabilities,
-                                    context_type,
-                                    context_id,
-                                    msg,
-                                    working_directory,
-                                    &new_session_id,
-                                    resolved_project_id.as_deref(),
-                                    false,
-                                    Arc::clone(artifact_repo),
-                                    Arc::clone(ideation_session_repo),
-                                    Arc::clone(task_repo),
-                                    &[],
-                                    0,
-                                    false,
-                                    &resolved_spawn_settings,
-                                )
-                                .await
-                            }
-                        };
+                        let retry_spawnable = chat_service_context::build_resume_command_for_harness(
+                            recovery_harness,
+                            cli_path,
+                            plugin_dir,
+                            context_type,
+                            context_id,
+                            msg,
+                            working_directory,
+                            &new_session_id,
+                            resolved_project_id.as_deref(),
+                            team_mode,
+                            Arc::clone(chat_attachment_repo),
+                            Arc::clone(artifact_repo),
+                            agent_lane_settings_repo.clone(),
+                            ideation_effort_settings_repo.clone(),
+                            ideation_model_settings_repo.clone(),
+                            Arc::clone(ideation_session_repo),
+                            Arc::clone(task_repo),
+                            &[],
+                            0,
+                            None,
+                            None,
+                            false,
+                        )
+                        .await
+                        .map(|provider_spawnable| provider_spawnable.spawnable);
 
                         if let Ok(spawnable) = retry_spawnable {
                             if let Ok(retry_child) = spawnable.spawn().await {

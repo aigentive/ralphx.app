@@ -47,6 +47,10 @@ pub const SESSION_HISTORY_ARTIFACT_THRESHOLD_BYTES: usize = 2000;
 /// Preview budget for long history messages that have a full artifact reference.
 pub const SESSION_HISTORY_PREVIEW_BYTES: usize = 500;
 
+pub struct ProviderSpawnableCommand {
+    pub spawnable: SpawnableCommand,
+}
+
 fn claude_resume_session_id(conversation: &ChatConversation) -> Option<String> {
     conversation.provider_session_ref().and_then(|session_ref| {
         (session_ref.harness == AgentHarnessKind::Claude).then_some(session_ref.provider_session_id)
@@ -1220,6 +1224,90 @@ pub async fn build_codex_command(
     Ok(spawnable)
 }
 
+#[allow(clippy::too_many_arguments)]
+pub async fn build_command_for_harness(
+    harness: AgentHarnessKind,
+    cli_path: &Path,
+    plugin_dir: &Path,
+    conversation: &ChatConversation,
+    user_message: &str,
+    working_directory: &Path,
+    entity_status: Option<&str>,
+    project_id: Option<&str>,
+    team_mode: bool,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    artifact_repo: Arc<dyn ArtifactRepository>,
+    agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
+    ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
+    ideation_model_settings_repo: Option<Arc<dyn IdeationModelSettingsRepository>>,
+    session_messages: &[ChatMessage],
+    total_available: usize,
+    effort_override: Option<&str>,
+    model_override: Option<&str>,
+    is_external_mcp: bool,
+) -> Result<ProviderSpawnableCommand, String> {
+    match harness {
+        AgentHarnessKind::Claude => Ok(ProviderSpawnableCommand {
+            spawnable: build_command(
+                cli_path,
+                plugin_dir,
+                conversation,
+                user_message,
+                working_directory,
+                entity_status,
+                project_id,
+                team_mode,
+                chat_attachment_repo,
+                artifact_repo,
+                agent_lane_settings_repo,
+                ideation_effort_settings_repo,
+                ideation_model_settings_repo,
+                session_messages,
+                total_available,
+                effort_override,
+                model_override,
+            )
+            .await?,
+        }),
+        AgentHarnessKind::Codex => {
+            let resolved_codex = crate::infrastructure::agents::resolve_codex_cli()?;
+            let resolved_spawn_settings =
+                crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
+                    resolve_agent_with_team_mode(&conversation.context_type, entity_status, false),
+                    project_id,
+                    conversation.context_type,
+                    entity_status,
+                    model_override,
+                    agent_lane_settings_repo.as_ref(),
+                    ideation_model_settings_repo.as_ref(),
+                    ideation_effort_settings_repo.as_ref(),
+                )
+                .await;
+
+            Ok(ProviderSpawnableCommand {
+                spawnable: build_codex_command(
+                    &resolved_codex.path,
+                    plugin_dir,
+                    &resolved_codex.capabilities,
+                    conversation,
+                    user_message,
+                    working_directory,
+                    entity_status,
+                    project_id,
+                    false,
+                    chat_attachment_repo,
+                    artifact_repo,
+                    session_messages,
+                    total_available,
+                    is_external_mcp,
+                    &resolved_spawn_settings,
+                )
+                .await?,
+            })
+        }
+    }
+}
+
 /// Build an interactive CLI command (no `-p` flag, stdin kept open for multi-turn).
 ///
 /// Same as `build_command()` but uses `build_spawnable_interactive_command()` so the
@@ -1543,6 +1631,105 @@ pub async fn build_codex_resume_command(
     );
 
     Ok(spawnable)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn build_resume_command_for_harness(
+    harness: AgentHarnessKind,
+    cli_path: &Path,
+    plugin_dir: &Path,
+    context_type: ChatContextType,
+    context_id: &str,
+    message: &str,
+    working_directory: &Path,
+    session_id: &str,
+    project_id: Option<&str>,
+    team_mode: bool,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    artifact_repo: Arc<dyn ArtifactRepository>,
+    agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
+    ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
+    ideation_model_settings_repo: Option<Arc<dyn IdeationModelSettingsRepository>>,
+    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    task_repo: Arc<dyn TaskRepository>,
+    session_messages: &[ChatMessage],
+    total_available: usize,
+    effort_override: Option<&str>,
+    model_override: Option<&str>,
+    is_external_mcp: bool,
+) -> Result<ProviderSpawnableCommand, String> {
+    match harness {
+        AgentHarnessKind::Claude => Ok(ProviderSpawnableCommand {
+            spawnable: build_resume_command(
+                cli_path,
+                plugin_dir,
+                context_type,
+                context_id,
+                message,
+                working_directory,
+                session_id,
+                project_id,
+                team_mode,
+                chat_attachment_repo,
+                artifact_repo,
+                agent_lane_settings_repo,
+                ideation_effort_settings_repo,
+                ideation_model_settings_repo,
+                ideation_session_repo,
+                task_repo,
+                session_messages,
+                total_available,
+                effort_override,
+                model_override,
+            )
+            .await?,
+        }),
+        AgentHarnessKind::Codex => {
+            let resolved_codex = crate::infrastructure::agents::resolve_codex_cli()?;
+            let entity_status = get_entity_status_for_resume(
+                context_type,
+                context_id,
+                Arc::clone(&ideation_session_repo),
+                Arc::clone(&task_repo),
+            )
+            .await;
+            let resolved_spawn_settings =
+                crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
+                    resolve_agent_with_team_mode(&context_type, entity_status.as_deref(), false),
+                    project_id,
+                    context_type,
+                    entity_status.as_deref(),
+                    model_override,
+                    agent_lane_settings_repo.as_ref(),
+                    ideation_model_settings_repo.as_ref(),
+                    ideation_effort_settings_repo.as_ref(),
+                )
+                .await;
+
+            Ok(ProviderSpawnableCommand {
+                spawnable: build_codex_resume_command(
+                    &resolved_codex.path,
+                    plugin_dir,
+                    &resolved_codex.capabilities,
+                    context_type,
+                    context_id,
+                    message,
+                    working_directory,
+                    session_id,
+                    project_id,
+                    false,
+                    artifact_repo,
+                    ideation_session_repo,
+                    task_repo,
+                    session_messages,
+                    total_available,
+                    is_external_mcp,
+                    &resolved_spawn_settings,
+                )
+                .await?,
+            })
+        }
+    }
 }
 
 /// Create a user message based on context type
