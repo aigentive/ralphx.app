@@ -131,7 +131,11 @@ pub fn effective_team_mode_for_harness(
     requested_team_mode: bool,
     harness: AgentHarnessKind,
 ) -> bool {
-    requested_team_mode && chat_harness_behavior(harness).honors_team_mode
+    requested_team_mode && harness_supports_team_mode(harness)
+}
+
+pub fn harness_supports_team_mode(harness: AgentHarnessKind) -> bool {
+    chat_harness_behavior(harness).honors_team_mode
 }
 
 /// Resolve a provider harness while preserving legacy pre-Codex Claude sessions.

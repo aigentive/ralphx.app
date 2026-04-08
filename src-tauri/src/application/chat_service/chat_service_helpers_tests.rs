@@ -96,6 +96,12 @@ fn test_effective_team_mode_for_harness_disables_codex_team_mode() {
 }
 
 #[test]
+fn test_harness_supports_team_mode_only_for_claude() {
+    assert!(harness_supports_team_mode(AgentHarnessKind::Claude));
+    assert!(!harness_supports_team_mode(AgentHarnessKind::Codex));
+}
+
+#[test]
 fn test_effective_team_mode_for_harness_respects_requested_false() {
     assert!(!effective_team_mode_for_harness(
         false,

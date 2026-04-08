@@ -1,3 +1,4 @@
+use crate::application::chat_service::harness_supports_team_mode;
 use crate::application::AppState;
 use crate::domain::entities::{ChatContextType, IdeationSessionId, TaskId};
 use std::collections::HashMap;
@@ -83,10 +84,11 @@ pub(crate) async fn ideation_team_mode_supported_for_project(
     repo: &Arc<dyn AgentLaneSettingsRepository>,
     project_id: Option<&str>,
 ) -> bool {
-    resolve_primary_ideation_harness_availability(repo, project_id)
-        .await
-        .effective_harness
-        == AgentHarnessKind::Claude
+    harness_supports_team_mode(
+        resolve_primary_ideation_harness_availability(repo, project_id)
+            .await
+            .effective_harness,
+    )
 }
 
 #[cfg(test)]
@@ -160,7 +162,7 @@ pub(crate) async fn team_mode_supported_for_context(
     let probes = probe_supported_harnesses();
     let availability = build_ideation_lane_harness_availability(config, &probes);
 
-    availability.effective_harness == AgentHarnessKind::Claude
+    harness_supports_team_mode(availability.effective_harness)
 }
 
 fn runtime_lane_for_context(context_type: ChatContextType) -> Option<AgentLane> {

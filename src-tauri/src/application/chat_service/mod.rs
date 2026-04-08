@@ -86,6 +86,7 @@ pub use chat_service_streaming::{
     is_completion_tool_name, should_kill_on_timeout, ActiveTaskTracker,
     CompletionSignalTracker, StreamOutcome, StreamTimeoutConfig,
 };
+pub use chat_service_helpers::harness_supports_team_mode;
 pub use chat_service_types::{
     events, AgentChunkPayload, AgentConversationCreatedPayload, AgentErrorPayload, AgentHookPayload,
     AgentMessageCreatedPayload, AgentMessageQueuedPayload, AgentQueueSentPayload,
