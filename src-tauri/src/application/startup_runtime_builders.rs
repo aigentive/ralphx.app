@@ -9,7 +9,7 @@ use crate::application::{
 };
 use crate::commands::ExecutionState;
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, ArtifactRepository,
+    ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository,
     ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
     ExecutionSettingsRepository, IdeationSessionRepository, MemoryEventRepository,
     PlanBranchRepository, ProjectRepository, ReviewRepository, TaskDependencyRepository,
@@ -78,19 +78,9 @@ pub(crate) fn build_startup_recovery_chat_service(
 
 pub(crate) struct StartupChatResumptionDeps {
     pub agent_run_repo: Arc<dyn AgentRunRepository>,
-    pub conversation_repo: Arc<dyn ChatConversationRepository>,
     pub task_repo: Arc<dyn TaskRepository>,
-    pub task_dependency_repo: Arc<dyn TaskDependencyRepository>,
-    pub chat_message_repo: Arc<dyn ChatMessageRepository>,
-    pub chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
-    pub artifact_repo: Arc<dyn ArtifactRepository>,
-    pub project_repo: Arc<dyn ProjectRepository>,
-    pub ideation_session_repo: Arc<dyn IdeationSessionRepository>,
-    pub activity_event_repo: Arc<dyn ActivityEventRepository>,
-    pub message_queue: Arc<MessageQueue>,
-    pub running_agent_registry: Arc<dyn RunningAgentRegistry>,
-    pub memory_event_repo: Arc<dyn MemoryEventRepository>,
     pub execution_state: Arc<ExecutionState>,
+    pub chat_runtime_deps: ChatRuntimeFactoryDeps,
     pub execution_settings_repo: Arc<dyn ExecutionSettingsRepository>,
     pub agent_lane_settings_repo: Arc<dyn AgentLaneSettingsRepository>,
     pub plan_branch_repo: Arc<dyn PlanBranchRepository>,
@@ -101,26 +91,11 @@ pub(crate) struct StartupChatResumptionDeps {
 pub(crate) fn build_startup_chat_resumption_runner(
     deps: StartupChatResumptionDeps,
 ) -> ChatResumptionRunner {
-    let chat_runtime_deps = ChatRuntimeFactoryDeps::from_core(
-        deps.chat_message_repo,
-        deps.chat_attachment_repo,
-        deps.artifact_repo,
-        deps.conversation_repo,
-        Arc::clone(&deps.agent_run_repo),
-        deps.project_repo,
-        deps.task_repo.clone(),
-        deps.task_dependency_repo,
-        deps.ideation_session_repo,
-        deps.activity_event_repo,
-        deps.message_queue,
-        deps.running_agent_registry,
-        deps.memory_event_repo,
-    );
     ChatResumptionRunner::<tauri::Wry>::new(
         deps.agent_run_repo,
         deps.task_repo,
         deps.execution_state,
-        chat_runtime_deps,
+        deps.chat_runtime_deps,
     )
     .with_app_handle(deps.app_handle)
     .with_execution_settings_repo(deps.execution_settings_repo)
