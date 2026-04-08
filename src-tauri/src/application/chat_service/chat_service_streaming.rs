@@ -42,6 +42,31 @@ use super::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ChatHarnessStreamMode {
+    ClaudeEvents,
+    CodexJsonl,
+}
+
+#[doc(hidden)]
+pub(crate) fn stream_mode_for_harness(harness: AgentHarnessKind) -> ChatHarnessStreamMode {
+    match harness {
+        AgentHarnessKind::Claude => ChatHarnessStreamMode::ClaudeEvents,
+        AgentHarnessKind::Codex => ChatHarnessStreamMode::CodexJsonl,
+    }
+}
+
+#[doc(hidden)]
+pub(crate) fn provider_session_ref_for_harness(
+    harness: AgentHarnessKind,
+    provider_session_id: impl Into<String>,
+) -> ProviderSessionRef {
+    ProviderSessionRef {
+        harness,
+        provider_session_id: provider_session_id.into(),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ProcessExitDetails {
     pub exit_code: Option<i32>,
     pub exit_signal: Option<i32>,
@@ -338,7 +363,7 @@ pub async fn process_stream_background<R: Runtime>(
     execution_state: Option<Arc<crate::commands::ExecutionState>>,
     conversation_repo: Option<Arc<dyn ChatConversationRepository>>,
 ) -> Result<StreamOutcome, StreamError> {
-    if harness == AgentHarnessKind::Codex {
+    if stream_mode_for_harness(harness) == ChatHarnessStreamMode::CodexJsonl {
         return process_codex_stream_background(
             child,
             context_type,
@@ -1137,10 +1162,8 @@ pub async fn process_stream_background<R: Runtime>(
                             if let (Some(ref sess_id), Some(ref repo)) =
                                 (&session_id, &conversation_repo)
                             {
-                                let session_ref = ProviderSessionRef {
-                                    harness,
-                                    provider_session_id: sess_id.clone(),
-                                };
+                                let session_ref =
+                                    provider_session_ref_for_harness(harness, sess_id.clone());
                                 if let Err(e) = repo
                                     .update_provider_session_ref(conversation_id, &session_ref)
                                     .await
@@ -2246,10 +2269,7 @@ async fn process_codex_stream_background<R: Runtime>(
                     let _ = repo
                         .update_provider_session_ref(
                             conversation_id,
-                            &ProviderSessionRef {
-                                harness: AgentHarnessKind::Codex,
-                                provider_session_id: thread_id,
-                            },
+                            &provider_session_ref_for_harness(AgentHarnessKind::Codex, thread_id),
                         )
                         .await;
                 }
