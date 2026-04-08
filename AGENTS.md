@@ -25,7 +25,7 @@ Primary project docs:
 | Apply-patch is fix-up only (NON-NEGOTIABLE) | After a mechanical move, `apply_patch` is only for the small follow-up layer: imports, visibility, re-exports, module wiring, tests. It is not a substitute for moving existing code. |
 | Mechanical split recovery | If a large extraction drifts into patch-copying or visibility churn, restore the module to `HEAD`, clean any parked WIP out of the repo tree, and redo the split mechanically; do not keep iterating on a half-split tree. |
 | Rustfmt scope safety | Never run `rustfmt` on Rust module roots like `mod.rs` unless the user explicitly wants recursive formatting; it can rewrite child modules and create unrelated churn. |
-| Rustfmt edition safety | `src-tauri/Cargo.toml` is on Rust edition `2021`; use `cargo fmt` when possible, otherwise run `rustfmt --edition 2021 ...` for surgical file formatting. |
+| Rustfmt edition safety | `src-tauri/Cargo.toml` is on Rust edition `2021`; for surgical PR work prefer `rustfmt --edition 2021 <leaf-file.rs>` and avoid plain `cargo fmt` unless the change intentionally wants broad repo-wide formatting. |
 | Cargo during refactors | Never overlap Cargo jobs while validating a large extraction; one targeted run at a time or you recreate build-lock noise and lose signal. |
 | Rust test runner split | Use `cargo test` for selective filters and doctests; use `cargo nextest run` for broad Rust lib runs. CI runs both. Details: `.claude/rules/rust-test-execution.md`. |
 | Rust toolchain source of truth | `rust-toolchain.toml` is authoritative; use a `rustup`-managed toolchain so the repo pin actually applies. |
