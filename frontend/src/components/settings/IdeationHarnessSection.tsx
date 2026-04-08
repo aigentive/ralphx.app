@@ -16,13 +16,14 @@ import {
   type Harness,
   type AgentHarnessLaneView,
   type AgentLane,
+  type KnownHarness,
   IDEATION_LANES,
 } from "@/api/ideation-harness";
 import { useAgentHarnessSettings } from "@/hooks/useIdeationHarnessSettings";
 import { selectActiveProject, useProjectStore } from "@/stores/projectStore";
 
 const HARNESS_OPTIONS: {
-  value: Harness;
+  value: KnownHarness;
   label: string;
   description: string;
 }[] = [
@@ -125,7 +126,7 @@ const LANE_GROUPS: {
 
 function defaultsForHarness(
   lane: AgentLane,
-  harness: Harness,
+  harness: KnownHarness,
 ): {
   harness: Harness;
   model: string | null;
@@ -240,7 +241,7 @@ function HarnessRow({
 }: {
   lane: AgentHarnessLaneView;
   disabled: boolean;
-  onHarnessChange: (value: Harness) => void;
+  onHarnessChange: (value: KnownHarness) => void;
   onLaneChange: (
     patch: Partial<{
       model: string | null;
@@ -276,7 +277,11 @@ function HarnessRow({
           </p>
         </div>
         <div className="shrink-0">
-          <Select value={configuredHarness} onValueChange={onHarnessChange} disabled={disabled}>
+          <Select
+            value={configuredHarness}
+            onValueChange={(value) => onHarnessChange(value as KnownHarness)}
+            disabled={disabled}
+          >
             <SelectTrigger
               id={`harness-${lane.lane}`}
               data-testid={`harness-${lane.lane}`}
@@ -404,11 +409,9 @@ function HarnessRow({
                 </p>
                 <Select
                   value={selectValue(lane.row?.fallbackHarness)}
-                  onValueChange={(value) =>
-                    onLaneChange({
-                      fallbackHarness: (fromSelectValue(value) as Harness | null),
-                    })
-                  }
+                    onValueChange={(value) =>
+                      onLaneChange({ fallbackHarness: fromSelectValue(value) as Harness | null })
+                    }
                   disabled={disabled}
                 >
                   <SelectTrigger className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]">
@@ -460,7 +463,7 @@ function HarnessSubsection({
   } = useAgentHarnessSettings(projectId);
   const isDisabled = projectId === null && title !== "Global Defaults";
 
-  const handleHarnessChange = (lane: AgentLane, harness: Harness) => {
+  const handleHarnessChange = (lane: AgentLane, harness: KnownHarness) => {
     if (isDisabled) {
       return;
     }

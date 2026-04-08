@@ -14,7 +14,11 @@ export const AgentLaneSchema = z.enum([
 
 export type AgentLane = z.infer<typeof AgentLaneSchema>;
 
-export const HarnessSchema = z.enum(["claude", "codex"]);
+export const KNOWN_HARNESSES = ["claude", "codex"] as const;
+
+export type KnownHarness = (typeof KNOWN_HARNESSES)[number];
+
+export const HarnessSchema = z.string().min(1);
 
 export type Harness = z.infer<typeof HarnessSchema>;
 
