@@ -822,13 +822,11 @@ impl<R: Runtime> TaskTransitionService<R> {
     ) -> Arc<dyn AgentSpawner> {
         let agent_clients = agent_client_factories.instantiate();
         let agent_client = Arc::clone(&agent_clients.default_client);
-        let mut spawner = AgenticClientSpawner::new(agent_client)
+        let spawner = AgenticClientSpawner::new(agent_client)
             .with_default_harness(agent_clients.default_harness)
+            .with_harness_clients(agent_clients.iter_explicit_harness_clients())
             .with_repos(Arc::clone(&task_repo), Arc::clone(&project_repo))
             .with_execution_state(Arc::clone(&execution_state));
-        for (harness, client) in agent_clients.iter_explicit_harness_clients() {
-            spawner = spawner.with_harness_client(harness, client);
-        }
         let spawner = if let (Some(execution_repo), Some(agent_lane_repo)) =
             (execution_settings_repo, agent_lane_settings_repo)
         {

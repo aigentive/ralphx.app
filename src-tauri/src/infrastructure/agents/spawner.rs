@@ -153,6 +153,14 @@ impl AgenticClientSpawner {
         self
     }
 
+    pub fn with_harness_clients<I>(mut self, clients: I) -> Self
+    where
+        I: IntoIterator<Item = (AgentHarnessKind, Arc<dyn AgenticClient>)>,
+    {
+        self.harness_clients.extend(clients);
+        self
+    }
+
     /// Map agent type string to AgentRole
     fn role_from_string(agent_type: &str) -> AgentRole {
         match agent_type {
