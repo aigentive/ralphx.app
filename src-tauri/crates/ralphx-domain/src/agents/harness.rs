@@ -27,6 +27,43 @@ pub fn standard_harness_map<T>(claude: T, codex: T) -> HashMap<AgentHarnessKind,
     ])
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HarnessModelLabelStrategy {
+    ClaudeMapped,
+    RawModelId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HarnessEffortStrategy {
+    ClaudeEffortFirst,
+    LogicalOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HarnessBehavior {
+    pub honors_team_mode: bool,
+    pub supports_merge_completion_watcher: bool,
+    pub model_label_strategy: HarnessModelLabelStrategy,
+    pub effort_strategy: HarnessEffortStrategy,
+}
+
+pub fn standard_harness_behavior(harness: AgentHarnessKind) -> HarnessBehavior {
+    match harness {
+        AgentHarnessKind::Claude => HarnessBehavior {
+            honors_team_mode: true,
+            supports_merge_completion_watcher: true,
+            model_label_strategy: HarnessModelLabelStrategy::ClaudeMapped,
+            effort_strategy: HarnessEffortStrategy::ClaudeEffortFirst,
+        },
+        AgentHarnessKind::Codex => HarnessBehavior {
+            honors_team_mode: false,
+            supports_merge_completion_watcher: false,
+            model_label_strategy: HarnessModelLabelStrategy::RawModelId,
+            effort_strategy: HarnessEffortStrategy::LogicalOnly,
+        },
+    }
+}
+
 impl fmt::Display for AgentHarnessKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

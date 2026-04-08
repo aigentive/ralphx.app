@@ -19,8 +19,9 @@ pub use capabilities::{ClientCapabilities, ModelInfo};
 pub use error::{AgentError, AgentResult};
 pub use harness::{
     default_fallback_harness_for, generic_harness_lane_defaults, standard_agent_lane_defaults,
-    standard_harness_map, AgentHarnessKind, AgentLane, AgentLaneSettings,
-    DEFAULT_AGENT_HARNESS, LogicalEffort, ProviderSessionRef, StoredAgentLaneSettings,
+    standard_harness_behavior, standard_harness_map, AgentHarnessKind, AgentLane,
+    AgentLaneSettings, HarnessBehavior, HarnessEffortStrategy, HarnessModelLabelStrategy,
+    LogicalEffort, ProviderSessionRef, StoredAgentLaneSettings, DEFAULT_AGENT_HARNESS,
 };
 pub use types::{
     AgentConfig, AgentHandle, AgentOutput, AgentResponse, AgentRole, ClientType, ResponseChunk,

@@ -152,3 +152,32 @@ fn test_standard_harness_map_keys_first_class_harnesses() {
     assert_eq!(map.get(&AgentHarnessKind::Claude), Some(&"claude"));
     assert_eq!(map.get(&AgentHarnessKind::Codex), Some(&"codex"));
 }
+
+#[test]
+fn test_standard_harness_behavior_for_claude() {
+    let behavior = standard_harness_behavior(AgentHarnessKind::Claude);
+
+    assert!(behavior.honors_team_mode);
+    assert!(behavior.supports_merge_completion_watcher);
+    assert_eq!(
+        behavior.model_label_strategy,
+        HarnessModelLabelStrategy::ClaudeMapped
+    );
+    assert_eq!(
+        behavior.effort_strategy,
+        HarnessEffortStrategy::ClaudeEffortFirst
+    );
+}
+
+#[test]
+fn test_standard_harness_behavior_for_codex() {
+    let behavior = standard_harness_behavior(AgentHarnessKind::Codex);
+
+    assert!(!behavior.honors_team_mode);
+    assert!(!behavior.supports_merge_completion_watcher);
+    assert_eq!(
+        behavior.model_label_strategy,
+        HarnessModelLabelStrategy::RawModelId
+    );
+    assert_eq!(behavior.effort_strategy, HarnessEffortStrategy::LogicalOnly);
+}
