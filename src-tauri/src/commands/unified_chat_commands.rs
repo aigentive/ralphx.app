@@ -19,8 +19,10 @@ use tauri::State;
 
 use crate::application::{AppState, ChatService, ClaudeChatService, SendResult};
 use crate::commands::ExecutionState;
-use crate::domain::agents::AgentHarnessKind;
-use crate::domain::entities::{ChatContextType, ChatConversation, IdeationSessionId, TaskId};
+use crate::domain::entities::{
+    normalize_provider_session_compatibility, ChatContextType, ChatConversation,
+    IdeationSessionId, TaskId,
+};
 use crate::domain::services::QueuedMessage;
 
 // ============================================================================
@@ -115,27 +117,12 @@ pub struct AgentConversationResponse {
 
 impl From<ChatConversation> for AgentConversationResponse {
     fn from(c: ChatConversation) -> Self {
-        let provider_session_ref = c.provider_session_ref();
-        let provider_session_id = provider_session_ref
-            .as_ref()
-            .map(|session_ref| session_ref.provider_session_id.clone())
-            .or(c.provider_session_id.clone());
-        let provider_harness = provider_session_ref
-            .as_ref()
-            .map(|session_ref| session_ref.harness.to_string())
-            .or(c.provider_harness.map(|harness| harness.to_string()));
-        let claude_session_id = c.claude_session_id.clone().or_else(|| {
-            if matches!(
-                provider_session_ref
-                    .as_ref()
-                    .map(|session_ref| session_ref.harness),
-                Some(AgentHarnessKind::Claude)
-            ) {
-                provider_session_id.clone()
-            } else {
-                None
-            }
-        });
+        let (claude_session_id, provider_session_id, provider_harness) =
+            normalize_provider_session_compatibility(
+                c.claude_session_id.clone(),
+                c.provider_session_id.clone(),
+                c.provider_harness,
+            );
 
         Self {
             id: c.id.as_str(),
@@ -143,7 +130,7 @@ impl From<ChatConversation> for AgentConversationResponse {
             context_id: c.context_id,
             claude_session_id,
             provider_session_id,
-            provider_harness,
+            provider_harness: provider_harness.map(|harness| harness.to_string()),
             title: c.title,
             message_count: c.message_count,
             last_message_at: c.last_message_at.map(|dt| dt.to_rfc3339()),
@@ -662,5 +649,26 @@ mod tests {
             Some("codex-thread-123".to_string())
         );
         assert_eq!(response.provider_harness, Some("codex".to_string()));
+    }
+
+    #[test]
+    fn agent_conversation_response_restores_legacy_alias_for_canonical_claude_provider_metadata() {
+        let mut conversation =
+            ChatConversation::new_project(ProjectId::from_string("project-1".to_string()));
+        conversation.provider_harness = Some(AgentHarnessKind::Claude);
+        conversation.provider_session_id = Some("claude-session-456".to_string());
+        conversation.claude_session_id = None;
+
+        let response = AgentConversationResponse::from(conversation);
+
+        assert_eq!(
+            response.claude_session_id,
+            Some("claude-session-456".to_string())
+        );
+        assert_eq!(
+            response.provider_session_id,
+            Some("claude-session-456".to_string())
+        );
+        assert_eq!(response.provider_harness, Some("claude".to_string()));
     }
 }
