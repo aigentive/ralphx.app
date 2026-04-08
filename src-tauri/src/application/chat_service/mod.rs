@@ -855,39 +855,6 @@ impl<R: Runtime> ClaudeChatService<R> {
         .map_err(ChatServiceError::SpawnFailed)
     }
 
-    /// Create a spawnable interactive CLI command (no `-p`, stdin kept open).
-    async fn build_interactive_command(
-        &self,
-        conversation: &ChatConversation,
-        user_message: &str,
-        working_directory: &Path,
-        entity_status: Option<&str>,
-        project_id: Option<&str>,
-        session_messages: &[crate::domain::entities::ChatMessage],
-        total_available: usize,
-        is_external_mcp: bool,
-        resolved_spawn_settings: &crate::application::agent_lane_resolution::ResolvedAgentSpawnSettings,
-    ) -> Result<crate::infrastructure::agents::claude::SpawnableCommand, ChatServiceError> {
-        chat_service_context::build_interactive_command(
-            &self.cli_path,
-            &self.plugin_dir,
-            conversation,
-            user_message,
-            working_directory,
-            entity_status,
-            project_id,
-            self.team_mode.load(Ordering::Relaxed),
-            Arc::clone(&self.chat_attachment_repo),
-            Arc::clone(&self.artifact_repo),
-            session_messages,
-            total_available,
-            is_external_mcp,
-            resolved_spawn_settings,
-        )
-        .await
-        .map_err(ChatServiceError::SpawnFailed)
-    }
-
     #[allow(clippy::too_many_arguments)]
     async fn spawn_process_for_harness(
         &self,
@@ -905,10 +872,29 @@ impl<R: Runtime> ClaudeChatService<R> {
         stored_session_id: Option<&str>,
         resolved_spawn_settings: &crate::application::agent_lane_resolution::ResolvedAgentSpawnSettings,
     ) -> Result<(PathBuf, tokio::process::Child, Option<Arc<InteractiveProcessRegistry>>), ChatServiceError> {
-        let resolved_cli = chat_service_context::resolve_chat_harness_cli(
+        let launch_plan = chat_service_context::build_launch_plan_for_harness(
             resolved_spawn_settings.effective_harness,
             &self.cli_path,
+            &self.plugin_dir,
+            conversation,
+            message,
+            context_type,
+            context_id,
+            working_directory,
+            entity_status,
+            project_id,
+            runtime_team_mode,
+            Arc::clone(&self.chat_attachment_repo),
+            Arc::clone(&self.artifact_repo),
+            Arc::clone(&self.ideation_session_repo),
+            Arc::clone(&self.task_repo),
+            session_messages,
+            session_total,
+            is_external_mcp,
+            stored_session_id,
+            resolved_spawn_settings,
         )
+        .await
         .map_err(|error| {
             if resolved_spawn_settings.effective_harness == AgentHarnessKind::Claude {
                 tracing::warn!(cli_path = %self.cli_path.display(), %error, "chat_service.send_message missing Claude CLI");
@@ -916,21 +902,8 @@ impl<R: Runtime> ClaudeChatService<R> {
             ChatServiceError::SpawnFailed(error)
         })?;
 
-        match resolved_cli {
-            chat_service_context::ResolvedChatHarnessCli::Claude { cli_path } => {
-                let spawnable = self
-                    .build_interactive_command(
-                        conversation,
-                        message,
-                        working_directory,
-                        entity_status,
-                        project_id,
-                        session_messages,
-                        session_total,
-                        is_external_mcp,
-                        resolved_spawn_settings,
-                    )
-                    .await?;
+        match launch_plan {
+            chat_service_context::ResolvedChatHarnessLaunch::Interactive { cli_path, spawnable } => {
                 tracing::info!(cmd = ?spawnable, "Spawning Claude CLI agent (interactive)");
                 let (child, child_stdin) = spawnable.spawn_interactive().await.map_err(|error| {
                     tracing::error!(error = %error, "chat_service.send_message interactive spawn failed");
@@ -951,51 +924,7 @@ impl<R: Runtime> ClaudeChatService<R> {
 
                 Ok((cli_path, child, Some(self.ipr())))
             }
-            chat_service_context::ResolvedChatHarnessCli::Codex {
-                cli_path,
-                capabilities,
-            } => {
-                let spawnable = match stored_session_id {
-                    Some(session_id) => chat_service_context::build_codex_resume_command(
-                        &cli_path,
-                        &self.plugin_dir,
-                        &capabilities,
-                        context_type,
-                        context_id,
-                        message,
-                        working_directory,
-                        session_id,
-                        project_id,
-                        runtime_team_mode,
-                        Arc::clone(&self.artifact_repo),
-                        Arc::clone(&self.ideation_session_repo),
-                        Arc::clone(&self.task_repo),
-                        session_messages,
-                        session_total,
-                        is_external_mcp,
-                        resolved_spawn_settings,
-                    )
-                    .await,
-                    None => chat_service_context::build_codex_command(
-                        &cli_path,
-                        &self.plugin_dir,
-                        &capabilities,
-                        conversation,
-                        message,
-                        working_directory,
-                        entity_status,
-                        project_id,
-                        runtime_team_mode,
-                        Arc::clone(&self.chat_attachment_repo),
-                        Arc::clone(&self.artifact_repo),
-                        session_messages,
-                        session_total,
-                        is_external_mcp,
-                        resolved_spawn_settings,
-                    )
-                    .await,
-                }
-                .map_err(ChatServiceError::SpawnFailed)?;
+            chat_service_context::ResolvedChatHarnessLaunch::Background { cli_path, spawnable } => {
                 tracing::info!(cmd = ?spawnable, "Spawning Codex CLI agent");
                 let child = spawnable.spawn().await.map_err(|error| {
                     tracing::error!(error = %error, "chat_service.send_message codex spawn failed");

@@ -52,6 +52,17 @@ pub struct ProviderSpawnableCommand {
     pub spawnable: SpawnableCommand,
 }
 
+pub enum ResolvedChatHarnessLaunch {
+    Interactive {
+        cli_path: PathBuf,
+        spawnable: SpawnableCommand,
+    },
+    Background {
+        cli_path: PathBuf,
+        spawnable: SpawnableCommand,
+    },
+}
+
 #[derive(Debug)]
 pub enum ResolvedChatHarnessCli {
     Claude {
@@ -1286,6 +1297,103 @@ async fn resolve_noninteractive_spawn_settings(
         ideation_effort_settings_repo,
     )
     .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn build_launch_plan_for_harness(
+    harness: AgentHarnessKind,
+    cli_path: &Path,
+    plugin_dir: &Path,
+    conversation: &ChatConversation,
+    user_message: &str,
+    context_type: ChatContextType,
+    context_id: &str,
+    working_directory: &Path,
+    entity_status: Option<&str>,
+    project_id: Option<&str>,
+    runtime_team_mode: bool,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    artifact_repo: Arc<dyn ArtifactRepository>,
+    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    task_repo: Arc<dyn TaskRepository>,
+    session_messages: &[ChatMessage],
+    total_available: usize,
+    is_external_mcp: bool,
+    stored_session_id: Option<&str>,
+    resolved_spawn_settings: &ResolvedAgentSpawnSettings,
+) -> Result<ResolvedChatHarnessLaunch, String> {
+    let resolved_cli = resolve_chat_harness_cli(harness, cli_path)?;
+
+    match resolved_cli {
+        ResolvedChatHarnessCli::Claude { cli_path } => {
+            let spawnable = build_interactive_command(
+                &cli_path,
+                plugin_dir,
+                conversation,
+                user_message,
+                working_directory,
+                entity_status,
+                project_id,
+                runtime_team_mode,
+                chat_attachment_repo,
+                artifact_repo,
+                session_messages,
+                total_available,
+                is_external_mcp,
+                resolved_spawn_settings,
+            )
+            .await?;
+
+            Ok(ResolvedChatHarnessLaunch::Interactive { cli_path, spawnable })
+        }
+        ResolvedChatHarnessCli::Codex {
+            cli_path,
+            capabilities,
+        } => {
+            let spawnable = match stored_session_id {
+                Some(session_id) => build_codex_resume_command(
+                    &cli_path,
+                    plugin_dir,
+                    &capabilities,
+                    context_type,
+                    context_id,
+                    user_message,
+                    working_directory,
+                    session_id,
+                    project_id,
+                    runtime_team_mode,
+                    artifact_repo,
+                    ideation_session_repo,
+                    task_repo,
+                    session_messages,
+                    total_available,
+                    is_external_mcp,
+                    resolved_spawn_settings,
+                )
+                .await?,
+                None => build_codex_command(
+                    &cli_path,
+                    plugin_dir,
+                    &capabilities,
+                    conversation,
+                    user_message,
+                    working_directory,
+                    entity_status,
+                    project_id,
+                    runtime_team_mode,
+                    chat_attachment_repo,
+                    artifact_repo,
+                    session_messages,
+                    total_available,
+                    is_external_mcp,
+                    resolved_spawn_settings,
+                )
+                .await?,
+            };
+
+            Ok(ResolvedChatHarnessLaunch::Background { cli_path, spawnable })
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
