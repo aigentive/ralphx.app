@@ -111,6 +111,17 @@ impl AgentClientBundle {
             .cloned()
             .unwrap_or_else(|| Arc::clone(&self.default_client))
     }
+
+    pub fn explicit_harness_client(
+        &self,
+        harness: AgentHarnessKind,
+    ) -> Option<Arc<dyn AgenticClient>> {
+        self.harness_clients.get(&harness).cloned()
+    }
+
+    pub fn has_explicit_harness_client(&self, harness: AgentHarnessKind) -> bool {
+        self.harness_clients.contains_key(&harness)
+    }
 }
 
 #[derive(Clone)]
@@ -226,6 +237,10 @@ impl AgentClientFactoryBundle {
             harness_factories,
         )
     }
+
+    pub fn has_explicit_harness_factory(&self, harness: AgentHarnessKind) -> bool {
+        self.harness_factories.contains_key(&harness)
+    }
 }
 
 #[cfg(test)]
@@ -237,9 +252,7 @@ mod tests {
         let bundle = AgentClientBundle::standard_mock_runtime_clients();
 
         assert_eq!(bundle.default_harness, DEFAULT_AGENT_HARNESS);
-        assert!(bundle
-            .harness_clients
-            .contains_key(&AgentHarnessKind::Codex));
+        assert!(bundle.has_explicit_harness_client(AgentHarnessKind::Codex));
     }
 
     #[test]
@@ -247,8 +260,6 @@ mod tests {
         let bundle = AgentClientFactoryBundle::standard_production_runtime_factories();
 
         assert_eq!(bundle.default_harness, DEFAULT_AGENT_HARNESS);
-        assert!(bundle
-            .harness_factories
-            .contains_key(&AgentHarnessKind::Codex));
+        assert!(bundle.has_explicit_harness_factory(AgentHarnessKind::Codex));
     }
 }

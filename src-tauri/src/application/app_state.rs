@@ -10,8 +10,8 @@ use tokio::sync::Mutex;
 use super::services::PrPollerRegistry;
 use crate::application::chat_service::ClaudeChatService;
 use crate::application::runtime_factory::{
-    ChatRuntimeFactoryDeps, RuntimeFactoryDeps, build_chat_service_from_deps,
-    build_task_scheduler_from_deps, build_transition_service_from_deps,
+    build_chat_service_from_deps, build_task_scheduler_from_deps,
+    build_transition_service_from_deps, ChatRuntimeFactoryDeps, RuntimeFactoryDeps,
 };
 use crate::application::AgentClientBundle;
 use crate::application::PermissionState;
@@ -301,13 +301,21 @@ impl AppState {
         )
         .await;
 
-        if resolved.effective_harness != self.agent_clients.default_harness
-            && self
+        if resolved.effective_harness != self.agent_clients.default_harness {
+            let Some(harness_client) = self
                 .agent_clients
-                .harness_clients
-                .contains_key(&resolved.effective_harness)
-        {
-            let harness_client = self.resolve_harness_agent_client(resolved.effective_harness);
+                .explicit_harness_client(resolved.effective_harness)
+            else {
+                return ResolvedBackgroundAgentRuntime {
+                    client: Arc::clone(&self.agent_clients.default_client),
+                    harness: None,
+                    model: None,
+                    logical_effort: None,
+                    approval_policy: None,
+                    sandbox_mode: None,
+                };
+            };
+
             if harness_client.is_available().await.unwrap_or(false) {
                 return ResolvedBackgroundAgentRuntime {
                     client: harness_client,
