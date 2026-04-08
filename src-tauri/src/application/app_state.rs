@@ -1,12 +1,13 @@
 // Application state container for dependency injection
 // Holds repository trait objects that can be swapped for testing
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, Runtime};
 use tokio::sync::Mutex;
 
+use super::services::PrPollerRegistry;
 use crate::application::PermissionState;
 use crate::application::QuestionState;
 use crate::application::ResumeValidator;
@@ -19,14 +20,12 @@ use crate::domain::entities::ChatContextType;
 use crate::domain::qa::QASettings;
 use crate::domain::repositories::{
     ActivePlanRepository, ActivityEventRepository, AgentLaneSettingsRepository,
-    AgentProfileRepository, AgentRunRepository,
-    ApiKeyRepository, AppStateRepository, ArtifactBucketRepository, ArtifactFlowRepository,
-    ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
-    ChatMessageRepository, ExecutionPlanRepository, ExecutionSettingsRepository,
-    ExternalEventsRepository, GlobalExecutionSettingsRepository, IdeationEffortSettingsRepository,
-    IdeationModelSettingsRepository,
-    IdeationSessionRepository, IdeationSettingsRepository, MemoryArchiveRepository,
-    MemoryEntryRepository,
+    AgentProfileRepository, AgentRunRepository, ApiKeyRepository, AppStateRepository,
+    ArtifactBucketRepository, ArtifactFlowRepository, ArtifactRepository, ChatAttachmentRepository,
+    ChatConversationRepository, ChatMessageRepository, ExecutionPlanRepository,
+    ExecutionSettingsRepository, ExternalEventsRepository, GlobalExecutionSettingsRepository,
+    IdeationEffortSettingsRepository, IdeationModelSettingsRepository, IdeationSessionRepository,
+    IdeationSettingsRepository, MemoryArchiveRepository, MemoryEntryRepository,
     MemoryEventRepository, MethodologyRepository, PlanBranchRepository,
     PlanSelectionStatsRepository, ProcessRepository, ProjectRepository,
     ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository,
@@ -37,52 +36,48 @@ use crate::domain::repositories::{
 use crate::domain::services::{
     GithubServiceTrait, MemoryRunningAgentRegistry, MessageQueue, RunningAgentRegistry,
 };
-use super::services::PrPollerRegistry;
 use crate::error::AppResult;
+use crate::infrastructure::agents::CodexCliClient;
 use crate::infrastructure::memory::{
     InMemoryMemoryEntryRepository, InMemoryMemoryEventRepository, MemoryActivePlanRepository,
-    MemoryActivityEventRepository, MemoryAgentLaneSettingsRepository,
-    MemoryAgentProfileRepository, MemoryAgentRunRepository,
-    MemoryApiKeyRepository, MemoryAppStateRepository, MemoryArtifactBucketRepository,
-    MemoryArtifactFlowRepository, MemoryArtifactRepository, MemoryChatAttachmentRepository,
-    MemoryChatConversationRepository, MemoryChatMessageRepository, MemoryExecutionPlanRepository,
-    MemoryExecutionSettingsRepository, MemoryExternalEventsRepository,
-    MemoryGlobalExecutionSettingsRepository, MemoryIdeationEffortSettingsRepository,
-    MemoryIdeationModelSettingsRepository,
-    MemoryIdeationSessionRepository, MemoryIdeationSettingsRepository,
-    MemoryMethodologyRepository, MemoryPermissionRepository,
-    MemoryPlanBranchRepository, MemoryPlanSelectionStatsRepository, MemoryProcessRepository,
-    MemoryProjectRepository, MemoryProposalDependencyRepository, MemoryQuestionRepository,
-    MemoryReviewIssueRepository, MemoryReviewRepository, MemoryReviewSettingsRepository,
-    MemorySessionLinkRepository, MemoryTaskDependencyRepository, MemoryTaskProposalRepository,
-    MemoryTaskQARepository, MemoryTaskRepository, MemoryTaskStepRepository,
-    MemoryTeamMessageRepository, MemoryTeamSessionRepository,
+    MemoryActivityEventRepository, MemoryAgentLaneSettingsRepository, MemoryAgentProfileRepository,
+    MemoryAgentRunRepository, MemoryApiKeyRepository, MemoryAppStateRepository,
+    MemoryArtifactBucketRepository, MemoryArtifactFlowRepository, MemoryArtifactRepository,
+    MemoryChatAttachmentRepository, MemoryChatConversationRepository, MemoryChatMessageRepository,
+    MemoryExecutionPlanRepository, MemoryExecutionSettingsRepository,
+    MemoryExternalEventsRepository, MemoryGlobalExecutionSettingsRepository,
+    MemoryIdeationEffortSettingsRepository, MemoryIdeationModelSettingsRepository,
+    MemoryIdeationSessionRepository, MemoryIdeationSettingsRepository, MemoryMethodologyRepository,
+    MemoryPermissionRepository, MemoryPlanBranchRepository, MemoryPlanSelectionStatsRepository,
+    MemoryProcessRepository, MemoryProjectRepository, MemoryProposalDependencyRepository,
+    MemoryQuestionRepository, MemoryReviewIssueRepository, MemoryReviewRepository,
+    MemoryReviewSettingsRepository, MemorySessionLinkRepository, MemoryTaskDependencyRepository,
+    MemoryTaskProposalRepository, MemoryTaskQARepository, MemoryTaskRepository,
+    MemoryTaskStepRepository, MemoryTeamMessageRepository, MemoryTeamSessionRepository,
     MemoryWebhookRegistrationRepository, MemoryWorkflowRepository,
 };
 use crate::infrastructure::sqlite::ReviewIssueRepository;
 use crate::infrastructure::sqlite::{
-    get_app_data_db_path, get_default_db_path, open_connection, run_migrations,
     SqliteActivePlanRepository, SqliteActivityEventRepository, SqliteAgentLaneSettingsRepository,
     SqliteAgentProfileRepository, SqliteAgentRunRepository, SqliteApiKeyRepository,
-    SqliteAppStateRepository,
-    SqliteArtifactBucketRepository, SqliteArtifactFlowRepository, SqliteArtifactRepository,
-    SqliteChatAttachmentRepository, SqliteChatConversationRepository, SqliteChatMessageRepository,
-    SqliteExecutionPlanRepository, SqliteExecutionSettingsRepository, SqliteExternalEventsRepository,
-    SqliteGlobalExecutionSettingsRepository, SqliteIdeationEffortSettingsRepository,
-    SqliteIdeationModelSettingsRepository,
+    SqliteAppStateRepository, SqliteArtifactBucketRepository, SqliteArtifactFlowRepository,
+    SqliteArtifactRepository, SqliteChatAttachmentRepository, SqliteChatConversationRepository,
+    SqliteChatMessageRepository, SqliteExecutionPlanRepository, SqliteExecutionSettingsRepository,
+    SqliteExternalEventsRepository, SqliteGlobalExecutionSettingsRepository,
+    SqliteIdeationEffortSettingsRepository, SqliteIdeationModelSettingsRepository,
     SqliteIdeationSessionRepository, SqliteIdeationSettingsRepository,
-    SqliteMemoryArchiveRepository, SqliteMemoryEntryRepository,
-    SqliteMemoryEventRepository, SqliteMethodologyRepository, SqlitePermissionRepository,
-    SqlitePlanBranchRepository, SqlitePlanSelectionStatsRepository, SqliteProcessRepository,
-    SqliteProjectRepository, SqliteProposalDependencyRepository, SqliteQuestionRepository,
-    SqliteReviewIssueRepository, SqliteReviewRepository, SqliteReviewSettingsRepository,
-    SqliteRunningAgentRegistry, SqliteSessionLinkRepository, SqliteTaskDependencyRepository,
-    SqliteTaskProposalRepository, SqliteTaskQARepository, SqliteTaskRepository,
-    SqliteTaskStepRepository, SqliteTeamMessageRepository, SqliteTeamSessionRepository,
-    SqliteWebhookRegistrationRepository, SqliteWorkflowRepository,
+    SqliteMemoryArchiveRepository, SqliteMemoryEntryRepository, SqliteMemoryEventRepository,
+    SqliteMethodologyRepository, SqlitePermissionRepository, SqlitePlanBranchRepository,
+    SqlitePlanSelectionStatsRepository, SqliteProcessRepository, SqliteProjectRepository,
+    SqliteProposalDependencyRepository, SqliteQuestionRepository, SqliteReviewIssueRepository,
+    SqliteReviewRepository, SqliteReviewSettingsRepository, SqliteRunningAgentRegistry,
+    SqliteSessionLinkRepository, SqliteTaskDependencyRepository, SqliteTaskProposalRepository,
+    SqliteTaskQARepository, SqliteTaskRepository, SqliteTaskStepRepository,
+    SqliteTeamMessageRepository, SqliteTeamSessionRepository, SqliteWebhookRegistrationRepository,
+    SqliteWorkflowRepository, get_app_data_db_path, get_default_db_path, open_connection,
+    run_migrations,
 };
 use crate::infrastructure::{ClaudeCodeClient, GhCliGithubService, MockAgenticClient};
-use crate::infrastructure::agents::CodexCliClient;
 
 pub(crate) struct ResolvedBackgroundAgentRuntime {
     pub client: Arc<dyn AgenticClient>,
@@ -116,8 +111,8 @@ pub struct AppState {
     pub review_issue_repo: Arc<dyn ReviewIssueRepository>,
     /// Primary/default agent client (Claude in production, Mock for tests)
     pub agent_client: Arc<dyn AgenticClient>,
-    /// Codex agent client used when execution or sidecar lanes resolve to Codex
-    pub codex_agent_client: Arc<dyn AgenticClient>,
+    /// Harness-specific agent clients used when execution or sidecar lanes resolve away from the default.
+    pub harness_agent_clients: HashMap<AgentHarnessKind, Arc<dyn AgenticClient>>,
     /// Global QA settings
     pub qa_settings: Arc<tokio::sync::RwLock<QASettings>>,
     /// Execution settings repository (per-project settings)
@@ -218,7 +213,8 @@ pub struct AppState {
     /// Optional webhook publisher for pushing events to registered external endpoints.
     /// Constructed ONCE in lib.rs and Arc-cloned into both AppState instances.
     /// None in test constructors.
-    pub webhook_publisher: Option<Arc<dyn crate::domain::state_machine::services::WebhookPublisher>>,
+    pub webhook_publisher:
+        Option<Arc<dyn crate::domain::state_machine::services::WebhookPublisher>>,
     /// Shared per-session mutex map for serializing concurrent plan:delivered checks.
     /// ONE Arc, shared between both AppState instances (Tauri IPC + HTTP server) via lib.rs.
     pub session_merge_locks: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<()>>>>,
@@ -295,7 +291,7 @@ impl AppState {
         execution_state: Arc<ExecutionState>,
         app_handle: Option<AppHandle<R>>,
     ) -> TaskTransitionService<R> {
-        TaskTransitionService::new(
+        let mut service = TaskTransitionService::new(
             Arc::clone(&self.task_repo),
             Arc::clone(&self.task_dependency_repo),
             Arc::clone(&self.project_repo),
@@ -312,11 +308,16 @@ impl AppState {
             Arc::clone(&self.memory_event_repo),
         )
         .with_agentic_client(Arc::clone(&self.agent_client))
-        .with_codex_agentic_client(Arc::clone(&self.codex_agent_client))
         .with_execution_settings_repo(Arc::clone(&self.execution_settings_repo))
         .with_agent_lane_settings_repo(Arc::clone(&self.agent_lane_settings_repo))
         .with_plan_branch_repo(Arc::clone(&self.plan_branch_repo))
-        .with_interactive_process_registry(Arc::clone(&self.interactive_process_registry))
+        .with_interactive_process_registry(Arc::clone(&self.interactive_process_registry));
+
+        for (harness, client) in &self.harness_agent_clients {
+            service = service.with_harness_agentic_client(*harness, Arc::clone(client));
+        }
+
+        service
     }
 
     pub fn build_task_scheduler_for_runtime<R: Runtime>(
@@ -363,7 +364,7 @@ impl AppState {
         .await;
 
         if resolved.effective_harness == AgentHarnessKind::Codex {
-            let codex_client = Arc::clone(&self.codex_agent_client);
+            let codex_client = self.resolve_harness_agent_client(AgentHarnessKind::Codex);
             if codex_client.is_available().await.unwrap_or(false) {
                 return ResolvedBackgroundAgentRuntime {
                     client: codex_client,
@@ -472,7 +473,10 @@ impl AppState {
                 &shared_conn,
             ))),
             agent_client: Arc::new(ClaudeCodeClient::new()),
-            codex_agent_client: Arc::new(CodexCliClient::new()),
+            harness_agent_clients: HashMap::from([(
+                AgentHarnessKind::Codex,
+                Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>,
+            )]),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(SqliteExecutionSettingsRepository::from_shared(
                 Arc::clone(&shared_conn),
@@ -492,9 +496,9 @@ impl AppState {
             ideation_model_settings_repo: Arc::new(
                 SqliteIdeationModelSettingsRepository::from_shared(Arc::clone(&shared_conn)),
             ),
-            agent_lane_settings_repo: Arc::new(
-                SqliteAgentLaneSettingsRepository::from_shared(Arc::clone(&shared_conn)),
-            ),
+            agent_lane_settings_repo: Arc::new(SqliteAgentLaneSettingsRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
             session_link_repo: Arc::new(SqliteSessionLinkRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
@@ -580,18 +584,26 @@ impl AppState {
             github_service: Some(Arc::clone(&gh_svc)),
             pr_poller_registry: Arc::new(PrPollerRegistry::new(
                 Some(gh_svc),
-                Arc::new(crate::infrastructure::sqlite::SqlitePlanBranchRepository::from_shared(
-                    Arc::clone(&shared_conn),
-                )),
+                Arc::new(
+                    crate::infrastructure::sqlite::SqlitePlanBranchRepository::from_shared(
+                        Arc::clone(&shared_conn),
+                    ),
+                ),
             )),
-            running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(Arc::clone(&shared_conn))),
-            webhook_registration_repo: Arc::new(SqliteWebhookRegistrationRepository::from_shared(Arc::clone(&shared_conn))),
+            running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(Arc::clone(
+                &shared_conn,
+            ))),
+            webhook_registration_repo: Arc::new(SqliteWebhookRegistrationRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
             webhook_publisher: None,
             session_merge_locks: Arc::new(dashmap::DashMap::new()),
             auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
-            interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),
+            interactive_process_registry: Arc::new(
+                crate::application::InteractiveProcessRegistry::new(),
+            ),
             app_handle: Some(app_handle),
         })
     }
@@ -648,7 +660,10 @@ impl AppState {
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
             agent_client: Arc::new(MockAgenticClient::new()),
-            codex_agent_client: Arc::new(MockAgenticClient::new()),
+            harness_agent_clients: HashMap::from([(
+                AgentHarnessKind::Codex,
+                Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
+            )]),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
@@ -750,7 +765,10 @@ impl AppState {
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
             agent_client: Arc::new(MockAgenticClient::new()),
-            codex_agent_client: Arc::new(MockAgenticClient::new()),
+            harness_agent_clients: HashMap::from([(
+                AgentHarnessKind::Codex,
+                Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
+            )]),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
@@ -852,7 +870,9 @@ impl AppState {
             task_step_repo: Arc::new(SqliteTaskStepRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
-            project_repo: Arc::new(SqliteProjectRepository::from_shared(Arc::clone(&shared_conn))),
+            project_repo: Arc::new(SqliteProjectRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
             api_key_repo: Arc::new(MemoryApiKeyRepository::new()),
             agent_profile_repo: Arc::new(MemoryAgentProfileRepository::new()),
             task_qa_repo: Arc::new(MemoryTaskQARepository::new()),
@@ -860,7 +880,10 @@ impl AppState {
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
             agent_client: Arc::new(MockAgenticClient::new()),
-            codex_agent_client: Arc::new(MockAgenticClient::new()),
+            harness_agent_clients: HashMap::from([(
+                AgentHarnessKind::Codex,
+                Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
+            )]),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
@@ -966,7 +989,10 @@ impl AppState {
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
             agent_client: Arc::new(MockAgenticClient::new()),
-            codex_agent_client: Arc::new(MockAgenticClient::new()),
+            harness_agent_clients: HashMap::from([(
+                AgentHarnessKind::Codex,
+                Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
+            )]),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
@@ -1024,7 +1050,9 @@ impl AppState {
             auto_accept_sessions: Arc::new(Mutex::new(HashSet::new())),
 
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
-            interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),
+            interactive_process_registry: Arc::new(
+                crate::application::InteractiveProcessRegistry::new(),
+            ),
             app_handle: None,
             github_service: None,
             pr_poller_registry: Arc::new(PrPollerRegistry::new(
@@ -1040,10 +1068,30 @@ impl AppState {
         self
     }
 
-    /// Swap the Codex agent client to a different implementation.
-    pub fn with_codex_agent_client(mut self, client: Arc<dyn AgenticClient>) -> Self {
-        self.codex_agent_client = client;
+    /// Resolve the client for a specific harness, falling back to the default client.
+    pub fn resolve_harness_agent_client(
+        &self,
+        harness: AgentHarnessKind,
+    ) -> Arc<dyn AgenticClient> {
+        self.harness_agent_clients
+            .get(&harness)
+            .cloned()
+            .unwrap_or_else(|| Arc::clone(&self.agent_client))
+    }
+
+    /// Swap the agent client used for a specific harness.
+    pub fn with_harness_agent_client(
+        mut self,
+        harness: AgentHarnessKind,
+        client: Arc<dyn AgenticClient>,
+    ) -> Self {
+        self.harness_agent_clients.insert(harness, client);
         self
+    }
+
+    /// Swap the Codex agent client to a different implementation.
+    pub fn with_codex_agent_client(self, client: Arc<dyn AgenticClient>) -> Self {
+        self.with_harness_agent_client(AgentHarnessKind::Codex, client)
     }
 
     /// Swap the QA settings to custom settings

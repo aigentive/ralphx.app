@@ -1,10 +1,11 @@
 use super::*;
 use crate::commands::ExecutionState;
-use crate::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings, ClientType, LogicalEffort};
+use crate::domain::agents::{
+    AgentHarnessKind, AgentLane, AgentLaneSettings, AgenticClient, ClientType, LogicalEffort,
+};
 use crate::domain::entities::{
     ChatMessage, IdeationSession, InternalStatus, Priority, Project, ProjectId, ProposalCategory,
-    Task,
-    TaskProposal,
+    Task, TaskProposal,
 };
 use crate::infrastructure::{MockAgenticClient, MockCallType};
 
@@ -126,6 +127,18 @@ async fn test_with_agent_client_swaps_client() {
 }
 
 #[tokio::test]
+async fn test_with_harness_agent_client_registers_specific_client() {
+    let codex_mock: Arc<dyn AgenticClient> = Arc::new(MockAgenticClient::new());
+    let state =
+        AppState::new_test().with_harness_agent_client(AgentHarnessKind::Codex, codex_mock.clone());
+
+    let resolved = state.resolve_harness_agent_client(AgentHarnessKind::Codex);
+
+    assert_eq!(resolved.capabilities().client_type, ClientType::Mock);
+    assert!(Arc::ptr_eq(&resolved, &codex_mock));
+}
+
+#[tokio::test]
 async fn test_build_transition_service_with_execution_state_uses_app_agent_client() {
     let mock = Arc::new(MockAgenticClient::new());
     let state = AppState::new_test().with_agent_client(mock.clone());
@@ -195,7 +208,7 @@ async fn test_build_transition_service_with_execution_state_uses_app_codex_clien
     let codex_mock = Arc::new(MockAgenticClient::new());
     let state = AppState::new_test()
         .with_agent_client(default_mock.clone())
-        .with_codex_agent_client(codex_mock.clone());
+        .with_harness_agent_client(AgentHarnessKind::Codex, codex_mock.clone());
     let service =
         state.build_transition_service_with_execution_state(Arc::new(ExecutionState::new()));
 
