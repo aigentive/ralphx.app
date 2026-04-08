@@ -14,14 +14,14 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::application::question_state::QuestionState;
 use crate::application::runtime_factory::{
-    RuntimeFactoryDeps, build_task_scheduler_with_fallback,
-    build_transition_service_with_fallback,
+    build_task_scheduler_with_fallback, build_transition_service_with_fallback, RuntimeFactoryDeps,
 };
 use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::application::task_transition_service::TaskTransitionService;
 use crate::application::AppState;
 use crate::application::InteractiveProcessRegistry;
 use crate::commands::{execution_commands::AGENT_ACTIVE_STATUSES, ExecutionState};
+use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::{
     app_state::ExecutionHaltMode, AgentRunId, ChatContextType, ChatConversation,
     ChatConversationId, ChatMessageId, IdeationSessionId, InternalStatus, MergeFailureSource,
@@ -545,7 +545,8 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         all_steps_done,
                     );
 
-                    if completion_action == ExecutionCompletionAction::PendingReview && all_steps_done
+                    if completion_action == ExecutionCompletionAction::PendingReview
+                        && all_steps_done
                     {
                         tracing::info!(
                                 task_id = task_id.as_str(),
@@ -635,8 +636,8 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                     exec_state.is_shutting_down.load(Ordering::SeqCst),
                 ) {
                     IncompleteReviewAction::SkipDuringShutdown => {
-                    // L1 shutdown guard: skip escalation during clean app shutdown.
-                    // The task stays in Reviewing so StartupJobRunner Phase 2 can respawn it.
+                        // L1 shutdown guard: skip escalation during clean app shutdown.
+                        // The task stays in Reviewing so StartupJobRunner Phase 2 can respawn it.
                         tracing::info!(
                             task_id = task_id.as_str(),
                             "Shutdown detected — skipping review escalation; task stays in Reviewing for auto-recovery"
@@ -657,129 +658,130 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         return;
                     }
                     IncompleteReviewAction::Escalate => {
-                    tracing::info!(
-                        task_id = task_id.as_str(),
-                        "Review agent completed without calling complete_review; escalating"
-                    );
+                        tracing::info!(
+                            task_id = task_id.as_str(),
+                            "Review agent completed without calling complete_review; escalating"
+                        );
 
-                    // Store info in metadata for UI visibility
-                    let mut metadata_obj = task
-                        .metadata
-                        .as_deref()
-                        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-                        .unwrap_or_else(|| serde_json::json!({}));
-                    if let Some(obj) = metadata_obj.as_object_mut() {
-                        obj.insert(
-                            "last_agent_error".to_string(),
-                            serde_json::json!(
-                                "Review agent completed without calling complete_review"
-                            ),
-                        );
-                        obj.insert(
-                            "last_agent_error_context".to_string(),
-                            serde_json::json!("review"),
-                        );
-                        obj.insert(
-                            "last_agent_error_at".to_string(),
-                            serde_json::json!(chrono::Utc::now().to_rfc3339()),
-                        );
-                    }
-                    let mut updated_task = task.clone();
-                    updated_task.metadata =
-                        Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
-                    updated_task.touch();
-                    let _ = task_repo.update(&updated_task).await;
+                        // Store info in metadata for UI visibility
+                        let mut metadata_obj = task
+                            .metadata
+                            .as_deref()
+                            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                            .unwrap_or_else(|| serde_json::json!({}));
+                        if let Some(obj) = metadata_obj.as_object_mut() {
+                            obj.insert(
+                                "last_agent_error".to_string(),
+                                serde_json::json!(
+                                    "Review agent completed without calling complete_review"
+                                ),
+                            );
+                            obj.insert(
+                                "last_agent_error_context".to_string(),
+                                serde_json::json!("review"),
+                            );
+                            obj.insert(
+                                "last_agent_error_at".to_string(),
+                                serde_json::json!(chrono::Utc::now().to_rfc3339()),
+                            );
+                        }
+                        let mut updated_task = task.clone();
+                        updated_task.metadata =
+                            Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
+                        updated_task.touch();
+                        let _ = task_repo.update(&updated_task).await;
 
-                    // Store a ReviewNote so the frontend can display why the task was escalated.
-                    if let Some(ref repo) = review_repo {
-                        let reason = "Review agent exited without calling complete_review";
-                        let note = ReviewNote::with_notes(
-                            task_id.clone(),
-                            ReviewerType::System,
-                            ReviewOutcome::Rejected,
-                            reason.to_string(),
+                        // Store a ReviewNote so the frontend can display why the task was escalated.
+                        if let Some(ref repo) = review_repo {
+                            let reason = "Review agent exited without calling complete_review";
+                            let note = ReviewNote::with_notes(
+                                task_id.clone(),
+                                ReviewerType::System,
+                                ReviewOutcome::Rejected,
+                                reason.to_string(),
+                            );
+                            if let Err(e) = repo.add_note(&note).await {
+                                tracing::warn!(
+                                    task_id = task_id.as_str(),
+                                    error = %e,
+                                    "Failed to store escalation ReviewNote after incomplete review"
+                                );
+                            }
+                        }
+
+                        // Transition to Escalated (no scheduler needed)
+                        let transition_service = build_transition_service(
+                            app_handle,
+                            Arc::clone(task_repo),
+                            Arc::clone(task_dependency_repo),
+                            Arc::clone(project_repo),
+                            Arc::clone(chat_message_repo),
+                            Arc::clone(chat_attachment_repo),
+                            Arc::clone(conversation_repo),
+                            Arc::clone(agent_run_repo),
+                            Arc::clone(ideation_session_repo),
+                            Arc::clone(activity_event_repo),
+                            Arc::clone(message_queue),
+                            Arc::clone(running_agent_registry),
+                            Arc::clone(exec_state),
+                            Arc::clone(memory_event_repo),
                         );
-                        if let Err(e) = repo.add_note(&note).await {
-                            tracing::warn!(
+                        let transition_service = if let Some(ref repo) = execution_settings_repo {
+                            transition_service.with_execution_settings_repo(Arc::clone(repo))
+                        } else {
+                            transition_service
+                        };
+                        let transition_service = if let Some(ref repo) = plan_branch_repo {
+                            transition_service.with_plan_branch_repo(Arc::clone(repo))
+                        } else {
+                            transition_service
+                        };
+                        let transition_service = if let Some(ref ipr) = interactive_process_registry
+                        {
+                            transition_service.with_interactive_process_registry(Arc::clone(ipr))
+                        } else {
+                            transition_service
+                        };
+
+                        if let Err(e) = transition_service
+                            .transition_task(&task_id, InternalStatus::Escalated)
+                            .await
+                        {
+                            tracing::error!(
                                 task_id = task_id.as_str(),
                                 error = %e,
-                                "Failed to store escalation ReviewNote after incomplete review"
+                                "Failed to transition reviewing task to Escalated after incomplete review"
                             );
                         }
                     }
-
-                    // Transition to Escalated (no scheduler needed)
-                    let transition_service = build_transition_service(
-                        app_handle,
-                        Arc::clone(task_repo),
-                        Arc::clone(task_dependency_repo),
-                        Arc::clone(project_repo),
-                        Arc::clone(chat_message_repo),
-                        Arc::clone(chat_attachment_repo),
-                        Arc::clone(conversation_repo),
-                        Arc::clone(agent_run_repo),
-                        Arc::clone(ideation_session_repo),
-                        Arc::clone(activity_event_repo),
-                        Arc::clone(message_queue),
-                        Arc::clone(running_agent_registry),
-                        Arc::clone(exec_state),
-                        Arc::clone(memory_event_repo),
-                    );
-                    let transition_service = if let Some(ref repo) = execution_settings_repo {
-                        transition_service.with_execution_settings_repo(Arc::clone(repo))
-                    } else {
-                        transition_service
-                    };
-                    let transition_service = if let Some(ref repo) = plan_branch_repo {
-                        transition_service.with_plan_branch_repo(Arc::clone(repo))
-                    } else {
-                        transition_service
-                    };
-                    let transition_service = if let Some(ref ipr) = interactive_process_registry {
-                        transition_service.with_interactive_process_registry(Arc::clone(ipr))
-                    } else {
-                        transition_service
-                    };
-
-                    if let Err(e) = transition_service
-                        .transition_task(&task_id, InternalStatus::Escalated)
-                        .await
-                    {
-                        tracing::error!(
-                            task_id = task_id.as_str(),
-                            error = %e,
-                            "Failed to transition reviewing task to Escalated after incomplete review"
-                        );
-                    }
-                    }
                     IncompleteReviewAction::IgnoreAlreadyTransitioned => {
-                    // Task has already transitioned past Reviewing (e.g. PendingMerge, Merging).
-                    // chat_service_send_background.rs re-incremented running_count before this
-                    // handler ran IFF execution_slot_held == false (interactive mode where
-                    // TurnComplete freed the slot mid-stream). Negate that re-increment to
-                    // prevent a running_count leak that would cause merge deferral checks to
-                    // incorrectly see count=1.
-                    //
-                    // Guard: when execution_slot_held == true (autonomous review), TurnComplete
-                    // never freed the slot, so no re-increment happened in send_background.rs.
-                    // Decrementing here would cause a spurious underflow (running_count below 0).
-                    if !execution_slot_held {
-                        let count_before = exec_state.running_count();
-                        let count_after = exec_state.decrement_running();
-                        tracing::info!(
-                            task_id = task_id.as_str(),
-                            status = ?task.internal_status,
-                            count_before,
-                            count_after,
-                            "Review context: task already past Reviewing — negating re-increment to prevent running_count leak"
-                        );
-                    } else {
-                        tracing::debug!(
-                            task_id = task_id.as_str(),
-                            status = ?task.internal_status,
-                            "Review context: task past Reviewing but execution_slot_held=true — skipping decrement (no re-increment occurred)"
-                        );
-                    }
+                        // Task has already transitioned past Reviewing (e.g. PendingMerge, Merging).
+                        // chat_service_send_background.rs re-incremented running_count before this
+                        // handler ran IFF execution_slot_held == false (interactive mode where
+                        // TurnComplete freed the slot mid-stream). Negate that re-increment to
+                        // prevent a running_count leak that would cause merge deferral checks to
+                        // incorrectly see count=1.
+                        //
+                        // Guard: when execution_slot_held == true (autonomous review), TurnComplete
+                        // never freed the slot, so no re-increment happened in send_background.rs.
+                        // Decrementing here would cause a spurious underflow (running_count below 0).
+                        if !execution_slot_held {
+                            let count_before = exec_state.running_count();
+                            let count_after = exec_state.decrement_running();
+                            tracing::info!(
+                                task_id = task_id.as_str(),
+                                status = ?task.internal_status,
+                                count_before,
+                                count_after,
+                                "Review context: task already past Reviewing — negating re-increment to prevent running_count leak"
+                            );
+                        } else {
+                            tracing::debug!(
+                                task_id = task_id.as_str(),
+                                status = ?task.internal_status,
+                                "Review context: task past Reviewing but execution_slot_held=true — skipping decrement (no re-increment occurred)"
+                            );
+                        }
                     }
                 }
             }
@@ -971,6 +973,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     pre_assistant_msg_id: &str,
     event_ctx: &EventContextPayload,
     stored_session_id: Option<&str>,
+    effective_harness: AgentHarnessKind,
     is_retry_attempt: bool,
     user_message_content: Option<&str>,
     conversation: Option<&ChatConversation>,
@@ -1007,15 +1010,19 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
         Arc<super::verification_child_process_registry::VerificationChildProcessRegistry>,
     >,
 ) -> bool {
-    let stored_provider_harness = Some(
-        super::chat_service_helpers::provider_harness_or_default(
-            conversation.and_then(|conv| conv.provider_session_ref().map(|session_ref| session_ref.harness)),
-            stored_session_id,
-            crate::domain::agents::DEFAULT_AGENT_HARNESS,
-        ),
-    )
-    .filter(|_| conversation.is_some() || stored_session_id.is_some());
-    let stored_provider_session_id = stored_session_id.map(|session_id| session_id.to_string());
+    let conversation_provider_session_ref =
+        conversation.and_then(|conv| conv.provider_session_ref());
+    let stored_provider_harness = conversation_provider_session_ref
+        .as_ref()
+        .map(|session_ref| session_ref.harness)
+        .or_else(|| stored_session_id.map(|_| effective_harness));
+    let stored_provider_session_id = stored_session_id
+        .map(|session_id| session_id.to_string())
+        .or_else(|| {
+            conversation_provider_session_ref
+                .as_ref()
+                .map(|session_ref| session_ref.provider_session_id.clone())
+        });
 
     // Handle cancellation — distinguish "cancelled after normal completion" from "user stop"
     if let Some(StreamError::Cancelled {
@@ -1241,14 +1248,14 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
 
     match classified_error {
         AppError::StaleSession { session_id, .. } => {
-                tracing::warn!(
-                    event = "stale_session_detected",
-                    session_id = %session_id,
-                    conversation_id = conversation_id.as_str(),
-                    context_type = %context_type,
-                    context_id = %context_id,
-                    "Detected stale provider session"
-                );
+            tracing::warn!(
+                event = "stale_session_detected",
+                session_id = %session_id,
+                conversation_id = conversation_id.as_str(),
+                context_type = %context_type,
+                context_id = %context_id,
+                "Detected stale provider session"
+            );
 
             // Feature flag check
             let recovery_enabled = std::env::var("ENABLE_SESSION_RECOVERY")
@@ -1268,14 +1275,10 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 );
                 // Fall through to clear session
             } else if let (Some(msg), Some(conv)) = (user_message_content, conversation) {
-                let recovery_provider_harness = conv
+                let recovery_harness = conv
                     .provider_session_ref()
-                    .map(|session_ref| session_ref.harness);
-                let recovery_harness = super::chat_service_helpers::provider_harness_or_default(
-                    recovery_provider_harness,
-                    conv.claude_session_id.as_deref(),
-                    crate::domain::agents::DEFAULT_AGENT_HARNESS,
-                );
+                    .map(|session_ref| session_ref.harness)
+                    .unwrap_or(effective_harness);
                 // Attempt recovery
                 match super::chat_service_recovery::attempt_session_recovery(
                     &conversation_id,
@@ -1340,32 +1343,33 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             Arc::clone(&app_state.ideation_model_settings_repo)
                         });
 
-                        let retry_spawnable = chat_service_context::build_resume_command_for_harness(
-                            recovery_harness,
-                            cli_path,
-                            plugin_dir,
-                            context_type,
-                            context_id,
-                            msg,
-                            working_directory,
-                            &new_session_id,
-                            resolved_project_id.as_deref(),
-                            team_mode,
-                            Arc::clone(chat_attachment_repo),
-                            Arc::clone(artifact_repo),
-                            agent_lane_settings_repo.clone(),
-                            ideation_effort_settings_repo.clone(),
-                            ideation_model_settings_repo.clone(),
-                            Arc::clone(ideation_session_repo),
-                            Arc::clone(task_repo),
-                            &[],
-                            0,
-                            None,
-                            None,
-                            false,
-                        )
-                        .await
-                        .map(|provider_spawnable| provider_spawnable.spawnable);
+                        let retry_spawnable =
+                            chat_service_context::build_resume_command_for_harness(
+                                recovery_harness,
+                                cli_path,
+                                plugin_dir,
+                                context_type,
+                                context_id,
+                                msg,
+                                working_directory,
+                                &new_session_id,
+                                resolved_project_id.as_deref(),
+                                team_mode,
+                                Arc::clone(chat_attachment_repo),
+                                Arc::clone(artifact_repo),
+                                agent_lane_settings_repo.clone(),
+                                ideation_effort_settings_repo.clone(),
+                                ideation_model_settings_repo.clone(),
+                                Arc::clone(ideation_session_repo),
+                                Arc::clone(task_repo),
+                                &[],
+                                0,
+                                None,
+                                None,
+                                false,
+                            )
+                            .await
+                            .map(|provider_spawnable| provider_spawnable.spawnable);
 
                         if let Ok(spawnable) = retry_spawnable {
                             if let Ok(retry_child) = spawnable.spawn().await {
@@ -1398,8 +1402,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                             ),
                                             execution_settings_repo: execution_settings_repo
                                                 .clone(),
-                                            agent_lane_settings_repo:
-                                                agent_lane_settings_repo.clone(),
+                                            agent_lane_settings_repo: agent_lane_settings_repo
+                                                .clone(),
                                             ideation_effort_settings_repo:
                                                 ideation_effort_settings_repo.clone(),
                                             ideation_model_settings_repo:

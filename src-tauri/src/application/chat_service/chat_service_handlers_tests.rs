@@ -826,7 +826,8 @@ async fn invoke_handle_stream_error_cancelled(cancelled: &StreamError) -> (bool,
         "run-id-1",
         "msg-id-1",
         &event_ctx,
-        None,  // stored_session_id
+        None, // stored_session_id
+        crate::domain::agents::AgentHarnessKind::Claude,
         false, // is_retry_attempt
         None,  // user_message_content
         None,  // conversation

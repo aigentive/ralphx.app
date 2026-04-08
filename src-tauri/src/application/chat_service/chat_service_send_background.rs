@@ -981,6 +981,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     &pre_assistant_msg_id,
                     &event_ctx,
                     stored_session_id.as_deref(),
+                    harness,
                     is_retry_attempt,
                     user_message_content.as_deref(),
                     conversation.as_ref(),
