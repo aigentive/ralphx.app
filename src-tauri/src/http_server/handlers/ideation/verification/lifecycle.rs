@@ -112,15 +112,14 @@ pub(crate) async fn stop_and_archive_children(
                     app_handle
                         .emit(
                             "agent:run_completed",
-                            AgentRunCompletedPayload {
-                                conversation_id: info.conversation_id.clone(),
-                                context_type: "ideation".to_string(),
-                                context_id: child.id.as_str().to_string(),
-                                claude_session_id: None,
-                                provider_harness: None,
-                                provider_session_id: None,
-                                run_chain_id: None,
-                            },
+                            AgentRunCompletedPayload::with_provider_session(
+                                info.conversation_id.clone(),
+                                "ideation".to_string(),
+                                child.id.as_str().to_string(),
+                                None,
+                                None,
+                                None,
+                            ),
                         )
                         .ok();
                 }

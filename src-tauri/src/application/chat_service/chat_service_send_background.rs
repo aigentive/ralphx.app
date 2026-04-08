@@ -821,19 +821,14 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 "agent:run_completed",
-                                AgentRunCompletedPayload {
-                                    conversation_id: conversation_id.as_str().to_string(),
-                                    context_type: context_type.to_string(),
-                                    context_id: context_id.clone(),
-                                    claude_session_id: if harness == AgentHarnessKind::Claude {
-                                        effective_session_id.clone()
-                                    } else {
-                                        None
-                                    },
-                                    provider_harness: Some(harness.to_string()),
-                                    provider_session_id: effective_session_id.clone(),
-                                    run_chain_id: run_chain_id.clone(),
-                                },
+                                AgentRunCompletedPayload::with_provider_session(
+                                    conversation_id.as_str().to_string(),
+                                    context_type.to_string(),
+                                    context_id.clone(),
+                                    Some(harness),
+                                    effective_session_id.clone(),
+                                    run_chain_id.clone(),
+                                ),
                             );
                         }
                     }
@@ -920,19 +915,14 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     if let Some(ref handle) = app_handle {
                         let _ = handle.emit(
                             "agent:run_completed",
-                            AgentRunCompletedPayload {
-                                conversation_id: conversation_id.as_str().to_string(),
-                                context_type: context_type.to_string(),
-                                context_id: context_id.clone(),
-                                claude_session_id: if harness == AgentHarnessKind::Claude {
-                                    Some(sess_id.clone())
-                                } else {
-                                    None
-                                },
-                                provider_harness: Some(harness.to_string()),
-                                provider_session_id: Some(sess_id.clone()),
-                                run_chain_id: run_chain_id.clone(),
-                            },
+                            AgentRunCompletedPayload::with_provider_session(
+                                conversation_id.as_str().to_string(),
+                                context_type.to_string(),
+                                context_id.clone(),
+                                Some(harness),
+                                Some(sess_id.clone()),
+                                run_chain_id.clone(),
+                            ),
                         );
                     }
 

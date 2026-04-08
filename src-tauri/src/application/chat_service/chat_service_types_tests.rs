@@ -1,4 +1,5 @@
-use crate::application::chat_service::AgentRunStartedPayload;
+use crate::application::chat_service::{AgentRunCompletedPayload, AgentRunStartedPayload};
+use crate::domain::agents::AgentHarnessKind;
 
 #[test]
 fn agent_run_started_payload_serde_camel_case() {
@@ -58,4 +59,44 @@ fn agent_run_started_payload_serde_skips_none_fields() {
     assert!(value.get("providerSessionId").is_none());
     assert!(value.get("runChainId").is_none());
     assert!(value.get("parentRunId").is_none());
+}
+
+#[test]
+fn agent_run_completed_payload_sets_legacy_claude_alias_only_for_claude() {
+    let claude_payload = AgentRunCompletedPayload::with_provider_session(
+        "conv-1",
+        "ideation",
+        "session-1",
+        Some(AgentHarnessKind::Claude),
+        Some("claude-session-123".to_string()),
+        None,
+    );
+    let codex_payload = AgentRunCompletedPayload::with_provider_session(
+        "conv-2",
+        "ideation",
+        "session-2",
+        Some(AgentHarnessKind::Codex),
+        Some("codex-thread-123".to_string()),
+        None,
+    );
+
+    assert_eq!(
+        claude_payload.claude_session_id,
+        Some("claude-session-123".to_string())
+    );
+    assert_eq!(
+        claude_payload.provider_harness,
+        Some("claude".to_string())
+    );
+    assert_eq!(
+        claude_payload.provider_session_id,
+        Some("claude-session-123".to_string())
+    );
+
+    assert_eq!(codex_payload.claude_session_id, None);
+    assert_eq!(codex_payload.provider_harness, Some("codex".to_string()));
+    assert_eq!(
+        codex_payload.provider_session_id,
+        Some("codex-thread-123".to_string())
+    );
 }

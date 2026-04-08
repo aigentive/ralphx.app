@@ -4,6 +4,7 @@
 
 use serde::Serialize;
 
+use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::{ChatConversation, ChatMessage};
 
 // ============================================================================
@@ -194,6 +195,32 @@ pub struct AgentRunCompletedPayload {
     pub provider_session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub run_chain_id: Option<String>,
+}
+
+impl AgentRunCompletedPayload {
+    pub fn with_provider_session(
+        conversation_id: impl Into<String>,
+        context_type: impl Into<String>,
+        context_id: impl Into<String>,
+        harness: Option<AgentHarnessKind>,
+        provider_session_id: Option<String>,
+        run_chain_id: Option<String>,
+    ) -> Self {
+        let provider_harness = harness.map(|value| value.to_string());
+        let claude_session_id = matches!(harness, Some(AgentHarnessKind::Claude))
+            .then(|| provider_session_id.clone())
+            .flatten();
+
+        Self {
+            conversation_id: conversation_id.into(),
+            context_type: context_type.into(),
+            context_id: context_id.into(),
+            claude_session_id,
+            provider_harness,
+            provider_session_id,
+            run_chain_id,
+        }
+    }
 }
 
 /// Payload for agent:error event

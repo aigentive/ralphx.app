@@ -1182,15 +1182,14 @@ pub async fn process_stream_background<R: Runtime>(
                             let provider_session_id = session_id.clone();
                             let _ = handle.emit(
                                 super::chat_service_types::events::AGENT_TURN_COMPLETED,
-                                super::chat_service_types::AgentRunCompletedPayload {
-                                    conversation_id: conversation_id_str.clone(),
-                                    context_type: context_type_str.clone(),
-                                    context_id: context_id_str.clone(),
-                                    provider_harness: Some(harness.to_string()),
-                                    provider_session_id: provider_session_id.clone(),
-                                    claude_session_id: provider_session_id,
-                                    run_chain_id: None,
-                                },
+                                super::chat_service_types::AgentRunCompletedPayload::with_provider_session(
+                                    conversation_id_str.clone(),
+                                    context_type_str.clone(),
+                                    context_id_str.clone(),
+                                    Some(harness),
+                                    provider_session_id,
+                                    None,
+                                ),
                             );
                         }
 

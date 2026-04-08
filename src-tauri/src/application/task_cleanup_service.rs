@@ -317,15 +317,14 @@ impl TaskCleanupService {
                     );
                     let _ = app.emit(
                         "agent:run_completed",
-                        AgentRunCompletedPayload {
-                            conversation_id: info.conversation_id,
-                            context_type: matched_context_type.to_string(),
-                            context_id: session_id.to_string(),
-                            claude_session_id: None,
-                            provider_harness: None,
-                            provider_session_id: None,
-                            run_chain_id: None,
-                        },
+                        AgentRunCompletedPayload::with_provider_session(
+                            info.conversation_id,
+                            matched_context_type.to_string(),
+                            session_id.to_string(),
+                            None,
+                            None,
+                            None,
+                        ),
                     );
                 }
             }

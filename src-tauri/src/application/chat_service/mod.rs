@@ -2310,15 +2310,14 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 // Also emit run_completed so frontend knows agent is no longer running
                 self.emit_event(
                     "agent:run_completed",
-                    AgentRunCompletedPayload {
-                        conversation_id: info.conversation_id,
-                        context_type: context_type.to_string(),
-                        context_id: context_id.to_string(),
-                        claude_session_id: None,
-                        provider_harness: None,
-                        provider_session_id: None,
-                        run_chain_id: None,
-                    },
+                    AgentRunCompletedPayload::with_provider_session(
+                        info.conversation_id,
+                        context_type.to_string(),
+                        context_id.to_string(),
+                        None,
+                        None,
+                        None,
+                    ),
                 );
 
                 Ok(true)
