@@ -61,6 +61,8 @@ function formatSource(source: string): string {
       return "YAML config";
     case "yaml_default":
       return "YAML default";
+    case "default":
+      return "Default";
     default:
       return source;
   }
@@ -182,6 +184,22 @@ function GlobalModelSubsection() {
     );
   };
 
+  const handleVerifierSubagentChange = (value: string) => {
+    setShowError(false);
+    updateSettings(
+      { verifierSubagentModel: value },
+      { onError: () => setShowError(true) }
+    );
+  };
+
+  const handleIdeationSubagentChange = (value: string) => {
+    setShowError(false);
+    updateSettings(
+      { ideationSubagentModel: value },
+      { onError: () => setShowError(true) }
+    );
+  };
+
   return (
     <div>
       {showError && saveError && (
@@ -211,6 +229,28 @@ function GlobalModelSubsection() {
           onChange={handleVerifierChange}
           effectiveValue={settings.effectiveVerifierModel}
           effectiveSource={settings.verifierModelSource}
+          isPlaceholderData={isPlaceholderData}
+        />
+        <ModelRow
+          id="verifier-subagent-model"
+          label="Verification Subagent Model"
+          description="Model used by critics/specialists spawned by the plan verifier"
+          value={settings.verifierSubagentModel}
+          disabled={false}
+          onChange={handleVerifierSubagentChange}
+          effectiveValue={settings.effectiveVerifierSubagentModel}
+          effectiveSource={settings.verifierSubagentModelSource}
+          isPlaceholderData={isPlaceholderData}
+        />
+        <ModelRow
+          id="ideation-subagent-model"
+          label="Ideation Subagent Model"
+          description="Model used by subagents spawned by orchestrator-ideation and team-lead"
+          value={settings.ideationSubagentModel ?? "inherit"}
+          disabled={false}
+          onChange={handleIdeationSubagentChange}
+          effectiveValue={settings.effectiveIdeationSubagentModel ?? ""}
+          effectiveSource={settings.ideationSubagentModelSource ?? ""}
           isPlaceholderData={isPlaceholderData}
           isLast
         />
@@ -254,6 +294,24 @@ function ProjectModelSubsection({
     );
   };
 
+  const handleVerifierSubagentChange = (value: string) => {
+    if (isDisabled) return;
+    setShowError(false);
+    updateSettings(
+      { verifierSubagentModel: value },
+      { onError: () => setShowError(true) }
+    );
+  };
+
+  const handleIdeationSubagentChange = (value: string) => {
+    if (isDisabled) return;
+    setShowError(false);
+    updateSettings(
+      { ideationSubagentModel: value },
+      { onError: () => setShowError(true) }
+    );
+  };
+
   return (
     <div>
       <div className="mb-3">
@@ -293,6 +351,28 @@ function ProjectModelSubsection({
           onChange={handleVerifierChange}
           effectiveValue={settings.effectiveVerifierModel}
           effectiveSource={settings.verifierModelSource}
+          isPlaceholderData={isPlaceholderData}
+        />
+        <ModelRow
+          id="project-verifier-subagent-model"
+          label="Verification Subagent Model"
+          description="Override verification subagent model for this project"
+          value={settings.verifierSubagentModel}
+          disabled={isDisabled}
+          onChange={handleVerifierSubagentChange}
+          effectiveValue={settings.effectiveVerifierSubagentModel}
+          effectiveSource={settings.verifierSubagentModelSource}
+          isPlaceholderData={isPlaceholderData}
+        />
+        <ModelRow
+          id="project-ideation-subagent-model"
+          label="Ideation Subagent Model"
+          description="Override ideation subagent model for this project"
+          value={settings.ideationSubagentModel ?? "inherit"}
+          disabled={isDisabled}
+          onChange={handleIdeationSubagentChange}
+          effectiveValue={settings.effectiveIdeationSubagentModel ?? ""}
+          effectiveSource={settings.ideationSubagentModelSource ?? ""}
           isPlaceholderData={isPlaceholderData}
           isLast
         />

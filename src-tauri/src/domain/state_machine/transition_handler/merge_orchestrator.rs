@@ -29,6 +29,9 @@ use crate::domain::entities::{
     InternalStatus, MergeStrategy, Project, Task, TaskCategory, TaskId,
 };
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
+use crate::domain::services::payload_enrichment::{
+    emit_external_webhook_event, PresentationKind, WebhookPresentationContext,
+};
 
 /// Result of `fetch_merge_context`: the loaded task and project.
 pub(super) struct MergeInputs {
@@ -109,6 +112,17 @@ impl<'a> super::TransitionHandler<'a> {
         let (task, task_id, task_id_str, task_repo) = (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
         let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
         let (project, repo_path) = (pc.project, pc.repo_path);
+
+        // Pre-fetch session_title for payload enrichment
+        let session_title = if let (Some(ref sid), Some(session_repo)) = (
+            &task.ideation_session_id,
+            self.machine.context.services.ideation_session_repo.as_deref(),
+        ) {
+            session_repo.get_by_id(sid).await.ok().flatten().and_then(|s| s.title)
+        } else {
+            None
+        };
+
         // Defense-in-depth: If task belongs to a plan, check the plan branch independently.
         // This catches cases where target_branch was incorrectly resolved but the merge
         // already landed on the plan branch from a prior cycle.
@@ -178,6 +192,7 @@ impl<'a> super::TransitionHandler<'a> {
                                         self.machine.context.services.external_events_repo.as_ref(),
                                         self.machine.context.services.webhook_publisher.as_ref(),
                                         self.machine.context.services.app_handle.as_ref(),
+                                        session_title.clone(),
                                     )
                                     .await
                                     {
@@ -327,6 +342,7 @@ impl<'a> super::TransitionHandler<'a> {
             self.machine.context.services.external_events_repo.as_ref(),
             self.machine.context.services.webhook_publisher.as_ref(),
             self.machine.context.services.app_handle.as_ref(),
+            session_title.clone(),
         )
         .await
         {
@@ -369,6 +385,17 @@ impl<'a> super::TransitionHandler<'a> {
         let (task, task_id, task_id_str, task_repo) = (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
         let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
         let (project, repo_path) = (pc.project, pc.repo_path);
+
+        // Pre-fetch session_title for payload enrichment
+        let session_title = if let (Some(ref sid), Some(session_repo)) = (
+            &task.ideation_session_id,
+            self.machine.context.services.ideation_session_repo.as_deref(),
+        ) {
+            session_repo.get_by_id(sid).await.ok().flatten().and_then(|s| s.title)
+        } else {
+            None
+        };
+
         if GitService::branch_exists(repo_path, source_branch).await.unwrap_or(false) {
             return false;
         }
@@ -438,6 +465,7 @@ impl<'a> super::TransitionHandler<'a> {
                                     self.machine.context.services.external_events_repo.as_ref(),
                                     self.machine.context.services.webhook_publisher.as_ref(),
                                     self.machine.context.services.app_handle.as_ref(),
+                                    session_title.clone(),
                                 )
                                 .await
                                 {
@@ -536,6 +564,7 @@ impl<'a> super::TransitionHandler<'a> {
                     self.machine.context.services.external_events_repo.as_ref(),
                     self.machine.context.services.webhook_publisher.as_ref(),
                     self.machine.context.services.app_handle.as_ref(),
+                    session_title,
                 )
                 .await
                 {
@@ -1004,6 +1033,17 @@ impl<'a> super::TransitionHandler<'a> {
         let (task, task_id, task_id_str, task_repo) = (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
         let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
         let (project, repo_path) = (pc.project, pc.repo_path);
+
+        // Pre-fetch session_title for merge:ready enrichment
+        let session_title_for_ready = if let (Some(ref sid), Some(session_repo)) = (
+            &task.ideation_session_id,
+            self.machine.context.services.ideation_session_repo.as_deref(),
+        ) {
+            session_repo.get_by_id(sid).await.ok().flatten().and_then(|s| s.title)
+        } else {
+            None
+        };
+
         tracing::info!(
             task_id = task_id_str,
             strategy = ?project.merge_strategy,
@@ -1017,7 +1057,7 @@ impl<'a> super::TransitionHandler<'a> {
         // Emit merge:ready via both channels: external_events (SSE/poll) + webhook publisher.
         {
             let project_id_str = project.id.to_string();
-            let ready_payload = serde_json::json!({
+            let mut ready_payload = serde_json::json!({
                 "task_id": task_id_str,
                 "project_id": project_id_str,
                 "session_id": task.ideation_session_id,
@@ -1026,26 +1066,32 @@ impl<'a> super::TransitionHandler<'a> {
                 "target_branch": target_branch,
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             });
-            if let Some(ref repo) = self.machine.context.services.external_events_repo {
-                if let Err(e) = repo
-                    .insert_event("merge:ready", &project_id_str, &ready_payload.to_string())
-                    .await
+            let ctx = WebhookPresentationContext {
+                project_name: Some(project.name.clone()),
+                session_title: session_title_for_ready,
+                task_title: Some(task.title.clone()),
+                presentation_kind: Some(PresentationKind::MergeReady),
+            };
+            ctx.inject_into(&mut ready_payload);
+            if let (Some(ref repo), Some(ref publisher)) = (
+                &self.machine.context.services.external_events_repo,
+                &self.machine.context.services.webhook_publisher,
+            ) {
+                if let Err(e) = emit_external_webhook_event(
+                    "merge:ready",
+                    &project_id_str,
+                    ready_payload,
+                    repo,
+                    publisher,
+                )
+                .await
                 {
                     tracing::warn!(
                         error = %e,
                         task_id = task_id_str,
-                        "merge_orchestrator: failed to insert merge:ready external event (non-fatal)"
+                        "merge_orchestrator: merge:ready emit failed (non-fatal)"
                     );
                 }
-            }
-            if let Some(ref publisher) = self.machine.context.services.webhook_publisher {
-                publisher
-                    .publish(
-                        ralphx_domain::entities::EventType::MergeReady,
-                        &project_id_str,
-                        ready_payload,
-                    )
-                    .await;
             }
         }
 

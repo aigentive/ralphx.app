@@ -231,6 +231,16 @@ impl ChatMessageRepository for MockChatMessageRepository {
         matching.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         Ok(matching.into_iter().next())
     }
+
+    async fn exists_verification_result_in_conversation(
+        &self,
+        conversation_id: &ChatConversationId,
+    ) -> AppResult<bool> {
+        Ok(self.messages.iter().any(|m| {
+            m.conversation_id.as_ref() == Some(conversation_id)
+                && m.content.contains("<verification-result>")
+        }))
+    }
 }
 
 fn create_test_message_in_session(session_id: &IdeationSessionId) -> ChatMessage {

@@ -31,6 +31,7 @@ const chatStoreMocks = vi.hoisted(() => ({
   isTeamActive: {} as Record<string, boolean>,
   activeConversationIds: {} as Record<string, string | null>,
   setActiveConversation: vi.fn(),
+  setEffectiveModel: vi.fn(),
 }));
 
 vi.mock("@/stores/chatStore", () => ({
@@ -181,6 +182,7 @@ describe("useGlobalAgentLifecycle", () => {
     chatStoreMocks.setAgentStatus.mockClear();
     chatStoreMocks.updateLastAgentEvent.mockClear();
     chatStoreMocks.setActiveConversation.mockClear();
+    chatStoreMocks.setEffectiveModel.mockClear();
     chatStoreMocks.agentStatus = {};
     chatStoreMocks.lastAgentEventTimestamp = {};
     chatStoreMocks.isTeamActive = {};
@@ -271,6 +273,51 @@ describe("useGlobalAgentLifecycle", () => {
     });
 
     expect(chatStoreMocks.setAgentStatus).toHaveBeenCalledWith("session:session-b", "generating");
+  });
+
+  // --------------------------------------------------------------------------
+  // run_started — effectiveModel wiring (acceptance criteria 2 & 4)
+  // --------------------------------------------------------------------------
+
+  it("run_started calls setEffectiveModel when effectiveModelId and effectiveModelLabel are present", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_started", {
+        ...mkRunStarted("ideation", "session-1"),
+        effectiveModelId: "claude-sonnet-4-6",
+        effectiveModelLabel: "Sonnet 4.6",
+      });
+    });
+
+    expect(chatStoreMocks.setEffectiveModel).toHaveBeenCalledWith(
+      "session:session-1",
+      { id: "claude-sonnet-4-6", label: "Sonnet 4.6" }
+    );
+  });
+
+  it("run_started does NOT call setEffectiveModel when effectiveModelId is absent", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_started", mkRunStarted("ideation", "session-1"));
+    });
+
+    expect(chatStoreMocks.setEffectiveModel).not.toHaveBeenCalled();
+  });
+
+  it("run_started does NOT call setEffectiveModel when effectiveModelLabel is absent", () => {
+    renderHook(() => useGlobalAgentLifecycle());
+
+    act(() => {
+      fireEvent("agent:run_started", {
+        ...mkRunStarted("task_execution", "task-99"),
+        effectiveModelId: "claude-sonnet-4-6",
+        // effectiveModelLabel intentionally absent
+      });
+    });
+
+    expect(chatStoreMocks.setEffectiveModel).not.toHaveBeenCalled();
   });
 
   // --------------------------------------------------------------------------

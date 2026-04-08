@@ -732,6 +732,14 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
         self.inner.touch_updated_at(session_id).await
     }
 
+    async fn update_last_effective_model(
+        &self,
+        _session_id: &str,
+        _model: &str,
+    ) -> crate::error::AppResult<()> {
+        Ok(())
+    }
+
     async fn list_active_verification_children(
         &self,
     ) -> crate::error::AppResult<Vec<IdeationSession>> {
@@ -801,6 +809,13 @@ impl crate::domain::repositories::IdeationSessionRepository for FailingResetSess
         project_id: &ProjectId,
     ) -> crate::error::AppResult<Vec<IdeationSession>> {
         self.inner.get_pending_verification_confirmations(project_id).await
+    }
+
+    async fn count_active_proposals(
+        &self,
+        session_id: &crate::domain::entities::IdeationSessionId,
+    ) -> crate::error::AppResult<usize> {
+        self.inner.count_active_proposals(session_id).await
     }
 
     async fn get_latest_verification_child(

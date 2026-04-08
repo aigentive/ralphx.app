@@ -1,8 +1,14 @@
 use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
-use ralphx_lib::domain::entities::ArtifactType;
+use axum::{extract::{Path, State}, Json};
+use ralphx_lib::domain::entities::{
+    ideation::{IdeationSession, IdeationSessionStatus, SessionPurpose},
+    ArtifactType, IdeationSessionId, ProjectId,
+};
 use ralphx_lib::http_server::handlers::*;
-use ralphx_lib::http_server::types::{HttpServerState, TeamPlanTeammate};
+use ralphx_lib::http_server::types::{
+    CreateTeamArtifactRequest, GetTeamArtifactsResponse, HttpServerState, TeamPlanTeammate,
+};
 use ralphx_lib::infrastructure::agents::claude::TeammateSpawnRequest;
 use std::sync::Arc;
 
@@ -451,4 +457,168 @@ fn resolve_effort_for_specialist_returns_non_empty() {
     // ideation-specialist-backend has a YAML entry with opus model
     let effort = resolve_effort(Some("ideation-specialist-backend"));
     assert!(!effort.is_empty(), "Expected non-empty effort for ideation-specialist-backend");
+}
+
+#[tokio::test]
+async fn test_create_team_artifact_rejects_placeholder_session_id() {
+    let state = test_state();
+
+    let result = create_team_artifact(
+        State(state),
+        Json(CreateTeamArtifactRequest {
+            session_id: "SESSION_ID".to_string(),
+            title: "Completeness: Placeholder".to_string(),
+            content: "{}".to_string(),
+            artifact_type: "TeamResearch".to_string(),
+            related_artifact_id: None,
+        }),
+    )
+    .await;
+
+    let (status, message) = result.expect_err("placeholder session id must be rejected");
+    assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+    assert!(
+        message.contains("placeholder values"),
+        "expected repair guidance in message, got: {message}"
+    );
+}
+
+#[tokio::test]
+async fn test_create_team_artifact_remaps_verification_child_session_id_to_parent() {
+    let state = test_state();
+
+    let parent = state
+        .app_state
+        .ideation_session_repo
+        .create(
+            IdeationSession::builder()
+                .id(IdeationSessionId::from_string("parent-session-1".to_string()))
+                .project_id(ProjectId::from_string("project-1".to_string()))
+                .status(IdeationSessionStatus::Active)
+                .build(),
+        )
+        .await
+        .expect("parent session");
+
+    state
+        .app_state
+        .ideation_session_repo
+        .create(
+            IdeationSession::builder()
+                .id(IdeationSessionId::from_string(
+                    "verification-child-1".to_string(),
+                ))
+                .project_id(ProjectId::from_string("project-1".to_string()))
+                .status(IdeationSessionStatus::Active)
+                .parent_session_id(parent.id.clone())
+                .session_purpose(SessionPurpose::Verification)
+                .build(),
+        )
+        .await
+        .expect("verification child");
+
+    let response = create_team_artifact(
+        State(state),
+        Json(CreateTeamArtifactRequest {
+            session_id: "verification-child-1".to_string(),
+            title: "Completeness: Round 1".to_string(),
+            content: "{}".to_string(),
+            artifact_type: "TeamResearch".to_string(),
+            related_artifact_id: None,
+        }),
+    )
+    .await
+    .expect("verification child session id should be remapped to parent");
+
+    assert!(
+        !response.0.artifact_id.is_empty(),
+        "artifact id should be returned after remapping to parent session"
+    );
+}
+
+#[tokio::test]
+async fn test_create_team_artifact_allows_non_ideation_session_ids() {
+    let state = test_state();
+    let session_id = "worker-run-123".to_string();
+
+    let response = create_team_artifact(
+        State(state.clone()),
+        Json(CreateTeamArtifactRequest {
+            session_id: session_id.clone(),
+            title: "Execution Notes".to_string(),
+            content: "{\"ok\":true}".to_string(),
+            artifact_type: "TeamResearch".to_string(),
+            related_artifact_id: None,
+        }),
+    )
+    .await
+    .expect("non-ideation session ids should remain valid");
+
+    assert!(
+        !response.0.artifact_id.is_empty(),
+        "artifact id should be returned for valid team artifact creation"
+    );
+
+    let artifacts = get_team_artifacts(State(state), Path(session_id))
+        .await
+        .expect("artifact lookup should succeed");
+    let Json(GetTeamArtifactsResponse { count, artifacts }) = artifacts;
+    assert_eq!(count, 1, "expected artifact to be retrievable by session id");
+    assert_eq!(artifacts[0].name, "Execution Notes");
+}
+
+#[tokio::test]
+async fn test_get_team_artifacts_remaps_verification_child_session_id_to_parent() {
+    let state = test_state();
+
+    let parent = state
+        .app_state
+        .ideation_session_repo
+        .create(
+            IdeationSession::builder()
+                .id(IdeationSessionId::from_string("parent-session-2".to_string()))
+                .project_id(ProjectId::from_string("project-2".to_string()))
+                .status(IdeationSessionStatus::Active)
+                .build(),
+        )
+        .await
+        .expect("parent session");
+
+    state
+        .app_state
+        .ideation_session_repo
+        .create(
+            IdeationSession::builder()
+                .id(IdeationSessionId::from_string(
+                    "verification-child-2".to_string(),
+                ))
+                .project_id(ProjectId::from_string("project-2".to_string()))
+                .status(IdeationSessionStatus::Active)
+                .parent_session_id(parent.id.clone())
+                .session_purpose(SessionPurpose::Verification)
+                .build(),
+        )
+        .await
+        .expect("verification child");
+
+    let _ = create_team_artifact(
+        State(state.clone()),
+        Json(CreateTeamArtifactRequest {
+            session_id: "parent-session-2".to_string(),
+            title: "Feasibility: Round 1".to_string(),
+            content: "{}".to_string(),
+            artifact_type: "TeamResearch".to_string(),
+            related_artifact_id: None,
+        }),
+    )
+    .await
+    .expect("parent artifact creation should succeed");
+
+    let artifacts = get_team_artifacts(State(state), Path("verification-child-2".to_string()))
+        .await
+        .expect("verification child read should be remapped to parent");
+
+    let Json(GetTeamArtifactsResponse { count, artifacts }) = artifacts;
+    assert_eq!(count, 1, "expected remapped parent artifacts to be returned");
+    assert_eq!(artifacts[0].name, "Feasibility: Round 1");
 }

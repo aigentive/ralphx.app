@@ -285,6 +285,18 @@ pub trait IdeationSessionRepository: Send + Sync {
         auto_accept_started_at: Option<String>,
     ) -> AppResult<()>;
 
+    /// Count active (non-archived, non-rejected) proposals for a session.
+    ///
+    /// Returns 0 (not an error) when a session has no proposals.
+    /// "Active" means: `archived_at IS NULL` AND `status != 'rejected'`.
+    ///
+    /// Used by the recovery-aware semantic filter to determine whether a
+    /// verified session has any active proposals before deciding to preserve it.
+    async fn count_active_proposals(
+        &self,
+        session_id: &IdeationSessionId,
+    ) -> AppResult<usize>;
+
     /// Count non-archived proposals for a session (sync for use inside `db.run()` closures).
     /// WHERE session_id = ? AND status != 'archived'
     /// Do NOT use this for sort_order assignment — use the existing count_by_session_sync instead.
@@ -332,7 +344,7 @@ pub trait IdeationSessionRepository: Send + Sync {
     /// - origin = 'external'
     /// - status = 'active'
     /// - external_activity_phase IN ('created', 'error')
-    /// - updated_at < stale_before (if Some; if None, no TTL filter — startup scan)
+    /// - updated_at < stale_before
     ///
     /// Ordered by updated_at ASC.
     async fn list_active_external_sessions_for_archival(
@@ -376,6 +388,17 @@ pub trait IdeationSessionRepository: Send + Sync {
     /// ongoing conversations are not incorrectly archived by the staleness
     /// reconciler (which filters on `updated_at < cutoff`).
     async fn touch_updated_at(&self, session_id: &str) -> AppResult<()>;
+
+    /// Persist the last effective model ID used by the agent for this session.
+    ///
+    /// Called after successful agent spawn. Failures are non-fatal (caller WARNs and
+    /// continues). The value is exposed in `IdeationSessionSummary` and
+    /// `ChildSessionStatusResponse` so the frontend can display the model label.
+    async fn update_last_effective_model(
+        &self,
+        session_id: &str,
+        model: &str,
+    ) -> AppResult<()>;
 
     /// Set (or clear) `pending_initial_prompt` on a session.
     ///

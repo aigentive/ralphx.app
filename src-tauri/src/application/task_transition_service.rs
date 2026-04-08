@@ -12,6 +12,8 @@
 
 use async_trait::async_trait;
 use std::collections::HashSet;
+use std::future::Future;
+use std::panic::Location;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
@@ -30,7 +32,10 @@ use crate::domain::repositories::{
     PlanBranchRepository, ProjectRepository, TaskDependencyRepository, TaskRepository,
     TaskStepRepository,
 };
-use crate::domain::services::{MessageQueue, RunningAgentRegistry};
+use crate::domain::services::{
+    payload_enrichment::{PresentationKind, WebhookPresentationContext},
+    MessageQueue, RunningAgentRegistry,
+};
 use crate::domain::state_machine::services::{
     AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStartResult, ReviewStarter,
     TaskScheduler, WebhookPublisher,
@@ -56,8 +61,12 @@ pub struct TauriEventEmitter<R: Runtime = tauri::Wry> {
     app_handle: Option<AppHandle<R>>,
     /// Optional external events repo for dual-emit to DB.
     external_events_repo: Option<Arc<dyn ExternalEventsRepository>>,
-    /// Optional task repo for resolving project_id during dual-emit.
+    /// Optional task repo for resolving project_id and task details during enrichment.
     task_repo_for_emit: Option<Arc<dyn TaskRepository>>,
+    /// Optional project repo for resolving project_name during enrichment.
+    project_repo_for_emit: Option<Arc<dyn ProjectRepository>>,
+    /// Optional ideation session repo for resolving session_title during enrichment.
+    ideation_session_repo_for_emit: Option<Arc<dyn IdeationSessionRepository>>,
     /// Optional webhook publisher for triple-emit (Tauri + DB + webhooks).
     webhook_publisher: Option<Arc<dyn WebhookPublisher>>,
 }
@@ -68,18 +77,24 @@ impl<R: Runtime> TauriEventEmitter<R> {
             app_handle,
             external_events_repo: None,
             task_repo_for_emit: None,
+            project_repo_for_emit: None,
+            ideation_session_repo_for_emit: None,
             webhook_publisher: None,
         }
     }
 
-    /// Attach external events repository and task repository for dual-emit.
+    /// Attach external events repository and repos for enriched dual-emit.
     pub fn with_external_events(
         mut self,
         external_events_repo: Arc<dyn ExternalEventsRepository>,
         task_repo: Arc<dyn TaskRepository>,
+        project_repo: Arc<dyn ProjectRepository>,
+        ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     ) -> Self {
         self.external_events_repo = Some(external_events_repo);
         self.task_repo_for_emit = Some(task_repo);
+        self.project_repo_for_emit = Some(project_repo);
+        self.ideation_session_repo_for_emit = Some(ideation_session_repo);
         self
     }
 
@@ -89,50 +104,108 @@ impl<R: Runtime> TauriEventEmitter<R> {
         self
     }
 
-    /// Write a status-change event to the external_events table.
-    /// Looks up the task's project_id via the task repo.
-    async fn write_external_event(&self, task_id: &str, old_status: &str, new_status: &str) {
-        let (Some(ref ext_repo), Some(ref task_repo)) =
-            (&self.external_events_repo, &self.task_repo_for_emit)
-        else {
-            return;
-        };
-
-        let project_id = {
-            let tid = crate::domain::entities::TaskId::from_string(task_id.to_string());
-            match task_repo.get_by_id(&tid).await {
-                Ok(Some(t)) => t.project_id.to_string(),
-                Ok(None) => {
-                    tracing::debug!(task_id = task_id, "write_external_event: task not found, skipping");
-                    return;
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        error = %e,
-                        task_id = task_id,
-                        "write_external_event: failed to fetch task project_id"
-                    );
-                    return;
-                }
+    /// Build a fully enriched status-change payload by resolving task → project → session.
+    ///
+    /// Returns `Some((project_id, payload))` with `project_name`, `session_title`, `task_title`,
+    /// and `presentation_kind` injected when task/project/session lookups succeed.
+    /// Returns `None` (with a `warn!` log) when the task cannot be found — callers must skip
+    /// all sinks in that case. Project and session lookup failures degrade gracefully to `None`
+    /// fields in the payload (non-fatal).
+    ///
+    /// Used by `emit_status_change` to build a single enriched payload for all three sinks.
+    pub(crate) async fn build_enriched_payload(
+        &self,
+        task_id: &str,
+        old_status: &str,
+        new_status: &str,
+    ) -> Option<(String, serde_json::Value)> {
+        let task_repo = self.task_repo_for_emit.as_ref()?;
+        let tid = crate::domain::entities::TaskId::from_string(task_id.to_string());
+        let task = match task_repo.get_by_id(&tid).await.ok().flatten() {
+            Some(t) => t,
+            None => {
+                tracing::warn!(
+                    task_id = task_id,
+                    "build_enriched_payload: task not found — skipping enrichment"
+                );
+                return None;
             }
         };
 
-        let payload = serde_json::json!({
+        let project_id = task.project_id.to_string();
+        let task_title = Some(task.title.clone());
+
+        let project_name = if let Some(repo) = &self.project_repo_for_emit {
+            let result = repo
+                .get_by_id(&task.project_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|p| p.name);
+            if result.is_none() {
+                tracing::debug!(
+                    project_id = %task.project_id,
+                    "build_enriched_payload: project not found — project_name omitted"
+                );
+            }
+            result
+        } else {
+            None
+        };
+
+        let session_title = if let (Some(sid), Some(repo)) = (
+            task.ideation_session_id.as_ref(),
+            self.ideation_session_repo_for_emit.as_ref(),
+        ) {
+            let result = repo
+                .get_by_id(sid)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|s| s.title);
+            if result.is_none() {
+                tracing::debug!(
+                    "build_enriched_payload: session not found or title None — session_title omitted"
+                );
+            }
+            result
+        } else {
+            None
+        };
+
+        let ctx = WebhookPresentationContext {
+            project_name,
+            session_title,
+            task_title,
+            presentation_kind: Some(PresentationKind::TaskStatusChanged),
+        };
+
+        let mut payload = serde_json::json!({
             "task_id": task_id,
             "project_id": project_id,
             "old_status": old_status,
             "new_status": new_status,
             "timestamp": chrono::Utc::now().to_rfc3339(),
-        })
-        .to_string();
+        });
+        ctx.inject_into(&mut payload);
 
+        Some((project_id, payload))
+    }
+
+    /// Write a pre-built status-change event payload to the external_events table.
+    async fn write_external_event(&self, project_id: &str, payload: serde_json::Value) {
+        let Some(ref ext_repo) = self.external_events_repo else {
+            return;
+        };
+
+        let payload_str = payload.to_string();
         if let Err(e) = ext_repo
-            .insert_event("task:status_changed", &project_id, &payload)
+            .insert_event("task:status_changed", project_id, &payload_str)
             .await
         {
             tracing::warn!(
                 error = %e,
-                task_id = task_id,
+                project_id = project_id,
                 "write_external_event: failed to insert into external_events (non-fatal)"
             );
         }
@@ -171,39 +244,38 @@ impl<R: Runtime> EventEmitter for TauriEventEmitter<R> {
     }
 
     async fn emit_status_change(&self, task_id: &str, old_status: &str, new_status: &str) {
+        // Build enriched payload once; skip all sinks if task not found.
+        let (project_id, payload) =
+            match self.build_enriched_payload(task_id, old_status, new_status).await {
+                Some(pair) => pair,
+                None => {
+                    tracing::warn!(
+                        task_id = task_id,
+                        "emit_status_change: build_enriched_payload returned None — skipping all sinks"
+                    );
+                    return;
+                }
+            };
+
+        // Sink 1: Tauri UI event.
         if let Some(ref handle) = self.app_handle {
-            let payload = serde_json::json!({
-                "task_id": task_id,
-                "old_status": old_status,
-                "new_status": new_status,
-            });
-            if let Some(throttled) = handle.try_state::<std::sync::Arc<crate::application::ThrottledEmitter>>() {
-                throttled.emit("task:status_changed", payload);
+            if let Some(throttled) =
+                handle.try_state::<std::sync::Arc<crate::application::ThrottledEmitter>>()
+            {
+                throttled.emit("task:status_changed", payload.clone());
             } else {
-                let _ = handle.emit("task:status_changed", payload);
+                let _ = handle.emit("task:status_changed", payload.clone());
             }
         }
-        // Dual-emit: write to external_events table for external consumers.
-        self.write_external_event(task_id, old_status, new_status).await;
 
-        // Triple-emit: push via webhook publisher if configured.
+        // Sink 2: external_events DB table.
+        self.write_external_event(&project_id, payload.clone()).await;
+
+        // Sink 3: webhook publisher.
         if let Some(ref publisher) = self.webhook_publisher {
-            if let Some(ref task_repo) = self.task_repo_for_emit {
-                let tid = crate::domain::entities::TaskId::from_string(task_id.to_string());
-                if let Ok(Some(task)) = task_repo.get_by_id(&tid).await {
-                    let project_id = task.project_id.to_string();
-                    let webhook_payload = serde_json::json!({
-                        "task_id": task_id,
-                        "project_id": project_id,
-                        "old_status": old_status,
-                        "new_status": new_status,
-                        "timestamp": chrono::Utc::now().to_rfc3339(),
-                    });
-                    publisher
-                        .publish(EventType::TaskStatusChanged, &project_id, webhook_payload)
-                        .await;
-                }
-            }
+            publisher
+                .publish(EventType::TaskStatusChanged, &project_id, payload)
+                .await;
         }
     }
 }
@@ -665,6 +737,33 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
 }
 
 impl<R: Runtime> TaskTransitionService<R> {
+    fn validate_status_transition(
+        &self,
+        task_id: &TaskId,
+        from: InternalStatus,
+        to: InternalStatus,
+        caller: &'static Location<'static>,
+    ) -> AppResult<()> {
+        if from.can_transition_to(to) {
+            return Ok(());
+        }
+
+        tracing::warn!(
+            task_id = task_id.as_str(),
+            from = from.as_str(),
+            to = to.as_str(),
+            caller_file = caller.file(),
+            caller_line = caller.line(),
+            caller_column = caller.column(),
+            "Rejected invalid task status transition"
+        );
+
+        Err(AppError::InvalidTransition {
+            from: from.as_str().to_string(),
+            to: to.as_str().to_string(),
+        })
+    }
+
     /// Create a new TaskTransitionService with all required dependencies.
     pub fn new(
         task_repo: Arc<dyn TaskRepository>,
@@ -860,9 +959,19 @@ impl<R: Runtime> TaskTransitionService<R> {
         mut self,
         repo: Arc<dyn ExternalEventsRepository>,
     ) -> Self {
-        // Rebuild the event emitter with external events + optional webhook publisher.
+        // Rebuild the event emitter with external events + enrichment repos + optional webhook publisher.
+        let ideation_session_repo = self
+            .ideation_session_repo
+            .as_ref()
+            .expect("ideation_session_repo set in new()")
+            .clone();
         let emitter = TauriEventEmitter::new(self._app_handle.clone())
-            .with_external_events(Arc::clone(&repo), Arc::clone(&self.task_repo));
+            .with_external_events(
+                Arc::clone(&repo),
+                Arc::clone(&self.task_repo),
+                Arc::clone(&self.project_repo),
+                ideation_session_repo,
+            );
         let emitter = if let Some(ref pub_) = self.webhook_publisher {
             emitter.with_webhook_publisher(Arc::clone(pub_))
         } else {
@@ -924,13 +1033,17 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// # Returns
     /// * `Ok(Task)` - The updated task with new status
     /// * `Err(AppError)` - If the task is not found or transition is invalid
-    pub async fn transition_task(
-        &self,
-        task_id: &TaskId,
+    #[track_caller]
+    pub fn transition_task<'a>(
+        &'a self,
+        task_id: &'a TaskId,
         new_status: InternalStatus,
-    ) -> AppResult<Task> {
-        self.transition_task_with_metadata(task_id, new_status, None)
-            .await
+    ) -> impl Future<Output = AppResult<Task>> + 'a {
+        let caller = Location::caller();
+        async move {
+            self.transition_task_with_metadata_from_caller(task_id, new_status, None, caller)
+                .await
+        }
     }
 
     /// Transition a task to a new status with optional metadata update.
@@ -947,15 +1060,38 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// # Returns
     /// * `Ok(Task)` - The updated task with new status and merged metadata
     /// * `Err(AppError)` - If the task is not found or transition is invalid
-    pub async fn transition_task_with_metadata(
+    #[track_caller]
+    pub fn transition_task_with_metadata<'a>(
+        &'a self,
+        task_id: &'a TaskId,
+        new_status: InternalStatus,
+        metadata_update: Option<MetadataUpdate>,
+    ) -> impl Future<Output = AppResult<Task>> + 'a {
+        let caller = Location::caller();
+        async move {
+            self.transition_task_with_metadata_from_caller(
+                task_id,
+                new_status,
+                metadata_update,
+                caller,
+            )
+            .await
+        }
+    }
+
+    async fn transition_task_with_metadata_from_caller(
         &self,
         task_id: &TaskId,
         new_status: InternalStatus,
         metadata_update: Option<MetadataUpdate>,
+        caller: &'static Location<'static>,
     ) -> AppResult<Task> {
         tracing::debug!(
             task_id = task_id.as_str(),
             new_status = new_status.as_str(),
+            caller_file = caller.file(),
+            caller_line = caller.line(),
+            caller_column = caller.column(),
             "Starting task transition"
         );
 
@@ -980,8 +1116,13 @@ impl<R: Runtime> TaskTransitionService<R> {
         tracing::debug!(
             from = old_status.as_str(),
             to = new_status.as_str(),
+            caller_file = caller.file(),
+            caller_line = caller.line(),
+            caller_column = caller.column(),
             "Transitioning task status"
         );
+
+        self.validate_status_transition(task_id, old_status, new_status, caller)?;
 
         // 3. Update the task status
         task.internal_status = new_status;
@@ -1011,6 +1152,9 @@ impl<R: Runtime> TaskTransitionService<R> {
                 task_id = task_id.as_str(),
                 from = old_status.as_str(),
                 to = new_status.as_str(),
+                caller_file = caller.file(),
+                caller_line = caller.line(),
+                caller_column = caller.column(),
                 "Optimistic lock: task already transitioned by another caller, skipping"
             );
             // Re-fetch to return current state
@@ -1037,6 +1181,9 @@ impl<R: Runtime> TaskTransitionService<R> {
             task_id = task_id.as_str(),
             from = old_status.as_str(),
             to = new_status.as_str(),
+            caller_file = caller.file(),
+            caller_line = caller.line(),
+            caller_column = caller.column(),
             "Status transition confirmed"
         );
 
@@ -1092,12 +1239,14 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// # Returns
     /// * `Ok(Task)` - The stopped task with stop metadata
     /// * `Err(AppError)` - If the task is not found or transition is invalid
-    pub async fn transition_to_stopped_with_context(
-        &self,
-        task_id: &TaskId,
+    #[track_caller]
+    pub fn transition_to_stopped_with_context<'a>(
+        &'a self,
+        task_id: &'a TaskId,
         from_status: InternalStatus,
         reason: Option<String>,
-    ) -> AppResult<Task> {
+    ) -> impl Future<Output = AppResult<Task>> + 'a {
+        let caller = Location::caller();
         tracing::info!(
             task_id = task_id.as_str(),
             from_status = from_status.as_str(),
@@ -1109,8 +1258,76 @@ impl<R: Runtime> TaskTransitionService<R> {
         let stop_metadata = build_stop_metadata(from_status, reason);
 
         // Transition to Stopped with metadata
-        self.transition_task_with_metadata(task_id, InternalStatus::Stopped, Some(stop_metadata))
+        async move {
+            self.transition_task_with_metadata_from_caller(
+                task_id,
+                InternalStatus::Stopped,
+                Some(stop_metadata),
+                caller,
+            )
             .await
+        }
+    }
+
+    /// Apply an explicit corrective transition for nonstandard repair flows.
+    ///
+    /// Unlike `transition_task*`, this path intentionally bypasses the normal state-machine
+    /// legality guard and should be reserved for recovery/corrective callers that need to
+    /// persist a terminal or repair status not representable as a legal workflow transition.
+    ///
+    /// This wrapper still records status history and uses the same optimistic-lock discipline
+    /// as the internal corrective path, but it deliberately skips the normal entry/exit actions
+    /// and event emission that belong to workflow transitions.
+    #[track_caller]
+    pub fn transition_task_corrective<'a>(
+        &'a self,
+        task_id: &'a TaskId,
+        target_status: InternalStatus,
+        blocked_reason: Option<String>,
+        history_actor: &'a str,
+    ) -> impl Future<Output = AppResult<Task>> + 'a {
+        let caller = Location::caller();
+        async move {
+            let existing = self
+                .task_repo
+                .get_by_id(task_id)
+                .await?
+                .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
+
+            if existing.internal_status == target_status {
+                return Ok(existing);
+            }
+
+            match self
+                .apply_corrective_transition(task_id, target_status, blocked_reason, history_actor)
+                .await
+            {
+                Some(result) => Ok(result.task),
+                None => {
+                    let current = self
+                        .task_repo
+                        .get_by_id(task_id)
+                        .await?
+                        .ok_or_else(|| AppError::TaskNotFound(task_id.as_str().to_string()))?;
+
+                    tracing::warn!(
+                        task_id = task_id.as_str(),
+                        target_status = target_status.as_str(),
+                        current_status = current.internal_status.as_str(),
+                        caller_file = caller.file(),
+                        caller_line = caller.line(),
+                        caller_column = caller.column(),
+                        "Corrective transition did not persist"
+                    );
+
+                    Err(AppError::Conflict(format!(
+                        "Corrective transition to {} did not persist; current status is {}",
+                        target_status.as_str(),
+                        current.internal_status.as_str()
+                    )))
+                }
+            }
+        }
     }
 
     /// Build the common TaskServices shared by both entry and exit action handlers.
@@ -1451,10 +1668,34 @@ impl<R: Runtime> TaskTransitionService<R> {
         // enables Wave 2A's `continue` semantics for PendingReview re-entry after corrective routing.
         let mut current_state = state;
         loop {
-            let auto_state = match handler.check_auto_transition(&current_state) {
+            let mut auto_state = match handler.check_auto_transition(&current_state) {
                 Some(s) => s,
                 None => break,
             };
+
+            if matches!(current_state, crate::domain::state_machine::State::Approved)
+                && matches!(auto_state, crate::domain::state_machine::State::PendingMerge)
+            {
+                if let Ok(Some(task)) = self.task_repo.get_by_id(task_id).await {
+                    let is_branchless = task.task_branch.is_none();
+                    let has_no_changes = crate::domain::state_machine::transition_handler::has_no_code_changes_metadata(&task);
+
+                    if is_branchless || has_no_changes {
+                        let reason = if has_no_changes {
+                            "no_code_changes metadata"
+                        } else {
+                            "no task branch"
+                        };
+                        tracing::info!(
+                            task_id = task_id.as_str(),
+                            reason = reason,
+                            "Skipping merge pipeline during auto-transition"
+                        );
+                        auto_state = crate::domain::state_machine::State::Merged;
+                    }
+                }
+            }
+
             let current_status = state_to_internal_status(&current_state);
             let auto_status = state_to_internal_status(&auto_state);
             tracing::info!(

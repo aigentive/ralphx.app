@@ -721,6 +721,7 @@ impl RunningAgentRegistry for AlwaysErrStopRegistry {
         agent_run_id: &str,
         worktree_path: Option<String>,
         cancellation_token: Option<tokio_util::sync::CancellationToken>,
+        model: Option<String>,
     ) -> Result<(), String> {
         self.0
             .update_agent_process(
@@ -730,6 +731,7 @@ impl RunningAgentRegistry for AlwaysErrStopRegistry {
                 agent_run_id,
                 worktree_path,
                 cancellation_token,
+                model,
             )
             .await
     }

@@ -5,6 +5,7 @@ mod agent_config;
 pub mod agent_names;
 mod claude_code_client;
 pub mod effort_resolver;
+pub mod model_labels;
 pub mod model_resolver;
 pub mod node_utils;
 mod stream_processor;
@@ -44,7 +45,11 @@ pub use stream_processor::{
 pub use effort_resolver::{effort_bucket_for_agent, resolve_ideation_effort};
 
 // Re-export model resolver helpers for use by services
-pub use model_resolver::{resolve_ideation_model, ResolvedModel};
+pub use model_resolver::{
+    resolve_ideation_model, resolve_ideation_subagent_model_with_source,
+    resolve_verifier_subagent_model_with_source, ResolvedModel,
+};
+
 
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
@@ -716,6 +721,18 @@ impl SpawnableCommand {
     pub fn arg(&mut self, val: &str) -> &mut Self {
         self.cmd.arg(val);
         self
+    }
+
+    /// Returns environment variables explicitly set on this command.
+    ///
+    /// For use in tests only — verifies env-var injection without spawning the process.
+    #[doc(hidden)]
+    pub fn get_envs_for_test(&self) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+        self.cmd
+            .as_std()
+            .get_envs()
+            .filter_map(|(k, v)| v.map(|val| (k.to_os_string(), val.to_os_string())))
+            .collect()
     }
 
     /// Spawn in interactive mode: writes the stored prompt to stdin, then returns

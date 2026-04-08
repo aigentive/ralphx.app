@@ -17,6 +17,7 @@ import { IntegratedChatPanel } from "./IntegratedChatPanel";
 import { PreviousRunBanner } from "./IntegratedChatPanel.components";
 import { chatApi } from "@/api/chat";
 import { useChatStore } from "@/stores/chatStore";
+import { useIdeationStore } from "@/stores/ideationStore";
 import { useUiStore } from "@/stores/uiStore";
 
 // ============================================================================
@@ -912,6 +913,111 @@ describe("PreviousRunBanner visibility in IntegratedChatPanel", () => {
     // Wait for query to resolve and label to update from default "completed" to "cancelled"
     await waitFor(() => {
       expect(screen.getByTestId("previous-run-banner")).toHaveTextContent("cancelled");
+    });
+  });
+
+  describe("effectiveModel hydration from HTTP session data", () => {
+    const SESSION_ID = "session-ideation-test";
+    const STORE_KEY = `session:${SESSION_ID}`;
+
+    beforeEach(() => {
+      // Reset effectiveModel in chatStore
+      act(() => {
+        useChatStore.setState({ effectiveModel: {} });
+      });
+
+      // Reset ideationStore
+      act(() => {
+        useIdeationStore.setState({ sessions: {}, activeSessionId: null });
+      });
+
+      // Configure context as ideation session
+      mockChatPanelContext.storeContextKey = STORE_KEY;
+      mockChatPanelContext.currentContextType = "ideation";
+      mockChatPanelContext.currentContextId = SESSION_ID;
+    });
+
+    it("populates effectiveModel in chatStore when ideation session has lastEffectiveModel on mount", async () => {
+      // Set ideationStore with a session that has lastEffectiveModel
+      act(() => {
+        useIdeationStore.setState({
+          sessions: {
+            [SESSION_ID]: {
+              id: SESSION_ID,
+              projectId: "project-1",
+              title: "Test Session",
+              titleSource: null,
+              status: "active",
+              planArtifactId: null,
+              seedTaskId: null,
+              parentSessionId: null,
+              createdAt: "2026-01-01T00:00:00Z",
+              updatedAt: "2026-01-01T00:00:00Z",
+              archivedAt: null,
+              convertedAt: null,
+              teamMode: null,
+              teamConfig: null,
+              verificationStatus: "unverified",
+              verificationInProgress: false,
+              gapScore: null,
+              lastEffectiveModel: "claude-sonnet-4-6",
+            },
+          },
+        });
+      });
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" ideationSessionId={SESSION_ID} />
+        </TestWrapper>
+      );
+
+      // Wait for the hydration useEffect to run
+      await waitFor(() => {
+        const effectiveModel = useChatStore.getState().effectiveModel[STORE_KEY];
+        expect(effectiveModel).toEqual({ id: "claude-sonnet-4-6", label: "Sonnet 4.6" });
+      });
+    });
+
+    it("does not set effectiveModel when session has no lastEffectiveModel", async () => {
+      act(() => {
+        useIdeationStore.setState({
+          sessions: {
+            [SESSION_ID]: {
+              id: SESSION_ID,
+              projectId: "project-1",
+              title: null,
+              titleSource: null,
+              status: "active",
+              planArtifactId: null,
+              seedTaskId: null,
+              parentSessionId: null,
+              createdAt: "2026-01-01T00:00:00Z",
+              updatedAt: "2026-01-01T00:00:00Z",
+              archivedAt: null,
+              convertedAt: null,
+              teamMode: null,
+              teamConfig: null,
+              verificationStatus: "unverified",
+              verificationInProgress: false,
+              gapScore: null,
+              lastEffectiveModel: null,
+            },
+          },
+        });
+      });
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" ideationSessionId={SESSION_ID} />
+        </TestWrapper>
+      );
+
+      // Give React time to run effects
+      await act(async () => {});
+
+      const effectiveModel = useChatStore.getState().effectiveModel[STORE_KEY];
+      expect(effectiveModel).toBeUndefined();
     });
   });
 });

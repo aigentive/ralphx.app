@@ -3,10 +3,14 @@
 use std::sync::Arc;
 
 use crate::application::reconciliation::verification_handoff::{
-    derive_recommended_action, format_verification_result_xml, maybe_inject_verification_result_message,
-    summarize_gaps, top_3_blockers, ReconcileChildCompleteResult, ESCALATED_TO_PARENT,
+    derive_recommended_action, format_verification_result_xml, inject_verification_handoff_if_missing,
+    maybe_inject_verification_result_message, summarize_gaps, top_3_blockers,
+    ReconcileChildCompleteResult, ESCALATED_TO_PARENT, VERIFICATION_RESULT_MARKER,
 };
-use crate::domain::entities::{IdeationSessionId, VerificationGap, VerificationMetadata, VerificationStatus};
+use crate::domain::entities::{
+    ChatConversationId, ChatMessage, IdeationSessionId, VerificationGap, VerificationMetadata,
+    VerificationStatus,
+};
 use crate::domain::repositories::{ChatConversationRepository, ChatMessageRepository};
 use crate::domain::services::MessageQueue;
 use crate::infrastructure::memory::{MemoryChatConversationRepository, MemoryChatMessageRepository};
@@ -295,4 +299,128 @@ fn format_verification_result_xml_no_blockers_section_when_empty() {
     let xml = format_verification_result_xml("id", None, 1, 3, &[]);
     assert!(!xml.contains("<top_blockers>"), "should omit top_blockers when no gaps");
     assert!(xml.contains("<recommended_next_action>"), "should still have action");
+}
+
+// ---------------------------------------------------------------------------
+// Regression tests: verification child timeout fix — Gate C + dedup guard
+// ---------------------------------------------------------------------------
+
+/// Gate C: `inject_verification_handoff_if_missing` must inject a
+/// `<verification-result>` message into the parent conversation when no such
+/// message exists yet.
+///
+/// Simulates the timeout path where the verification child's idle process
+/// triggers the 600s no-output timeout after the parent has already reached
+/// `NeedsRevision` terminal state, but the handoff message was somehow lost.
+/// Gate C is the last-resort backstop that re-injects the message.
+#[tokio::test]
+async fn test_handoff_injected_on_timeout_when_parent_needs_revision() {
+    let parent_id = IdeationSessionId::new();
+    let conv_id = ChatConversationId::new();
+
+    let conv_repo: Arc<dyn ChatConversationRepository> =
+        Arc::new(MemoryChatConversationRepository::new());
+    let msg_repo: Arc<dyn ChatMessageRepository> =
+        Arc::new(MemoryChatMessageRepository::new());
+    let queue = Arc::new(MessageQueue::new());
+
+    // Pre-condition: no <verification-result> message exists in the conversation.
+    let already_present = msg_repo
+        .exists_verification_result_in_conversation(&conv_id)
+        .await
+        .expect("exists check should not error");
+    assert!(!already_present, "pre-condition: no handoff message should exist yet");
+
+    // Trigger Gate C injection path.
+    inject_verification_handoff_if_missing(
+        &parent_id,
+        &conv_id,
+        VerificationStatus::NeedsRevision,
+        &[make_gap("critical", "Missing auth check")],
+        Some("max_rounds"),
+        &conv_repo,
+        &msg_repo,
+        &queue,
+    )
+    .await;
+
+    // A <verification-result> message must have been created in the parent session.
+    let messages = msg_repo
+        .get_by_session(&parent_id)
+        .await
+        .expect("get_by_session should not error");
+    assert_eq!(
+        messages.len(),
+        1,
+        "exactly one <verification-result> message must be injected"
+    );
+    let content = &messages[0].content;
+    assert!(
+        content.contains(VERIFICATION_RESULT_MARKER),
+        "injected message must contain the <verification-result> XML root tag"
+    );
+    assert!(
+        content.contains("<status>needs_revision</status>"),
+        "injected message must contain the NeedsRevision status"
+    );
+}
+
+/// Dedup guard: `inject_verification_handoff_if_missing` must NOT inject a second
+/// `<verification-result>` message when one was already injected by the success path.
+///
+/// Simulates the race where Fix A killed the process but not before a second timeout
+/// event arrives, OR where the success path already injected the handoff before the
+/// lingering idle process fired.
+#[tokio::test]
+async fn test_no_duplicate_handoff_on_timeout_after_success_injection() {
+    let parent_id = IdeationSessionId::new();
+    let conv_id = ChatConversationId::new();
+
+    let conv_repo: Arc<dyn ChatConversationRepository> =
+        Arc::new(MemoryChatConversationRepository::new());
+    let msg_repo: Arc<dyn ChatMessageRepository> =
+        Arc::new(MemoryChatMessageRepository::new());
+    let queue = Arc::new(MessageQueue::new());
+
+    // Pre-seed a <verification-result> message (as the success path would have injected).
+    let mut existing_msg = ChatMessage::system_in_session(
+        parent_id.clone(),
+        format!("{VERIFICATION_RESULT_MARKER}<status>needs_revision</status></verification-result>"),
+    );
+    existing_msg.conversation_id = Some(conv_id);
+    msg_repo
+        .create(existing_msg)
+        .await
+        .expect("pre-seed message must not error");
+
+    // Confirm dedup check finds it before calling inject.
+    let already_present = msg_repo
+        .exists_verification_result_in_conversation(&conv_id)
+        .await
+        .expect("exists check should not error");
+    assert!(already_present, "dedup check must find the pre-seeded message");
+
+    // Trigger Gate C injection path — should be a no-op due to dedup guard.
+    inject_verification_handoff_if_missing(
+        &parent_id,
+        &conv_id,
+        VerificationStatus::NeedsRevision,
+        &[],
+        None,
+        &conv_repo,
+        &msg_repo,
+        &queue,
+    )
+    .await;
+
+    // Still only 1 message — no duplicate injection.
+    let messages = msg_repo
+        .get_by_session(&parent_id)
+        .await
+        .expect("get_by_session should not error");
+    assert_eq!(
+        messages.len(),
+        1,
+        "dedup guard must prevent a second <verification-result> message from being injected"
+    );
 }

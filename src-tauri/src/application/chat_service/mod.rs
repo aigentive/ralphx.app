@@ -26,6 +26,7 @@ mod chat_service_send_background;
 mod chat_service_streaming;
 mod chat_service_types;
 mod streaming_state_cache;
+pub(crate) mod verification_child_process_registry;
 
 use crate::application::interactive_process_registry::{
     InteractiveProcessKey, InteractiveProcessRegistry,
@@ -379,6 +380,9 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     /// Wrapped in Mutex for interior mutability so TaskTransitionService can inject the
     /// shared AppState registry after construction (same pattern as plan_branch_repo).
     interactive_process_registry: std::sync::Mutex<Arc<InteractiveProcessRegistry>>,
+    /// Registry of verification child process PIDs for explicit cleanup after reconciliation.
+    /// Prevents idle verification processes from lingering until the 600s timeout fires.
+    verification_child_registry: Arc<verification_child_process_registry::VerificationChildProcessRegistry>,
 }
 
 impl<R: Runtime> ClaudeChatService<R> {
@@ -440,6 +444,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             team_service: None,
             streaming_state_cache: StreamingStateCache::new(),
             interactive_process_registry: std::sync::Mutex::new(Arc::new(InteractiveProcessRegistry::new())),
+            verification_child_registry: Arc::new(verification_child_process_registry::VerificationChildProcessRegistry::new()),
         }
     }
 
@@ -851,6 +856,7 @@ impl<R: Runtime> ClaudeChatService<R> {
         is_external_mcp: bool,
         effort_override: Option<&str>,
         model_override: Option<&str>,
+        subagent_cap_override: Option<&str>,
     ) -> Result<crate::infrastructure::agents::claude::SpawnableCommand, ChatServiceError> {
         chat_service_context::build_interactive_command(
             &self.cli_path,
@@ -868,6 +874,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             is_external_mcp,
             effort_override,
             model_override,
+            subagent_cap_override,
         )
         .await
         .map_err(ChatServiceError::SpawnFailed)
@@ -1096,6 +1103,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                             context_id: context_id.to_string(),
                             run_chain_id: None,
                             parent_run_id: None,
+                            effective_model_id: None,
+                            effective_model_label: None,
                         },
                     );
 
@@ -1462,18 +1471,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 .await;
         }
 
-        // 3. Emit run started event
-        self.emit_event(
-            "agent:run_started",
-            AgentRunStartedPayload {
-                run_id: agent_run_id.clone(),
-                conversation_id: conversation_id.as_str().to_string(),
-                context_type: context_type.to_string(),
-                context_id: context_id.to_string(),
-                run_chain_id: run_chain_id.clone(),
-                parent_run_id: None,
-            },
-        );
+        // 3. run_started event emitted below at step 7b-pre4 after model resolution
+        // so that effective_model_id / effective_model_label can be included in the payload.
 
         let resume_in_place = resume_in_place_requested(options.metadata.as_deref());
         let persisted_metadata = strip_resume_in_place_metadata(options.metadata.clone());
@@ -1668,6 +1667,77 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             None
         };
 
+        // 7b-pre3. For plan-verifier sessions, pre-resolve the subagent cap from the
+        // separate verifier_subagent_model field so critics/specialists run on the
+        // configured cheaper model rather than the verifier's own model.
+        let resolved_verifier_subagent_cap: Option<String> =
+            if context_type == ChatContextType::Ideation {
+                let team_mode_val = self.team_mode.load(Ordering::Relaxed);
+                let agent_name = chat_service_helpers::resolve_agent_with_team_mode(
+                    &context_type,
+                    entity_status.as_deref(),
+                    team_mode_val,
+                );
+                if agent_name
+                    == crate::infrastructure::agents::claude::agent_names::AGENT_PLAN_VERIFIER
+                {
+                    if let Some(ref repo) = self.ideation_model_settings_repo {
+                        let project_row = if let Some(pid) = project_id.as_deref() {
+                            repo.get_for_project(pid).await.ok().flatten()
+                        } else {
+                            None
+                        };
+                        let global_row = repo.get_global().await.ok().flatten();
+                        let (cap, _) = crate::infrastructure::agents::claude::resolve_verifier_subagent_model_with_source(
+                            project_row.as_ref().map(|r| &r.verifier_subagent_model),
+                            global_row.as_ref().map(|r| &r.verifier_subagent_model),
+                        );
+                        Some(cap)
+                    } else {
+                        Some("haiku".to_string())
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+        // 7b-pre4. Resolve effective model for run_started event and registry.
+        // For ideation, resolved_model was already computed above. For other contexts, call
+        // resolve_model_config() once using the entity_status we have now.
+        let (effective_model_id, _) = chat_service_context::resolve_model_config(
+            chat_service_helpers::resolve_agent_with_team_mode(
+                &context_type,
+                entity_status.as_deref(),
+                self.team_mode.load(Ordering::Relaxed),
+            ),
+            project_id.as_deref(),
+            context_type,
+            resolved_model.as_deref(),
+            self.ideation_model_settings_repo.as_ref(),
+        )
+        .await;
+        let effective_model_label =
+            crate::infrastructure::agents::claude::model_labels::model_id_to_label(
+                &effective_model_id,
+            );
+
+        // 3. Emit run started event (deferred from step 3 to include effective model info)
+        self.emit_event(
+            "agent:run_started",
+            AgentRunStartedPayload {
+                run_id: agent_run_id.clone(),
+                conversation_id: conversation_id.as_str().to_string(),
+                context_type: context_type.to_string(),
+                context_id: context_id.to_string(),
+                run_chain_id: run_chain_id.clone(),
+                parent_run_id: None,
+                effective_model_id: Some(effective_model_id.clone()),
+                effective_model_label: Some(effective_model_label),
+            },
+        );
+
         // Fetch recent session messages for Ideation context ONLY when spawning a new process.
         // The agent has no prior context at spawn time, so we inject the history into the prompt.
         // For non-ideation contexts and already-running agents (IPR path above), we pass empty slice.
@@ -1706,6 +1776,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 options.is_external_mcp,
                 resolved_effort.as_deref(),
                 resolved_model.as_deref(),
+                resolved_verifier_subagent_cap.as_deref(),
             )
             .await
         {
@@ -1723,6 +1794,25 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             }
         };
         tracing::debug!(pid = ?child.id(), "chat_service.send_message interactive spawn ok");
+
+        // Register verification child PID for explicit cleanup after reconciliation (Fix A).
+        // Only for Ideation sessions with SessionPurpose::Verification.
+        if context_type == ChatContextType::Ideation {
+            if let Some(pid) = child.id() {
+                let child_session_id = crate::domain::entities::IdeationSessionId::from_string(context_id.to_string());
+                match self.ideation_session_repo.get_by_id(&child_session_id).await {
+                    Ok(Some(session)) if session.session_purpose == SessionPurpose::Verification => {
+                        self.verification_child_registry.register(context_id, pid);
+                        tracing::info!(
+                            context_id,
+                            pid,
+                            "Registered verification child PID for post-reconcile cleanup"
+                        );
+                    }
+                    _ => {} // Not a verification session — do not register
+                }
+            }
+        }
 
         // Register stdin in the interactive process registry for future message delivery
         let interactive_key_for_register =
@@ -1762,6 +1852,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                     &agent_run_id,
                     Some(registry_worktree.clone()),
                     Some(cancellation_token.clone()),
+                    Some(effective_model_id.clone()),
                 )
                 .await
             {
@@ -1769,6 +1860,22 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                     pid,
                     error = %e,
                     "chat_service.send_message: failed to update agent process in registry — slot claimed but PID not persisted"
+                );
+            }
+        }
+
+        // 7c. Persist effective model to ideation_sessions (non-fatal, WARN on failure)
+        if context_type == ChatContextType::Ideation {
+            if let Err(e) = self
+                .ideation_session_repo
+                .update_last_effective_model(context_id, &effective_model_id)
+                .await
+            {
+                tracing::warn!(
+                    context_id,
+                    effective_model = %effective_model_id,
+                    error = %e,
+                    "chat_service.send_message: failed to persist last_effective_model — non-fatal"
                 );
             }
         }
@@ -1827,6 +1934,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             team_service: self.team_service.clone(),
             streaming_state_cache: self.streaming_state_cache.clone(),
             interactive_process_registry: Some(self.ipr()),
+            verification_child_registry: Some(Arc::clone(&self.verification_child_registry)),
         };
 
         // 9. Process stream in background (extracted to separate module)

@@ -25,7 +25,7 @@ export function useChildSessionStatus(
   // updating the `enabled` flag without accessing a ref during render.
   const [historyMode, setHistoryMode] = useState(false);
 
-  return useQuery({
+  const query = useQuery({
     queryKey: ["child-session-status", sessionId],
     queryFn: async () => {
       const data = await getChildSessionStatus(sessionId!);
@@ -55,4 +55,9 @@ export function useChildSessionStatus(
       return false;
     },
   });
+
+  return {
+    ...query,
+    lastEffectiveModel: query.data?.lastEffectiveModel ?? null,
+  };
 }

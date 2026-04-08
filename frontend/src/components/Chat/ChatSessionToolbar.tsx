@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { StatusActivityBadge } from "./StatusActivityBadge";
 import type { AgentType, StatusActivityBadgeProps } from "./StatusActivityBadge";
-import type { ContextType } from "@/types/chat-conversation";
+import type { ContextType, ModelDisplay } from "@/types/chat-conversation";
 import type { AgentStatus } from "@/stores/chatStore";
 
 export interface ChatSessionToolbarProps {
@@ -17,6 +17,7 @@ export interface ChatSessionToolbarProps {
   hasActivity?: boolean;
   agentStatus?: AgentStatus;
   storeKey?: string;
+  modelDisplay?: ModelDisplay;
 }
 
 export function ChatSessionToolbar({
@@ -28,6 +29,7 @@ export function ChatSessionToolbar({
   hasActivity,
   agentStatus,
   storeKey,
+  modelDisplay,
 }: ChatSessionToolbarProps) {
   return (
     <div
@@ -55,6 +57,7 @@ export function ChatSessionToolbar({
           {...(hasActivity !== undefined ? { hasActivity } : {})}
           {...(agentStatus !== undefined ? { agentStatus } : {})}
           {...(storeKey !== undefined ? { storeKey } : {})}
+          {...(modelDisplay !== undefined ? { modelDisplay } : {})}
         />
       </div>
     </div>

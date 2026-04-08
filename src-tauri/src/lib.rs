@@ -694,7 +694,7 @@ pub fn run() {
                 .with_review_repo(Arc::clone(&startup_review_repo))
                 .with_chat_service(recovery_chat_service);
 
-                runner.run().await;
+                let startup_ideation_recovery_claims = runner.run().await;
 
                 // Recover pending/failed memory archive jobs from previous session
                 // Process any jobs that were interrupted by app shutdown
@@ -900,6 +900,7 @@ pub fn run() {
                         auto_verify_stale_secs: vcfg.auto_verify_stale_secs,
                         interval_secs: vcfg.reconciliation_interval_secs,
                         external_session_stale_secs: ext_cfg.external_session_stale_secs,
+                        external_session_startup_grace_secs: ext_cfg.external_session_startup_grace_secs,
                     };
                     let verification_session_repo = Arc::clone(&startup_ideation_session_repo);
                     let svc = Arc::new(
@@ -911,7 +912,10 @@ pub fn run() {
                         .with_recovery_queue(Arc::clone(&recovery_queue))
                         .with_running_agent_registry(Arc::clone(&startup_running_agent_registry)),
                     );
-                    svc.startup_scan().await;
+                    svc.startup_scan_excluding_external_archive_sessions(
+                        &startup_ideation_recovery_claims,
+                    )
+                    .await;
                     tauri::async_runtime::spawn(async move { svc.run_periodic().await });
                 }
 

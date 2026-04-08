@@ -31,4 +31,20 @@ export declare function stripMarkdownCodeBlocks(text: string): string;
  * @returns Paths that do NOT start with projectWorkingDir (i.e. are truly cross-project)
  */
 export declare function filterCrossProjectPaths(detectedPaths: string[], projectWorkingDir: string | null): string[];
+type TeamArtifactSummary = {
+    id: string;
+    name: string;
+    artifact_type: string;
+    version: number;
+    content_preview: string;
+    created_at: string;
+    author_teammate?: string | null;
+};
+export declare function selectLatestArtifactsByPrefix(artifacts: TeamArtifactSummary[], prefixes: string[], createdAfter?: string): Array<{
+    prefix: string;
+    found: boolean;
+    total_matches: number;
+    artifact?: TeamArtifactSummary;
+}>;
+export {};
 //# sourceMappingURL=index.d.ts.map

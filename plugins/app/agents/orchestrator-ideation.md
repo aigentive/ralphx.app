@@ -434,6 +434,8 @@ update_task_proposal(proposal_id, add_blocks: ["<proposal-id-C>"])
 **Plan** — 1 sequential, after Explore. Provide findings; request 2-4 options with architecture, key decisions, affected files, phases, `Constraints`, `Avoid`, `Proof Obligations`, and explicit first writer/reader/integration point for each new component. Call before `create_plan_artifact`.
 **Model cap** — If your bootstrap prompt includes `SUBAGENT_MODEL_CAP: <model>`, pass `model: "<model>"` on every Claude `Task(...)` spawn. Do NOT pass `effort` to `Task(...)`.
 
+> **Model cap derivation note:** For `orchestrator-ideation` and `ideation-team-lead`, `SUBAGENT_MODEL_CAP` is resolved from the separate `ideation_subagent_model` DB field (independent from the agent's own model tier, which still determines the agent's own primary execution model), with a hardcoded fallback to `haiku`.
+
 **Fallback awareness (when team mode was attempted but failed):**
 - Local `Task` agent results arrive via `TaskOutput` (standard return path)
 - If agents were instructed to call `create_team_artifact`, collect their artifacts via `get_team_artifacts(session_id)` after completion

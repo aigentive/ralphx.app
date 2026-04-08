@@ -244,50 +244,23 @@ pub async fn resume_execution(
             .map_err(|e| e.to_string())?;
 
         for task in tasks {
-            // Determine restore status: prefer pause_reason metadata, fall back to status_history
-            let restore_status = if let Some(reason) =
-                crate::application::chat_service::PauseReason::from_task_metadata(
-                    task.metadata.as_deref(),
-                ) {
-                match reason.previous_status().parse::<InternalStatus>() {
-                    Ok(status) => status,
-                    Err(_) => {
-                        tracing::warn!(
-                            task_id = task.id.as_str(),
-                            previous_status = reason.previous_status(),
-                            "Invalid previous_status in pause metadata, falling back to history"
-                        );
-                        InternalStatus::Executing // safe fallback
-                    }
-                }
-            } else {
-                // Fallback: find the pre-pause status from status history
-                let status_history = match app_state.task_repo.get_status_history(&task.id).await {
-                    Ok(history) => history,
-                    Err(e) => {
-                        tracing::warn!(
-                            task_id = task.id.as_str(),
-                            error = %e,
-                            "Failed to get status history for resume"
-                        );
-                        continue;
-                    }
-                };
-
-                let pause_transition = status_history
-                    .iter()
-                    .rev()
-                    .find(|t| t.to == InternalStatus::Paused);
-
-                match pause_transition {
-                    Some(transition) => transition.from,
-                    None => {
-                        tracing::warn!(
-                            task_id = task.id.as_str(),
-                            "No pause transition found in history or metadata, cannot restore"
-                        );
-                        continue;
-                    }
+            // Determine restore status: prefer valid pause_reason metadata, otherwise
+            // fall back to the recorded pre-pause status in status history.
+            let restore_status = match determine_paused_restore_status(
+                &task,
+                app_state.task_repo.as_ref(),
+            )
+            .await
+            {
+                Ok(Some(status)) => status,
+                Ok(None) => continue,
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to resolve paused restore status"
+                    );
+                    continue;
                 }
             };
 
@@ -565,6 +538,43 @@ pub async fn resume_execution(
         success: true,
         status,
     })
+}
+
+#[doc(hidden)]
+pub(crate) async fn determine_paused_restore_status(
+    task: &Task,
+    task_repo: &dyn crate::domain::repositories::TaskRepository,
+) -> Result<Option<InternalStatus>, crate::error::AppError> {
+    if let Some(reason) = crate::application::chat_service::PauseReason::from_task_metadata(
+        task.metadata.as_deref(),
+    ) {
+        match reason.previous_status().parse::<InternalStatus>() {
+            Ok(status) => return Ok(Some(status)),
+            Err(_) => {
+                tracing::warn!(
+                    task_id = task.id.as_str(),
+                    previous_status = reason.previous_status(),
+                    "Invalid previous_status in pause metadata, falling back to status history"
+                );
+            }
+        }
+    }
+
+    let status_history = task_repo.get_status_history(&task.id).await?;
+    let pause_transition = status_history
+        .iter()
+        .rev()
+        .find(|t| t.to == InternalStatus::Paused);
+
+    if let Some(transition) = pause_transition {
+        return Ok(Some(transition.from));
+    }
+
+    tracing::warn!(
+        task_id = task.id.as_str(),
+        "No pause transition found in history or metadata, cannot restore"
+    );
+    Ok(None)
 }
 
 /// Stop execution (cancels current tasks and pauses)

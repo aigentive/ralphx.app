@@ -144,6 +144,7 @@ pub fn make_session_no_title(session_id: &str) -> IdeationSession {
         pending_initial_prompt: None,
         acceptance_status: None,
         verification_confirmation_status: None,
+        last_effective_model: None,
     }
 }
 
@@ -191,6 +192,7 @@ pub fn make_session_with_title_for_test(session_id: &str, title: &str) -> Ideati
         pending_initial_prompt: None,
         acceptance_status: None,
         verification_confirmation_status: None,
+        last_effective_model: None,
     }
 }
 

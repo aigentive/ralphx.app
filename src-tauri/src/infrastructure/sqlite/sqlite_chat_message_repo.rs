@@ -338,6 +338,27 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
             .await
     }
 
+    async fn exists_verification_result_in_conversation(
+        &self,
+        conversation_id: &ChatConversationId,
+    ) -> AppResult<bool> {
+        let conv_id_str = conversation_id.as_str().to_string();
+        // Build LIKE pattern from the canonical marker constant to avoid hardcoded strings
+        let like_pattern = format!("%{}%", crate::application::reconciliation::verification_handoff::VERIFICATION_RESULT_MARKER);
+        self.db
+            .run(move |conn| {
+                let exists: bool = conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM chat_messages WHERE conversation_id = ?1 AND content LIKE ?2)",
+                    rusqlite::params![conv_id_str, like_pattern],
+                    |row| row.get(0),
+                )
+                // Fail-safe: assume injected on any DB error to prevent double injection
+                .unwrap_or(true);
+                Ok(exists)
+            })
+            .await
+    }
+
     async fn get_first_user_message_by_context(
         &self,
         context_type: &str,
@@ -373,4 +394,5 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
             })
             .await
     }
+
 }

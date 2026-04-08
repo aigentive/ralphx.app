@@ -37,7 +37,7 @@ impl SqliteRunningAgentRegistry {
 }
 
 /// Parse a `RunningAgentInfo` from a SELECT row with column order:
-///   0: pid, 1: conversation_id, 2: agent_run_id, 3: started_at, 4: worktree_path, 5: last_active_at
+///   0: pid, 1: conversation_id, 2: agent_run_id, 3: started_at, 4: worktree_path, 5: last_active_at, 6: model
 ///
 /// Extracts the 4× duplicated parsing logic from `unregister`, `get`, `try_register`,
 /// and `cleanup_stale_entry` into one authoritative location.
@@ -48,6 +48,7 @@ fn parse_running_agent_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RunningA
     let started_at_str: String = row.get(3)?;
     let worktree_path: Option<String> = row.get(4)?;
     let last_active_at_str: Option<String> = row.get(5)?;
+    let model: Option<String> = row.get(6)?;
     let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
         .map(|dt| dt.with_timezone(&chrono::Utc))
         .unwrap_or_else(|_| chrono::Utc::now());
@@ -64,6 +65,7 @@ fn parse_running_agent_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RunningA
         worktree_path,
         cancellation_token: None, // Populated from in-memory token map by caller
         last_active_at,
+        model,
     })
 }
 
@@ -168,7 +170,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                 // Read the row only if agent_run_id matches (ownership check prevents a finishing
                 // agent from accidentally deleting a newer agent's slot for the same context).
                 let info = match conn.query_row(
-                    "SELECT pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at FROM running_agents WHERE context_type = ?1 AND context_id = ?2 AND agent_run_id = ?3",
+                    "SELECT pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at, model FROM running_agents WHERE context_type = ?1 AND context_id = ?2 AND agent_run_id = ?3",
                     rusqlite::params![&ctx_type, &ctx_id, &run_id],
                     parse_running_agent_row,
                 ) {
@@ -225,7 +227,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
             .run(move |conn| {
                 Ok(conn
                     .query_row(
-                        "SELECT pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
+                        "SELECT pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at, model FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
                         rusqlite::params![ctx_type, ctx_id],
                         parse_running_agent_row,
                     )
@@ -301,7 +303,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
             .db
             .run(move |conn| {
                 let mut stmt = match conn.prepare(
-                    "SELECT context_type, context_id, pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at FROM running_agents",
+                    "SELECT context_type, context_id, pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at, model FROM running_agents",
                 ) {
                     Ok(stmt) => stmt,
                     Err(_) => return Ok(Vec::new()),
@@ -343,6 +345,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                         Err(_) => continue,
                     };
                     let last_active_at_str: Option<String> = row.get(7).unwrap_or_default();
+                    let model: Option<String> = row.get(8).unwrap_or_default();
                     let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
                         .map(|dt| dt.with_timezone(&chrono::Utc))
                         .unwrap_or_else(|_| chrono::Utc::now());
@@ -365,6 +368,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                             worktree_path,
                             cancellation_token: None,
                             last_active_at,
+                            model,
                         },
                     ));
                 }
@@ -393,7 +397,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
             .db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT context_type, context_id, pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at FROM running_agents WHERE context_type = ?1",
+                    "SELECT context_type, context_id, pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at, model FROM running_agents WHERE context_type = ?1",
                 )?;
 
                 let mut results = Vec::new();
@@ -408,6 +412,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                     let started_at_str: String = row.get(5)?;
                     let worktree_path: Option<String> = row.get(6)?;
                     let last_active_at_str: Option<String> = row.get(7)?;
+                    let model: Option<String> = row.get(8)?;
 
                     let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
                         .map(|dt| dt.with_timezone(&chrono::Utc))
@@ -434,6 +439,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                             worktree_path,
                             cancellation_token: None,
                             last_active_at,
+                            model,
                         },
                     ));
                 }
@@ -518,7 +524,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                 // Check for existing registration
                 let existing = conn
                     .query_row(
-                        "SELECT pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
+                        "SELECT pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at, model FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
                         rusqlite::params![&ctx_type, &ctx_id],
                         parse_running_agent_row,
                     )
@@ -574,6 +580,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
         agent_run_id: &str,
         worktree_path: Option<String>,
         cancellation_token: Option<CancellationToken>,
+        model: Option<String>,
     ) -> Result<(), String> {
         let ctx_type = key.context_type.clone();
         let ctx_id = key.context_id.clone();
@@ -585,8 +592,8 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
             .db
             .run(move |conn| {
                 Ok(match conn.execute(
-                    "UPDATE running_agents SET pid = ?1, worktree_path = ?2, agent_run_id = ?3 WHERE context_type = ?4 AND context_id = ?5",
-                    rusqlite::params![pid, &wt_path, &run_id, &ctx_type, &ctx_id],
+                    "UPDATE running_agents SET pid = ?1, worktree_path = ?2, agent_run_id = ?3, model = ?4 WHERE context_type = ?5 AND context_id = ?6",
+                    rusqlite::params![pid, &wt_path, &run_id, &model, &ctx_type, &ctx_id],
                 ) {
                     Ok(0) => {
                         // TOCTOU recovery: the placeholder row was pruned between try_register
@@ -599,8 +606,8 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                         );
                         let started_at = chrono::Utc::now().to_rfc3339();
                         conn.execute(
-                            "INSERT OR REPLACE INTO running_agents (context_type, context_id, pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)",
-                            rusqlite::params![&ctx_type, &ctx_id, pid, &conv_id, &run_id, &started_at, &wt_path],
+                            "INSERT OR REPLACE INTO running_agents (context_type, context_id, pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at, model) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8)",
+                            rusqlite::params![&ctx_type, &ctx_id, pid, &conv_id, &run_id, &started_at, &wt_path, &model],
                         ).map(|_| ()).map_err(|e| {
                             tracing::error!(
                                 context_type = %ctx_type,

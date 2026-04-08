@@ -39,6 +39,18 @@ async fn setup_test_state() -> HttpServerState {
     }
 }
 
+async fn get_external_event_types(state: &HttpServerState, project_id: &ProjectId) -> Vec<String> {
+    state
+        .app_state
+        .external_events_repo
+        .get_events_after_cursor(&[project_id.as_str().to_string()], 0, 100)
+        .await
+        .expect("external events query should succeed")
+        .into_iter()
+        .map(|event| event.event_type)
+        .collect()
+}
+
 #[tokio::test]
 async fn test_get_session_messages_empty_session() {
     let state = setup_test_state().await;
@@ -2040,11 +2052,18 @@ async fn test_reverify_zombie_agent_rejected_after_generation_increment() {
     .await;
 
     assert!(zombie.is_err(), "zombie agent with stale generation=5 must be rejected");
-    let (status, _) = zombie.unwrap_err();
+    let (status, body) = zombie.unwrap_err();
     assert_eq!(
         status,
         StatusCode::CONFLICT,
         "must return 409 CONFLICT for zombie agent after re-verify"
+    );
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Call get_plan_verification on the parent session"),
+        "generation mismatch error should tell the agent how to recover"
     );
 
     // Fresh agent with correct generation=6 → must succeed
@@ -2358,11 +2377,18 @@ async fn test_update_verification_rejects_skip_for_external_origin() {
     .await;
 
     assert!(result.is_err(), "external session must reject skip status");
-    let (status, _body) = result.unwrap_err();
+    let (status, body) = result.unwrap_err();
     assert_eq!(
         status,
         StatusCode::FORBIDDEN,
         "external skip must return 403 FORBIDDEN"
+    );
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Use status='reviewing' for in-progress rounds"),
+        "external skip error should provide repair guidance"
     );
 }
 
@@ -2540,6 +2566,166 @@ async fn test_auto_propose_fires_for_external_zero_blocking() {
     );
 }
 
+/// External zero_blocking convergence with a live verification child must still emit verified
+/// side effects before the child is stopped/archived.
+#[tokio::test]
+async fn test_external_zero_blocking_verified_side_effects_survive_child_shutdown() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+
+    let parent = IdeationSessionBuilder::new()
+        .project_id(project_id.clone())
+        .origin(SessionOrigin::External)
+        .build();
+    let parent_id = parent.id.clone();
+    let parent_id_str = parent_id.as_str().to_string();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    // Keep the parent on the queued-message path so auto-propose never spawns a real agent.
+    let parent_key = RunningAgentKey::new("ideation", &parent_id_str);
+    state
+        .app_state
+        .running_agent_registry
+        .register(
+            parent_key,
+            55555,
+            "test-conv-parent".to_string(),
+            "test-run-parent".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let child = IdeationSessionBuilder::new()
+        .project_id(project_id.clone())
+        .origin(SessionOrigin::External)
+        .parent_session_id(parent_id.clone())
+        .session_purpose(SessionPurpose::Verification)
+        .build();
+    let child_id = child.id.clone();
+    let child_id_str = child_id.as_str().to_string();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(child)
+        .await
+        .unwrap();
+
+    // Register the verifier child as running so terminal verification will actively stop it.
+    let child_key = RunningAgentKey::new("ideation", &child_id_str);
+    state
+        .app_state
+        .running_agent_registry
+        .register(
+            child_key,
+            66666,
+            "test-conv-child".to_string(),
+            "test-run-child".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let prior_gaps = vec![
+        make_gap("high", "security", "No authentication layer"),
+        make_gap("medium", "testing", "No unit tests"),
+    ];
+    let prior_rounds = vec![make_round(
+        vec!["no-authentication-layer", "no-unit-tests"],
+        30,
+    )];
+    let round1_metadata = make_metadata_json(prior_gaps, prior_rounds, 1, 5);
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &parent_id,
+            VerificationStatus::Reviewing,
+            true,
+            Some(round1_metadata),
+        )
+        .await
+        .unwrap();
+
+    let result = update_plan_verification(
+        State(state.clone()),
+        Path(parent_id_str.clone()),
+        Json(UpdateVerificationRequest {
+            status: "needs_revision".to_string(),
+            in_progress: true,
+            round: Some(2),
+            gaps: Some(vec![]),
+            convergence_reason: None,
+            max_rounds: Some(5),
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await
+    .expect("terminal zero_blocking update must succeed");
+
+    assert_eq!(result.0.status, "verified");
+    assert_eq!(result.0.convergence_reason.as_deref(), Some("zero_blocking"));
+
+    let mut queued_auto_propose = false;
+    let mut child_archived = false;
+    let mut verified_event_seen = false;
+    let mut final_phase = None;
+    for _ in 0..50 {
+        queued_auto_propose = state
+            .app_state
+            .message_queue
+            .get_queued(ChatContextType::Ideation, &parent_id_str)
+            .iter()
+            .any(|message| message.content.contains("<auto-propose>"));
+        child_archived = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&child_id)
+            .await
+            .expect("child reload should succeed")
+            .expect("child should exist")
+            .status
+            == IdeationSessionStatus::Archived;
+        final_phase = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&parent_id)
+            .await
+            .expect("parent reload should succeed")
+            .expect("parent should exist")
+            .external_activity_phase;
+        verified_event_seen = get_external_event_types(&state, &project_id)
+            .await
+            .iter()
+            .any(|event_type| event_type == "ideation:verified");
+
+        if queued_auto_propose
+            && child_archived
+            && verified_event_seen
+            && final_phase.as_deref() == Some("ready")
+        {
+            break;
+        }
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    }
+
+    assert!(queued_auto_propose, "parent must receive queued <auto-propose> message");
+    assert!(child_archived, "verification child must be archived after terminal verification");
+    assert!(verified_event_seen, "ideation:verified event must be emitted");
+    assert_eq!(
+        final_phase.as_deref(),
+        Some("ready"),
+        "external auto-propose path must restore activity phase to ready"
+    );
+}
+
 /// Auto-propose is skipped for internal (non-external) sessions even if zero_blocking fires.
 ///
 /// Proof Obligation 3: internal sessions are NOT affected by auto-propose.
@@ -2688,6 +2874,137 @@ async fn test_auto_propose_skipped_for_non_zero_blocking() {
         queued.is_empty(),
         "no auto-propose must be queued for max_rounds convergence; got: {:?}",
         queued.iter().map(|m| &m.content).collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn test_update_plan_verification_remaps_verification_child_session_id_to_parent() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+
+    let parent = IdeationSession::new(project_id.clone());
+    let parent_id = parent.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    let child = IdeationSessionBuilder::new()
+        .project_id(project_id)
+        .parent_session_id(parent_id.clone())
+        .session_purpose(SessionPurpose::Verification)
+        .build();
+    let child_id = child.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(child)
+        .await
+        .unwrap();
+
+    let result = update_plan_verification(
+        State(state.clone()),
+        Path(child_id.as_str().to_string()),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: Some(1),
+            gaps: Some(vec![]),
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await
+    .expect("handler must succeed via parent remap");
+
+    assert_eq!(
+        result.0.session_id,
+        parent_id.as_str(),
+        "verification updates routed through child id must return the canonical parent id"
+    );
+    assert_eq!(result.0.status, "reviewing");
+    assert!(result.0.in_progress);
+
+    let refreshed_parent = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&parent_id)
+        .await
+        .unwrap()
+        .expect("parent must still exist");
+    assert_eq!(refreshed_parent.verification_status, VerificationStatus::Reviewing);
+    assert!(
+        refreshed_parent.verification_in_progress,
+        "parent session must receive the verification state update"
+    );
+}
+
+#[tokio::test]
+async fn test_get_plan_verification_remaps_verification_child_session_id_to_parent() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+
+    let parent = IdeationSession::new(project_id.clone());
+    let parent_id = parent.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(parent)
+        .await
+        .unwrap();
+
+    let child = IdeationSessionBuilder::new()
+        .project_id(project_id)
+        .parent_session_id(parent_id.clone())
+        .session_purpose(SessionPurpose::Verification)
+        .build();
+    let child_id = child.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(child)
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &parent_id,
+            VerificationStatus::Reviewing,
+            true,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let result = get_plan_verification(
+        State(state),
+        unrestricted_scope(),
+        Path(child_id.as_str().to_string()),
+    )
+    .await
+    .expect("handler must succeed via parent remap");
+
+    assert_eq!(
+        result.0.session_id,
+        parent_id.as_str(),
+        "verification reads routed through child id must return the canonical parent id"
+    );
+    assert_eq!(result.0.status, "reviewing");
+    assert!(result.0.in_progress);
+    assert_eq!(
+        result
+            .0
+            .verification_child
+            .as_ref()
+            .map(|info| info.latest_child_session_id.as_str()),
+        Some(child_id.as_str()),
+        "parent continuity block must still point at the verification child"
     );
 }
 
@@ -2927,5 +3244,318 @@ async fn test_get_plan_verification_child_last_orchestrator_message() {
     assert!(
         child_info.last_assistant_message_at.is_some(),
         "last_assistant_message_at must be populated when message exists"
+    );
+}
+
+// ── PDM-335 regression tests: report_verification_round idempotency ──────────
+
+/// PDM-335 regression 1: parent already in Reviewing → report_verification_round with
+/// status=reviewing succeeds (HTTP 200) and round data persists.
+///
+/// Before the fix, `(Reviewing, Reviewing)` had no match arm → 422 rejection.
+/// After the fix, the arm is added and the call is idempotent.
+#[tokio::test]
+async fn test_reviewing_parent_report_round_succeeds() {
+    let state = setup_test_state().await;
+
+    // Create a session already in Reviewing state (simulates mid-verification)
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_status(VerificationStatus::Reviewing)
+        .build();
+    let session_id = session.id.as_str().to_string();
+    let session_id_obj = session.id.clone();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    // Call report_verification_round (status=reviewing, in_progress=true) — must succeed
+    let result = update_plan_verification(
+        State(state.clone()),
+        Path(session_id.clone()),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: Some(2),
+            gaps: Some(vec![]),
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "Reviewing → Reviewing must succeed (idempotent in-progress path): {:?}",
+        result.err()
+    );
+    let resp = result.unwrap().0;
+    assert_eq!(resp.status, "reviewing");
+    assert!(resp.in_progress);
+
+    // Round data must persist
+    let refreshed = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_obj)
+        .await
+        .unwrap()
+        .expect("session must still exist");
+    assert_eq!(
+        refreshed.verification_status,
+        VerificationStatus::Reviewing,
+        "session must remain in Reviewing after idempotent round report"
+    );
+    assert!(
+        refreshed.verification_in_progress,
+        "verification must remain in_progress after idempotent round report"
+    );
+}
+
+/// PDM-335 regression 2: two consecutive report_verification_round calls while parent
+/// stays in Reviewing both succeed (idempotent repeated rounds).
+#[tokio::test]
+async fn test_repeated_reviewing_reports_idempotent() {
+    let state = setup_test_state().await;
+
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_status(VerificationStatus::Reviewing)
+        .build();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    // First call — round 1 report
+    let first = update_plan_verification(
+        State(state.clone()),
+        Path(session_id.clone()),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: Some(1),
+            gaps: Some(vec![]),
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await;
+
+    assert!(
+        first.is_ok(),
+        "First Reviewing → Reviewing call must succeed: {:?}",
+        first.err()
+    );
+    assert_eq!(first.unwrap().0.status, "reviewing");
+
+    // Second call — round 2 report while parent remains in Reviewing
+    let second = update_plan_verification(
+        State(state.clone()),
+        Path(session_id.clone()),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: Some(2),
+            gaps: Some(vec![]),
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await;
+
+    assert!(
+        second.is_ok(),
+        "Second consecutive Reviewing → Reviewing call must also succeed (idempotent): {:?}",
+        second.err()
+    );
+    let resp2 = second.unwrap().0;
+    assert_eq!(resp2.status, "reviewing", "session must remain in Reviewing after two round reports");
+    assert!(resp2.in_progress, "in_progress must remain true");
+}
+
+/// PDM-335 regression 3: generation mismatch still returns 409 CONFLICT.
+///
+/// The new idempotent arm must not bypass the generation guard — zombie protection
+/// continues to work for in-progress round reports.
+#[tokio::test]
+async fn test_generation_mismatch_still_fails() {
+    let state = setup_test_state().await;
+
+    // Session in Reviewing with generation=3
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_status(VerificationStatus::Reviewing)
+        .verification_generation(3)
+        .build();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    // Send stale generation=1 → must return 409 CONFLICT even with Reviewing → Reviewing arm
+    let result = update_plan_verification(
+        State(state.clone()),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: Some(2),
+            gaps: Some(vec![]),
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+            generation: Some(1), // Stale — current is 3
+        }),
+    )
+    .await;
+
+    assert!(result.is_err(), "stale generation must still be rejected with 409");
+    let (status, _body) = result.unwrap_err();
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "generation mismatch must return 409 CONFLICT regardless of Reviewing → Reviewing arm"
+    );
+}
+
+/// PDM-335 regression 4: terminal complete_plan_verification (in_progress=false) still works.
+///
+/// The idempotency fix must not affect terminal transitions: verified/needs_revision/skipped
+/// still apply and complete the verification loop correctly.
+#[tokio::test]
+async fn test_terminal_complete_still_works() {
+    let state = setup_test_state().await;
+
+    // Session in Reviewing with generation=1
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_status(VerificationStatus::Reviewing)
+        .verification_generation(1)
+        .build();
+    let session_id = session.id.as_str().to_string();
+    let session_id_obj = session.id.clone();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    // Terminal call: in_progress=false, status=needs_revision, convergence_reason provided.
+    // max_rounds is None to avoid triggering the max_rounds convergence condition
+    // (which would auto-promote needs_revision → verified when round == max_rounds).
+    let result = update_plan_verification(
+        State(state.clone()),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "needs_revision".to_string(),
+            in_progress: false,
+            round: Some(3),
+            gaps: None,
+            convergence_reason: Some("max_rounds".to_string()),
+            max_rounds: None,
+            parse_failed: None,
+            generation: Some(1),
+        }),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "terminal complete_plan_verification must still succeed: {:?}",
+        result.err()
+    );
+    let resp = result.unwrap().0;
+    assert_eq!(resp.status, "needs_revision", "terminal call must transition to needs_revision");
+    assert!(!resp.in_progress, "terminal call must set in_progress=false");
+
+    let refreshed = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_obj)
+        .await
+        .unwrap()
+        .expect("session must still exist");
+    assert_eq!(
+        refreshed.verification_status,
+        VerificationStatus::NeedsRevision,
+        "session must be NeedsRevision after terminal completion"
+    );
+    assert!(
+        !refreshed.verification_in_progress,
+        "verification must not be in_progress after terminal completion"
+    );
+}
+
+/// PDM-335 regression 5: passing a child verification session ID is correctly remapped
+/// to the parent, and the round report succeeds even when parent is already in Reviewing.
+///
+/// Combines the child-session remap with the new idempotent Reviewing → Reviewing path.
+#[tokio::test]
+async fn test_child_session_remap_still_works() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+
+    // Parent session in Reviewing state
+    let parent = IdeationSessionBuilder::new()
+        .project_id(project_id.clone())
+        .verification_status(VerificationStatus::Reviewing)
+        .build();
+    let parent_id = parent.id.clone();
+    state.app_state.ideation_session_repo.create(parent).await.unwrap();
+
+    // Child verification session linked to the parent
+    let child = IdeationSessionBuilder::new()
+        .project_id(project_id)
+        .parent_session_id(parent_id.clone())
+        .session_purpose(SessionPurpose::Verification)
+        .build();
+    let child_id = child.id.clone();
+    state.app_state.ideation_session_repo.create(child).await.unwrap();
+
+    // Call with child session ID — backend must remap to parent and succeed
+    // Parent is already in Reviewing, so this exercises the new idempotent arm.
+    let result = update_plan_verification(
+        State(state.clone()),
+        Path(child_id.as_str().to_string()),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: Some(2),
+            gaps: Some(vec![]),
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "child session remap + Reviewing → Reviewing must succeed: {:?}",
+        result.err()
+    );
+    let resp = result.unwrap().0;
+    assert_eq!(
+        resp.session_id,
+        parent_id.as_str(),
+        "response must carry the canonical parent session_id after remap"
+    );
+    assert_eq!(resp.status, "reviewing");
+    assert!(resp.in_progress);
+
+    // Parent session must reflect the update
+    let refreshed_parent = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&parent_id)
+        .await
+        .unwrap()
+        .expect("parent must still exist");
+    assert_eq!(
+        refreshed_parent.verification_status,
+        VerificationStatus::Reviewing,
+        "parent session must stay in Reviewing after child-remapped round report"
+    );
+    assert!(
+        refreshed_parent.verification_in_progress,
+        "parent session must be in_progress after child-remapped round report"
     );
 }

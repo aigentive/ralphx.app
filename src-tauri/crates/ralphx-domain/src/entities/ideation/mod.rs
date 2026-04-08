@@ -141,6 +141,9 @@ pub struct IdeationSession {
     /// None = gate not triggered. Some(Pending) = awaiting user confirmation.
     /// Some(Accepted) = user confirmed the verified plan. Some(Rejected) = user rejected.
     pub verification_confirmation_status: Option<VerificationConfirmationStatus>,
+    /// The last effective Claude model ID used when spawning an agent for this session.
+    /// Set after each successful agent spawn. Used to display the model label in the UI.
+    pub last_effective_model: Option<String>,
 }
 
 /// Builder for creating IdeationSession instances
@@ -466,6 +469,7 @@ impl IdeationSessionBuilder {
             pending_initial_prompt: self.pending_initial_prompt,
             acceptance_status: self.acceptance_status,
             verification_confirmation_status: self.verification_confirmation_status,
+            last_effective_model: None,
         }
     }
 }
@@ -679,6 +683,9 @@ impl IdeationSession {
                 .unwrap_or(None)
                 .as_deref()
                 .and_then(|s| s.parse().ok()),
+            last_effective_model: row
+                .get::<_, Option<String>>("last_effective_model")
+                .unwrap_or(None),
         })
     }
 

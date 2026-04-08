@@ -19,8 +19,9 @@ import { useUiStore } from "@/stores/uiStore";
 import { useChatStore, selectToolCallStartTimes, selectLastToolCallCompletionTimestamp } from "@/stores/chatStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { AGENT_WORKER, AGENT_REVIEWER } from "@/constants/agents";
-import type { ContextType } from "@/types/chat-conversation";
+import type { ContextType, ModelDisplay } from "@/types/chat-conversation";
 import type { AgentStatus } from "@/stores/chatStore";
+import { ModelChip } from "./ModelChip";
 
 // ============================================================================
 // Constants
@@ -53,6 +54,8 @@ export interface StatusActivityBadgeProps {
   agentStatus?: AgentStatus;
   /** Store key for subscribing to lastAgentEventTimestamp */
   storeKey?: string;
+  /** Effective model to display as chip on the left of the status row */
+  modelDisplay?: ModelDisplay;
 }
 
 // ============================================================================
@@ -129,6 +132,7 @@ export function StatusActivityBadge({
   hasActivity = false,
   agentStatus = "idle",
   storeKey,
+  modelDisplay,
 }: StatusActivityBadgeProps) {
   const setActivityFilter = useUiStore((s) => s.setActivityFilter);
   const setCurrentView = useUiStore((s) => s.setCurrentView);
@@ -195,15 +199,18 @@ export function StatusActivityBadge({
   // Idle but has activity: show muted activity icon
   if (!isAgentActive && !isWaiting && hasActivity) {
     return (
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={handleActivityClick}
-        className="shrink-0 h-7 px-2 text-white/40 hover:text-white/60"
-        aria-label="View activity"
-      >
-        <Activity className="w-3.5 h-3.5" />
-      </Button>
+      <div className="flex items-center gap-1.5 shrink-0">
+        {modelDisplay && <ModelChip model={modelDisplay} />}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleActivityClick}
+          className="shrink-0 h-7 px-2 text-white/40 hover:text-white/60"
+          aria-label="View activity"
+        >
+          <Activity className="w-3.5 h-3.5" />
+        </Button>
+      </div>
     );
   }
 
@@ -211,6 +218,7 @@ export function StatusActivityBadge({
   if (isWaiting) {
     return (
       <div className="flex items-center gap-1.5 shrink-0">
+        {modelDisplay && <ModelChip model={modelDisplay} />}
         <Badge variant="secondary" className="shrink-0">
           <CirclePause className="w-3 h-3 mr-1.5 text-white/50" />
           Awaiting input
@@ -262,6 +270,7 @@ export function StatusActivityBadge({
   // Active/generating state: badge with status text, spinner, last activity, and activity button
   return (
     <div className="flex items-center gap-1.5 shrink-0">
+      {modelDisplay && <ModelChip model={modelDisplay} />}
       <Badge variant="secondary" className="shrink-0">
         <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
         <span className={badgeColorClass || undefined}>{badgeLabel}</span>

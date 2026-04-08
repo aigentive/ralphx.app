@@ -33,7 +33,7 @@ export function useIdeationModelSettings(projectId: string | null) {
   });
 
   const mutation = useMutation({
-    mutationFn: (updates: { primaryModel?: string; verifierModel?: string }) =>
+    mutationFn: (updates: { primaryModel?: string; verifierModel?: string; verifierSubagentModel?: string; ideationSubagentModel?: string }) =>
       ideationModelApi.update({ projectId, ...updates }),
     onMutate: async (updates) => {
       // Cancel outgoing refetches for all model queries (prefix-level) to prevent stale refetch races

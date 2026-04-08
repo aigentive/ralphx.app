@@ -5,7 +5,8 @@ use ralphx_lib::application::interactive_process_registry::{
 use ralphx_lib::application::{AppState, TaskTransitionService};
 use ralphx_lib::commands::execution_commands::ExecutionState;
 use ralphx_lib::domain::entities::{
-    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, ChatConversationId, ExecutionRecoveryMetadata,
+    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, ChatConversation,
+    ChatConversationId, ExecutionRecoveryMetadata,
     InternalStatus, MergeFailureSource, Project, Task, TaskId,
 };
 use ralphx_lib::domain::services::{MemoryRunningAgentRegistry, RunningAgentKey, RunningAgentRegistry};
@@ -926,6 +927,18 @@ async fn reconcile_merge_conflict_transitions_after_cooldown() {
         updated.internal_status,
         InternalStatus::MergeIncomplete,
         "Task should transition to MergeIncomplete after cooldown (requires manual resolution)"
+    );
+    let history = app_state
+        .task_repo
+        .get_status_history(&task.id)
+        .await
+        .unwrap();
+    assert!(
+        history.iter().any(|entry| {
+            entry.from == InternalStatus::MergeConflict
+                && entry.to == InternalStatus::PendingMerge
+        }),
+        "Allowed MergeConflict retry must record MergeConflict -> PendingMerge before entry actions run"
     );
 }
 
@@ -2802,6 +2815,20 @@ async fn reconcile_merge_incomplete_retries_when_below_max_validation_reverts() 
         reconciled || updated.internal_status == InternalStatus::MergeIncomplete,
         "Task with revert_count=1 should not be blocked by loop-breaking guard"
     );
+    if reconciled {
+        let history = app_state
+            .task_repo
+            .get_status_history(&task.id)
+            .await
+            .unwrap();
+        assert!(
+            history.iter().any(|entry| {
+                entry.from == InternalStatus::MergeIncomplete
+                    && entry.to == InternalStatus::PendingMerge
+            }),
+            "Allowed validation retry must record MergeIncomplete -> PendingMerge"
+        );
+    }
 }
 
 #[test]
@@ -3752,6 +3779,20 @@ async fn rc5_starvation_guard_skips_recently_retried_task() {
         updated2.internal_status,
         reconciled2
     );
+    if reconciled2 {
+        let history = app_state
+            .task_repo
+            .get_status_history(&task2.id)
+            .await
+            .unwrap();
+        assert!(
+            history.iter().any(|entry| {
+                entry.from == InternalStatus::MergeIncomplete
+                    && entry.to == InternalStatus::PendingMerge
+            }),
+            "Fresh MergeIncomplete retry should record MergeIncomplete -> PendingMerge"
+        );
+    }
 }
 
 #[tokio::test]
@@ -3807,6 +3848,18 @@ async fn rc4_non_validation_failure_retries_normally() {
             || updated.internal_status == InternalStatus::MergeIncomplete,
         "TransientGit failure should attempt retry (got {:?})",
         updated.internal_status
+    );
+    let history = app_state
+        .task_repo
+        .get_status_history(&task.id)
+        .await
+        .unwrap();
+    assert!(
+        history.iter().any(|entry| {
+            entry.from == InternalStatus::MergeIncomplete
+                && entry.to == InternalStatus::PendingMerge
+        }),
+        "TransientGit retry must record MergeIncomplete -> PendingMerge"
     );
 }
 
@@ -4787,6 +4840,72 @@ async fn reconcile_execution_skips_for_live_ipr() {
     );
 
     drop(child);
+}
+
+#[tokio::test]
+async fn reconcile_completed_execution_records_pending_review_transition_for_completed_run() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let reconciler = build_reconciler(&app_state, &execution_state);
+    let worktree = tempfile::TempDir::new().expect("create temp dir for reviewable worktree");
+
+    let project = Project::new("Test Project".to_string(), "/tmp/test".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+    let mut task = Task::new(project.id.clone(), "Completed Execution Task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    task.worktree_path = Some(worktree.path().to_string_lossy().into_owned());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let conversation = ChatConversation::new_task_execution(task.id.clone());
+    let conversation = app_state
+        .chat_conversation_repo
+        .create(conversation)
+        .await
+        .unwrap();
+    let mut seeded_run = AgentRun::new(conversation.id.clone());
+    seeded_run.started_at = chrono::Utc::now() - chrono::Duration::minutes(1);
+    let run = app_state.agent_run_repo.create(seeded_run).await.unwrap();
+    app_state.agent_run_repo.complete(&run.id).await.unwrap();
+
+    app_state
+        .task_repo
+        .persist_status_change(&task.id, InternalStatus::Ready, InternalStatus::Executing, "test")
+        .await
+        .unwrap();
+
+    let reconciled = reconciler
+        .reconcile_completed_execution(&task, InternalStatus::Executing)
+        .await;
+    assert!(
+        reconciled,
+        "Completed execution run should be processed by reconciliation"
+    );
+
+    let history = app_state
+        .task_repo
+        .get_status_history(&task.id)
+        .await
+        .unwrap();
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should still exist");
+    assert!(
+        matches!(
+            updated.internal_status,
+            InternalStatus::PendingReview | InternalStatus::Reviewing
+        ),
+        "Completed execution reconciliation should advance into the review pipeline, got {:?}",
+        updated.internal_status
+    );
+    assert!(
+        history
+            .iter()
+            .any(|t| t.from == InternalStatus::Executing && t.to == InternalStatus::PendingReview),
+        "Completed execution reconciliation must record Executing -> PendingReview"
+    );
 }
 
 #[tokio::test]
@@ -8342,4 +8461,3 @@ async fn recover_timeout_failures_classifier_overlap_blocked_by_stop_retrying_ga
         "Task with stop_retrying=true must NOT be recovered even when error matches both classifiers"
     );
 }
-

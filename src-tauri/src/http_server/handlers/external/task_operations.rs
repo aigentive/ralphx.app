@@ -476,6 +476,26 @@ pub async fn review_action_http(
 
     task.assert_project_scope(&scope).map_err(|e| e.status)?;
 
+    let action_allowed = match &req.action {
+        ReviewActionType::ApproveReview | ReviewActionType::RequestChanges => matches!(
+            task.internal_status,
+            InternalStatus::ReviewPassed | InternalStatus::Escalated
+        ),
+        ReviewActionType::ResolveEscalation => {
+            matches!(task.internal_status, InternalStatus::Escalated)
+        }
+    };
+
+    if !action_allowed {
+        tracing::warn!(
+            task_id = task_id.as_str(),
+            action = ?req.action,
+            current_status = task.internal_status.as_str(),
+            "Rejected external review action due to invalid task status"
+        );
+        return Err(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
     let target_status = match &req.action {
         ReviewActionType::ApproveReview => InternalStatus::Approved,
         ReviewActionType::RequestChanges => InternalStatus::RevisionNeeded,

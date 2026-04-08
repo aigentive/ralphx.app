@@ -901,10 +901,10 @@ agents:
       [
         get_session_plan,
         get_session_messages,
-        get_team_artifacts,
-        get_artifact,
+        get_verification_round_artifacts,
         get_parent_session_context,
-        update_plan_verification,
+        report_verification_round,
+        complete_plan_verification,
         get_plan_verification,
         update_plan_artifact,
         edit_plan_artifact,

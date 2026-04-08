@@ -187,11 +187,20 @@ impl<'a> TransitionHandler<'a> {
                 if task.category == TaskCategory::PlanMerge {
                     let project_id =
                         ProjectId::from_string(self.machine.context.project_id.clone());
-                    if let Ok(Some(project)) = project_repo.get_by_id(&project_id).await {
-                        let repo_path = std::path::PathBuf::from(&project.working_directory);
-                        self.post_merge_cleanup(task_id_str, &task_id, &repo_path, plan_branch_repo)
+                    let target_branch =
+                        if let Ok(Some(project)) = project_repo.get_by_id(&project_id).await {
+                            let repo_path = std::path::PathBuf::from(&project.working_directory);
+                            self.post_merge_cleanup(
+                                task_id_str,
+                                &task_id,
+                                &repo_path,
+                                plan_branch_repo,
+                            )
                             .await;
-                    }
+                            project.base_branch.clone().unwrap_or_default()
+                        } else {
+                            String::new()
+                        };
 
                     // Emit plan:delivered if all session tasks are now Merged
                     if let Some(ref session_id) = task.ideation_session_id {
@@ -253,6 +262,7 @@ impl<'a> TransitionHandler<'a> {
                                     "task_id": task_id_str,
                                     "project_id": project_id_str,
                                     "commit_sha": task.merge_commit_sha,
+                                    "target_branch": target_branch,
                                     "timestamp": Utc::now().to_rfc3339(),
                                 });
                                 if let Some(ref repo) =

@@ -365,6 +365,25 @@ mod ipr_removal {
         (task_id, key)
     }
 
+    async fn seed_task_with_project_status(
+        state: &HttpServerState,
+        repo_path: &std::path::Path,
+        status: InternalStatus,
+    ) -> TaskId {
+        let (task_id, _) = seed_merging_task_with_project(state, repo_path, None).await;
+        let mut task = state
+            .app_state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        task.internal_status = status;
+        task.touch();
+        state.app_state.task_repo.update(&task).await.unwrap();
+        task_id
+    }
+
     // ---- complete_merge IPR tests ----------------------------------------
 
     /// complete_merge success path: IPR is removed after transition to Merged.
@@ -536,6 +555,60 @@ mod ipr_removal {
         }
         // If result is Err, the transition failed (in-memory limitation), which is acceptable.
         // The key invariant is: no panic when IPR entry is absent.
+    }
+
+    #[tokio::test]
+    async fn test_complete_merge_is_idempotent_for_merged_task() {
+        let (dir, merge_sha) = setup_complete_merge_repo();
+        let state = setup_git_test_state().await;
+        let task_id =
+            seed_task_with_project_status(&state, dir.path(), InternalStatus::Merged).await;
+
+        let result = complete_merge(
+            State(state.clone()),
+            Path(task_id.as_str().to_string()),
+            Json(CompleteMergeRequest {
+                commit_sha: merge_sha,
+            }),
+        )
+        .await
+        .expect("complete_merge should be idempotent for merged task")
+        .0;
+
+        assert_eq!(result.new_status, "already_merged");
+
+        let persisted = state
+            .app_state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(persisted.internal_status, InternalStatus::Merged);
+    }
+
+    #[tokio::test]
+    async fn test_complete_merge_rejects_non_merging_status() {
+        let (dir, merge_sha) = setup_complete_merge_repo();
+        let state = setup_git_test_state().await;
+        let task_id =
+            seed_task_with_project_status(&state, dir.path(), InternalStatus::Approved).await;
+
+        let result = complete_merge(
+            State(state.clone()),
+            Path(task_id.as_str().to_string()),
+            Json(CompleteMergeRequest {
+                commit_sha: merge_sha,
+            }),
+        )
+        .await;
+
+        let error = result.expect_err("complete_merge must reject approved tasks");
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error.1["error"].as_str(),
+            Some("Task must be in 'merging' status to complete merge. Current status: approved")
+        );
     }
 
     /// report_conflict — no IPR entry is safe: handler succeeds without IPR registered.

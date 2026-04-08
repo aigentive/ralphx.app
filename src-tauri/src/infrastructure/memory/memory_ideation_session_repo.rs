@@ -631,6 +631,14 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         ))
     }
 
+    async fn count_active_proposals(
+        &self,
+        _session_id: &IdeationSessionId,
+    ) -> AppResult<usize> {
+        // Memory repo has no proposal storage; return 0 (not an error).
+        Ok(0)
+    }
+
     async fn get_by_idempotency_key(
         &self,
         api_key_id: &str,
@@ -770,6 +778,18 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         let mut sessions = self.sessions.write().unwrap();
         if let Some(session) = sessions.values_mut().find(|s| s.id.as_str() == session_id) {
             session.updated_at = chrono::Utc::now();
+        }
+        Ok(())
+    }
+
+    async fn update_last_effective_model(
+        &self,
+        session_id: &str,
+        model: &str,
+    ) -> AppResult<()> {
+        let mut sessions = self.sessions.write().unwrap();
+        if let Some(session) = sessions.values_mut().find(|s| s.id.as_str() == session_id) {
+            session.last_effective_model = Some(model.to_string());
         }
         Ok(())
     }

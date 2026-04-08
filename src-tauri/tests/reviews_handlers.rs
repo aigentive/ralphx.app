@@ -189,6 +189,233 @@ async fn seed_task_with_status(state: &HttpServerState, status: InternalStatus) 
     task
 }
 
+async fn seed_project_task_with_status(
+    state: &HttpServerState,
+    name: &str,
+    status: InternalStatus,
+) -> Task {
+    let project = Project::new(format!("{name} Project"), "/tmp/test".to_string());
+    let project_id = project.id.clone();
+    state.app_state.project_repo.create(project).await.unwrap();
+
+    let mut task = Task::new(project_id, format!("{name} task"));
+    task.internal_status = status;
+    state.app_state.task_repo.create(task.clone()).await.unwrap();
+    task
+}
+
+#[tokio::test]
+async fn test_complete_review_approved_without_human_review_succeeds_for_branchless_task() {
+    let state = setup_review_test_state().await;
+
+    let project = Project::new("Branchless Review Project".to_string(), "/tmp/test".to_string());
+    state
+        .app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    state
+        .app_state
+        .review_settings_repo
+        .update_settings(&ReviewSettings {
+            require_human_review: false,
+            ..ReviewSettings::default()
+        })
+        .await
+        .expect("review settings update should succeed");
+
+    let mut task = Task::new(project.id.clone(), "Branchless reviewed task".to_string());
+    task.internal_status = InternalStatus::Reviewing;
+    state.app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let req = CompleteReviewRequest {
+        task_id: task.id.as_str().to_string(),
+        decision: "approved".to_string(),
+        summary: Some("AI approved without human gate".to_string()),
+        feedback: None,
+        issues: None,
+        escalation_reason: None,
+        scope_drift_classification: None,
+        scope_drift_notes: None,
+    };
+
+    let response = complete_review(State(state.clone()), ProjectScope(None), Json(req))
+        .await
+        .expect("approved review without human gate should succeed")
+        .0;
+
+    assert!(
+        matches!(response.new_status.as_str(), "approved" | "pending_merge" | "merged"),
+        "approved review without human gate must advance past reviewing; got {}",
+        response.new_status
+    );
+
+    let persisted = state
+        .app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(persisted.internal_status, InternalStatus::Reviewing);
+}
+
+#[tokio::test]
+async fn test_approve_task_rejects_merged_status() {
+    let state = setup_review_test_state().await;
+    let task = seed_project_task_with_status(&state, "Human approve reject", InternalStatus::Merged)
+        .await;
+
+    let result = approve_task(
+        State(state.clone()),
+        ProjectScope(None),
+        Json(ApproveTaskRequest {
+            task_id: task.id.as_str().to_string(),
+            comment: None,
+        }),
+    )
+    .await;
+
+    match result {
+        Err((status, msg)) => {
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert!(
+                msg.contains("review_passed") || msg.contains("escalated"),
+                "expected approvable-state guidance, got: {msg}"
+            );
+        }
+        Ok(_) => panic!("approve_task must reject merged tasks"),
+    }
+
+    let notes = state
+        .app_state
+        .review_repo
+        .get_notes_by_task_id(&task.id)
+        .await
+        .unwrap();
+    assert!(
+        notes.is_empty(),
+        "reject path must not create human approval notes"
+    );
+}
+
+#[tokio::test]
+async fn test_approve_task_accepts_review_passed_status() {
+    let state = setup_review_test_state().await;
+    let task = seed_project_task_with_status(
+        &state,
+        "Human approve success",
+        InternalStatus::ReviewPassed,
+    )
+    .await;
+
+    let response = approve_task(
+        State(state.clone()),
+        ProjectScope(None),
+        Json(ApproveTaskRequest {
+            task_id: task.id.as_str().to_string(),
+            comment: Some("Human verified".to_string()),
+        }),
+    )
+    .await
+    .expect("approve_task should accept review_passed")
+    .0;
+
+    assert_eq!(response.new_status, "approved");
+
+    let persisted = state
+        .app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        matches!(
+            persisted.internal_status,
+            InternalStatus::Approved | InternalStatus::PendingMerge | InternalStatus::Merged
+        ),
+        "approved human review must advance past review_passed; got {:?}",
+        persisted.internal_status
+    );
+
+    let notes = state
+        .app_state
+        .review_repo
+        .get_notes_by_task_id(&task.id)
+        .await
+        .unwrap();
+    assert!(
+        notes.iter().any(|note| {
+            note.outcome == ReviewOutcome::Approved
+                && note.notes.as_deref() == Some("Human verified")
+                && note.reviewer == ReviewerType::Human
+        }),
+        "approve_task must persist a human approval note"
+    );
+}
+
+#[tokio::test]
+async fn test_request_task_changes_accepts_escalated_status() {
+    let state = setup_review_test_state().await;
+    let task = seed_project_task_with_status(
+        &state,
+        "Human request changes",
+        InternalStatus::Escalated,
+    )
+    .await;
+
+    let response = request_task_changes(
+        State(state.clone()),
+        ProjectScope(None),
+        Json(RequestTaskChangesRequest {
+            task_id: task.id.as_str().to_string(),
+            feedback: "Please revise the approach".to_string(),
+        }),
+    )
+    .await
+    .expect("request_task_changes should accept escalated")
+    .0;
+
+    assert_eq!(response.new_status, "revision_needed");
+
+    let persisted = state
+        .app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        matches!(
+            persisted.internal_status,
+            InternalStatus::RevisionNeeded
+                | InternalStatus::Ready
+                | InternalStatus::Executing
+                | InternalStatus::ReExecuting
+        ),
+        "request changes must move escalated task back into execution flow; got {:?}",
+        persisted.internal_status
+    );
+
+    let notes = state
+        .app_state
+        .review_repo
+        .get_notes_by_task_id(&task.id)
+        .await
+        .unwrap();
+    assert!(
+        notes.iter().any(|note| {
+            note.outcome == ReviewOutcome::ChangesRequested
+                && note.notes.as_deref() == Some("Please revise the approach")
+                && note.reviewer == ReviewerType::Human
+        }),
+        "request_task_changes must persist a human changes-requested note"
+    );
+}
+
 /// RC#3 guard 1: complete_review on a ReviewPassed task returns 400.
 ///
 /// Scenario: reviewer agent stream completed AFTER the task auto-transitioned from
@@ -263,6 +490,47 @@ async fn test_complete_review_rejected_when_task_merged() {
             );
         }
         Ok(_) => panic!("RC#3: complete_review must fail when task is Merged"),
+    }
+}
+
+/// RC#3 late guard: the final transition must still reject when a task leaves
+/// Reviewing after handler entry but before the transition is applied.
+#[tokio::test]
+async fn test_complete_review_late_guard_rejects_midflight_state_drift() {
+    let state = setup_review_test_state().await;
+    let task = seed_task_with_status(&state, InternalStatus::Reviewing).await;
+
+    let mut transitioned = state
+        .app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    transitioned.internal_status = InternalStatus::Merged;
+    transitioned.touch();
+    state.app_state.task_repo.update(&transitioned).await.unwrap();
+
+    let result = ensure_task_still_reviewing_before_transition(
+        &state,
+        &task.id,
+        "approved",
+    )
+    .await;
+
+    match result {
+        Err((status, msg)) => {
+            assert_eq!(
+                status,
+                StatusCode::BAD_REQUEST,
+                "late stale-review guard must reject midflight drift. Got: {status}",
+            );
+            assert!(
+                msg.contains("Task not in reviewing state"),
+                "late stale-review guard must mention reviewing state. Got: {msg}",
+            );
+        }
+        Ok(_) => panic!("late stale-review guard must reject when task drifted to merged"),
     }
 }
 

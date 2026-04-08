@@ -22,20 +22,26 @@ pub trait IdeationModelSettingsRepository: Send + Sync {
         project_id: &str,
     ) -> Result<Option<IdeationModelSettings>, Box<dyn std::error::Error>>;
 
-    /// Upsert (insert-or-replace) the primary_model and verifier_model for the global row.
+    /// Upsert (insert-or-replace) the primary_model, verifier_model, verifier_subagent_model,
+    /// and ideation_subagent_model for the global row.
     /// Returns the resulting row after the upsert.
     async fn upsert_global(
         &self,
         primary_model: &str,
         verifier_model: &str,
+        verifier_subagent_model: &str,
+        ideation_subagent_model: &str,
     ) -> Result<IdeationModelSettings, Box<dyn std::error::Error>>;
 
-    /// Upsert (insert-or-replace) the primary_model and verifier_model for a project override row.
+    /// Upsert (insert-or-replace) the primary_model, verifier_model, verifier_subagent_model,
+    /// and ideation_subagent_model for a project override row.
     /// Returns the resulting row after the upsert.
     async fn upsert_for_project(
         &self,
         project_id: &str,
         primary_model: &str,
         verifier_model: &str,
+        verifier_subagent_model: &str,
+        ideation_subagent_model: &str,
     ) -> Result<IdeationModelSettings, Box<dyn std::error::Error>>;
 }

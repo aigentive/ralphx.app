@@ -78,6 +78,17 @@ paths:
 
 ---
 
+## Transition API Contract
+
+| Path | Rule |
+|------|------|
+| Normal workflow transitions | Use validated `TaskTransitionService::transition_task*()` or `handler.handle_transition(...)` |
+| Corrective / repair-only jumps | Use explicit `transition_task_corrective()` / `apply_corrective_transition()` |
+| Canonical engine writes | Direct `internal_status` persistence is allowed only inside transition-handler / merge-engine core paths that also persist history/events |
+| Forbidden | ❌ Direct repo/DB `internal_status` mutation for already-active live workflow tasks |
+
+---
+
 ## Auto-Transitions (Immediate, Chained)
 
 | Reached State | Auto-Transitions To | Why |
@@ -103,7 +114,7 @@ These are persisted as intermediate states but the system chains through them in
 | **qa_failed** | Emit `qa_failed` event. Notify user |
 | **pending_review** | Start AI review via `ReviewStarter`. Emit `review:update` event |
 | **reviewing** | Checkout task branch (Local mode). Spawn **reviewer** agent |
-| **review_passed** | Emit `review:ai_approved`. Notify user "Please review and approve" |
+| **review_passed** | Emit `review:ai_approved`. Notify user "Please review and approve" when `require_human_review=true`; otherwise the review-complete path may continue immediately to `approved` |
 | **escalated** | Emit `review:escalated`. Notify user "Please review and decide" |
 | **re_executing** | Checkout task branch (Local mode). Spawn **worker** agent with revision context |
 | **approved** | Emit `task_completed` event |
@@ -126,7 +137,7 @@ These are persisted as intermediate states but the system chains through them in
 ### Without QA
 ```
 Backlog → Ready → Executing → PendingReview → (auto) Reviewing
-→ ReviewPassed → (HumanApprove) Approved → (auto) PendingMerge
+→ ReviewPassed → (HumanApprove | auto-approve when `require_human_review=false`) Approved → (auto) PendingMerge
 → Merged (fast) or Merging → Merged
 ```
 
@@ -134,7 +145,7 @@ Backlog → Ready → Executing → PendingReview → (auto) Reviewing
 ```
 Backlog → Ready → Executing → QaRefining → QaTesting
 → QaPassed → (auto) PendingReview → (auto) Reviewing
-→ ReviewPassed → (HumanApprove) Approved → (auto) PendingMerge → Merged
+→ ReviewPassed → (HumanApprove | auto-approve when `require_human_review=false`) Approved → (auto) PendingMerge → Merged
 ```
 
 ### Revision Loop
@@ -223,6 +234,8 @@ When `ensure_branches_fresh()` detects stale branches at execution/review entry:
 **Retry cap:** 4th freshness conflict → `ExecutionBlocked` → task transitions to `failed`.
 
 **No new events for return path** — MergeComplete checks `freshness_origin_state` metadata directly.
+
+**Review gate invariant:** Even when human review is disabled, AI approval still uses `reviewing → review_passed → approved`; do not reintroduce direct `reviewing → approved`.
 
 ---
 

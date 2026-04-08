@@ -153,6 +153,12 @@ pub struct ExternalMcpConfig {
     /// Default: 0.7. Range [0.0, 1.0]. Set to 0.0 to disable dedup; 1.0 for exact match only.
     #[serde(default = "default_external_session_similarity_threshold")]
     pub external_session_similarity_threshold: f64,
+    /// Separate TTL for cold-boot external session archival (seconds).
+    /// When set, used instead of `external_session_stale_secs` during startup scans,
+    /// allowing a longer grace period on first boot without changing the periodic TTL.
+    /// When `None` (default), falls back to `external_session_stale_secs`.
+    #[serde(default)]
+    pub external_session_startup_grace_secs: Option<u64>,
 }
 
 impl Default for ExternalMcpConfig {
@@ -170,6 +176,7 @@ impl Default for ExternalMcpConfig {
             external_session_stale_secs: 7200,
             external_message_queue_cap: 10,
             external_session_similarity_threshold: 0.7,
+            external_session_startup_grace_secs: None,
         }
     }
 }

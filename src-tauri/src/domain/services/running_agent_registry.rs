@@ -87,6 +87,8 @@ pub struct RunningAgentInfo {
     /// Last time a stream event was received (throttled heartbeat, ~5s interval).
     /// Used by the reconciler to distinguish active agents from stale ones.
     pub last_active_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// The effective model ID used at spawn time (e.g. "claude-sonnet-4-6").
+    pub model: Option<String>,
 }
 
 /// Trait for tracking running agent processes.
@@ -181,6 +183,7 @@ pub trait RunningAgentRegistry: Send + Sync {
         agent_run_id: &str,
         worktree_path: Option<String>,
         cancellation_token: Option<CancellationToken>,
+        model: Option<String>,
     ) -> Result<(), String>;
 
     /// Remove a stale registry entry only if its process is no longer alive.
@@ -734,6 +737,7 @@ impl MemoryRunningAgentRegistry {
             worktree_path: None,
             cancellation_token: None,
             last_active_at: None,
+            model: None,
         };
         let mut agents = self.agents.lock().await;
         agents.insert(key, info);
@@ -759,6 +763,7 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
             worktree_path,
             cancellation_token,
             last_active_at: None,
+            model: None,
         };
         let mut agents = self.agents.lock().await;
 
@@ -887,6 +892,7 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
                 worktree_path: None,
                 cancellation_token: None,
                 last_active_at: None,
+                model: None,
             },
         );
         Ok(())
@@ -900,6 +906,7 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
         agent_run_id: &str,
         worktree_path: Option<String>,
         cancellation_token: Option<CancellationToken>,
+        model: Option<String>,
     ) -> Result<(), String> {
         let mut agents = self.agents.lock().await;
         if let Some(info) = agents.get_mut(key) {
@@ -907,6 +914,7 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
             info.agent_run_id = agent_run_id.to_string();
             info.worktree_path = worktree_path;
             info.cancellation_token = cancellation_token;
+            info.model = model;
         } else {
             tracing::warn!(
                 context_type = %key.context_type,
@@ -924,6 +932,7 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
                     worktree_path,
                     cancellation_token,
                     last_active_at: None,
+                    model,
                 },
             );
         }

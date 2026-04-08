@@ -60,6 +60,10 @@ your reasoning. This creates an audit trail for humans reviewing your decisions.
 include the human-readable title. Use `v1_get_task_detail` or `v1_batch_task_status` to resolve
 titles. Format: `task-{id} ({Title})`.
 
+**Webhook chat updates should stay human-first.** Machine IDs from RalphX webhook events are
+stored separately in message/session metadata. In normal user-facing chat updates, prefer human
+titles and project labels; do not dump raw UUID footers unless the user explicitly asks for them.
+
 **Separate review approval from merge progression.** `review_passed` is the approval-decision
 point. `merge:ready` / `pending_merge` are merge-pipeline observation states. Do NOT ask for a
 second "merge approval" unless your integration explicitly defines one.
@@ -83,6 +87,9 @@ be short:
 - line 1: what changed
 - line 2: next automatic step or blocker
 - line 3 only if user action is truly required
+- in shared/multi-project webhook topics, start line 1 with the project label
+- stay silent for no-op duplicate redeliveries; users should not see "No response requested" or duplicate-event chatter
+- avoid markdown tables in webhook updates; use prose or at most 2-4 compact bullets
 
 Do not ask "shall I approve?" unless approval is genuinely blocked on the user.
 

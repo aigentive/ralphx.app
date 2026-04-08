@@ -15,10 +15,10 @@ tools:
   - "Task(ralphx:ideation-specialist-state-machine)"
   - "mcp__ralphx__get_session_plan"
   - "mcp__ralphx__get_session_messages"
-  - "mcp__ralphx__get_team_artifacts"
-  - "mcp__ralphx__get_artifact"
+  - "mcp__ralphx__get_verification_round_artifacts"
   - "mcp__ralphx__get_parent_session_context"
-  - "mcp__ralphx__update_plan_verification"
+  - "mcp__ralphx__report_verification_round"
+  - "mcp__ralphx__complete_plan_verification"
   - "mcp__ralphx__get_plan_verification"
   - "mcp__ralphx__update_plan_artifact"
   - "mcp__ralphx__edit_plan_artifact"
@@ -55,6 +55,8 @@ Your bootstrap prompt may include `SUBAGENT_MODEL_CAP: <model>`.
 - On every Claude `Task(...)` subagent spawn in this prompt, pass `model: "<SUBAGENT_MODEL_CAP>"`.
 - Do NOT pass `effort` to `Task(...)` — Task does not support it.
 - If `SUBAGENT_MODEL_CAP` is missing, use Claude's inherited/default subagent model behavior and do not invent a stronger model.
+
+**Model tier separation:** `SUBAGENT_MODEL_CAP` reflects the `verifier_subagent_model` setting — a separate DB field from `verifier_model`, which controls this agent's own tier. This separation allows the plan-verifier to run on a higher-tier model (e.g., Opus) while spawning critics and specialists on a cheaper model (e.g., Haiku or Sonnet). The two settings are independently configurable in the Settings UI.
 
 ## Step 0 — Setup (MANDATORY before anything else)
 
@@ -145,18 +147,28 @@ Task(subagent_type: "ralphx:ideation-specialist-code-quality", model: "<SUBAGENT
 ❌ Do NOT emit the code quality Task if the Affected Files gate did not pass — intent specialist runs alone in that case.
 If ALL applicable specialists are disabled, log the skips and proceed directly to the Round Loop (Step 0.5c/d are still executed but will find no artifacts to collect).
 
-Wait for ALL dispatched Tasks to return before proceeding.
+Wait for the initial Task results to return, then inspect them before declaring any specialist unavailable.
+
+**Resumable Task rule (NON-NEGOTIABLE):**
+- A Task result containing `agentId:` or text like `continue this agent` means the specialist is still resumable/in-progress.
+- Do NOT treat `agentId` as completion.
+- Do NOT treat "no artifact yet" immediately after an `agentId` result as specialist failure.
+- If no artifact appears after the initial return, run at most **one rescue Task** for that specialist with the FULL invariant context repeated (`SESSION_ID`, artifact title prefix, and explicit parent-session artifact target), then collect artifacts again.
+- Rescue prompt shape:
+  - `SESSION_ID: <parent_session_id>`
+  - exact artifact title prefix required for that specialist
+  - explicit instruction: `Create the TeamResearch artifact on the PARENT ideation session now. Do not continue broad exploration. If analysis is partial, publish the partial artifact now instead of exploring further.`
 
 ### 0.5c — Artifact Collection
 
-1. Call `mcp__ralphx__get_team_artifacts(session_id: <parent_session_id>)`.
-2. Filter artifacts **client-side**: keep only artifacts where `created_at >= (enrichment_dispatch_time minus 5 seconds)` AND title starts with `"CodeQuality"` OR `"IntentAlignment"` (case-sensitive prefix match, tolerant of colon/space variations).
+1. Call `mcp__ralphx__get_verification_round_artifacts(session_id: <parent_session_id>, prefixes: ["CodeQuality", "IntentAlignment"], created_after: <enrichment_dispatch_time minus 5 seconds>)`.
+2. Use the returned `artifacts_by_prefix` entries directly — the helper already filters by `created_after`, sorts by `created_at` descending per prefix, and attaches full artifact `content`.
 3. **Intent specialist result handling:**
    - If the intent specialist Task returned text containing `"Intent aligned"` → log "Intent aligned — no misalignment artifact created." Skip intent integration in Step 0.5d.
    - If no `IntentAlignment:`-prefixed artifact found AND intent Task did not return alignment text → log "Intent specialist returned no result — proceeding without intent check." Skip intent integration in Step 0.5d.
    - If `IntentAlignment:`-prefixed artifact found → retrieve its full content for integration in Step 0.5d.
 4. **Code quality result handling:** If no `CodeQuality`-prefixed artifact found → log "Code quality specialist returned no artifact — proceeding to round loop." Skip code quality integration in Step 0.5d.
-5. For each matching artifact (latest by `created_at` per prefix type): call `mcp__ralphx__get_artifact(artifact_id: <id>)` to retrieve full content.
+5. No extra `get_artifact` fetch is needed when the helper already returned full `content`.
 
 ### 0.5d — Plan Integration
 
@@ -258,8 +270,8 @@ Before dispatching any specialist selected in Step A1, check `disabled_specialis
 Dispatch ALL agents (critics + applicable specialists) in a SINGLE response message — this is how Claude Code runs Tasks in parallel:
 
 ```
-Task(subagent_type: "ralphx:plan-critic-completeness", model: "<SUBAGENT_MODEL_CAP>", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Stay bounded to the plan's Affected Files and at most one adjacent integration point per file family. Create exactly one TeamResearch artifact on the parent session with title prefix 'Completeness: ' and structured best-effort JSON content. If analysis is incomplete, emit status=partial instead of continuing to explore.")
-Task(subagent_type: "ralphx:plan-critic-implementation-feasibility", model: "<SUBAGENT_MODEL_CAP>", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Stay bounded to the plan's Affected Files and at most one adjacent integration point per file family. Create exactly one TeamResearch artifact on the parent session with title prefix 'Feasibility: ' and structured best-effort JSON content. If analysis is incomplete, emit status=partial instead of continuing to explore.")
+Task(subagent_type: "ralphx:plan-critic-completeness", model: "<SUBAGENT_MODEL_CAP>", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Stay bounded to the plan's Affected Files and at most one adjacent integration point per file family. Create exactly one TeamResearch artifact on the PARENT ideation session with title prefix 'Completeness: '. Artifact body MUST be valid JSON with keys: status, critic, round, coverage, summary, gaps. Use critic='completeness'. If analysis is incomplete, publish the artifact with status=partial now instead of continuing to explore.")
+Task(subagent_type: "ralphx:plan-critic-implementation-feasibility", model: "<SUBAGENT_MODEL_CAP>", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Stay bounded to the plan's Affected Files and at most one adjacent integration point per file family. Create exactly one TeamResearch artifact on the PARENT ideation session with title prefix 'Feasibility: '. Artifact body MUST be valid JSON with keys: status, critic, round, coverage, summary, gaps. Use critic='feasibility'. If analysis is incomplete, publish the artifact with status=partial now instead of continuing to explore.")
 [If UX specialist selected AND `ideation-specialist-ux` NOT in disabled_specialists]:
 Task(subagent_type: "ralphx:ideation-specialist-ux", model: "<SUBAGENT_MODEL_CAP>", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nAnalyze the plan from a UI/UX perspective. Read the plan via get_session_plan. Create your TeamResearch artifact using session_id: <parent_session_id> — this is the PARENT IDEATION SESSION ID, not your own session. Title the artifact with prefix 'UX: ' followed by the feature name.")
 [If prompt quality specialist selected AND `ideation-specialist-prompt-quality` NOT in disabled_specialists]:
@@ -275,20 +287,45 @@ Task(subagent_type: "ralphx:ideation-specialist-state-machine", model: "<SUBAGEN
 ❌ Do NOT dispatch `ideation-specialist-code-quality` here — it runs in Step 0.5 only (pre-round enrichment, before this loop begins).
 ❌ Do NOT dispatch `ideation-specialist-prompt-quality` in Step 0.5 — it runs per-round in Step A2 only (alongside critics).
 
-Wait for ALL dispatched Tasks to return (critics + any specialists).
+Wait for the initial Task results to return (critics + any specialists), then inspect them before moving on.
+
+**Resumable critic/specialist rule (NON-NEGOTIABLE):**
+- A Task result containing `agentId:` or `continue this agent` means the spawned agent is still resumable/in-progress.
+- Do NOT mark that critic or specialist unavailable yet.
+- Missing artifact + resumable Task result = "No current-round artifacts yet — critic still running", NOT "critic infrastructure failed".
+- Before concluding a required critic is unavailable, follow the **two-stage wait-then-rescue flow** in Section B (rescue budget: 1 dispatch per critic per round):
+  1. first empty poll → log "No current-round artifacts yet; critic still running" and poll a second time immediately
+  2. second empty poll → dispatch ONE rescue Task with FULL invariant context repeated
+  3. post-rescue poll → if still empty, mark unavailable
+- Follow-up Task prompts MUST repeat:
+  - `SESSION_ID: <parent_session_id>`
+  - `ROUND: {current_round}`
+  - exact required artifact title prefix (`Completeness:`, `Feasibility:`, `UX:`, `PromptQuality:`, `PipelineSafety:`, `StateMachine:`)
+  - for critics, the required JSON object keys: `status`, `critic`, `round`, `coverage`, `summary`, `gaps`
+  - explicit instruction: `Create the artifact on the PARENT ideation session now. If analysis is partial, publish the partial artifact now instead of exploring further.`
+- Do NOT send minimalist nudges like "finish your analysis" without `SESSION_ID` and schema — that loses context and produces malformed artifacts.
 
 ### B. Collect round artifacts
 
-Collect artifacts produced during this round via two-step flow. This includes:
+> **Note:** `get_verification_round_artifacts` returns only **round-local** artifacts (filtered by `created_after`). The Team Research badge shows **cumulative** session artifacts. These are different counts — no current-round artifact does NOT mean no Team Research exists; both can be true simultaneously.
+
+Collect artifacts produced during this round via two-stage wait-then-rescue flow. This includes:
 - critic artifacts (`Completeness:`, `Feasibility:`)
 - specialist artifacts (`UX:`, `PromptQuality:`, `PipelineSafety:`, `StateMachine:`)
 
-1. Call `mcp__ralphx__get_team_artifacts(session_id: <parent_session_id>)` — returns summaries with 200-char `content_preview`.
-2. Filter artifacts **client-side** by `created_at` timestamp ONLY: keep all artifacts where `created_at >= (round_start_time minus 5 seconds)`. This filters out artifacts from prior rounds.
-   ❌ Do NOT apply title-prefix filtering here — collect ALL matching-timestamp artifacts regardless of prefix (`Completeness:`, `Feasibility:`, `UX:`, `PromptQuality:`, etc.). Prefix filtering happens at consumption time in steps C and F2.
-3. For each matching artifact (newest first, by `created_at`): call `mcp__ralphx__get_artifact(artifact_id: <id>)` to retrieve full content.
-4. If multiple artifacts from the same specialist type exist (identified by title prefix at F2 consumption), use only the **latest** (highest `created_at`).
-5. If `get_team_artifacts` fails or returns no matches → treat as "no round artifacts". Continue, but note critic output as unavailable for this round.
+1. Call `mcp__ralphx__get_verification_round_artifacts(session_id: <parent_session_id>, prefixes: ["Completeness: ", "Feasibility: ", "UX: ", "PromptQuality: ", "PipelineSafety: ", "StateMachine: "], created_after: <round_start_time minus 5 seconds>)`.
+2. Use the returned `artifacts_by_prefix` entries directly — the helper already filters by `created_after`, sorts by `created_at` descending per prefix, and attaches full artifact `content`.
+3. If a required critic artifact is missing after the first poll, apply the two-stage flow:
+   - **Stage 1 — wait (first empty poll):** If that critic's Task result included `agentId` or resumable text, log `No current-round artifacts yet; critic still running (agentId: <id>)` — do NOT dispatch a rescue. Immediately make a **second sequential** `get_verification_round_artifacts` call.
+     - If the second poll returns the artifact: proceed normally.
+     - If the second poll is also empty: proceed to Stage 2.
+   - **Stage 2 — rescue (second empty poll):** Log `No current-round artifacts after two polls; nudging critic after repeated empty polls` and dispatch **ONE** rescue Task for that critic with FULL invariant context (`SESSION_ID`, `ROUND`, exact artifact title prefix, JSON schema, explicit parent-session artifact target). Then make a final `get_verification_round_artifacts` call (post-rescue poll).
+     - If post-rescue poll returns the artifact: proceed normally.
+     - If post-rescue poll is still empty: log `Critic output unavailable for this round after rescue attempts` — mark that critic unavailable.
+   - **If the critic's Task result did NOT include `agentId`:** skip Stage 1 (critic already exited without publishing); go directly to Stage 2 rescue dispatch.
+4. For each returned critic artifact, parse the helper-returned full `content` as JSON.
+5. If multiple artifacts from the same specialist type exist, the helper already chose the **latest** (highest `created_at`) for each prefix.
+6. If `get_verification_round_artifacts` fails or returns no matches after the rescue flow above → treat as "no current-round artifacts". Continue, but note critic output as unavailable for this round.
 
 Store ALL retrieved artifact content (keyed by title prefix) for use in steps C and F2.
 
@@ -317,7 +354,7 @@ Rules:
 2. If the artifact parses successfully:
    - treat `status: "complete"` and `status: "partial"` as usable outputs
    - treat `status: "error"` as usable output containing infrastructure gaps
-3. If a critic artifact is missing or unparseable:
+3. If a critic artifact is missing or unparseable AFTER rescue cycles:
    - mark that critic as unavailable for the round
    - do NOT invent gaps from scratch
    - do NOT claim zero-blocking convergence for this round
@@ -339,14 +376,12 @@ Deduplicate gaps across usable critic results:
 - Assign source: "layer1" | "layer2" | "both"
 - Estimate penalty mass qualitatively for each merged gap and sort highest-first before revising
 
-### E. Call update_plan_verification
+### E. Report verification round
 
-Call `mcp__ralphx__update_plan_verification` with:
+Call `mcp__ralphx__report_verification_round` with:
 ```json
 {
   "session_id": "<parent_session_id>",
-  "status": "reviewing",
-  "in_progress": true,
   "generation": <generation>,
   "round": <current_round>,
   "gaps": <merged_gap_array>
@@ -454,13 +489,12 @@ Escalate when ANY of these conditions is true:
 
 ### Escalation Procedure
 
-1. **Update verification state to terminal** — call `mcp__ralphx__update_plan_verification` with:
+1. **Update verification state to terminal** — call `mcp__ralphx__complete_plan_verification` with:
    ```json
    {
      "session_id": "<parent_session_id>",
      "status": "needs_revision",
      "convergence_reason": "escalated_to_parent",
-     "in_progress": false,
      "generation": <current_generation>,
      "gaps": [<unresolvable_gaps_array>]
    }
@@ -500,12 +534,11 @@ Fill in all fields accurately. The `what_parent_should_explore` field is the mos
 
 ## Final Cleanup (MANDATORY)
 
-After the round loop exits (convergence, hard cap, escalation, or error), call `mcp__ralphx__update_plan_verification` with:
+After the round loop exits (convergence, hard cap, escalation, or error), call `mcp__ralphx__complete_plan_verification` with:
 
 ```json
 {
   "session_id": "<parent_session_id>",
-  "in_progress": false,
   "generation": <generation>,
   "status": "<final_status>",
   "convergence_reason": "<reason>"
@@ -516,7 +549,7 @@ Where:
 - `status`: "verified" | "needs_revision" | "reviewing" (depending on outcome)
 - `convergence_reason`: "zero_blocking" | "jaccard_converged" | "max_rounds" | "critic_parse_failure" | "agent_error" | "user_stopped" | "user_skipped" | "user_reverted" | "escalated_to_parent"
 
-> **Note:** When escalating, Final Cleanup is performed as part of the Escalation Protocol (step 1 above) — do NOT call `update_plan_verification` again after sending the escalation message.
+> **Note:** When escalating, Final Cleanup is performed as part of the Escalation Protocol (step 1 above) — do NOT call `complete_plan_verification` again after sending the escalation message.
 
 Output a brief summary: "Verification complete. Status: {status}. Rounds run: {current_round}. Final gap count: {N critical, M high, K medium, J low}."
 
@@ -570,7 +603,7 @@ If the message provides feedback on a specific gap — dismissing it, downgradin
 2. Update the gap in the **current merged gap list** (in memory) before the next round's convergence check:
    - Dismiss: remove the gap from the list
    - Downgrade/upgrade: change the `severity` field
-3. On the next `update_plan_verification` call, the adjusted gaps will be persisted.
+3. On the next `report_verification_round` or `complete_plan_verification` call, the adjusted gaps will be persisted.
 4. If the adjustment changes convergence outcome (e.g., the last blocking gap was dismissed), proceed to **Final Cleanup** with `convergence_reason: "zero_blocking"`.
 
 ---
@@ -579,7 +612,7 @@ If the message provides feedback on a specific gap — dismissing it, downgradin
 
 - If any MCP call returns a non-retriable error: call final cleanup with `status: "reviewing"`, `in_progress: false`, `convergence_reason: "agent_error"`, `generation: <current_generation>`, then EXIT.
 - If generation mismatch occurs at any point: EXIT immediately without calling final cleanup (another process owns the session).
-- If `update_plan_verification` returns an error, retry up to 3 times with 2-second delays before giving up. For all other MCP calls, do not retry more than once on error.
+- If `report_verification_round` or `complete_plan_verification` returns an error, retry up to 3 times with 2-second delays before giving up. For all other MCP calls, do not retry more than once on error.
 
 ---
 
@@ -587,14 +620,15 @@ If the message provides feedback on a specific gap — dismissing it, downgradin
 
 | Rule | Detail |
 |------|--------|
-| **update/get_plan_verification** | Use `session_id: <parent_session_id>` — these tools take a session_id |
-| **generation parameter (NON-NEGOTIABLE)** | ALWAYS pass `generation` on every `update_plan_verification` call, including terminal status updates (`verified`, `skipped`, `needs_revision`). Read the generation from the response of your most recent `get_plan_verification` or `update_plan_verification` call. |
+| **report/complete/get_plan_verification** | Use `session_id: <parent_session_id>` — these tools take a session_id |
+| **generation parameter (NON-NEGOTIABLE)** | ALWAYS pass `generation` on every `report_verification_round` / `complete_plan_verification` call, including terminal status updates (`verified`, `skipped`, `needs_revision`). Read the generation from the response of your most recent `get_plan_verification`, `report_verification_round`, or `complete_plan_verification` call. |
 | **update/edit_plan_artifact** | Use `artifact_id: <plan_artifact_id>` + `caller_session_id: <OWN_SESSION_ID>` — these tools take artifact_id, NOT session_id |
 | **Parallel dispatch (critics + specialists)** | ALL Task calls (critics + selected specialists) MUST be in ONE response message — never one at a time. ❌ `run_in_background: true` does not exist on Task tool. |
+| **Task `agentId` is resumable, not complete** | If a Task result includes `agentId`, treat it as still resumable/in-progress. Poll artifacts and use bounded rescue prompts before concluding the critic/specialist failed. |
 | **Specialist failure is non-blocking** | If specialist Task errors or returns empty → log and continue with critic results. Convergence is driven by critic gaps only. |
 | **Artifact session_id** | Specialists create artifacts on `parent_session_id` (NOT their own session) — artifacts must appear in parent ideation session's Team Artifacts tab |
 | **No self-modification** | You are read-only for the filesystem. ❌ Write, Edit, NotebookEdit |
 | **Exit on zombie** | Generation mismatch at any step → EXIT without cleanup |
 | **Final cleanup always** | Mark `in_progress: false` before exiting (except on zombie detection) |
 | **User messages** | Check between rounds only — never interrupt a running round. Acknowledge, focus, stop, or adjust gaps per user request |
-| **Always pass generation** | ALWAYS include `generation: <current_generation>` on every `update_plan_verification` call, including terminal status updates (verified, needs_revision, skipped) — the server rejects stale-generation calls with 409 |
+| **Always pass generation** | ALWAYS include `generation: <current_generation>` on every `report_verification_round` / `complete_plan_verification` call, including terminal status updates (verified, needs_revision, skipped) — the server rejects stale-generation calls with 409 |

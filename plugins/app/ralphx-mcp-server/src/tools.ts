@@ -679,21 +679,33 @@ export const ALL_TOOLS: Tool[] = [
     description:
       "Create a team artifact documenting research findings, analysis, or summary. " +
       "Automatically sets bucket_id='team-findings' and populates metadata with team info. " +
-      "Use for documenting team discoveries, debate analyses, or lead-synthesized summaries.",
+      "Use for documenting team discoveries, debate analyses, or lead-synthesized summaries. " +
+      "Verification critics and specialists should target the PARENT ideation session_id. If a verification child session_id is passed, the backend remaps it to the parent ideation session automatically. " +
+      "If a caller is retrying after an incomplete run, reuse the same parent session_id and publish a partial artifact rather than omitting the artifact entirely. " +
+      "Example critic artifact: {\"session_id\":\"<parent-session>\",\"title\":\"Completeness: Round 1 cold boot coverage\",\"content\":\"{\\\"status\\\":\\\"partial\\\",\\\"critic\\\":\\\"completeness\\\",\\\"round\\\":1,\\\"coverage\\\":\\\"affected_files\\\",\\\"summary\\\":\\\"...\\\",\\\"gaps\\\":[]}\",\"artifact_type\":\"TeamResearch\"}.",
     inputSchema: {
       type: "object",
+      examples: [
+        {
+          session_id: "parent-session-id",
+          title: "Completeness: Round 1 cold boot coverage",
+          content:
+            "{\"status\":\"partial\",\"critic\":\"completeness\",\"round\":1,\"coverage\":\"affected_files\",\"summary\":\"Need one more pass on recovery edge cases\",\"gaps\":[]}",
+          artifact_type: "TeamResearch",
+        },
+      ],
       properties: {
         session_id: {
           type: "string",
-          description: "The ideation or execution session ID",
+          description: "The ideation or execution session ID. For verification critics/specialists the PARENT ideation session ID is canonical; verification child session IDs are auto-remapped to that parent.",
         },
         title: {
           type: "string",
-          description: "Clear, concise title for the artifact",
+          description: "Clear, concise title for the artifact. Verification flows should use stable prefixes like 'Completeness: ', 'Feasibility: ', 'UX: ', 'PromptQuality: ', 'PipelineSafety: ', or 'StateMachine: '.",
         },
         content: {
           type: "string",
-          description: "Markdown content with research findings or analysis",
+          description: "Markdown or JSON-string content with research findings or analysis. Plan-verifier critics should publish a structured JSON object instead of freeform prose.",
         },
         artifact_type: {
           type: "string",
@@ -712,9 +724,13 @@ export const ALL_TOOLS: Tool[] = [
     name: "get_team_artifacts",
     description:
       "Retrieve all team artifacts for a session. " +
-      "Returns artifacts from the 'team-findings' bucket filtered by session ID.",
+      "Returns artifacts from the 'team-findings' bucket filtered by session ID. " +
+      "Use the PARENT ideation session_id for verification flows; if a verification child session_id is passed, the backend remaps it to the parent ideation session automatically. " +
+      "Verification flows should generally prefer get_verification_round_artifacts instead of hand-filtering summaries client-side. " +
+      "Example: call get_team_artifacts({\"session_id\":\"<parent-session>\"}) when you truly need the full unfiltered artifact list for a session.",
     inputSchema: {
       type: "object",
+      examples: [{ session_id: "parent-session-id" }],
       properties: {
         session_id: {
           type: "string",
@@ -722,6 +738,46 @@ export const ALL_TOOLS: Tool[] = [
         },
       },
       required: ["session_id"],
+    },
+  },
+  {
+    name: "get_verification_round_artifacts",
+    description:
+      "Verifier-oriented helper that fetches the latest TeamResearch artifacts per requested title prefix for the current verification round. " +
+      "Uses the PARENT ideation session_id as the canonical target; if a verification child session_id is passed, the backend remaps it to the parent ideation session automatically. " +
+      "Applies created_after filtering server-side in the MCP proxy, sorts by created_at descending per prefix, and can attach full artifact content so the verifier does not need a separate get_artifact fetch for the winning matches. " +
+      "Example: call get_verification_round_artifacts({\"session_id\":\"<parent-session>\",\"prefixes\":[\"Completeness: \",\"Feasibility: \"],\"created_after\":\"2026-04-06T00:00:00Z\"}) after critic Task returns.",
+    inputSchema: {
+      type: "object",
+      examples: [
+        {
+          session_id: "parent-session-id",
+          prefixes: ["Completeness: ", "Feasibility: "],
+          created_after: "2026-04-06T00:00:00Z",
+          include_full_content: true,
+        },
+      ],
+      properties: {
+        session_id: {
+          type: "string",
+          description: "The ideation session ID. Parent ideation session is canonical for verification flows; verification child ids are auto-remapped to the parent.",
+        },
+        prefixes: {
+          type: "array",
+          items: { type: "string" },
+          minItems: 1,
+          description: "Title prefixes to match, such as 'Completeness: ', 'Feasibility: ', 'UX: ', 'PromptQuality: ', 'PipelineSafety: ', or 'StateMachine: '.",
+        },
+        created_after: {
+          type: "string",
+          description: "Optional ISO timestamp. Only artifacts created at or after this timestamp are considered for each prefix.",
+        },
+        include_full_content: {
+          type: "boolean",
+          description: "When true (default), fetch the full artifact content for the latest match per prefix.",
+        },
+      },
+      required: ["session_id", "prefixes"],
     },
   },
   {
@@ -1605,9 +1661,17 @@ export const ALL_TOOLS: Tool[] = [
     description:
       "Returns live status of a child session: session metadata, agent process state (idle/likely_generating/likely_waiting), " +
       "recent messages, and verification metadata if applicable. Use to check if a verification agent is stalled, " +
-      "monitor child session progress, or verify agent completion.",
+      "monitor child session progress, or verify agent completion. " +
+      "When diagnosing a verification child, set include_recent_messages=true so you can inspect the last assistant/tool outputs instead of guessing what happened.",
     inputSchema: {
       type: "object",
+      examples: [
+        {
+          session_id: "verification-child-session-id",
+          include_recent_messages: true,
+          message_limit: 10,
+        },
+      ],
       properties: {
         session_id: {
           type: "string",
@@ -1634,9 +1698,17 @@ export const ALL_TOOLS: Tool[] = [
       "If agent is generating, message is queued. If agent is idle, a new agent run is spawned. " +
       "Returns delivery_status: 'sent' (written to active stdin), " +
       "'queued' (agent busy, will receive on next turn), or 'spawned' (new agent run started). " +
-      "Use to nudge verification agents, inject context, send escalation payloads, or send stop signals.",
+      "Use to nudge verification agents, inject context, send escalation payloads, or send stop signals. " +
+      "When nudging critics/verifiers, repeat the full invariant context they need (for example SESSION_ID, ROUND, expected artifact prefix/schema) instead of sending a vague follow-up.",
     inputSchema: {
       type: "object",
+      examples: [
+        {
+          session_id: "verification-child-session-id",
+          message:
+            "SESSION_ID: <parent-session-id>\nROUND: 2\nIf you are still running, publish your TeamResearch artifact now using the parent ideation session_id and the required JSON schema.",
+        },
+      ],
       properties: {
         session_id: {
           type: "string",
@@ -2116,10 +2188,10 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
   [PLAN_VERIFIER]: [
     "get_session_plan",
     "get_session_messages",
-    "get_team_artifacts",
-    "get_artifact",
+    "get_verification_round_artifacts",
     "get_parent_session_context",
-    "update_plan_verification",
+    "report_verification_round",
+    "complete_plan_verification",
     "get_plan_verification",
     "update_plan_artifact",
     "edit_plan_artifact",
@@ -2251,6 +2323,140 @@ export function getAllTools(): Tool[] {
  */
 export function getToolsByAgent(): Record<string, string[]> {
   return TOOL_ALLOWLIST;
+}
+
+function formatToolExamples(tool: Tool, limit = 1): string[] {
+  const examples = ((tool.inputSchema as { examples?: unknown[] } | undefined)?.examples ?? [])
+    .slice(0, limit)
+    .map((example) => {
+      try {
+        return JSON.stringify(example);
+      } catch {
+        return String(example);
+      }
+    })
+    .filter((example) => example.length > 0);
+
+  return examples;
+}
+
+/**
+ * Return a compact repair hint for high-friction tools so weaker models can retry
+ * with the expected payload shape instead of probing by trial and error.
+ */
+export function getToolRecoveryHint(toolName: string): string | null {
+  const tool = ALL_TOOLS.find((candidate) => candidate.name === toolName);
+  if (!tool) {
+    return null;
+  }
+
+  switch (toolName) {
+    case "update_plan_verification": {
+      const examples = formatToolExamples(tool, 2);
+      return [
+        "Use the PARENT ideation session_id as the canonical target. If a verification child session_id is passed, the backend remaps it automatically.",
+        "If report_verification_round / complete_plan_verification are available, prefer those narrower helpers instead of this generic tool.",
+        "Use status=reviewing with in_progress=true for mid-round updates; use verified or needs_revision with in_progress=false for terminal updates.",
+        "Re-read get_plan_verification if generation/in_progress is unclear instead of guessing.",
+        ...examples.map((example, index) =>
+          index === 0
+            ? `Example reviewing payload: ${example}`
+            : `Example terminal payload: ${example}`
+        ),
+      ].join("\n");
+    }
+    case "report_verification_round": {
+      const examples = formatToolExamples(tool);
+      return [
+        "Use this verifier-friendly helper for in-progress rounds on the PARENT ideation session.",
+        "If a verification child session_id is passed, the backend remaps it to the parent automatically.",
+        "You only provide round, gaps, and generation; status=reviewing and in_progress=true are filled in automatically.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    case "complete_plan_verification": {
+      const examples = formatToolExamples(tool, 2);
+      return [
+        "Use this verifier-friendly helper for terminal verification updates on the PARENT ideation session.",
+        "If a verification child session_id is passed, the backend remaps it to the parent automatically.",
+        "You provide the terminal status and generation; in_progress=false is filled in automatically.",
+        "External sessions cannot use status=skipped.",
+        ...examples.map((example, index) =>
+          index === 0
+            ? `Example terminal payload: ${example}`
+            : `Example abort-cleanup payload: ${example}`
+        ),
+      ].join("\n");
+    }
+    case "get_plan_verification": {
+      const examples = formatToolExamples(tool);
+      return [
+        "Call this on the PARENT ideation session before retrying report_verification_round, complete_plan_verification, or update_plan_verification. If a verification child session_id is passed, the backend remaps it to the parent automatically.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    case "create_team_artifact": {
+      const examples = formatToolExamples(tool);
+      return [
+        "Use the PARENT ideation session_id as the canonical target. If a verification child session id is passed, the backend remaps it to the parent automatically.",
+        "For verifier critics, keep the exact artifact prefix and publish partial results instead of exploring further.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    case "get_team_artifacts": {
+      const examples = formatToolExamples(tool);
+      return [
+        "Read artifacts from the PARENT ideation session_id as the canonical target. If a verification child session id is passed, the backend remaps it to the parent automatically.",
+        "Verification flows should usually prefer get_verification_round_artifacts instead of manually sorting summaries and then loading full artifact ids.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    case "get_verification_round_artifacts": {
+      const examples = formatToolExamples(tool);
+      return [
+        "Use this verifier helper instead of manually calling get_team_artifacts + get_artifact + client-side sorting for current-round artifacts.",
+        "Provide the parent ideation session_id plus the title prefixes you expect; the MCP proxy filters by created_after and returns the latest match per prefix.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    case "get_child_session_status": {
+      const examples = formatToolExamples(tool);
+      return [
+        "When debugging a verification child, set include_recent_messages=true so you can inspect the last assistant/tool outputs.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    case "send_ideation_session_message": {
+      const examples = formatToolExamples(tool);
+      return [
+        "When nudging a verifier/critic, repeat full invariant context: SESSION_ID, ROUND, artifact prefix/schema, and explicit parent-session target.",
+        ...examples.map((example) => `Example payload: ${example}`),
+      ].join("\n");
+    }
+    default: {
+      const examples = formatToolExamples(tool);
+      if (examples.length === 0) {
+        return null;
+      }
+      return examples.map((example) => `Example payload: ${example}`).join("\n");
+    }
+  }
+}
+
+/**
+ * Format a backend error message with an optional tool-specific usage hint.
+ */
+export function formatToolErrorMessage(
+  toolName: string,
+  message: string,
+  details?: string
+): string {
+  const repairHint = getToolRecoveryHint(toolName);
+  return (
+    `ERROR: ${message}` +
+    (details ? `\n\nDetails: ${details}` : "") +
+    (repairHint ? `\n\nUsage hint for ${toolName}:\n${repairHint}` : "")
+  );
 }
 
 /**

@@ -10,12 +10,23 @@
 // These tests focus on the CLI arg injection layer.
 
 use std::path::Path;
+use std::sync::Arc;
 
+use ralphx_lib::application::chat_service::{build_command, build_resume_command};
+use ralphx_lib::domain::entities::{
+    ChatContextType, ChatConversation, IdeationSessionBuilder, IdeationSessionId, ProjectId,
+    SessionPurpose,
+};
+use ralphx_lib::domain::repositories::IdeationSessionRepository;
 use ralphx_lib::domain::repositories::IdeationModelSettingsRepository;
 use ralphx_lib::infrastructure::agents::claude::{
-    build_base_cli_command, model_resolver::resolve_ideation_model,
+    build_base_cli_command,
+    model_resolver::{resolve_ideation_model, resolve_verifier_subagent_model_with_source},
 };
-use ralphx_lib::infrastructure::memory::MemoryIdeationModelSettingsRepository;
+use ralphx_lib::infrastructure::memory::{
+    MemoryArtifactRepository, MemoryChatAttachmentRepository,
+    MemoryIdeationModelSettingsRepository, MemoryIdeationSessionRepository, MemoryTaskRepository,
+};
 
 // Helper to collect OsStr args from tokio::process::Command as Strings
 fn collect_args(cmd: &tokio::process::Command) -> Vec<String> {
@@ -102,6 +113,51 @@ fn test_build_base_cli_command_no_model_override_no_yaml_uses_default() {
     // Note: if --model is absent entirely, that is fine — means YAML had no model for this agent
 }
 
+// --- Verifier subagent independence test ---
+
+#[tokio::test]
+async fn test_verifier_vs_non_verifier_subagent_independence() {
+    // Scenario: primary_model=sonnet, verifier_model=sonnet, verifier_subagent_model=haiku
+    //
+    // plan-verifier:         agent model    = sonnet (Verifier bucket)
+    //                        subagent cap   = haiku  (VerifierSubagent bucket — independent)
+    // orchestrator-ideation: agent model    = sonnet (Primary bucket)
+    //                        subagent cap   = sonnet (its own model, NOT haiku)
+    let repo = MemoryIdeationModelSettingsRepository::new();
+    repo.upsert_for_project("proj-1", "sonnet", "sonnet", "haiku", "inherit")
+        .await
+        .unwrap();
+
+    // plan-verifier agent model (from Verifier bucket) → sonnet
+    let verifier_model = resolve_ideation_model("plan-verifier", Some("proj-1"), &repo).await;
+    assert_eq!(verifier_model.model, "sonnet");
+    assert_eq!(verifier_model.source, "user");
+
+    // plan-verifier subagent cap (from verifier_subagent_model field) → haiku, not sonnet
+    let project_row = repo.get_for_project("proj-1").await.unwrap().unwrap();
+    let (cap_model, cap_source) =
+        resolve_verifier_subagent_model_with_source(Some(&project_row.verifier_subagent_model), None);
+    assert_eq!(cap_model, "haiku");
+    assert_eq!(cap_source, "user");
+    // Independence assertion: subagent cap ≠ verifier agent model when configured separately
+    assert_ne!(
+        cap_model, verifier_model.model,
+        "verifier subagent cap (haiku) must differ from verifier agent model (sonnet)"
+    );
+
+    // orchestrator-ideation agent model (from Primary bucket) → sonnet
+    let orchestrator_model =
+        resolve_ideation_model("orchestrator-ideation", Some("proj-1"), &repo).await;
+    assert_eq!(orchestrator_model.model, "sonnet");
+    assert_eq!(orchestrator_model.source, "user");
+    // orchestrator subagent cap = its own agent model (sonnet)
+    // verifier_subagent_model=haiku must NOT affect non-verifier agents
+    assert_ne!(
+        orchestrator_model.model, "haiku",
+        "orchestrator subagent cap must not be affected by verifier_subagent_model"
+    );
+}
+
 // --- Resolver + CLI integration ---
 
 #[tokio::test]
@@ -109,7 +165,7 @@ async fn test_ideation_context_db_override_flows_to_cli_arg() {
     // Scenario: Ideation context with DB override → resolved model passed as model_override
     // Simulate what send_message() does: resolve from DB, then pass to build_base_cli_command
     let repo = MemoryIdeationModelSettingsRepository::new();
-    repo.upsert_for_project("proj-abc", "opus", "sonnet")
+    repo.upsert_for_project("proj-abc", "opus", "sonnet", "inherit", "inherit")
         .await
         .unwrap();
 
@@ -165,7 +221,7 @@ async fn test_non_ideation_agent_bypasses_db_model_resolution() {
 
     // With a DB override for a project — the worker still ignores it
     let repo = MemoryIdeationModelSettingsRepository::new();
-    repo.upsert_for_project("proj-x", "opus", "haiku")
+    repo.upsert_for_project("proj-x", "opus", "haiku", "inherit", "inherit")
         .await
         .unwrap();
 
@@ -184,5 +240,169 @@ async fn test_non_ideation_agent_bypasses_db_model_resolution() {
         resolved.source == "yaml" || resolved.source == "yaml_default",
         "expected yaml source for non-ideation agent, got: {}",
         resolved.source
+    );
+}
+
+// --- PO#5: verifier subagent cap is unaffected by ideation_subagent_model ---
+
+#[tokio::test]
+async fn test_verifier_subagent_unaffected_by_ideation_subagent() {
+    // PO#5: plan-verifier must use verifier_subagent_model ("opus"),
+    // NOT ideation_subagent_model ("haiku"), for CLAUDE_CODE_SUBAGENT_MODEL.
+    // Tested on BOTH build_command AND build_resume_command.
+    // This test MUST FAIL when the dispatch is reversed.
+    let repo = MemoryIdeationModelSettingsRepository::new();
+    repo.upsert_for_project("proj-1", "sonnet", "sonnet", "opus", "haiku")
+        .await
+        .unwrap();
+
+    let settings_repo: Arc<dyn IdeationModelSettingsRepository> = Arc::new(repo);
+    let session_id = IdeationSessionId::new();
+    let conv = ChatConversation::new_ideation(session_id.clone());
+
+    // --- build_command: entity_status="verification" → plan-verifier ---
+    let build_result = build_command(
+        Path::new("/fake/claude"),
+        Path::new("/fake/plugin"),
+        &conv,
+        "verify plan",
+        Path::new("/tmp"),
+        Some("verification"), // → plan-verifier agent
+        Some("proj-1"),
+        false,
+        Arc::new(MemoryChatAttachmentRepository::new()),
+        Arc::new(MemoryArtifactRepository::new()),
+        Some(Arc::clone(&settings_repo)),
+        &[],
+        0,
+        None,
+        None,
+    )
+    .await;
+
+    assert!(build_result.is_ok(), "build_command failed: {:?}", build_result.err());
+    let build_envs = build_result.unwrap().get_envs_for_test();
+    let build_subagent = build_envs
+        .iter()
+        .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
+        .map(|(_, v)| v.to_string_lossy().into_owned());
+    assert_eq!(
+        build_subagent.as_deref(),
+        Some("opus"),
+        "build_command plan-verifier: CLAUDE_CODE_SUBAGENT_MODEL must be verifier_subagent_model (opus), not ideation_subagent_model (haiku)"
+    );
+    assert_ne!(
+        build_subagent.as_deref(),
+        Some("haiku"),
+        "ideation_subagent_model (haiku) must NOT bleed into plan-verifier CLAUDE_CODE_SUBAGENT_MODEL"
+    );
+
+    // --- build_resume_command: same assertion ---
+    // Seed a verification IdeationSession so get_entity_status_for_resume returns "verification",
+    // which routes to plan-verifier (and thus uses verifier_subagent_model, not ideation_subagent_model).
+    let verification_session = IdeationSessionBuilder::new()
+        .id(session_id.clone())
+        .project_id(ProjectId("proj-1".to_string()))
+        .session_purpose(SessionPurpose::Verification)
+        .build();
+    let ideation_session_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    ideation_session_repo
+        .create(verification_session)
+        .await
+        .unwrap();
+
+    let resume_result = build_resume_command(
+        Path::new("/fake/claude"),
+        Path::new("/fake/plugin"),
+        ChatContextType::Ideation,
+        session_id.as_str(),
+        "verify plan",
+        Path::new("/tmp"),
+        "fake-session-id",
+        Some("proj-1"),
+        false,
+        Arc::new(MemoryChatAttachmentRepository::new()),
+        Arc::new(MemoryArtifactRepository::new()),
+        Some(settings_repo),
+        ideation_session_repo,
+        Arc::new(MemoryTaskRepository::new()),
+        &[],
+        0,
+        None,
+        None, // model_override: agent selection comes from session_purpose, not this field
+    )
+    .await;
+
+    assert!(resume_result.is_ok(), "build_resume_command failed: {:?}", resume_result.err());
+    let resume_envs = resume_result.unwrap().get_envs_for_test();
+    let resume_subagent = resume_envs
+        .iter()
+        .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
+        .map(|(_, v)| v.to_string_lossy().into_owned());
+    assert_eq!(
+        resume_subagent.as_deref(),
+        Some("opus"),
+        "build_resume_command plan-verifier: CLAUDE_CODE_SUBAGENT_MODEL must be verifier_subagent_model (opus), not ideation_subagent_model (haiku)"
+    );
+    assert_ne!(
+        resume_subagent.as_deref(),
+        Some("haiku"),
+        "ideation_subagent_model (haiku) must NOT bleed into plan-verifier in resume command"
+    );
+}
+
+// --- Partial upsert preserves ideation_subagent_model ---
+
+#[tokio::test]
+async fn test_partial_upsert_preserves_ideation_subagent_cap() {
+    // Simulates the update_ideation_model_settings partial-update pattern:
+    // set ideation_subagent_model="opus" first, then call upsert updating ONLY primary_model.
+    // The ideation_subagent_model must remain "opus" after the partial update.
+    // This test MUST FAIL if the upsert resets the field to its default ("inherit").
+    let repo = MemoryIdeationModelSettingsRepository::new();
+
+    // Step 1: initial state — ideation_subagent_model = "opus"
+    repo.upsert_for_project("proj-1", "sonnet", "inherit", "inherit", "opus")
+        .await
+        .unwrap();
+
+    let initial = repo.get_for_project("proj-1").await.unwrap().unwrap();
+    assert_eq!(
+        initial.ideation_subagent_model.to_string(),
+        "opus",
+        "Initial ideation_subagent_model must be opus"
+    );
+
+    // Step 2: partial update — only primary_model changes to "haiku".
+    // This mirrors the update_ideation_model_settings logic: read existing, merge, then upsert.
+    let existing = repo.get_for_project("proj-1").await.unwrap().unwrap();
+    let preserved_ideation_subagent = existing.ideation_subagent_model.to_string();
+    repo.upsert_for_project(
+        "proj-1",
+        "haiku",                           // updated primary_model
+        &existing.verifier_model.to_string(),
+        &existing.verifier_subagent_model.to_string(),
+        &preserved_ideation_subagent,      // preserved — not reset to default
+    )
+    .await
+    .unwrap();
+
+    // Assert: ideation_subagent_model is still "opus" after partial update
+    let after = repo.get_for_project("proj-1").await.unwrap().unwrap();
+    assert_eq!(
+        after.ideation_subagent_model.to_string(),
+        "opus",
+        "ideation_subagent_model must be preserved when only primary_model is updated"
+    );
+    assert_eq!(
+        after.primary_model.to_string(),
+        "haiku",
+        "primary_model must be updated to haiku"
+    );
+    // Critical: must not have been reset to "inherit" default
+    assert_ne!(
+        after.ideation_subagent_model.to_string(),
+        "inherit",
+        "Partial upsert must NOT reset ideation_subagent_model to inherit default"
     );
 }

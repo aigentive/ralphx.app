@@ -21,6 +21,7 @@ mod tests {
             node_path: None,
             max_external_ideation_sessions: 1,
             external_session_stale_secs: 7200,
+            external_session_startup_grace_secs: None,
             external_message_queue_cap: 10,
             external_session_similarity_threshold: 0.7,
         }

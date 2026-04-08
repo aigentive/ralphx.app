@@ -318,7 +318,7 @@ async fn gap_complete_merge_rejects_commit_not_on_target() {
 
     // Try to complete merge with a SHA that's NOT on main
     let result = complete_merge_internal::<tauri::test::MockRuntime>(
-        &mut task, &project, &task_sha, "", "main", &task_repo, None, None, None,
+        &mut task, &project, &task_sha, "", "main", &task_repo, None, None, None, None,
     )
     .await;
 
@@ -351,7 +351,7 @@ async fn fix_complete_merge_accepts_commit_on_target() {
 
     // Complete merge with the SHA that IS on main
     let result = complete_merge_internal::<tauri::test::MockRuntime>(
-        &mut task, &project, &merge_sha, "", "main", &task_repo, None, None, None,
+        &mut task, &project, &merge_sha, "", "main", &task_repo, None, None, None, None,
     )
     .await;
 
@@ -380,7 +380,7 @@ async fn fix_complete_merge_rejects_sha_on_wrong_branch() {
 
     // Try to complete merge with target="main" (wrong - SHA is on plan/feature, not main)
     let result = complete_merge_internal::<tauri::test::MockRuntime>(
-        &mut task, &project, &merge_sha, "", "main", &task_repo, None, None, None,
+        &mut task, &project, &merge_sha, "", "main", &task_repo, None, None, None, None,
     )
     .await;
 
@@ -419,6 +419,7 @@ async fn fix_complete_merge_accepts_plan_branch_target() {
         "",
         "plan/feature",
         &task_repo,
+        None,
         None,
         None,
         None,
@@ -593,6 +594,7 @@ async fn fix_full_pipeline_task_to_plan_branch() {
         None,
         None,
         None,
+        None,
     )
     .await;
 
@@ -673,6 +675,7 @@ async fn fix_full_pipeline_task_to_main_direct() {
         None,
         None,
         None,
+        None,
     )
     .await;
 
@@ -745,6 +748,7 @@ async fn fix_full_pipeline_plan_merge_to_main() {
         None,
         None,
         None,
+        None,
     )
     .await;
 
@@ -806,6 +810,7 @@ async fn fix_full_pipeline_squash_merge_to_plan_branch() {
         &source,
         &target,
         &task_repo,
+        None,
         None,
         None,
         None,
@@ -1343,6 +1348,7 @@ async fn fix_concurrent_merge_attempts_sequential() {
         None,
         None,
         None,
+        None,
     )
     .await;
 
@@ -1373,6 +1379,7 @@ async fn fix_concurrent_merge_attempts_sequential() {
         "task-2",
         "plan/feature",
         &task_repo,
+        None,
         None,
         None,
         None,
@@ -1476,7 +1483,7 @@ async fn gap_plan_merge_verification_failure() {
     // (without actually merging plan to main first)
     let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
     let result = complete_merge_internal::<tauri::test::MockRuntime>(
-        &mut task, &project, &plan_sha, "", "main", &task_repo, None, None, None,
+        &mut task, &project, &plan_sha, "", "main", &task_repo, None, None, None, None,
     )
     .await;
 

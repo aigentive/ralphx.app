@@ -28,8 +28,12 @@ import { VerificationHistory } from "./VerificationHistory";
 import { ideationApi, type SessionWithDataResponse } from "@/api/ideation";
 import { ideationKeys } from "@/hooks/useIdeation";
 import { chatApi } from "@/api/chat";
+import { useChildSessionStatus } from "@/hooks/useChildSessionStatus";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useUiStore } from "@/stores/uiStore";
+import { useChatStore } from "@/stores/chatStore";
+import { buildStoreKey } from "@/lib/chat-context-registry";
+import { getModelLabel } from "@/lib/model-utils";
 import type { IdeationSession, VerificationStatus } from "@/types/ideation";
 
 // ============================================================================
@@ -280,6 +284,22 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
     (s) => s.setLastVerificationChildId
   );
   const enqueuePendingVerification = useUiStore((s) => s.enqueuePendingVerification);
+
+  // Poll child session status to get lastEffectiveModel for backfill hydration.
+  const { lastEffectiveModel: childLastModel } = useChildSessionStatus(lastVerificationChildId);
+
+  // Backfill effectiveModel store for the verification child session on page-load/reopen.
+  // Uses the child's own store key (not the parent's) so the chat header shows the correct model.
+  // Guard: skip if the store already has a value (live agent:run_started event wins).
+  useEffect(() => {
+    if (!lastVerificationChildId || !childLastModel) return;
+    const storeKey = buildStoreKey("ideation", lastVerificationChildId);
+    if (useChatStore.getState().effectiveModel[storeKey]) return;
+    useChatStore.getState().setEffectiveModel(storeKey, {
+      id: childLastModel,
+      label: getModelLabel(childLastModel),
+    });
+  }, [lastVerificationChildId, childLastModel]);
 
   const verificationStatus = session.verificationStatus ?? "unverified";
   const hasPlan = !!(session.planArtifactId || session.inheritedPlanArtifactId);

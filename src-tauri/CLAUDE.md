@@ -62,8 +62,9 @@ All SQLite repos MUST use `db.run(|conn| { ... })` / `db.query_optional(|conn| {
 
 ### State Machine (CRITICAL)
 Refs: task-state-machine.md (24 states) | task-git-branching.md (git/merge) | task-execution-agents.md (agents)
-❌ `task.internal_status = X` | ✅ `handler.handle_transition(&state, &TaskEvent::Schedule).await`
+❌ `task.internal_status = X` for live workflow paths | ✅ validated `TaskTransitionService::transition_task*()` or `handler.handle_transition(&state, &TaskEvent::Schedule).await` | ✅ nonstandard repair only via `transition_task_corrective()` / `apply_corrective_transition()` | ✅ direct status writes stay confined to canonical transition-handler / merge-engine internals that also own history/events
 Auto-transitions: QaPassed→PendingReview | PendingReview→Reviewing | RevisionNeeded→ReExecuting | Approved→PendingMerge
+Review approval gate: AI review may continue `review_passed → approved` when `require_human_review=false`, but do not shortcut `reviewing → approved`
 API layer: see api-layer.md
 
 ### Command Handlers (THIN)
@@ -83,6 +84,7 @@ New pattern → add one-liner here. Pattern name + rule only.
 
 | Pattern | Rule |
 |---|---|
+| Validated task transitions | Normal workflow status changes use validated `TaskTransitionService::transition_task*`; corrective/recovery-only jumps use `transition_task_corrective()` / `apply_corrective_transition()`; raw `internal_status` writes are limited to canonical engine/bootstrap paths |
 | Shared scope drift logic | Review/merge scope matching and out-of-scope blocker fingerprints should live in `ralphx-domain::review::scope_drift`; root crate code should only handle repo/git wiring |
 | Follow-up blocker dedupe | Autonomous blocker follow-ups dedupe by first-class `blocker_fingerprint`; never rely on `spawn_reason` wording alone. See `.claude/rules/followup-blocker-dedupe.md` |
 | Rustfmt module roots | Never run `rustfmt` on `mod.rs` or other module-root files for a surgical change; rustfmt can recurse into child modules and create unrelated diffs |

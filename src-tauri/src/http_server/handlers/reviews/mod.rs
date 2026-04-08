@@ -17,8 +17,7 @@ use crate::domain::state_machine::transition_handler::{
     deferred_merge_cleanup, set_no_code_changes_metadata, set_pending_cleanup_metadata,
 };
 use crate::domain::review::{
-    apply_review_outcome, approved_no_changes_target_status, approved_target_status,
-    build_ai_review_note, build_followup_activity_event,
+    apply_review_outcome, build_ai_review_note, build_followup_activity_event,
     build_unrelated_drift_followup_draft, build_review_issue_entities,
     build_review_note_issues, complete_review_response_message, count_revision_cycles,
     matching_unrelated_drift_followup_session_id, parse_review_decision, parse_review_issues,
@@ -37,5 +36,6 @@ mod human;
 mod notes;
 
 pub use complete::complete_review;
+pub use complete::ensure_task_still_reviewing_before_transition;
 pub use human::{approve_task, request_task_changes};
 pub use notes::get_review_notes;

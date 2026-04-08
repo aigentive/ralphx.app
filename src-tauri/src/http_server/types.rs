@@ -55,6 +55,7 @@ pub struct IdeationSessionSummary {
     pub parent_session_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub last_effective_model: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -170,6 +171,12 @@ pub struct FinalizeProposalsResponse {
     pub any_ready_tasks: bool,
     /// Finalization result status: "success" or "pending_acceptance"
     pub status: String,
+    /// Session title for webhook payload enrichment.
+    #[serde(default)]
+    pub session_title: Option<String>,
+    /// Project name for webhook payload enrichment.
+    #[serde(default)]
+    pub project_name: Option<String>,
 }
 
 /// Request to accept a pending finalize confirmation

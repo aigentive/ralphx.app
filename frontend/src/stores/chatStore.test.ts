@@ -7,6 +7,7 @@ import {
   selectIsAgentRunning,
   selectActiveConversationId,
   selectToolCallStartTimes,
+  selectEffectiveModel,
   getContextKey,
 } from "./chatStore";
 import type { ChatMessage } from "@/types/ideation";
@@ -960,6 +961,39 @@ describe("selectors", () => {
 
       expect(selectActiveConversationId(storeKeyA)(useChatStore.getState())).toBe("conv-a");
       expect(selectActiveConversationId(storeKeyB)(useChatStore.getState())).toBe("conv-b");
+    });
+  });
+
+  describe("setEffectiveModel / selectEffectiveModel", () => {
+    const storeKey = "session:session-x";
+
+    it("setEffectiveModel stores model for storeKey", () => {
+      const model = { id: "claude-sonnet-4-6", label: "Sonnet 4.6" };
+      useChatStore.getState().setEffectiveModel(storeKey, model);
+
+      const result = selectEffectiveModel(storeKey)(useChatStore.getState());
+      expect(result).toEqual(model);
+    });
+
+    it("selectEffectiveModel returns undefined when no model set", () => {
+      const result = selectEffectiveModel("session:unknown")(useChatStore.getState());
+      expect(result).toBeUndefined();
+    });
+
+    it("setEffectiveModel overwrites previous model for same storeKey", () => {
+      useChatStore.getState().setEffectiveModel(storeKey, { id: "model-a", label: "Model A" });
+      useChatStore.getState().setEffectiveModel(storeKey, { id: "model-b", label: "Model B" });
+
+      const result = selectEffectiveModel(storeKey)(useChatStore.getState());
+      expect(result).toEqual({ id: "model-b", label: "Model B" });
+    });
+
+    it("setEffectiveModel does not affect other storeKeys", () => {
+      const otherKey = "session:session-y";
+      useChatStore.getState().setEffectiveModel(storeKey, { id: "model-a", label: "Model A" });
+
+      const result = selectEffectiveModel(otherKey)(useChatStore.getState());
+      expect(result).toBeUndefined();
     });
   });
 

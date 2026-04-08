@@ -44,15 +44,32 @@ pub struct VerificationReconciliationConfig {
     /// External sessions with phase 'created'/'error' older than this are archived.
     /// External sessions with no activity for this long are marked 'stalled'.
     pub external_session_stale_secs: u64,
+    /// Separate TTL for cold-boot archival of external sessions (seconds).
+    /// When `Some`, used instead of `external_session_stale_secs` during startup scans,
+    /// allowing a longer grace period on first boot without changing the periodic TTL.
+    /// When `None`, falls back to `external_session_stale_secs` (backward-compatible).
+    pub external_session_startup_grace_secs: Option<u64>,
+}
+
+impl VerificationReconciliationConfig {
+    /// TTL to use during cold-boot external session archival.
+    ///
+    /// Returns `external_session_startup_grace_secs` when set, otherwise falls back
+    /// to `external_session_stale_secs` for backward compatibility.
+    pub fn startup_grace_secs(&self) -> u64 {
+        self.external_session_startup_grace_secs
+            .unwrap_or(self.external_session_stale_secs)
+    }
 }
 
 impl Default for VerificationReconciliationConfig {
     fn default() -> Self {
         Self {
-            stale_after_secs: 5400,             // 90 minutes for manual verify (D14)
-            auto_verify_stale_secs: 600,        // 10 minutes for auto-verify
-            interval_secs: 300,                 // 5 minutes
-            external_session_stale_secs: 7200,  // 2 hours (matches ExternalMcpConfig default)
+            stale_after_secs: 5400,                      // 90 minutes for manual verify (D14)
+            auto_verify_stale_secs: 600,                 // 10 minutes for auto-verify
+            interval_secs: 300,                          // 5 minutes
+            external_session_stale_secs: 7200,           // 2 hours (matches ExternalMcpConfig default)
+            external_session_startup_grace_secs: None,   // falls back to external_session_stale_secs
         }
     }
 }
@@ -204,10 +221,7 @@ impl VerificationReconciliationService {
 
             // Cold boot: inject app_restart metadata. Periodic: preserve existing metadata.
             let metadata = if cold_boot {
-                serde_json::to_string(&serde_json::json!({
-                    "convergence_reason": "app_restart",
-                }))
-                .ok()
+                build_convergence_metadata("app_restart")
             } else {
                 session.verification_metadata.clone()
             };
@@ -621,15 +635,26 @@ impl VerificationReconciliationService {
     /// `scan_and_reset(cold_boot: true)` which resets ALL in-progress sessions
     /// unconditionally (no TTL filter), since all agent processes are dead on restart.
     ///
-    /// Also archives all stale external sessions (cold boot — all agent processes are dead).
+    /// Also archives stale external sessions using the configured TTL.
     pub async fn startup_scan(&self) {
+        self.startup_scan_excluding_external_archive_sessions(&HashSet::new())
+            .await;
+    }
+
+    /// Startup scan variant that preserves externally visible sessions already claimed by
+    /// startup ideation recovery before applying cold-boot archival.
+    pub async fn startup_scan_excluding_external_archive_sessions(
+        &self,
+        skip_external_archive_ids: &HashSet<String>,
+    ) {
         tracing::info!("Running verification startup scan (cold boot)...");
         let recovery_claimed = self.scan_for_recoverable_orphans().await;
         let count = self.scan_and_reset_excluding(true, &recovery_claimed).await;
         if count > 0 {
             tracing::info!(count, "Startup: reset orphaned verification in_progress states");
         }
-        self.scan_and_archive_stale_external_sessions(true).await;
+        self.scan_and_archive_stale_external_sessions_excluding(true, skip_external_archive_ids)
+            .await;
     }
 
     /// Scan for stale external sessions and archive them, then detect stalled sessions.
@@ -637,23 +662,32 @@ impl VerificationReconciliationService {
     /// Stale definition: external + active + phase IN ('created', 'error') + created_at older
     /// than `external_session_stale_secs`. These sessions have abandoned agents.
     ///
-    /// When `cold_boot: true` (app startup): no TTL filter — archives ALL matching sessions
-    /// since all agent processes are dead after restart.
-    /// When `cold_boot: false` (periodic): TTL-based archival (created_at < stale_before).
+    /// When `cold_boot: true` (app startup): still apply the TTL filter. A process restart does
+    /// not automatically mean every external `created`/`error` session is abandoned.
+    /// When `cold_boot: false` (periodic): same TTL-based archival.
     ///
     /// After archival, runs stall detection for periodic scans only (cold boot handles all dead
     /// sessions via archival). Stall detection marks sessions with no recent activity as 'stalled'.
     pub async fn scan_and_archive_stale_external_sessions(&self, cold_boot: bool) {
-        let stale_before = if cold_boot {
-            None // No TTL filter on startup — all agents are dead
-        } else {
-            Some(
-                Utc::now()
-                    - chrono::Duration::seconds(self.config.external_session_stale_secs as i64),
-            )
+        self.scan_and_archive_stale_external_sessions_excluding(cold_boot, &HashSet::new())
+            .await;
+    }
+
+    async fn scan_and_archive_stale_external_sessions_excluding(
+        &self,
+        cold_boot: bool,
+        skip_external_archive_ids: &HashSet<String>,
+    ) {
+        let stale_before = {
+            let secs = if cold_boot {
+                self.config.startup_grace_secs()
+            } else {
+                self.config.external_session_stale_secs
+            };
+            Some(Utc::now() - chrono::Duration::seconds(secs as i64))
         };
 
-        // Archive stale external sessions (phase 'created' or 'error', past TTL or all on boot)
+        // Archive stale external sessions (phase 'created' or 'error', past TTL)
         let sessions = match self
             .ideation_session_repo
             .list_active_external_sessions_for_archival(stale_before)
@@ -670,20 +704,106 @@ impl VerificationReconciliationService {
             }
         };
 
-        let archive_count = sessions.len();
+        let mut to_archive = Vec::new();
+        let mut preserved_recovery_exempt = 0usize;
+        let mut preserved_startup_recovery = 0usize;
+
         for session in &sessions {
+            if skip_external_archive_ids.contains(session.id.as_str()) {
+                preserved_startup_recovery += 1;
+                tracing::info!(
+                    session_id = %session.id.as_str(),
+                    phase = ?session.external_activity_phase,
+                    updated_at = %session.updated_at,
+                    cold_boot,
+                    "Preserved external session during stale archival scan because startup ideation recovery claimed it"
+                );
+                continue;
+            }
+
+            if self.is_recovery_exempt(session).await {
+                preserved_recovery_exempt += 1;
+                tracing::info!(
+                    session_id = %session.id.as_str(),
+                    verification_status = ?session.verification_status,
+                    "Startup: preserving external session — recovery-exempt (verified with no proposals)"
+                );
+                continue;
+            }
+
+            to_archive.push(session.clone());
+        }
+
+        let archive_count = self.archive_sessions_and_log(&to_archive).await;
+
+        if archive_count > 0 {
+            tracing::info!(
+                count = archive_count,
+                cold_boot,
+                "External session reconciliation: archived stale sessions"
+            );
+        }
+
+        if preserved_recovery_exempt > 0 {
+            tracing::info!(
+                count = preserved_recovery_exempt,
+                cold_boot,
+                "External session reconciliation: preserved recovery-exempt sessions during stale archival scan"
+            );
+        }
+
+        if preserved_startup_recovery > 0 {
+            tracing::info!(
+                count = preserved_startup_recovery,
+                cold_boot,
+                "External session reconciliation: preserved startup-recovery-claimed sessions during stale archival scan"
+            );
+        }
+
+        // Detect stalled sessions (periodic only — cold boot still keeps startup behavior narrow)
+        if !cold_boot {
+            self.detect_and_mark_stalled_external_sessions().await;
+        }
+    }
+
+    /// Returns `true` if the session should be exempted from cold-boot archival for recovery.
+    ///
+    /// Current rule: a `verified` session with 0 active proposals — the user may still need to
+    /// act on the verification result. Sessions with >0 active proposals are eligible for archival
+    /// because new task work is already tracked in those proposals.
+    async fn is_recovery_exempt(&self, session: &IdeationSession) -> bool {
+        if session.verification_status == VerificationStatus::Verified {
+            let proposal_count = self
+                .ideation_session_repo
+                .count_active_proposals(&session.id)
+                .await
+                .unwrap_or(0);
+            if proposal_count == 0 {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Archive a slice of external sessions, logging each result.
+    ///
+    /// Returns the number of sessions successfully archived.
+    async fn archive_sessions_and_log(&self, sessions: &[IdeationSession]) -> usize {
+        let mut count = 0usize;
+        for session in sessions {
+            let age_secs = (Utc::now() - session.updated_at).num_seconds();
             match self
                 .ideation_session_repo
                 .update_status(&session.id, IdeationSessionStatus::Archived)
                 .await
             {
                 Ok(()) => {
+                    count += 1;
                     tracing::info!(
                         session_id = %session.id.as_str(),
                         phase = ?session.external_activity_phase,
-                        created_at = %session.created_at,
-                        cold_boot,
-                        "Archived stale external session"
+                        age_secs,
+                        "Startup: archiving stale external session (past TTL)"
                     );
                 }
                 Err(e) => {
@@ -695,19 +815,7 @@ impl VerificationReconciliationService {
                 }
             }
         }
-
-        if archive_count > 0 {
-            tracing::info!(
-                count = archive_count,
-                cold_boot,
-                "External session reconciliation: archived stale sessions"
-            );
-        }
-
-        // Detect stalled sessions (periodic only — cold boot archives all dead sessions above)
-        if !cold_boot {
-            self.detect_and_mark_stalled_external_sessions().await;
-        }
+        count
     }
 
     /// Detect stalled external sessions and mark their phase as 'stalled'.
@@ -1062,10 +1170,7 @@ pub async fn reset_verification_on_child_error<R: Runtime>(
     };
 
     // Build minimal metadata JSON with the error convergence_reason
-    let error_metadata_json = serde_json::to_string(&serde_json::json!({
-        "convergence_reason": convergence_reason,
-    }))
-    .ok();
+    let error_metadata_json = build_convergence_metadata(convergence_reason);
 
     // Reset parent to Unverified with the given reason
     match repo
@@ -1150,6 +1255,79 @@ async fn archive_sibling_verification_children(
                 "Failed to query verification children for orphan cleanup"
             );
         }
+    }
+}
+
+/// Build a minimal convergence metadata JSON string containing only `convergence_reason`.
+///
+/// Used to inject a reason into sessions that have no existing structured metadata
+/// (cold-boot resets, error paths, agent-completed-without-update). Returns `None`
+/// only when `serde_json` serialization unexpectedly fails.
+fn build_convergence_metadata(reason: &str) -> Option<String> {
+    serde_json::to_string(&serde_json::json!({
+        "convergence_reason": reason,
+    }))
+    .ok()
+}
+
+/// Determine the terminal verification status and associated metadata for a completed child agent.
+///
+/// Three decision branches based on metadata state:
+/// - `convergence_reason` set → map to status via `convergence_reason_to_status`, keep existing metadata
+/// - `convergence_reason` unset but rounds non-empty → agent crashed mid-round → `NeedsRevision`
+/// - no metadata or empty rounds → agent completed without updates → `Unverified`
+///
+/// Returns `(terminal_status, updated_metadata_json, emit_metadata, convergence_reason_override)`.
+#[allow(dead_code)]
+fn determine_terminal_status_and_metadata(
+    parsed_meta: Option<VerificationMetadata>,
+    existing_metadata_json: Option<String>,
+) -> (
+    VerificationStatus,
+    Option<String>,
+    Option<VerificationMetadata>,
+    Option<String>,
+) {
+    let has_convergence_reason = parsed_meta
+        .as_ref()
+        .and_then(|m| m.convergence_reason.as_deref())
+        .is_some();
+    let has_rounds = parsed_meta
+        .as_ref()
+        .map(|m| !m.rounds.is_empty())
+        .unwrap_or(false);
+
+    if has_convergence_reason {
+        // Branch 1: Agent completed with convergence_reason — map to terminal status
+        let reason = parsed_meta
+            .as_ref()
+            .unwrap()
+            .convergence_reason
+            .as_deref()
+            .unwrap_or("");
+        let status = convergence_reason_to_status(reason);
+        // Keep existing metadata as-is (convergence_reason already present)
+        (status, existing_metadata_json, parsed_meta, None::<String>)
+    } else if has_rounds {
+        // Branch 2: Agent crashed mid-round with partial progress
+        let mut updated_m = parsed_meta.unwrap();
+        updated_m.convergence_reason = Some("agent_crashed_mid_round".to_string());
+        let updated_json = serde_json::to_string(&updated_m).ok();
+        (
+            VerificationStatus::NeedsRevision,
+            updated_json,
+            Some(updated_m),
+            None::<String>,
+        )
+    } else {
+        // Branch 3: No metadata or empty rounds — agent completed without any updates
+        let minimal_json = build_convergence_metadata("agent_completed_without_update");
+        (
+            VerificationStatus::Unverified,
+            minimal_json,
+            None::<VerificationMetadata>,
+            Some("agent_completed_without_update".to_string()),
+        )
     }
 }
 

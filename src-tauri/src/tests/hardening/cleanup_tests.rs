@@ -593,6 +593,7 @@ async fn test_fix_complete_merge_internal_clears_task_branch_and_worktree_path()
         None,
         None,
         None,
+        None,
     )
     .await;
 

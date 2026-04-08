@@ -769,6 +769,7 @@ fn make_ideation_session(session_id: &str, project_id: &ProjectId) -> IdeationSe
         pending_initial_prompt: None,
         acceptance_status: None,
         verification_confirmation_status: None,
+        last_effective_model: None,
     }
 }
 

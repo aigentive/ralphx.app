@@ -15,16 +15,18 @@ pub async fn update_plan_verification(
     };
     use crate::domain::services::{gap_fingerprint, gap_score, jaccard_similarity};
 
-    let session_id_obj = crate::domain::entities::IdeationSessionId::from_string(session_id.clone());
+    let requested_session_id = session_id;
+    let requested_session_id_obj =
+        crate::domain::entities::IdeationSessionId::from_string(requested_session_id.clone());
 
     // Fetch session
-    let session = state
+    let requested_session = state
         .app_state
         .ideation_session_repo
-        .get_by_id(&session_id_obj)
+        .get_by_id(&requested_session_id_obj)
         .await
         .map_err(|e| {
-            error!("Failed to get session {}: {}", session_id, e);
+            error!("Failed to get session {}: {}", requested_session_id, e);
             json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to get session: {}", e),
@@ -32,13 +34,46 @@ pub async fn update_plan_verification(
         })?
         .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
 
-    // Guard: reject calls targeting verification child sessions — plan-verifier must use parent session_id
-    if session.session_purpose == crate::domain::entities::SessionPurpose::Verification {
-        return Err(json_error(
-            StatusCode::BAD_REQUEST,
-            "Cannot update verification state on a verification child session. Use the parent session_id.",
-        ));
-    }
+    let (session_id, session_id_obj, session) = if requested_session.session_purpose
+        == crate::domain::entities::SessionPurpose::Verification
+    {
+        let parent_id = requested_session.parent_session_id.clone().ok_or_else(|| {
+            json_error(
+                StatusCode::BAD_REQUEST,
+                "Cannot update verification state on a verification child session without a parent session.",
+            )
+        })?;
+        let parent_session = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&parent_id)
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to load parent session {} for verification child {}: {}",
+                    parent_id.as_str(),
+                    requested_session_id,
+                    e
+                );
+                json_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to get parent session: {}", e),
+                )
+            })?
+            .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Parent session not found"))?;
+        tracing::info!(
+            requested_session_id = %requested_session_id,
+            parent_session_id = %parent_id.as_str(),
+            "Auto-remapping verification update from child session to parent session"
+        );
+        (parent_id.as_str().to_string(), parent_id, parent_session)
+    } else {
+        (
+            requested_session_id,
+            requested_session_id_obj,
+            requested_session,
+        )
+    };
 
     // Server-side generation guard: when generation is provided, verify it matches.
     // Applies to ALL calls (including terminal in_progress=false) to prevent zombie agents
@@ -49,7 +84,9 @@ pub async fn update_plan_verification(
                 StatusCode::CONFLICT,
                 format!(
                     "Generation mismatch: request generation {} != current generation {}. \
-                     Verification was reset — zombie agent detected.",
+                     Verification was reset — zombie agent detected. \
+                     Call get_plan_verification on the parent session, read verification_generation, \
+                     and retry only if in_progress is still true.",
                     req_gen, session.verification_generation
                 ),
             ));
@@ -72,7 +109,7 @@ pub async fn update_plan_verification(
     {
         return Err(json_error(
             StatusCode::FORBIDDEN,
-            "External sessions cannot skip plan verification. Run verification to completion (update_plan_verification with status 'reviewing').",
+            "External sessions cannot skip plan verification. Use status='reviewing' for in-progress rounds and finish with status='verified' or 'needs_revision' on the PARENT ideation session.",
         ));
     }
 
@@ -87,6 +124,9 @@ pub async fn update_plan_verification(
         (VerificationStatus::Unverified, VerificationStatus::Reviewing) => true,
         (VerificationStatus::Reviewing, VerificationStatus::NeedsRevision) => true,
         (VerificationStatus::Reviewing, VerificationStatus::Verified) => true,
+        // In-progress round reporting is idempotent when parent is already reviewing.
+        // Condition 6 will auto-promote to NeedsRevision if gaps are present.
+        (VerificationStatus::Reviewing, VerificationStatus::Reviewing) => true,
         (VerificationStatus::NeedsRevision, VerificationStatus::Reviewing) => true,
         // Allow needs_revision → verified ONLY when convergence_reason is provided
         (VerificationStatus::NeedsRevision, VerificationStatus::Verified) => has_convergence_reason,
@@ -101,7 +141,7 @@ pub async fn update_plan_verification(
         if matches!(current, VerificationStatus::Skipped) {
             return Err(json_error(
                 StatusCode::UNPROCESSABLE_ENTITY,
-                "Verification was skipped — cannot update from critic",
+                "Verification was skipped — cannot update from critic. Re-run verification first by calling update_plan_verification with status='reviewing' on the parent session.",
             ));
         }
         if matches!(
@@ -110,13 +150,15 @@ pub async fn update_plan_verification(
         ) {
             return Err(json_error(
                 StatusCode::UNPROCESSABLE_ENTITY,
-                "Cannot transition needs_revision → verified without convergence_reason",
+                "Cannot transition needs_revision → verified without convergence_reason. Include convergence_reason (for example 'zero_blocking') on the terminal verified update.",
             ));
         }
         return Err(json_error(
             StatusCode::UNPROCESSABLE_ENTITY,
             format!(
-                "Invalid verification transition: {} → {}",
+                "Invalid verification transition: {} → {}. \
+                 Re-check the current verification state with get_plan_verification and use the \
+                 parent session_id plus a valid status progression.",
                 current, new_status
             ),
         ));
@@ -408,9 +450,11 @@ pub async fn update_plan_verification(
         "Verification state updated"
     );
 
-    // For terminal statuses, kill any running verification child agents before emitting events.
-    // This releases the write lock so the parent can immediately resume plan editing.
-    if matches!(new_status, VerificationStatus::Verified | VerificationStatus::Skipped) {
+    // For skipped sessions, stop the verification child immediately.
+    // Verified sessions defer child shutdown until after verified-side effects complete so
+    // external follow-on work (event emission, auto-propose) is not cut off by the child's
+    // own termination.
+    if matches!(new_status, VerificationStatus::Skipped) {
         stop_verification_children(&session_id, &state.app_state).await.ok();
     }
 
@@ -440,24 +484,64 @@ pub async fn update_plan_verification(
 
     // Layer 2+3 for IdeationVerified — only when new_status == Verified (non-fatal)
     if new_status == VerificationStatus::Verified {
-        let verified_payload = serde_json::json!({
+        tracing::info!(
+            session_id = %session_id,
+            convergence_reason = ?metadata.convergence_reason,
+            origin = %session.origin,
+            "Verification reached terminal verified state — running verified side effects"
+        );
+
+        // Project lookup for webhook enrichment (non-fatal if not found)
+        let project_name = state
+            .app_state
+            .project_repo
+            .get_by_id(&session.project_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|p| p.name);
+
+        let presentation_ctx = crate::domain::services::WebhookPresentationContext {
+            project_name,
+            session_title: session.title.clone(),
+            presentation_kind: Some(crate::domain::services::PresentationKind::Verified),
+            task_title: None,
+        };
+
+        let mut verified_payload = serde_json::json!({
             "session_id": session_id,
             "project_id": session.project_id.as_str(),
             "convergence_reason": metadata.convergence_reason,
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
-        if let Err(e) = state.app_state.external_events_repo
-            .insert_event("ideation:verified", session.project_id.as_str(), &verified_payload.to_string())
+
+        // Enrich payload for external channel
+        presentation_ctx.inject_into(&mut verified_payload);
+
+        // External emit via mandatory helper
+        if let Some(ref publisher) = state.app_state.webhook_publisher {
+            if let Err(msg) = crate::domain::services::emit_external_webhook_event(
+                "ideation:verified",
+                session.project_id.as_str(),
+                verified_payload,
+                &state.app_state.external_events_repo,
+                publisher,
+            )
+            .await
+            {
+                tracing::warn!(error = %msg, session_id = %session_id, "Failed to emit ideation:verified external event (non-fatal)");
+            }
+        } else if let Err(e) = state
+            .app_state
+            .external_events_repo
+            .insert_event(
+                "ideation:verified",
+                session.project_id.as_str(),
+                &verified_payload.to_string(),
+            )
             .await
         {
             tracing::warn!(error = %e, session_id = %session_id, "Failed to persist ideation:verified event");
-        }
-        if let Some(ref publisher) = state.app_state.webhook_publisher {
-            let _ = publisher.publish(
-                ralphx_domain::entities::EventType::IdeationVerified,
-                session.project_id.as_str(),
-                verified_payload,
-            ).await;
         }
     }
 
@@ -468,6 +552,10 @@ pub async fn update_plan_verification(
         && metadata.convergence_reason.as_deref() == Some("zero_blocking")
         && session.origin == crate::domain::entities::ideation::SessionOrigin::External
     {
+        tracing::info!(
+            session_id = %session_id,
+            "Scheduling external auto-propose after zero_blocking convergence"
+        );
         let state_for_auto_propose = state.clone();
         let session_for_auto_propose = session.clone();
         let session_id_for_auto_propose = session_id.clone();
@@ -487,17 +575,26 @@ pub async fn update_plan_verification(
         && session.origin == crate::domain::entities::ideation::SessionOrigin::External
         && metadata.convergence_reason.as_deref() != Some("zero_blocking")
     {
-        let repo = std::sync::Arc::clone(&state.app_state.ideation_session_repo);
         let sid = crate::domain::entities::IdeationSessionId::from_string(session_id.clone());
-        tokio::spawn(async move {
-            if let Err(e) = repo.update_external_activity_phase(&sid, Some("ready")).await {
-                error!(
-                    "Failed to set activity phase 'ready' for session {}: {}",
-                    sid.as_str(),
-                    e
-                );
-            }
-        });
+        if let Err(e) = state
+            .app_state
+            .ideation_session_repo
+            .update_external_activity_phase(&sid, Some("ready"))
+            .await
+        {
+            error!(
+                "Failed to set activity phase 'ready' for session {}: {}",
+                sid.as_str(),
+                e
+            );
+        }
+    }
+
+    // Verified sessions stop verification children only after their follow-on side effects
+    // have been scheduled/emitted. This avoids cutting off the external auto-propose path
+    // when the verifier child is itself the caller that reported Verified.
+    if matches!(new_status, VerificationStatus::Verified) {
+        stop_verification_children(&session_id, &state.app_state).await.ok();
     }
 
     use crate::http_server::types::{VerificationGapResponse, VerificationRoundSummary};

@@ -4,6 +4,13 @@
 import { z } from "zod";
 
 // ============================================================================
+// Model Display
+// ============================================================================
+
+/** Effective model display info (id + human-readable label). Transient — not persisted. */
+export type ModelDisplay = { id: string; label: string };
+
+// ============================================================================
 // Context Type
 // ============================================================================
 
@@ -74,6 +81,8 @@ export const AgentRunSchema = z.object({
   startedAt: z.string().datetime(),
   completedAt: z.string().datetime().nullable(),
   errorMessage: z.string().nullable(),
+  modelId: z.string().nullable(),
+  modelLabel: z.string().nullable(),
 });
 
 export type AgentRun = z.infer<typeof AgentRunSchema>;

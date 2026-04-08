@@ -322,14 +322,18 @@ async fn test_mode_switch_bypasses_guards() {
         "mode_switch=true should bypass circuit_breaker_active and return true"
     );
 
-    // The task was transitioned out of MergeIncomplete (to PendingMerge) by mode_switch bypass.
-    // The merge pipeline entry actions may re-transition it again, but it was NOT skipped.
-    // We just verify it is no longer in the original MergeIncomplete state OR that the
-    // transition was attempted (result = true already confirms transition_task was called).
-    //
-    // Note: In a test environment the PendingMerge entry action fires immediately and may
-    // transition back to MergeIncomplete (no real git repo). That's expected — what matters
-    // is that the circuit_breaker did NOT prevent the transition attempt.
+    let history = app_state
+        .task_repo
+        .get_status_history(&task.id)
+        .await
+        .unwrap();
+    assert!(
+        history.iter().any(|entry| {
+            entry.from == InternalStatus::MergeIncomplete
+                && entry.to == InternalStatus::PendingMerge
+        }),
+        "mode_switch bypass must record MergeIncomplete -> PendingMerge before entry actions run"
+    );
 }
 
 // ============================================================================
@@ -480,5 +484,107 @@ async fn test_reconciler_skips_pending_merge_when_pr_polling_active() {
         updated.internal_status,
         InternalStatus::PendingMerge,
         "PR-mode PendingMerge task must NOT be transitioned to MergeIncomplete by reconciler"
+    );
+}
+
+// ============================================================================
+// Test 6: branch_missing metadata blocks MergeIncomplete auto-retry
+// ============================================================================
+
+#[tokio::test]
+async fn test_merge_incomplete_branch_missing_skips_retry() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+
+    let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Branch missing merge incomplete".to_string());
+    task.internal_status = InternalStatus::MergeIncomplete;
+    task.metadata = Some(
+        serde_json::json!({
+            "branch_missing": true,
+            "merge_recovery": {
+                "events": [],
+                "stop_retrying": false
+            }
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let reconciler = build_reconciler(&app_state, &execution_state);
+    let result = reconciler
+        .reconcile_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+
+    assert!(
+        !result,
+        "branch_missing=true should suppress MergeIncomplete auto-retry"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeIncomplete,
+        "branch_missing MergeIncomplete task must stay MergeIncomplete"
+    );
+}
+
+// ============================================================================
+// Test 7: branch_missing metadata blocks MergeConflict auto-retry
+// ============================================================================
+
+#[tokio::test]
+async fn test_merge_conflict_branch_missing_skips_retry() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+
+    let project = Project::new("Test Project".to_string(), "/tmp/test-repo".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Branch missing merge conflict".to_string());
+    task.internal_status = InternalStatus::MergeConflict;
+    task.metadata = Some(
+        serde_json::json!({
+            "branch_missing": true
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let reconciler = build_reconciler(&app_state, &execution_state);
+    let result = reconciler
+        .reconcile_task(&task, InternalStatus::MergeConflict)
+        .await;
+
+    assert!(
+        !result,
+        "branch_missing=true should suppress MergeConflict auto-retry"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeConflict,
+        "branch_missing MergeConflict task must stay MergeConflict"
     );
 }

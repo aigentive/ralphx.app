@@ -165,6 +165,7 @@ async fn test_merge_completion_aborts_on_stale_task_state() {
         None,
         None,
         None,
+        None,
     )
     .await;
 
@@ -227,6 +228,7 @@ async fn test_merge_completion_proceeds_on_pending_merge() {
         None,
         None,
         None,
+        None,
     )
     .await;
 
@@ -286,6 +288,7 @@ async fn test_merge_completion_proceeds_on_merging() {
         "",
         "main",
         &task_repo_dyn,
+        None,
         None,
         None,
         None,

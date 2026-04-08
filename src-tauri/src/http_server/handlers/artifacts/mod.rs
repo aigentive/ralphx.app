@@ -10,7 +10,7 @@ use tracing::error;
 use super::*;
 use crate::domain::entities::{
     Artifact, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactMetadata, ArtifactType,
-    EventType, IdeationSession, IdeationSessionId, SessionOrigin, VerificationStatus,
+    IdeationSession, IdeationSessionId, SessionOrigin, VerificationStatus,
 };
 use crate::domain::repositories::IdeationSessionRepository;
 use crate::domain::services::running_agent_registry::{RunningAgentKey, RunningAgentRegistry};

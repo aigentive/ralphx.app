@@ -377,6 +377,14 @@ impl IdeationSessionRepository for MockSessionRepository {
         Ok(())
     }
 
+    async fn update_last_effective_model(
+        &self,
+        _session_id: &str,
+        _model: &str,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
     async fn list_active_verification_children(
         &self,
     ) -> AppResult<Vec<ralphx_lib::domain::entities::IdeationSession>> {
@@ -446,6 +454,13 @@ impl IdeationSessionRepository for MockSessionRepository {
         _project_id: &ProjectId,
     ) -> AppResult<Vec<IdeationSession>> {
         Ok(vec![])
+    }
+
+    async fn count_active_proposals(
+        &self,
+        _session_id: &IdeationSessionId,
+    ) -> AppResult<usize> {
+        Ok(0)
     }
 
     async fn get_latest_verification_child(

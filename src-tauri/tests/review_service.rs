@@ -153,12 +153,14 @@ impl ReviewRepository for MockReviewRepo {
 // Mock TaskRepository
 struct MockTaskRepo {
     tasks: RwLock<HashMap<String, Task>>,
+    status_history: RwLock<HashMap<String, Vec<repositories::StatusTransition>>>,
 }
 
 impl MockTaskRepo {
     fn new() -> Self {
         Self {
             tasks: RwLock::new(HashMap::new()),
+            status_history: RwLock::new(HashMap::new()),
         }
     }
     fn add_task(&self, task: Task) {
@@ -222,18 +224,30 @@ impl TaskRepository for MockTaskRepo {
     }
     async fn persist_status_change(
         &self,
-        _id: &TaskId,
-        _from: InternalStatus,
-        _to: InternalStatus,
-        _trigger: &str,
+        id: &TaskId,
+        from: InternalStatus,
+        to: InternalStatus,
+        trigger: &str,
     ) -> AppResult<()> {
+        self.status_history
+            .write()
+            .unwrap()
+            .entry(id.as_str().to_string())
+            .or_default()
+            .push(repositories::StatusTransition::new(from, to, trigger));
         Ok(())
     }
     async fn get_status_history(
         &self,
-        _id: &TaskId,
+        id: &TaskId,
     ) -> AppResult<Vec<repositories::StatusTransition>> {
-        Ok(vec![])
+        Ok(self
+            .status_history
+            .read()
+            .unwrap()
+            .get(id.as_str())
+            .cloned()
+            .unwrap_or_default())
     }
     async fn get_status_entered_at(
         &self,
@@ -361,9 +375,18 @@ impl TaskRepository for MockTaskRepo {
 
     async fn get_status_history_batch(
         &self,
-        _task_ids: &[entities::TaskId],
+        task_ids: &[entities::TaskId],
     ) -> AppResult<HashMap<entities::TaskId, Vec<repositories::StatusTransition>>> {
-        Ok(HashMap::new())
+        let history = self.status_history.read().unwrap();
+        Ok(task_ids
+            .iter()
+            .filter_map(|task_id| {
+                history
+                    .get(task_id.as_str())
+                    .cloned()
+                    .map(|entries| (task_id.clone(), entries))
+            })
+            .collect())
     }
 }
 
@@ -514,6 +537,13 @@ async fn test_approve_fix_task_success() {
     // Verify it's now Ready
     let updated = task_repo.get_by_id(&fix_task.id).await.unwrap().unwrap();
     assert_eq!(updated.internal_status, InternalStatus::Ready);
+
+    let history = task_repo.get_status_history(&fix_task.id).await.unwrap();
+    assert!(history.iter().any(|entry| {
+        entry.from == InternalStatus::Blocked
+            && entry.to == InternalStatus::Ready
+            && entry.trigger == "review_fix"
+    }));
 }
 
 #[tokio::test]
@@ -591,6 +621,11 @@ async fn test_reject_fix_task_creates_new_fix() {
     // Original fix task should be Failed
     let old_fix = task_repo.get_by_id(&fix_task_id).await.unwrap().unwrap();
     assert_eq!(old_fix.internal_status, InternalStatus::Failed);
+
+    let fix_history = task_repo.get_status_history(&fix_task_id).await.unwrap();
+    assert!(fix_history.iter().any(|entry| {
+        entry.to == InternalStatus::Failed && entry.trigger == "review_fix"
+    }));
 }
 
 #[tokio::test]
@@ -615,6 +650,10 @@ async fn test_reject_fix_task_max_attempts_moves_to_backlog() {
         .unwrap()
         .unwrap();
 
+    let mut original_for_backlog = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    original_for_backlog.internal_status = InternalStatus::PendingReview;
+    task_repo.update(&original_for_backlog).await.unwrap();
+
     // At this point we have 1 fix action, which equals max_fix_attempts
     // Reject should move original to backlog
     let new_fix_id = service
@@ -628,6 +667,16 @@ async fn test_reject_fix_task_max_attempts_moves_to_backlog() {
     // Original task should be in Backlog
     let original = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
     assert_eq!(original.internal_status, InternalStatus::Backlog);
+
+    let fix_history = task_repo.get_status_history(&fix_task_id).await.unwrap();
+    assert!(fix_history.iter().any(|entry| {
+        entry.to == InternalStatus::Failed && entry.trigger == "review_fix"
+    }));
+
+    let original_history = task_repo.get_status_history(&task_id).await.unwrap();
+    assert!(original_history.iter().any(|entry| {
+        entry.to == InternalStatus::Backlog && entry.trigger == "review_fix"
+    }));
 }
 
 #[tokio::test]
@@ -675,6 +724,13 @@ async fn test_move_to_backlog() {
     // Verify it's in Backlog
     let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
     assert_eq!(updated.internal_status, InternalStatus::Backlog);
+
+    let history = task_repo.get_status_history(&task_id).await.unwrap();
+    assert!(history.iter().any(|entry| {
+        entry.from == InternalStatus::PendingReview
+            && entry.to == InternalStatus::Backlog
+            && entry.trigger == "review_service"
+    }));
 }
 
 // ========================================

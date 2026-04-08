@@ -441,6 +441,14 @@ impl IdeationSessionRepository for MockSessionRepository {
         Ok(())
     }
 
+    async fn update_last_effective_model(
+        &self,
+        _session_id: &str,
+        _model: &str,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
     async fn list_active_verification_children(
         &self,
     ) -> AppResult<Vec<ralphx_lib::domain::entities::IdeationSession>> {
@@ -510,6 +518,13 @@ impl IdeationSessionRepository for MockSessionRepository {
         _project_id: &ralphx_lib::domain::entities::ProjectId,
     ) -> AppResult<Vec<ralphx_lib::domain::entities::IdeationSession>> {
         Ok(vec![])
+    }
+
+    async fn count_active_proposals(
+        &self,
+        _session_id: &IdeationSessionId,
+    ) -> AppResult<usize> {
+        Ok(0)
     }
 
     async fn get_latest_verification_child(
@@ -882,6 +897,16 @@ impl ChatMessageRepository for MockMessageRepository {
         _role: &str,
     ) -> AppResult<Option<ralphx_lib::domain::entities::ChatMessage>> {
         Ok(None)
+    }
+
+    async fn exists_verification_result_in_conversation(
+        &self,
+        conversation_id: &ralphx_lib::domain::entities::ChatConversationId,
+    ) -> AppResult<bool> {
+        Ok(self.messages.lock().unwrap().values().any(|m| {
+            m.conversation_id.as_ref() == Some(conversation_id)
+                && m.content.contains("<verification-result>")
+        }))
     }
 }
 

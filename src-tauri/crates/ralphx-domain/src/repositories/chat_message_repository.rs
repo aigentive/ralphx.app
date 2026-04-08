@@ -119,6 +119,16 @@ pub trait ChatMessageRepository: Send + Sync {
         session_id: &IdeationSessionId,
         role: &str,
     ) -> AppResult<Option<ChatMessage>>;
+
+    /// Dedup guard: check whether a `<verification-result>` message has already been
+    /// injected into the given conversation.
+    ///
+    /// Returns `Ok(true)` when such a message exists (or on DB error — fail-safe to
+    /// prevent double injection). Returns `Ok(false)` only when no matching message is found.
+    async fn exists_verification_result_in_conversation(
+        &self,
+        conversation_id: &ChatConversationId,
+    ) -> AppResult<bool>;
 }
 
 #[cfg(test)]

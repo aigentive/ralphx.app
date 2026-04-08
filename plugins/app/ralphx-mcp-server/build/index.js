@@ -16,7 +16,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema, } from "@modelcontextprotocol/sdk/types.js";
 import { callTauri, callTauriGet, TauriClientError } from "./tauri-client.js";
 import { safeError } from "./redact.js";
-import { getFilteredTools, isToolAllowed, getAllowedToolNames, parseAllowedToolsFromArgs, logAllTools, getToolsByAgent, setAgentType, } from "./tools.js";
+import { getFilteredTools, isToolAllowed, getAllowedToolNames, parseAllowedToolsFromArgs, formatToolErrorMessage, logAllTools, getToolsByAgent, setAgentType, } from "./tools.js";
 import { permissionRequestTool, handlePermissionRequest, } from "./permission-handler.js";
 import { handleAskUserQuestion } from "./question-handler.js";
 import { handleRequestTeamPlan } from "./team-plan-handler.js";
@@ -75,6 +75,36 @@ export function filterCrossProjectPaths(detectedPaths, projectWorkingDir) {
         if (p.startsWith(root))
             return false;
         return true;
+    });
+}
+export function selectLatestArtifactsByPrefix(artifacts, prefixes, createdAfter) {
+    const createdAfterMs = typeof createdAfter === "string" && createdAfter.length > 0
+        ? Date.parse(createdAfter)
+        : Number.NaN;
+    const hasThreshold = Number.isFinite(createdAfterMs);
+    return prefixes.map((prefix) => {
+        const matches = artifacts
+            .filter((artifact) => artifact.name.startsWith(prefix))
+            .filter((artifact) => {
+            if (!hasThreshold)
+                return true;
+            const createdAtMs = Date.parse(artifact.created_at);
+            return Number.isFinite(createdAtMs) && createdAtMs >= createdAfterMs;
+        })
+            .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+        const latest = matches[0];
+        return latest
+            ? {
+                prefix,
+                found: true,
+                total_matches: matches.length,
+                artifact: latest,
+            }
+            : {
+                prefix,
+                found: false,
+                total_matches: 0,
+            };
     });
 }
 /**
@@ -375,6 +405,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const { session_id } = args;
             result = await callTauriGet(`ideation/sessions/${session_id}/verification`);
         }
+        else if (name === "report_verification_round") {
+            // POST /api/ideation/sessions/:id/verification (verifier-friendly alias)
+            const { session_id, ...body } = args;
+            result = await callTauri(`ideation/sessions/${session_id}/verification`, {
+                ...body,
+                status: "reviewing",
+                in_progress: true,
+            });
+        }
+        else if (name === "complete_plan_verification") {
+            // POST /api/ideation/sessions/:id/verification (verifier-friendly terminal alias)
+            const { session_id, ...body } = args;
+            result = await callTauri(`ideation/sessions/${session_id}/verification`, {
+                ...body,
+                in_progress: false,
+            });
+        }
         else if (name === "update_plan_verification") {
             // POST /api/ideation/sessions/:id/verification
             const { session_id, ...body } = args;
@@ -543,6 +590,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             // GET /api/team/artifacts/:session_id
             const { session_id } = args;
             result = await callTauriGet(`team/artifacts/${session_id}`);
+        }
+        else if (name === "get_verification_round_artifacts") {
+            const { session_id, prefixes, created_after, include_full_content = true, } = args;
+            const teamArtifacts = await callTauriGet(`team/artifacts/${session_id}`);
+            const matches = selectLatestArtifactsByPrefix(teamArtifacts.artifacts ?? [], prefixes, created_after);
+            const artifacts_by_prefix = await Promise.all(matches.map(async (match) => {
+                if (!match.artifact) {
+                    return match;
+                }
+                if (!include_full_content) {
+                    return match;
+                }
+                const fullArtifact = await callTauriGet(`artifact/${match.artifact.id}`);
+                return {
+                    ...match,
+                    artifact: {
+                        ...match.artifact,
+                        content: fullArtifact.content ?? "",
+                    },
+                };
+            }));
+            result = {
+                session_id,
+                created_after: created_after ?? null,
+                prefixes,
+                artifacts_by_prefix,
+            };
         }
         else if (name === "get_team_session_state") {
             // GET /api/team/session_state/:session_id
@@ -746,7 +820,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 content: [
                     {
                         type: "text",
-                        text: `ERROR: ${error.message}${error.details ? `\n\nDetails: ${error.details}` : ""}`,
+                        text: formatToolErrorMessage(name, error.message, error.details),
                     },
                 ],
                 isError: true,

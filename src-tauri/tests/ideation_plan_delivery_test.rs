@@ -9,6 +9,8 @@
 //   2. Partial merge guard: workers NOT yet Merged → no plan:delivered
 //   3. Idempotency: on_enter(Merged) called twice → still exactly 1 plan:delivered
 
+use std::fs;
+use std::process::Command;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -19,7 +21,8 @@ use ralphx_domain::entities::EventType;
 use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
-    IdeationSessionBuilder, IdeationSessionId, InternalStatus, ProjectId, Task, TaskCategory,
+    IdeationSessionBuilder, IdeationSessionId, InternalStatus, Project, ProjectId, Task,
+    TaskCategory,
 };
 use ralphx_lib::domain::repositories::{
     ExternalEventsRepository, IdeationSessionRepository, ProjectRepository, TaskRepository,
@@ -28,6 +31,7 @@ use ralphx_lib::domain::state_machine::{
     State as MachineState, TaskContext, TaskServices, TaskStateMachine, TransitionHandler,
 };
 use ralphx_lib::domain::state_machine::services::WebhookPublisher as WebhookPublisherTrait;
+use ralphx_lib::domain::state_machine::transition_handler::complete_merge_internal;
 use ralphx_lib::http_server::handlers::{
     get_session_tasks_http, GetSessionTasksParams,
 };
@@ -57,15 +61,20 @@ impl RecordingWebhookPublisher {
     }
 
     fn was_called_with(&self, event_type: EventType) -> bool {
-        self.calls
-            .lock()
-            .unwrap()
-            .iter()
-            .any(|et| *et == event_type)
+        self.calls.lock().unwrap().contains(&event_type)
     }
 
     fn call_count(&self) -> usize {
         self.calls.lock().unwrap().len()
+    }
+
+    fn count_calls_with(&self, event_type: EventType) -> usize {
+        self.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| **e == event_type)
+            .count()
     }
 }
 
@@ -134,7 +143,7 @@ impl TestSetup {
         );
         worker1.ideation_session_id =
             Some(IdeationSessionId::from_string(session_id.clone()));
-        worker1.internal_status = worker_status.clone();
+        worker1.internal_status = worker_status;
         task_repo.create(worker1).await.expect("create worker1");
 
         // Worker task 2
@@ -211,7 +220,7 @@ async fn call_on_enter_merged(setup: &TestSetup) {
 async fn count_plan_delivered(setup: &TestSetup) -> usize {
     setup
         .events_repo
-        .get_events_after_cursor(&[setup.project_id.clone()], 0, 1000)
+        .get_events_after_cursor(std::slice::from_ref(&setup.project_id), 0, 1000)
         .await
         .expect("get_events_after_cursor")
         .into_iter()
@@ -255,7 +264,7 @@ async fn test_plan_delivered_fires_after_all_tasks_merged() {
     // Assert: the event payload contains the correct session_id
     let events = setup
         .events_repo
-        .get_events_after_cursor(&[setup.project_id.clone()], 0, 1000)
+        .get_events_after_cursor(std::slice::from_ref(&setup.project_id), 0, 1000)
         .await
         .unwrap();
     let delivered_event = events
@@ -351,5 +360,457 @@ async fn test_plan_delivered_idempotent() {
         setup.webhook_publisher.call_count(),
         1,
         "webhook publisher must be called only once (idempotency guard)"
+    );
+}
+
+// ============================================================================
+// Helpers for complete_merge_internal tests
+// ============================================================================
+
+/// Init a git repo with main + a plan branch, merge plan→main, return (TempDir, merge SHA).
+///
+/// This is a synchronous helper — git CLI calls are blocking.  Callers in async
+/// tests may call it directly (blocking the tokio thread briefly, which is fine
+/// in tests) or wrap with `spawn_blocking`.
+fn setup_repo_with_merged_plan_branch() -> (tempfile::TempDir, String) {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let repo = dir.path();
+
+    // Init repo and configure git identity
+    for args in [
+        vec!["init"],
+        vec!["config", "user.email", "test@test.com"],
+        vec!["config", "user.name", "Test User"],
+    ] {
+        Command::new("git")
+            .args(&args)
+            .current_dir(repo)
+            .output()
+            .expect("git setup command failed");
+    }
+
+    // Initial commit on main
+    fs::write(repo.join("README.md"), "# Test\n").expect("write README.md");
+    Command::new("git").args(["add", "."]).current_dir(repo).output().expect("git add");
+    Command::new("git")
+        .args(["commit", "-m", "Initial commit"])
+        .current_dir(repo)
+        .output()
+        .expect("git commit");
+    Command::new("git")
+        .args(["branch", "-M", "main"])
+        .current_dir(repo)
+        .output()
+        .expect("git branch -M main");
+
+    // Create plan branch with one commit
+    Command::new("git")
+        .args(["checkout", "-b", "plan/test-plan"])
+        .current_dir(repo)
+        .output()
+        .expect("git checkout -b plan/test-plan");
+    fs::write(repo.join("plan.md"), "Plan content\n").expect("write plan.md");
+    Command::new("git").args(["add", "."]).current_dir(repo).output().expect("git add plan");
+    Command::new("git")
+        .args(["commit", "-m", "Add plan"])
+        .current_dir(repo)
+        .output()
+        .expect("git commit plan");
+
+    // Return to main and merge plan branch (--no-ff produces a real merge commit)
+    Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(repo)
+        .output()
+        .expect("git checkout main");
+    Command::new("git")
+        .args(["merge", "--no-ff", "plan/test-plan", "-m", "Merge plan/test-plan into main"])
+        .current_dir(repo)
+        .output()
+        .expect("git merge plan branch");
+
+    // Capture the resulting merge commit SHA
+    let out = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .expect("git rev-parse HEAD");
+    let sha = String::from_utf8_lossy(&out.stdout).trim().to_string();
+
+    (dir, sha)
+}
+
+// ============================================================================
+// Test 4 — complete_merge_internal runtime path: PlanMerge → plan:delivered
+// ============================================================================
+
+#[tokio::test]
+async fn test_plan_delivered_fires_from_complete_merge_internal() {
+    let (temp_dir, commit_sha) = setup_repo_with_merged_plan_branch();
+    let repo_path = temp_dir.path().to_str().unwrap().to_string();
+
+    // Create project pointing at the real git repo
+    let mut project = Project::new("cmi-test-project".to_string(), repo_path.clone());
+    project.base_branch = Some("main".to_string());
+    let project_id = project.id.to_string();
+
+    let session_id_str = "session-cmi-pdm307-test".to_string();
+    let session_id = IdeationSessionId::from_string(session_id_str.clone());
+
+    // Create PlanMerge task in PendingMerge status
+    let mut task = Task::new(project.id.clone(), "PlanMerge task".to_string());
+    task.category = TaskCategory::PlanMerge;
+    task.internal_status = InternalStatus::PendingMerge;
+    task.ideation_session_id = Some(session_id);
+    task.task_branch = Some("plan/test-plan".to_string());
+    let task_id_str = task.id.as_str().to_string();
+
+    // Pre-insert task into repo so state freshness check passes
+    let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
+    task_repo.create(task.clone()).await.expect("create task");
+
+    // Wire up external events and webhook publisher
+    let raw_events = Arc::new(MemoryExternalEventsRepository::new());
+    let raw_publisher = Arc::new(RecordingWebhookPublisher::new());
+    let events_dyn: Arc<dyn ExternalEventsRepository> =
+        Arc::clone(&raw_events) as Arc<dyn ExternalEventsRepository>;
+    let publisher_dyn: Arc<dyn WebhookPublisherTrait> =
+        Arc::clone(&raw_publisher) as Arc<dyn WebhookPublisherTrait>;
+
+    // Call complete_merge_internal directly — the primary fix path from PDM-307
+    let result = complete_merge_internal::<tauri::test::MockRuntime>(
+        &mut task,
+        &project,
+        &commit_sha,
+        "plan/test-plan",
+        "main",
+        &task_repo,
+        Some(&events_dyn),
+        Some(&publisher_dyn),
+        None,
+        Some("Test Delivery Session".to_string()),
+    )
+    .await;
+
+    assert!(result.is_ok(), "complete_merge_internal failed: {:?}", result);
+    assert_eq!(task.internal_status, InternalStatus::Merged);
+    assert_eq!(task.merge_commit_sha.as_deref(), Some(commit_sha.as_str()));
+
+    // Assert: exactly one plan:delivered event in the events repo
+    let events = raw_events
+        .get_events_after_cursor(std::slice::from_ref(&project_id), 0, 1000)
+        .await
+        .expect("get_events_after_cursor");
+    let delivered: Vec<_> = events.iter().filter(|e| e.event_type == "plan:delivered").collect();
+    assert_eq!(
+        delivered.len(),
+        1,
+        "Expected exactly one plan:delivered event, got {}",
+        delivered.len()
+    );
+
+    // Assert: payload contains required fields — using JSON parsing (not string .contains())
+    let payload_json: serde_json::Value = serde_json::from_str(&delivered[0].payload)
+        .expect("plan:delivered payload must be valid JSON");
+
+    // Backward compat: original fields must still be present
+    assert_eq!(
+        payload_json["session_id"].as_str().unwrap(),
+        session_id_str,
+        "session_id must be present"
+    );
+    assert_eq!(
+        payload_json["project_id"].as_str().unwrap(),
+        project_id,
+        "project_id must be present"
+    );
+    assert_eq!(
+        payload_json["task_id"].as_str().unwrap(),
+        task_id_str,
+        "task_id must be present"
+    );
+    assert_eq!(
+        payload_json["commit_sha"].as_str().unwrap(),
+        commit_sha,
+        "commit_sha must be present"
+    );
+    assert_eq!(
+        payload_json["target_branch"].as_str().unwrap(),
+        "main",
+        "target_branch must be present"
+    );
+    assert!(
+        payload_json.get("timestamp").is_some(),
+        "timestamp field must be present"
+    );
+
+    // Enrichment fields
+    assert_eq!(
+        payload_json["project_name"].as_str().unwrap(),
+        "cmi-test-project",
+        "project_name must match the project name"
+    );
+    assert_eq!(
+        payload_json["task_title"].as_str().unwrap(),
+        "PlanMerge task",
+        "task_title must match the task title"
+    );
+    assert_eq!(
+        payload_json["session_title"].as_str().unwrap(),
+        "Test Delivery Session",
+        "session_title must be present when provided"
+    );
+    assert_eq!(
+        payload_json["presentation_kind"].as_str().unwrap(),
+        "plan_delivered",
+        "presentation_kind must be plan_delivered"
+    );
+    let hc = payload_json["human_context"].as_str().unwrap();
+    assert!(!hc.is_empty(), "human_context must not be empty");
+    assert!(hc.contains("cmi-test-project"), "human_context must contain project_name");
+    assert!(hc.contains("Test Delivery Session"), "human_context must contain session_title");
+    assert!(hc.contains("PlanMerge task"), "human_context must contain task_title");
+
+    // Assert: webhook publisher called once with PlanDelivered
+    assert!(
+        raw_publisher.was_called_with(EventType::PlanDelivered),
+        "publisher must be called with PlanDelivered"
+    );
+    assert_eq!(
+        raw_publisher.count_calls_with(EventType::PlanDelivered),
+        1,
+        "PlanDelivered must be published exactly once"
+    );
+}
+
+// ============================================================================
+// Test 5 — Idempotency via complete_merge_internal: calling twice → 1 event
+// ============================================================================
+
+#[tokio::test]
+async fn test_plan_delivered_idempotent_from_complete_merge_internal() {
+    let (temp_dir, commit_sha) = setup_repo_with_merged_plan_branch();
+    let repo_path = temp_dir.path().to_str().unwrap().to_string();
+
+    let mut project = Project::new("cmi-idem-project".to_string(), repo_path.clone());
+    project.base_branch = Some("main".to_string());
+    let project_id = project.id.to_string();
+
+    let session_id_str = "session-cmi-idem-test".to_string();
+    let session_id = IdeationSessionId::from_string(session_id_str.clone());
+
+    let mut task = Task::new(project.id.clone(), "PlanMerge idempotency task".to_string());
+    task.category = TaskCategory::PlanMerge;
+    task.internal_status = InternalStatus::PendingMerge;
+    task.ideation_session_id = Some(session_id);
+    task.task_branch = Some("plan/test-plan".to_string());
+
+    let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
+    task_repo.create(task.clone()).await.expect("create task");
+
+    let raw_events = Arc::new(MemoryExternalEventsRepository::new());
+    let raw_publisher = Arc::new(RecordingWebhookPublisher::new());
+    let events_dyn: Arc<dyn ExternalEventsRepository> =
+        Arc::clone(&raw_events) as Arc<dyn ExternalEventsRepository>;
+    let publisher_dyn: Arc<dyn WebhookPublisherTrait> =
+        Arc::clone(&raw_publisher) as Arc<dyn WebhookPublisherTrait>;
+
+    // First call: inserts plan:delivered
+    let result1 = complete_merge_internal::<tauri::test::MockRuntime>(
+        &mut task,
+        &project,
+        &commit_sha,
+        "plan/test-plan",
+        "main",
+        &task_repo,
+        Some(&events_dyn),
+        Some(&publisher_dyn),
+        None,
+        None,
+    )
+    .await;
+    assert!(result1.is_ok(), "First call failed: {:?}", result1);
+
+    // Simulate a concurrent duplicate: reset task to PendingMerge so the state
+    // freshness guard doesn't abort the second call before reaching event_exists.
+    task.internal_status = InternalStatus::PendingMerge;
+    task_repo.update(&task).await.expect("reset task to PendingMerge");
+
+    // Second call: event_exists returns true → idempotency guard prevents duplicate
+    let result2 = complete_merge_internal::<tauri::test::MockRuntime>(
+        &mut task,
+        &project,
+        &commit_sha,
+        "plan/test-plan",
+        "main",
+        &task_repo,
+        Some(&events_dyn),
+        Some(&publisher_dyn),
+        None,
+        None,
+    )
+    .await;
+    assert!(result2.is_ok(), "Second call failed: {:?}", result2);
+
+    // Assert: still exactly one plan:delivered — not two
+    let events = raw_events
+        .get_events_after_cursor(std::slice::from_ref(&project_id), 0, 1000)
+        .await
+        .expect("get_events_after_cursor");
+    let delivered_count = events.iter().filter(|e| e.event_type == "plan:delivered").count();
+    assert_eq!(
+        delivered_count,
+        1,
+        "plan:delivered must fire only once even when complete_merge_internal is called twice"
+    );
+
+    // Assert: PlanDelivered webhook published only once (idempotency guard)
+    assert_eq!(
+        raw_publisher.count_calls_with(EventType::PlanDelivered),
+        1,
+        "PlanDelivered webhook must be published exactly once (idempotency guard)"
+    );
+}
+
+// ============================================================================
+// Test 6 — merge:completed enrichment: all presentation fields present in payload
+// ============================================================================
+
+#[tokio::test]
+async fn test_merge_completed_includes_presentation_fields() {
+    let (temp_dir, commit_sha) = setup_repo_with_merged_plan_branch();
+    let repo_path = temp_dir.path().to_str().unwrap().to_string();
+
+    // Create project with a recognizable name for enrichment assertion
+    let mut project = Project::new("Presentation Test Project".to_string(), repo_path.clone());
+    project.base_branch = Some("main".to_string());
+    let project_id = project.id.to_string();
+
+    let session_id_str = "session-mc-enrichment-test".to_string();
+    let session_id = IdeationSessionId::from_string(session_id_str.clone());
+
+    // Use a regular worker task (NOT PlanMerge) so only merge:completed fires,
+    // not plan:delivered. This isolates the merge:completed enrichment assertion.
+    let mut task = Task::new(project.id.clone(), "My Worker Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.ideation_session_id = Some(session_id);
+    task.task_branch = Some("plan/test-plan".to_string());
+    let task_id_str = task.id.as_str().to_string();
+
+    let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
+    task_repo.create(task.clone()).await.expect("create task");
+
+    let raw_events = Arc::new(MemoryExternalEventsRepository::new());
+    let raw_publisher = Arc::new(RecordingWebhookPublisher::new());
+    let events_dyn: Arc<dyn ExternalEventsRepository> =
+        Arc::clone(&raw_events) as Arc<dyn ExternalEventsRepository>;
+    let publisher_dyn: Arc<dyn WebhookPublisherTrait> =
+        Arc::clone(&raw_publisher) as Arc<dyn WebhookPublisherTrait>;
+
+    let result = complete_merge_internal::<tauri::test::MockRuntime>(
+        &mut task,
+        &project,
+        &commit_sha,
+        "plan/test-plan",
+        "main",
+        &task_repo,
+        Some(&events_dyn),
+        Some(&publisher_dyn),
+        None,
+        Some("My Ideation Session".to_string()),
+    )
+    .await;
+
+    assert!(result.is_ok(), "complete_merge_internal failed: {:?}", result);
+    assert_eq!(task.internal_status, InternalStatus::Merged);
+
+    let events = raw_events
+        .get_events_after_cursor(std::slice::from_ref(&project_id), 0, 1000)
+        .await
+        .expect("get_events_after_cursor");
+
+    // Assert: exactly one merge:completed event
+    let mc_events: Vec<_> = events.iter().filter(|e| e.event_type == "merge:completed").collect();
+    assert_eq!(mc_events.len(), 1, "Expected exactly one merge:completed event");
+
+    let payload_json: serde_json::Value = serde_json::from_str(&mc_events[0].payload)
+        .expect("merge:completed payload must be valid JSON");
+
+    // Backward compat: original fields must still be present
+    assert_eq!(
+        payload_json["session_id"].as_str().unwrap(),
+        session_id_str,
+        "session_id must be present"
+    );
+    assert_eq!(
+        payload_json["project_id"].as_str().unwrap(),
+        project_id,
+        "project_id must be present"
+    );
+    assert_eq!(
+        payload_json["task_id"].as_str().unwrap(),
+        task_id_str,
+        "task_id must be present"
+    );
+    assert_eq!(
+        payload_json["commit_sha"].as_str().unwrap(),
+        commit_sha,
+        "commit_sha must be present"
+    );
+    assert_eq!(
+        payload_json["target_branch"].as_str().unwrap(),
+        "main",
+        "target_branch must be present"
+    );
+    assert!(payload_json.get("timestamp").is_some(), "timestamp must be present");
+
+    // Enrichment fields
+    assert_eq!(
+        payload_json["project_name"].as_str().unwrap(),
+        "Presentation Test Project",
+        "project_name must match the project name"
+    );
+    assert_eq!(
+        payload_json["task_title"].as_str().unwrap(),
+        "My Worker Task",
+        "task_title must match the task title"
+    );
+    assert_eq!(
+        payload_json["session_title"].as_str().unwrap(),
+        "My Ideation Session",
+        "session_title must be present when provided"
+    );
+    assert_eq!(
+        payload_json["presentation_kind"].as_str().unwrap(),
+        "merge_completed",
+        "presentation_kind must be merge_completed"
+    );
+    let hc = payload_json["human_context"].as_str().unwrap();
+    assert!(!hc.is_empty(), "human_context must not be empty");
+    assert!(
+        hc.contains("Presentation Test Project"),
+        "human_context must contain project_name"
+    );
+    assert!(
+        hc.contains("My Ideation Session"),
+        "human_context must contain session_title"
+    );
+    assert!(
+        hc.contains("My Worker Task"),
+        "human_context must contain task_title"
+    );
+
+    // No plan:delivered must fire for a regular (non-PlanMerge) task
+    let pd_count = events.iter().filter(|e| e.event_type == "plan:delivered").count();
+    assert_eq!(
+        pd_count,
+        0,
+        "plan:delivered must not fire for a non-PlanMerge task"
+    );
+
+    // Webhook publisher called with MergeCompleted
+    assert!(
+        raw_publisher.was_called_with(EventType::MergeCompleted),
+        "publisher must be called with MergeCompleted"
     );
 }
