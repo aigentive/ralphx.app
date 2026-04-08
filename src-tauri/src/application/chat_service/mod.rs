@@ -54,7 +54,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tokio_util::sync::CancellationToken;
-use which::which;
 
 /// Prefix used when formatting agent errors into chat messages.
 /// Both the write site (chat_service_handlers) and read site (chat_service_replay)
@@ -906,19 +905,19 @@ impl<R: Runtime> ClaudeChatService<R> {
         stored_session_id: Option<&str>,
         resolved_spawn_settings: &crate::application::agent_lane_resolution::ResolvedAgentSpawnSettings,
     ) -> Result<(PathBuf, tokio::process::Child, Option<Arc<InteractiveProcessRegistry>>), ChatServiceError> {
-        match resolved_spawn_settings.effective_harness {
-            AgentHarnessKind::Claude => {
-                if !self.cli_path.exists() && which(&self.cli_path).is_err() {
-                    tracing::warn!(
-                        cli_path = %self.cli_path.display(),
-                        "chat_service.send_message missing Claude CLI"
-                    );
-                    return Err(ChatServiceError::SpawnFailed(format!(
-                        "Claude CLI not found at {}",
-                        self.cli_path.display()
-                    )));
-                }
+        let resolved_cli = chat_service_context::resolve_chat_harness_cli(
+            resolved_spawn_settings.effective_harness,
+            &self.cli_path,
+        )
+        .map_err(|error| {
+            if resolved_spawn_settings.effective_harness == AgentHarnessKind::Claude {
+                tracing::warn!(cli_path = %self.cli_path.display(), %error, "chat_service.send_message missing Claude CLI");
+            }
+            ChatServiceError::SpawnFailed(error)
+        })?;
 
+        match resolved_cli {
+            chat_service_context::ResolvedChatHarnessCli::Claude { cli_path } => {
                 let spawnable = self
                     .build_interactive_command(
                         conversation,
@@ -950,16 +949,17 @@ impl<R: Runtime> ClaudeChatService<R> {
                     .register(interactive_key_for_register, child_stdin)
                     .await;
 
-                Ok((self.cli_path.clone(), child, Some(self.ipr())))
+                Ok((cli_path, child, Some(self.ipr())))
             }
-            AgentHarnessKind::Codex => {
-                let resolved_codex = crate::infrastructure::agents::resolve_codex_cli()
-                    .map_err(ChatServiceError::SpawnFailed)?;
+            chat_service_context::ResolvedChatHarnessCli::Codex {
+                cli_path,
+                capabilities,
+            } => {
                 let spawnable = match stored_session_id {
                     Some(session_id) => chat_service_context::build_codex_resume_command(
-                        &resolved_codex.path,
+                        &cli_path,
                         &self.plugin_dir,
-                        &resolved_codex.capabilities,
+                        &capabilities,
                         context_type,
                         context_id,
                         message,
@@ -977,9 +977,9 @@ impl<R: Runtime> ClaudeChatService<R> {
                     )
                     .await,
                     None => chat_service_context::build_codex_command(
-                        &resolved_codex.path,
+                        &cli_path,
                         &self.plugin_dir,
-                        &resolved_codex.capabilities,
+                        &capabilities,
                         conversation,
                         message,
                         working_directory,
@@ -1003,7 +1003,7 @@ impl<R: Runtime> ClaudeChatService<R> {
                 })?;
                 tracing::debug!(pid = ?child.id(), "chat_service.send_message codex spawn ok");
 
-                Ok((resolved_codex.path, child, None))
+                Ok((cli_path, child, None))
             }
         }
     }

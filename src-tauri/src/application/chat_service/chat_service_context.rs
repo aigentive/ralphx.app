@@ -31,6 +31,7 @@ use crate::infrastructure::agents::{
     compose_codex_prompt,
 };
 use crate::utils::truncate_str;
+use which::which;
 
 use super::super::agent_lane_resolution::ResolvedAgentSpawnSettings;
 use super::chat_service_helpers::resolve_agent_with_team_mode;
@@ -49,6 +50,44 @@ pub const SESSION_HISTORY_PREVIEW_BYTES: usize = 500;
 
 pub struct ProviderSpawnableCommand {
     pub spawnable: SpawnableCommand,
+}
+
+#[derive(Debug)]
+pub enum ResolvedChatHarnessCli {
+    Claude {
+        cli_path: PathBuf,
+    },
+    Codex {
+        cli_path: PathBuf,
+        capabilities: CodexCliCapabilities,
+    },
+}
+
+pub fn resolve_chat_harness_cli(
+    harness: AgentHarnessKind,
+    claude_cli_path: &Path,
+) -> Result<ResolvedChatHarnessCli, String> {
+    match harness {
+        AgentHarnessKind::Claude => {
+            if !claude_cli_path.exists() && which(claude_cli_path).is_err() {
+                return Err(format!(
+                    "Claude CLI not found at {}",
+                    claude_cli_path.display()
+                ));
+            }
+
+            Ok(ResolvedChatHarnessCli::Claude {
+                cli_path: claude_cli_path.to_path_buf(),
+            })
+        }
+        AgentHarnessKind::Codex => {
+            let resolved_codex = crate::infrastructure::agents::resolve_codex_cli()?;
+            Ok(ResolvedChatHarnessCli::Codex {
+                cli_path: resolved_codex.path,
+                capabilities: resolved_codex.capabilities,
+            })
+        }
+    }
 }
 
 fn claude_resume_session_id(conversation: &ChatConversation) -> Option<String> {
@@ -1249,10 +1288,12 @@ pub async fn build_command_for_harness(
     model_override: Option<&str>,
     is_external_mcp: bool,
 ) -> Result<ProviderSpawnableCommand, String> {
-    match harness {
-        AgentHarnessKind::Claude => Ok(ProviderSpawnableCommand {
+    let resolved_cli = resolve_chat_harness_cli(harness, cli_path)?;
+
+    match resolved_cli {
+        ResolvedChatHarnessCli::Claude { cli_path } => Ok(ProviderSpawnableCommand {
             spawnable: build_command(
-                cli_path,
+                &cli_path,
                 plugin_dir,
                 conversation,
                 user_message,
@@ -1272,8 +1313,10 @@ pub async fn build_command_for_harness(
             )
             .await?,
         }),
-        AgentHarnessKind::Codex => {
-            let resolved_codex = crate::infrastructure::agents::resolve_codex_cli()?;
+        ResolvedChatHarnessCli::Codex {
+            cli_path,
+            capabilities,
+        } => {
             let resolved_spawn_settings =
                 crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
                     resolve_agent_with_team_mode(&conversation.context_type, entity_status, false),
@@ -1289,9 +1332,9 @@ pub async fn build_command_for_harness(
 
             Ok(ProviderSpawnableCommand {
                 spawnable: build_codex_command(
-                    &resolved_codex.path,
+                    &cli_path,
                     plugin_dir,
-                    &resolved_codex.capabilities,
+                    &capabilities,
                     conversation,
                     user_message,
                     working_directory,
@@ -1661,10 +1704,12 @@ pub async fn build_resume_command_for_harness(
     model_override: Option<&str>,
     is_external_mcp: bool,
 ) -> Result<ProviderSpawnableCommand, String> {
-    match harness {
-        AgentHarnessKind::Claude => Ok(ProviderSpawnableCommand {
+    let resolved_cli = resolve_chat_harness_cli(harness, cli_path)?;
+
+    match resolved_cli {
+        ResolvedChatHarnessCli::Claude { cli_path } => Ok(ProviderSpawnableCommand {
             spawnable: build_resume_command(
-                cli_path,
+                &cli_path,
                 plugin_dir,
                 context_type,
                 context_id,
@@ -1687,8 +1732,10 @@ pub async fn build_resume_command_for_harness(
             )
             .await?,
         }),
-        AgentHarnessKind::Codex => {
-            let resolved_codex = crate::infrastructure::agents::resolve_codex_cli()?;
+        ResolvedChatHarnessCli::Codex {
+            cli_path,
+            capabilities,
+        } => {
             let entity_status = get_entity_status_for_resume(
                 context_type,
                 context_id,
@@ -1711,9 +1758,9 @@ pub async fn build_resume_command_for_harness(
 
             Ok(ProviderSpawnableCommand {
                 spawnable: build_codex_resume_command(
-                    &resolved_codex.path,
+                    &cli_path,
                     plugin_dir,
-                    &resolved_codex.capabilities,
+                    &capabilities,
                     context_type,
                     context_id,
                     message,
@@ -1970,5 +2017,14 @@ mod tests {
             Some("claude-session".to_string())
         );
         assert_eq!(claude_resume_session_id(&codex_conversation), None);
+    }
+
+    #[test]
+    fn resolve_chat_harness_cli_rejects_missing_claude_binary() {
+        let missing = PathBuf::from("/definitely/missing/ralphx-claude-cli");
+        let error = resolve_chat_harness_cli(AgentHarnessKind::Claude, &missing).unwrap_err();
+
+        assert!(error.contains("Claude CLI not found"));
+        assert!(error.contains(missing.to_string_lossy().as_ref()));
     }
 }
