@@ -116,7 +116,6 @@ pub struct ChatConversationWithMessages {
 
 /// Payload for agent:run_started event
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct AgentRunStartedPayload {
     pub run_id: String,
     pub conversation_id: String,

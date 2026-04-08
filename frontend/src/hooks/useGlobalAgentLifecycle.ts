@@ -134,8 +134,14 @@ export function useGlobalAgentLifecycle() {
         useChatStore.getState().setActiveConversation(eventContextKey, payload.conversation_id);
 
         // Populate effective model if both fields are present
-        if (payload.effectiveModelId && payload.effectiveModelLabel) {
-          const model: ModelDisplay = { id: payload.effectiveModelId, label: payload.effectiveModelLabel };
+        const effectiveModelId = payload.effective_model_id ?? payload.effectiveModelId;
+        const effectiveModelLabel =
+          payload.effective_model_label ?? payload.effectiveModelLabel;
+        if (effectiveModelId && effectiveModelLabel) {
+          const model: ModelDisplay = {
+            id: effectiveModelId,
+            label: effectiveModelLabel,
+          };
           useChatStore.getState().setEffectiveModel(eventContextKey, model);
         }
       })

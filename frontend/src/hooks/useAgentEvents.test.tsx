@@ -232,8 +232,8 @@ describe("useAgentEvents", () => {
           context_type: "task_execution",
           context_id: "task-123",
           conversation_id: "conv-1",
-          providerHarness: "codex",
-          providerSessionId: "thread-7",
+          provider_harness: "codex",
+          provider_session_id: "thread-7",
         });
       });
 
@@ -281,8 +281,8 @@ describe("useAgentEvents", () => {
           context_type: "task_execution",
           context_id: "task-123",
           conversation_id: "conv-1",
-          providerHarness: "codex",
-          providerSessionId: "thread-9",
+          provider_harness: "codex",
+          provider_session_id: "thread-9",
         });
       });
 
