@@ -36,18 +36,8 @@ use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 /// and resumes them by sending a message with --resume to continue the Claude session.
 pub struct ChatResumptionRunner<R: Runtime = tauri::Wry> {
     agent_run_repo: Arc<dyn AgentRunRepository>,
-    conversation_repo: Arc<dyn ChatConversationRepository>,
+    chat_runtime_deps: ChatRuntimeFactoryDeps,
     task_repo: Arc<dyn TaskRepository>,
-    task_dependency_repo: Arc<dyn TaskDependencyRepository>,
-    chat_message_repo: Arc<dyn ChatMessageRepository>,
-    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
-    artifact_repo: Arc<dyn crate::domain::repositories::ArtifactRepository>,
-    project_repo: Arc<dyn ProjectRepository>,
-    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
-    activity_event_repo: Arc<dyn ActivityEventRepository>,
-    message_queue: Arc<MessageQueue>,
-    running_agent_registry: Arc<dyn RunningAgentRegistry>,
-    memory_event_repo: Arc<dyn MemoryEventRepository>,
     execution_state: Arc<ExecutionState>,
     execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
     agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
@@ -76,19 +66,23 @@ impl<R: Runtime> ChatResumptionRunner<R> {
         execution_state: Arc<ExecutionState>,
     ) -> Self {
         Self {
-            agent_run_repo,
-            conversation_repo,
+            agent_run_repo: Arc::clone(&agent_run_repo),
+            chat_runtime_deps: ChatRuntimeFactoryDeps::from_core(
+                chat_message_repo,
+                chat_attachment_repo,
+                artifact_repo,
+                conversation_repo,
+                agent_run_repo,
+                project_repo,
+                Arc::clone(&task_repo),
+                Arc::clone(&task_dependency_repo),
+                ideation_session_repo,
+                activity_event_repo,
+                message_queue,
+                running_agent_registry,
+                memory_event_repo,
+            ),
             task_repo,
-            task_dependency_repo,
-            chat_message_repo,
-            chat_attachment_repo,
-            artifact_repo,
-            project_repo,
-            ideation_session_repo,
-            activity_event_repo,
-            message_queue,
-            running_agent_registry,
-            memory_event_repo,
             execution_state,
             execution_settings_repo: None,
             agent_lane_settings_repo: None,
@@ -288,21 +282,7 @@ impl<R: Runtime> ChatResumptionRunner<R> {
 
     /// Create a ChatService instance for resumption.
     fn create_chat_service(&self) -> ClaudeChatService<R> {
-        let mut deps = ChatRuntimeFactoryDeps::from_core(
-            Arc::clone(&self.chat_message_repo),
-            Arc::clone(&self.chat_attachment_repo),
-            Arc::clone(&self.artifact_repo),
-            Arc::clone(&self.conversation_repo),
-            Arc::clone(&self.agent_run_repo),
-            Arc::clone(&self.project_repo),
-            Arc::clone(&self.task_repo),
-            Arc::clone(&self.task_dependency_repo),
-            Arc::clone(&self.ideation_session_repo),
-            Arc::clone(&self.activity_event_repo),
-            Arc::clone(&self.message_queue),
-            Arc::clone(&self.running_agent_registry),
-            Arc::clone(&self.memory_event_repo),
-        );
+        let mut deps = self.chat_runtime_deps.clone();
         if let Some(repo) = self.execution_settings_repo.as_ref() {
             deps = deps.with_execution_settings_repo(Arc::clone(repo));
         }
