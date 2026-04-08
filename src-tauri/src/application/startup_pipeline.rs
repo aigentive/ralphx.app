@@ -125,6 +125,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         message_queue: Arc::clone(&message_queue),
         running_agent_registry: Arc::clone(&running_agent_registry),
         memory_event_repo: Arc::clone(&memory_event_repo),
+        agent_clients: agent_clients.clone(),
         plan_branch_repo: Arc::clone(&plan_branch_repo),
         interactive_process_registry: Arc::clone(&interactive_process_registry),
         app_handle: app_handle.clone(),

@@ -4,8 +4,8 @@ use crate::application::runtime_factory::{
     ChatRuntimeFactoryDeps, build_chat_service_with_fallback,
 };
 use crate::application::{
-    ChatResumptionRunner, ChatService, InteractiveProcessRegistry, ReconciliationRunner,
-    TaskSchedulerService,
+    AgentClientBundle, ChatResumptionRunner, ChatService, InteractiveProcessRegistry,
+    ReconciliationRunner, TaskSchedulerService,
 };
 use crate::commands::ExecutionState;
 use crate::domain::repositories::{
@@ -32,14 +32,13 @@ pub(crate) struct StartupSchedulerDeps {
     pub message_queue: Arc<MessageQueue>,
     pub running_agent_registry: Arc<dyn RunningAgentRegistry>,
     pub memory_event_repo: Arc<dyn MemoryEventRepository>,
+    pub agent_clients: AgentClientBundle,
     pub plan_branch_repo: Arc<dyn PlanBranchRepository>,
     pub interactive_process_registry: Arc<InteractiveProcessRegistry>,
     pub app_handle: tauri::AppHandle,
 }
 
-pub(crate) fn build_startup_task_scheduler(
-    deps: StartupSchedulerDeps,
-) -> Arc<dyn TaskScheduler> {
+pub(crate) fn build_startup_task_scheduler(deps: StartupSchedulerDeps) -> Arc<dyn TaskScheduler> {
     let scheduler_concrete = Arc::new(
         TaskSchedulerService::<tauri::Wry>::new(
             Arc::clone(&deps.execution_state),
@@ -57,11 +56,11 @@ pub(crate) fn build_startup_task_scheduler(
             deps.memory_event_repo,
             Some(deps.app_handle),
         )
+        .with_agent_clients(deps.agent_clients)
         .with_plan_branch_repo(deps.plan_branch_repo)
         .with_interactive_process_registry(deps.interactive_process_registry),
     );
-    scheduler_concrete
-        .set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
+    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     scheduler_concrete
 }
 

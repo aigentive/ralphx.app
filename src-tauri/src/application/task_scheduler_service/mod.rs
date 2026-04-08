@@ -47,7 +47,7 @@ use crate::domain::repositories::{
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::TaskScheduler;
 
-use super::{InteractiveProcessRegistry, TaskTransitionService};
+use super::{AgentClientBundle, InteractiveProcessRegistry, TaskTransitionService};
 use crate::domain::state_machine::transition_handler::{get_trigger_origin, set_trigger_origin};
 use crate::domain::state_machine::transition_handler::freshness::FreshnessMetadata;
 
@@ -81,6 +81,8 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     pub(super) execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
     /// Optional lane settings repository so fallback transition services can resolve Codex lanes.
     pub(super) agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
+    /// Optional provider-neutral client bundle for fallback transition construction.
+    pub(super) agent_clients: Option<AgentClientBundle>,
     /// Self-reference for propagating scheduler through build_transition_service().
     /// Set after Arc-wrapping via set_self_ref(). Uses Mutex since it's written once at init.
     pub(super) self_ref: Mutex<Option<Arc<dyn TaskScheduler>>>,
@@ -137,6 +139,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
             interactive_process_registry: None,
             execution_settings_repo: None,
             agent_lane_settings_repo: None,
+            agent_clients: None,
             self_ref: Mutex::new(None),
             active_project_id: RwLock::new(None),
             scheduling_lock: TokioMutex::new(()),
@@ -172,6 +175,11 @@ impl<R: Runtime> TaskSchedulerService<R> {
         repo: Arc<dyn AgentLaneSettingsRepository>,
     ) -> Self {
         self.agent_lane_settings_repo = Some(repo);
+        self
+    }
+
+    pub fn with_agent_clients(mut self, agent_clients: AgentClientBundle) -> Self {
+        self.agent_clients = Some(agent_clients);
         self
     }
 
@@ -341,7 +349,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
             message_queue: Arc::clone(&self.message_queue),
             running_agent_registry: Arc::clone(&self.running_agent_registry),
             memory_event_repo: Arc::clone(&self.memory_event_repo),
-            agent_clients: None,
+            agent_clients: self.agent_clients.clone(),
             execution_settings_repo: self.execution_settings_repo.as_ref().map(Arc::clone),
             agent_lane_settings_repo: self.agent_lane_settings_repo.as_ref().map(Arc::clone),
             plan_branch_repo: self.plan_branch_repo.as_ref().map(Arc::clone),

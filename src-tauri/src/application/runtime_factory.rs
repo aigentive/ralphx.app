@@ -212,6 +212,9 @@ pub(crate) fn build_task_scheduler_with_fallback<R: Runtime>(
     if let Some(repo) = deps.execution_settings_repo.as_ref() {
         scheduler = scheduler.with_execution_settings_repo(Arc::clone(repo));
     }
+    if let Some(agent_clients) = deps.agent_clients.as_ref() {
+        scheduler = scheduler.with_agent_clients(agent_clients.clone());
+    }
     if let Some(repo) = deps.agent_lane_settings_repo.as_ref() {
         scheduler = scheduler.with_agent_lane_settings_repo(Arc::clone(repo));
     }

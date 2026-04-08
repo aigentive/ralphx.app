@@ -340,6 +340,7 @@ impl AppState {
             Arc::clone(&self.memory_event_repo),
             app_handle,
         )
+        .with_agent_clients(self.agent_client_bundle())
         .with_execution_settings_repo(Arc::clone(&self.execution_settings_repo))
         .with_agent_lane_settings_repo(Arc::clone(&self.agent_lane_settings_repo))
         .with_plan_branch_repo(Arc::clone(&self.plan_branch_repo))
