@@ -71,7 +71,7 @@ pub(crate) async fn resolve_agent_spawn_settings(
         lane_settings_value(primary_project_row.as_ref(), primary_global_row.as_ref());
     let configured_harness = lane_harness(primary_project_row.as_ref(), primary_global_row.as_ref());
     let effective_harness = configured_harness.unwrap_or(DEFAULT_AGENT_HARNESS);
-    let codex_primary_defaults = primary_lane.and_then(|lane| codex_default_lane_settings(
+    let harness_primary_defaults = primary_lane.and_then(|lane| nondefault_harness_lane_settings(
         lane,
         effective_harness,
     ));
@@ -80,7 +80,7 @@ pub(crate) async fn resolve_agent_spawn_settings(
         model_override.to_string()
     } else if let Some(model) = lane_model_value(primary_project_row.as_ref(), primary_global_row.as_ref()) {
         model
-    } else if let Some(model) = codex_primary_defaults
+    } else if let Some(model) = harness_primary_defaults
         .as_ref()
         .and_then(|settings| settings.model.clone())
     {
@@ -95,7 +95,7 @@ pub(crate) async fn resolve_agent_spawn_settings(
             primary_global_row.as_ref(),
         ) {
             Some(effort)
-        } else if let Some(defaults) = codex_primary_defaults.as_ref() {
+        } else if let Some(defaults) = harness_primary_defaults.as_ref() {
             defaults.effort
         } else {
             resolve_legacy_ideation_effort(agent_name, project_id, ideation_effort_settings_repo)
@@ -116,7 +116,8 @@ pub(crate) async fn resolve_agent_spawn_settings(
 
         let subagent_model_cap = if let Some(model) = configured_subagent_model_cap.clone() {
             model
-        } else if let Some(model) = codex_default_lane_settings(subagent_lane, effective_harness)
+        } else if let Some(model) =
+            nondefault_harness_lane_settings(subagent_lane, effective_harness)
             .and_then(|settings| settings.model)
         {
             model
@@ -152,7 +153,7 @@ pub(crate) async fn resolve_agent_spawn_settings(
             .as_ref()
             .and_then(|settings| settings.approval_policy.clone())
             .or_else(|| {
-                codex_primary_defaults
+                harness_primary_defaults
                     .as_ref()
                     .and_then(|settings| settings.approval_policy.clone())
             }),
@@ -160,7 +161,7 @@ pub(crate) async fn resolve_agent_spawn_settings(
             .as_ref()
             .and_then(|settings| settings.sandbox_mode.clone())
             .or_else(|| {
-                codex_primary_defaults
+                harness_primary_defaults
                     .as_ref()
                     .and_then(|settings| settings.sandbox_mode.clone())
             }),
@@ -317,16 +318,18 @@ fn lane_logical_effort_value(
     global_row.and_then(|row| row.settings.effort)
 }
 
-fn codex_default_lane_settings(
+fn nondefault_harness_lane_settings(
     lane: AgentLane,
     harness: AgentHarnessKind,
 ) -> Option<AgentLaneSettings> {
-    if harness != AgentHarnessKind::Codex {
+    if harness == DEFAULT_AGENT_HARNESS {
         return None;
     }
 
-    let mut settings = generic_harness_lane_defaults(AgentHarnessKind::Codex, lane);
-    settings.fallback_harness = default_fallback_harness_for(settings.harness);
+    let mut settings = generic_harness_lane_defaults(harness, lane);
+    if settings.fallback_harness.is_none() {
+        settings.fallback_harness = default_fallback_harness_for(settings.harness);
+    }
     Some(settings)
 }
 

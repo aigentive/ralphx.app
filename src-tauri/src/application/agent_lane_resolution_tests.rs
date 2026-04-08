@@ -149,6 +149,58 @@ async fn missing_lane_row_falls_back_to_legacy_ideation_settings() {
 }
 
 #[tokio::test]
+async fn claude_lane_without_model_or_effort_still_falls_back_to_legacy_settings() {
+    let lane_repo: Arc<dyn AgentLaneSettingsRepository> =
+        Arc::new(MemoryAgentLaneSettingsRepository::new());
+    let model_repo: Arc<dyn IdeationModelSettingsRepository> =
+        Arc::new(MemoryIdeationModelSettingsRepository::new());
+    let effort_repo: Arc<dyn IdeationEffortSettingsRepository> =
+        Arc::new(MemoryIdeationEffortSettingsRepository::new());
+
+    model_repo
+        .upsert_global("opus", "haiku", "haiku", "haiku")
+        .await
+        .expect("legacy model seed should succeed");
+    effort_repo
+        .upsert(None, "high", "medium")
+        .await
+        .expect("legacy effort seed should succeed");
+    lane_repo
+        .upsert_global(
+            AgentLane::IdeationPrimary,
+            &AgentLaneSettings {
+                harness: AgentHarnessKind::Claude,
+                model: None,
+                effort: None,
+                approval_policy: None,
+                sandbox_mode: None,
+                fallback_harness: None,
+            },
+        )
+        .await
+        .expect("claude lane upsert should succeed");
+
+    let resolved = resolve_agent_spawn_settings(
+        "orchestrator-ideation",
+        None,
+        ChatContextType::Ideation,
+        None,
+        None,
+        Some(&lane_repo),
+        Some(&model_repo),
+        Some(&effort_repo),
+    )
+    .await;
+
+    assert_eq!(resolved.effective_harness, AgentHarnessKind::Claude);
+    assert_eq!(resolved.model, "opus");
+    assert_eq!(resolved.logical_effort, Some(LogicalEffort::High));
+    assert_eq!(resolved.claude_effort.as_deref(), Some("high"));
+    assert_eq!(resolved.approval_policy, None);
+    assert_eq!(resolved.sandbox_mode, None);
+}
+
+#[tokio::test]
 async fn codex_lane_selection_uses_codex_lane_settings() {
     let lane_repo: Arc<dyn AgentLaneSettingsRepository> =
         Arc::new(MemoryAgentLaneSettingsRepository::new());
