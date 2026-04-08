@@ -136,9 +136,8 @@ pub(super) fn build_ideation_chat_service(
     session: &IdeationSession,
 ) -> ClaudeChatService {
     let app = &state.app_state;
-    let mut chat_service = app
-        .build_chat_service_with_execution_state(Arc::clone(&state.execution_state))
-        .with_interactive_process_registry(Arc::clone(&app.interactive_process_registry));
+    let mut chat_service =
+        app.build_chat_service_with_execution_state(Arc::clone(&state.execution_state));
     if session_is_team_mode(session) {
         chat_service = chat_service.with_team_mode(true);
     }

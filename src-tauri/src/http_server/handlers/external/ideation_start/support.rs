@@ -8,7 +8,6 @@ pub(crate) fn build_chat_service(
     execution_state: &std::sync::Arc<crate::commands::ExecutionState>,
 ) -> ClaudeChatService {
     app.build_chat_service_with_execution_state(Arc::clone(execution_state))
-        .with_interactive_process_registry(Arc::clone(&app.interactive_process_registry))
 }
 
 /// Fire-and-forget: spawn the session namer agent to auto-name the session.

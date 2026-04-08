@@ -190,14 +190,11 @@ pub struct AgentRunStatusResponse {
 
 pub(crate) fn create_chat_service(
     state: &AppState,
-    app_handle: tauri::AppHandle,
+    _app_handle: tauri::AppHandle,
     execution_state: &Arc<ExecutionState>,
     team_service: Option<std::sync::Arc<crate::application::TeamService>>,
 ) -> ClaudeChatService<tauri::Wry> {
-    let mut service = state
-        .build_chat_service_with_execution_state(Arc::clone(execution_state))
-        .with_app_handle(app_handle)
-        .with_interactive_process_registry(state.interactive_process_registry.clone());
+    let mut service = state.build_chat_service_with_execution_state(Arc::clone(execution_state));
     if let Some(svc) = team_service {
         service = service.with_team_service(svc);
     }

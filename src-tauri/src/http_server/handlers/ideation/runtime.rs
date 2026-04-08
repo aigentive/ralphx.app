@@ -370,9 +370,8 @@ pub async fn send_ideation_session_message_handler(
     // Step 4: Agent not running — construct the shared chat service and spawn.
     let is_team_mode = session_is_team_mode(&session);
     let app = &state.app_state;
-    let mut chat_service = app
-        .build_chat_service_with_execution_state(Arc::clone(&state.execution_state))
-        .with_interactive_process_registry(Arc::clone(&app.interactive_process_registry));
+    let mut chat_service =
+        app.build_chat_service_with_execution_state(Arc::clone(&state.execution_state));
     chat_service = chat_service.with_team_mode(is_team_mode);
 
     match chat_service
