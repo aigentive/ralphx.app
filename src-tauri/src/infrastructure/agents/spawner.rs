@@ -35,8 +35,8 @@ use crate::infrastructure::supervisor::EventBus;
 pub struct AgenticClientSpawner {
     /// The underlying agentic client
     default_client: Arc<dyn AgenticClient>,
-    /// Optional Codex client for multi-harness execution lanes
-    codex_client: Arc<dyn AgenticClient>,
+    /// Harness-specific clients for multi-harness execution lanes
+    harness_clients: HashMap<AgentHarnessKind, Arc<dyn AgenticClient>>,
     /// Working directory for spawned agents (fallback when task/project lookup fails)
     working_directory: PathBuf,
     /// Task repository for per-task CWD resolution
@@ -70,7 +70,7 @@ impl AgenticClientSpawner {
 
         Self {
             default_client: client,
-            codex_client: Arc::new(crate::infrastructure::agents::CodexCliClient::new()),
+            harness_clients: HashMap::new(),
             working_directory,
             task_repo: None,
             project_repo: None,
@@ -137,7 +137,17 @@ impl AgenticClientSpawner {
 
     /// Override the Codex client used when execution lanes resolve to Codex.
     pub fn with_codex_client(mut self, client: Arc<dyn AgenticClient>) -> Self {
-        self.codex_client = client;
+        self.harness_clients.insert(AgentHarnessKind::Codex, client);
+        self
+    }
+
+    /// Override the client used for a specific harness.
+    pub fn with_harness_client(
+        mut self,
+        harness: AgentHarnessKind,
+        client: Arc<dyn AgenticClient>,
+    ) -> Self {
+        self.harness_clients.insert(harness, client);
         self
     }
 
@@ -371,13 +381,18 @@ impl AgenticClientSpawner {
         .await;
 
         let mut harness = resolved.effective_harness;
-        if harness == AgentHarnessKind::Codex {
-            let codex_available = self.codex_client.is_available().await.unwrap_or(false);
-            if !codex_available {
+        if harness != AgentHarnessKind::Claude {
+            let harness_available = self
+                .resolve_client_for_harness(harness)
+                .is_available()
+                .await
+                .unwrap_or(false);
+            if !harness_available {
                 tracing::warn!(
                     agent_type,
                     project_id = project_id.unwrap_or(""),
-                    "Codex execution lane unavailable; falling back to Claude client"
+                    harness = %harness,
+                    "Requested execution harness unavailable; falling back to Claude client"
                 );
                 harness = AgentHarnessKind::Claude;
             }
@@ -394,6 +409,7 @@ impl AgenticClientSpawner {
 
     fn build_agent_config(
         &self,
+        harness: AgentHarnessKind,
         client_type: ClientType,
         role: AgentRole,
         agent_type: &str,
@@ -418,10 +434,7 @@ impl AgenticClientSpawner {
             plugin_dir: None,
             agent: None,
             model,
-            harness: Some(match client_type {
-                ClientType::Codex => AgentHarnessKind::Codex,
-                _ => AgentHarnessKind::Claude,
-            }),
+            harness: Some(harness),
             logical_effort,
             approval_policy,
             sandbox_mode,
@@ -446,6 +459,20 @@ impl AgenticClientSpawner {
         }
 
         config
+    }
+
+    fn resolve_client_for_harness(&self, harness: AgentHarnessKind) -> Arc<dyn AgenticClient> {
+        self.harness_clients
+            .get(&harness)
+            .cloned()
+            .unwrap_or_else(|| Arc::clone(&self.default_client))
+    }
+
+    fn resolve_client_for_handle(&self, handle: &AgentHandle) -> Arc<dyn AgenticClient> {
+        AgentHarnessKind::try_from(handle.client_type.clone())
+            .ok()
+            .and_then(|harness| self.harness_clients.get(&harness).cloned())
+            .unwrap_or_else(|| Arc::clone(&self.default_client))
     }
 }
 
@@ -528,14 +555,10 @@ impl AgentSpawner for AgenticClientSpawner {
         let (harness, model, logical_effort, approval_policy, sandbox_mode) = self
             .resolve_spawn_harness(agent_type, task_id, project_id.as_deref())
             .await;
-        let (client, client_type) = if harness == AgentHarnessKind::Codex {
-            (Arc::clone(&self.codex_client), ClientType::Codex)
-        } else {
-            let client = Arc::clone(&self.default_client);
-            let client_type = client.capabilities().client_type.clone();
-            (client, client_type)
-        };
+        let client = self.resolve_client_for_harness(harness);
+        let client_type = client.capabilities().client_type.clone();
         let config = self.build_agent_config(
+            harness,
             client_type,
             role,
             agent_type,
@@ -577,11 +600,7 @@ impl AgentSpawner for AgenticClientSpawner {
 
         if let Some(handle) = handle {
             // Wait for agent to complete
-            let client = if handle.client_type == ClientType::Codex {
-                Arc::clone(&self.codex_client)
-            } else {
-                Arc::clone(&self.default_client)
-            };
+            let client = self.resolve_client_for_handle(&handle);
             if let Err(e) = client.wait_for_completion(&handle).await {
                 self.emit_error(task_id, ErrorInfo::new(e.to_string(), "wait_for"));
             }
@@ -596,11 +615,7 @@ impl AgentSpawner for AgenticClientSpawner {
         };
 
         if let Some(handle) = handle {
-            let client = if handle.client_type == ClientType::Codex {
-                Arc::clone(&self.codex_client)
-            } else {
-                Arc::clone(&self.default_client)
-            };
+            let client = self.resolve_client_for_handle(&handle);
             if let Err(e) = client.stop_agent(&handle).await {
                 self.emit_error(task_id, ErrorInfo::new(e.to_string(), "stop_agent"));
             }

@@ -842,6 +842,7 @@ fn test_build_agent_config_for_mock_client_omits_claude_plugin_wiring() {
     let spawner = AgenticClientSpawner::new(mock);
 
     let config = spawner.build_agent_config(
+        AgentHarnessKind::Claude,
         ClientType::Mock,
         AgentRole::Worker,
         "worker",
@@ -871,6 +872,7 @@ fn test_build_agent_config_for_claude_client_sets_plugin_and_agent() {
     let spawner = AgenticClientSpawner::new(client);
 
     let config = spawner.build_agent_config(
+        AgentHarnessKind::Claude,
         ClientType::ClaudeCode,
         AgentRole::QaRefiner,
         "qa-refiner",
@@ -898,6 +900,7 @@ fn test_build_agent_config_for_codex_client_uses_process_mapping() {
     let spawner = AgenticClientSpawner::new(default_client);
 
     let config = spawner.build_agent_config(
+        AgentHarnessKind::Codex,
         ClientType::Codex,
         AgentRole::QaRefiner,
         "qa-refiner",

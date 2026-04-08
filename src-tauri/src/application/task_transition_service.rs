@@ -11,7 +11,7 @@
 // - Emit events for UI updates
 
 use async_trait::async_trait;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::panic::Location;
 use std::sync::Arc;
@@ -19,7 +19,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::application::{AppState, ChatService, ClaudeChatService, InteractiveProcessRegistry};
 use crate::commands::ExecutionState;
-use crate::domain::agents::AgenticClient;
+use crate::domain::agents::{AgentHarnessKind, AgenticClient};
 use crate::domain::entities::{
     ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
     ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource, InternalStatus,
@@ -48,6 +48,7 @@ use crate::domain::state_machine::transition_handler::metadata_builder::{
 };
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
 use crate::error::{AppError, AppResult};
+use crate::infrastructure::agents::CodexCliClient;
 use crate::infrastructure::agents::spawner::AgenticClientSpawner;
 use crate::infrastructure::ClaudeCodeClient;
 
@@ -696,6 +697,7 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     agent_run_repo: Arc<dyn AgentRunRepository>,
     agent_spawner: Arc<dyn AgentSpawner>,
     agent_client_factory: Arc<AgenticClientFactory>,
+    harness_agent_client_factories: HashMap<AgentHarnessKind, Arc<AgenticClientFactory>>,
     event_emitter: Arc<dyn EventEmitter>,
     notifier: Arc<dyn Notifier>,
     dependency_manager: Arc<dyn DependencyManager>,
@@ -795,8 +797,21 @@ impl<R: Runtime> TaskTransitionService<R> {
         Arc::new(|| Arc::new(ClaudeCodeClient::new()) as Arc<dyn AgenticClient>)
     }
 
+    fn default_codex_agent_client_factory() -> Arc<AgenticClientFactory> {
+        Arc::new(|| Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>)
+    }
+
+    fn default_harness_agent_client_factories(
+    ) -> HashMap<AgentHarnessKind, Arc<AgenticClientFactory>> {
+        HashMap::from([(
+            AgentHarnessKind::Codex,
+            Self::default_codex_agent_client_factory(),
+        )])
+    }
+
     fn build_agent_spawner(
         agent_client_factory: &Arc<AgenticClientFactory>,
+        harness_agent_client_factories: &HashMap<AgentHarnessKind, Arc<AgenticClientFactory>>,
         task_repo: Arc<dyn TaskRepository>,
         project_repo: Arc<dyn ProjectRepository>,
         execution_state: Arc<ExecutionState>,
@@ -806,9 +821,13 @@ impl<R: Runtime> TaskTransitionService<R> {
         running_agent_registry: Arc<dyn RunningAgentRegistry>,
     ) -> Arc<dyn AgentSpawner> {
         let agent_client = (agent_client_factory.as_ref())();
-        let spawner = AgenticClientSpawner::new(agent_client)
+        let mut spawner = AgenticClientSpawner::new(agent_client)
             .with_repos(Arc::clone(&task_repo), Arc::clone(&project_repo))
             .with_execution_state(Arc::clone(&execution_state));
+        for (harness, factory) in harness_agent_client_factories {
+            let client = (factory.as_ref())();
+            spawner = spawner.with_harness_client(*harness, client);
+        }
         let spawner = if let (Some(execution_repo), Some(agent_lane_repo)) =
             (execution_settings_repo, agent_lane_settings_repo)
         {
@@ -928,8 +947,10 @@ impl<R: Runtime> TaskTransitionService<R> {
         memory_event_repo: Arc<dyn MemoryEventRepository>,
     ) -> Self {
         let agent_client_factory = Self::default_agent_client_factory();
+        let harness_agent_client_factories = Self::default_harness_agent_client_factories();
         let agent_spawner = Self::build_agent_spawner(
             &agent_client_factory,
+            &harness_agent_client_factories,
             Arc::clone(&task_repo),
             Arc::clone(&project_repo),
             Arc::clone(&execution_state),
@@ -1018,6 +1039,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             agent_run_repo,
             agent_spawner,
             agent_client_factory,
+            harness_agent_client_factories,
             event_emitter,
             notifier,
             dependency_manager,
@@ -1105,6 +1127,7 @@ impl<R: Runtime> TaskTransitionService<R> {
 
         self.agent_spawner = Self::build_agent_spawner(
             &self.agent_client_factory,
+            &self.harness_agent_client_factories,
             Arc::clone(&self.task_repo),
             Arc::clone(&self.project_repo),
             Arc::clone(&self.execution_state),
@@ -1132,6 +1155,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         if let Some(execution_settings_repo) = self.execution_settings_repo.as_ref() {
             self.agent_spawner = Self::build_agent_spawner(
                 &self.agent_client_factory,
+                &self.harness_agent_client_factories,
                 Arc::clone(&self.task_repo),
                 Arc::clone(&self.project_repo),
                 Arc::clone(&self.execution_state),
@@ -1160,6 +1184,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         self.agent_client_factory = Arc::new(factory);
         self.agent_spawner = Self::build_agent_spawner(
             &self.agent_client_factory,
+            &self.harness_agent_client_factories,
             Arc::clone(&self.task_repo),
             Arc::clone(&self.project_repo),
             Arc::clone(&self.execution_state),
@@ -1180,6 +1205,57 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// This is a convenience wrapper for callers that already hold the client in AppState.
     pub fn with_agentic_client(self, client: Arc<dyn AgenticClient>) -> Self {
         self.with_agentic_client_factory(move || Arc::clone(&client))
+    }
+
+    /// Override the agentic client factory used for a specific harness.
+    pub fn with_harness_agentic_client_factory<F>(
+        mut self,
+        harness: AgentHarnessKind,
+        factory: F,
+    ) -> Self
+    where
+        F: Fn() -> Arc<dyn AgenticClient> + Send + Sync + 'static,
+    {
+        self.harness_agent_client_factories
+            .insert(harness, Arc::new(factory));
+        self.agent_spawner = Self::build_agent_spawner(
+            &self.agent_client_factory,
+            &self.harness_agent_client_factories,
+            Arc::clone(&self.task_repo),
+            Arc::clone(&self.project_repo),
+            Arc::clone(&self.execution_state),
+            self.execution_settings_repo.as_ref().map(Arc::clone),
+            self.agent_lane_settings_repo.as_ref().map(Arc::clone),
+            Arc::clone(
+                self.ideation_session_repo
+                    .as_ref()
+                    .expect("ideation_session_repo set in new"),
+            ),
+            Arc::clone(&self.running_agent_registry),
+        );
+        self
+    }
+
+    /// Override the Codex agentic client factory used when execution lanes resolve to Codex.
+    pub fn with_codex_agentic_client_factory<F>(self, factory: F) -> Self
+    where
+        F: Fn() -> Arc<dyn AgenticClient> + Send + Sync + 'static,
+    {
+        self.with_harness_agentic_client_factory(AgentHarnessKind::Codex, factory)
+    }
+
+    /// Override the state-machine spawner client with a concrete harness-specific instance.
+    pub fn with_harness_agentic_client(
+        self,
+        harness: AgentHarnessKind,
+        client: Arc<dyn AgenticClient>,
+    ) -> Self {
+        self.with_harness_agentic_client_factory(harness, move || Arc::clone(&client))
+    }
+
+    /// Override the Codex state-machine spawner client with a concrete instance.
+    pub fn with_codex_agentic_client(self, client: Arc<dyn AgenticClient>) -> Self {
+        self.with_harness_agentic_client(AgentHarnessKind::Codex, client)
     }
 
     /// Enable team mode for agent spawning (builder pattern).

@@ -114,8 +114,10 @@ pub struct AppState {
     pub review_settings_repo: Arc<dyn ReviewSettingsRepository>,
     /// Review issue repository for tracking structured issues from reviews
     pub review_issue_repo: Arc<dyn ReviewIssueRepository>,
-    /// Agent client (Claude Code in production, Mock for tests)
+    /// Primary/default agent client (Claude in production, Mock for tests)
     pub agent_client: Arc<dyn AgenticClient>,
+    /// Codex agent client used when execution or sidecar lanes resolve to Codex
+    pub codex_agent_client: Arc<dyn AgenticClient>,
     /// Global QA settings
     pub qa_settings: Arc<tokio::sync::RwLock<QASettings>>,
     /// Execution settings repository (per-project settings)
@@ -310,6 +312,7 @@ impl AppState {
             Arc::clone(&self.memory_event_repo),
         )
         .with_agentic_client(Arc::clone(&self.agent_client))
+        .with_codex_agentic_client(Arc::clone(&self.codex_agent_client))
         .with_execution_settings_repo(Arc::clone(&self.execution_settings_repo))
         .with_agent_lane_settings_repo(Arc::clone(&self.agent_lane_settings_repo))
         .with_plan_branch_repo(Arc::clone(&self.plan_branch_repo))
@@ -360,7 +363,7 @@ impl AppState {
         .await;
 
         if resolved.effective_harness == AgentHarnessKind::Codex {
-            let codex_client: Arc<dyn AgenticClient> = Arc::new(CodexCliClient::new());
+            let codex_client = Arc::clone(&self.codex_agent_client);
             if codex_client.is_available().await.unwrap_or(false) {
                 return ResolvedBackgroundAgentRuntime {
                     client: codex_client,
@@ -469,6 +472,7 @@ impl AppState {
                 &shared_conn,
             ))),
             agent_client: Arc::new(ClaudeCodeClient::new()),
+            codex_agent_client: Arc::new(CodexCliClient::new()),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(SqliteExecutionSettingsRepository::from_shared(
                 Arc::clone(&shared_conn),
@@ -644,6 +648,7 @@ impl AppState {
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
             agent_client: Arc::new(MockAgenticClient::new()),
+            codex_agent_client: Arc::new(MockAgenticClient::new()),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
@@ -745,6 +750,7 @@ impl AppState {
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
             agent_client: Arc::new(MockAgenticClient::new()),
+            codex_agent_client: Arc::new(MockAgenticClient::new()),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
@@ -854,6 +860,7 @@ impl AppState {
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
             agent_client: Arc::new(MockAgenticClient::new()),
+            codex_agent_client: Arc::new(MockAgenticClient::new()),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
@@ -959,6 +966,7 @@ impl AppState {
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
             agent_client: Arc::new(MockAgenticClient::new()),
+            codex_agent_client: Arc::new(MockAgenticClient::new()),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
@@ -1029,6 +1037,12 @@ impl AppState {
     /// Swap the agent client to a different implementation
     pub fn with_agent_client(mut self, client: Arc<dyn AgenticClient>) -> Self {
         self.agent_client = client;
+        self
+    }
+
+    /// Swap the Codex agent client to a different implementation.
+    pub fn with_codex_agent_client(mut self, client: Arc<dyn AgenticClient>) -> Self {
+        self.codex_agent_client = client;
         self
     }
 

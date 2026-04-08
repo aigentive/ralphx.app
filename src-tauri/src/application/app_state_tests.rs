@@ -1,6 +1,6 @@
 use super::*;
 use crate::commands::ExecutionState;
-use crate::domain::agents::ClientType;
+use crate::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings, ClientType, LogicalEffort};
 use crate::domain::entities::{
     ChatMessage, IdeationSession, InternalStatus, Priority, Project, ProjectId, ProposalCategory,
     Task,
@@ -179,6 +179,87 @@ async fn test_build_transition_service_with_execution_state_uses_app_agent_clien
     assert_eq!(updated_task.internal_status, InternalStatus::QaRefining);
 
     let calls = mock.get_spawn_calls().await;
+    assert_eq!(calls.len(), 1);
+    match &calls[0].call_type {
+        MockCallType::Spawn { role, prompt } => {
+            assert_eq!(*role, crate::domain::agents::AgentRole::QaRefiner);
+            assert!(prompt.contains(task.id.as_str()));
+        }
+        other => panic!("expected spawn call, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_build_transition_service_with_execution_state_uses_app_codex_client_for_codex_lane() {
+    let default_mock = Arc::new(MockAgenticClient::new());
+    let codex_mock = Arc::new(MockAgenticClient::new());
+    let state = AppState::new_test()
+        .with_agent_client(default_mock.clone())
+        .with_codex_agent_client(codex_mock.clone());
+    let service =
+        state.build_transition_service_with_execution_state(Arc::new(ExecutionState::new()));
+
+    let repo_dir = tempfile::tempdir().unwrap();
+    std::process::Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(repo_dir.path())
+        .output()
+        .expect("git init");
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(repo_dir.path())
+        .output()
+        .expect("git email");
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(repo_dir.path())
+        .output()
+        .expect("git name");
+    std::fs::write(repo_dir.path().join("README.md"), "# test").unwrap();
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo_dir.path())
+        .output()
+        .expect("git add");
+    std::process::Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo_dir.path())
+        .output()
+        .expect("git commit");
+
+    let project = Project::new(
+        "Codex Project".to_string(),
+        repo_dir.path().to_string_lossy().into_owned(),
+    );
+    state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut codex_lane = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    codex_lane.model = Some("gpt-5.4".to_string());
+    codex_lane.effort = Some(LogicalEffort::XHigh);
+    codex_lane.fallback_harness = Some(AgentHarnessKind::Claude);
+    state
+        .agent_lane_settings_repo
+        .upsert_for_project(project.id.as_str(), AgentLane::ExecutionWorker, &codex_lane)
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Codex Task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    task.worktree_path = Some(repo_dir.path().to_string_lossy().into_owned());
+    state.task_repo.create(task.clone()).await.unwrap();
+
+    let updated_task = service
+        .transition_task(&task.id, InternalStatus::QaRefining)
+        .await
+        .unwrap();
+
+    assert_eq!(updated_task.internal_status, InternalStatus::QaRefining);
+    assert!(
+        default_mock.get_spawn_calls().await.is_empty(),
+        "default client should not receive spawn calls when execution lane resolves to Codex"
+    );
+
+    let calls = codex_mock.get_spawn_calls().await;
     assert_eq!(calls.len(), 1);
     match &calls[0].call_type {
         MockCallType::Spawn { role, prompt } => {
