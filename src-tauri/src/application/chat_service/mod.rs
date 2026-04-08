@@ -902,38 +902,33 @@ impl<R: Runtime> ClaudeChatService<R> {
             ChatServiceError::SpawnFailed(error)
         })?;
 
-        match launch_plan {
-            chat_service_context::ResolvedChatHarnessLaunch::Interactive { cli_path, spawnable } => {
-                tracing::info!(cmd = ?spawnable, "Spawning Claude CLI agent (interactive)");
-                let (child, child_stdin) = spawnable.spawn_interactive().await.map_err(|error| {
-                    tracing::error!(error = %error, "chat_service.send_message interactive spawn failed");
-                    ChatServiceError::SpawnFailed(error.to_string())
-                })?;
-                tracing::debug!(pid = ?child.id(), "chat_service.send_message interactive spawn ok");
+        let launch_mode = launch_plan.launch_mode();
+        tracing::info!(mode = ?launch_mode, plan = ?launch_plan, "Spawning chat harness agent");
+        let launched = launch_plan.spawn().await.map_err(|error| {
+            tracing::error!(mode = ?launch_mode, error = %error, "chat_service.send_message harness spawn failed");
+            ChatServiceError::SpawnFailed(error.to_string())
+        })?;
+        tracing::debug!(
+            mode = ?launch_mode,
+            pid = ?launched.child.id(),
+            "chat_service.send_message harness spawn ok"
+        );
 
-                let interactive_key_for_register =
-                    InteractiveProcessKey::new(context_type.to_string(), context_id);
-                tracing::info!(
-                    context_type = %context_type,
-                    context_id,
-                    "[IPR_REGISTER] Registering lead stdin in InteractiveProcessRegistry"
-                );
-                self.ipr()
-                    .register(interactive_key_for_register, child_stdin)
-                    .await;
+        if let Some(child_stdin) = launched.child_stdin {
+            let interactive_key_for_register =
+                InteractiveProcessKey::new(context_type.to_string(), context_id);
+            tracing::info!(
+                context_type = %context_type,
+                context_id,
+                "[IPR_REGISTER] Registering lead stdin in InteractiveProcessRegistry"
+            );
+            self.ipr()
+                .register(interactive_key_for_register, child_stdin)
+                .await;
 
-                Ok((cli_path, child, Some(self.ipr())))
-            }
-            chat_service_context::ResolvedChatHarnessLaunch::Background { cli_path, spawnable } => {
-                tracing::info!(cmd = ?spawnable, "Spawning Codex CLI agent");
-                let child = spawnable.spawn().await.map_err(|error| {
-                    tracing::error!(error = %error, "chat_service.send_message codex spawn failed");
-                    ChatServiceError::SpawnFailed(error.to_string())
-                })?;
-                tracing::debug!(pid = ?child.id(), "chat_service.send_message codex spawn ok");
-
-                Ok((cli_path, child, None))
-            }
+            Ok((launched.cli_path, launched.child, Some(self.ipr())))
+        } else {
+            Ok((launched.cli_path, launched.child, None))
         }
     }
 

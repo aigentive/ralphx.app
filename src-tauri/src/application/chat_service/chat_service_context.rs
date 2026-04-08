@@ -52,6 +52,7 @@ pub struct ProviderSpawnableCommand {
     pub spawnable: SpawnableCommand,
 }
 
+#[derive(Debug)]
 pub enum ResolvedChatHarnessLaunch {
     Interactive {
         cli_path: PathBuf,
@@ -61,6 +62,48 @@ pub enum ResolvedChatHarnessLaunch {
         cli_path: PathBuf,
         spawnable: SpawnableCommand,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResolvedChatHarnessLaunchMode {
+    Interactive,
+    Background,
+}
+
+pub struct LaunchedChatHarnessProcess {
+    pub cli_path: PathBuf,
+    pub child: tokio::process::Child,
+    pub child_stdin: Option<tokio::process::ChildStdin>,
+}
+
+impl ResolvedChatHarnessLaunch {
+    pub fn launch_mode(&self) -> ResolvedChatHarnessLaunchMode {
+        match self {
+            Self::Interactive { .. } => ResolvedChatHarnessLaunchMode::Interactive,
+            Self::Background { .. } => ResolvedChatHarnessLaunchMode::Background,
+        }
+    }
+
+    pub async fn spawn(self) -> Result<LaunchedChatHarnessProcess, std::io::Error> {
+        match self {
+            Self::Interactive { cli_path, spawnable } => {
+                let (child, child_stdin) = spawnable.spawn_interactive().await?;
+                Ok(LaunchedChatHarnessProcess {
+                    cli_path,
+                    child,
+                    child_stdin: Some(child_stdin),
+                })
+            }
+            Self::Background { cli_path, spawnable } => {
+                let child = spawnable.spawn().await?;
+                Ok(LaunchedChatHarnessProcess {
+                    cli_path,
+                    child,
+                    child_stdin: None,
+                })
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -2030,6 +2073,7 @@ mod tests {
     use super::*;
     use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
     use crate::infrastructure::memory::MemoryArtifactRepository;
+    use tokio::process::Command;
 
     #[test]
     fn format_session_history_truncates_multibyte_content_safely() {
@@ -2152,5 +2196,26 @@ mod tests {
 
         assert!(error.contains("Claude CLI not found"));
         assert!(error.contains(missing.to_string_lossy().as_ref()));
+    }
+
+    #[test]
+    fn resolved_launch_mode_reports_variant() {
+        let interactive = ResolvedChatHarnessLaunch::Interactive {
+            cli_path: PathBuf::from("/tmp/claude"),
+            spawnable: SpawnableCommand::new(Command::new("true"), Some("prompt".to_string())),
+        };
+        let background = ResolvedChatHarnessLaunch::Background {
+            cli_path: PathBuf::from("/tmp/codex"),
+            spawnable: SpawnableCommand::new(Command::new("true"), None),
+        };
+
+        assert_eq!(
+            interactive.launch_mode(),
+            ResolvedChatHarnessLaunchMode::Interactive
+        );
+        assert_eq!(
+            background.launch_mode(),
+            ResolvedChatHarnessLaunchMode::Background
+        );
     }
 }
