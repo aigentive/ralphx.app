@@ -13,6 +13,13 @@ pub struct AgentClientBundle {
 }
 
 impl AgentClientBundle {
+    pub fn from_default_client(
+        default_harness: AgentHarnessKind,
+        default_client: Arc<dyn AgenticClient>,
+    ) -> Self {
+        Self::from_parts(default_harness, default_client, HashMap::new())
+    }
+
     pub fn from_parts(
         default_harness: AgentHarnessKind,
         default_client: Arc<dyn AgenticClient>,
@@ -23,6 +30,15 @@ impl AgentClientBundle {
             default_client,
             harness_clients,
         }
+    }
+
+    pub fn with_harness_client(
+        mut self,
+        harness: AgentHarnessKind,
+        client: Arc<dyn AgenticClient>,
+    ) -> Self {
+        self.harness_clients.insert(harness, client);
+        self
     }
 
     pub fn resolve(&self, harness: AgentHarnessKind) -> Arc<dyn AgenticClient> {
@@ -41,6 +57,13 @@ pub struct AgentClientFactoryBundle {
 }
 
 impl AgentClientFactoryBundle {
+    pub fn from_default_factory(
+        default_harness: AgentHarnessKind,
+        default_factory: Arc<AgentClientFactory>,
+    ) -> Self {
+        Self::from_parts(default_harness, default_factory, HashMap::new())
+    }
+
     pub fn from_parts(
         default_harness: AgentHarnessKind,
         default_factory: Arc<AgentClientFactory>,
@@ -51,6 +74,15 @@ impl AgentClientFactoryBundle {
             default_factory,
             harness_factories,
         }
+    }
+
+    pub fn with_harness_factory(
+        mut self,
+        harness: AgentHarnessKind,
+        factory: Arc<AgentClientFactory>,
+    ) -> Self {
+        self.harness_factories.insert(harness, factory);
+        self
     }
 
     pub fn instantiate(&self) -> AgentClientBundle {

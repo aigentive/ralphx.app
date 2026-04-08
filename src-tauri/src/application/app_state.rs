@@ -1,7 +1,7 @@
 // Application state container for dependency injection
 // Holds repository trait objects that can be swapped for testing
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, Runtime};
@@ -223,6 +223,28 @@ pub struct AppState {
 }
 
 impl AppState {
+    fn production_agent_clients() -> AgentClientBundle {
+        AgentClientBundle::from_default_client(
+            AgentHarnessKind::Claude,
+            Arc::new(ClaudeCodeClient::new()),
+        )
+        .with_harness_client(
+            AgentHarnessKind::Codex,
+            Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>,
+        )
+    }
+
+    fn mock_agent_clients() -> AgentClientBundle {
+        AgentClientBundle::from_default_client(
+            AgentHarnessKind::Claude,
+            Arc::new(MockAgenticClient::new()),
+        )
+        .with_harness_client(
+            AgentHarnessKind::Codex,
+            Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
+        )
+    }
+
     fn enable_claude_test_mode() {
         std::env::set_var("RALPHX_TEST_MODE", "1");
     }
@@ -468,14 +490,7 @@ impl AppState {
             review_issue_repo: Arc::new(SqliteReviewIssueRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
-            agent_clients: AgentClientBundle::from_parts(
-                AgentHarnessKind::Claude,
-                Arc::new(ClaudeCodeClient::new()),
-                HashMap::from([(
-                    AgentHarnessKind::Codex,
-                    Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>,
-                )]),
-            ),
+            agent_clients: Self::production_agent_clients(),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(SqliteExecutionSettingsRepository::from_shared(
                 Arc::clone(&shared_conn),
@@ -658,14 +673,7 @@ impl AppState {
             review_repo: Arc::new(MemoryReviewRepository::new()),
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
-            agent_clients: AgentClientBundle::from_parts(
-                AgentHarnessKind::Claude,
-                Arc::new(MockAgenticClient::new()),
-                HashMap::from([(
-                    AgentHarnessKind::Codex,
-                    Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
-                )]),
-            ),
+            agent_clients: Self::mock_agent_clients(),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
@@ -766,14 +774,7 @@ impl AppState {
             review_repo: Arc::new(MemoryReviewRepository::new()),
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
-            agent_clients: AgentClientBundle::from_parts(
-                AgentHarnessKind::Claude,
-                Arc::new(MockAgenticClient::new()),
-                HashMap::from([(
-                    AgentHarnessKind::Codex,
-                    Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
-                )]),
-            ),
+            agent_clients: Self::mock_agent_clients(),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
@@ -884,14 +885,7 @@ impl AppState {
             review_repo: Arc::new(MemoryReviewRepository::new()),
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
-            agent_clients: AgentClientBundle::from_parts(
-                AgentHarnessKind::Claude,
-                Arc::new(MockAgenticClient::new()),
-                HashMap::from([(
-                    AgentHarnessKind::Codex,
-                    Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
-                )]),
-            ),
+            agent_clients: Self::mock_agent_clients(),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
@@ -996,14 +990,7 @@ impl AppState {
             review_repo: Arc::new(MemoryReviewRepository::new()),
             review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
             review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
-            agent_clients: AgentClientBundle::from_parts(
-                AgentHarnessKind::Claude,
-                Arc::new(MockAgenticClient::new()),
-                HashMap::from([(
-                    AgentHarnessKind::Codex,
-                    Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
-                )]),
-            ),
+            agent_clients: Self::mock_agent_clients(),
             qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
             execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),

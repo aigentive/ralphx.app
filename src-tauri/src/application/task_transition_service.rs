@@ -11,7 +11,7 @@
 // - Emit events for UI updates
 
 use async_trait::async_trait;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::future::Future;
 use std::panic::Location;
 use std::sync::Arc;
@@ -800,14 +800,31 @@ impl<R: Runtime> TaskTransitionService<R> {
     }
 
     fn default_agent_client_factories() -> AgentClientFactoryBundle {
-        AgentClientFactoryBundle::from_parts(
+        AgentClientFactoryBundle::from_default_factory(
             AgentHarnessKind::Claude,
             Self::default_agent_client_factory(),
-            HashMap::from([(
-                AgentHarnessKind::Codex,
-                Self::default_codex_agent_client_factory(),
-            )]),
         )
+        .with_harness_factory(
+            AgentHarnessKind::Codex,
+            Self::default_codex_agent_client_factory(),
+        )
+    }
+
+    fn rebuild_agent_spawner(&mut self) {
+        self.agent_spawner = Self::build_agent_spawner(
+            &self.agent_client_factories,
+            Arc::clone(&self.task_repo),
+            Arc::clone(&self.project_repo),
+            Arc::clone(&self.execution_state),
+            self.execution_settings_repo.as_ref().map(Arc::clone),
+            self.agent_lane_settings_repo.as_ref().map(Arc::clone),
+            Arc::clone(
+                self.ideation_session_repo
+                    .as_ref()
+                    .expect("ideation_session_repo set in new"),
+            ),
+            Arc::clone(&self.running_agent_registry),
+        );
     }
 
     fn build_agent_spawner(
@@ -1121,21 +1138,7 @@ impl<R: Runtime> TaskTransitionService<R> {
 
         self.execution_settings_repo = Some(Arc::clone(&repo));
         self.rebuild_chat_service();
-
-        self.agent_spawner = Self::build_agent_spawner(
-            &self.agent_client_factories,
-            Arc::clone(&self.task_repo),
-            Arc::clone(&self.project_repo),
-            Arc::clone(&self.execution_state),
-            Some(Arc::clone(&repo)),
-            self.agent_lane_settings_repo.as_ref().map(Arc::clone),
-            Arc::clone(
-                self.ideation_session_repo
-                    .as_ref()
-                    .expect("ideation_session_repo set in new"),
-            ),
-            Arc::clone(&self.running_agent_registry),
-        );
+        self.rebuild_agent_spawner();
         self
     }
 
@@ -1147,24 +1150,7 @@ impl<R: Runtime> TaskTransitionService<R> {
     ) -> Self {
         self.agent_lane_settings_repo = Some(Arc::clone(&repo));
         self.rebuild_chat_service();
-
-        if let Some(execution_settings_repo) = self.execution_settings_repo.as_ref() {
-            self.agent_spawner = Self::build_agent_spawner(
-                &self.agent_client_factories,
-                Arc::clone(&self.task_repo),
-                Arc::clone(&self.project_repo),
-                Arc::clone(&self.execution_state),
-                Some(Arc::clone(execution_settings_repo)),
-                Some(repo),
-                Arc::clone(
-                    self.ideation_session_repo
-                        .as_ref()
-                        .expect("ideation_session_repo set in new"),
-                ),
-                Arc::clone(&self.running_agent_registry),
-            );
-        }
-
+        self.rebuild_agent_spawner();
         self
     }
 
@@ -1177,20 +1163,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         F: Fn() -> Arc<dyn AgenticClient> + Send + Sync + 'static,
     {
         self.agent_client_factories.default_factory = Arc::new(factory);
-        self.agent_spawner = Self::build_agent_spawner(
-            &self.agent_client_factories,
-            Arc::clone(&self.task_repo),
-            Arc::clone(&self.project_repo),
-            Arc::clone(&self.execution_state),
-            self.execution_settings_repo.as_ref().map(Arc::clone),
-            self.agent_lane_settings_repo.as_ref().map(Arc::clone),
-            Arc::clone(
-                self.ideation_session_repo
-                    .as_ref()
-                    .expect("ideation_session_repo set in new"),
-            ),
-            Arc::clone(&self.running_agent_registry),
-        );
+        self.rebuild_agent_spawner();
         self
     }
 
@@ -1204,20 +1177,7 @@ impl<R: Runtime> TaskTransitionService<R> {
     /// Override the full harness client bundle used by the state-machine spawner.
     pub fn with_agent_clients(mut self, clients: AgentClientBundle) -> Self {
         self.agent_client_factories = AgentClientFactoryBundle::from_client_bundle(&clients);
-        self.agent_spawner = Self::build_agent_spawner(
-            &self.agent_client_factories,
-            Arc::clone(&self.task_repo),
-            Arc::clone(&self.project_repo),
-            Arc::clone(&self.execution_state),
-            self.execution_settings_repo.as_ref().map(Arc::clone),
-            self.agent_lane_settings_repo.as_ref().map(Arc::clone),
-            Arc::clone(
-                self.ideation_session_repo
-                    .as_ref()
-                    .expect("ideation_session_repo set in new"),
-            ),
-            Arc::clone(&self.running_agent_registry),
-        );
+        self.rebuild_agent_spawner();
         self
     }
 
@@ -1233,20 +1193,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         self.agent_client_factories
             .harness_factories
             .insert(harness, Arc::new(factory));
-        self.agent_spawner = Self::build_agent_spawner(
-            &self.agent_client_factories,
-            Arc::clone(&self.task_repo),
-            Arc::clone(&self.project_repo),
-            Arc::clone(&self.execution_state),
-            self.execution_settings_repo.as_ref().map(Arc::clone),
-            self.agent_lane_settings_repo.as_ref().map(Arc::clone),
-            Arc::clone(
-                self.ideation_session_repo
-                    .as_ref()
-                    .expect("ideation_session_repo set in new"),
-            ),
-            Arc::clone(&self.running_agent_registry),
-        );
+        self.rebuild_agent_spawner();
         self
     }
 
