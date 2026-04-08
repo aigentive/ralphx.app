@@ -2,8 +2,8 @@
 //
 // Extracted from chat_service.rs to improve modularity and reduce file size.
 
+use crate::domain::agents::{AgentHarnessKind, LogicalEffort};
 use crate::domain::entities::{ChatContextType, MessageRole};
-use crate::domain::agents::AgentHarnessKind;
 use crate::infrastructure::agents::claude::agent_names::{
     AGENT_CHAT_PROJECT, AGENT_CHAT_TASK, AGENT_IDEATION_TEAM_LEAD, AGENT_MERGER,
     AGENT_ORCHESTRATOR_IDEATION, AGENT_ORCHESTRATOR_IDEATION_READONLY, AGENT_PLAN_VERIFIER,
@@ -112,6 +112,40 @@ pub fn provider_harness_or_default(
             .map(|_| AgentHarnessKind::Claude)
             .unwrap_or(default_harness)
     })
+}
+
+pub fn effective_effort_for_harness(
+    harness: AgentHarnessKind,
+    claude_effort: Option<&str>,
+    logical_effort: Option<LogicalEffort>,
+) -> String {
+    match harness {
+        AgentHarnessKind::Claude => claude_effort
+            .map(str::to_string)
+            .or_else(|| logical_effort.map(|effort| effort.to_string()))
+            .unwrap_or_else(|| "medium".to_string()),
+        AgentHarnessKind::Codex => logical_effort
+            .map(|effort| effort.to_string())
+            .unwrap_or_else(|| "medium".to_string()),
+    }
+}
+
+pub fn effective_model_label_for_harness(
+    harness: AgentHarnessKind,
+    effective_model_id: &str,
+) -> String {
+    match harness {
+        AgentHarnessKind::Claude => {
+            crate::infrastructure::agents::claude::model_labels::model_id_to_label(
+                effective_model_id,
+            )
+        }
+        AgentHarnessKind::Codex => effective_model_id.to_string(),
+    }
+}
+
+pub fn harness_supports_merge_completion_watcher(harness: AgentHarnessKind) -> bool {
+    harness == AgentHarnessKind::Claude
 }
 
 /// Map ChatContextType to process name for team config lookup

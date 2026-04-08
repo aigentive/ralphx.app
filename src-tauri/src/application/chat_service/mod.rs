@@ -1797,21 +1797,11 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         agent_run.logical_model = resolved_spawn_settings.configured_model.clone();
         agent_run.effective_model_id = Some(resolved_spawn_settings.model.clone());
         agent_run.logical_effort = resolved_spawn_settings.configured_logical_effort;
-        agent_run.effective_effort = Some(match resolved_spawn_settings.effective_harness {
-            AgentHarnessKind::Claude => resolved_spawn_settings
-                .claude_effort
-                .clone()
-                .or_else(|| {
-                    resolved_spawn_settings
-                        .logical_effort
-                        .map(|effort| effort.to_string())
-                })
-                .unwrap_or_else(|| "medium".to_string()),
-            AgentHarnessKind::Codex => resolved_spawn_settings
-                .logical_effort
-                .map(|effort| effort.to_string())
-                .unwrap_or_else(|| "medium".to_string()),
-        });
+        agent_run.effective_effort = Some(chat_service_helpers::effective_effort_for_harness(
+            resolved_spawn_settings.effective_harness,
+            resolved_spawn_settings.claude_effort.as_deref(),
+            resolved_spawn_settings.logical_effort,
+        ));
         agent_run.approval_policy = resolved_spawn_settings.approval_policy.clone();
         agent_run.sandbox_mode = resolved_spawn_settings.sandbox_mode.clone();
 
@@ -1825,14 +1815,10 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         );
 
         let effective_model_id = resolved_spawn_settings.model.clone();
-        let effective_model_label = match resolved_spawn_settings.effective_harness {
-            AgentHarnessKind::Claude => Some(
-                crate::infrastructure::agents::claude::model_labels::model_id_to_label(
-                    &effective_model_id,
-                ),
-            ),
-            AgentHarnessKind::Codex => Some(effective_model_id.clone()),
-        };
+        let effective_model_label = Some(chat_service_helpers::effective_model_label_for_harness(
+            resolved_spawn_settings.effective_harness,
+            &effective_model_id,
+        ));
 
         // 3. Emit run started event (deferred from step 3 to include effective model info)
         self.emit_event(
@@ -1920,7 +1906,9 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 
         // Spawn merge completion watcher for Merge context
         if context_type == ChatContextType::Merge
-            && resolved_spawn_settings.effective_harness == AgentHarnessKind::Claude
+            && chat_service_helpers::harness_supports_merge_completion_watcher(
+                resolved_spawn_settings.effective_harness,
+            )
         {
             chat_service_merge::spawn_merge_completion_watcher(
                 context_id.to_string(),

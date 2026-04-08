@@ -132,6 +132,60 @@ fn test_provider_harness_or_default_uses_default_without_session() {
 }
 
 #[test]
+fn test_effective_effort_for_claude_prefers_claude_effort() {
+    assert_eq!(
+        effective_effort_for_harness(
+            AgentHarnessKind::Claude,
+            Some("max"),
+            Some(crate::domain::agents::LogicalEffort::High),
+        ),
+        "max"
+    );
+}
+
+#[test]
+fn test_effective_effort_for_codex_uses_logical_effort() {
+    assert_eq!(
+        effective_effort_for_harness(
+            AgentHarnessKind::Codex,
+            Some("max"),
+            Some(crate::domain::agents::LogicalEffort::XHigh),
+        ),
+        "xhigh"
+    );
+}
+
+#[test]
+fn test_effective_effort_defaults_to_medium() {
+    assert_eq!(
+        effective_effort_for_harness(AgentHarnessKind::Claude, None, None),
+        "medium"
+    );
+    assert_eq!(
+        effective_effort_for_harness(AgentHarnessKind::Codex, None, None),
+        "medium"
+    );
+}
+
+#[test]
+fn test_effective_model_label_for_codex_uses_raw_model_id() {
+    assert_eq!(
+        effective_model_label_for_harness(AgentHarnessKind::Codex, "gpt-4.5"),
+        "gpt-4.5"
+    );
+}
+
+#[test]
+fn test_harness_supports_merge_completion_watcher_only_for_claude() {
+    assert!(harness_supports_merge_completion_watcher(
+        AgentHarnessKind::Claude
+    ));
+    assert!(!harness_supports_merge_completion_watcher(
+        AgentHarnessKind::Codex
+    ));
+}
+
+#[test]
 fn test_context_type_to_process_mapping() {
     assert_eq!(
         context_type_to_process(&ChatContextType::Ideation),
