@@ -651,35 +651,31 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                         execution_state.as_ref().cloned(),
                         execution_settings_repo.as_ref().cloned(),
                     ) {
-                        let deps = ChatRuntimeFactoryDeps {
-                            chat_message_repo: Arc::clone(&chat_message_repo),
-                            chat_attachment_repo: Arc::clone(&chat_attachment_repo),
-                            artifact_repo: Arc::clone(&artifact_repo),
-                            conversation_repo: Arc::clone(&conversation_repo),
-                            agent_run_repo: Arc::clone(&agent_run_repo),
-                            project_repo: Arc::clone(&project_repo),
-                            task_repo: Arc::clone(&task_repo),
-                            task_dependency_repo: Arc::clone(&task_dependency_repo),
-                            ideation_session_repo: Arc::clone(&ideation_session_repo),
-                            activity_event_repo: Arc::clone(&activity_event_repo),
-                            message_queue: Arc::clone(&message_queue),
-                            running_agent_registry: Arc::clone(&running_agent_registry),
-                            memory_event_repo: Arc::clone(&memory_event_repo),
-                            execution_settings_repo: Some(exec_settings.clone()),
-                            agent_lane_settings_repo: agent_lane_settings_repo.as_ref().map(Arc::clone),
-                            ideation_effort_settings_repo: ideation_effort_settings_repo
-                                .as_ref()
-                                .map(Arc::clone),
-                            ideation_model_settings_repo: ideation_model_settings_repo
-                                .as_ref()
-                                .map(Arc::clone),
-                            plan_branch_repo: None,
-                            task_proposal_repo: None,
-                            task_step_repo: None,
-                            review_repo: None,
-                            interactive_process_registry: None,
-                            streaming_state_cache: None,
-                        };
+                        let mut deps = ChatRuntimeFactoryDeps::from_core(
+                            Arc::clone(&chat_message_repo),
+                            Arc::clone(&chat_attachment_repo),
+                            Arc::clone(&artifact_repo),
+                            Arc::clone(&conversation_repo),
+                            Arc::clone(&agent_run_repo),
+                            Arc::clone(&project_repo),
+                            Arc::clone(&task_repo),
+                            Arc::clone(&task_dependency_repo),
+                            Arc::clone(&ideation_session_repo),
+                            Arc::clone(&activity_event_repo),
+                            Arc::clone(&message_queue),
+                            Arc::clone(&running_agent_registry),
+                            Arc::clone(&memory_event_repo),
+                        )
+                        .with_execution_settings_repo(exec_settings.clone());
+                        if let Some(repo) = agent_lane_settings_repo.as_ref() {
+                            deps = deps.with_agent_lane_settings_repo(Arc::clone(repo));
+                        }
+                        if let Some(repo) = ideation_effort_settings_repo.as_ref() {
+                            deps = deps.with_ideation_effort_settings_repo(Arc::clone(repo));
+                        }
+                        if let Some(repo) = ideation_model_settings_repo.as_ref() {
+                            deps = deps.with_ideation_model_settings_repo(Arc::clone(repo));
+                        }
 
                         let chat_svc: Arc<dyn super::ChatService> = Arc::new(
                             build_chat_service_with_fallback(

@@ -66,6 +66,119 @@ pub(crate) struct ChatRuntimeFactoryDeps {
     pub streaming_state_cache: Option<StreamingStateCache>,
 }
 
+impl ChatRuntimeFactoryDeps {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_core(
+        chat_message_repo: Arc<dyn ChatMessageRepository>,
+        chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+        artifact_repo: Arc<dyn ArtifactRepository>,
+        conversation_repo: Arc<dyn ChatConversationRepository>,
+        agent_run_repo: Arc<dyn AgentRunRepository>,
+        project_repo: Arc<dyn ProjectRepository>,
+        task_repo: Arc<dyn TaskRepository>,
+        task_dependency_repo: Arc<dyn TaskDependencyRepository>,
+        ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+        activity_event_repo: Arc<dyn ActivityEventRepository>,
+        message_queue: Arc<MessageQueue>,
+        running_agent_registry: Arc<dyn RunningAgentRegistry>,
+        memory_event_repo: Arc<dyn MemoryEventRepository>,
+    ) -> Self {
+        Self {
+            chat_message_repo,
+            chat_attachment_repo,
+            artifact_repo,
+            conversation_repo,
+            agent_run_repo,
+            project_repo,
+            task_repo,
+            task_dependency_repo,
+            ideation_session_repo,
+            activity_event_repo,
+            message_queue,
+            running_agent_registry,
+            memory_event_repo,
+            execution_settings_repo: None,
+            agent_lane_settings_repo: None,
+            ideation_effort_settings_repo: None,
+            ideation_model_settings_repo: None,
+            plan_branch_repo: None,
+            task_proposal_repo: None,
+            task_step_repo: None,
+            review_repo: None,
+            interactive_process_registry: None,
+            streaming_state_cache: None,
+        }
+    }
+
+    pub(crate) fn with_execution_settings_repo(
+        mut self,
+        repo: Arc<dyn ExecutionSettingsRepository>,
+    ) -> Self {
+        self.execution_settings_repo = Some(repo);
+        self
+    }
+
+    pub(crate) fn with_agent_lane_settings_repo(
+        mut self,
+        repo: Arc<dyn AgentLaneSettingsRepository>,
+    ) -> Self {
+        self.agent_lane_settings_repo = Some(repo);
+        self
+    }
+
+    pub(crate) fn with_ideation_effort_settings_repo(
+        mut self,
+        repo: Arc<dyn IdeationEffortSettingsRepository>,
+    ) -> Self {
+        self.ideation_effort_settings_repo = Some(repo);
+        self
+    }
+
+    pub(crate) fn with_ideation_model_settings_repo(
+        mut self,
+        repo: Arc<dyn IdeationModelSettingsRepository>,
+    ) -> Self {
+        self.ideation_model_settings_repo = Some(repo);
+        self
+    }
+
+    pub(crate) fn with_plan_branch_repo(mut self, repo: Arc<dyn PlanBranchRepository>) -> Self {
+        self.plan_branch_repo = Some(repo);
+        self
+    }
+
+    pub(crate) fn with_task_proposal_repo(
+        mut self,
+        repo: Arc<dyn TaskProposalRepository>,
+    ) -> Self {
+        self.task_proposal_repo = Some(repo);
+        self
+    }
+
+    pub(crate) fn with_task_step_repo(mut self, repo: Arc<dyn TaskStepRepository>) -> Self {
+        self.task_step_repo = Some(repo);
+        self
+    }
+
+    pub(crate) fn with_review_repo(mut self, repo: Arc<dyn ReviewRepository>) -> Self {
+        self.review_repo = Some(repo);
+        self
+    }
+
+    pub(crate) fn with_interactive_process_registry(
+        mut self,
+        registry: Arc<InteractiveProcessRegistry>,
+    ) -> Self {
+        self.interactive_process_registry = Some(registry);
+        self
+    }
+
+    pub(crate) fn with_streaming_state_cache(mut self, cache: StreamingStateCache) -> Self {
+        self.streaming_state_cache = Some(cache);
+        self
+    }
+}
+
 pub(crate) fn build_chat_service_from_deps<R: Runtime>(
     app_handle: Option<AppHandle<R>>,
     execution_state: Option<Arc<ExecutionState>>,

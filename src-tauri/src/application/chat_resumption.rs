@@ -288,34 +288,33 @@ impl<R: Runtime> ChatResumptionRunner<R> {
 
     /// Create a ChatService instance for resumption.
     fn create_chat_service(&self) -> ClaudeChatService<R> {
-        let deps = ChatRuntimeFactoryDeps {
-            chat_message_repo: Arc::clone(&self.chat_message_repo),
-            chat_attachment_repo: Arc::clone(&self.chat_attachment_repo),
-            artifact_repo: Arc::clone(&self.artifact_repo),
-            conversation_repo: Arc::clone(&self.conversation_repo),
-            agent_run_repo: Arc::clone(&self.agent_run_repo),
-            project_repo: Arc::clone(&self.project_repo),
-            task_repo: Arc::clone(&self.task_repo),
-            task_dependency_repo: Arc::clone(&self.task_dependency_repo),
-            ideation_session_repo: Arc::clone(&self.ideation_session_repo),
-            activity_event_repo: Arc::clone(&self.activity_event_repo),
-            message_queue: Arc::clone(&self.message_queue),
-            running_agent_registry: Arc::clone(&self.running_agent_registry),
-            memory_event_repo: Arc::clone(&self.memory_event_repo),
-            execution_settings_repo: self.execution_settings_repo.as_ref().map(Arc::clone),
-            agent_lane_settings_repo: self.agent_lane_settings_repo.as_ref().map(Arc::clone),
-            ideation_effort_settings_repo: None,
-            ideation_model_settings_repo: None,
-            plan_branch_repo: self.plan_branch_repo.as_ref().map(Arc::clone),
-            task_proposal_repo: None,
-            task_step_repo: None,
-            review_repo: None,
-            interactive_process_registry: self
-                .interactive_process_registry
-                .as_ref()
-                .map(Arc::clone),
-            streaming_state_cache: None,
-        };
+        let mut deps = ChatRuntimeFactoryDeps::from_core(
+            Arc::clone(&self.chat_message_repo),
+            Arc::clone(&self.chat_attachment_repo),
+            Arc::clone(&self.artifact_repo),
+            Arc::clone(&self.conversation_repo),
+            Arc::clone(&self.agent_run_repo),
+            Arc::clone(&self.project_repo),
+            Arc::clone(&self.task_repo),
+            Arc::clone(&self.task_dependency_repo),
+            Arc::clone(&self.ideation_session_repo),
+            Arc::clone(&self.activity_event_repo),
+            Arc::clone(&self.message_queue),
+            Arc::clone(&self.running_agent_registry),
+            Arc::clone(&self.memory_event_repo),
+        );
+        if let Some(repo) = self.execution_settings_repo.as_ref() {
+            deps = deps.with_execution_settings_repo(Arc::clone(repo));
+        }
+        if let Some(repo) = self.agent_lane_settings_repo.as_ref() {
+            deps = deps.with_agent_lane_settings_repo(Arc::clone(repo));
+        }
+        if let Some(repo) = self.plan_branch_repo.as_ref() {
+            deps = deps.with_plan_branch_repo(Arc::clone(repo));
+        }
+        if let Some(registry) = self.interactive_process_registry.as_ref() {
+            deps = deps.with_interactive_process_registry(Arc::clone(registry));
+        }
         build_chat_service_with_fallback(
             &self.app_handle,
             Some(Arc::clone(&self.execution_state)),

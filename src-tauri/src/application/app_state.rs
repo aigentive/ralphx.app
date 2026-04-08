@@ -236,31 +236,31 @@ impl AppState {
         execution_state: Option<Arc<ExecutionState>>,
         app_handle: Option<AppHandle<R>>,
     ) -> ClaudeChatService<R> {
-        let deps = ChatRuntimeFactoryDeps {
-            chat_message_repo: Arc::clone(&self.chat_message_repo),
-            chat_attachment_repo: Arc::clone(&self.chat_attachment_repo),
-            artifact_repo: Arc::clone(&self.artifact_repo),
-            conversation_repo: Arc::clone(&self.chat_conversation_repo),
-            agent_run_repo: Arc::clone(&self.agent_run_repo),
-            project_repo: Arc::clone(&self.project_repo),
-            task_repo: Arc::clone(&self.task_repo),
-            task_dependency_repo: Arc::clone(&self.task_dependency_repo),
-            ideation_session_repo: Arc::clone(&self.ideation_session_repo),
-            activity_event_repo: Arc::clone(&self.activity_event_repo),
-            message_queue: Arc::clone(&self.message_queue),
-            running_agent_registry: Arc::clone(&self.running_agent_registry),
-            memory_event_repo: Arc::clone(&self.memory_event_repo),
-            execution_settings_repo: Some(Arc::clone(&self.execution_settings_repo)),
-            agent_lane_settings_repo: Some(Arc::clone(&self.agent_lane_settings_repo)),
-            ideation_effort_settings_repo: Some(Arc::clone(&self.ideation_effort_settings_repo)),
-            ideation_model_settings_repo: Some(Arc::clone(&self.ideation_model_settings_repo)),
-            plan_branch_repo: Some(Arc::clone(&self.plan_branch_repo)),
-            task_proposal_repo: Some(Arc::clone(&self.task_proposal_repo)),
-            task_step_repo: Some(Arc::clone(&self.task_step_repo)),
-            review_repo: Some(Arc::clone(&self.review_repo)),
-            interactive_process_registry: Some(Arc::clone(&self.interactive_process_registry)),
-            streaming_state_cache: Some(self.streaming_state_cache.clone()),
-        };
+        let deps = ChatRuntimeFactoryDeps::from_core(
+            Arc::clone(&self.chat_message_repo),
+            Arc::clone(&self.chat_attachment_repo),
+            Arc::clone(&self.artifact_repo),
+            Arc::clone(&self.chat_conversation_repo),
+            Arc::clone(&self.agent_run_repo),
+            Arc::clone(&self.project_repo),
+            Arc::clone(&self.task_repo),
+            Arc::clone(&self.task_dependency_repo),
+            Arc::clone(&self.ideation_session_repo),
+            Arc::clone(&self.activity_event_repo),
+            Arc::clone(&self.message_queue),
+            Arc::clone(&self.running_agent_registry),
+            Arc::clone(&self.memory_event_repo),
+        )
+        .with_execution_settings_repo(Arc::clone(&self.execution_settings_repo))
+        .with_agent_lane_settings_repo(Arc::clone(&self.agent_lane_settings_repo))
+        .with_ideation_effort_settings_repo(Arc::clone(&self.ideation_effort_settings_repo))
+        .with_ideation_model_settings_repo(Arc::clone(&self.ideation_model_settings_repo))
+        .with_plan_branch_repo(Arc::clone(&self.plan_branch_repo))
+        .with_task_proposal_repo(Arc::clone(&self.task_proposal_repo))
+        .with_task_step_repo(Arc::clone(&self.task_step_repo))
+        .with_review_repo(Arc::clone(&self.review_repo))
+        .with_interactive_process_registry(Arc::clone(&self.interactive_process_registry))
+        .with_streaming_state_cache(self.streaming_state_cache.clone());
 
         build_chat_service_from_deps(app_handle, execution_state, &deps)
     }
