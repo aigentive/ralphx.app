@@ -3,6 +3,7 @@
 
 pub mod agent_lane_settings_bootstrap;
 pub mod agent_lane_resolution;
+pub mod agent_client_bundle;
 pub mod app_setup;
 pub mod app_state;
 pub mod ideation_harness_availability;
@@ -65,6 +66,7 @@ pub mod webhook_service;
 
 // Re-export commonly used items
 pub use app_state::AppState;
+pub(crate) use agent_client_bundle::AgentClientBundle;
 pub use agent_lane_settings_bootstrap::{
     load_or_seed_agent_lane_settings_defaults, AgentLaneSettingsBootstrapResult,
 };

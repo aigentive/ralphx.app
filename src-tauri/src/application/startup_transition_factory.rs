@@ -1,13 +1,12 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::application::AgentClientBundle;
 use crate::application::InteractiveProcessRegistry;
 use crate::application::runtime_factory::{
     RuntimeFactoryDeps, build_transition_service_with_fallback,
 };
 use crate::application::task_transition_service::TaskTransitionService;
 use crate::commands::ExecutionState;
-use crate::domain::agents::{AgentHarnessKind, AgenticClient};
 use crate::domain::repositories::{
     AgentLaneSettingsRepository, ExecutionSettingsRepository, ExternalEventsRepository,
     PlanBranchRepository, TaskStepRepository,
@@ -20,8 +19,7 @@ pub struct StartupTransitionFactory {
     pub agent_lane_settings_repo: Arc<dyn AgentLaneSettingsRepository>,
     pub plan_branch_repo: Arc<dyn PlanBranchRepository>,
     pub interactive_process_registry: Arc<InteractiveProcessRegistry>,
-    pub agent_client: Arc<dyn AgenticClient>,
-    pub harness_agent_clients: HashMap<AgentHarnessKind, Arc<dyn AgenticClient>>,
+    pub agent_clients: AgentClientBundle,
     pub task_scheduler: Arc<dyn TaskScheduler>,
     pub step_repo: Arc<dyn TaskStepRepository>,
     pub external_events_repo: Arc<dyn ExternalEventsRepository>,
@@ -45,13 +43,13 @@ impl StartupTransitionFactory {
             Arc::clone(&self.execution_state),
             &deps,
         )
-        .with_agentic_client(Arc::clone(&self.agent_client))
+        .with_agentic_client(Arc::clone(&self.agent_clients.default_client))
         .with_task_scheduler(Arc::clone(&self.task_scheduler))
         .with_step_repo(Arc::clone(&self.step_repo))
         .with_external_events_repo(Arc::clone(&self.external_events_repo))
         .with_session_merge_locks(Arc::clone(&self.session_merge_locks));
 
-        for (harness, client) in &self.harness_agent_clients {
+        for (harness, client) in &self.agent_clients.harness_clients {
             service = service.with_harness_agentic_client(*harness, Arc::clone(client));
         }
 

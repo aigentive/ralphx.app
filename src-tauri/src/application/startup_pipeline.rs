@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -12,10 +11,10 @@ use crate::application::startup_runtime_builders::{
 };
 use crate::application::startup_transition_factory::StartupTransitionFactory;
 use crate::application::{
-    InteractiveProcessRegistry, StartupJobRunner, startup_background, startup_jobs,
+    AgentClientBundle, InteractiveProcessRegistry, StartupJobRunner, startup_background,
+    startup_jobs,
 };
 use crate::commands::{ActiveProjectState, ExecutionState};
-use crate::domain::agents::{AgentHarnessKind, AgenticClient};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, AppStateRepository,
     ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
@@ -58,8 +57,7 @@ pub(crate) struct StartupPipelineDeps {
     pub review_repo: Arc<dyn ReviewRepository>,
     pub external_events_repo: Arc<dyn ExternalEventsRepository>,
     pub pr_poller_registry: Arc<crate::application::PrPollerRegistry>,
-    pub agent_client: Arc<dyn AgenticClient>,
-    pub harness_agent_clients: HashMap<AgentHarnessKind, Arc<dyn AgenticClient>>,
+    pub agent_clients: AgentClientBundle,
     pub webhook_publisher: Option<Arc<dyn WebhookPublisher>>,
     pub session_merge_locks: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     pub app_handle: tauri::AppHandle,
@@ -107,8 +105,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         review_repo,
         external_events_repo,
         pr_poller_registry,
-        agent_client,
-        harness_agent_clients,
+        agent_clients,
         webhook_publisher,
         session_merge_locks,
         app_handle,
@@ -139,8 +136,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         agent_lane_settings_repo: Arc::clone(&agent_lane_settings_repo),
         plan_branch_repo: Arc::clone(&plan_branch_repo),
         interactive_process_registry: Arc::clone(&interactive_process_registry),
-        agent_client: Arc::clone(&agent_client),
-        harness_agent_clients: harness_agent_clients.clone(),
+        agent_clients: agent_clients.clone(),
         task_scheduler: Arc::clone(&task_scheduler),
         step_repo: Arc::clone(&step_repo),
         external_events_repo: Arc::clone(&external_events_repo),

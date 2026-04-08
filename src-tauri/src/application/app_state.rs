@@ -8,6 +8,7 @@ use tauri::{AppHandle, Manager, Runtime};
 use tokio::sync::Mutex;
 
 use super::services::PrPollerRegistry;
+use crate::application::AgentClientBundle;
 use crate::application::PermissionState;
 use crate::application::QuestionState;
 use crate::application::ResumeValidator;
@@ -1068,15 +1069,19 @@ impl AppState {
         self
     }
 
+    pub fn agent_client_bundle(&self) -> AgentClientBundle {
+        AgentClientBundle::from_parts(
+            Arc::clone(&self.agent_client),
+            self.harness_agent_clients.clone(),
+        )
+    }
+
     /// Resolve the client for a specific harness, falling back to the default client.
     pub fn resolve_harness_agent_client(
         &self,
         harness: AgentHarnessKind,
     ) -> Arc<dyn AgenticClient> {
-        self.harness_agent_clients
-            .get(&harness)
-            .cloned()
-            .unwrap_or_else(|| Arc::clone(&self.agent_client))
+        self.agent_client_bundle().resolve(harness)
     }
 
     /// Swap the agent client used for a specific harness.
