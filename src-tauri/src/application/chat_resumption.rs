@@ -21,14 +21,9 @@ use crate::application::{ChatService, ClaudeChatService, InteractiveProcessRegis
 use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
 use crate::domain::entities::{ChatContextType, InterruptedConversation, TaskId};
 use crate::domain::repositories::{
-    AgentLaneSettingsRepository,
-    ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
-    ChatConversationRepository, ChatMessageRepository, ExecutionSettingsRepository,
-    IdeationSessionRepository,
-    MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
-    TaskRepository,
+    AgentLaneSettingsRepository, AgentRunRepository, ExecutionSettingsRepository,
+    PlanBranchRepository, TaskRepository,
 };
-use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 
 /// Runs chat resumption on startup.
 ///
@@ -48,40 +43,15 @@ pub struct ChatResumptionRunner<R: Runtime = tauri::Wry> {
 
 impl<R: Runtime> ChatResumptionRunner<R> {
     /// Create a new ChatResumptionRunner with all required dependencies.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub(crate) fn new(
         agent_run_repo: Arc<dyn AgentRunRepository>,
-        conversation_repo: Arc<dyn ChatConversationRepository>,
         task_repo: Arc<dyn TaskRepository>,
-        task_dependency_repo: Arc<dyn TaskDependencyRepository>,
-        chat_message_repo: Arc<dyn ChatMessageRepository>,
-        chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
-        artifact_repo: Arc<dyn crate::domain::repositories::ArtifactRepository>,
-        project_repo: Arc<dyn ProjectRepository>,
-        ideation_session_repo: Arc<dyn IdeationSessionRepository>,
-        activity_event_repo: Arc<dyn ActivityEventRepository>,
-        message_queue: Arc<MessageQueue>,
-        running_agent_registry: Arc<dyn RunningAgentRegistry>,
-        memory_event_repo: Arc<dyn MemoryEventRepository>,
         execution_state: Arc<ExecutionState>,
+        chat_runtime_deps: ChatRuntimeFactoryDeps,
     ) -> Self {
         Self {
-            agent_run_repo: Arc::clone(&agent_run_repo),
-            chat_runtime_deps: ChatRuntimeFactoryDeps::from_core(
-                chat_message_repo,
-                chat_attachment_repo,
-                artifact_repo,
-                conversation_repo,
-                agent_run_repo,
-                project_repo,
-                Arc::clone(&task_repo),
-                Arc::clone(&task_dependency_repo),
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-            ),
+            agent_run_repo,
+            chat_runtime_deps,
             task_repo,
             execution_state,
             execution_settings_repo: None,

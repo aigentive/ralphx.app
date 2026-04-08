@@ -101,21 +101,26 @@ pub(crate) struct StartupChatResumptionDeps {
 pub(crate) fn build_startup_chat_resumption_runner(
     deps: StartupChatResumptionDeps,
 ) -> ChatResumptionRunner {
-    ChatResumptionRunner::<tauri::Wry>::new(
-        deps.agent_run_repo,
-        deps.conversation_repo,
-        deps.task_repo,
-        deps.task_dependency_repo,
+    let chat_runtime_deps = ChatRuntimeFactoryDeps::from_core(
         deps.chat_message_repo,
         deps.chat_attachment_repo,
         deps.artifact_repo,
+        deps.conversation_repo,
+        Arc::clone(&deps.agent_run_repo),
         deps.project_repo,
+        deps.task_repo.clone(),
+        deps.task_dependency_repo,
         deps.ideation_session_repo,
         deps.activity_event_repo,
         deps.message_queue,
         deps.running_agent_registry,
         deps.memory_event_repo,
+    );
+    ChatResumptionRunner::<tauri::Wry>::new(
+        deps.agent_run_repo,
+        deps.task_repo,
         deps.execution_state,
+        chat_runtime_deps,
     )
     .with_app_handle(deps.app_handle)
     .with_execution_settings_repo(deps.execution_settings_repo)
