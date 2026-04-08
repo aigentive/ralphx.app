@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,15 +15,15 @@ use crate::application::{
     InteractiveProcessRegistry, StartupJobRunner, startup_background, startup_jobs,
 };
 use crate::commands::{ActiveProjectState, ExecutionState};
-use crate::domain::agents::AgenticClient;
+use crate::domain::agents::{AgentHarnessKind, AgenticClient};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, AppStateRepository,
     ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
     ChatMessageRepository, ExecutionSettingsRepository, ExternalEventsRepository,
-    IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
-    IdeationSessionRepository, MemoryArchiveRepository, MemoryEntryRepository,
-    MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
-    TaskDependencyRepository, TaskRepository, TaskStepRepository,
+    IdeationEffortSettingsRepository, IdeationModelSettingsRepository, IdeationSessionRepository,
+    MemoryArchiveRepository, MemoryEntryRepository, MemoryEventRepository, PlanBranchRepository,
+    ProjectRepository, ReviewRepository, TaskDependencyRepository, TaskRepository,
+    TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::WebhookPublisher;
@@ -58,6 +59,7 @@ pub(crate) struct StartupPipelineDeps {
     pub external_events_repo: Arc<dyn ExternalEventsRepository>,
     pub pr_poller_registry: Arc<crate::application::PrPollerRegistry>,
     pub agent_client: Arc<dyn AgenticClient>,
+    pub harness_agent_clients: HashMap<AgentHarnessKind, Arc<dyn AgenticClient>>,
     pub webhook_publisher: Option<Arc<dyn WebhookPublisher>>,
     pub session_merge_locks: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     pub app_handle: tauri::AppHandle,
@@ -106,6 +108,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         external_events_repo,
         pr_poller_registry,
         agent_client,
+        harness_agent_clients,
         webhook_publisher,
         session_merge_locks,
         app_handle,
@@ -137,6 +140,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         plan_branch_repo: Arc::clone(&plan_branch_repo),
         interactive_process_registry: Arc::clone(&interactive_process_registry),
         agent_client: Arc::clone(&agent_client),
+        harness_agent_clients: harness_agent_clients.clone(),
         task_scheduler: Arc::clone(&task_scheduler),
         step_repo: Arc::clone(&step_repo),
         external_events_repo: Arc::clone(&external_events_repo),

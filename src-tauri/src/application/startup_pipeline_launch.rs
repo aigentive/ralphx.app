@@ -41,6 +41,7 @@ pub(crate) fn launch_startup_pipeline(
     let startup_external_events_repo = Arc::clone(&app_state.external_events_repo);
     let startup_pr_poller_registry = Arc::clone(&app_state.pr_poller_registry);
     let startup_agent_client = Arc::clone(&app_state.agent_client);
+    let startup_harness_agent_clients = app_state.harness_agent_clients.clone();
     let startup_webhook_publisher = app_state.webhook_publisher.clone();
     let startup_session_merge_locks = Arc::clone(&app_state.session_merge_locks);
     // Clone app handle to enable event emission in startup tasks
@@ -78,6 +79,7 @@ pub(crate) fn launch_startup_pipeline(
                 external_events_repo: startup_external_events_repo,
                 pr_poller_registry: startup_pr_poller_registry,
                 agent_client: startup_agent_client,
+                harness_agent_clients: startup_harness_agent_clients,
                 webhook_publisher: startup_webhook_publisher,
                 session_merge_locks: startup_session_merge_locks,
                 app_handle: startup_app_handle,
