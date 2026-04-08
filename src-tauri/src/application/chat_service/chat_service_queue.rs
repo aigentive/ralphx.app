@@ -366,14 +366,10 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                     }
                 },
                 AgentHarnessKind::Codex => {
-                    let Some(codex_cli_path) = crate::infrastructure::agents::find_codex_cli() else {
-                        tracing::warn!(%context_type, context_id, "Codex CLI not found for queue resume");
-                        return total_processed;
-                    };
-                    let capabilities = match crate::infrastructure::agents::probe_codex_cli(&codex_cli_path) {
-                        Ok(capabilities) => capabilities,
+                    let resolved_codex = match crate::infrastructure::agents::resolve_codex_cli() {
+                        Ok(resolved) => resolved,
                         Err(error) => {
-                            tracing::warn!(%context_type, context_id, %error, "Codex CLI probe failed for queue resume");
+                            tracing::warn!(%context_type, context_id, %error, "Codex CLI unavailable for queue resume");
                             return total_processed;
                         }
                     };
@@ -406,9 +402,9 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         effective_team_mode_for_harness(team_mode, resolved_spawn_settings.effective_harness);
 
                     match chat_service_context::build_codex_resume_command(
-                        &codex_cli_path,
+                        &resolved_codex.path,
                         plugin_dir,
-                        &capabilities,
+                        &resolved_codex.capabilities,
                         context_type,
                         context_id,
                         &queued_msg.content,

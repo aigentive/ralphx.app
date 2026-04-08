@@ -1330,8 +1330,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                 .await
                             }
                             crate::domain::agents::AgentHarnessKind::Codex => {
-                                let capabilities = match crate::infrastructure::agents::probe_codex_cli(cli_path) {
-                                    Ok(capabilities) => capabilities,
+                                let resolved_codex = match crate::infrastructure::agents::resolve_codex_cli() {
+                                    Ok(resolved) => resolved,
                                     Err(error) => {
                                         tracing::error!(%error, "Failed to probe Codex CLI for recovery retry");
                                         return false;
@@ -1363,9 +1363,9 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                     .await;
 
                                 chat_service_context::build_codex_resume_command(
-                                    cli_path,
+                                    &resolved_codex.path,
                                     plugin_dir,
-                                    &capabilities,
+                                    &resolved_codex.capabilities,
                                     context_type,
                                     context_id,
                                     msg,

@@ -4,13 +4,12 @@ pub mod stream_processor;
 use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
 
-use crate::infrastructure::agents::claude::{
-    claude_runtime_config, filter_interactive_tools, format_allowed_tools_arg_value,
-    get_agent_config, load_agent_system_prompt, mcp_agent_type, node_utils,
-    validate_mcp_tool_name,
-};
 use crate::domain::agents::LogicalEffort;
 use crate::infrastructure::agents::claude::SpawnableCommand;
+use crate::infrastructure::agents::claude::{
+    claude_runtime_config, filter_interactive_tools, format_allowed_tools_arg_value,
+    get_agent_config, load_agent_system_prompt, mcp_agent_type, node_utils, validate_mcp_tool_name,
+};
 pub use codex_cli_client::CodexCliClient;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +53,12 @@ impl CodexCliCapabilities {
         }
         missing
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedCodexCli {
+    pub path: PathBuf,
+    pub capabilities: CodexCliCapabilities,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -252,7 +257,11 @@ pub fn find_codex_cli() -> Option<PathBuf> {
         return Some(path);
     }
 
-    for candidate in ["/opt/homebrew/bin/codex", "/usr/local/bin/codex", "/usr/bin/codex"] {
+    for candidate in [
+        "/opt/homebrew/bin/codex",
+        "/usr/local/bin/codex",
+        "/usr/bin/codex",
+    ] {
         let path = PathBuf::from(candidate);
         if path.exists() {
             return Some(path);
@@ -301,6 +310,12 @@ pub fn probe_codex_cli(cli_path: &Path) -> Result<CodexCliCapabilities, String> 
         &exec_help,
         Some(&version_output),
     ))
+}
+
+pub fn resolve_codex_cli() -> Result<ResolvedCodexCli, String> {
+    let path = find_codex_cli().ok_or_else(|| "Codex CLI not found".to_string())?;
+    let capabilities = probe_codex_cli(&path)?;
+    Ok(ResolvedCodexCli { path, capabilities })
 }
 
 pub fn build_codex_exec_args(
@@ -359,10 +374,7 @@ pub fn build_codex_exec_args(
     if let Some(reasoning_effort) = config.reasoning_effort {
         require_capability(capabilities.supports_config_override, "config_override")?;
         args.push("-c".to_string());
-        args.push(format!(
-            "model_reasoning_effort=\"{}\"",
-            reasoning_effort
-        ));
+        args.push(format!("model_reasoning_effort=\"{}\"", reasoning_effort));
     }
 
     if let Some(approval_policy) = config.approval_policy.as_deref() {
@@ -386,7 +398,11 @@ pub fn build_codex_exec_resume_args(
         return Err("Codex CLI does not advertise the exec subcommand".to_string());
     }
 
-    let mut args = vec!["exec".to_string(), "resume".to_string(), session_id.to_string()];
+    let mut args = vec![
+        "exec".to_string(),
+        "resume".to_string(),
+        session_id.to_string(),
+    ];
 
     if config.json_output {
         require_capability(capabilities.supports_json_output, "json_output")?;
@@ -412,10 +428,7 @@ pub fn build_codex_exec_resume_args(
     if let Some(reasoning_effort) = config.reasoning_effort {
         require_capability(capabilities.supports_config_override, "config_override")?;
         args.push("-c".to_string());
-        args.push(format!(
-            "model_reasoning_effort=\"{}\"",
-            reasoning_effort
-        ));
+        args.push(format!("model_reasoning_effort=\"{}\"", reasoning_effort));
     }
 
     if let Some(approval_policy) = config.approval_policy.as_deref() {
@@ -502,7 +515,9 @@ fn require_capability(supported: bool, capability: &str) -> Result<(), String> {
     if supported {
         Ok(())
     } else {
-        Err(format!("Codex CLI is missing required capability: {capability}"))
+        Err(format!(
+            "Codex CLI is missing required capability: {capability}"
+        ))
     }
 }
 

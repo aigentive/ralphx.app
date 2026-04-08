@@ -1811,24 +1811,17 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                     (self.cli_path.clone(), child, Some(self.ipr()))
                 }
                 AgentHarnessKind::Codex => {
-                    let codex_cli_path = match crate::infrastructure::agents::find_codex_cli() {
-                        Some(path) => path,
-                        None => cleanup_and_err!(ChatServiceError::SpawnFailed(
-                            "Codex CLI not found".to_string()
-                        )),
+                    let resolved_codex = match crate::infrastructure::agents::resolve_codex_cli() {
+                        Ok(resolved) => resolved,
+                        Err(error) => {
+                            cleanup_and_err!(ChatServiceError::SpawnFailed(error));
+                        }
                     };
-                    let capabilities =
-                        match crate::infrastructure::agents::probe_codex_cli(&codex_cli_path) {
-                            Ok(capabilities) => capabilities,
-                            Err(error) => {
-                                cleanup_and_err!(ChatServiceError::SpawnFailed(error));
-                            }
-                        };
                     let spawnable = match stored_session_id.as_deref() {
                         Some(session_id) => match chat_service_context::build_codex_resume_command(
-                            &codex_cli_path,
+                            &resolved_codex.path,
                             &self.plugin_dir,
-                            &capabilities,
+                            &resolved_codex.capabilities,
                             context_type,
                             context_id,
                             message,
@@ -1852,9 +1845,9 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                             }
                         },
                         None => match chat_service_context::build_codex_command(
-                            &codex_cli_path,
+                            &resolved_codex.path,
                             &self.plugin_dir,
-                            &capabilities,
+                            &resolved_codex.capabilities,
                             &conversation,
                             message,
                             &working_directory,
@@ -1886,7 +1879,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                     };
                     tracing::debug!(pid = ?child.id(), "chat_service.send_message codex spawn ok");
 
-                    (codex_cli_path, child, None)
+                    (resolved_codex.path, child, None)
                 }
             };
 

@@ -186,10 +186,10 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
             }
         },
         AgentHarnessKind::Codex => {
-            let capabilities = match crate::infrastructure::agents::probe_codex_cli(cli_path) {
-                Ok(capabilities) => capabilities,
+            let resolved_codex = match crate::infrastructure::agents::resolve_codex_cli() {
+                Ok(resolved) => resolved,
                 Err(error) => {
-                let err = AppError::Infrastructure(format!(
+                    let err = AppError::Infrastructure(format!(
                         "Failed to probe Codex CLI for recovery: {error}"
                     ));
                     log_failure(&err);
@@ -211,9 +211,9 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
             .await;
 
             match chat_service_context::build_codex_command(
-                cli_path,
+                &resolved_codex.path,
                 plugin_dir,
-                &capabilities,
+                &resolved_codex.capabilities,
                 conversation,
                 &bootstrap_prompt,
                 working_directory,
