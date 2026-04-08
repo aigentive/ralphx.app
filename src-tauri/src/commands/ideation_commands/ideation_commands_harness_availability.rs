@@ -2,7 +2,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::application::{
-    build_ideation_lane_harness_availability, probe_claude_harness, probe_codex_harness,
+    build_ideation_lane_harness_availability, probe_supported_harnesses,
     resolve_lane_harness_config, AppState, AGENT_LANES, IDEATION_LANES,
 };
 use crate::domain::agents::AgentLane;
@@ -51,8 +51,7 @@ async fn get_harness_availability_for_lanes(
     app_state: State<'_, AppState>,
     lanes: &[AgentLane],
 ) -> Result<Vec<AgentLaneHarnessAvailabilityResponse>, String> {
-    let claude_probe = probe_claude_harness();
-    let codex_probe = probe_codex_harness();
+    let probes = probe_supported_harnesses();
     let mut responses = Vec::with_capacity(lanes.len());
 
     for lane in lanes {
@@ -62,8 +61,7 @@ async fn get_harness_availability_for_lanes(
             *lane,
         )
         .await;
-        let availability =
-            build_ideation_lane_harness_availability(config, &claude_probe, &codex_probe);
+        let availability = build_ideation_lane_harness_availability(config, &probes);
         responses.push(to_response(&project_id, availability));
     }
 

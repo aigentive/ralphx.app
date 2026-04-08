@@ -3,6 +3,7 @@ use super::ideation_harness_availability::{
     IdeationLaneHarnessAvailability, ResolvedLaneHarnessConfig,
 };
 use crate::domain::agents::{AgentHarnessKind, AgentLane};
+use std::collections::HashMap;
 
 fn unavailable_probe(error: &str) -> HarnessRuntimeProbe {
     HarnessRuntimeProbe {
@@ -13,6 +14,16 @@ fn unavailable_probe(error: &str) -> HarnessRuntimeProbe {
         missing_core_exec_features: Vec::new(),
         error: Some(error.to_string()),
     }
+}
+
+fn probe_map(
+    claude_probe: HarnessRuntimeProbe,
+    codex_probe: HarnessRuntimeProbe,
+) -> HashMap<AgentHarnessKind, HarnessRuntimeProbe> {
+    HashMap::from([
+        (AgentHarnessKind::Claude, claude_probe),
+        (AgentHarnessKind::Codex, codex_probe),
+    ])
 }
 
 #[test]
@@ -39,8 +50,10 @@ fn codex_lane_uses_codex_when_core_exec_support_is_available() {
         error: None,
     };
 
-    let availability =
-        build_ideation_lane_harness_availability(config, &claude_probe, &codex_probe);
+    let availability = build_ideation_lane_harness_availability(
+        config,
+        &probe_map(claude_probe, codex_probe),
+    );
 
     assert_eq!(availability.effective_harness, AgentHarnessKind::Codex);
     assert!(!availability.fallback_activated);
@@ -75,8 +88,10 @@ fn codex_lane_falls_back_to_claude_when_requested_and_codex_is_unavailable() {
         error: Some("Codex CLI is missing required capability: json_output".to_string()),
     };
 
-    let availability =
-        build_ideation_lane_harness_availability(config, &claude_probe, &codex_probe);
+    let availability = build_ideation_lane_harness_availability(
+        config,
+        &probe_map(claude_probe, codex_probe),
+    );
 
     assert_eq!(availability.effective_harness, AgentHarnessKind::Claude);
     assert!(availability.fallback_activated);
@@ -101,8 +116,10 @@ fn default_lane_without_configuration_defaults_to_claude() {
 
     let availability = build_ideation_lane_harness_availability(
         config,
-        &unavailable_probe("Claude CLI not found"),
-        &unavailable_probe("Codex CLI not found"),
+        &probe_map(
+            unavailable_probe("Claude CLI not found"),
+            unavailable_probe("Codex CLI not found"),
+        ),
     );
 
     assert_eq!(availability.effective_harness, AgentHarnessKind::Claude);

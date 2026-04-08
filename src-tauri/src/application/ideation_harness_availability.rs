@@ -1,5 +1,6 @@
 use crate::application::AppState;
 use crate::domain::entities::{ChatContextType, IdeationSessionId, TaskId};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::domain::agents::{AgentHarnessKind, AgentLane, StoredAgentLaneSettings};
@@ -63,11 +64,8 @@ pub(crate) async fn resolve_ideation_lane_harness_availability(
     lane: AgentLane,
 ) -> IdeationLaneHarnessAvailability {
     let config = resolve_lane_harness_config(repo, project_id, lane).await;
-    build_ideation_lane_harness_availability(
-        config,
-        &probe_claude_harness(),
-        &probe_codex_harness(),
-    )
+    let probes = probe_supported_harnesses();
+    build_ideation_lane_harness_availability(config, &probes)
 }
 
 pub(crate) async fn resolve_primary_ideation_harness_availability(
@@ -130,11 +128,8 @@ pub(crate) async fn validate_chat_runtime_for_context(
     let config =
         resolve_lane_harness_config(&state.agent_lane_settings_repo, project_id.as_deref(), lane)
             .await;
-    let availability = build_ideation_lane_harness_availability(
-        config,
-        &probe_claude_harness(),
-        &probe_codex_harness(),
-    );
+    let probes = probe_supported_harnesses();
+    let availability = build_ideation_lane_harness_availability(config, &probes);
 
     if availability.available {
         Ok(())
@@ -158,11 +153,8 @@ pub(crate) async fn team_mode_supported_for_context(
     let config =
         resolve_lane_harness_config(&state.agent_lane_settings_repo, project_id.as_deref(), lane)
             .await;
-    let availability = build_ideation_lane_harness_availability(
-        config,
-        &probe_claude_harness(),
-        &probe_codex_harness(),
-    );
+    let probes = probe_supported_harnesses();
+    let availability = build_ideation_lane_harness_availability(config, &probes);
 
     availability.effective_harness == AgentHarnessKind::Claude
 }
@@ -309,18 +301,30 @@ pub(crate) fn probe_codex_harness() -> HarnessRuntimeProbe {
     }
 }
 
+pub(crate) fn probe_supported_harnesses() -> HashMap<AgentHarnessKind, HarnessRuntimeProbe> {
+    HashMap::from([
+        (AgentHarnessKind::Claude, probe_claude_harness()),
+        (AgentHarnessKind::Codex, probe_codex_harness()),
+    ])
+}
+
+fn probe_for_harness<'a>(
+    probes: &'a HashMap<AgentHarnessKind, HarnessRuntimeProbe>,
+    harness: AgentHarnessKind,
+) -> &'a HarnessRuntimeProbe {
+    probes
+        .get(&harness)
+        .unwrap_or_else(|| probes.get(&AgentHarnessKind::Claude).expect("Claude probe available"))
+}
+
 pub(crate) fn build_ideation_lane_harness_availability(
     config: ResolvedLaneHarnessConfig,
-    claude_probe: &HarnessRuntimeProbe,
-    codex_probe: &HarnessRuntimeProbe,
+    probes: &HashMap<AgentHarnessKind, HarnessRuntimeProbe>,
 ) -> IdeationLaneHarnessAvailability {
     let configured_harness = config
         .configured_harness
         .unwrap_or(AgentHarnessKind::Claude);
-    let configured_probe = match configured_harness {
-        AgentHarnessKind::Claude => claude_probe,
-        AgentHarnessKind::Codex => codex_probe,
-    };
+    let configured_probe = probe_for_harness(probes, configured_harness);
 
     if configured_probe.available {
         return IdeationLaneHarnessAvailability {
@@ -338,20 +342,23 @@ pub(crate) fn build_ideation_lane_harness_availability(
         };
     }
 
-    if matches!(config.fallback_harness, Some(AgentHarnessKind::Claude)) && claude_probe.available {
-        return IdeationLaneHarnessAvailability {
-            lane: config.lane,
-            configured_harness: config.configured_harness,
-            fallback_harness: config.fallback_harness,
-            effective_harness: AgentHarnessKind::Claude,
-            fallback_activated: true,
-            binary_path: claude_probe.binary_path.clone(),
-            binary_found: configured_probe.binary_found,
-            probe_succeeded: configured_probe.probe_succeeded,
-            available: true,
-            missing_core_exec_features: configured_probe.missing_core_exec_features.clone(),
-            error: configured_probe.error.clone(),
-        };
+    if let Some(fallback_harness) = config.fallback_harness {
+        let fallback_probe = probe_for_harness(probes, fallback_harness);
+        if fallback_probe.available {
+            return IdeationLaneHarnessAvailability {
+                lane: config.lane,
+                configured_harness: config.configured_harness,
+                fallback_harness: config.fallback_harness,
+                effective_harness: fallback_harness,
+                fallback_activated: true,
+                binary_path: fallback_probe.binary_path.clone(),
+                binary_found: configured_probe.binary_found,
+                probe_succeeded: configured_probe.probe_succeeded,
+                available: true,
+                missing_core_exec_features: configured_probe.missing_core_exec_features.clone(),
+                error: configured_probe.error.clone(),
+            };
+        }
     }
 
     IdeationLaneHarnessAvailability {
