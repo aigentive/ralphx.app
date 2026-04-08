@@ -35,6 +35,8 @@ use crate::infrastructure::supervisor::EventBus;
 pub struct AgenticClientSpawner {
     /// The underlying agentic client
     default_client: Arc<dyn AgenticClient>,
+    /// The harness represented by the default client
+    default_harness: AgentHarnessKind,
     /// Harness-specific clients for multi-harness execution lanes
     harness_clients: HashMap<AgentHarnessKind, Arc<dyn AgenticClient>>,
     /// Working directory for spawned agents (fallback when task/project lookup fails)
@@ -70,6 +72,7 @@ impl AgenticClientSpawner {
 
         Self {
             default_client: client,
+            default_harness: AgentHarnessKind::Claude,
             harness_clients: HashMap::new(),
             working_directory,
             task_repo: None,
@@ -83,6 +86,11 @@ impl AgenticClientSpawner {
             execution_state: None,
             app_handle: None,
         }
+    }
+
+    pub fn with_default_harness(mut self, harness: AgentHarnessKind) -> Self {
+        self.default_harness = harness;
+        self
     }
 
     /// Create with a specific working directory
@@ -361,10 +369,10 @@ impl AgenticClientSpawner {
         project_id: Option<&str>,
     ) -> (AgentHarnessKind, Option<String>, Option<LogicalEffort>, Option<String>, Option<String>) {
         let Some(context_type) = Self::context_type_for_agent(agent_type) else {
-            return (AgentHarnessKind::Claude, None, None, None, None);
+            return (self.default_harness, None, None, None, None);
         };
         let Some(agent_name) = Self::resolve_process_agent_name(agent_type) else {
-            return (AgentHarnessKind::Claude, None, None, None, None);
+            return (self.default_harness, None, None, None, None);
         };
         let entity_status = self.resolve_task_status(task_id).await;
 
@@ -381,7 +389,7 @@ impl AgenticClientSpawner {
         .await;
 
         let mut harness = resolved.effective_harness;
-        if harness != AgentHarnessKind::Claude {
+        if harness != self.default_harness {
             let harness_available = self
                 .resolve_client_for_harness(harness)
                 .is_available()
@@ -392,9 +400,10 @@ impl AgenticClientSpawner {
                     agent_type,
                     project_id = project_id.unwrap_or(""),
                     harness = %harness,
-                    "Requested execution harness unavailable; falling back to Claude client"
+                    fallback_harness = %self.default_harness,
+                    "Requested execution harness unavailable; falling back to default harness client"
                 );
-                harness = AgentHarnessKind::Claude;
+                harness = self.default_harness;
             }
         }
 

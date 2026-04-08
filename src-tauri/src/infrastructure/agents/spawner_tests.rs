@@ -1045,3 +1045,42 @@ async fn test_spawn_uses_reexecutor_lane_for_reexecuting_task() {
     assert_eq!(config.approval_policy.as_deref(), Some("never"));
     assert_eq!(config.sandbox_mode.as_deref(), Some("read-only"));
 }
+
+#[tokio::test]
+async fn test_spawn_falls_back_to_default_harness_when_requested_harness_is_unavailable() {
+    let default_client = Arc::new(TestAgentClient::new(ClientType::Codex, true));
+    let unavailable_claude_client = Arc::new(TestAgentClient::new(ClientType::ClaudeCode, false));
+    let exec_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("project-default-harness".to_string());
+    let mut project = Project::new(
+        "Project Default Harness".to_string(),
+        "/tmp/project-default-harness".to_string(),
+    );
+    project.id = project_id.clone();
+    project_repo.create(project).await.unwrap();
+
+    let mut task = Task::new(project_id, "Default harness fallback task".to_string());
+    task.id = TaskId::from_string("task-default-harness".to_string());
+    task.worktree_path = Some("/tmp/task-default-harness".to_string());
+    task_repo.create(task).await.unwrap();
+
+    let spawner = AgenticClientSpawner::new(default_client.clone())
+        .with_default_harness(AgentHarnessKind::Codex)
+        .with_harness_client(AgentHarnessKind::Claude, unavailable_claude_client.clone())
+        .with_repos(task_repo, project_repo)
+        .with_execution_state(exec_state)
+        .with_working_dir("/tmp");
+
+    spawner.spawn("worker", "task-default-harness").await;
+
+    assert_eq!(default_client.spawn_count().await, 1);
+    assert_eq!(unavailable_claude_client.spawn_count().await, 0);
+    let config = default_client
+        .last_spawn()
+        .await
+        .expect("default harness spawn config");
+    assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
+}

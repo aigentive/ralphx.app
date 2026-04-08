@@ -840,6 +840,7 @@ impl<R: Runtime> TaskTransitionService<R> {
         let agent_clients = agent_client_factories.instantiate();
         let agent_client = Arc::clone(&agent_clients.default_client);
         let mut spawner = AgenticClientSpawner::new(agent_client)
+            .with_default_harness(agent_clients.default_harness)
             .with_repos(Arc::clone(&task_repo), Arc::clone(&project_repo))
             .with_execution_state(Arc::clone(&execution_state));
         for (harness, client) in &agent_clients.harness_clients {
