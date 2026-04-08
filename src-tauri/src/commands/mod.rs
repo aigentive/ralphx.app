@@ -98,7 +98,8 @@ pub use ideation_commands::{
     set_proposal_selection, toggle_proposal_selection, update_task_proposal,
     update_agent_lane_settings, AgentLaneHarnessAvailabilityResponse,
     ApplyProposalsResultResponse, DependencyGraphResponse,
-    IdeationLaneHarnessAvailabilityResponse, IdeationSessionResponse, OrchestratorMessageResponse,
+    IdeationLaneHarnessAvailabilityResponse, LaneHarnessAvailabilityResponse,
+    IdeationSessionResponse, OrchestratorMessageResponse,
     PriorityAssessmentResponse, SessionWithDataResponse, TaskProposalResponse,
     ToolCallResultResponse,
 };

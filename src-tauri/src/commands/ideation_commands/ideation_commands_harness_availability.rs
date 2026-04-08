@@ -2,8 +2,8 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::application::{
-    build_ideation_lane_harness_availability, probe_supported_harnesses,
-    resolve_lane_harness_config, AppState, AGENT_LANES, IDEATION_LANES,
+    build_lane_harness_availability, probe_supported_harnesses, resolve_lane_harness_config,
+    AppState, AGENT_LANES, IDEATION_LANES,
 };
 use crate::domain::agents::AgentLane;
 
@@ -24,16 +24,19 @@ pub struct AgentLaneHarnessAvailabilityResponse {
     pub error: Option<String>,
 }
 
+pub type LaneHarnessAvailabilityResponse = AgentLaneHarnessAvailabilityResponse;
 pub type IdeationLaneHarnessAvailabilityResponse = AgentLaneHarnessAvailabilityResponse;
 
 fn to_response(
     project_id: &Option<String>,
-    availability: crate::application::ideation_harness_availability::IdeationLaneHarnessAvailability,
+    availability: crate::application::ideation_harness_availability::LaneHarnessAvailability,
 ) -> AgentLaneHarnessAvailabilityResponse {
     AgentLaneHarnessAvailabilityResponse {
         project_id: project_id.clone(),
         lane: availability.lane.to_string(),
-        configured_harness: availability.configured_harness.map(|value| value.to_string()),
+        configured_harness: availability
+            .configured_harness
+            .map(|value| value.to_string()),
         fallback_harness: availability.fallback_harness.map(|value| value.to_string()),
         effective_harness: availability.effective_harness.to_string(),
         fallback_activated: availability.fallback_activated,
@@ -61,7 +64,7 @@ async fn get_harness_availability_for_lanes(
             *lane,
         )
         .await;
-        let availability = build_ideation_lane_harness_availability(config, &probes);
+        let availability = build_lane_harness_availability(config, &probes);
         responses.push(to_response(&project_id, availability));
     }
 

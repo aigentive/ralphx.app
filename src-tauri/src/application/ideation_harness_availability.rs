@@ -31,7 +31,7 @@ pub(crate) struct HarnessRuntimeProbe {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct IdeationLaneHarnessAvailability {
+pub(crate) struct LaneHarnessAvailability {
     pub lane: AgentLane,
     pub configured_harness: Option<AgentHarnessKind>,
     pub fallback_harness: Option<AgentHarnessKind>,
@@ -63,21 +63,21 @@ pub(crate) const AGENT_LANES: [AgentLane; 8] = [
     AgentLane::ExecutionMerger,
 ];
 
-pub(crate) async fn resolve_ideation_lane_harness_availability(
+pub(crate) async fn resolve_lane_harness_availability(
     repo: &Arc<dyn AgentLaneSettingsRepository>,
     project_id: Option<&str>,
     lane: AgentLane,
-) -> IdeationLaneHarnessAvailability {
+) -> LaneHarnessAvailability {
     let config = resolve_lane_harness_config(repo, project_id, lane).await;
     let probes = probe_supported_harnesses();
-    build_ideation_lane_harness_availability(config, &probes)
+    build_lane_harness_availability(config, &probes)
 }
 
 pub(crate) async fn resolve_primary_ideation_harness_availability(
     repo: &Arc<dyn AgentLaneSettingsRepository>,
     project_id: Option<&str>,
-) -> IdeationLaneHarnessAvailability {
-    resolve_ideation_lane_harness_availability(repo, project_id, AgentLane::IdeationPrimary).await
+) -> LaneHarnessAvailability {
+    resolve_lane_harness_availability(repo, project_id, AgentLane::IdeationPrimary).await
 }
 
 pub(crate) async fn ideation_team_mode_supported_for_project(
@@ -100,7 +100,7 @@ fn format_harness_runtime_unavailable(surface_name: &str, harness: AgentHarnessK
 
 #[cfg(test)]
 pub(crate) fn validate_claude_runtime_path(
-    availability: &IdeationLaneHarnessAvailability,
+    availability: &LaneHarnessAvailability,
     surface_name: &str,
 ) -> Result<(), String> {
     if !availability.available {
@@ -142,7 +142,7 @@ pub(crate) async fn validate_chat_runtime_for_context(
         resolve_lane_harness_config(&state.agent_lane_settings_repo, project_id.as_deref(), lane)
             .await;
     let probes = probe_supported_harnesses();
-    let availability = build_ideation_lane_harness_availability(config, &probes);
+    let availability = build_lane_harness_availability(config, &probes);
 
     if availability.available {
         Ok(())
@@ -167,7 +167,7 @@ pub(crate) async fn team_mode_supported_for_context(
         resolve_lane_harness_config(&state.agent_lane_settings_repo, project_id.as_deref(), lane)
             .await;
     let probes = probe_supported_harnesses();
-    let availability = build_ideation_lane_harness_availability(config, &probes);
+    let availability = build_lane_harness_availability(config, &probes);
 
     harness_supports_team_mode(availability.effective_harness)
 }
@@ -316,8 +316,14 @@ fn probe_codex_harness() -> HarnessRuntimeProbe {
 
 pub(crate) fn standard_harness_probe_registry() -> HashMap<AgentHarnessKind, HarnessProbeFn> {
     HashMap::from([
-        (AgentHarnessKind::Claude, probe_claude_harness as HarnessProbeFn),
-        (AgentHarnessKind::Codex, probe_codex_harness as HarnessProbeFn),
+        (
+            AgentHarnessKind::Claude,
+            probe_claude_harness as HarnessProbeFn,
+        ),
+        (
+            AgentHarnessKind::Codex,
+            probe_codex_harness as HarnessProbeFn,
+        ),
     ])
 }
 
@@ -364,17 +370,15 @@ fn probe_for_harness(
         .unwrap_or_else(|| missing_harness_probe(harness))
 }
 
-pub(crate) fn build_ideation_lane_harness_availability(
+pub(crate) fn build_lane_harness_availability(
     config: ResolvedLaneHarnessConfig,
     probes: &HashMap<AgentHarnessKind, HarnessRuntimeProbe>,
-) -> IdeationLaneHarnessAvailability {
-    let configured_harness = config
-        .configured_harness
-        .unwrap_or(DEFAULT_AGENT_HARNESS);
+) -> LaneHarnessAvailability {
+    let configured_harness = config.configured_harness.unwrap_or(DEFAULT_AGENT_HARNESS);
     let configured_probe = probe_for_harness(probes, configured_harness);
 
     if configured_probe.available {
-        return IdeationLaneHarnessAvailability {
+        return LaneHarnessAvailability {
             lane: config.lane,
             configured_harness: config.configured_harness,
             fallback_harness: config.fallback_harness,
@@ -392,7 +396,7 @@ pub(crate) fn build_ideation_lane_harness_availability(
     if let Some(fallback_harness) = config.fallback_harness {
         let fallback_probe = probe_for_harness(probes, fallback_harness);
         if fallback_probe.available {
-            return IdeationLaneHarnessAvailability {
+            return LaneHarnessAvailability {
                 lane: config.lane,
                 configured_harness: config.configured_harness,
                 fallback_harness: config.fallback_harness,
@@ -408,7 +412,7 @@ pub(crate) fn build_ideation_lane_harness_availability(
         }
     }
 
-    IdeationLaneHarnessAvailability {
+    LaneHarnessAvailability {
         lane: config.lane,
         configured_harness: config.configured_harness,
         fallback_harness: config.fallback_harness,
