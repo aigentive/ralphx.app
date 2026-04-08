@@ -316,7 +316,7 @@ fn probe_codex_harness() -> HarnessRuntimeProbe {
 
 pub(crate) fn standard_harness_probe_registry() -> HashMap<AgentHarnessKind, HarnessProbeFn> {
     HashMap::from([
-        (DEFAULT_AGENT_HARNESS, probe_claude_harness as HarnessProbeFn),
+        (AgentHarnessKind::Claude, probe_claude_harness as HarnessProbeFn),
         (AgentHarnessKind::Codex, probe_codex_harness as HarnessProbeFn),
     ])
 }

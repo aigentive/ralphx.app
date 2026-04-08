@@ -1,6 +1,7 @@
 use super::ideation_harness_availability::{
-    build_ideation_lane_harness_availability, validate_claude_runtime_path, HarnessRuntimeProbe,
-    IdeationLaneHarnessAvailability, ResolvedLaneHarnessConfig,
+    build_ideation_lane_harness_availability, standard_harness_probe_registry,
+    validate_claude_runtime_path, HarnessRuntimeProbe, IdeationLaneHarnessAvailability,
+    ResolvedLaneHarnessConfig,
 };
 use crate::domain::agents::{AgentHarnessKind, AgentLane};
 use std::collections::HashMap;
@@ -166,4 +167,12 @@ fn validate_claude_runtime_path_rejects_available_codex() {
     let error = validate_claude_runtime_path(&availability, "unified ideation").unwrap_err();
     assert!(error.contains("unified ideation"));
     assert!(error.contains("Claude runtime"));
+}
+
+#[test]
+fn standard_harness_probe_registry_keys_explicit_harnesses() {
+    let registry = standard_harness_probe_registry();
+
+    assert!(registry.contains_key(&AgentHarnessKind::Claude));
+    assert!(registry.contains_key(&AgentHarnessKind::Codex));
 }
