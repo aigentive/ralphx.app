@@ -29,7 +29,7 @@ use super::ideation_commands_types::{OrchestratorMessageResponse, SendOrchestrat
 pub async fn send_orchestrator_message(
     input: SendOrchestratorMessageInput,
     state: State<'_, AppState>,
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
 ) -> Result<OrchestratorMessageResponse, String> {
     use crate::application::{ChatService, ClaudeChatService};
     use crate::domain::entities::ChatContextType;
@@ -48,10 +48,7 @@ pub async fn send_orchestrator_message(
     }
 
     // Create unified chat service
-    let chat_service: ClaudeChatService<tauri::Wry> = state
-        .build_chat_service()
-        .with_app_handle(app)
-        .with_interactive_process_registry(state.interactive_process_registry.clone());
+    let chat_service: ClaudeChatService<tauri::Wry> = state.build_chat_service();
 
     validate_chat_runtime_for_context(
         &state,

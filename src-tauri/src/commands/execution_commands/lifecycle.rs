@@ -347,10 +347,6 @@ pub async fn resume_execution(
                 Arc::new(
                     app_state
                         .build_chat_service_with_execution_state(Arc::clone(&execution_state_arc))
-                        .with_app_handle(handle.clone())
-                        .with_interactive_process_registry(Arc::clone(
-                            &app_state.interactive_process_registry,
-                        ))
                         .with_team_service(Arc::clone(&team_service)),
                 ) as Arc<dyn ChatService>
             },
@@ -370,10 +366,6 @@ pub async fn resume_execution(
             |is_team_mode| {
                 let mut service = app_state
                     .build_chat_service_with_execution_state(Arc::clone(&execution_state_arc))
-                    .with_app_handle(handle.clone())
-                    .with_interactive_process_registry(Arc::clone(
-                        &app_state.interactive_process_registry,
-                    ))
                     .with_team_service(Arc::clone(&team_service));
                 if is_team_mode {
                     service = service.with_team_mode(true);
@@ -393,10 +385,6 @@ pub async fn resume_execution(
                 Arc::new(
                     app_state
                         .build_chat_service_with_execution_state(Arc::clone(&execution_state_arc))
-                        .with_app_handle(handle.clone())
-                        .with_interactive_process_registry(Arc::clone(
-                            &app_state.interactive_process_registry,
-                        ))
                         .with_team_service(Arc::clone(&team_service)),
                 ) as Arc<dyn ChatService>
             },
