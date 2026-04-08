@@ -176,3 +176,32 @@ fn standard_harness_probe_registry_keys_explicit_harnesses() {
     assert!(registry.contains_key(&AgentHarnessKind::Claude));
     assert!(registry.contains_key(&AgentHarnessKind::Codex));
 }
+
+#[test]
+fn missing_requested_probe_does_not_silently_fall_back_to_default_probe() {
+    let config = ResolvedLaneHarnessConfig {
+        lane: AgentLane::IdeationPrimary,
+        configured_harness: Some(AgentHarnessKind::Codex),
+        fallback_harness: None,
+    };
+    let probes = HashMap::from([(
+        AgentHarnessKind::Claude,
+        HarnessRuntimeProbe {
+            binary_path: Some("/opt/homebrew/bin/claude".to_string()),
+            binary_found: true,
+            probe_succeeded: true,
+            available: true,
+            missing_core_exec_features: Vec::new(),
+            error: None,
+        },
+    )]);
+
+    let availability = build_ideation_lane_harness_availability(config, &probes);
+
+    assert_eq!(availability.effective_harness, AgentHarnessKind::Codex);
+    assert!(!availability.available);
+    assert_eq!(
+        availability.error.as_deref(),
+        Some("No harness probe registered for codex")
+    );
+}

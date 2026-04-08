@@ -325,7 +325,6 @@ pub(crate) fn probe_harness(harness: AgentHarnessKind) -> HarnessRuntimeProbe {
     let registry = standard_harness_probe_registry();
     registry
         .get(&harness)
-        .or_else(|| registry.get(&DEFAULT_AGENT_HARNESS))
         .map(|probe| probe())
         .unwrap_or(HarnessRuntimeProbe {
             binary_path: None,
@@ -344,17 +343,25 @@ pub(crate) fn probe_supported_harnesses() -> HashMap<AgentHarnessKind, HarnessRu
         .collect()
 }
 
-fn probe_for_harness<'a>(
-    probes: &'a HashMap<AgentHarnessKind, HarnessRuntimeProbe>,
+fn missing_harness_probe(harness: AgentHarnessKind) -> HarnessRuntimeProbe {
+    HarnessRuntimeProbe {
+        binary_path: None,
+        binary_found: false,
+        probe_succeeded: false,
+        available: false,
+        missing_core_exec_features: Vec::new(),
+        error: Some(format!("No harness probe registered for {}", harness)),
+    }
+}
+
+fn probe_for_harness(
+    probes: &HashMap<AgentHarnessKind, HarnessRuntimeProbe>,
     harness: AgentHarnessKind,
-) -> &'a HarnessRuntimeProbe {
+) -> HarnessRuntimeProbe {
     probes
         .get(&harness)
-        .unwrap_or_else(|| {
-            probes
-                .get(&DEFAULT_AGENT_HARNESS)
-                .expect("default harness probe available")
-        })
+        .cloned()
+        .unwrap_or_else(|| missing_harness_probe(harness))
 }
 
 pub(crate) fn build_ideation_lane_harness_availability(
