@@ -201,7 +201,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
     let recovery_chat_service = build_startup_recovery_chat_service(
         app_handle.clone(),
         Arc::clone(&execution_state),
-        recovery_chat_service_deps,
+        recovery_chat_service_deps.clone(),
     );
 
     let runner = StartupJobRunner::new(
@@ -333,26 +333,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         };
 
         let recovery_config = RecoveryQueueConfig::default();
-        let recovery_queue_chat_deps = ChatRuntimeFactoryDeps::from_core(
-            Arc::clone(&chat_message_repo),
-            Arc::clone(&chat_attachment_repo),
-            Arc::clone(&artifact_repo),
-            Arc::clone(&conversation_repo),
-            Arc::clone(&agent_run_repo),
-            Arc::clone(&project_repo),
-            Arc::clone(&task_repo),
-            Arc::clone(&task_dependency_repo),
-            Arc::clone(&ideation_session_repo),
-            Arc::clone(&activity_event_repo),
-            Arc::clone(&message_queue),
-            Arc::clone(&running_agent_registry),
-            Arc::clone(&memory_event_repo),
-        )
-        .with_execution_settings_repo(Arc::clone(&execution_settings_repo))
-        .with_agent_lane_settings_repo(Arc::clone(&agent_lane_settings_repo))
-        .with_ideation_effort_settings_repo(Arc::clone(&ideation_effort_settings_repo))
-        .with_ideation_model_settings_repo(Arc::clone(&ideation_model_settings_repo))
-        .with_interactive_process_registry(Arc::clone(&interactive_process_registry));
+        let recovery_queue_chat_deps = recovery_chat_service_deps.clone();
         let recovery_chat_service = build_startup_recovery_chat_service(
             app_handle.clone(),
             Arc::clone(&execution_state),
