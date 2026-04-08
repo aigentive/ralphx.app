@@ -12,6 +12,40 @@ use crate::infrastructure::agents::claude::agent_names::{
     AGENT_REVIEWER, AGENT_REVIEW_CHAT, AGENT_REVIEW_HISTORY, AGENT_WORKER, AGENT_WORKER_TEAM,
 };
 
+enum ModelLabelStrategy {
+    ClaudeMapped,
+    RawModelId,
+}
+
+enum EffortStrategy {
+    ClaudeEffortFirst,
+    LogicalOnly,
+}
+
+struct ChatHarnessBehavior {
+    honors_team_mode: bool,
+    supports_merge_completion_watcher: bool,
+    model_label_strategy: ModelLabelStrategy,
+    effort_strategy: EffortStrategy,
+}
+
+fn chat_harness_behavior(harness: AgentHarnessKind) -> ChatHarnessBehavior {
+    match harness {
+        AgentHarnessKind::Claude => ChatHarnessBehavior {
+            honors_team_mode: true,
+            supports_merge_completion_watcher: true,
+            model_label_strategy: ModelLabelStrategy::ClaudeMapped,
+            effort_strategy: EffortStrategy::ClaudeEffortFirst,
+        },
+        AgentHarnessKind::Codex => ChatHarnessBehavior {
+            honors_team_mode: false,
+            supports_merge_completion_watcher: false,
+            model_label_strategy: ModelLabelStrategy::RawModelId,
+            effort_strategy: EffortStrategy::LogicalOnly,
+        },
+    }
+}
+
 /// Agent Resolution System
 ///
 /// Determines which agent to use based on context type AND optionally entity status.
@@ -97,7 +131,7 @@ pub fn effective_team_mode_for_harness(
     requested_team_mode: bool,
     harness: AgentHarnessKind,
 ) -> bool {
-    requested_team_mode && harness == AgentHarnessKind::Claude
+    requested_team_mode && chat_harness_behavior(harness).honors_team_mode
 }
 
 /// Resolve a provider harness while preserving legacy pre-Codex Claude sessions.
@@ -125,12 +159,12 @@ pub fn effective_effort_for_harness(
     claude_effort: Option<&str>,
     logical_effort: Option<LogicalEffort>,
 ) -> String {
-    match harness {
-        AgentHarnessKind::Claude => claude_effort
+    match chat_harness_behavior(harness).effort_strategy {
+        EffortStrategy::ClaudeEffortFirst => claude_effort
             .map(str::to_string)
             .or_else(|| logical_effort.map(|effort| effort.to_string()))
             .unwrap_or_else(|| "medium".to_string()),
-        AgentHarnessKind::Codex => logical_effort
+        EffortStrategy::LogicalOnly => logical_effort
             .map(|effort| effort.to_string())
             .unwrap_or_else(|| "medium".to_string()),
     }
@@ -140,18 +174,18 @@ pub fn effective_model_label_for_harness(
     harness: AgentHarnessKind,
     effective_model_id: &str,
 ) -> String {
-    match harness {
-        AgentHarnessKind::Claude => {
+    match chat_harness_behavior(harness).model_label_strategy {
+        ModelLabelStrategy::ClaudeMapped => {
             crate::infrastructure::agents::claude::model_labels::model_id_to_label(
                 effective_model_id,
             )
         }
-        AgentHarnessKind::Codex => effective_model_id.to_string(),
+        ModelLabelStrategy::RawModelId => effective_model_id.to_string(),
     }
 }
 
 pub fn harness_supports_merge_completion_watcher(harness: AgentHarnessKind) -> bool {
-    harness == AgentHarnessKind::Claude
+    chat_harness_behavior(harness).supports_merge_completion_watcher
 }
 
 /// Map ChatContextType to process name for team config lookup
