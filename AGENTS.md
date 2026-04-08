@@ -18,6 +18,7 @@ Primary project docs:
 |---|---|
 | Read project instructions first | Before substantial work, read the relevant repo docs (`CLAUDE.md` at root, plus subtree docs like `src-tauri/CLAUDE.md`). |
 | Preserve user work | Never revert unrelated changes you did not make. If the tree is dirty, isolate your edits and verify diffs before commit. |
+| Legacy harness compatibility (NON-NEGOTIABLE) | Pre-Codex persisted data and payloads must keep working. Provider-neutral changes stay additive/derivable from legacy Claude-only fields until an explicit migration/removal plan lands. |
 | Minimal diffs | Avoid formatter churn and accidental refactors. Keep changes scoped to the task. |
 | Agent tool alignment | MCP/tool changes are multi-layer: keep prompt frontmatter, `ralphx.yaml`, and MCP allowlists in sync. Source: `.claude/rules/agent-mcp-tools.md`. |
 | Handler module split | Oversized Rust HTTP handlers belong in directory-backed modules (`foo/mod.rs` + endpoint-family files), not single multi-thousand-line `foo.rs` files. |
