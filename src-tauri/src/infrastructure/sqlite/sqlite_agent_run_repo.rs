@@ -26,8 +26,8 @@ fn parse_datetime(s: &str) -> DateTime<Utc> {
 }
 
 use crate::domain::entities::{
-    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, ChatConversation, ChatConversationId,
-    InterruptedConversation,
+    normalize_provider_session_compatibility, AgentRun, AgentRunId, AgentRunStatus,
+    ChatContextType, ChatConversation, ChatConversationId, InterruptedConversation,
 };
 
 /// Map a SQLite row to an AgentRun (expects columns: id, conversation_id, status,
@@ -372,17 +372,12 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                         let conv_updated_at_str: String = row.get("conv_updated_at")?;
                         let last_message_at_str: Option<String> = row.get("last_message_at")?;
 
-                        if provider_session_id.is_none() && claude_session_id.is_some() {
-                            provider_session_id = claude_session_id.clone();
-                            provider_harness = Some(AgentHarnessKind::Claude);
-                        }
-
-                        if claude_session_id.is_none()
-                            && matches!(provider_harness, Some(AgentHarnessKind::Claude))
-                            && provider_session_id.is_some()
-                        {
-                            claude_session_id = provider_session_id.clone();
-                        }
+                        (claude_session_id, provider_session_id, provider_harness) =
+                            normalize_provider_session_compatibility(
+                                claude_session_id,
+                                provider_session_id,
+                                provider_harness,
+                            );
 
                         let conversation = ChatConversation {
                             id: ChatConversationId::from_string(row.get::<_, String>("conv_id")?),

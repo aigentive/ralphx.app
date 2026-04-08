@@ -114,6 +114,60 @@ fn test_provider_session_ref_falls_back_to_legacy_claude_field() {
 }
 
 #[test]
+fn test_legacy_claude_session_alias_only_applies_to_claude() {
+    assert_eq!(
+        legacy_claude_session_alias(Some(AgentHarnessKind::Claude), Some("session-123")),
+        Some("session-123".to_string())
+    );
+    assert_eq!(
+        legacy_claude_session_alias(Some(AgentHarnessKind::Codex), Some("session-123")),
+        None
+    );
+}
+
+#[test]
+fn test_normalize_provider_session_compatibility_from_legacy_claude_field() {
+    let (claude_session_id, provider_session_id, provider_harness) =
+        normalize_provider_session_compatibility(
+            Some("legacy-session".to_string()),
+            None,
+            None,
+        );
+
+    assert_eq!(claude_session_id.as_deref(), Some("legacy-session"));
+    assert_eq!(provider_session_id.as_deref(), Some("legacy-session"));
+    assert_eq!(provider_harness, Some(AgentHarnessKind::Claude));
+}
+
+#[test]
+fn test_normalize_provider_session_compatibility_restores_legacy_alias_for_claude() {
+    let (claude_session_id, provider_session_id, provider_harness) =
+        normalize_provider_session_compatibility(
+            None,
+            Some("provider-session".to_string()),
+            Some(AgentHarnessKind::Claude),
+        );
+
+    assert_eq!(claude_session_id.as_deref(), Some("provider-session"));
+    assert_eq!(provider_session_id.as_deref(), Some("provider-session"));
+    assert_eq!(provider_harness, Some(AgentHarnessKind::Claude));
+}
+
+#[test]
+fn test_normalize_provider_session_compatibility_keeps_codex_without_legacy_alias() {
+    let (claude_session_id, provider_session_id, provider_harness) =
+        normalize_provider_session_compatibility(
+            None,
+            Some("codex-session".to_string()),
+            Some(AgentHarnessKind::Codex),
+        );
+
+    assert_eq!(claude_session_id, None);
+    assert_eq!(provider_session_id.as_deref(), Some("codex-session"));
+    assert_eq!(provider_harness, Some(AgentHarnessKind::Codex));
+}
+
+#[test]
 fn test_set_title() {
     let session_id = IdeationSessionId::new();
     let mut conv = ChatConversation::new_ideation(session_id);

@@ -53,7 +53,10 @@ pub use artifact_flow::{
     ArtifactFlowId, ArtifactFlowStep, ArtifactFlowTrigger, ParseArtifactFlowEventError,
 };
 pub use chat_attachment::{ChatAttachment, ChatAttachmentId};
-pub use chat_conversation::{ChatContextType, ChatConversation, ChatConversationId};
+pub use chat_conversation::{
+    legacy_claude_session_alias, normalize_provider_session_compatibility, ChatContextType,
+    ChatConversation, ChatConversationId,
+};
 pub use execution_plan::{ExecutionPlan, ExecutionPlanStatus, ParseExecutionPlanStatusError};
 pub use ideation::{
     build_child_session, matching_blocker_followup_session, AcceptanceStatus, BusinessValueFactor,

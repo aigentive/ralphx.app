@@ -9,7 +9,10 @@ use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use rusqlite::Connection;
 
 use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
-use crate::domain::entities::{ChatContextType, ChatConversation, ChatConversationId};
+use crate::domain::entities::{
+    legacy_claude_session_alias, normalize_provider_session_compatibility, ChatContextType,
+    ChatConversation, ChatConversationId,
+};
 use crate::domain::repositories::ChatConversationRepository;
 use crate::error::AppResult;
 use crate::infrastructure::sqlite::DbConnection;
@@ -41,17 +44,12 @@ fn row_to_conversation(row: &rusqlite::Row) -> rusqlite::Result<ChatConversation
     let created_at_str: String = row.get("created_at")?;
     let updated_at_str: String = row.get("updated_at")?;
 
-    if provider_session_id.is_none() && claude_session_id.is_some() {
-        provider_session_id = claude_session_id.clone();
-        provider_harness = Some(AgentHarnessKind::Claude);
-    }
-
-    if claude_session_id.is_none()
-        && matches!(provider_harness, Some(AgentHarnessKind::Claude))
-        && provider_session_id.is_some()
-    {
-        claude_session_id = provider_session_id.clone();
-    }
+    (claude_session_id, provider_session_id, provider_harness) =
+        normalize_provider_session_compatibility(
+            claude_session_id,
+            provider_session_id,
+            provider_harness,
+        );
 
     let created_at = parse_datetime(&created_at_str);
     let updated_at = parse_datetime(&updated_at_str);
@@ -194,11 +192,8 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
         let id_str = id.as_str().to_string();
         let session_id = session_ref.provider_session_id.clone();
         let harness = session_ref.harness.to_string();
-        let claude_session_id = if session_ref.harness == AgentHarnessKind::Claude {
-            Some(session_id.clone())
-        } else {
-            None
-        };
+        let claude_session_id =
+            legacy_claude_session_alias(Some(session_ref.harness), Some(session_id.as_str()));
         self.db.run(move |conn| {
             conn.execute(
                 "UPDATE chat_conversations

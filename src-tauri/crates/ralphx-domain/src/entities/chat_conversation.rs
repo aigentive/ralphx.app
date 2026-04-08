@@ -274,11 +274,8 @@ impl ChatConversation {
         } = session_ref;
         self.provider_harness = Some(harness);
         self.provider_session_id = Some(provider_session_id.clone());
-        self.claude_session_id = if harness == AgentHarnessKind::Claude {
-            Some(provider_session_id)
-        } else {
-            None
-        };
+        self.claude_session_id =
+            legacy_claude_session_alias(Some(harness), Some(provider_session_id.as_str()));
         self.updated_at = Utc::now();
     }
 
@@ -336,6 +333,43 @@ impl ChatConversation {
             .clone()
             .unwrap_or_else(|| "Untitled conversation".to_string())
     }
+}
+
+pub fn legacy_claude_session_alias(
+    harness: Option<AgentHarnessKind>,
+    provider_session_id: Option<&str>,
+) -> Option<String> {
+    matches!(harness, Some(AgentHarnessKind::Claude))
+        .then(|| provider_session_id.map(str::to_string))
+        .flatten()
+}
+
+pub fn normalize_provider_session_compatibility(
+    claude_session_id: Option<String>,
+    provider_session_id: Option<String>,
+    provider_harness: Option<AgentHarnessKind>,
+) -> (Option<String>, Option<String>, Option<AgentHarnessKind>) {
+    let mut normalized_claude_session_id = claude_session_id;
+    let mut normalized_provider_session_id = provider_session_id;
+    let mut normalized_provider_harness = provider_harness;
+
+    if normalized_provider_session_id.is_none() && normalized_claude_session_id.is_some() {
+        normalized_provider_session_id = normalized_claude_session_id.clone();
+        normalized_provider_harness = Some(AgentHarnessKind::Claude);
+    }
+
+    if normalized_claude_session_id.is_none() {
+        normalized_claude_session_id = legacy_claude_session_alias(
+            normalized_provider_harness,
+            normalized_provider_session_id.as_deref(),
+        );
+    }
+
+    (
+        normalized_claude_session_id,
+        normalized_provider_session_id,
+        normalized_provider_harness,
+    )
 }
 
 #[cfg(test)]

@@ -5,7 +5,9 @@
 use serde::Serialize;
 
 use crate::domain::agents::AgentHarnessKind;
-use crate::domain::entities::{ChatConversation, ChatMessage};
+use crate::domain::entities::{
+    legacy_claude_session_alias, ChatConversation, ChatMessage,
+};
 
 // ============================================================================
 // Event Name Constants
@@ -235,9 +237,8 @@ impl AgentRunCompletedPayload {
         run_chain_id: Option<String>,
     ) -> Self {
         let provider_harness = harness.map(|value| value.to_string());
-        let claude_session_id = matches!(harness, Some(AgentHarnessKind::Claude))
-            .then(|| provider_session_id.clone())
-            .flatten();
+        let claude_session_id =
+            legacy_claude_session_alias(harness, provider_session_id.as_deref());
 
         Self {
             conversation_id: conversation_id.into(),
