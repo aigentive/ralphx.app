@@ -98,6 +98,22 @@ pub fn effective_team_mode_for_harness(
     requested_team_mode && harness == AgentHarnessKind::Claude
 }
 
+/// Resolve a provider harness while preserving legacy pre-Codex Claude sessions.
+///
+/// During the additive migration window, a persisted `claude_session_id` without a
+/// provider-neutral harness still implies Claude.
+pub fn provider_harness_or_default(
+    provider_harness: Option<AgentHarnessKind>,
+    legacy_claude_session_id: Option<&str>,
+    default_harness: AgentHarnessKind,
+) -> AgentHarnessKind {
+    provider_harness.unwrap_or_else(|| {
+        legacy_claude_session_id
+            .map(|_| AgentHarnessKind::Claude)
+            .unwrap_or(default_harness)
+    })
+}
+
 /// Map ChatContextType to process name for team config lookup
 pub fn context_type_to_process(context_type: &ChatContextType) -> &'static str {
     match context_type {

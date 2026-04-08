@@ -1235,10 +1235,13 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                             None,
                             None,
                             Some(
-                                existing_provider_session_ref
-                                    .as_ref()
-                                    .map(|session_ref| session_ref.harness)
-                                    .unwrap_or(AgentHarnessKind::Claude),
+                                chat_service_helpers::provider_harness_or_default(
+                                    existing_provider_session_ref
+                                        .as_ref()
+                                        .map(|session_ref| session_ref.harness),
+                                    conversation.claude_session_id.as_deref(),
+                                    AgentHarnessKind::Claude,
+                                ),
                             ),
                             existing_provider_session_ref
                                 .map(|session_ref| session_ref.provider_session_id),

@@ -1007,11 +1007,14 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
         Arc<super::verification_child_process_registry::VerificationChildProcessRegistry>,
     >,
 ) -> bool {
-    let stored_provider_harness = conversation
-        .and_then(|conv| conv.provider_session_ref().map(|session_ref| session_ref.harness))
-        .or_else(|| {
-            stored_session_id.map(|_| crate::domain::agents::AgentHarnessKind::Claude)
-        });
+    let stored_provider_harness = Some(
+        super::chat_service_helpers::provider_harness_or_default(
+            conversation.and_then(|conv| conv.provider_session_ref().map(|session_ref| session_ref.harness)),
+            stored_session_id,
+            crate::domain::agents::AgentHarnessKind::Claude,
+        ),
+    )
+    .filter(|_| conversation.is_some() || stored_session_id.is_some());
     let stored_provider_session_id = stored_session_id.map(|session_id| session_id.to_string());
 
     // Handle cancellation — distinguish "cancelled after normal completion" from "user stop"
@@ -1265,10 +1268,14 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 );
                 // Fall through to clear session
             } else if let (Some(msg), Some(conv)) = (user_message_content, conversation) {
-                let recovery_harness = conv
+                let recovery_provider_harness = conv
                     .provider_session_ref()
-                    .map(|session_ref| session_ref.harness)
-                    .unwrap_or(crate::domain::agents::AgentHarnessKind::Claude);
+                    .map(|session_ref| session_ref.harness);
+                let recovery_harness = super::chat_service_helpers::provider_harness_or_default(
+                    recovery_provider_harness,
+                    conv.claude_session_id.as_deref(),
+                    crate::domain::agents::AgentHarnessKind::Claude,
+                );
                 // Attempt recovery
                 match super::chat_service_recovery::attempt_session_recovery(
                     &conversation_id,
