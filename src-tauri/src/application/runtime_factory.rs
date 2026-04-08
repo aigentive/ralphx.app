@@ -4,16 +4,17 @@ use tauri::{AppHandle, Manager, Runtime};
 
 use crate::application::chat_service::{ClaudeChatService, StreamingStateCache};
 use crate::application::{
-    AppState, InteractiveProcessRegistry, TaskSchedulerService, TaskTransitionService,
+    AgentClientBundle, AppState, InteractiveProcessRegistry, TaskSchedulerService,
+    TaskTransitionService,
 };
 use crate::commands::ExecutionState;
 use crate::domain::repositories::{
     ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, ArtifactRepository,
     ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
-    ExecutionSettingsRepository, IdeationEffortSettingsRepository,
-    IdeationModelSettingsRepository, IdeationSessionRepository, MemoryEventRepository,
-    PlanBranchRepository, ProjectRepository, ReviewRepository, TaskDependencyRepository,
-    TaskProposalRepository, TaskRepository, TaskStepRepository,
+    ExecutionSettingsRepository, IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
+    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
+    ReviewRepository, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
+    TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 
@@ -31,6 +32,7 @@ pub(crate) struct RuntimeFactoryDeps {
     pub message_queue: Arc<MessageQueue>,
     pub running_agent_registry: Arc<dyn RunningAgentRegistry>,
     pub memory_event_repo: Arc<dyn MemoryEventRepository>,
+    pub agent_clients: Option<AgentClientBundle>,
     pub execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
     pub agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
     pub plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
@@ -71,10 +73,7 @@ pub(crate) fn build_chat_service_with_fallback<R: Runtime>(
 ) -> ClaudeChatService<R> {
     if let Some(handle) = app_handle {
         if let Some(app_state) = handle.try_state::<AppState>() {
-            return app_state.build_chat_service_for_runtime(
-                execution_state,
-                app_handle.clone(),
-            );
+            return app_state.build_chat_service_for_runtime(execution_state, app_handle.clone());
         }
     }
 
@@ -141,10 +140,8 @@ pub(crate) fn build_transition_service_with_fallback<R: Runtime>(
 ) -> TaskTransitionService<R> {
     if let Some(handle) = app_handle {
         if let Some(app_state) = handle.try_state::<AppState>() {
-            return app_state.build_transition_service_for_runtime(
-                execution_state,
-                app_handle.clone(),
-            );
+            return app_state
+                .build_transition_service_for_runtime(execution_state, app_handle.clone());
         }
     }
 
@@ -167,6 +164,12 @@ pub(crate) fn build_transition_service_with_fallback<R: Runtime>(
     if let Some(repo) = deps.execution_settings_repo.as_ref() {
         service = service.with_execution_settings_repo(Arc::clone(repo));
     }
+    if let Some(agent_clients) = deps.agent_clients.as_ref() {
+        service = service.with_agentic_client(Arc::clone(&agent_clients.default_client));
+        for (harness, client) in &agent_clients.harness_clients {
+            service = service.with_harness_agentic_client(*harness, Arc::clone(client));
+        }
+    }
     if let Some(repo) = deps.agent_lane_settings_repo.as_ref() {
         service = service.with_agent_lane_settings_repo(Arc::clone(repo));
     }
@@ -186,10 +189,7 @@ pub(crate) fn build_task_scheduler_with_fallback<R: Runtime>(
 ) -> TaskSchedulerService<R> {
     if let Some(handle) = app_handle {
         if let Some(app_state) = handle.try_state::<AppState>() {
-            return app_state.build_task_scheduler_for_runtime(
-                execution_state,
-                app_handle.clone(),
-            );
+            return app_state.build_task_scheduler_for_runtime(execution_state, app_handle.clone());
         }
     }
 

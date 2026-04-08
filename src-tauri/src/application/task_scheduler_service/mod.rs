@@ -341,6 +341,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
             message_queue: Arc::clone(&self.message_queue),
             running_agent_registry: Arc::clone(&self.running_agent_registry),
             memory_event_repo: Arc::clone(&self.memory_event_repo),
+            agent_clients: None,
             execution_settings_repo: self.execution_settings_repo.as_ref().map(Arc::clone),
             agent_lane_settings_repo: self.agent_lane_settings_repo.as_ref().map(Arc::clone),
             plan_branch_repo: self.plan_branch_repo.as_ref().map(Arc::clone),

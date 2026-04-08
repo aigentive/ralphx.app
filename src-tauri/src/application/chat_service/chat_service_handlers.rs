@@ -168,6 +168,7 @@ fn build_transition_service<R: Runtime>(
         message_queue,
         running_agent_registry,
         memory_event_repo,
+        agent_clients: None,
         execution_settings_repo: None,
         agent_lane_settings_repo: None,
         plan_branch_repo: None,
@@ -209,6 +210,7 @@ fn build_task_scheduler_service<R: Runtime>(
         message_queue,
         running_agent_registry,
         memory_event_repo,
+        agent_clients: None,
         execution_settings_repo,
         agent_lane_settings_repo: app_handle
             .as_ref()

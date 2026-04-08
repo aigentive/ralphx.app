@@ -33,6 +33,7 @@ impl StartupTransitionFactory {
         mut deps: RuntimeFactoryDeps,
         app_handle: tauri::AppHandle,
     ) -> TaskTransitionService {
+        deps.agent_clients = Some(self.agent_clients.clone());
         deps.execution_settings_repo = Some(Arc::clone(&self.execution_settings_repo));
         deps.agent_lane_settings_repo = Some(Arc::clone(&self.agent_lane_settings_repo));
         deps.plan_branch_repo = Some(Arc::clone(&self.plan_branch_repo));
@@ -43,15 +44,10 @@ impl StartupTransitionFactory {
             Arc::clone(&self.execution_state),
             &deps,
         )
-        .with_agentic_client(Arc::clone(&self.agent_clients.default_client))
         .with_task_scheduler(Arc::clone(&self.task_scheduler))
         .with_step_repo(Arc::clone(&self.step_repo))
         .with_external_events_repo(Arc::clone(&self.external_events_repo))
         .with_session_merge_locks(Arc::clone(&self.session_merge_locks));
-
-        for (harness, client) in &self.agent_clients.harness_clients {
-            service = service.with_harness_agentic_client(*harness, Arc::clone(client));
-        }
 
         if let Some(ref publisher) = self.webhook_publisher {
             service = service.with_webhook_publisher_for_emitter(Arc::clone(publisher));

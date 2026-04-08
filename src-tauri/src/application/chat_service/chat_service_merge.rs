@@ -103,6 +103,7 @@ impl<'a, R: Runtime> MergeAutoCompleteContext<'a, R> {
             message_queue: Arc::clone(self.message_queue),
             running_agent_registry: Arc::clone(self.running_agent_registry),
             memory_event_repo: Arc::clone(self.memory_event_repo),
+            agent_clients: None,
             execution_settings_repo: self.execution_settings_repo.map(Arc::clone),
             agent_lane_settings_repo: self
                 .app_handle
@@ -135,6 +136,7 @@ impl<'a, R: Runtime> MergeAutoCompleteContext<'a, R> {
             message_queue: Arc::clone(self.message_queue),
             running_agent_registry: Arc::clone(self.running_agent_registry),
             memory_event_repo: Arc::clone(self.memory_event_repo),
+            agent_clients: None,
             execution_settings_repo: self.execution_settings_repo.map(Arc::clone),
             agent_lane_settings_repo: self
                 .app_handle

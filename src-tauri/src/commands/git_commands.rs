@@ -467,6 +467,7 @@ async fn execute_merge_retry_background(
         message_queue: Arc::clone(&message_queue),
         running_agent_registry: Arc::clone(&running_agent_registry),
         memory_event_repo: Arc::clone(&memory_event_repo),
+        agent_clients: None,
         execution_settings_repo: Some(Arc::clone(&execution_settings_repo)),
         agent_lane_settings_repo: Some(Arc::clone(&agent_lane_settings_repo)),
         plan_branch_repo: Some(Arc::clone(&plan_branch_repo)),
