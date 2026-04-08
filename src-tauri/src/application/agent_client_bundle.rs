@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::domain::agents::{AgentHarnessKind, AgenticClient, DEFAULT_AGENT_HARNESS};
+use crate::domain::agents::{
+    standard_harness_map, AgentHarnessKind, AgenticClient, DEFAULT_AGENT_HARNESS,
+};
 use crate::infrastructure::agents::CodexCliClient;
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -59,31 +61,48 @@ impl AgentClientBundle {
             .with_harness_clients(extra_clients)
     }
 
-    fn standard_nondefault_runtime_clients(
+    fn split_default_harness_value<T>(
+        mut harness_values: HashMap<AgentHarnessKind, T>,
+    ) -> (T, HashMap<AgentHarnessKind, T>) {
+        let default_value = harness_values
+            .remove(&DEFAULT_AGENT_HARNESS)
+            .expect("standard runtime harness set must include DEFAULT_AGENT_HARNESS");
+        (default_value, harness_values)
+    }
+
+    fn standard_runtime_client_for_harness(
+        harness: AgentHarnessKind,
         mock: bool,
-    ) -> impl IntoIterator<Item = (AgentHarnessKind, Arc<dyn AgenticClient>)> {
-        [(
-            AgentHarnessKind::Codex,
-            if mock {
-                Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>
-            } else {
-                Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>
-            },
-        )]
+    ) -> Arc<dyn AgenticClient> {
+        match (harness, mock) {
+            (AgentHarnessKind::Claude, false) => Arc::new(ClaudeCodeClient::new()),
+            (AgentHarnessKind::Claude, true) => Arc::new(MockAgenticClient::new()),
+            (AgentHarnessKind::Codex, false) => Arc::new(CodexCliClient::new()),
+            (AgentHarnessKind::Codex, true) => Arc::new(MockAgenticClient::new()),
+        }
+    }
+
+    fn standard_runtime_clients_by_harness(
+        mock: bool,
+    ) -> HashMap<AgentHarnessKind, Arc<dyn AgenticClient>> {
+        standard_harness_map(
+            Self::standard_runtime_client_for_harness(AgentHarnessKind::Claude, mock),
+            Self::standard_runtime_client_for_harness(AgentHarnessKind::Codex, mock),
+        )
     }
 
     pub fn standard_production_runtime_clients() -> Self {
-        Self::standard_runtime_clients(
-            Arc::new(ClaudeCodeClient::new()),
-            Self::standard_nondefault_runtime_clients(false),
-        )
+        let (default_client, harness_clients) =
+            Self::split_default_harness_value(Self::standard_runtime_clients_by_harness(false));
+        Self::from_default_client(DEFAULT_AGENT_HARNESS, default_client)
+            .with_harness_clients(harness_clients)
     }
 
     pub fn standard_mock_runtime_clients() -> Self {
-        Self::standard_runtime_clients(
-            Arc::new(MockAgenticClient::new()),
-            Self::standard_nondefault_runtime_clients(true),
-        )
+        let (default_client, harness_clients) =
+            Self::split_default_harness_value(Self::standard_runtime_clients_by_harness(true));
+        Self::from_default_client(DEFAULT_AGENT_HARNESS, default_client)
+            .with_harness_clients(harness_clients)
     }
 
     pub fn resolve(&self, harness: AgentHarnessKind) -> Arc<dyn AgenticClient> {
@@ -146,20 +165,31 @@ impl AgentClientFactoryBundle {
             .with_harness_factories(extra_factories)
     }
 
-    fn standard_nondefault_runtime_factories(
-    ) -> impl IntoIterator<Item = (AgentHarnessKind, Arc<AgentClientFactory>)> {
-        [(
-            AgentHarnessKind::Codex,
-            Arc::new(|| Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>)
-                as Arc<AgentClientFactory>,
-        )]
+    fn standard_runtime_factory_for_harness(harness: AgentHarnessKind) -> Arc<AgentClientFactory> {
+        match harness {
+            AgentHarnessKind::Claude => {
+                Arc::new(|| Arc::new(ClaudeCodeClient::new()) as Arc<dyn AgenticClient>)
+            }
+            AgentHarnessKind::Codex => {
+                Arc::new(|| Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>)
+            }
+        }
+    }
+
+    fn standard_runtime_factories_by_harness() -> HashMap<AgentHarnessKind, Arc<AgentClientFactory>>
+    {
+        standard_harness_map(
+            Self::standard_runtime_factory_for_harness(AgentHarnessKind::Claude),
+            Self::standard_runtime_factory_for_harness(AgentHarnessKind::Codex),
+        )
     }
 
     pub fn standard_production_runtime_factories() -> Self {
-        Self::standard_runtime_factories(
-            Arc::new(|| Arc::new(ClaudeCodeClient::new()) as Arc<dyn AgenticClient>),
-            Self::standard_nondefault_runtime_factories(),
-        )
+        let (default_factory, harness_factories) = AgentClientBundle::split_default_harness_value(
+            Self::standard_runtime_factories_by_harness(),
+        );
+        Self::from_default_factory(DEFAULT_AGENT_HARNESS, default_factory)
+            .with_harness_factories(harness_factories)
     }
 
     pub fn instantiate(&self) -> AgentClientBundle {
@@ -201,27 +231,24 @@ impl AgentClientFactoryBundle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infrastructure::agents::mock::MockAgenticClient;
 
     #[test]
     fn standard_runtime_clients_uses_domain_default_harness() {
-        let bundle = AgentClientBundle::standard_runtime_clients(
-            Arc::new(MockAgenticClient::new()),
-            AgentClientBundle::standard_nondefault_runtime_clients(true),
-        );
+        let bundle = AgentClientBundle::standard_mock_runtime_clients();
 
         assert_eq!(bundle.default_harness, DEFAULT_AGENT_HARNESS);
-        assert!(bundle.harness_clients.contains_key(&AgentHarnessKind::Codex));
+        assert!(bundle
+            .harness_clients
+            .contains_key(&AgentHarnessKind::Codex));
     }
 
     #[test]
     fn standard_runtime_factories_uses_domain_default_harness() {
-        let bundle = AgentClientFactoryBundle::standard_runtime_factories(
-            Arc::new(|| Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>),
-            AgentClientFactoryBundle::standard_nondefault_runtime_factories(),
-        );
+        let bundle = AgentClientFactoryBundle::standard_production_runtime_factories();
 
         assert_eq!(bundle.default_harness, DEFAULT_AGENT_HARNESS);
-        assert!(bundle.harness_factories.contains_key(&AgentHarnessKind::Codex));
+        assert!(bundle
+            .harness_factories
+            .contains_key(&AgentHarnessKind::Codex));
     }
 }
