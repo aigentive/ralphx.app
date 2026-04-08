@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::domain::agents::{
-    AgentHarnessKind, AgentLane, AgentLaneSettings, LogicalEffort, StoredAgentLaneSettings,
-    DEFAULT_AGENT_HARNESS,
+    default_fallback_harness_for, generic_harness_lane_defaults, AgentHarnessKind, AgentLane,
+    AgentLaneSettings, LogicalEffort, StoredAgentLaneSettings, DEFAULT_AGENT_HARNESS,
 };
 use crate::domain::entities::ChatContextType;
 use crate::domain::repositories::{
@@ -325,37 +325,8 @@ fn codex_default_lane_settings(
         return None;
     }
 
-    let mut settings = AgentLaneSettings::new(AgentHarnessKind::Codex);
-    settings.fallback_harness = Some(AgentHarnessKind::Claude);
-
-    match lane {
-        AgentLane::IdeationPrimary => {
-            settings.model = Some("gpt-5.4".to_string());
-            settings.effort = Some(LogicalEffort::XHigh);
-            settings.approval_policy = Some("on-request".to_string());
-            settings.sandbox_mode = Some("workspace-write".to_string());
-        }
-        AgentLane::IdeationVerifier => {
-            settings.model = Some("gpt-5.4-mini".to_string());
-            settings.effort = Some(LogicalEffort::Medium);
-            settings.approval_policy = Some("on-request".to_string());
-            settings.sandbox_mode = Some("workspace-write".to_string());
-        }
-        AgentLane::IdeationSubagent | AgentLane::IdeationVerifierSubagent => {
-            settings.model = Some("gpt-5.4-mini".to_string());
-            settings.effort = Some(LogicalEffort::Medium);
-        }
-        AgentLane::ExecutionWorker
-        | AgentLane::ExecutionReviewer
-        | AgentLane::ExecutionReexecutor
-        | AgentLane::ExecutionMerger => {
-            settings.model = Some("gpt-5.4".to_string());
-            settings.effort = Some(LogicalEffort::XHigh);
-            settings.approval_policy = Some("on-request".to_string());
-            settings.sandbox_mode = Some("workspace-write".to_string());
-        }
-    }
-
+    let mut settings = generic_harness_lane_defaults(AgentHarnessKind::Codex, lane);
+    settings.fallback_harness = default_fallback_harness_for(settings.harness);
     Some(settings)
 }
 

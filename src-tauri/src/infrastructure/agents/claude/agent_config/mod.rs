@@ -4,7 +4,8 @@ mod ui_config;
 pub use ui_config::{UiConfig, UiFeatureFlagsConfig};
 
 use crate::domain::agents::{
-    AgentHarnessKind, AgentLane, AgentLaneSettings, LogicalEffort,
+    default_fallback_harness_for, standard_agent_lane_defaults, AgentHarnessKind, AgentLane,
+    AgentLaneSettings, LogicalEffort,
 };
 use crate::domain::execution::{ExecutionSettings, GlobalExecutionSettings};
 use serde::Deserialize;
@@ -142,66 +143,8 @@ impl From<AgentLaneSettings> for AgentLaneSettingsConfigRaw {
     }
 }
 
-fn codex_lane_defaults(
-    model: &str,
-    effort: LogicalEffort,
-    approval_policy: Option<&str>,
-    sandbox_mode: Option<&str>,
-) -> AgentLaneSettings {
-    let mut settings = AgentLaneSettings::new(AgentHarnessKind::Codex);
-    settings.model = Some(model.to_string());
-    settings.effort = Some(effort);
-    settings.approval_policy = approval_policy.map(str::to_string);
-    settings.sandbox_mode = sandbox_mode.map(str::to_string);
-    settings.fallback_harness = Some(AgentHarnessKind::Claude);
-    settings
-}
-
 fn default_agent_harness_defaults() -> AgentHarnessDefaultsConfig {
-    HashMap::from([
-        (
-            AgentLane::IdeationPrimary,
-            codex_lane_defaults(
-                "gpt-5.4",
-                LogicalEffort::XHigh,
-                Some("on-request"),
-                Some("workspace-write"),
-            ),
-        ),
-        (
-            AgentLane::IdeationVerifier,
-            codex_lane_defaults(
-                "gpt-5.4-mini",
-                LogicalEffort::Medium,
-                Some("on-request"),
-                Some("workspace-write"),
-            ),
-        ),
-        (
-            AgentLane::IdeationSubagent,
-            codex_lane_defaults("gpt-5.4-mini", LogicalEffort::Medium, None, None),
-        ),
-        (
-            AgentLane::IdeationVerifierSubagent,
-            codex_lane_defaults("gpt-5.4-mini", LogicalEffort::Medium, None, None),
-        ),
-        (
-            AgentLane::ExecutionWorker,
-            AgentLaneSettings::new(AgentHarnessKind::Claude),
-        ),
-        (
-            AgentLane::ExecutionReviewer,
-            AgentLaneSettings::new(AgentHarnessKind::Claude),
-        ),
-        (
-            AgentLane::ExecutionReexecutor,
-            AgentLaneSettings::new(AgentHarnessKind::Claude),
-        ),
-        (
-            AgentLane::ExecutionMerger,
-            AgentLaneSettings::new(AgentHarnessKind::Claude),
-        ),
-    ])
+    standard_agent_lane_defaults()
 }
 
 fn default_agent_harness_defaults_raw() -> AgentHarnessDefaultsConfigRaw {
@@ -785,10 +728,10 @@ fn apply_agent_harness_env_overrides_with(
         }
 
         if (existing.is_none() || harness_overridden)
-            && settings.harness == AgentHarnessKind::Codex
+            && default_fallback_harness_for(settings.harness).is_some()
             && settings.fallback_harness.is_none()
         {
-            settings.fallback_harness = Some(AgentHarnessKind::Claude);
+            settings.fallback_harness = default_fallback_harness_for(settings.harness);
         }
 
         if settings.fallback_harness == Some(settings.harness) {

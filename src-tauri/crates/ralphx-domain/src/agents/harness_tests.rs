@@ -98,3 +98,37 @@ fn test_agent_lane_settings_serialization_omits_empty_optionals() {
     assert!(json.get("sandboxMode").is_none());
     assert!(json.get("fallbackHarness").is_none());
 }
+
+#[test]
+fn test_default_fallback_harness_for_codex_uses_default_harness() {
+    assert_eq!(
+        default_fallback_harness_for(AgentHarnessKind::Codex),
+        Some(DEFAULT_AGENT_HARNESS)
+    );
+    assert_eq!(default_fallback_harness_for(AgentHarnessKind::Claude), None);
+}
+
+#[test]
+fn test_generic_harness_lane_defaults_for_codex_primary() {
+    let settings =
+        generic_harness_lane_defaults(AgentHarnessKind::Codex, AgentLane::IdeationPrimary);
+
+    assert_eq!(settings.harness, AgentHarnessKind::Codex);
+    assert_eq!(settings.model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(settings.effort, Some(LogicalEffort::XHigh));
+    assert_eq!(settings.fallback_harness, Some(DEFAULT_AGENT_HARNESS));
+}
+
+#[test]
+fn test_standard_agent_lane_defaults_use_expected_harnesses() {
+    let defaults = standard_agent_lane_defaults();
+
+    assert_eq!(
+        defaults.get(&AgentLane::IdeationPrimary).unwrap().harness,
+        AgentHarnessKind::Codex
+    );
+    assert_eq!(
+        defaults.get(&AgentLane::ExecutionWorker).unwrap().harness,
+        DEFAULT_AGENT_HARNESS
+    );
+}

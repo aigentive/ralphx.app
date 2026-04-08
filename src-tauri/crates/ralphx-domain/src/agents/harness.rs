@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 
@@ -201,6 +202,96 @@ impl AgentLaneSettings {
             fallback_harness: None,
         }
     }
+}
+
+pub fn default_fallback_harness_for(harness: AgentHarnessKind) -> Option<AgentHarnessKind> {
+    match harness {
+        AgentHarnessKind::Claude => None,
+        AgentHarnessKind::Codex => Some(DEFAULT_AGENT_HARNESS),
+    }
+}
+
+pub fn generic_harness_lane_defaults(
+    harness: AgentHarnessKind,
+    lane: AgentLane,
+) -> AgentLaneSettings {
+    match harness {
+        AgentHarnessKind::Claude => AgentLaneSettings::new(AgentHarnessKind::Claude),
+        AgentHarnessKind::Codex => {
+            let mut settings = AgentLaneSettings::new(AgentHarnessKind::Codex);
+            settings.fallback_harness = default_fallback_harness_for(AgentHarnessKind::Codex);
+
+            match lane {
+                AgentLane::IdeationPrimary => {
+                    settings.model = Some("gpt-5.4".to_string());
+                    settings.effort = Some(LogicalEffort::XHigh);
+                    settings.approval_policy = Some("on-request".to_string());
+                    settings.sandbox_mode = Some("workspace-write".to_string());
+                }
+                AgentLane::IdeationVerifier => {
+                    settings.model = Some("gpt-5.4-mini".to_string());
+                    settings.effort = Some(LogicalEffort::Medium);
+                    settings.approval_policy = Some("on-request".to_string());
+                    settings.sandbox_mode = Some("workspace-write".to_string());
+                }
+                AgentLane::IdeationSubagent | AgentLane::IdeationVerifierSubagent => {
+                    settings.model = Some("gpt-5.4-mini".to_string());
+                    settings.effort = Some(LogicalEffort::Medium);
+                }
+                AgentLane::ExecutionWorker
+                | AgentLane::ExecutionReviewer
+                | AgentLane::ExecutionReexecutor
+                | AgentLane::ExecutionMerger => {
+                    settings.model = Some("gpt-5.4".to_string());
+                    settings.effort = Some(LogicalEffort::XHigh);
+                    settings.approval_policy = Some("on-request".to_string());
+                    settings.sandbox_mode = Some("workspace-write".to_string());
+                }
+            }
+
+            settings
+        }
+    }
+}
+
+pub fn standard_agent_lane_defaults() -> HashMap<AgentLane, AgentLaneSettings> {
+    HashMap::from([
+        (
+            AgentLane::IdeationPrimary,
+            generic_harness_lane_defaults(AgentHarnessKind::Codex, AgentLane::IdeationPrimary),
+        ),
+        (
+            AgentLane::IdeationVerifier,
+            generic_harness_lane_defaults(AgentHarnessKind::Codex, AgentLane::IdeationVerifier),
+        ),
+        (
+            AgentLane::IdeationSubagent,
+            generic_harness_lane_defaults(AgentHarnessKind::Codex, AgentLane::IdeationSubagent),
+        ),
+        (
+            AgentLane::IdeationVerifierSubagent,
+            generic_harness_lane_defaults(
+                AgentHarnessKind::Codex,
+                AgentLane::IdeationVerifierSubagent,
+            ),
+        ),
+        (
+            AgentLane::ExecutionWorker,
+            AgentLaneSettings::new(DEFAULT_AGENT_HARNESS),
+        ),
+        (
+            AgentLane::ExecutionReviewer,
+            AgentLaneSettings::new(DEFAULT_AGENT_HARNESS),
+        ),
+        (
+            AgentLane::ExecutionReexecutor,
+            AgentLaneSettings::new(DEFAULT_AGENT_HARNESS),
+        ),
+        (
+            AgentLane::ExecutionMerger,
+            AgentLaneSettings::new(DEFAULT_AGENT_HARNESS),
+        ),
+    ])
 }
 
 /// Persisted lane settings row scoped either globally or to a specific project.
