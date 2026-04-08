@@ -59,23 +59,30 @@ impl AgentClientBundle {
             .with_harness_clients(extra_clients)
     }
 
+    fn standard_nondefault_runtime_clients(
+        mock: bool,
+    ) -> impl IntoIterator<Item = (AgentHarnessKind, Arc<dyn AgenticClient>)> {
+        [(
+            AgentHarnessKind::Codex,
+            if mock {
+                Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>
+            } else {
+                Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>
+            },
+        )]
+    }
+
     pub fn standard_production_runtime_clients() -> Self {
         Self::standard_runtime_clients(
             Arc::new(ClaudeCodeClient::new()),
-            [(
-                AgentHarnessKind::Codex,
-                Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>,
-            )],
+            Self::standard_nondefault_runtime_clients(false),
         )
     }
 
     pub fn standard_mock_runtime_clients() -> Self {
         Self::standard_runtime_clients(
             Arc::new(MockAgenticClient::new()),
-            [(
-                AgentHarnessKind::Codex,
-                Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
-            )],
+            Self::standard_nondefault_runtime_clients(true),
         )
     }
 
@@ -139,14 +146,19 @@ impl AgentClientFactoryBundle {
             .with_harness_factories(extra_factories)
     }
 
+    fn standard_nondefault_runtime_factories(
+    ) -> impl IntoIterator<Item = (AgentHarnessKind, Arc<AgentClientFactory>)> {
+        [(
+            AgentHarnessKind::Codex,
+            Arc::new(|| Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>)
+                as Arc<AgentClientFactory>,
+        )]
+    }
+
     pub fn standard_production_runtime_factories() -> Self {
         Self::standard_runtime_factories(
             Arc::new(|| Arc::new(ClaudeCodeClient::new()) as Arc<dyn AgenticClient>),
-            [(
-                AgentHarnessKind::Codex,
-                Arc::new(|| Arc::new(CodexCliClient::new()) as Arc<dyn AgenticClient>)
-                    as Arc<AgentClientFactory>,
-            )],
+            Self::standard_nondefault_runtime_factories(),
         )
     }
 
@@ -195,10 +207,7 @@ mod tests {
     fn standard_runtime_clients_uses_domain_default_harness() {
         let bundle = AgentClientBundle::standard_runtime_clients(
             Arc::new(MockAgenticClient::new()),
-            [(
-                AgentHarnessKind::Codex,
-                Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>,
-            )],
+            AgentClientBundle::standard_nondefault_runtime_clients(true),
         );
 
         assert_eq!(bundle.default_harness, DEFAULT_AGENT_HARNESS);
@@ -209,11 +218,7 @@ mod tests {
     fn standard_runtime_factories_uses_domain_default_harness() {
         let bundle = AgentClientFactoryBundle::standard_runtime_factories(
             Arc::new(|| Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>),
-            [(
-                AgentHarnessKind::Codex,
-                Arc::new(|| Arc::new(MockAgenticClient::new()) as Arc<dyn AgenticClient>)
-                    as Arc<AgentClientFactory>,
-            )],
+            AgentClientFactoryBundle::standard_nondefault_runtime_factories(),
         );
 
         assert_eq!(bundle.default_harness, DEFAULT_AGENT_HARNESS);
