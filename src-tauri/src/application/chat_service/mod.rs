@@ -889,6 +889,125 @@ impl<R: Runtime> ClaudeChatService<R> {
         .map_err(ChatServiceError::SpawnFailed)
     }
 
+    #[allow(clippy::too_many_arguments)]
+    async fn spawn_process_for_harness(
+        &self,
+        conversation: &ChatConversation,
+        message: &str,
+        context_type: ChatContextType,
+        context_id: &str,
+        working_directory: &Path,
+        entity_status: Option<&str>,
+        project_id: Option<&str>,
+        session_messages: &[crate::domain::entities::ChatMessage],
+        session_total: usize,
+        is_external_mcp: bool,
+        runtime_team_mode: bool,
+        stored_session_id: Option<&str>,
+        resolved_spawn_settings: &crate::application::agent_lane_resolution::ResolvedAgentSpawnSettings,
+    ) -> Result<(PathBuf, tokio::process::Child, Option<Arc<InteractiveProcessRegistry>>), ChatServiceError> {
+        match resolved_spawn_settings.effective_harness {
+            AgentHarnessKind::Claude => {
+                if !self.cli_path.exists() && which(&self.cli_path).is_err() {
+                    tracing::warn!(
+                        cli_path = %self.cli_path.display(),
+                        "chat_service.send_message missing Claude CLI"
+                    );
+                    return Err(ChatServiceError::SpawnFailed(format!(
+                        "Claude CLI not found at {}",
+                        self.cli_path.display()
+                    )));
+                }
+
+                let spawnable = self
+                    .build_interactive_command(
+                        conversation,
+                        message,
+                        working_directory,
+                        entity_status,
+                        project_id,
+                        session_messages,
+                        session_total,
+                        is_external_mcp,
+                        resolved_spawn_settings,
+                    )
+                    .await?;
+                tracing::info!(cmd = ?spawnable, "Spawning Claude CLI agent (interactive)");
+                let (child, child_stdin) = spawnable.spawn_interactive().await.map_err(|error| {
+                    tracing::error!(error = %error, "chat_service.send_message interactive spawn failed");
+                    ChatServiceError::SpawnFailed(error.to_string())
+                })?;
+                tracing::debug!(pid = ?child.id(), "chat_service.send_message interactive spawn ok");
+
+                let interactive_key_for_register =
+                    InteractiveProcessKey::new(context_type.to_string(), context_id);
+                tracing::info!(
+                    context_type = %context_type,
+                    context_id,
+                    "[IPR_REGISTER] Registering lead stdin in InteractiveProcessRegistry"
+                );
+                self.ipr()
+                    .register(interactive_key_for_register, child_stdin)
+                    .await;
+
+                Ok((self.cli_path.clone(), child, Some(self.ipr())))
+            }
+            AgentHarnessKind::Codex => {
+                let resolved_codex = crate::infrastructure::agents::resolve_codex_cli()
+                    .map_err(ChatServiceError::SpawnFailed)?;
+                let spawnable = match stored_session_id {
+                    Some(session_id) => chat_service_context::build_codex_resume_command(
+                        &resolved_codex.path,
+                        &self.plugin_dir,
+                        &resolved_codex.capabilities,
+                        context_type,
+                        context_id,
+                        message,
+                        working_directory,
+                        session_id,
+                        project_id,
+                        runtime_team_mode,
+                        Arc::clone(&self.artifact_repo),
+                        Arc::clone(&self.ideation_session_repo),
+                        Arc::clone(&self.task_repo),
+                        session_messages,
+                        session_total,
+                        is_external_mcp,
+                        resolved_spawn_settings,
+                    )
+                    .await,
+                    None => chat_service_context::build_codex_command(
+                        &resolved_codex.path,
+                        &self.plugin_dir,
+                        &resolved_codex.capabilities,
+                        conversation,
+                        message,
+                        working_directory,
+                        entity_status,
+                        project_id,
+                        runtime_team_mode,
+                        Arc::clone(&self.chat_attachment_repo),
+                        Arc::clone(&self.artifact_repo),
+                        session_messages,
+                        session_total,
+                        is_external_mcp,
+                        resolved_spawn_settings,
+                    )
+                    .await,
+                }
+                .map_err(ChatServiceError::SpawnFailed)?;
+                tracing::info!(cmd = ?spawnable, "Spawning Codex CLI agent");
+                let child = spawnable.spawn().await.map_err(|error| {
+                    tracing::error!(error = %error, "chat_service.send_message codex spawn failed");
+                    ChatServiceError::SpawnFailed(error.to_string())
+                })?;
+                tracing::debug!(pid = ?child.id(), "chat_service.send_message codex spawn ok");
+
+                Ok((resolved_codex.path, child, None))
+            }
+        }
+    }
+
     /// Fetch entity status for context types that support it
     /// Used for dynamic agent resolution based on entity state
     async fn get_entity_status(
@@ -1755,132 +1874,27 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         } else {
             (vec![], 0usize)
         };
-        let (selected_cli_path, child, interactive_process_registry) =
-            match resolved_spawn_settings.effective_harness {
-                AgentHarnessKind::Claude => {
-                    if !self.cli_path.exists() && which(&self.cli_path).is_err() {
-                        tracing::warn!(
-                            cli_path = %self.cli_path.display(),
-                            "chat_service.send_message missing Claude CLI"
-                        );
-                        cleanup_and_err!(ChatServiceError::SpawnFailed(format!(
-                            "Claude CLI not found at {}",
-                            self.cli_path.display()
-                        )));
-                    }
-
-                    let spawnable = match self
-                        .build_interactive_command(
-                            &conversation,
-                            message,
-                            &working_directory,
-                            entity_status.as_deref(),
-                            project_id.as_deref(),
-                            &session_messages,
-                            session_total,
-                            options.is_external_mcp,
-                            &resolved_spawn_settings,
-                        )
-                        .await
-                    {
-                        Ok(spawnable) => spawnable,
-                        Err(error) => cleanup_and_err!(error),
-                    };
-                    tracing::info!(cmd = ?spawnable, "Spawning Claude CLI agent (interactive)");
-                    let (child, child_stdin) = match spawnable.spawn_interactive().await {
-                        Ok(pair) => pair,
-                        Err(error) => {
-                            tracing::error!(error = %error, "chat_service.send_message interactive spawn failed");
-                            cleanup_and_err!(ChatServiceError::SpawnFailed(error.to_string()));
-                        }
-                    };
-                    tracing::debug!(pid = ?child.id(), "chat_service.send_message interactive spawn ok");
-
-                    let interactive_key_for_register =
-                        InteractiveProcessKey::new(context_type.to_string(), context_id);
-                    tracing::info!(
-                        context_type = %context_type,
-                        context_id,
-                        "[IPR_REGISTER] Registering lead stdin in InteractiveProcessRegistry"
-                    );
-                    self.ipr()
-                        .register(interactive_key_for_register, child_stdin)
-                        .await;
-
-                    (self.cli_path.clone(), child, Some(self.ipr()))
-                }
-                AgentHarnessKind::Codex => {
-                    let resolved_codex = match crate::infrastructure::agents::resolve_codex_cli() {
-                        Ok(resolved) => resolved,
-                        Err(error) => {
-                            cleanup_and_err!(ChatServiceError::SpawnFailed(error));
-                        }
-                    };
-                    let spawnable = match stored_session_id.as_deref() {
-                        Some(session_id) => match chat_service_context::build_codex_resume_command(
-                            &resolved_codex.path,
-                            &self.plugin_dir,
-                            &resolved_codex.capabilities,
-                            context_type,
-                            context_id,
-                            message,
-                            &working_directory,
-                            session_id,
-                            project_id.as_deref(),
-                            runtime_team_mode,
-                            Arc::clone(&self.artifact_repo),
-                            Arc::clone(&self.ideation_session_repo),
-                            Arc::clone(&self.task_repo),
-                            &session_messages,
-                            session_total,
-                            options.is_external_mcp,
-                            &resolved_spawn_settings,
-                        )
-                        .await
-                        {
-                            Ok(spawnable) => spawnable,
-                            Err(error) => {
-                                cleanup_and_err!(ChatServiceError::SpawnFailed(error))
-                            }
-                        },
-                        None => match chat_service_context::build_codex_command(
-                            &resolved_codex.path,
-                            &self.plugin_dir,
-                            &resolved_codex.capabilities,
-                            &conversation,
-                            message,
-                            &working_directory,
-                            entity_status.as_deref(),
-                            project_id.as_deref(),
-                            runtime_team_mode,
-                            Arc::clone(&self.chat_attachment_repo),
-                            Arc::clone(&self.artifact_repo),
-                            &session_messages,
-                            session_total,
-                            options.is_external_mcp,
-                            &resolved_spawn_settings,
-                        )
-                        .await
-                        {
-                            Ok(spawnable) => spawnable,
-                            Err(error) => {
-                                cleanup_and_err!(ChatServiceError::SpawnFailed(error))
-                            }
-                        },
-                    };
-                    tracing::info!(cmd = ?spawnable, "Spawning Codex CLI agent");
-                    let child = match spawnable.spawn().await {
-                        Ok(child) => child,
-                        Err(error) => {
-                            tracing::error!(error = %error, "chat_service.send_message codex spawn failed");
-                            cleanup_and_err!(ChatServiceError::SpawnFailed(error.to_string()));
-                        }
-                    };
-                    tracing::debug!(pid = ?child.id(), "chat_service.send_message codex spawn ok");
-
-                    (resolved_codex.path, child, None)
-                }
-            };
+        let (selected_cli_path, child, interactive_process_registry) = match self
+            .spawn_process_for_harness(
+                &conversation,
+                message,
+                context_type,
+                context_id,
+                &working_directory,
+                entity_status.as_deref(),
+                project_id.as_deref(),
+                &session_messages,
+                session_total,
+                options.is_external_mcp,
+                runtime_team_mode,
+                stored_session_id.as_deref(),
+                &resolved_spawn_settings,
+            )
+            .await
+        {
+            Ok(result) => result,
+            Err(error) => cleanup_and_err!(error),
+        };
 
         // Register verification child PID for explicit cleanup after reconciliation (Fix A).
         // Only for Ideation sessions with SessionPurpose::Verification.
