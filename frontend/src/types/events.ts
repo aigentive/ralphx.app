@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { InternalStatusSchema } from "./status";
 import { TaskSchema } from "./task";
+import type { ConversationProviderMetadata } from "./chat-conversation";
 
 // ============================================================================
 // Agent Message Events (high frequency)
@@ -551,4 +552,23 @@ export interface AgentRunCompletedPayload {
   provider_session_id?: string | null;
   run_chain_id?: string | null;
   teammate_name?: string | null;
+}
+
+export function extractConversationProviderMetadataFromRunPayload(
+  payload: AgentRunStartedPayload | AgentRunCompletedPayload
+): ConversationProviderMetadata {
+  if ("providerHarness" in payload || "providerSessionId" in payload) {
+    return {
+      providerHarness: payload.providerHarness ?? undefined,
+      providerSessionId: payload.providerSessionId ?? undefined,
+    };
+  }
+
+  const completedPayload = payload as AgentRunCompletedPayload;
+
+  return {
+    claudeSessionId: completedPayload.claude_session_id ?? undefined,
+    providerHarness: completedPayload.provider_harness ?? undefined,
+    providerSessionId: completedPayload.provider_session_id ?? undefined,
+  };
 }

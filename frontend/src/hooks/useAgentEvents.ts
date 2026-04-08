@@ -21,6 +21,7 @@ import type {
   AgentRunCompletedPayload,
   AgentRunStartedPayload,
 } from "@/types/events";
+import { extractConversationProviderMetadataFromRunPayload } from "@/types/events";
 import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useUiStore } from "@/stores/uiStore";
@@ -209,8 +210,7 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
           conversationId: conversation_id,
           contextType: context_type as ContextType,
           contextId: eventContextId,
-          providerHarness: payload.providerHarness ?? undefined,
-          providerSessionId: payload.providerSessionId ?? undefined,
+          ...extractConversationProviderMetadataFromRunPayload(payload),
         });
 
         // Invalidate conversations list to pick up newly created conversation
@@ -318,9 +318,7 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
           conversationId: conversation_id,
           contextType: context_type as ContextType,
           contextId: eventContextId,
-          providerHarness: payload.provider_harness ?? undefined,
-          providerSessionId: payload.provider_session_id ?? undefined,
-          claudeSessionId: payload.claude_session_id ?? undefined,
+          ...extractConversationProviderMetadataFromRunPayload(payload),
         });
 
         guardedTermination(eventContextKey, eventContextId, conversation_id);
@@ -351,9 +349,7 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
           conversationId: conversation_id,
           contextType: context_type as ContextType,
           contextId: eventContextId,
-          providerHarness: payload.provider_harness ?? undefined,
-          providerSessionId: payload.provider_session_id ?? undefined,
-          claudeSessionId: payload.claude_session_id ?? undefined,
+          ...extractConversationProviderMetadataFromRunPayload(payload),
         });
 
         // Guard: if parent ideation session has active verification child, maintain
