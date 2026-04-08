@@ -20,6 +20,9 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 use crate::application::agent_client_bundle::{
     AgentClientBundle, AgentClientFactory, AgentClientFactoryBundle,
 };
+use crate::application::runtime_factory::{
+    ChatRuntimeFactoryDeps, build_chat_service_with_fallback,
+};
 use crate::application::{AppState, ChatService, ClaudeChatService, InteractiveProcessRegistry};
 use crate::commands::ExecutionState;
 use crate::domain::agents::{AgentHarnessKind, AgenticClient};
@@ -72,28 +75,33 @@ fn build_transition_chat_service_fallback<R: Runtime>(
     execution_state: Arc<ExecutionState>,
     app_handle: Option<AppHandle<R>>,
 ) -> ClaudeChatService<R> {
-    let mut service = ClaudeChatService::new(
+    let deps = ChatRuntimeFactoryDeps {
         chat_message_repo,
         chat_attachment_repo,
-        Arc::new(crate::infrastructure::memory::MemoryArtifactRepository::new()),
+        artifact_repo: Arc::new(crate::infrastructure::memory::MemoryArtifactRepository::new()),
         conversation_repo,
         agent_run_repo,
         project_repo,
         task_repo,
-        task_dep_repo,
+        task_dependency_repo: task_dep_repo,
         ideation_session_repo,
         activity_event_repo,
         message_queue,
         running_agent_registry,
         memory_event_repo,
-    )
-    .with_execution_state(execution_state);
+        execution_settings_repo: None,
+        agent_lane_settings_repo: None,
+        ideation_effort_settings_repo: None,
+        ideation_model_settings_repo: None,
+        plan_branch_repo: None,
+        task_proposal_repo: None,
+        task_step_repo: None,
+        review_repo: None,
+        interactive_process_registry: None,
+        streaming_state_cache: None,
+    };
 
-    if let Some(handle) = app_handle {
-        service = service.with_app_handle(handle);
-    }
-
-    service
+    build_chat_service_with_fallback(&app_handle, Some(execution_state), &deps)
 }
 
 // ============================================================================
