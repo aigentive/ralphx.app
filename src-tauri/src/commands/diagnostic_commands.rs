@@ -1,11 +1,12 @@
 // Diagnostic commands — agent health and harness availability inspection
 
 use serde::Serialize;
-use std::path::Path;
 use tauri::State;
 
 use crate::application::AppState;
-use crate::infrastructure::agents::{find_codex_cli, resolve_codex_cli, CodexCliCapabilities};
+use crate::application::ideation_harness_availability::probe_harness;
+use crate::domain::agents::AgentHarnessKind;
+use crate::infrastructure::agents::{resolve_codex_cli, CodexCliCapabilities};
 
 /// Serializable IPR entry for agent health report
 #[derive(Debug, Clone, Serialize)]
@@ -52,6 +53,16 @@ pub struct CodexCliDiagnosticsResponse {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct CodexCliProbeStatus {
+    pub binary_path: Option<String>,
+    pub binary_found: bool,
+    pub probe_succeeded: bool,
+    pub available: bool,
+    pub missing_core_exec_features: Vec<String>,
+    pub error: Option<String>,
+}
+
 /// Get agent health — IPR entries + running agents for runtime inspection.
 ///
 /// # Errors
@@ -89,16 +100,14 @@ pub async fn get_agent_health(state: State<'_, AppState>) -> Result<AgentHealthR
 }
 
 pub fn build_codex_cli_diagnostics_response(
-    cli_path: Option<&Path>,
-    probe_result: Option<Result<CodexCliCapabilities, String>>,
+    probe: CodexCliProbeStatus,
+    capabilities: Option<CodexCliCapabilities>,
 ) -> CodexCliDiagnosticsResponse {
-    let binary_path = cli_path.map(|path| path.to_string_lossy().into_owned());
-
-    match probe_result {
-        Some(Ok(capabilities)) => CodexCliDiagnosticsResponse {
-            binary_path,
-            binary_found: true,
-            probe_succeeded: true,
+    match capabilities {
+        Some(capabilities) => CodexCliDiagnosticsResponse {
+            binary_path: probe.binary_path,
+            binary_found: probe.binary_found,
+            probe_succeeded: probe.probe_succeeded,
             version: capabilities.version.clone(),
             has_core_exec_support: capabilities.has_core_exec_support(),
             missing_core_exec_features: capabilities
@@ -109,31 +118,19 @@ pub fn build_codex_cli_diagnostics_response(
             supports_search_flag: capabilities.supports_search_flag,
             supports_resume_subcommand: capabilities.supports_resume_subcommand,
             supports_mcp_subcommand: capabilities.supports_mcp_subcommand,
-            error: None,
-        },
-        Some(Err(error)) => CodexCliDiagnosticsResponse {
-            binary_path,
-            binary_found: true,
-            probe_succeeded: false,
-            version: None,
-            has_core_exec_support: false,
-            missing_core_exec_features: Vec::new(),
-            supports_search_flag: false,
-            supports_resume_subcommand: false,
-            supports_mcp_subcommand: false,
-            error: Some(error),
+            error: probe.error,
         },
         None => CodexCliDiagnosticsResponse {
-            binary_path: None,
-            binary_found: false,
-            probe_succeeded: false,
+            binary_path: probe.binary_path,
+            binary_found: probe.binary_found,
+            probe_succeeded: probe.probe_succeeded,
             version: None,
-            has_core_exec_support: false,
-            missing_core_exec_features: Vec::new(),
+            has_core_exec_support: probe.available,
+            missing_core_exec_features: probe.missing_core_exec_features,
             supports_search_flag: false,
             supports_resume_subcommand: false,
             supports_mcp_subcommand: false,
-            error: Some("Codex CLI not found".to_string()),
+            error: probe.error,
         },
     }
 }
@@ -141,18 +138,17 @@ pub fn build_codex_cli_diagnostics_response(
 /// Get Codex CLI diagnostics without requiring the frontend to shell out locally.
 #[tauri::command]
 pub fn get_codex_cli_diagnostics() -> Result<CodexCliDiagnosticsResponse, String> {
-    match resolve_codex_cli() {
-        Ok(resolved) => Ok(build_codex_cli_diagnostics_response(
-            Some(resolved.path.as_path()),
-            Some(Ok(resolved.capabilities)),
-        )),
-        Err(error) => {
-            let cli_path = find_codex_cli();
-            let probe_result = cli_path.as_deref().map(|_| Err(error));
-            Ok(build_codex_cli_diagnostics_response(
-                cli_path.as_deref(),
-                probe_result,
-            ))
-        }
-    }
+    let probe = probe_harness(AgentHarnessKind::Codex);
+    let capabilities = resolve_codex_cli().ok().map(|resolved| resolved.capabilities);
+    Ok(build_codex_cli_diagnostics_response(
+        CodexCliProbeStatus {
+            binary_path: probe.binary_path,
+            binary_found: probe.binary_found,
+            probe_succeeded: probe.probe_succeeded,
+            available: probe.available,
+            missing_core_exec_features: probe.missing_core_exec_features,
+            error: probe.error,
+        },
+        capabilities,
+    ))
 }

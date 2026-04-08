@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use ralphx_lib::commands::diagnostic_commands::build_codex_cli_diagnostics_response;
+use ralphx_lib::commands::diagnostic_commands::{
+    build_codex_cli_diagnostics_response, CodexCliProbeStatus,
+};
 use ralphx_lib::domain::agents::LogicalEffort;
 use ralphx_lib::infrastructure::agents::{
     build_codex_exec_args, build_codex_exec_resume_args, build_spawnable_codex_exec_command,
@@ -290,7 +292,17 @@ fn normalize_codex_exec_output_keeps_raw_stdout_when_not_jsonl() {
 
 #[test]
 fn build_codex_cli_diagnostics_response_handles_missing_binary() {
-    let diagnostics = build_codex_cli_diagnostics_response(None, None);
+    let diagnostics = build_codex_cli_diagnostics_response(
+        CodexCliProbeStatus {
+            binary_path: None,
+            binary_found: false,
+            probe_succeeded: false,
+            available: false,
+            missing_core_exec_features: Vec::new(),
+            error: Some("Codex CLI not found".to_string()),
+        },
+        None,
+    );
 
     assert!(!diagnostics.binary_found);
     assert!(!diagnostics.probe_succeeded);
@@ -313,8 +325,15 @@ fn build_codex_cli_diagnostics_response_handles_successful_probe() {
     };
 
     let diagnostics = build_codex_cli_diagnostics_response(
-        Some(std::path::Path::new("/opt/homebrew/bin/codex")),
-        Some(Ok(capabilities)),
+        CodexCliProbeStatus {
+            binary_path: Some("/opt/homebrew/bin/codex".to_string()),
+            binary_found: true,
+            probe_succeeded: true,
+            available: true,
+            missing_core_exec_features: Vec::new(),
+            error: None,
+        },
+        Some(capabilities),
     );
 
     assert!(diagnostics.binary_found);
@@ -330,8 +349,15 @@ fn build_codex_cli_diagnostics_response_handles_successful_probe() {
 #[test]
 fn build_codex_cli_diagnostics_response_handles_probe_errors() {
     let diagnostics = build_codex_cli_diagnostics_response(
-        Some(std::path::Path::new("/opt/homebrew/bin/codex")),
-        Some(Err("help probe failed".to_string())),
+        CodexCliProbeStatus {
+            binary_path: Some("/opt/homebrew/bin/codex".to_string()),
+            binary_found: true,
+            probe_succeeded: false,
+            available: false,
+            missing_core_exec_features: Vec::new(),
+            error: Some("help probe failed".to_string()),
+        },
+        None,
     );
 
     assert!(diagnostics.binary_found);
