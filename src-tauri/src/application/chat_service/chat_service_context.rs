@@ -95,6 +95,27 @@ struct BuildHarnessResumeCommandRequest<'a> {
     is_external_mcp: bool,
 }
 
+struct BuildHarnessLaunchRequest<'a> {
+    plugin_dir: &'a Path,
+    conversation: &'a ChatConversation,
+    user_message: &'a str,
+    context_type: ChatContextType,
+    context_id: &'a str,
+    working_directory: &'a Path,
+    entity_status: Option<&'a str>,
+    project_id: Option<&'a str>,
+    runtime_team_mode: bool,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+    artifact_repo: Arc<dyn ArtifactRepository>,
+    ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    task_repo: Arc<dyn TaskRepository>,
+    session_messages: &'a [ChatMessage],
+    total_available: usize,
+    is_external_mcp: bool,
+    stored_session_id: Option<&'a str>,
+    resolved_spawn_settings: &'a ResolvedAgentSpawnSettings,
+}
+
 #[derive(Debug)]
 pub enum ResolvedChatHarnessLaunch {
     Interactive {
@@ -1529,6 +1550,82 @@ async fn build_noninteractive_resume_command_from_resolved_cli(
     }
 }
 
+async fn build_launch_plan_from_resolved_cli(
+    resolved_cli: ResolvedChatHarnessCli,
+    request: BuildHarnessLaunchRequest<'_>,
+) -> Result<ResolvedChatHarnessLaunch, String> {
+    match resolved_cli {
+        ResolvedChatHarnessCli::Claude { cli_path } => {
+            let spawnable = build_interactive_command(
+                &cli_path,
+                request.plugin_dir,
+                request.conversation,
+                request.user_message,
+                request.working_directory,
+                request.entity_status,
+                request.project_id,
+                request.runtime_team_mode,
+                request.chat_attachment_repo,
+                request.artifact_repo,
+                request.session_messages,
+                request.total_available,
+                request.is_external_mcp,
+                request.resolved_spawn_settings,
+            )
+            .await?;
+
+            Ok(ResolvedChatHarnessLaunch::Interactive { cli_path, spawnable })
+        }
+        ResolvedChatHarnessCli::Codex {
+            cli_path,
+            capabilities,
+        } => {
+            let spawnable = match request.stored_session_id {
+                Some(session_id) => build_codex_resume_command(
+                    &cli_path,
+                    request.plugin_dir,
+                    &capabilities,
+                    request.context_type,
+                    request.context_id,
+                    request.user_message,
+                    request.working_directory,
+                    session_id,
+                    request.project_id,
+                    request.runtime_team_mode,
+                    request.artifact_repo,
+                    request.ideation_session_repo,
+                    request.task_repo,
+                    request.session_messages,
+                    request.total_available,
+                    request.is_external_mcp,
+                    request.resolved_spawn_settings,
+                )
+                .await?,
+                None => build_codex_command(
+                    &cli_path,
+                    request.plugin_dir,
+                    &capabilities,
+                    request.conversation,
+                    request.user_message,
+                    request.working_directory,
+                    request.entity_status,
+                    request.project_id,
+                    request.runtime_team_mode,
+                    request.chat_attachment_repo,
+                    request.artifact_repo,
+                    request.session_messages,
+                    request.total_available,
+                    request.is_external_mcp,
+                    request.resolved_spawn_settings,
+                )
+                .await?,
+            };
+
+            Ok(ResolvedChatHarnessLaunch::Background { cli_path, spawnable })
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn build_launch_plan_for_harness(
     harness: AgentHarnessKind,
@@ -1553,77 +1650,30 @@ pub async fn build_launch_plan_for_harness(
     resolved_spawn_settings: &ResolvedAgentSpawnSettings,
 ) -> Result<ResolvedChatHarnessLaunch, String> {
     let resolved_cli = resolve_chat_harness_cli(harness, cli_path)?;
-
-    match resolved_cli {
-        ResolvedChatHarnessCli::Claude { cli_path } => {
-            let spawnable = build_interactive_command(
-                &cli_path,
-                plugin_dir,
-                conversation,
-                user_message,
-                working_directory,
-                entity_status,
-                project_id,
-                runtime_team_mode,
-                chat_attachment_repo,
-                artifact_repo,
-                session_messages,
-                total_available,
-                is_external_mcp,
-                resolved_spawn_settings,
-            )
-            .await?;
-
-            Ok(ResolvedChatHarnessLaunch::Interactive { cli_path, spawnable })
-        }
-        ResolvedChatHarnessCli::Codex {
-            cli_path,
-            capabilities,
-        } => {
-            let spawnable = match stored_session_id {
-                Some(session_id) => build_codex_resume_command(
-                    &cli_path,
-                    plugin_dir,
-                    &capabilities,
-                    context_type,
-                    context_id,
-                    user_message,
-                    working_directory,
-                    session_id,
-                    project_id,
-                    runtime_team_mode,
-                    artifact_repo,
-                    ideation_session_repo,
-                    task_repo,
-                    session_messages,
-                    total_available,
-                    is_external_mcp,
-                    resolved_spawn_settings,
-                )
-                .await?,
-                None => build_codex_command(
-                    &cli_path,
-                    plugin_dir,
-                    &capabilities,
-                    conversation,
-                    user_message,
-                    working_directory,
-                    entity_status,
-                    project_id,
-                    runtime_team_mode,
-                    chat_attachment_repo,
-                    artifact_repo,
-                    session_messages,
-                    total_available,
-                    is_external_mcp,
-                    resolved_spawn_settings,
-                )
-                .await?,
-            };
-
-            Ok(ResolvedChatHarnessLaunch::Background { cli_path, spawnable })
-        }
-    }
+    build_launch_plan_from_resolved_cli(
+        resolved_cli,
+        BuildHarnessLaunchRequest {
+            plugin_dir,
+            conversation,
+            user_message,
+            context_type,
+            context_id,
+            working_directory,
+            entity_status,
+            project_id,
+            runtime_team_mode,
+            chat_attachment_repo,
+            artifact_repo,
+            ideation_session_repo,
+            task_repo,
+            session_messages,
+            total_available,
+            is_external_mcp,
+            stored_session_id,
+            resolved_spawn_settings,
+        },
+    )
+    .await
 }
 
 #[allow(clippy::too_many_arguments)]
