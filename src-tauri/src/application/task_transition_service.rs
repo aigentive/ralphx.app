@@ -1198,14 +1198,6 @@ impl<R: Runtime> TaskTransitionService<R> {
         self
     }
 
-    /// Override the Codex agentic client factory used when execution lanes resolve to Codex.
-    pub fn with_codex_agentic_client_factory<F>(self, factory: F) -> Self
-    where
-        F: Fn() -> Arc<dyn AgenticClient> + Send + Sync + 'static,
-    {
-        self.with_harness_agentic_client_factory(AgentHarnessKind::Codex, factory)
-    }
-
     /// Override the state-machine spawner client with a concrete harness-specific instance.
     pub fn with_harness_agentic_client(
         self,
@@ -1213,11 +1205,6 @@ impl<R: Runtime> TaskTransitionService<R> {
         client: Arc<dyn AgenticClient>,
     ) -> Self {
         self.with_harness_agentic_client_factory(harness, move || Arc::clone(&client))
-    }
-
-    /// Override the Codex state-machine spawner client with a concrete instance.
-    pub fn with_codex_agentic_client(self, client: Arc<dyn AgenticClient>) -> Self {
-        self.with_harness_agentic_client(AgentHarnessKind::Codex, client)
     }
 
     /// Enable team mode for agent spawning (builder pattern).

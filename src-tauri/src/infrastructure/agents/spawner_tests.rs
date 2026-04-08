@@ -956,7 +956,7 @@ async fn test_spawn_uses_codex_client_when_execution_lane_resolves_to_codex() {
         .unwrap();
 
     let spawner = AgenticClientSpawner::new(default_client.clone())
-        .with_codex_client(codex_client.clone())
+        .with_harness_client(AgentHarnessKind::Codex, codex_client.clone())
         .with_repos(task_repo, project_repo)
         .with_execution_state(exec_state)
         .with_runtime_admission_context(
@@ -1019,7 +1019,7 @@ async fn test_spawn_uses_reexecutor_lane_for_reexecuting_task() {
         .unwrap();
 
     let spawner = AgenticClientSpawner::new(default_client.clone())
-        .with_codex_client(codex_client.clone())
+        .with_harness_client(AgentHarnessKind::Codex, codex_client.clone())
         .with_repos(task_repo, project_repo)
         .with_execution_state(exec_state)
         .with_runtime_admission_context(

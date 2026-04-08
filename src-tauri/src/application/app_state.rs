@@ -1029,11 +1029,6 @@ impl AppState {
         self
     }
 
-    /// Swap the Codex agent client to a different implementation.
-    pub fn with_codex_agent_client(self, client: Arc<dyn AgenticClient>) -> Self {
-        self.with_harness_agent_client(AgentHarnessKind::Codex, client)
-    }
-
     /// Swap the QA settings to custom settings
     pub fn with_qa_settings(mut self, settings: QASettings) -> Self {
         self.qa_settings = Arc::new(tokio::sync::RwLock::new(settings));

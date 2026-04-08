@@ -143,12 +143,6 @@ impl AgenticClientSpawner {
         self
     }
 
-    /// Override the Codex client used when execution lanes resolve to Codex.
-    pub fn with_codex_client(mut self, client: Arc<dyn AgenticClient>) -> Self {
-        self.harness_clients.insert(AgentHarnessKind::Codex, client);
-        self
-    }
-
     /// Override the client used for a specific harness.
     pub fn with_harness_client(
         mut self,
