@@ -915,6 +915,15 @@ fn test_build_agent_config_for_codex_client_uses_process_mapping() {
 
     assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
     assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-qa-executor"));
+    assert_eq!(
+        config.plugin_dir,
+        Some(
+            crate::application::harness_runtime_registry::resolve_harness_plugin_dir(
+                AgentHarnessKind::Codex,
+                &PathBuf::from("/tmp/task-789"),
+            )
+        )
+    );
     assert_eq!(config.model.as_deref(), Some("gpt-5.4"));
     assert_eq!(
         config.logical_effort,
@@ -1044,6 +1053,138 @@ async fn test_spawn_uses_reexecutor_lane_for_reexecuting_task() {
     );
     assert_eq!(config.approval_policy.as_deref(), Some("never"));
     assert_eq!(config.sandbox_mode.as_deref(), Some("read-only"));
+}
+
+#[tokio::test]
+async fn test_spawn_uses_reviewer_lane_when_review_task_resolves_to_codex() {
+    let default_client = Arc::new(TestAgentClient::new(ClientType::ClaudeCode, true));
+    let codex_client = Arc::new(TestAgentClient::new(ClientType::Codex, true));
+    let exec_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let settings_repo = Arc::new(MemoryExecutionSettingsRepository::new());
+    let ideation_session_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let agent_lane_settings_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
+    let running_agent_registry = Arc::new(MemoryRunningAgentRegistry::new());
+
+    let project_id = ProjectId::from_string("project-review-codex".to_string());
+    let mut project = Project::new(
+        "Project Review Codex".to_string(),
+        "/tmp/project-review-codex".to_string(),
+    );
+    project.id = project_id.clone();
+    project_repo.create(project).await.unwrap();
+
+    let mut task = Task::new(project_id.clone(), "Codex reviewer task".to_string());
+    task.id = TaskId::from_string("task-review-codex".to_string());
+    task.internal_status = crate::domain::entities::InternalStatus::Reviewing;
+    task.worktree_path = Some("/tmp/task-review-codex".to_string());
+    task_repo.create(task).await.unwrap();
+
+    let mut lane_settings = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    lane_settings.model = Some("gpt-5.4".to_string());
+    lane_settings.effort = Some(crate::domain::agents::LogicalEffort::High);
+    lane_settings.fallback_harness = Some(AgentHarnessKind::Claude);
+    agent_lane_settings_repo
+        .upsert_for_project(project_id.as_str(), AgentLane::ExecutionReviewer, &lane_settings)
+        .await
+        .unwrap();
+
+    let spawner = AgenticClientSpawner::new(default_client.clone())
+        .with_harness_client(AgentHarnessKind::Codex, codex_client.clone())
+        .with_repos(task_repo, project_repo)
+        .with_execution_state(exec_state)
+        .with_runtime_admission_context(
+            settings_repo,
+            agent_lane_settings_repo,
+            ideation_session_repo,
+            running_agent_registry,
+        )
+        .with_working_dir("/tmp");
+
+    spawner.spawn("reviewer", "task-review-codex").await;
+
+    assert_eq!(default_client.spawn_count().await, 0);
+    assert_eq!(codex_client.spawn_count().await, 1);
+    let config = codex_client.last_spawn().await.expect("codex review spawn config");
+    assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-reviewer"));
+    assert_eq!(config.model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(
+        config.plugin_dir,
+        Some(
+            crate::application::harness_runtime_registry::resolve_harness_plugin_dir(
+                AgentHarnessKind::Codex,
+                &PathBuf::from("/tmp/task-review-codex"),
+            )
+        )
+    );
+}
+
+#[tokio::test]
+async fn test_spawn_uses_merger_lane_when_merge_task_resolves_to_codex() {
+    let default_client = Arc::new(TestAgentClient::new(ClientType::ClaudeCode, true));
+    let codex_client = Arc::new(TestAgentClient::new(ClientType::Codex, true));
+    let exec_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let settings_repo = Arc::new(MemoryExecutionSettingsRepository::new());
+    let ideation_session_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let agent_lane_settings_repo = Arc::new(MemoryAgentLaneSettingsRepository::new());
+    let running_agent_registry = Arc::new(MemoryRunningAgentRegistry::new());
+
+    let project_id = ProjectId::from_string("project-merge-codex".to_string());
+    let mut project = Project::new(
+        "Project Merge Codex".to_string(),
+        "/tmp/project-merge-codex".to_string(),
+    );
+    project.id = project_id.clone();
+    project_repo.create(project).await.unwrap();
+
+    let mut task = Task::new(project_id.clone(), "Codex merger task".to_string());
+    task.id = TaskId::from_string("task-merge-codex".to_string());
+    task.internal_status = crate::domain::entities::InternalStatus::Merging;
+    task.worktree_path = Some("/tmp/task-merge-codex".to_string());
+    task_repo.create(task).await.unwrap();
+
+    let mut lane_settings = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    lane_settings.model = Some("gpt-5.4".to_string());
+    lane_settings.effort = Some(crate::domain::agents::LogicalEffort::Medium);
+    lane_settings.fallback_harness = Some(AgentHarnessKind::Claude);
+    agent_lane_settings_repo
+        .upsert_for_project(project_id.as_str(), AgentLane::ExecutionMerger, &lane_settings)
+        .await
+        .unwrap();
+
+    let spawner = AgenticClientSpawner::new(default_client.clone())
+        .with_harness_client(AgentHarnessKind::Codex, codex_client.clone())
+        .with_repos(task_repo, project_repo)
+        .with_execution_state(exec_state)
+        .with_runtime_admission_context(
+            settings_repo,
+            agent_lane_settings_repo,
+            ideation_session_repo,
+            running_agent_registry,
+        )
+        .with_working_dir("/tmp");
+
+    spawner.spawn("merger", "task-merge-codex").await;
+
+    assert_eq!(default_client.spawn_count().await, 0);
+    assert_eq!(codex_client.spawn_count().await, 1);
+    let config = codex_client.last_spawn().await.expect("codex merge spawn config");
+    assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-merger"));
+    assert_eq!(config.model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(
+        config.plugin_dir,
+        Some(
+            crate::application::harness_runtime_registry::resolve_harness_plugin_dir(
+                AgentHarnessKind::Codex,
+                &PathBuf::from("/tmp/task-merge-codex"),
+            )
+        )
+    );
 }
 
 #[tokio::test]

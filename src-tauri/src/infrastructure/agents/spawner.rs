@@ -12,6 +12,7 @@ use tauri::{AppHandle, Emitter, Wry};
 
 use crate::application::agent_lane_resolution::resolve_agent_spawn_settings;
 use crate::application::chat_service::uses_execution_slot;
+use crate::application::harness_runtime_registry::resolve_harness_plugin_dir;
 use crate::commands::execution_commands::context_matches_running_status_for_gc;
 use crate::commands::ExecutionState;
 use crate::domain::agents::{
@@ -455,8 +456,7 @@ impl AgenticClientSpawner {
         };
 
         if matches!(client_type, ClientType::ClaudeCode | ClientType::Codex) {
-            let plugin_dir =
-                crate::infrastructure::agents::claude::resolve_plugin_dir(&working_dir);
+            let plugin_dir = resolve_harness_plugin_dir(harness, &working_dir);
             config.plugin_dir = Some(plugin_dir);
             config.agent = Self::resolve_process_agent_name(agent_type)
                 .or_else(|| {
