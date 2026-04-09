@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, Manager, Runtime};
 
-use crate::application::chat_service::{AppChatService, ClaudeChatService, StreamingStateCache};
+use crate::application::chat_service::{AppChatService, StreamingStateCache};
 use crate::application::{
     AgentClientBundle, AppState, InteractiveProcessRegistry, TaskSchedulerService,
     TaskTransitionService,
@@ -357,7 +357,7 @@ pub(crate) fn build_chat_service_from_deps<R: Runtime>(
     execution_state: Option<Arc<ExecutionState>>,
     deps: &ChatRuntimeFactoryDeps,
 ) -> AppChatService<R> {
-    let mut service = ClaudeChatService::new(
+    let mut service = AppChatService::new(
         Arc::clone(&deps.chat_message_repo),
         Arc::clone(&deps.chat_attachment_repo),
         Arc::clone(&deps.artifact_repo),

@@ -345,29 +345,26 @@ pub trait ChatService: Send + Sync {
     async fn is_agent_running(&self, context_type: ChatContextType, context_id: &str) -> bool;
 
     /// Override team mode at runtime (interior mutability).
-    /// Default is a no-op; ClaudeChatService uses AtomicBool.
+    /// Default is a no-op; AppChatService uses AtomicBool.
     fn set_team_mode(&self, _mode: bool) {}
 
     /// Override plan branch repo at runtime (interior mutability).
-    /// Default is a no-op; ClaudeChatService uses std::sync::Mutex.
+    /// Default is a no-op; AppChatService uses std::sync::Mutex.
     fn set_plan_branch_repo(&self, _repo: Arc<dyn PlanBranchRepository>) {}
 
     /// Override the InteractiveProcessRegistry at runtime (interior mutability).
-    /// Default is a no-op; ClaudeChatService uses std::sync::Mutex.
+    /// Default is a no-op; AppChatService uses std::sync::Mutex.
     fn set_interactive_process_registry(&self, _registry: Arc<InteractiveProcessRegistry>) {}
 }
 
 // ============================================================================
-// ClaudeChatService - Production implementation
+// AppChatService - Production implementation
 // ============================================================================
 
 // Helper functions are now in chat_service_helpers.rs
 
 /// Preferred app-layer surface for the unified multi-harness chat runtime.
-pub type AppChatService<R = tauri::Wry> = ClaudeChatService<R>;
-
-/// Concrete production implementation behind the unified multi-harness chat runtime.
-pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
+pub struct AppChatService<R: Runtime = tauri::Wry> {
     cli_path: PathBuf,
     plugin_dir: PathBuf,
     default_working_directory: PathBuf,
@@ -413,7 +410,10 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     verification_child_registry: Arc<verification_child_process_registry::VerificationChildProcessRegistry>,
 }
 
-impl<R: Runtime> ClaudeChatService<R> {
+/// Compatibility alias for older callsites/tests that still use the legacy concrete name.
+pub type ClaudeChatService<R = tauri::Wry> = AppChatService<R>;
+
+impl<R: Runtime> AppChatService<R> {
     pub fn new(
         chat_message_repo: Arc<dyn ChatMessageRepository>,
         chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
@@ -1001,7 +1001,7 @@ impl<R: Runtime> ClaudeChatService<R> {
 }
 
 #[async_trait]
-impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
+impl<R: Runtime + 'static> ChatService for AppChatService<R> {
     async fn send_message(
         &self,
         context_type: ChatContextType,
