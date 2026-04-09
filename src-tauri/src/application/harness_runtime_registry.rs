@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::domain::agents::{standard_harness_registry, AgentHarnessKind};
+use crate::domain::agents::{standard_harness_registry, AgentHarnessKind, DEFAULT_AGENT_HARNESS};
 use crate::infrastructure::agents::claude::{find_claude_cli, register_mcp_server};
 use crate::infrastructure::agents::{find_codex_cli, resolve_codex_cli, CodexCliCapabilities};
 use which::which;
@@ -214,6 +214,14 @@ pub(crate) fn probe_harness(harness: AgentHarnessKind) -> HarnessRuntimeProbe {
             missing_core_exec_features: Vec::new(),
             error: Some(format!("No harness probe registered for {}", harness)),
         })
+}
+
+pub(crate) fn probe_default_harness() -> HarnessRuntimeProbe {
+    probe_harness(DEFAULT_AGENT_HARNESS)
+}
+
+pub(crate) fn default_harness_runtime_available() -> bool {
+    probe_default_harness().available
 }
 
 pub(crate) fn probe_supported_harnesses() -> HashMap<AgentHarnessKind, HarnessRuntimeProbe> {

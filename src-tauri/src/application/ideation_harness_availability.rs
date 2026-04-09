@@ -1,6 +1,6 @@
 use crate::application::chat_service::harness_supports_team_mode;
 use crate::application::harness_runtime_registry::{
-    probe_harness, probe_supported_harnesses, HarnessRuntimeProbe,
+    probe_default_harness, probe_supported_harnesses, HarnessRuntimeProbe,
 };
 use crate::application::AppState;
 use crate::domain::entities::{ChatContextType, IdeationSessionId, TaskId};
@@ -150,7 +150,7 @@ async fn resolve_context_runtime_availability(
 }
 
 fn build_default_harness_availability() -> LaneHarnessAvailability {
-    let probe = probe_harness(DEFAULT_AGENT_HARNESS);
+    let probe = probe_default_harness();
     LaneHarnessAvailability {
         lane: AgentLane::IdeationPrimary,
         configured_harness: None,

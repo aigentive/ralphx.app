@@ -31,7 +31,7 @@ pub(crate) mod verification_child_process_registry;
 use crate::application::interactive_process_registry::{
     InteractiveProcessKey, InteractiveProcessMetadata, InteractiveProcessRegistry,
 };
-use crate::application::harness_runtime_registry::probe_harness;
+use crate::application::harness_runtime_registry::default_harness_runtime_available;
 use crate::application::question_state::QuestionState;
 use crate::domain::agents::{AgentHarnessKind, DEFAULT_AGENT_HARNESS};
 use crate::domain::entities::{
@@ -2223,7 +2223,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
     }
 
     async fn is_available(&self) -> bool {
-        probe_harness(DEFAULT_AGENT_HARNESS).available
+        default_harness_runtime_available()
     }
 
     async fn stop_agent(
