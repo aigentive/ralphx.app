@@ -137,8 +137,7 @@ pub async fn start_ideation_http(
         );
         let candidate_tokens = tokenize_for_similarity(&candidate_text);
         let similarity_threshold =
-            crate::application::harness_runtime_registry::default_external_mcp_config()
-                .external_session_similarity_threshold;
+            crate::application::harness_runtime_registry::default_external_session_similarity_threshold();
 
         let mut best_match: Option<(f64, &crate::domain::entities::ideation::IdeationSession)> =
             None;

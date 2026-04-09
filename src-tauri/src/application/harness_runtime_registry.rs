@@ -348,6 +348,10 @@ pub(crate) fn default_external_mcp_message_queue_cap() -> usize {
     default_external_mcp_config().external_message_queue_cap as usize
 }
 
+pub(crate) fn default_external_session_similarity_threshold() -> f64 {
+    default_external_mcp_config().external_session_similarity_threshold
+}
+
 pub(crate) fn default_verification_config() -> VerificationConfig {
     verification_config().clone()
 }
