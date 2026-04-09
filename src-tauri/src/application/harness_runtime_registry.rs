@@ -476,6 +476,46 @@ pub(crate) fn default_reconciliation_validation_deadline_secs() -> u64 {
     reconciliation_config().validation_deadline_secs
 }
 
+pub(crate) fn default_reconciliation_execution_failed_max_retries() -> u32 {
+    reconciliation_config().execution_failed_max_retries as u32
+}
+
+pub(crate) fn default_reconciliation_recovery_staleness_secs() -> u64 {
+    reconciliation_config().recovery_staleness_secs
+}
+
+pub(crate) fn default_reconciliation_git_isolation_max_retries() -> u32 {
+    reconciliation_config().git_isolation_max_retries as u32
+}
+
+pub(crate) fn default_reconciliation_executing_max_wall_clock_minutes() -> u64 {
+    reconciliation_config().executing_max_wall_clock_minutes
+}
+
+pub(crate) fn default_reconciliation_executing_max_retries() -> u32 {
+    reconciliation_config().executing_max_retries as u32
+}
+
+pub(crate) fn default_reconciliation_reviewing_max_wall_clock_minutes() -> u64 {
+    reconciliation_config().reviewing_max_wall_clock_minutes
+}
+
+pub(crate) fn default_reconciliation_reviewing_max_retries() -> u32 {
+    reconciliation_config().reviewing_max_retries as u32
+}
+
+pub(crate) fn default_reconciliation_qa_max_wall_clock_minutes() -> u64 {
+    reconciliation_config().qa_max_wall_clock_minutes
+}
+
+pub(crate) fn default_reconciliation_qa_stale_minutes() -> u64 {
+    reconciliation_config().qa_stale_minutes
+}
+
+pub(crate) fn default_reconciliation_qa_max_retries() -> u32 {
+    reconciliation_config().qa_max_retries as u32
+}
+
 fn find_claude_external_mcp_entry() -> Option<PathBuf> {
     crate::infrastructure::agents::claude::find_plugin_dir()
         .map(|plugin_dir| external_mcp_entry_for_plugin_dir(&plugin_dir))
