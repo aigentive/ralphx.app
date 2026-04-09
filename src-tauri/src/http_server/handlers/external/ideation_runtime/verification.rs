@@ -1,5 +1,5 @@
 use super::*;
-use crate::application::harness_runtime_registry::default_verification_config;
+use crate::application::harness_runtime_registry::default_verification_max_rounds;
 
 #[derive(Debug, Deserialize)]
 pub struct TriggerVerificationRequest {
@@ -112,14 +112,14 @@ pub async fn trigger_verification_http(
         }));
     };
 
-    let cfg = default_verification_config();
+    let max_rounds = default_verification_max_rounds();
     if let Some(app_handle) = &state.app_state.app_handle {
-        emit_verification_started(app_handle, &session_id, generation, cfg.max_rounds);
+        emit_verification_started(app_handle, &session_id, generation, max_rounds);
     }
     let title = format!("Auto-verification (gen {generation})");
     let description = format!(
         "Run verification round loop. parent_session_id: {session_id}, generation: {generation}, max_rounds: {}",
-        cfg.max_rounds
+        max_rounds
     );
     match crate::http_server::handlers::session_linking::create_verification_child_session(
         &state,

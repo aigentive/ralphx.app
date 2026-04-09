@@ -1,4 +1,5 @@
 use super::*;
+use crate::application::harness_runtime_registry::default_verification_max_rounds;
 
 /// Emit the verification-started event, build the round-loop description, spawn the verification
 /// child session, and handle any spawn failures.
@@ -11,15 +12,15 @@ pub async fn spawn_verification_agent(
     generation: i32,
     disabled_specialists: &[String],
 ) -> bool {
-    let cfg = default_verification_config();
+    let max_rounds = default_verification_max_rounds();
     if let Some(app_handle) = &state.app_state.app_handle {
-        emit_verification_started(app_handle, session_id.as_str(), generation, cfg.max_rounds);
+        emit_verification_started(app_handle, session_id.as_str(), generation, max_rounds);
     }
     let title = format!("Auto-verification (gen {generation})");
     let description = format!(
         "Run verification round loop. parent_session_id: {}, generation: {generation}, max_rounds: {}",
         session_id.as_str(),
-        cfg.max_rounds
+        max_rounds
     );
     match crate::http_server::handlers::session_linking::create_verification_child_session(
         state,

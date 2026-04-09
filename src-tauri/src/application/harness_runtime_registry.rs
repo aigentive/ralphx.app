@@ -356,6 +356,14 @@ pub(crate) fn default_verification_config() -> VerificationConfig {
     verification_config().clone()
 }
 
+pub(crate) fn default_verification_auto_verify_enabled() -> bool {
+    verification_config().auto_verify
+}
+
+pub(crate) fn default_verification_max_rounds() -> u32 {
+    verification_config().max_rounds
+}
+
 pub(crate) fn default_ui_feature_flags() -> UiFeatureFlagsConfig {
     ui_feature_flags_config().clone()
 }
