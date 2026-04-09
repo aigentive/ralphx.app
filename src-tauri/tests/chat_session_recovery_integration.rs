@@ -9,6 +9,7 @@ use chrono::Utc;
 use std::sync::Arc;
 
 use ralphx_lib::application::chat_service::{AGENT_ERROR_PREFIX, STALE_SESSION_ERROR};
+use ralphx_lib::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use ralphx_lib::domain::entities::{
     ChatContextType, ChatConversation, ChatConversationId, ChatMessage, IdeationSessionId,
     MessageRole, ProjectId, TaskId,
@@ -104,7 +105,13 @@ impl TestHarness {
     /// Simulate updating the session ID (as if recovery happened)
     async fn update_session_id(&self, conversation_id: &ChatConversationId, new_session_id: &str) {
         self.conversation_repo
-            .update_claude_session_id(conversation_id, new_session_id)
+            .update_provider_session_ref(
+                conversation_id,
+                &ProviderSessionRef {
+                    harness: AgentHarnessKind::Claude,
+                    provider_session_id: new_session_id.to_string(),
+                },
+            )
             .await
             .unwrap();
     }
