@@ -17,10 +17,10 @@ use crate::application::harness_runtime_registry::{
     default_reconciliation_merge_conflict_max_retries,
     default_reconciliation_merge_registry_grace_period_secs,
     default_reconciliation_merge_starvation_guard_secs,
+    default_reconciliation_pending_merge_stale_minutes,
     default_reconciliation_merge_incomplete_max_retries,
     default_reconciliation_merger_timeout_secs,
     default_reconciliation_merging_max_retries,
-    default_reconciliation_runtime_config,
     default_reconciliation_validation_failure_circuit_breaker_count,
     default_reconciliation_validation_retry_min_cooldown_secs,
     default_reconciliation_validation_revert_max_count,
@@ -497,7 +497,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             can_start: true,
             is_stale: age
                 >= chrono::Duration::minutes(
-                    default_reconciliation_runtime_config().pending_merge_stale_minutes as i64,
+                    default_reconciliation_pending_merge_stale_minutes() as i64,
                 ),
             is_deferred,
         };

@@ -516,6 +516,18 @@ pub(crate) fn default_reconciliation_qa_max_retries() -> u32 {
     reconciliation_config().qa_max_retries as u32
 }
 
+pub(crate) fn default_reconciliation_pending_merge_stale_minutes() -> u64 {
+    reconciliation_config().pending_merge_stale_minutes
+}
+
+pub(crate) fn default_reconciliation_merge_watcher_grace_secs() -> u64 {
+    reconciliation_config().merge_watcher_grace_secs
+}
+
+pub(crate) fn default_reconciliation_merge_watcher_poll_secs() -> u64 {
+    reconciliation_config().merge_watcher_poll_secs
+}
+
 fn find_claude_external_mcp_entry() -> Option<PathBuf> {
     crate::infrastructure::agents::claude::find_plugin_dir()
         .map(|plugin_dir| external_mcp_entry_for_plugin_dir(&plugin_dir))

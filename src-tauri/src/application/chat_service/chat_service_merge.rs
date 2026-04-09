@@ -33,7 +33,9 @@ use crate::domain::state_machine::resolve_merge_branches;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::transition_handler::complete_merge_internal;
 use crate::application::harness_runtime_registry::{
-    default_reconciliation_runtime_config, default_scheduler_merge_settle_ms,
+    default_reconciliation_merge_watcher_grace_secs,
+    default_reconciliation_merge_watcher_poll_secs,
+    default_scheduler_merge_settle_ms,
 };
 use crate::domain::state_machine::transition_handler::{
     format_validation_error_metadata, merge_metadata_into, parse_metadata,
@@ -1267,9 +1269,8 @@ pub(crate) fn spawn_merge_completion_watcher(
     project_repo: Arc<dyn ProjectRepository>,
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
 ) {
-    let cfg = default_reconciliation_runtime_config();
-    let initial_grace = Duration::from_secs(cfg.merge_watcher_grace_secs);
-    let poll_interval = Duration::from_secs(cfg.merge_watcher_poll_secs);
+    let initial_grace = Duration::from_secs(default_reconciliation_merge_watcher_grace_secs());
+    let poll_interval = Duration::from_secs(default_reconciliation_merge_watcher_poll_secs());
     tokio::spawn(async move {
         merge_completion_watcher_loop(
             task_id,
