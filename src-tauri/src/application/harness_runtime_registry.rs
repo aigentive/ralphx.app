@@ -275,13 +275,33 @@ pub(crate) fn resolve_default_harness_plugin_dir(working_directory: &Path) -> Pa
     resolve_plugin_dir(working_directory)
 }
 
-pub(crate) fn resolve_default_chat_service_bootstrap() -> DefaultChatServiceBootstrap {
+fn default_chat_service_cli_name(harness: AgentHarnessKind) -> &'static str {
+    match harness {
+        AgentHarnessKind::Claude => "claude",
+        AgentHarnessKind::Codex => "codex",
+    }
+}
+
+fn resolve_chat_service_cli_path(harness: AgentHarnessKind) -> PathBuf {
+    match harness {
+        AgentHarnessKind::Claude => find_claude_cli()
+            .unwrap_or_else(|| PathBuf::from(default_chat_service_cli_name(harness))),
+        AgentHarnessKind::Codex => find_codex_cli()
+            .unwrap_or_else(|| PathBuf::from(default_chat_service_cli_name(harness))),
+    }
+}
+
+pub(crate) fn resolve_chat_service_bootstrap(harness: AgentHarnessKind) -> DefaultChatServiceBootstrap {
     let default_working_directory = default_repo_root_working_directory();
     DefaultChatServiceBootstrap {
-        cli_path: find_claude_cli().unwrap_or_else(|| PathBuf::from("claude")),
+        cli_path: resolve_chat_service_cli_path(harness),
         plugin_dir: resolve_default_harness_plugin_dir(&default_working_directory),
         default_working_directory,
     }
+}
+
+pub(crate) fn resolve_default_chat_service_bootstrap() -> DefaultChatServiceBootstrap {
+    resolve_chat_service_bootstrap(DEFAULT_AGENT_HARNESS)
 }
 
 pub(crate) fn resolve_default_harness_agent_bootstrap(
@@ -650,6 +670,20 @@ mod tests {
     fn resolve_startup_harness_integration_returns_none_for_codex() {
         let integration = resolve_startup_harness_integration(AgentHarnessKind::Codex).unwrap();
         assert!(integration.is_none());
+    }
+
+    #[test]
+    fn default_chat_service_cli_name_matches_standard_harnesses() {
+        assert_eq!(default_chat_service_cli_name(AgentHarnessKind::Claude), "claude");
+        assert_eq!(default_chat_service_cli_name(AgentHarnessKind::Codex), "codex");
+    }
+
+    #[test]
+    fn resolve_default_chat_service_bootstrap_uses_default_harness() {
+        assert_eq!(
+            resolve_default_chat_service_bootstrap(),
+            resolve_chat_service_bootstrap(DEFAULT_AGENT_HARNESS)
+        );
     }
 
     #[test]
