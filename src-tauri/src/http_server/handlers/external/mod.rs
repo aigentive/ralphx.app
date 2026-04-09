@@ -29,7 +29,6 @@ use crate::domain::services::{
     emit_verification_started, emit_verification_status_changed,
 };
 use crate::http_server::project_scope::{ProjectScope, ProjectScopeGuard};
-use crate::infrastructure::agents::claude::verification_config;
 use ralphx_domain::entities::EventType;
 
 use super::{HttpError, HttpServerState};

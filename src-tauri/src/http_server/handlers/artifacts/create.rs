@@ -1,4 +1,5 @@
 use super::*;
+use crate::application::harness_runtime_registry::default_verification_config;
 
 pub async fn create_plan_artifact(
     State(state): State<HttpServerState>,
@@ -7,7 +8,7 @@ pub async fn create_plan_artifact(
     let session_id_str = req.session_id.clone();
     let title = req.title.clone();
     let content = req.content.clone();
-    let cfg = verification_config();
+    let cfg = default_verification_config();
     let auto_verify_enabled = cfg.auto_verify;
 
     // Check in-memory auto-accept state BEFORE the transaction (async lock)

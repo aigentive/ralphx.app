@@ -1,4 +1,5 @@
 use super::*;
+use crate::application::harness_runtime_registry::default_verification_config;
 use crate::domain::entities::{build_child_session, matching_blocker_followup_session, ChildSessionDraftInput, TaskId};
 use crate::http_server::helpers::get_task_context_impl;
 
@@ -14,7 +15,7 @@ async fn initialize_verification_state(
         ));
     }
 
-    let verify_cfg = verification_config();
+    let verify_cfg = default_verification_config();
     let parent_id_str = parent_id.as_str().to_string();
     let verify_result = state
         .app_state
@@ -276,7 +277,7 @@ pub(crate) async fn create_child_session_impl(
     mut req: CreateChildSessionRequest,
 ) -> Result<CreateChildSessionResponse, JsonError> {
     let parent_id = IdeationSessionId::from_string(req.parent_session_id.clone());
-    let verify_cfg = verification_config();
+    let verify_cfg = default_verification_config();
     let mut verification_generation = None;
     req.blocker_fingerprint = resolve_blocker_fingerprint(state, &req).await?;
 

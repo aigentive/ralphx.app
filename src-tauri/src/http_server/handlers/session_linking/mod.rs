@@ -14,8 +14,7 @@ use crate::domain::entities::{
 };
 use crate::domain::services::{emit_verification_started, emit_verification_status_changed};
 use crate::infrastructure::agents::claude::{
-    get_team_constraints, team_constraints_config, validate_child_team_config,
-    verification_config, TeamConstraints,
+    get_team_constraints, team_constraints_config, validate_child_team_config, TeamConstraints,
 };
 use crate::infrastructure::sqlite::SqliteIdeationSessionRepository as SessionRepo;
 

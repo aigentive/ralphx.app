@@ -1,4 +1,5 @@
 use super::*;
+use crate::application::harness_runtime_registry::default_verification_config;
 
 #[derive(Debug, Deserialize)]
 pub struct TriggerVerificationRequest {
@@ -111,7 +112,7 @@ pub async fn trigger_verification_http(
         }));
     };
 
-    let cfg = verification_config();
+    let cfg = default_verification_config();
     if let Some(app_handle) = &state.app_state.app_handle {
         emit_verification_started(app_handle, &session_id, generation, cfg.max_rounds);
     }

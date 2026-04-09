@@ -16,7 +16,6 @@ use crate::domain::repositories::IdeationSessionRepository;
 use crate::domain::services::running_agent_registry::{RunningAgentKey, RunningAgentRegistry};
 use crate::domain::services::emit_verification_status_changed;
 use crate::error::AppError;
-use crate::infrastructure::agents::claude::verification_config;
 use crate::infrastructure::sqlite::{
     SqliteArtifactRepository as ArtifactRepo, SqliteIdeationSessionRepository as SessionRepo,
     SqliteTaskProposalRepository as ProposalRepo,
