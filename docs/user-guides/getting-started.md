@@ -8,7 +8,7 @@ RalphX is a native Mac application for AI-driven software development. You descr
 
 | Question | Answer |
 |----------|--------|
-| What do I need to install? | macOS, Node.js 18+, Rust 1.70+, Claude CLI |
+| What do I need to install? | macOS, Node.js 18+, Rust 1.70+, and at least one supported agent harness CLI |
 | How do I run RalphX? | `cd frontend && npm install && npm run tauri dev` |
 | What is a project? | A git repository you've registered with RalphX |
 | How do I start building a feature? | Open **Ideation**, click **New Session**, describe what you want |
@@ -38,11 +38,13 @@ RalphX is a native Mac application for AI-driven software development. You descr
 | macOS | 12 (Monterey) | ARM and Intel supported |
 | Node.js | 18 | For frontend build and `npm` commands |
 | Rust | 1.70 | Install via [rustup.rs](https://rustup.rs) |
-| Claude CLI | latest | Required for agent execution |
+| Claude CLI or Codex CLI | latest | Install at least one supported harness runtime; Claude remains the default |
 
-### Installing Claude CLI
+### Installing a harness CLI
 
-Claude CLI is the agent runtime RalphX uses to execute workers, reviewers, and merger agents.
+RalphX launches external harness CLIs for ideation, execution, review, and merge flows. Claude remains the default harness, while Codex can be selected for supported lanes.
+
+#### Claude CLI
 
 ```bash
 # Install via npm
@@ -53,6 +55,17 @@ claude --version
 ```
 
 Agents must authenticate to Anthropic. Run `claude` once interactively to complete the login flow before using RalphX.
+
+#### Codex CLI
+
+```bash
+# Verify an existing installation
+codex --version
+```
+
+If you plan to use Codex-backed lanes, make sure the `codex` CLI is installed and authenticated before selecting it in Settings.
+
+See [Agent Harnesses](agent-harnesses.md) for the current harness matrix and limitations.
 
 ---
 
@@ -134,7 +147,7 @@ RalphX has six main views, accessible from the left sidebar.
 | **Ideation** | `/ideation` | Create features — describe what to build, get a structured plan |
 | **Team** | `/team` | Agent activity — see running agents, spawn counts, live output |
 | **Activity** | `/activity` | Audit log — full history of every state change and event |
-| **Settings** | `/settings` | Project config — merge strategy, concurrency, validation, Claude CLI path |
+| **Settings** | `/settings` | Project config — merge strategy, concurrency, validation, and agent harness settings |
 
 ### Sidebar
 
@@ -181,7 +194,7 @@ Each stage of the pipeline uses a specialized agent:
 | ralphx-reviewer | Review | Analyzes code quality; recommends approve or changes |
 | merger | Merge | Resolves git conflicts if programmatic merge fails |
 
-All agents run via Claude CLI in isolated worktrees. You can watch them in the **Team** view.
+Agents run via the configured harness for each lane. Claude is still the default runtime for the broadest feature coverage, while Codex can be selected for supported lanes. See [Agent Harnesses](agent-harnesses.md).
 
 ### Plans and Active Plan
 

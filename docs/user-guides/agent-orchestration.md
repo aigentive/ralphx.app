@@ -10,12 +10,12 @@ RalphX doesn't execute your tasks directly — it orchestrates a team of special
 |----------|--------|
 | What runs my task? | A **worker** agent orchestrates — it delegates actual coding to parallel **coder** agents. |
 | Who reviews my code? | A **reviewer** agent analyzes the diff and calls pass/fail. You then approve or request changes. |
-| What handles merge conflicts? | A **merger** agent (Claude Opus) resolves git conflicts programmatically. |
+| What handles merge conflicts? | A **merger** agent resolves git conflicts programmatically. Today that lane is typically Claude-backed. |
 | How do agents get their instructions? | Via the task context, plan artifact, and their built-in system prompts. You don't write agent prompts. |
 | Can I talk to a running agent? | Yes — use the chat panel to send messages to active agents. They receive your messages mid-execution. |
 | What if the AI asks me a question? | An in-line **User Question** dialog appears — answer it before the agent continues. |
 | What if an agent asks to do something sensitive? | A **Permission Request** dialog appears — you approve or deny the specific action. |
-| What is the MCP? | The messaging layer between Claude agents and the RalphX backend. Agents read task context and report progress via MCP tools. |
+| What is the MCP? | The messaging layer between RalphX agents and the backend. Agents read task context and report progress via MCP tools. |
 
 ---
 
@@ -47,7 +47,7 @@ RalphX doesn't execute your tasks directly — it orchestrates a team of special
 
 ## Overview
 
-Every action in RalphX is performed by a Claude AI agent. When you move a task to **Ready**, a worker agent is spawned automatically. When execution finishes, a reviewer agent runs. If there's a merge conflict, a merger agent resolves it. You don't start agents manually — the pipeline handles orchestration based on task state.
+Every action in RalphX is performed by a configured AI agent harness. When you move a task to **Ready**, a worker agent is spawned automatically. When execution finishes, a reviewer agent runs. If there's a merge conflict, a merger agent resolves it. You don't start agents manually — the pipeline handles orchestration based on task state.
 
 ```
 You describe a feature (Ideation Studio)
@@ -370,12 +370,12 @@ You can send messages to any active agent directly from the Team Activity Panel.
 
 ## Session Recovery
 
-Claude sessions can expire — this happens when a session token becomes invalid (typically due to a long idle period). RalphX handles this automatically.
+Harness sessions can expire or become stale after long idle periods. RalphX handles this automatically.
 
 **What happens when a session expires:**
 1. The agent's output stream stops.
 2. RalphX detects the expired session via the reconciler.
-3. A new Claude session is started for the same agent.
+3. A new session is started for the same agent on the selected harness.
 4. The **conversation history is preserved** — the new session is initialized with the full prior context.
 5. The agent continues from where it left off.
 
@@ -392,7 +392,7 @@ See [Recovery and Retry](execution.md#recovery-and-retry) for the full recovery 
 Agents communicate with the RalphX backend through the **Model Context Protocol (MCP)** — a standardized messaging layer.
 
 ```
-Claude Agent (running locally)
+Selected Harness Agent (running locally)
          |
          | MCP Protocol (JSON over stdio/HTTP)
          v

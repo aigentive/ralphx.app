@@ -225,30 +225,39 @@ The supervisor runs _alongside_ the worker — it does not consume an extra conc
 
 ---
 
-## Model Configuration
+## Agent Harness and Model Configuration
 
-**Location:** Settings → Model
+**Location:** Settings → Ideation
 
-| Setting | Default | Options | Description |
-|---------|---------|---------|-------------|
-| **Default Model** | `sonnet` | haiku, sonnet, opus | Base Claude model used for task execution agents |
-| **Allow Opus Upgrade** | On | On/Off | Automatically upgrade to Opus for complex tasks identified by the system |
+RalphX now supports lane-level harness selection for the ideation surface. The backend also stores per-lane model, effort, approval-policy, sandbox, and fallback settings.
 
-### Agent Model Mapping
+### Ideation Harness Settings
 
-Different agent roles use different models, configured in `ralphx.yaml`:
+| Setting | Meaning |
+|---------|---------|
+| **Harness** | Which runtime to use for the lane, for example `claude` or `codex` |
+| **Model** | Harness-native model id |
+| **Effort** | Logical reasoning effort for the selected harness |
+| **Approval policy** | Harness approval behavior for that lane |
+| **Sandbox mode** | Harness sandbox mode for that lane |
+| **Fallback harness** | Optional fallback if the preferred harness is unavailable |
 
-| Agent | Default model | Role |
-|-------|--------------|------|
-| orchestrator-ideation | Sonnet | Ideation planning |
-| ralphx-worker | Sonnet | Task execution |
-| ralphx-coder | Sonnet | File-level coding |
-| ralphx-reviewer | Sonnet | Code review |
-| ralphx-merger | Opus | Conflict resolution |
-| ralphx-supervisor | Haiku | Loop detection watchdog |
-| project-analyzer | Haiku | Build system detection |
+### Current product defaults
 
-Model overrides per agent are set in the `agents:` section of `ralphx.yaml`.
+| Lane family | Typical default today |
+|-------------|-----------------------|
+| Ideation lanes | Codex-capable where configured |
+| Execution/review/merge lanes | Claude by default |
+
+### Important limits
+
+| Topic | Current behavior |
+|-------|------------------|
+| Team mode | Claude-only |
+| Codex team sessions | Not supported; Codex is treated as solo-only |
+| Legacy session data | Still supported through provider-neutral compatibility fields |
+
+See [Agent Harnesses](agent-harnesses.md) for the current support matrix and rollout guidance.
 
 ---
 
