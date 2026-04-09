@@ -157,7 +157,7 @@ pub use chat_service::{
     AppChatService,
     AgentChunkPayload, AgentErrorPayload, AgentMessageCreatedPayload, AgentMessageQueuedPayload,
     AgentQueueSentPayload, AgentRunCompletedPayload, AgentRunStartedPayload, AgentToolCallPayload,
-    ChatConversationWithMessages, ChatService, ChatServiceError, ClaudeChatService,
+    ChatConversationWithMessages, ChatService, ChatServiceError,
     MockChatResponse, MockChatService, SendResult, TeamCostUpdatePayload, TeamCreatedPayload,
     TeamDisbandedPayload, TeamMessagePayload, TeamTeammateIdlePayload, TeamTeammateShutdownPayload,
     TeamTeammateSpawnedPayload, AGENT_MESSAGE_QUEUED,

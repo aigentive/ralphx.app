@@ -10,7 +10,7 @@
 // - Queries for interrupted conversations that still carry a resumable provider session
 // - Prioritizes by context type: TaskExecution > Review > Task > Ideation > Project
 // - Skips TaskExecution/Review if task is in AGENT_ACTIVE_STATUSES (handled by StartupJobRunner)
-// - Sends "Continue where you left off." message to resume Claude session
+// - Sends "Continue where you left off." message to resume the stored provider session
 
 use std::sync::Arc;
 use tauri::{AppHandle, Runtime};
