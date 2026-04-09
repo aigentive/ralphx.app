@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tauri::Emitter;
 use tracing::error;
 
-use crate::application::chat_service::{ChatService, ClaudeChatService};
+use crate::application::chat_service::ChatService;
 use crate::domain::entities::{
     ChatContextType, IdeationSession, IdeationSessionId, IdeationSessionStatus, SessionLink,
     SessionPurpose, SessionRelationship, VerificationStatus,

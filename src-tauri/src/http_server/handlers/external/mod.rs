@@ -17,7 +17,7 @@ use std::sync::Arc;
 use tauri::Emitter;
 use tracing::error;
 
-use crate::application::chat_service::{ChatService, ClaudeChatService, SendMessageOptions};
+use crate::application::chat_service::{ChatService, SendMessageOptions};
 use crate::application::task_cleanup_service::TaskCleanupService;
 use crate::commands::ideation_commands::{apply_proposals_core, ApplyProposalsInput};
 use crate::domain::entities::{

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, Manager, Runtime};
 
-use crate::application::chat_service::{ClaudeChatService, StreamingStateCache};
+use crate::application::chat_service::{AppChatService, ClaudeChatService, StreamingStateCache};
 use crate::application::{
     AgentClientBundle, AppState, InteractiveProcessRegistry, TaskSchedulerService,
     TaskTransitionService,
@@ -356,7 +356,7 @@ pub(crate) fn build_chat_service_from_deps<R: Runtime>(
     app_handle: Option<AppHandle<R>>,
     execution_state: Option<Arc<ExecutionState>>,
     deps: &ChatRuntimeFactoryDeps,
-) -> ClaudeChatService<R> {
+) -> AppChatService<R> {
     let mut service = ClaudeChatService::new(
         Arc::clone(&deps.chat_message_repo),
         Arc::clone(&deps.chat_attachment_repo),
@@ -417,7 +417,7 @@ pub(crate) fn build_chat_service_with_fallback<R: Runtime>(
     app_handle: &Option<AppHandle<R>>,
     execution_state: Option<Arc<ExecutionState>>,
     deps: &ChatRuntimeFactoryDeps,
-) -> ClaudeChatService<R> {
+) -> AppChatService<R> {
     if let Some(handle) = app_handle {
         if let Some(app_state) = handle.try_state::<AppState>() {
             return app_state.build_chat_service_for_runtime(execution_state, app_handle.clone());

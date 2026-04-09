@@ -23,7 +23,7 @@ use crate::application::agent_client_bundle::{
 use crate::application::runtime_factory::{
     ChatRuntimeFactoryDeps, build_chat_service_with_fallback,
 };
-use crate::application::{AppState, ChatService, ClaudeChatService, InteractiveProcessRegistry};
+use crate::application::{AppChatService, AppState, ChatService, InteractiveProcessRegistry};
 use crate::commands::ExecutionState;
 use crate::domain::agents::{AgentHarnessKind, AgenticClient};
 use crate::domain::entities::{
@@ -72,7 +72,7 @@ fn build_transition_chat_service_fallback<R: Runtime>(
     memory_event_repo: Arc<dyn MemoryEventRepository>,
     execution_state: Arc<ExecutionState>,
     app_handle: Option<AppHandle<R>>,
-) -> ClaudeChatService<R> {
+) -> AppChatService<R> {
     let deps = ChatRuntimeFactoryDeps::from_core(
         chat_message_repo,
         chat_attachment_repo,

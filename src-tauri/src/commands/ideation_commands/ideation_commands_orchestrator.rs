@@ -31,7 +31,7 @@ pub async fn send_orchestrator_message(
     state: State<'_, AppState>,
     _app: tauri::AppHandle,
 ) -> Result<OrchestratorMessageResponse, String> {
-    use crate::application::{ChatService, ClaudeChatService};
+    use crate::application::{AppChatService, ChatService};
     use crate::domain::entities::ChatContextType;
 
     // First verify the session exists and is active
@@ -48,7 +48,7 @@ pub async fn send_orchestrator_message(
     }
 
     // Create unified chat service
-    let chat_service: ClaudeChatService<tauri::Wry> = state.build_chat_service();
+    let chat_service: AppChatService<tauri::Wry> = state.build_chat_service();
 
     validate_chat_runtime_for_context(
         &state,

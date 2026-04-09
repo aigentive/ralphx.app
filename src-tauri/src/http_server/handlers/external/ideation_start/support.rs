@@ -4,12 +4,12 @@ use crate::application::harness_runtime_registry::{
 };
 use crate::application::session_namer_prompt::build_session_namer_prompt;
 
-/// Build a fully configured `ClaudeChatService` from shared app + execution state.
+/// Build a fully configured app chat service from shared app + execution state.
 /// Extracted to avoid duplicating the 12-arg constructor chain across multiple handlers.
 pub(crate) fn build_chat_service(
     app: &crate::application::AppState,
     execution_state: &std::sync::Arc<crate::commands::ExecutionState>,
-) -> ClaudeChatService {
+) -> crate::application::AppChatService {
     app.build_chat_service_with_execution_state(Arc::clone(execution_state))
 }
 

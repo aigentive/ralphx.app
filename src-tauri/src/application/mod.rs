@@ -154,6 +154,7 @@ mod task_transition_service_tests;
 
 // Unified chat service (handles all chat contexts: ideation, task, project, task_execution)
 pub use chat_service::{
+    AppChatService,
     AgentChunkPayload, AgentErrorPayload, AgentMessageCreatedPayload, AgentMessageQueuedPayload,
     AgentQueueSentPayload, AgentRunCompletedPayload, AgentRunStartedPayload, AgentToolCallPayload,
     ChatConversationWithMessages, ChatService, ChatServiceError, ClaudeChatService,

@@ -17,7 +17,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use crate::application::{AppState, ChatService, ClaudeChatService, SendResult};
+use crate::application::{AppChatService, AppState, ChatService, SendResult};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     normalize_provider_session_compatibility, ChatContextType, ChatConversation,
@@ -180,7 +180,7 @@ pub(crate) fn create_chat_service(
     _app_handle: tauri::AppHandle,
     execution_state: &Arc<ExecutionState>,
     team_service: Option<std::sync::Arc<crate::application::TeamService>>,
-) -> ClaudeChatService<tauri::Wry> {
+) -> AppChatService<tauri::Wry> {
     let mut service = state.build_chat_service_with_execution_state(Arc::clone(execution_state));
     if let Some(svc) = team_service {
         service = service.with_team_service(svc);

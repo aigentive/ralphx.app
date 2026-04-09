@@ -19,7 +19,7 @@ use tracing::{info, warn};
 use crate::application::runtime_factory::{
     build_chat_service_with_fallback, ChatRuntimeFactoryDeps,
 };
-use crate::application::{ChatService, ClaudeChatService, InteractiveProcessRegistry};
+use crate::application::{AppChatService, ChatService, InteractiveProcessRegistry};
 use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
 use crate::domain::entities::{ChatContextType, InterruptedConversation, TaskId};
 use crate::domain::repositories::{
@@ -256,7 +256,7 @@ impl<R: Runtime> ChatResumptionRunner<R> {
     }
 
     /// Create a ChatService instance for resumption.
-    fn create_chat_service(&self) -> ClaudeChatService<R> {
+    fn create_chat_service(&self) -> AppChatService<R> {
         let deps = self.chat_runtime_deps.clone().with_runtime_support(
             self.execution_settings_repo.as_ref().map(Arc::clone),
             self.agent_lane_settings_repo.as_ref().map(Arc::clone),

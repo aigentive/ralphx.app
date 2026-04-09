@@ -8,7 +8,7 @@ use tauri::{AppHandle, Manager, Runtime};
 use tokio::sync::Mutex;
 
 use super::services::PrPollerRegistry;
-use crate::application::chat_service::ClaudeChatService;
+use crate::application::chat_service::AppChatService;
 use crate::application::runtime_factory::{
     build_chat_service_from_deps, build_task_scheduler_from_deps,
     build_transition_service_from_deps, ChatRuntimeFactoryDeps, RuntimeFactoryDeps,
@@ -237,7 +237,7 @@ impl AppState {
         std::env::set_var("RALPHX_TEST_MODE", "1");
     }
 
-    pub fn build_chat_service(&self) -> ClaudeChatService {
+    pub fn build_chat_service(&self) -> AppChatService {
         self.build_chat_service_for_runtime(None, self.app_handle.clone())
     }
 
@@ -245,7 +245,7 @@ impl AppState {
         &self,
         execution_state: Option<Arc<ExecutionState>>,
         app_handle: Option<AppHandle<R>>,
-    ) -> ClaudeChatService<R> {
+    ) -> AppChatService<R> {
         let deps = ChatRuntimeFactoryDeps::from_app_state(self);
 
         build_chat_service_from_deps(app_handle, execution_state, &deps)
@@ -254,7 +254,7 @@ impl AppState {
     pub fn build_chat_service_with_execution_state(
         &self,
         execution_state: Arc<ExecutionState>,
-    ) -> ClaudeChatService {
+    ) -> AppChatService {
         self.build_chat_service_for_runtime(Some(execution_state), self.app_handle.clone())
     }
 

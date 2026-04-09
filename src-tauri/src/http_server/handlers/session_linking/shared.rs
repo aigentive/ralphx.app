@@ -134,7 +134,7 @@ pub fn session_is_team_mode(session: &IdeationSession) -> bool {
 pub(super) fn build_ideation_chat_service(
     state: &HttpServerState,
     session: &IdeationSession,
-) -> ClaudeChatService {
+) -> crate::application::AppChatService {
     let app = &state.app_state;
     let mut chat_service =
         app.build_chat_service_with_execution_state(Arc::clone(&state.execution_state));
