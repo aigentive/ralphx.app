@@ -11,9 +11,9 @@ use std::sync::Arc;
 use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::entities::{
-    legacy_claude_session_alias, Artifact, ArtifactContent, ArtifactId, ArtifactType,
-    ChatAttachment, ChatContextType, ChatConversation, ChatConversationId, ChatMessage,
-    ChatMessageId, GitMode, IdeationSessionId, MessageRole, ProjectId, TaskId,
+    Artifact, ArtifactContent, ArtifactId, ArtifactType, ChatAttachment, ChatContextType,
+    ChatConversation, ChatConversationId, ChatMessage, ChatMessageId, GitMode, IdeationSessionId,
+    MessageRole, ProjectId, TaskId,
 };
 use crate::domain::repositories::{
     AgentLaneSettingsRepository, ArtifactRepository, ChatAttachmentRepository,
@@ -411,12 +411,7 @@ impl ResolvedChatHarnessCli {
 }
 
 fn claude_resume_session_id(conversation: &ChatConversation) -> Option<String> {
-    conversation.provider_session_ref().and_then(|session_ref| {
-        legacy_claude_session_alias(
-            Some(session_ref.harness),
-            Some(session_ref.provider_session_id.as_str()),
-        )
-    })
+    conversation.compatible_provider_session_fields().0
 }
 
 /// XML-escape content for safe embedding in XML elements.
