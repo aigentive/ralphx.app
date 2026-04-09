@@ -65,6 +65,12 @@ codex --version
 
 If you plan to use Codex-backed lanes, make sure the `codex` CLI is installed and authenticated before selecting it in Settings.
 
+Recommended first rollout:
+
+1. enable Codex for ideation
+2. enable Codex for ideation verification
+3. leave execution/review/merge on Claude initially
+
 See [Agent Harnesses](agent-harnesses.md) for the current harness matrix and limitations.
 
 ---

@@ -231,6 +231,12 @@ The supervisor runs _alongside_ the worker — it does not consume an extra conc
 
 RalphX now supports lane-level harness selection for the ideation surface. The backend also stores per-lane model, effort, approval-policy, sandbox, and fallback settings.
 
+The current settings rollout is intentionally staged:
+
+- the visible settings UI is focused on ideation lanes first
+- execution/review/merge lanes already have backend storage and runtime plumbing
+- Claude remains the broadest-coverage default while Codex adoption is intended to be incremental
+
 ### Ideation Harness Settings
 
 | Setting | Meaning |
@@ -256,6 +262,14 @@ RalphX now supports lane-level harness selection for the ideation surface. The b
 | Team mode | Claude-only |
 | Codex team sessions | Not supported; Codex is treated as solo-only |
 | Legacy session data | Still supported through provider-neutral compatibility fields |
+
+### Recommended rollout
+
+If you are enabling Codex for the first time, use this order:
+
+1. ideation primary
+2. ideation verifier
+3. keep execution, review, and merge on Claude until you explicitly want to expand the rollout
 
 See [Agent Harnesses](agent-harnesses.md) for the current support matrix and rollout guidance.
 

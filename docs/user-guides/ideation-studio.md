@@ -107,7 +107,9 @@ When you select Research Team or Debate Team, additional options appear:
 
 **Constrained mode**: The lead can only spawn teammates from the predefined templates in `ralphx.yaml`. When this mode is selected, the session creation UI shows the available preset roles (frontend-specialist, backend-specialist, infra-specialist, advocate, critic) so you know exactly what the lead can work with. Use this for security-sensitive workflows.
 
-**Current harness note:** Team mode is currently a Claude-only capability. If the ideation lane is configured to use Codex, RalphX treats the session as solo mode even if older metadata or defaults referenced team behavior.
+**Current harness note:** Team mode is currently a Claude-only capability. If the ideation lane is configured to use Codex, RalphX treats the session as solo mode even if older metadata or defaults referenced team behavior. This is expected and not treated as a degraded fallback.
+
+**Recommended Codex usage today:** Codex is best introduced on solo ideation and ideation verification first. Keep team ideation on Claude unless you explicitly want solo-only behavior for that lane.
 
 ---
 
