@@ -3,7 +3,7 @@ use super::*;
 pub async fn get_verification_specialists(
     State(_state): State<HttpServerState>,
 ) -> Result<Json<SpecialistsResponse>, HttpError> {
-    let cfg = verification_config();
+    let cfg = default_verification_config();
     let specialists = cfg
         .specialists
         .iter()

@@ -11,7 +11,7 @@ pub async fn spawn_verification_agent(
     generation: i32,
     disabled_specialists: &[String],
 ) -> bool {
-    let cfg = verification_config();
+    let cfg = default_verification_config();
     if let Some(app_handle) = &state.app_state.app_handle {
         emit_verification_started(app_handle, session_id.as_str(), generation, cfg.max_rounds);
     }

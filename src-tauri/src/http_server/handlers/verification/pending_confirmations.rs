@@ -23,7 +23,7 @@ pub async fn get_pending_verification_confirmations(
         .await
         .map_err(map_app_err_local)?;
 
-    let cfg = verification_config();
+    let cfg = default_verification_config();
     let available_specialists: Vec<SpecialistEntryResponse> = cfg
         .specialists
         .iter()

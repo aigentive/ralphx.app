@@ -10,7 +10,7 @@ use crate::domain::entities::{
 };
 use crate::domain::services::{emit_verification_started, emit_verification_status_changed};
 use crate::error::AppError;
-use crate::infrastructure::agents::claude::verification_config;
+use crate::application::harness_runtime_registry::default_verification_config;
 use crate::infrastructure::sqlite::SqliteIdeationSessionRepository as SessionRepo;
 
 use super::super::types::{

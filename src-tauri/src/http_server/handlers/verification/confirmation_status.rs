@@ -15,7 +15,7 @@ pub async fn get_confirmation_status(
 
     match session.verification_confirmation_status {
         Some(VerificationConfirmationStatus::Pending) => {
-            let cfg = verification_config();
+            let cfg = default_verification_config();
             let available_specialists = cfg
                 .specialists
                 .iter()

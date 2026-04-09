@@ -1,4 +1,5 @@
 use super::*;
+use crate::application::harness_runtime_registry::default_external_mcp_config;
 
 #[derive(Debug, Deserialize)]
 pub struct IdeationMessageRequest {
@@ -174,8 +175,7 @@ then retry sending.",
         .is_running(&agent_key)
         .await
     {
-        let cap = crate::infrastructure::agents::claude::external_mcp_config()
-            .external_message_queue_cap as usize;
+        let cap = default_external_mcp_config().external_message_queue_cap as usize;
         let queued_count = state
             .app_state
             .message_queue
