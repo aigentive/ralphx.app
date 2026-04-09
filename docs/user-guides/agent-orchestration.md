@@ -49,6 +49,8 @@ RalphX doesn't execute your tasks directly — it orchestrates a team of special
 
 Every action in RalphX is performed by a configured AI agent harness. When you move a task to **Ready**, a worker agent is spawned automatically. When execution finishes, a reviewer agent runs. If there's a merge conflict, a merger agent resolves it. You don't start agents manually — the pipeline handles orchestration based on task state.
 
+Harness selection is lane-based, not app-wide. In practice today, execution/review/merge are still usually Claude-backed for the broadest feature coverage, while Codex rollout is strongest on ideation and ideation verification first.
+
 ```
 You describe a feature (Ideation Studio)
           |
@@ -233,6 +235,8 @@ The orchestrator cannot modify code — it only reads and creates plan artifacts
 ### Team Mode: Research Teams and Debate Teams
 
 For complex features, RalphX switches to **team mode**. The `ideation-team-lead` (Opus) coordinates a group of specialist agents.
+
+Team mode is currently a Claude-only capability. If the effective ideation harness is Codex, RalphX keeps the session in solo mode instead of attempting a partial team-mode emulation.
 
 **Research Team** — used when a feature touches multiple layers (frontend + backend, UI + database):
 

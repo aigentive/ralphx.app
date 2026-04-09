@@ -11,6 +11,11 @@ paths:
 
 **Required Context:** task-state-machine.md | agent-mcp-tools.md | followup-blocker-dedupe.md | multi-harness.md
 
+| Runtime rule | Detail |
+|---|---|
+| Lane-aware harnesses | Execution/review/merge runtime selection is lane-based even when the current defaults stay Claude-heavy. |
+| Claude default remains explicit | Worker/reviewer/merger and team-mode guidance in this file describes the current broadest-coverage default path; do not imply Codex parity where the product contract is still incremental. |
+
 ---
 
 ## Worker (`ralphx-worker`)
