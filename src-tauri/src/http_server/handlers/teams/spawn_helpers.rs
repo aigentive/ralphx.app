@@ -1,5 +1,6 @@
 
 use super::*;
+use crate::application::harness_runtime_registry::resolve_default_harness_plugin_dir;
 
 /// Context types where context_id is a task ID (worktree resolution applies).
 const TASK_CONTEXT_TYPES: &[&str] = &["task_execution", "task", "review", "merge"];
@@ -141,6 +142,10 @@ pub(super) async fn resolve_teammate_working_dir(
         // No worktree — use the project's working directory (repo root)
         PathBuf::from(&project.working_directory)
     }
+}
+
+pub(super) fn resolve_teammate_plugin_dir(working_dir: &std::path::Path) -> PathBuf {
+    resolve_default_harness_plugin_dir(working_dir)
 }
 
 /// Fallback working directory (same as TeammateSpawnConfig::new default).

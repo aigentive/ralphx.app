@@ -1,5 +1,4 @@
 use super::*;
-use crate::infrastructure::agents::claude::resolve_plugin_dir;
 
 /// Result returned by `execute_team_spawn` — consumed by approve callers to
 /// build their HTTP responses.
@@ -146,7 +145,7 @@ pub(super) async fn execute_team_spawn(
                 .with_mcp_agent_type(mcp_type)
                 .with_effort(resolve_effort(Some(mcp_type)))
                 .with_working_dir(working_dir.clone())
-                .with_plugin_dir(resolve_plugin_dir(&working_dir));
+                .with_plugin_dir(resolve_teammate_plugin_dir(&working_dir));
 
         let client = ClaudeCodeClient::new();
         match client.spawn_teammate_interactive(spawn_config).await {
