@@ -1,13 +1,16 @@
 use std::sync::Arc;
 
+use crate::domain::agents::STANDARD_AGENT_HARNESSES;
 use tracing::{info, warn};
 
-use crate::AppState;
-use crate::application::TeamStateTracker;
+use crate::application::harness_runtime_registry::{
+    resolve_startup_harness_integration, run_startup_harness_integration,
+};
 use crate::application::runtime_wiring::build_http_app_state;
+use crate::application::TeamStateTracker;
 use crate::commands::ExecutionState;
 use crate::http_server;
-use crate::infrastructure;
+use crate::AppState;
 
 pub(crate) fn start_server_boot(
     app_state: &AppState,
@@ -31,21 +34,22 @@ pub(crate) fn start_server_boot(
         }
     });
 
-    // Register configured MCP server with Claude Code CLI
-    // This ensures the MCP tools are available regardless of user's working directory
-    if let (Some(cli_path), Some(plugin_dir)) = (
-        infrastructure::agents::claude::find_claude_cli(),
-        infrastructure::agents::claude::find_plugin_dir(),
-    ) {
-        info!("Registering configured MCP server...");
-        tauri::async_runtime::spawn(async move {
-            match infrastructure::agents::claude::register_mcp_server(&cli_path, &plugin_dir).await
-            {
-                Ok(()) => info!("Configured MCP server registered successfully"),
-                Err(e) => warn!("Failed to register configured MCP server: {}", e),
+    // Run any harness-specific startup integrations, such as Claude MCP registration.
+    for harness in STANDARD_AGENT_HARNESSES {
+        match resolve_startup_harness_integration(harness) {
+            Ok(Some(integration)) => {
+                let harness_name = integration.harness();
+                let description = integration.description();
+                info!("Starting {} {}", harness_name, description);
+                tauri::async_runtime::spawn(async move {
+                    match run_startup_harness_integration(integration).await {
+                        Ok(()) => info!("{} {} succeeded", harness_name, description),
+                        Err(e) => warn!("{} {} failed: {}", harness_name, description, e),
+                    }
+                });
             }
-        });
-    } else {
-        warn!("Could not find Claude CLI or plugin directory - MCP server not registered");
+            Ok(None) => {}
+            Err(error) => warn!("Skipping {} startup integration: {}", harness, error),
+        }
     }
 }

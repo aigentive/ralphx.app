@@ -2,12 +2,14 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::domain::agents::{standard_harness_registry, AgentHarnessKind};
-use crate::infrastructure::agents::claude::find_claude_cli;
+use crate::infrastructure::agents::claude::{find_claude_cli, register_mcp_server};
 use crate::infrastructure::agents::{find_codex_cli, resolve_codex_cli, CodexCliCapabilities};
 use which::which;
 
 pub(crate) type HarnessProbeFn = fn() -> HarnessRuntimeProbe;
 pub(crate) type ChatHarnessCliResolver = fn(&Path) -> Result<ResolvedChatHarnessCli, String>;
+pub(crate) type StartupHarnessIntegrationResolver =
+    fn() -> Result<Option<ResolvedHarnessStartupIntegration>, String>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HarnessRuntimeProbe {
@@ -30,10 +32,34 @@ pub(crate) enum ResolvedChatHarnessCli {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ResolvedHarnessStartupIntegration {
+    RegisterConfiguredMcpServer {
+        harness: AgentHarnessKind,
+        cli_path: PathBuf,
+        plugin_dir: PathBuf,
+    },
+}
+
+impl ResolvedHarnessStartupIntegration {
+    pub(crate) fn harness(&self) -> AgentHarnessKind {
+        match self {
+            Self::RegisterConfiguredMcpServer { harness, .. } => *harness,
+        }
+    }
+
+    pub(crate) fn description(&self) -> &'static str {
+        match self {
+            Self::RegisterConfiguredMcpServer { .. } => "configured MCP server registration",
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct HarnessRuntimeAdapter {
     pub probe: HarnessProbeFn,
     pub resolve_chat_cli: ChatHarnessCliResolver,
+    pub resolve_startup_integration: StartupHarnessIntegrationResolver,
 }
 
 fn probe_claude_harness() -> HarnessRuntimeProbe {
@@ -125,16 +151,37 @@ fn resolve_codex_chat_harness_cli(_: &Path) -> Result<ResolvedChatHarnessCli, St
     })
 }
 
+fn resolve_claude_startup_integration() -> Result<Option<ResolvedHarnessStartupIntegration>, String>
+{
+    let cli_path = find_claude_cli().ok_or_else(|| "Claude CLI not found".to_string())?;
+    let plugin_dir = crate::infrastructure::agents::claude::find_plugin_dir()
+        .ok_or_else(|| "Claude plugin directory not found".to_string())?;
+    Ok(Some(
+        ResolvedHarnessStartupIntegration::RegisterConfiguredMcpServer {
+            harness: AgentHarnessKind::Claude,
+            cli_path,
+            plugin_dir,
+        },
+    ))
+}
+
+fn resolve_codex_startup_integration() -> Result<Option<ResolvedHarnessStartupIntegration>, String>
+{
+    Ok(None)
+}
+
 pub(crate) fn standard_harness_runtime_adapters() -> HashMap<AgentHarnessKind, HarnessRuntimeAdapter>
 {
     standard_harness_registry(|harness| match harness {
         AgentHarnessKind::Claude => HarnessRuntimeAdapter {
             probe: probe_claude_harness,
             resolve_chat_cli: resolve_claude_chat_harness_cli,
+            resolve_startup_integration: resolve_claude_startup_integration,
         },
         AgentHarnessKind::Codex => HarnessRuntimeAdapter {
             probe: probe_codex_harness,
             resolve_chat_cli: resolve_codex_chat_harness_cli,
+            resolve_startup_integration: resolve_codex_startup_integration,
         },
     })
 }
@@ -186,4 +233,52 @@ pub(crate) fn resolve_chat_harness_cli(
         .copied()
         .ok_or_else(|| format!("No chat harness CLI resolver registered for {}", harness))?;
     (adapter.resolve_chat_cli)(claude_cli_path)
+}
+
+pub(crate) fn resolve_startup_harness_integration(
+    harness: AgentHarnessKind,
+) -> Result<Option<ResolvedHarnessStartupIntegration>, String> {
+    let adapters = standard_harness_runtime_adapters();
+    let adapter = adapters
+        .get(&harness)
+        .copied()
+        .ok_or_else(|| format!("No startup harness integration registered for {}", harness))?;
+    (adapter.resolve_startup_integration)()
+}
+
+pub(crate) async fn run_startup_harness_integration(
+    integration: ResolvedHarnessStartupIntegration,
+) -> Result<(), String> {
+    match integration {
+        ResolvedHarnessStartupIntegration::RegisterConfiguredMcpServer {
+            cli_path,
+            plugin_dir,
+            ..
+        } => register_mcp_server(&cli_path, &plugin_dir).await,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_startup_harness_integration_returns_none_for_codex() {
+        let integration = resolve_startup_harness_integration(AgentHarnessKind::Codex).unwrap();
+        assert!(integration.is_none());
+    }
+
+    #[test]
+    fn startup_integration_description_matches_variant() {
+        let integration = ResolvedHarnessStartupIntegration::RegisterConfiguredMcpServer {
+            harness: AgentHarnessKind::Claude,
+            cli_path: PathBuf::from("claude"),
+            plugin_dir: PathBuf::from("plugins/app"),
+        };
+        assert_eq!(integration.harness(), AgentHarnessKind::Claude);
+        assert_eq!(
+            integration.description(),
+            "configured MCP server registration"
+        );
+    }
 }
