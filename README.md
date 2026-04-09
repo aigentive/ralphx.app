@@ -143,7 +143,7 @@ RalphX manages AI agent development workflows. It was itself built by AI agents.
 ### Not for you (yet) if
 
 - You're on Linux or Windows (macOS only, for now)
-- You don't use Claude (Claude-specific today, model-agnostic roadmap)
+- You don't want to install an external agent runtime (RalphX currently targets Claude CLI and Codex CLI)
 - You need multi-user collaboration (single-developer orchestration)
 
 ---
@@ -153,7 +153,9 @@ RalphX manages AI agent development workflows. It was itself built by AI agents.
 ### Prerequisites
 
 - macOS 13+ (Ventura or later)
-- [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
+- At least one supported agent runtime installed and authenticated:
+  - [Claude CLI](https://docs.anthropic.com/en/docs/claude-code)
+  - Codex CLI
 - Node.js 18+ and npm
 - Rust 1.70+ (install via [rustup.rs](https://rustup.rs))
 - Git
