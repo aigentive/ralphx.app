@@ -8,7 +8,7 @@ use crate::infrastructure::agents::claude::{
     node_utils, reconciliation_config, register_mcp_server, resolve_plugin_dir, scheduler_config,
     ui_feature_flags_config, validate_external_mcp_config, verification_config,
     AgentHarnessDefaultsConfig, ExecutionDefaultsConfig, ExternalMcpConfig, ReconciliationConfig,
-    SchedulerConfig, UiFeatureFlagsConfig, VerificationConfig,
+    SchedulerConfig, SpecialistEntry, UiFeatureFlagsConfig, VerificationConfig,
 };
 use crate::infrastructure::agents::{find_codex_cli, resolve_codex_cli, CodexCliCapabilities};
 use which::which;
@@ -362,6 +362,10 @@ pub(crate) fn default_verification_auto_verify_enabled() -> bool {
 
 pub(crate) fn default_verification_max_rounds() -> u32 {
     verification_config().max_rounds
+}
+
+pub(crate) fn default_verification_specialists() -> Vec<SpecialistEntry> {
+    verification_config().specialists.clone()
 }
 
 pub(crate) fn default_ui_feature_flags() -> UiFeatureFlagsConfig {

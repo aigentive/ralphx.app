@@ -1,11 +1,10 @@
 use super::*;
+use crate::application::harness_runtime_registry::default_verification_specialists;
 
 pub async fn get_verification_specialists(
     State(_state): State<HttpServerState>,
 ) -> Result<Json<SpecialistsResponse>, HttpError> {
-    let cfg = default_verification_config();
-    let specialists = cfg
-        .specialists
+    let specialists = default_verification_specialists()
         .iter()
         .map(|s| SpecialistEntryResponse {
             name: s.name.clone(),

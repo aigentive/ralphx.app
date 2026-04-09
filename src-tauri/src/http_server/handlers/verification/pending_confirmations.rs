@@ -1,4 +1,5 @@
 use super::*;
+use crate::application::harness_runtime_registry::default_verification_specialists;
 
 /// Query params for get_pending_verification_confirmations
 #[derive(Debug, serde::Deserialize)]
@@ -23,9 +24,7 @@ pub async fn get_pending_verification_confirmations(
         .await
         .map_err(map_app_err_local)?;
 
-    let cfg = default_verification_config();
-    let available_specialists: Vec<SpecialistEntryResponse> = cfg
-        .specialists
+    let available_specialists: Vec<SpecialistEntryResponse> = default_verification_specialists()
         .iter()
         .map(|s| SpecialistEntryResponse {
             name: s.name.clone(),

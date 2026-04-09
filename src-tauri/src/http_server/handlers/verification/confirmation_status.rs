@@ -1,4 +1,5 @@
 use super::*;
+use crate::application::harness_runtime_registry::default_verification_specialists;
 
 pub async fn get_confirmation_status(
     State(state): State<HttpServerState>,
@@ -15,9 +16,7 @@ pub async fn get_confirmation_status(
 
     match session.verification_confirmation_status {
         Some(VerificationConfirmationStatus::Pending) => {
-            let cfg = default_verification_config();
-            let available_specialists = cfg
-                .specialists
+            let available_specialists = default_verification_specialists()
                 .iter()
                 .map(|s| SpecialistEntryResponse {
                     name: s.name.clone(),
