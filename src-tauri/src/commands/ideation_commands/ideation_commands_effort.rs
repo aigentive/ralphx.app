@@ -4,7 +4,7 @@
 //   1. Per-project DB row (if project_id is Some and row exists and value != inherit)
 //   2. Global DB row (if row exists and value != inherit)
 //   3. YAML agent-specific effort (if AgentConfig.effort is Some)
-//   4. YAML default_effort (ClaudeRuntimeConfig.default_effort)
+//   4. YAML default_effort (via shared Claude effort resolver)
 
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -12,7 +12,7 @@ use tauri::State;
 
 use crate::application::AppState;
 use crate::domain::ideation::EffortLevel;
-use crate::infrastructure::agents::claude::{claude_runtime_config, get_agent_config};
+use crate::infrastructure::agents::claude::resolve_effort_with_source as resolve_claude_effort_with_source;
 
 // Representative agents for each bucket — used to resolve YAML effort values.
 const PRIMARY_REPR_AGENT: &str = "orchestrator-ideation";
@@ -68,7 +68,7 @@ pub struct UpdateIdeationEffortInput {
 ///   2. global_value  (if Some and != inherit) → source "global"
 ///   3. YAML agent-specific effort              → source "yaml"
 ///   4. YAML default_effort                     → source "yaml_default"
-fn resolve_effort_with_source(
+fn resolve_bucket_effort_with_source(
     project_value: Option<&EffortLevel>,
     global_value: Option<&EffortLevel>,
     repr_agent: &str,
@@ -87,16 +87,13 @@ fn resolve_effort_with_source(
         }
     }
 
-    // Level 3 — YAML agent-specific effort
-    if let Some(config) = get_agent_config(repr_agent) {
-        if let Some(effort) = &config.effort {
-            return (effort.clone(), "yaml".to_string());
-        }
-    }
-
-    // Level 4 — YAML default_effort
-    let default = claude_runtime_config().default_effort.clone();
-    (default, "yaml_default".to_string())
+    let (effort, source) = resolve_claude_effort_with_source(Some(repr_agent));
+    let source = if source == "default" {
+        "yaml_default".to_string()
+    } else {
+        source
+    };
+    (effort, source)
 }
 
 // ============================================================================
@@ -153,9 +150,9 @@ pub async fn get_ideation_effort_settings(
     let global_verifier = global_row.as_ref().map(|r| &r.verifier_effort);
 
     let (effective_primary, primary_source) =
-        resolve_effort_with_source(project_primary, global_primary, PRIMARY_REPR_AGENT);
+        resolve_bucket_effort_with_source(project_primary, global_primary, PRIMARY_REPR_AGENT);
     let (effective_verifier, verifier_source) =
-        resolve_effort_with_source(project_verifier, global_verifier, VERIFIER_REPR_AGENT);
+        resolve_bucket_effort_with_source(project_verifier, global_verifier, VERIFIER_REPR_AGENT);
 
     Ok(IdeationEffortResponse {
         primary_effort: stored_primary,
@@ -206,7 +203,10 @@ pub async fn update_ideation_effort_settings(
         .unwrap_or_else(|| EffortLevel::Inherit.to_string());
 
     let new_primary = input.primary_effort.as_deref().unwrap_or(&current_primary);
-    let new_verifier = input.verifier_effort.as_deref().unwrap_or(&current_verifier);
+    let new_verifier = input
+        .verifier_effort
+        .as_deref()
+        .unwrap_or(&current_verifier);
 
     // Upsert the row.
     app_state
@@ -244,7 +244,7 @@ mod tests {
         let project = make_settings(EffortLevel::Low, EffortLevel::High);
         let global = make_settings(EffortLevel::Max, EffortLevel::Max);
 
-        let (eff, src) = resolve_effort_with_source(
+        let (eff, src) = resolve_bucket_effort_with_source(
             Some(&project.primary_effort),
             Some(&global.primary_effort),
             PRIMARY_REPR_AGENT,
@@ -258,7 +258,7 @@ mod tests {
         let project = make_settings(EffortLevel::Inherit, EffortLevel::Inherit);
         let global = make_settings(EffortLevel::Medium, EffortLevel::High);
 
-        let (eff, src) = resolve_effort_with_source(
+        let (eff, src) = resolve_bucket_effort_with_source(
             Some(&project.primary_effort),
             Some(&global.primary_effort),
             PRIMARY_REPR_AGENT,
@@ -270,7 +270,7 @@ mod tests {
     #[test]
     fn resolve_effort_no_rows_uses_yaml_fallback() {
         // Both None → should reach YAML level (yaml or yaml_default).
-        let (_, src) = resolve_effort_with_source(None, None, PRIMARY_REPR_AGENT);
+        let (_, src) = resolve_bucket_effort_with_source(None, None, PRIMARY_REPR_AGENT);
         assert!(
             src == "yaml" || src == "yaml_default",
             "Expected yaml or yaml_default, got: {src}"
@@ -282,8 +282,11 @@ mod tests {
         let settings = make_settings(EffortLevel::Inherit, EffortLevel::Inherit);
 
         // Inherit-only project row, no global row → YAML fallback
-        let (_, src) =
-            resolve_effort_with_source(Some(&settings.primary_effort), None, PRIMARY_REPR_AGENT);
+        let (_, src) = resolve_bucket_effort_with_source(
+            Some(&settings.primary_effort),
+            None,
+            PRIMARY_REPR_AGENT,
+        );
         assert!(
             src == "yaml" || src == "yaml_default",
             "Expected yaml/yaml_default after inherit, got: {src}"

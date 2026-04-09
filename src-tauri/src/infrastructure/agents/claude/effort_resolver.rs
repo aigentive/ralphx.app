@@ -62,7 +62,28 @@ pub async fn resolve_ideation_effort(
     }
 
     // Levels 3–4: YAML agent config + YAML default
-    resolve_effort(Some(agent_name))
+    resolve_effort_with_source(Some(agent_name)).0
+}
+
+/// Resolve effort from YAML config and return `(effort, source)`.
+///
+/// Returns `(yaml_effort, "yaml")` if an explicit YAML effort is configured for the agent,
+/// or `(default_effort, "default")` as the Claude runtime fallback.
+pub fn resolve_effort_with_source(agent_type: Option<&str>) -> (String, String) {
+    use super::{claude_runtime_config, get_agent_config};
+
+    let yaml_effort = agent_type
+        .and_then(|name| get_agent_config(name))
+        .and_then(|config| config.effort.clone());
+
+    if let Some(effort) = yaml_effort {
+        return (effort, "yaml".to_string());
+    }
+
+    (
+        claude_runtime_config().default_effort.clone(),
+        "default".to_string(),
+    )
 }
 
 #[cfg(test)]

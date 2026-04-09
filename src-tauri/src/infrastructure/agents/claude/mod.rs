@@ -43,11 +43,11 @@ pub use stream_processor::{
 };
 
 // Re-export effort resolver helpers for use by services
-pub use effort_resolver::{effort_bucket_for_agent, resolve_ideation_effort};
+pub use effort_resolver::{effort_bucket_for_agent, resolve_effort_with_source, resolve_ideation_effort};
 
 // Re-export model resolver helpers for use by services
 pub use model_resolver::{
-    resolve_ideation_model, resolve_ideation_subagent_model_with_source,
+    resolve_ideation_model, resolve_ideation_subagent_model_with_source, resolve_model_with_source,
     resolve_verifier_subagent_model_with_source, ResolvedModel,
 };
 
