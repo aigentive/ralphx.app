@@ -396,6 +396,14 @@ pub(crate) fn default_scheduler_runtime_config() -> SchedulerConfig {
     scheduler_config().clone()
 }
 
+pub(crate) fn default_scheduler_ready_settle_ms() -> u64 {
+    scheduler_config().ready_settle_ms
+}
+
+pub(crate) fn default_scheduler_merge_settle_ms() -> u64 {
+    scheduler_config().merge_settle_ms
+}
+
 pub(crate) fn default_reconciliation_runtime_config() -> ReconciliationConfig {
     reconciliation_config().clone()
 }

@@ -1,5 +1,5 @@
 use super::*;
-use crate::application::harness_runtime_registry::default_scheduler_runtime_config;
+use crate::application::harness_runtime_registry::default_scheduler_ready_settle_ms;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::http_server::handlers::ideation::stop_verification_children;
 
@@ -132,7 +132,7 @@ pub async fn external_apply_proposals(
             Arc::clone(&state.execution_state),
             state.app_state.app_handle.as_ref().cloned(),
         );
-        let settle_ms = default_scheduler_runtime_config().ready_settle_ms;
+        let settle_ms = default_scheduler_ready_settle_ms();
         tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_millis(settle_ms)).await;
             scheduler.try_schedule_ready_tasks().await;
