@@ -20,7 +20,7 @@ MCP access is controlled by **three distinct layers**. Changing only one layer i
 | 2 | `ralphx.yaml` → `mcp_tools: [...]` per agent | What Rust injects via `--allowed-tools` at runtime | Yes |
 | 3 | `plugins/app/ralphx-mcp-server/src/tools.ts` | Tool handler registration + per-agent MCP allowlist | Yes |
 
-**How it works:** Rust `create_mcp_config()` reads `mcp_tools` from `ralphx.yaml` and injects `--allowed-tools=tool1,tool2,...` into the MCP config JSON args. MCP server parses this at startup. Frontmatter still matters because Claude won't call a tool that is not listed in the prompt contract.
+**How it works:** Rust `create_mcp_config()` reads `mcp_tools` from `ralphx.yaml` and injects `--allowed-tools=tool1,tool2,...` into the MCP config JSON args. MCP server parses this at startup. Frontmatter still matters because the active harness will not call a tool that is not listed in the prompt contract.
 
 ## Alignment Rule (NON-NEGOTIABLE)
 
@@ -39,9 +39,9 @@ When adding OR removing an MCP tool from an agent:
 | Spawning Path | Wildcard in `tools`? | Why |
 |---------------|---------------------|-----|
 | **Backend-spawned** (Rust `create_mcp_config()`) | ✅ `"mcp__ralphx__*"` works | Backend handles tool injection via `--allowed-tools` CLI arg — different code path |
-| **Task-spawned** (Claude Code `Task()` tool) | ❌ `"mcp__ralphx__*"` fails silently | Wildcard not expanded against MCP server; treated as literal string matching nothing — MUST use explicit names |
+| **Task-spawned Claude subagent** (Claude Code `Task()` tool) | ❌ `"mcp__ralphx__*"` fails silently | Wildcard not expanded against MCP server; treated as literal string matching nothing — MUST use explicit names |
 
-**Rule:** Task-spawned agents MUST list explicit MCP tool names (e.g., `"mcp__ralphx__get_session_plan"`). Pattern reference: `plan-critic-completeness.md` frontmatter.
+**Rule:** Task-spawned Claude agents MUST list explicit MCP tool names (e.g., `"mcp__ralphx__get_session_plan"`). Pattern reference: `plan-critic-completeness.md` frontmatter.
 
 ## How to Add or Remove an MCP Tool — Checklist
 
@@ -101,7 +101,7 @@ After adding a tool, verify MCP server stderr shows:
 **Do NOT edit `TOOL_ALLOWLIST` to grant tools to agents.** Changes there have no effect in production (they're only reached when `--allowed-tools` injection fails). Update `ralphx.yaml` `mcp_tools` instead.
 
 **Fallback chain in `getAllowedToolNames()`:**
-1. `RALPHX_ALLOWED_MCP_TOOLS` env var (standalone testing only — Claude CLI does not propagate env vars to MCP servers)
+1. `RALPHX_ALLOWED_MCP_TOOLS` env var (standalone testing only — do not assume every harness propagates env vars to MCP subprocesses)
 2. `--allowed-tools` CLI arg (production path — injected by Rust `create_mcp_config()` from `ralphx.yaml`)
 3. `TOOL_ALLOWLIST[agentType]` (deprecated fallback — emits warning when reached)
 
@@ -112,7 +112,7 @@ After adding a tool, verify MCP server stderr shows:
 | `ralphx.yaml` `mcp_tools` | bare name | `get_merge_target` | — |
 | TS `ALL_TOOLS` definition | bare name | `name: "get_merge_target"` | — |
 | Agent frontmatter `tools` (backend-spawned) | wildcard OK | `"mcp__ralphx__*"` | Backend handles expansion via `--allowed-tools` |
-| Agent frontmatter `tools` (Task-spawned) | explicit names required | `"mcp__ralphx__get_session_plan"` | Wildcard not expanded; must enumerate each tool |
+| Agent frontmatter `tools` (Task-spawned Claude subagent) | explicit names required | `"mcp__ralphx__get_session_plan"` | Wildcard not expanded; must enumerate each tool |
 
 ## Common Failure Modes
 
@@ -122,7 +122,7 @@ After adding a tool, verify MCP server stderr shows:
 | Tool listed but "not available" | Handler missing from `ALL_TOOLS` or `index.ts` dispatch | Register handler + rebuild |
 | MCP server logs "using fallback TOOL_ALLOWLIST" | `--allowed-tools` not injected | Check `ralphx.yaml` syntax; rebuild Rust |
 | Tool allowed but 404 | Handler missing or wrong route | Check `index.ts` dispatch + `mod.rs` route |
-| Task-spawned agent can't use MCP tool | Agent `.md` uses `"mcp__ralphx__*"` wildcard (not expanded) | Replace wildcard with explicit tool names: `"mcp__ralphx__get_session_plan"` etc. |
+| Task-spawned Claude agent can't use MCP tool | Agent `.md` uses `"mcp__ralphx__*"` wildcard (not expanded) | Replace wildcard with explicit tool names: `"mcp__ralphx__get_session_plan"` etc. |
 | Backend-spawned agent can't use tool | Agent `.md` doesn't have `"mcp__ralphx__*"` in `tools` | Add wildcard to frontmatter `tools` list |
 
 ## Backend-Spawned vs Task-Spawned Agents
@@ -221,12 +221,20 @@ case "get_merge_target":
 
 Then rebuild: `cd plugins/app/ralphx-mcp-server && npm run build`
 
+## Harness Scope Rule
+
+| Rule | Detail |
+|------|--------|
+| Name Claude-specific paths explicitly | If behavior depends on Claude `Task()` or `mcpServers` frontmatter, say **Claude** explicitly. |
+| Do not universalize Claude bootstrap semantics | Codex and future harnesses may reach RalphX MCP/internal tools through different runtime adapters or CLI wiring. |
+| Keep shared layers aligned anyway | Prompt contract, `ralphx.yaml`, and MCP allowlists still stay aligned even when harness bootstrap differs. |
+
 ## Subagent MCP Access — Two Spawning Paths (NON-NEGOTIABLE)
 
 | Path | How Agent Gets MCP | `mcpServers` in Frontmatter? |
 |------|-------------------|------------------------------|
 | **Backend-spawned** (ClaudeCodeClient) | Rust `create_mcp_config()` injects `--allowed-tools` into temp MCP config | Not used for own access, BUT needed for Task-tool subagents it spawns |
-| **Task-tool-spawned** (in-process subagent) | Frontmatter `mcpServers` field connects to MCP server | ✅ Required — without it, zero MCP tools |
+| **Task-tool-spawned Claude subagent** (in-process subagent) | Frontmatter `mcpServers` field connects to MCP server | ✅ Required — without it, zero MCP tools |
 
 ### mcpServers Frontmatter Field
 
@@ -239,7 +247,7 @@ mcpServers:
 
 Without `mcpServers`, the subagent has zero MCP tools — `tools` entries for `mcp__ralphx__*` are ignored because there's no MCP server connected.
 
-**Three fields work together (Task-spawned agents):**
+**Three fields work together (Task-spawned Claude agents):**
 
 | Field | Purpose | Without It |
 |-------|---------|------------|
@@ -248,8 +256,8 @@ Without `mcpServers`, the subagent has zero MCP tools — `tools` entries for `m
 | `disallowedTools` | Blocks specific MCP tools | Unnecessary for MCP restriction — `tools` strict allowlist already blocks unlisted tools |
 
 ❌ `allowedTools` is NOT a valid frontmatter field — Claude Code silently ignores it
-❌ `"mcp__ralphx__*"` wildcard in `tools` does NOT work for Task-spawned agents — wildcard is treated as a literal string
-✅ Task-spawned: list explicit names (`"mcp__ralphx__get_session_plan"` etc.) AND include `mcpServers`
+❌ `"mcp__ralphx__*"` wildcard in `tools` does NOT work for Task-spawned Claude agents — wildcard is treated as a literal string
+✅ Task-spawned Claude agents: list explicit names (`"mcp__ralphx__get_session_plan"` etc.) AND include `mcpServers`
 ✅ Backend-spawned: wildcard `"mcp__ralphx__*"` works (Rust `create_mcp_config()` handles expansion)
 
 ```yaml

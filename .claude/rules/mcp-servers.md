@@ -17,21 +17,29 @@ Two MCP servers exist in this repo. They serve **different audiences** and must 
 
 ## 1. Internal Agent MCP — `plugins/app/ralphx-mcp-server/`
 
-**Purpose:** Stdio-based MCP proxy for RalphX's own Claude agents (workers, reviewers, mergers, ideation orchestrators). Runs embedded inside Claude CLI — NOT a standalone service.
+**Purpose:** Stdio-based MCP proxy for RalphX internal agent workflows. Today the embedded stdio bootstrap is primarily used by the Claude harness; other harnesses may reach the same RalphX internals through different runtime adapters.
 
 | Aspect | Detail |
 |--------|--------|
-| **Transport** | Stdio (launched by Claude CLI via `.mcp.json`) |
+| **Transport** | Stdio (today bootstrapped through Claude CLI via `.mcp.json`) |
 | **Audience** | Internal RalphX agents only |
 | **Port** | N/A (stdio) — proxies to Tauri backend `:3847` |
 | **Auth** | Agent-type filtering via `RALPHX_AGENT_TYPE` env + `ralphx.yaml` `mcp_tools` |
 | **Tools** | ~42 (41 base + `permission_request`), filtered per agent type (see `agent-mcp-tools.md`) |
-| **Config** | `.mcp.json` registers it; `ralphx.yaml` controls per-agent tool access |
+| **Config** | `.mcp.json` registers the Claude stdio path; `ralphx.yaml` controls per-agent tool access |
 | **Build** | `cd plugins/app/ralphx-mcp-server && npm run build` (NON-NEGOTIABLE after source changes) |
 
 ```
 Claude CLI → stdio → ralphx-mcp-server → HTTP :3847 → Tauri Backend
 ```
+
+## Harness Scope Rule
+
+| Rule | Detail |
+|------|--------|
+| Name the bootstrap path precisely | `.mcp.json`, `claude mcp add-json`, and stdio frontmatter behavior are Claude-path details, not universal harness rules. |
+| Keep internal-tool semantics provider-neutral | Tool authz, `ralphx.yaml` tool grants, and backend handler behavior must stay reusable across Claude, Codex, and future harnesses. |
+| Do not infer HTTP exposure from internal MCP | Internal MCP remains an internal transport choice; external/public access still belongs to `ralphx-external-mcp`. |
 
 ## 2. External API MCP — `plugins/app/ralphx-external-mcp/`
 
@@ -58,12 +66,12 @@ External Agent → Bearer token → ralphx-external-mcp (:3848) → HTTP :3847 �
 
 | Question | Internal (`ralphx-mcp-server`) | External (`ralphx-external-mcp`) |
 |----------|-------------------------------|----------------------------------|
-| Who calls it? | RalphX's own Claude agents | Third-party bots, external integrations |
-| How is it started? | Registered via `claude mcp add-json` by Tauri app | Auto-started by `ExternalMcpSupervisor` (when enabled in `ralphx.yaml`) |
+| Who calls it? | RalphX internal harness runtimes (today mostly Claude) | Third-party bots, external integrations |
+| How is it started? | Claude path is registered via `claude mcp add-json` by Tauri app; other harnesses may use different runtime adapters | Auto-started by `ExternalMcpSupervisor` (when enabled in `ralphx.yaml`) |
 | Where are tools defined? | `src/tools.ts` + `ralphx.yaml` | `src/tools/*.ts` (discovery, ideation, pipeline, events, tasks, guide) |
 | Domain logic? | ❌ Pure proxy + authz | ❌ Pure proxy + authz + rate limiting |
 | Both proxy to? | Tauri backend `:3847` | Tauri backend `:3847` |
 
 ❌ Do NOT confuse the two — modifying the wrong server's tools will break either internal agents or external API consumers.
-❌ Do NOT add external-facing auth (Bearer tokens, TLS) to the internal server — it uses stdio, not HTTP.
+❌ Do NOT add external-facing auth (Bearer tokens, TLS) to the internal server — the Claude path uses stdio, not HTTP.
 ❌ Do NOT add internal agent-type filtering to the external server — it uses API keys, not agent types.
