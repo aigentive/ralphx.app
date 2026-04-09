@@ -232,6 +232,9 @@ pub struct SendMessageOptions {
     pub metadata: Option<String>,
     /// Optional timestamp override for the user message. If None, uses Utc::now().
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Optional provider harness override for relaunch/recovery flows that must preserve an
+    /// existing provider session's runtime instead of re-resolving only from current lane config.
+    pub harness_override: Option<AgentHarnessKind>,
     /// When true, the agent was spawned from an external MCP request (e.g. ReefBot).
     /// Filters interactive-only tools (e.g. `ask_user_question`) from the allowed tool list
     /// to prevent deadlocks where the agent waits for human input that will never arrive.
@@ -1714,6 +1717,11 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
                 project_id.as_deref(),
                 context_type,
                 entity_status.as_deref(),
+                options.harness_override.or_else(|| {
+                    conversation
+                        .provider_session_ref()
+                        .map(|session_ref| session_ref.harness)
+                }),
                 None,
                 self.agent_lane_settings_repo.as_ref(),
                 self.ideation_model_settings_repo.as_ref(),

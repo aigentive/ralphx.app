@@ -4,8 +4,7 @@ use super::agent_lane_resolution::resolve_agent_spawn_settings;
 use crate::domain::agents::{AgentHarnessKind, AgentLane, AgentLaneSettings, LogicalEffort};
 use crate::domain::entities::ChatContextType;
 use crate::domain::repositories::{
-    AgentLaneSettingsRepository, IdeationEffortSettingsRepository,
-    IdeationModelSettingsRepository,
+    AgentLaneSettingsRepository, IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
 };
 use crate::infrastructure::memory::{
     MemoryAgentLaneSettingsRepository, MemoryIdeationEffortSettingsRepository,
@@ -89,6 +88,7 @@ async fn lane_row_with_claude_harness_overrides_legacy_model_and_effort() {
         ChatContextType::Ideation,
         None,
         None,
+        None,
         Some(&lane_repo),
         Some(&model_repo),
         Some(&effort_repo),
@@ -98,15 +98,27 @@ async fn lane_row_with_claude_harness_overrides_legacy_model_and_effort() {
     assert_eq!(resolved.configured_harness, Some(AgentHarnessKind::Claude));
     assert_eq!(resolved.effective_harness, AgentHarnessKind::Claude);
     assert_eq!(resolved.configured_model.as_deref(), Some("opus"));
-    assert_eq!(resolved.configured_logical_effort, Some(LogicalEffort::XHigh));
-    assert_eq!(resolved.configured_approval_policy.as_deref(), Some("on_request"));
-    assert_eq!(resolved.configured_sandbox_mode.as_deref(), Some("workspace_write"));
+    assert_eq!(
+        resolved.configured_logical_effort,
+        Some(LogicalEffort::XHigh)
+    );
+    assert_eq!(
+        resolved.configured_approval_policy.as_deref(),
+        Some("on_request")
+    );
+    assert_eq!(
+        resolved.configured_sandbox_mode.as_deref(),
+        Some("workspace_write")
+    );
     assert_eq!(resolved.model, "opus");
     assert_eq!(resolved.logical_effort, Some(LogicalEffort::XHigh));
     assert_eq!(resolved.claude_effort.as_deref(), Some("max"));
     assert_eq!(resolved.approval_policy.as_deref(), Some("on_request"));
     assert_eq!(resolved.sandbox_mode.as_deref(), Some("workspace_write"));
-    assert_eq!(resolved.configured_subagent_model_cap.as_deref(), Some("haiku"));
+    assert_eq!(
+        resolved.configured_subagent_model_cap.as_deref(),
+        Some("haiku")
+    );
     assert_eq!(resolved.subagent_model_cap.as_deref(), Some("haiku"));
 }
 
@@ -132,6 +144,7 @@ async fn missing_lane_row_falls_back_to_legacy_ideation_settings() {
         "orchestrator-ideation",
         Some("proj-2"),
         ChatContextType::Ideation,
+        None,
         None,
         None,
         Some(&lane_repo),
@@ -184,6 +197,7 @@ async fn claude_lane_without_model_or_effort_still_falls_back_to_legacy_settings
         "orchestrator-ideation",
         None,
         ChatContextType::Ideation,
+        None,
         None,
         None,
         Some(&lane_repo),
@@ -248,6 +262,7 @@ async fn codex_lane_selection_uses_codex_lane_settings() {
         ChatContextType::Ideation,
         None,
         None,
+        None,
         Some(&lane_repo),
         Some(&model_repo),
         Some(&effort_repo),
@@ -257,15 +272,27 @@ async fn codex_lane_selection_uses_codex_lane_settings() {
     assert_eq!(resolved.configured_harness, Some(AgentHarnessKind::Codex));
     assert_eq!(resolved.effective_harness, AgentHarnessKind::Codex);
     assert_eq!(resolved.configured_model.as_deref(), Some("gpt-5.4"));
-    assert_eq!(resolved.configured_logical_effort, Some(LogicalEffort::XHigh));
-    assert_eq!(resolved.configured_approval_policy.as_deref(), Some("on_request"));
-    assert_eq!(resolved.configured_sandbox_mode.as_deref(), Some("workspace_write"));
+    assert_eq!(
+        resolved.configured_logical_effort,
+        Some(LogicalEffort::XHigh)
+    );
+    assert_eq!(
+        resolved.configured_approval_policy.as_deref(),
+        Some("on_request")
+    );
+    assert_eq!(
+        resolved.configured_sandbox_mode.as_deref(),
+        Some("workspace_write")
+    );
     assert_eq!(resolved.model, "gpt-5.4");
     assert_eq!(resolved.logical_effort, Some(LogicalEffort::XHigh));
     assert_eq!(resolved.claude_effort.as_deref(), Some("max"));
     assert_eq!(resolved.approval_policy.as_deref(), Some("on_request"));
     assert_eq!(resolved.sandbox_mode.as_deref(), Some("workspace_write"));
-    assert_eq!(resolved.configured_subagent_model_cap.as_deref(), Some("gpt-5.4-mini"));
+    assert_eq!(
+        resolved.configured_subagent_model_cap.as_deref(),
+        Some("gpt-5.4-mini")
+    );
     assert_eq!(resolved.subagent_model_cap.as_deref(), Some("gpt-5.4-mini"));
 }
 
@@ -306,6 +333,7 @@ async fn codex_primary_lane_without_model_or_effort_uses_phase1_defaults() {
         "orchestrator-ideation",
         None,
         ChatContextType::Ideation,
+        None,
         None,
         None,
         Some(&lane_repo),
@@ -361,6 +389,7 @@ async fn codex_verifier_lane_without_model_or_effort_uses_phase1_defaults() {
         ChatContextType::Ideation,
         None,
         None,
+        None,
         Some(&lane_repo),
         Some(&model_repo),
         Some(&effort_repo),
@@ -413,6 +442,7 @@ async fn verifier_and_primary_subagent_caps_use_lane_rows_when_claude_is_selecte
         ChatContextType::Ideation,
         None,
         None,
+        None,
         Some(&lane_repo),
         Some(&model_repo),
         Some(&effort_repo),
@@ -449,6 +479,7 @@ async fn execution_worker_lane_can_resolve_codex_settings() {
         ChatContextType::TaskExecution,
         None,
         None,
+        None,
         Some(&lane_repo),
         None,
         None,
@@ -462,6 +493,49 @@ async fn execution_worker_lane_can_resolve_codex_settings() {
     assert_eq!(resolved.approval_policy.as_deref(), Some("on-request"));
     assert_eq!(resolved.sandbox_mode.as_deref(), Some("workspace-write"));
     assert_eq!(resolved.subagent_model_cap, None);
+}
+
+#[tokio::test]
+async fn execution_worker_harness_override_ignores_mismatched_lane_harness_settings() {
+    let lane_repo: Arc<dyn AgentLaneSettingsRepository> =
+        Arc::new(MemoryAgentLaneSettingsRepository::new());
+
+    lane_repo
+        .upsert_global(
+            AgentLane::ExecutionWorker,
+            &claude_lane_settings(
+                "opus",
+                Some(LogicalEffort::High),
+                Some("on_request"),
+                Some("workspace_write"),
+            ),
+        )
+        .await
+        .expect("execution worker lane upsert should succeed");
+
+    let resolved = resolve_agent_spawn_settings(
+        "worker",
+        None,
+        ChatContextType::TaskExecution,
+        None,
+        Some(AgentHarnessKind::Codex),
+        None,
+        Some(&lane_repo),
+        None,
+        None,
+    )
+    .await;
+
+    assert_eq!(resolved.configured_harness, None);
+    assert_eq!(resolved.effective_harness, AgentHarnessKind::Codex);
+    assert_eq!(resolved.configured_model, None);
+    assert_eq!(resolved.configured_logical_effort, None);
+    assert_eq!(resolved.configured_approval_policy, None);
+    assert_eq!(resolved.configured_sandbox_mode, None);
+    assert_eq!(resolved.model, "gpt-5.4");
+    assert_eq!(resolved.logical_effort, Some(LogicalEffort::XHigh));
+    assert_eq!(resolved.approval_policy.as_deref(), Some("on-request"));
+    assert_eq!(resolved.sandbox_mode.as_deref(), Some("workspace-write"));
 }
 
 #[tokio::test]
@@ -488,6 +562,7 @@ async fn execution_worker_codex_without_model_uses_generic_codex_defaults() {
         "worker",
         None,
         ChatContextType::TaskExecution,
+        None,
         None,
         None,
         Some(&lane_repo),
@@ -526,6 +601,7 @@ async fn reexecuting_task_execution_uses_reexecutor_lane_settings() {
         None,
         ChatContextType::TaskExecution,
         Some("re_executing"),
+        None,
         None,
         Some(&lane_repo),
         None,

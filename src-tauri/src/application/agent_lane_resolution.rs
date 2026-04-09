@@ -6,8 +6,7 @@ use crate::domain::agents::{
 };
 use crate::domain::entities::ChatContextType;
 use crate::domain::repositories::{
-    AgentLaneSettingsRepository, IdeationEffortSettingsRepository,
-    IdeationModelSettingsRepository,
+    AgentLaneSettingsRepository, IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
 };
 use crate::infrastructure::agents::claude::{
     effort_bucket_for_agent, resolve_effort, resolve_ideation_effort, resolve_ideation_model,
@@ -37,6 +36,7 @@ pub(crate) async fn resolve_agent_spawn_settings(
     project_id: Option<&str>,
     context_type: ChatContextType,
     entity_status: Option<&str>,
+    harness_override: Option<AgentHarnessKind>,
     model_override: Option<&str>,
     agent_lane_settings_repo: Option<&Arc<dyn AgentLaneSettingsRepository>>,
     ideation_model_settings_repo: Option<&Arc<dyn IdeationModelSettingsRepository>>,
@@ -67,18 +67,28 @@ pub(crate) async fn resolve_agent_spawn_settings(
 
     let (primary_project_row, primary_global_row) =
         load_lane_rows(agent_lane_settings_repo, project_id, primary_lane).await;
-    let configured_primary_settings =
-        lane_settings_value(primary_project_row.as_ref(), primary_global_row.as_ref());
-    let configured_harness = lane_harness(primary_project_row.as_ref(), primary_global_row.as_ref());
-    let effective_harness = configured_harness.unwrap_or(DEFAULT_AGENT_HARNESS);
-    let harness_primary_defaults = primary_lane.and_then(|lane| nondefault_harness_lane_settings(
-        lane,
-        effective_harness,
-    ));
+    let configured_harness =
+        lane_harness(primary_project_row.as_ref(), primary_global_row.as_ref());
+    let effective_harness = harness_override
+        .or(configured_harness)
+        .unwrap_or(DEFAULT_AGENT_HARNESS);
+    let settings_match_effective_harness = configured_harness
+        .map(|configured| configured == effective_harness)
+        .unwrap_or(true);
+    let configured_primary_settings = settings_match_effective_harness
+        .then(|| lane_settings_value(primary_project_row.as_ref(), primary_global_row.as_ref()))
+        .flatten();
+    let configured_harness =
+        configured_harness.filter(|configured| *configured == effective_harness);
+    let harness_primary_defaults =
+        primary_lane.and_then(|lane| nondefault_harness_lane_settings(lane, effective_harness));
 
     let model = if let Some(model_override) = model_override {
         model_override.to_string()
-    } else if let Some(model) = lane_model_value(primary_project_row.as_ref(), primary_global_row.as_ref()) {
+    } else if let Some(model) = configured_primary_settings
+        .as_ref()
+        .and_then(|settings| settings.model.clone())
+    {
         model
     } else if let Some(model) = harness_primary_defaults
         .as_ref()
@@ -90,10 +100,10 @@ pub(crate) async fn resolve_agent_spawn_settings(
     };
 
     let logical_effort = if primary_lane.is_some() {
-        if let Some(effort) = lane_logical_effort_value(
-            primary_project_row.as_ref(),
-            primary_global_row.as_ref(),
-        ) {
+        if let Some(effort) = configured_primary_settings
+            .as_ref()
+            .and_then(|settings| settings.effort)
+        {
             Some(effort)
         } else if let Some(defaults) = harness_primary_defaults.as_ref() {
             defaults.effort
@@ -105,20 +115,27 @@ pub(crate) async fn resolve_agent_spawn_settings(
         None
     };
 
-    let (configured_subagent_model_cap, subagent_model_cap) = if let Some(subagent_lane) = subagent_lane {
+    let (configured_subagent_model_cap, subagent_model_cap) = if let Some(subagent_lane) =
+        subagent_lane
+    {
         let (subagent_project_row, subagent_global_row) =
             load_lane_rows(agent_lane_settings_repo, project_id, Some(subagent_lane)).await;
-        let configured_subagent_model_cap = lane_settings_value(
-            subagent_project_row.as_ref(),
-            subagent_global_row.as_ref(),
-        )
-        .and_then(|settings| settings.model);
+        let subagent_harness =
+            lane_harness(subagent_project_row.as_ref(), subagent_global_row.as_ref());
+        let configured_subagent_model_cap = subagent_harness
+            .map(|configured| configured == effective_harness)
+            .unwrap_or(true)
+            .then(|| {
+                lane_settings_value(subagent_project_row.as_ref(), subagent_global_row.as_ref())
+                    .and_then(|settings| settings.model)
+            })
+            .flatten();
 
         let subagent_model_cap = if let Some(model) = configured_subagent_model_cap.clone() {
             model
         } else if let Some(model) =
             nondefault_harness_lane_settings(subagent_lane, effective_harness)
-            .and_then(|settings| settings.model)
+                .and_then(|settings| settings.model)
         {
             model
         } else {
@@ -292,32 +309,6 @@ fn lane_harness(
         .or_else(|| global_row.map(|row| row.settings.harness))
 }
 
-fn lane_model_value(
-    project_row: Option<&StoredAgentLaneSettings>,
-    global_row: Option<&StoredAgentLaneSettings>,
-) -> Option<String> {
-    if let Some(row) = project_row {
-        if let Some(model) = row.settings.model.clone() {
-            return Some(model);
-        }
-    }
-
-    global_row.and_then(|row| row.settings.model.clone())
-}
-
-fn lane_logical_effort_value(
-    project_row: Option<&StoredAgentLaneSettings>,
-    global_row: Option<&StoredAgentLaneSettings>,
-) -> Option<LogicalEffort> {
-    if let Some(row) = project_row {
-        if let Some(effort) = row.settings.effort {
-            return Some(effort);
-        }
-    }
-
-    global_row.and_then(|row| row.settings.effort)
-}
-
 fn nondefault_harness_lane_settings(
     lane: AgentLane,
     harness: AgentHarnessKind,
@@ -408,14 +399,22 @@ async fn resolve_legacy_subagent_model_cap(
 
     if ideation_lane_for_agent(agent_name) == Some(AgentLane::IdeationVerifier) {
         resolve_verifier_subagent_model_with_source(
-            project_settings.as_ref().map(|settings| &settings.verifier_subagent_model),
-            global_settings.as_ref().map(|settings| &settings.verifier_subagent_model),
+            project_settings
+                .as_ref()
+                .map(|settings| &settings.verifier_subagent_model),
+            global_settings
+                .as_ref()
+                .map(|settings| &settings.verifier_subagent_model),
         )
         .0
     } else {
         resolve_ideation_subagent_model_with_source(
-            project_settings.as_ref().map(|settings| &settings.ideation_subagent_model),
-            global_settings.as_ref().map(|settings| &settings.ideation_subagent_model),
+            project_settings
+                .as_ref()
+                .map(|settings| &settings.ideation_subagent_model),
+            global_settings
+                .as_ref()
+                .map(|settings| &settings.ideation_subagent_model),
         )
         .0
     }

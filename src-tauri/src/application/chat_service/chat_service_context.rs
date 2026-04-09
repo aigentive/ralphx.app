@@ -1401,6 +1401,9 @@ pub async fn build_command(
             project_id,
             conversation.context_type,
             entity_status,
+            conversation
+                .provider_session_ref()
+                .map(|session_ref| session_ref.harness),
             model_override,
             agent_lane_settings_repo.as_ref(),
             ideation_model_settings_repo.as_ref(),
@@ -1596,6 +1599,7 @@ async fn resolve_noninteractive_spawn_settings(
         project_id,
         context_type,
         entity_status,
+        None,
         model_override,
         agent_lane_settings_repo,
         ideation_model_settings_repo,
@@ -1900,6 +1904,7 @@ pub async fn build_resume_command(
             project_id,
             context_type,
             entity_status.as_deref(),
+            None,
             model_override,
             agent_lane_settings_repo.as_ref(),
             ideation_model_settings_repo.as_ref(),

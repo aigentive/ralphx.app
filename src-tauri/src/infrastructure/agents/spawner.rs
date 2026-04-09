@@ -242,7 +242,10 @@ impl AgenticClientSpawner {
             return None;
         };
 
-        let Ok(settings) = execution_settings_repo.get_settings(Some(&task.project_id)).await else {
+        let Ok(settings) = execution_settings_repo
+            .get_settings(Some(&task.project_id))
+            .await
+        else {
             return None;
         };
 
@@ -289,7 +292,10 @@ impl AgenticClientSpawner {
             };
 
             if related_task.project_id != task.project_id
-                || !context_matches_running_status_for_gc(context_type, related_task.internal_status)
+                || !context_matches_running_status_for_gc(
+                    context_type,
+                    related_task.internal_status,
+                )
             {
                 continue;
             }
@@ -370,7 +376,13 @@ impl AgenticClientSpawner {
         agent_type: &str,
         task_id: &str,
         project_id: Option<&str>,
-    ) -> (AgentHarnessKind, Option<String>, Option<LogicalEffort>, Option<String>, Option<String>) {
+    ) -> (
+        AgentHarnessKind,
+        Option<String>,
+        Option<LogicalEffort>,
+        Option<String>,
+        Option<String>,
+    ) {
         let Some(context_type) = Self::context_type_for_agent(agent_type) else {
             return (self.default_harness, None, None, None, None);
         };
@@ -384,6 +396,7 @@ impl AgenticClientSpawner {
             project_id,
             context_type,
             entity_status.as_deref(),
+            None,
             None,
             self.agent_lane_settings_repo.as_ref(),
             None,
@@ -458,15 +471,14 @@ impl AgenticClientSpawner {
         if matches!(client_type, ClientType::ClaudeCode | ClientType::Codex) {
             let plugin_dir = resolve_harness_plugin_dir(harness, &working_dir);
             config.plugin_dir = Some(plugin_dir);
-            config.agent = Self::resolve_process_agent_name(agent_type)
-                .or_else(|| {
-                    Some(
-                        crate::infrastructure::agents::claude::agent_names::spawner_agent_name(
-                            agent_type,
-                        )
-                        .to_string(),
+            config.agent = Self::resolve_process_agent_name(agent_type).or_else(|| {
+                Some(
+                    crate::infrastructure::agents::claude::agent_names::spawner_agent_name(
+                        agent_type,
                     )
-                });
+                    .to_string(),
+                )
+            });
         }
 
         config

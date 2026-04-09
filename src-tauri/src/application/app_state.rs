@@ -295,6 +295,7 @@ impl AppState {
             ChatContextType::Ideation,
             None,
             None,
+            None,
             Some(&self.agent_lane_settings_repo),
             Some(&self.ideation_model_settings_repo),
             Some(&self.ideation_effort_settings_repo),
