@@ -3,7 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use ralphx_lib::application::chat_service::{ChatService, ChatServiceError, ClaudeChatService, SendMessageOptions};
+use ralphx_lib::application::chat_service::{AppChatService, ChatService, ChatServiceError, SendMessageOptions};
 use ralphx_lib::application::{AppState, InteractiveProcessKey, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::execution::ExecutionSettings;
@@ -94,7 +94,7 @@ async fn create_active_session_with_purpose(
     id
 }
 
-fn build_ideation_chat_service(state: &HttpServerState) -> ClaudeChatService<tauri::Wry> {
+fn build_ideation_chat_service(state: &HttpServerState) -> AppChatService<tauri::Wry> {
     state
         .app_state
         .build_chat_service_with_execution_state(Arc::clone(&state.execution_state))

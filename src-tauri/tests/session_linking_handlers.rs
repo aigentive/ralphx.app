@@ -517,7 +517,7 @@ mod verification_init_tests {
         let response = result.unwrap().0;
         let child_id = IdeationSessionId::from_string(response.session_id.clone());
 
-        // In tests, ClaudeChatService spawn fails (no real Claude CLI), so orchestration_triggered
+        // In tests, the app chat runtime spawn fails (no real Claude CLI), so orchestration_triggered
         // will be false and generation will be None after rollback.
         // The key invariant to assert: when a description is provided and verification initializes,
         // the user message stored before the spawn attempt contains the augmented metadata.

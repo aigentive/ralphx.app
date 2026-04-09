@@ -1,4 +1,4 @@
-use ralphx_lib::application::chat_service::{ChatService, ClaudeChatService, SendMessageOptions};
+use ralphx_lib::application::chat_service::{AppChatService, ChatService, SendMessageOptions};
 use ralphx_lib::application::AppState;
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::ideation::IdeationSessionBuilder;
@@ -19,9 +19,9 @@ async fn setup_test_state() -> HttpServerState {
     }
 }
 
-fn build_chat_service(state: &HttpServerState) -> ClaudeChatService<tauri::Wry> {
+fn build_chat_service(state: &HttpServerState) -> AppChatService<tauri::Wry> {
     let app = &state.app_state;
-    ClaudeChatService::new(
+    AppChatService::new(
         Arc::clone(&app.chat_message_repo),
         Arc::clone(&app.chat_attachment_repo),
         Arc::clone(&app.artifact_repo),
