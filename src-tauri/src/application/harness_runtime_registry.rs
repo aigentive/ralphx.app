@@ -263,7 +263,7 @@ pub(crate) fn resolve_default_chat_service_bootstrap() -> DefaultChatServiceBoot
 
 pub(crate) fn resolve_default_external_mcp_bootstrap(
 ) -> Result<Option<DefaultExternalMcpBootstrap>, String> {
-    let config = external_mcp_config().clone();
+    let config = default_external_mcp_config();
     if !config.enabled {
         return Ok(None);
     }
@@ -285,6 +285,18 @@ pub(crate) fn resolve_default_external_mcp_bootstrap(
         node_path: node_utils::find_node_binary(),
         entry_path,
     }))
+}
+
+pub(crate) fn default_external_mcp_config() -> ExternalMcpConfig {
+    external_mcp_config().clone()
+}
+
+pub(crate) fn default_external_mcp_config_path() -> PathBuf {
+    crate::infrastructure::agents::claude::config_path()
+}
+
+pub(crate) fn default_external_mcp_port() -> u16 {
+    default_external_mcp_config().port
 }
 
 fn find_claude_external_mcp_entry() -> Option<PathBuf> {

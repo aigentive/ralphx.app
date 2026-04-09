@@ -225,7 +225,7 @@ pub async fn get_api_key_audit_log(
 /// On any failure (connection refused, timeout, error response), logs a warning
 /// and returns — the 30s TTL cache serves as the fallback.
 async fn invalidate_external_mcp_cache(key_id: &str) {
-    let port = crate::infrastructure::agents::claude::external_mcp_config().port;
+    let port = crate::application::harness_runtime_registry::default_external_mcp_port();
     let url = format!("http://127.0.0.1:{}/api/auth/invalidate-cache", port);
     let body = format!(r#"{{"key_id":"{}"}}"#, key_id);
 

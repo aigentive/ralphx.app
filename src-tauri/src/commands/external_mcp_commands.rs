@@ -2,7 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::infrastructure::agents::claude;
+use crate::application::harness_runtime_registry::{
+    default_external_mcp_config, default_external_mcp_config_path,
+};
 
 const AUTH_TOKEN_MASK: &str = "\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}";
 
@@ -34,7 +36,7 @@ pub struct ExternalMcpConfigUpdate {
 /// auth_token is masked as "••••••••" when set, None when unset.
 #[tauri::command]
 pub fn get_external_mcp_config() -> ExternalMcpConfigView {
-    let config = claude::external_mcp_config();
+    let config = default_external_mcp_config();
     ExternalMcpConfigView {
         enabled: config.enabled,
         port: config.port,
@@ -51,7 +53,7 @@ pub fn get_external_mcp_config() -> ExternalMcpConfigView {
 pub async fn update_external_mcp_config(
     input: ExternalMcpConfigUpdate,
 ) -> Result<(), String> {
-    let path = claude::config_path();
+    let path = default_external_mcp_config_path();
 
     let contents = tokio::fs::read_to_string(&path).await.map_err(|e| {
         if e.kind() == std::io::ErrorKind::PermissionDenied {
