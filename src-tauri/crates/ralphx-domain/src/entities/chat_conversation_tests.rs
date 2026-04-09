@@ -193,6 +193,39 @@ fn test_compatible_provider_session_fields_derive_provider_metadata_from_legacy_
 }
 
 #[test]
+fn test_normalize_provider_session_fields_in_place_from_legacy_alias() {
+    let session_id = IdeationSessionId::new();
+    let mut conv = ChatConversation::new_ideation(session_id);
+    conv.claude_session_id = Some("legacy-session".to_string());
+
+    conv.normalize_provider_session_fields();
+
+    assert_eq!(conv.claude_session_id.as_deref(), Some("legacy-session"));
+    assert_eq!(conv.provider_session_id.as_deref(), Some("legacy-session"));
+    assert_eq!(conv.provider_harness, Some(AgentHarnessKind::Claude));
+}
+
+#[test]
+fn test_normalize_provider_session_fields_in_place_restores_legacy_claude_alias() {
+    let session_id = IdeationSessionId::new();
+    let mut conv = ChatConversation::new_ideation(session_id);
+    conv.provider_harness = Some(AgentHarnessKind::Claude);
+    conv.provider_session_id = Some("claude-session-456".to_string());
+
+    conv.normalize_provider_session_fields();
+
+    assert_eq!(
+        conv.claude_session_id.as_deref(),
+        Some("claude-session-456")
+    );
+    assert_eq!(
+        conv.provider_session_id.as_deref(),
+        Some("claude-session-456")
+    );
+    assert_eq!(conv.provider_harness, Some(AgentHarnessKind::Claude));
+}
+
+#[test]
 fn test_set_title() {
     let session_id = IdeationSessionId::new();
     let mut conv = ChatConversation::new_ideation(session_id);

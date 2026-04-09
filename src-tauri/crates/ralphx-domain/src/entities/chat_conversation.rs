@@ -338,6 +338,15 @@ impl ChatConversation {
         )
     }
 
+    /// Normalize stored provider metadata back into the canonical compatibility shape.
+    pub fn normalize_provider_session_fields(&mut self) {
+        let (claude_session_id, provider_session_id, provider_harness) =
+            self.compatible_provider_session_fields();
+        self.claude_session_id = claude_session_id;
+        self.provider_session_id = provider_session_id;
+        self.provider_harness = provider_harness;
+    }
+
     /// Get a display title for this conversation
     pub fn display_title(&self) -> String {
         self.title

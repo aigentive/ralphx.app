@@ -26,8 +26,8 @@ fn parse_datetime(s: &str) -> DateTime<Utc> {
 }
 
 use crate::domain::entities::{
-    normalize_provider_session_compatibility, AgentRun, AgentRunId, AgentRunStatus,
-    ChatContextType, ChatConversation, ChatConversationId, InterruptedConversation,
+    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, ChatConversation,
+    ChatConversationId, InterruptedConversation,
 };
 
 /// Map a SQLite row to an AgentRun (expects columns: id, conversation_id, status,
@@ -362,24 +362,16 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                 let results = stmt
                     .query_map([], |row| {
                         let context_type_str: String = row.get("context_type")?;
-                        let mut claude_session_id: Option<String> = row.get("claude_session_id")?;
-                        let mut provider_session_id: Option<String> =
+                        let claude_session_id: Option<String> = row.get("claude_session_id")?;
+                        let provider_session_id: Option<String> =
                             row.get("conv_provider_session_id")?;
-                        let mut provider_harness = row
+                        let provider_harness = row
                             .get::<_, Option<String>>("conv_provider_harness")?
                             .and_then(|value| value.parse::<AgentHarnessKind>().ok());
                         let conv_created_at_str: String = row.get("conv_created_at")?;
                         let conv_updated_at_str: String = row.get("conv_updated_at")?;
                         let last_message_at_str: Option<String> = row.get("last_message_at")?;
-
-                        (claude_session_id, provider_session_id, provider_harness) =
-                            normalize_provider_session_compatibility(
-                                claude_session_id,
-                                provider_session_id,
-                                provider_harness,
-                            );
-
-                        let conversation = ChatConversation {
+                        let mut conversation = ChatConversation {
                             id: ChatConversationId::from_string(row.get::<_, String>("conv_id")?),
                             context_type: context_type_str.parse().unwrap_or(ChatContextType::Project),
                             context_id: row.get("context_id")?,
@@ -393,6 +385,7 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                             updated_at: parse_datetime(&conv_updated_at_str),
                             parent_conversation_id: None,
                         };
+                        conversation.normalize_provider_session_fields();
 
                         let status_str: String = row.get("status")?;
                         let started_at_str: String = row.get("started_at")?;

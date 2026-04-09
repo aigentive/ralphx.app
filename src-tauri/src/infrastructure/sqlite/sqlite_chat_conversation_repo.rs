@@ -10,8 +10,7 @@ use rusqlite::Connection;
 
 use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::entities::{
-    legacy_claude_session_alias, normalize_provider_session_compatibility, ChatContextType,
-    ChatConversation, ChatConversationId,
+    legacy_claude_session_alias, ChatContextType, ChatConversation, ChatConversationId,
 };
 use crate::domain::repositories::ChatConversationRepository;
 use crate::error::AppResult;
@@ -35,26 +34,19 @@ fn parse_datetime(s: &str) -> DateTime<Utc> {
 
 fn row_to_conversation(row: &rusqlite::Row) -> rusqlite::Result<ChatConversation> {
     let context_type_str: String = row.get("context_type")?;
-    let mut claude_session_id: Option<String> = row.get("claude_session_id")?;
-    let mut provider_session_id: Option<String> = row.get("provider_session_id")?;
-    let mut provider_harness = row
+    let claude_session_id: Option<String> = row.get("claude_session_id")?;
+    let provider_session_id: Option<String> = row.get("provider_session_id")?;
+    let provider_harness = row
         .get::<_, Option<String>>("provider_harness")?
         .and_then(|value| value.parse::<AgentHarnessKind>().ok());
     let last_message_at_str: Option<String> = row.get("last_message_at")?;
     let created_at_str: String = row.get("created_at")?;
     let updated_at_str: String = row.get("updated_at")?;
 
-    (claude_session_id, provider_session_id, provider_harness) =
-        normalize_provider_session_compatibility(
-            claude_session_id,
-            provider_session_id,
-            provider_harness,
-        );
-
     let created_at = parse_datetime(&created_at_str);
     let updated_at = parse_datetime(&updated_at_str);
 
-    Ok(ChatConversation {
+    let mut conversation = ChatConversation {
         id: ChatConversationId::from_string(row.get::<_, String>("id")?),
         context_type: context_type_str.parse().unwrap_or(ChatContextType::Ideation),
         context_id: row.get("context_id")?,
@@ -71,7 +63,9 @@ fn row_to_conversation(row: &rusqlite::Row) -> rusqlite::Result<ChatConversation
         created_at,
         updated_at,
         parent_conversation_id: row.get("parent_conversation_id")?,
-    })
+    };
+    conversation.normalize_provider_session_fields();
+    Ok(conversation)
 }
 
 /// SQLite implementation of ChatConversationRepository
