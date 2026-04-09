@@ -408,6 +408,74 @@ pub(crate) fn default_reconciliation_runtime_config() -> ReconciliationConfig {
     reconciliation_config().clone()
 }
 
+pub(crate) fn default_reconciliation_merger_timeout_secs() -> u64 {
+    reconciliation_config().merger_timeout_secs
+}
+
+pub(crate) fn default_reconciliation_merging_max_retries() -> u32 {
+    reconciliation_config().merging_max_retries as u32
+}
+
+pub(crate) fn default_reconciliation_merge_registry_grace_period_secs() -> u64 {
+    reconciliation_config().merge_registry_grace_period_secs
+}
+
+pub(crate) fn default_reconciliation_attempt_merge_deadline_secs() -> u64 {
+    reconciliation_config().attempt_merge_deadline_secs
+}
+
+pub(crate) fn default_reconciliation_validation_revert_max_count() -> u32 {
+    reconciliation_config().validation_revert_max_count as u32
+}
+
+pub(crate) fn default_reconciliation_validation_failure_circuit_breaker_count() -> u32 {
+    reconciliation_config().validation_failure_circuit_breaker_count as u32
+}
+
+pub(crate) fn default_reconciliation_validation_retry_min_cooldown_secs() -> u64 {
+    reconciliation_config().validation_retry_min_cooldown_secs
+}
+
+pub(crate) fn default_reconciliation_merge_starvation_guard_secs() -> u64 {
+    reconciliation_config().merge_starvation_guard_secs
+}
+
+pub(crate) fn default_reconciliation_merge_circuit_breaker_threshold() -> usize {
+    reconciliation_config().merge_circuit_breaker_threshold as usize
+}
+
+pub(crate) fn default_reconciliation_merge_circuit_breaker_window() -> usize {
+    reconciliation_config().merge_circuit_breaker_window as usize
+}
+
+pub(crate) fn default_reconciliation_merge_incomplete_max_retries() -> u32 {
+    reconciliation_config().merge_incomplete_max_retries as u32
+}
+
+pub(crate) fn default_reconciliation_merge_conflict_max_retries() -> u32 {
+    reconciliation_config().merge_conflict_max_retries as u32
+}
+
+pub(crate) fn default_reconciliation_merge_incomplete_retry_base_secs() -> u64 {
+    reconciliation_config().merge_incomplete_retry_base_secs
+}
+
+pub(crate) fn default_reconciliation_merge_incomplete_retry_max_secs() -> u64 {
+    reconciliation_config().merge_incomplete_retry_max_secs
+}
+
+pub(crate) fn default_reconciliation_merge_conflict_retry_base_secs() -> u64 {
+    reconciliation_config().merge_conflict_retry_base_secs
+}
+
+pub(crate) fn default_reconciliation_merge_conflict_retry_max_secs() -> u64 {
+    reconciliation_config().merge_conflict_retry_max_secs
+}
+
+pub(crate) fn default_reconciliation_validation_deadline_secs() -> u64 {
+    reconciliation_config().validation_deadline_secs
+}
+
 fn find_claude_external_mcp_entry() -> Option<PathBuf> {
     crate::infrastructure::agents::claude::find_plugin_dir()
         .map(|plugin_dir| external_mcp_entry_for_plugin_dir(&plugin_dir))
