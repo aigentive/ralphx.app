@@ -20,4 +20,5 @@ paths:
 | Claude-only features stay explicit | If a feature is currently Claude-only, keep that limitation explicit in code and docs; do not silently imply Codex parity. |
 | Codex defaults stay Codex-shaped | When a lane resolves to Codex, never leak Claude model names, effort labels, or plugin assumptions into the effective runtime config. |
 | Startup/runtime wiring must stay centralized | New harness discovery/bootstrap logic belongs in shared runtime registries/adapters, not scattered across app-layer callsites. |
+| New harnesses extend the shared surface | Adding another harness must start from the shared registries/bundles/adapters and docs, not from a new pairwise `claude+X` special case. |
 | Settings/docs must stay in sync | Any user-visible harness capability, limitation, or lane-setting change must update user docs and the relevant `.claude/rules` file in the same PR. |

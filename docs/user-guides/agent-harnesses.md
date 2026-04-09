@@ -29,6 +29,21 @@ This lets you adopt Codex incrementally without forcing the whole product onto a
 
 ---
 
+## Architecture direction
+
+RalphX is treating Claude and Codex as the first two entries in a longer-lived multi-harness surface.
+
+That means new harness work is expected to flow through shared:
+
+- harness registries keyed by `AgentHarnessKind`
+- runtime adapters for probing, CLI/bootstrap resolution, and startup integration
+- client/factory bundles instead of one-off provider fields
+- provider-neutral session/run metadata such as `provider_harness` and `provider_session_id`
+
+The goal is to make adding a future harness a targeted extension of that shared surface, not another repo-wide `claude + X` refactor.
+
+---
+
 ## Where you configure it
 
 Use **Settings → Ideation** for the currently exposed lane-level harness controls.
@@ -41,6 +56,8 @@ RalphX stores harness settings with the same layered precedence used elsewhere:
 4. built-in defaults
 
 The backend also supports per-lane model, effort, approval-policy, sandbox, and fallback-harness settings.
+
+Execution/review/merge lanes already have backend storage and runtime plumbing for harness settings, but the current user-facing settings UI is still centered on the ideation surface first.
 
 ---
 

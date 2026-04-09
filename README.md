@@ -160,6 +160,8 @@ RalphX manages AI agent development workflows. It was itself built by AI agents.
 - Rust 1.70+ (install via [rustup.rs](https://rustup.rs))
 - Git
 
+RalphX can route different workflow lanes through different harnesses. Claude remains the default, while Codex can be enabled incrementally for supported lanes. See [`docs/user-guides/agent-harnesses.md`](docs/user-guides/agent-harnesses.md).
+
 ### Install
 
 ```bash
