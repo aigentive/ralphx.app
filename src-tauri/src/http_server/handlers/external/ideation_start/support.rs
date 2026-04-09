@@ -1,8 +1,9 @@
 use super::*;
 use crate::application::harness_runtime_registry::{
-    default_repo_root_working_directory, resolve_default_harness_agent_bootstrap,
+    default_repo_root_working_directory, resolve_harness_agent_bootstrap,
 };
 use crate::application::session_namer_prompt::build_session_namer_prompt;
+use crate::domain::agents::DEFAULT_AGENT_HARNESS;
 
 /// Build a fully configured app chat service from shared app + execution state.
 /// Extracted to avoid duplicating the 12-arg constructor chain across multiple handlers.
@@ -33,7 +34,8 @@ pub(super) async fn spawn_session_namer(
         ));
 
         let working_directory = default_repo_root_working_directory();
-        let bootstrap = resolve_default_harness_agent_bootstrap(
+        let bootstrap = resolve_harness_agent_bootstrap(
+            runtime.harness.unwrap_or(DEFAULT_AGENT_HARNESS),
             agent_names::AGENT_SESSION_NAMER,
             working_directory,
         );

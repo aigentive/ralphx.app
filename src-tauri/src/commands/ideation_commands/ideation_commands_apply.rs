@@ -956,8 +956,9 @@ pub async fn apply_proposals_to_kanban(
     // Skip if user has set a custom title (title_source == "user").
     if !result.is_user_title {
         use crate::application::harness_runtime_registry::{
-            default_repo_root_working_directory, resolve_default_harness_agent_bootstrap,
+            default_repo_root_working_directory, resolve_harness_agent_bootstrap,
         };
+        use crate::domain::agents::DEFAULT_AGENT_HARNESS;
         use crate::infrastructure::agents::claude::agent_names;
 
         let proposals_context = result.proposal_titles.join("; ");
@@ -968,7 +969,8 @@ pub async fn apply_proposals_to_kanban(
 
         let agent_client = Arc::clone(&runtime.client);
         let working_directory = default_repo_root_working_directory();
-        let bootstrap = resolve_default_harness_agent_bootstrap(
+        let bootstrap = resolve_harness_agent_bootstrap(
+            runtime.harness.unwrap_or(DEFAULT_AGENT_HARNESS),
             agent_names::AGENT_SESSION_NAMER,
             working_directory,
         );

@@ -147,7 +147,7 @@ When working in `src-tauri/`, also follow:
 | Priority | Stream | Status | Next Step |
 |---|---|---|---|
 | P0 | Execution / review / merge Codex parity | In progress | Codex must fully work for execution worker, review, re-execution, merge retry, and merge conflict handling lanes before merge; audit every remaining Claude-only runtime assumption and land owned regressions per lane |
-| P0 | Harness-aware helper-agent bootstrap | Planned | Replace `resolve_default_harness_agent_bootstrap(...)` with a harness-keyed helper/bootstrap path and switch ideation/session/project helper-agent callsites to use the effective runtime harness instead of the default harness |
+| P0 | Harness-aware helper-agent bootstrap | In progress | Replace `resolve_default_harness_agent_bootstrap(...)` with a harness-keyed helper/bootstrap path and switch ideation/session/project helper-agent callsites to use the effective runtime harness instead of the default harness; lock the shared bootstrap behavior with focused tests |
 | P0 | Execution-side spawn/bootstrap parity | Planned | Verify execution/review/merge spawners pass harness-correct CLI/bootstrap/MCP config for Codex and do not leak Claude plugin/session assumptions into effective Codex runs |
 | P0 | Recovery / resume parity | Planned | Make stale-session recovery, resume, restart, and queue replay provider-aware for Codex execution/review/merge runs, with legacy Claude compatibility preserved |
 | P0 | Event / transport parity | In progress | Keep provider-neutral run/conversation payloads canonical, preserve legacy aliases, and eliminate remaining consumer paths that still infer Claude-only runtime behavior for execution-side flows |

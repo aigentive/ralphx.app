@@ -542,9 +542,9 @@ pub async fn spawn_session_namer(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     use crate::application::harness_runtime_registry::{
-        default_repo_root_working_directory, resolve_default_harness_agent_bootstrap,
+        default_repo_root_working_directory, resolve_harness_agent_bootstrap,
     };
-    use crate::domain::agents::{AgentConfig, AgentRole};
+    use crate::domain::agents::{AgentConfig, AgentRole, DEFAULT_AGENT_HARNESS};
     use crate::domain::entities::IdeationSessionId;
     use crate::infrastructure::agents::claude::agent_names;
 
@@ -553,13 +553,6 @@ pub async fn spawn_session_namer(
         "<session_id>{}</session_id>\n<user_message>{}</user_message>",
         session_id, first_message
     ));
-
-    // Get the working directory (project root)
-    let working_directory = default_repo_root_working_directory();
-    let bootstrap = resolve_default_harness_agent_bootstrap(
-        agent_names::AGENT_SESSION_NAMER,
-        working_directory,
-    );
 
     let project_id = state
         .ideation_session_repo
@@ -570,6 +563,15 @@ pub async fn spawn_session_namer(
     let runtime = state
         .resolve_ideation_background_agent_runtime(project_id.as_deref())
         .await;
+    let helper_harness = runtime.harness.unwrap_or(DEFAULT_AGENT_HARNESS);
+
+    // Get the working directory (project root)
+    let working_directory = default_repo_root_working_directory();
+    let bootstrap = resolve_harness_agent_bootstrap(
+        helper_harness,
+        agent_names::AGENT_SESSION_NAMER,
+        working_directory,
+    );
 
     let config = AgentConfig {
         role: AgentRole::Custom(bootstrap.agent_role.clone()),

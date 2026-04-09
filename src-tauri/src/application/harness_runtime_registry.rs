@@ -275,6 +275,17 @@ pub(crate) fn resolve_default_harness_plugin_dir(working_directory: &Path) -> Pa
     resolve_plugin_dir(working_directory)
 }
 
+pub(crate) fn resolve_harness_plugin_dir(
+    harness: AgentHarnessKind,
+    working_directory: &Path,
+) -> PathBuf {
+    match harness {
+        AgentHarnessKind::Claude | AgentHarnessKind::Codex => {
+            resolve_default_harness_plugin_dir(working_directory)
+        }
+    }
+}
+
 fn default_chat_service_cli_name(harness: AgentHarnessKind) -> &'static str {
     match harness {
         AgentHarnessKind::Claude => "claude",
@@ -308,7 +319,15 @@ pub(crate) fn resolve_default_harness_agent_bootstrap(
     agent_name: &'static str,
     working_directory: PathBuf,
 ) -> DefaultHarnessAgentBootstrap {
-    let plugin_dir = resolve_default_harness_plugin_dir(&working_directory);
+    resolve_harness_agent_bootstrap(DEFAULT_AGENT_HARNESS, agent_name, working_directory)
+}
+
+pub(crate) fn resolve_harness_agent_bootstrap(
+    harness: AgentHarnessKind,
+    agent_name: &'static str,
+    working_directory: PathBuf,
+) -> DefaultHarnessAgentBootstrap {
+    let plugin_dir = resolve_harness_plugin_dir(harness, &working_directory);
     let agent_role = crate::infrastructure::agents::claude::mcp_agent_type(agent_name).to_string();
     let mut env = HashMap::new();
     env.insert("RALPHX_AGENT_TYPE".to_string(), agent_role.clone());
@@ -741,6 +760,25 @@ mod tests {
         assert_eq!(
             bootstrap.plugin_dir,
             resolve_default_harness_plugin_dir(&bootstrap.working_directory)
+        );
+    }
+
+    #[test]
+    fn resolve_harness_agent_bootstrap_uses_harness_plugin_dir_resolution() {
+        let working_directory = PathBuf::from("/tmp/example");
+        let agent_name = crate::infrastructure::agents::claude::agent_names::AGENT_SESSION_NAMER;
+        let bootstrap = resolve_harness_agent_bootstrap(
+            AgentHarnessKind::Codex,
+            agent_name,
+            working_directory.clone(),
+        );
+
+        assert_eq!(bootstrap.agent_name, agent_name);
+        assert_eq!(bootstrap.agent_role, "session-namer");
+        assert_eq!(bootstrap.working_directory, working_directory);
+        assert_eq!(
+            bootstrap.plugin_dir,
+            resolve_harness_plugin_dir(AgentHarnessKind::Codex, &bootstrap.working_directory)
         );
     }
 }

@@ -520,8 +520,8 @@ pub async fn spawn_project_analyzer(
     working_directory: &str,
     app_handle: Option<tauri::AppHandle>,
 ) {
-    use crate::application::harness_runtime_registry::resolve_default_harness_agent_bootstrap;
-    use crate::domain::agents::{AgentConfig, AgentRole};
+    use crate::application::harness_runtime_registry::resolve_harness_agent_bootstrap;
+    use crate::domain::agents::{AgentConfig, AgentRole, DEFAULT_AGENT_HARNESS};
     use crate::infrastructure::agents::claude::agent_names;
 
     let prompt = format!(
@@ -536,8 +536,12 @@ pub async fn spawn_project_analyzer(
         project_id
     );
 
+    let runtime = state
+        .resolve_ideation_background_agent_runtime(Some(project_id))
+        .await;
     let working_directory = PathBuf::from(working_directory);
-    let bootstrap = resolve_default_harness_agent_bootstrap(
+    let bootstrap = resolve_harness_agent_bootstrap(
+        runtime.harness.unwrap_or(DEFAULT_AGENT_HARNESS),
         agent_names::AGENT_PROJECT_ANALYZER,
         working_directory.clone(),
     );
@@ -546,9 +550,6 @@ pub async fn spawn_project_analyzer(
     let pid = project_id.to_string();
     env.insert("RALPHX_PROJECT_ID".to_string(), pid.clone());
 
-    let runtime = state
-        .resolve_ideation_background_agent_runtime(Some(project_id))
-        .await;
     let agent_client = Arc::clone(&runtime.client);
 
     let config = AgentConfig {
