@@ -520,6 +520,7 @@ pub async fn spawn_project_analyzer(
     working_directory: &str,
     app_handle: Option<tauri::AppHandle>,
 ) {
+    use crate::application::harness_runtime_registry::resolve_default_harness_plugin_dir;
     use crate::domain::agents::{AgentConfig, AgentRole};
     use crate::infrastructure::agents::claude::{agent_names, mcp_agent_type};
 
@@ -536,8 +537,7 @@ pub async fn spawn_project_analyzer(
     );
 
     let working_directory = PathBuf::from(working_directory);
-    // Resolve plugin dir robustly for both dev and release runs.
-    let plugin_dir = crate::infrastructure::agents::claude::resolve_plugin_dir(&working_directory);
+    let plugin_dir = resolve_default_harness_plugin_dir(&working_directory);
 
     let mut env = std::collections::HashMap::new();
     env.insert(

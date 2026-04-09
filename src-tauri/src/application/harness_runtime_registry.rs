@@ -241,7 +241,7 @@ pub(crate) fn default_harness_runtime_available() -> bool {
     probe_default_harness().available
 }
 
-fn default_chat_service_working_directory(cwd: PathBuf) -> PathBuf {
+fn default_repo_root_working_directory_from(cwd: PathBuf) -> PathBuf {
     if cwd.file_name().is_some_and(|name| name == "src-tauri") {
         cwd.parent()
             .map(|parent| parent.to_path_buf())
@@ -251,12 +251,20 @@ fn default_chat_service_working_directory(cwd: PathBuf) -> PathBuf {
     }
 }
 
-pub(crate) fn resolve_default_chat_service_bootstrap() -> DefaultChatServiceBootstrap {
+pub(crate) fn default_repo_root_working_directory() -> PathBuf {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let default_working_directory = default_chat_service_working_directory(cwd);
+    default_repo_root_working_directory_from(cwd)
+}
+
+pub(crate) fn resolve_default_harness_plugin_dir(working_directory: &Path) -> PathBuf {
+    resolve_plugin_dir(working_directory)
+}
+
+pub(crate) fn resolve_default_chat_service_bootstrap() -> DefaultChatServiceBootstrap {
+    let default_working_directory = default_repo_root_working_directory();
     DefaultChatServiceBootstrap {
         cli_path: find_claude_cli().unwrap_or_else(|| PathBuf::from("claude")),
-        plugin_dir: resolve_plugin_dir(&default_working_directory),
+        plugin_dir: resolve_default_harness_plugin_dir(&default_working_directory),
         default_working_directory,
     }
 }
@@ -430,18 +438,18 @@ mod tests {
     }
 
     #[test]
-    fn default_chat_service_working_directory_uses_parent_for_src_tauri() {
+    fn default_repo_root_working_directory_uses_parent_for_src_tauri() {
         let cwd = PathBuf::from("/tmp/example/src-tauri");
         assert_eq!(
-            default_chat_service_working_directory(cwd),
+            default_repo_root_working_directory_from(cwd),
             PathBuf::from("/tmp/example")
         );
     }
 
     #[test]
-    fn default_chat_service_working_directory_keeps_non_src_tauri_paths() {
+    fn default_repo_root_working_directory_keeps_non_src_tauri_paths() {
         let cwd = PathBuf::from("/tmp/example");
-        assert_eq!(default_chat_service_working_directory(cwd.clone()), cwd);
+        assert_eq!(default_repo_root_working_directory_from(cwd.clone()), cwd);
     }
 
     #[test]

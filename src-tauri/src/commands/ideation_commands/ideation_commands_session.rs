@@ -541,6 +541,9 @@ pub async fn spawn_session_namer(
     first_message: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    use crate::application::harness_runtime_registry::{
+        default_repo_root_working_directory, resolve_default_harness_plugin_dir,
+    };
     use crate::domain::agents::{AgentConfig, AgentRole};
     use crate::domain::entities::IdeationSessionId;
     use crate::infrastructure::agents::claude::{agent_names, mcp_agent_type};
@@ -552,11 +555,8 @@ pub async fn spawn_session_namer(
     ));
 
     // Get the working directory (project root)
-    let working_directory = std::env::current_dir()
-        .map(|cwd| cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd))
-        .unwrap_or_else(|_| PathBuf::from("."));
-
-    let plugin_dir = crate::infrastructure::agents::claude::resolve_plugin_dir(&working_directory);
+    let working_directory = default_repo_root_working_directory();
+    let plugin_dir = resolve_default_harness_plugin_dir(&working_directory);
 
     // Set RALPHX_AGENT_TYPE so MCP server grants access to update_session_title tool
     let mut env = std::collections::HashMap::new();

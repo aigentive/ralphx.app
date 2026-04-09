@@ -955,6 +955,10 @@ pub async fn apply_proposals_to_kanban(
     // reflecting the actual work (not just the initial user message).
     // Skip if user has set a custom title (title_source == "user").
     if !result.is_user_title {
+        use crate::application::harness_runtime_registry::{
+            default_repo_root_working_directory, resolve_default_harness_plugin_dir,
+        };
+
         let proposals_context = result.proposal_titles.join("; ");
         let session_id_str = result.session_id.clone();
         let runtime = state
@@ -962,11 +966,8 @@ pub async fn apply_proposals_to_kanban(
             .await;
 
         let agent_client = Arc::clone(&runtime.client);
-        let working_directory = std::env::current_dir()
-            .map(|cwd| cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd))
-            .unwrap_or_else(|_| std::path::PathBuf::from("."));
-        let plugin_dir =
-            crate::infrastructure::agents::claude::resolve_plugin_dir(&working_directory);
+        let working_directory = default_repo_root_working_directory();
+        let plugin_dir = resolve_default_harness_plugin_dir(&working_directory);
 
         tokio::spawn(async move {
             use crate::domain::agents::{AgentConfig, AgentRole};
