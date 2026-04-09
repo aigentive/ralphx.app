@@ -13,11 +13,13 @@ use crate::domain::entities::{
 };
 use crate::application::harness_runtime_registry::{
     default_reconciliation_attempt_merge_deadline_secs,
+    default_reconciliation_execution_failed_retry_base_secs,
+    default_reconciliation_execution_failed_retry_max_secs,
+    default_reconciliation_git_isolation_retry_base_secs,
     default_reconciliation_merge_conflict_retry_base_secs,
     default_reconciliation_merge_conflict_retry_max_secs,
     default_reconciliation_merge_incomplete_retry_base_secs,
     default_reconciliation_merge_incomplete_retry_max_secs,
-    default_reconciliation_runtime_config,
     default_reconciliation_validation_deadline_secs,
 };
 
@@ -569,14 +571,15 @@ impl<R: Runtime> ReconciliationRunner<R> {
         failure_source: Option<ExecutionFailureSource>,
     ) -> chrono::Duration {
         use rand::Rng;
-        let cfg = default_reconciliation_runtime_config();
         let base_secs = match failure_source {
-            Some(ExecutionFailureSource::GitIsolation) => cfg.git_isolation_retry_base_secs as i64,
-            _ => cfg.execution_failed_retry_base_secs as i64,
+            Some(ExecutionFailureSource::GitIsolation) => {
+                default_reconciliation_git_isolation_retry_base_secs() as i64
+            }
+            _ => default_reconciliation_execution_failed_retry_base_secs() as i64,
         };
         let exponent = retry_count.min(6);
         let scaled = base_secs.saturating_mul(1_i64 << exponent);
-        let base_delay = scaled.min(cfg.execution_failed_retry_max_secs as i64);
+        let base_delay = scaled.min(default_reconciliation_execution_failed_retry_max_secs() as i64);
         let jitter = rand::thread_rng().gen_range(0..=base_delay / 4);
         chrono::Duration::seconds(base_delay + jitter)
     }

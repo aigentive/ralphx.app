@@ -7,7 +7,7 @@ use crate::infrastructure::agents::claude::{
     agent_harness_defaults_config, execution_defaults_config, external_mcp_config, find_claude_cli,
     node_utils, reconciliation_config, register_mcp_server, resolve_plugin_dir, scheduler_config,
     ui_feature_flags_config, validate_external_mcp_config, verification_config,
-    AgentHarnessDefaultsConfig, ExecutionDefaultsConfig, ExternalMcpConfig, ReconciliationConfig,
+    AgentHarnessDefaultsConfig, ExecutionDefaultsConfig, ExternalMcpConfig,
     SchedulerConfig, SpecialistEntry, UiFeatureFlagsConfig, VerificationConfig,
 };
 use crate::infrastructure::agents::{find_codex_cli, resolve_codex_cli, CodexCliCapabilities};
@@ -404,10 +404,6 @@ pub(crate) fn default_scheduler_merge_settle_ms() -> u64 {
     scheduler_config().merge_settle_ms
 }
 
-pub(crate) fn default_reconciliation_runtime_config() -> ReconciliationConfig {
-    reconciliation_config().clone()
-}
-
 pub(crate) fn default_reconciliation_merger_timeout_secs() -> u64 {
     reconciliation_config().merger_timeout_secs
 }
@@ -526,6 +522,18 @@ pub(crate) fn default_reconciliation_merge_watcher_grace_secs() -> u64 {
 
 pub(crate) fn default_reconciliation_merge_watcher_poll_secs() -> u64 {
     reconciliation_config().merge_watcher_poll_secs
+}
+
+pub(crate) fn default_reconciliation_execution_failed_retry_base_secs() -> u64 {
+    reconciliation_config().execution_failed_retry_base_secs
+}
+
+pub(crate) fn default_reconciliation_execution_failed_retry_max_secs() -> u64 {
+    reconciliation_config().execution_failed_retry_max_secs
+}
+
+pub(crate) fn default_reconciliation_git_isolation_retry_base_secs() -> u64 {
+    reconciliation_config().git_isolation_retry_base_secs
 }
 
 fn find_claude_external_mcp_entry() -> Option<PathBuf> {
