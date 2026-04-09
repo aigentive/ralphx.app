@@ -366,7 +366,7 @@ pub trait ChatService: Send + Sync {
 /// Preferred app-layer surface for the unified multi-harness chat runtime.
 pub type AppChatService<R = tauri::Wry> = ClaudeChatService<R>;
 
-/// Production implementation using Claude CLI
+/// Concrete production implementation behind the unified multi-harness chat runtime.
 pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     cli_path: PathBuf,
     plugin_dir: PathBuf,

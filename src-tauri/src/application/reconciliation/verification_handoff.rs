@@ -2,8 +2,8 @@
 //! into the parent ideation session's conversation when reconcile returns `NeedsRevision`.
 //!
 //! The message is stored directly via repos (fire-and-forget) rather than going through
-//! the full `ClaudeChatService` stack, because the handler call site only has access to
-//! individual repos (not `artifact_repo` / `project_repo` needed for ClaudeChatService).
+//! the full app chat-service stack, because the handler call site only has access to
+//! individual repos (not `artifact_repo` / `project_repo` needed for the runtime service).
 
 use std::sync::Arc;
 

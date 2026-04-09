@@ -722,7 +722,7 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
 
     /// Activity event repository for emitting merge pipeline audit events.
-    /// Cloned before being passed to ClaudeChatService so the transition handler also has access.
+    /// Cloned before being passed to the app chat service so the transition handler also has access.
     activity_event_repo: Arc<dyn ActivityEventRepository>,
 
     /// Per-task team mode override. When `Some(true)`, the chat service uses

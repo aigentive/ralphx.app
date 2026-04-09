@@ -1821,7 +1821,7 @@ pub async fn build_interactive_command(
 
 /// Fetch entity status for resume command context.
 ///
-/// Mirrors the logic in `ClaudeChatService::get_entity_status` for use in the
+/// Mirrors the logic in the main chat runtime entity-status lookup for use in the
 /// queue processing path, enabling status-aware agent resolution (e.g., readonly
 /// agent for accepted ideation sessions).
 pub async fn get_entity_status_for_resume(
