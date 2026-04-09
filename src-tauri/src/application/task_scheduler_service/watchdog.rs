@@ -22,13 +22,13 @@ pub struct ReadyWatchdog {
 }
 
 impl ReadyWatchdog {
-    /// Create a new ReadyWatchdog with configuration from scheduler_config().
+    /// Create a new ReadyWatchdog with configuration from the default scheduler runtime config.
     pub fn new(
         scheduler: Arc<dyn TaskScheduler>,
         task_repo: Arc<dyn crate::domain::repositories::TaskRepository>,
         project_repo: Arc<dyn ProjectRepository>,
     ) -> Self {
-        let sched_cfg = scheduler_config();
+        let sched_cfg = default_scheduler_runtime_config();
         Self {
             scheduler,
             task_repo,

@@ -32,8 +32,9 @@ use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::resolve_merge_branches;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::transition_handler::complete_merge_internal;
-use crate::infrastructure::agents::claude::scheduler_config;
-use crate::infrastructure::agents::claude::reconciliation_config;
+use crate::application::harness_runtime_registry::{
+    default_reconciliation_runtime_config, default_scheduler_runtime_config,
+};
 use crate::domain::state_machine::transition_handler::{
     format_validation_error_metadata, merge_metadata_into, parse_metadata,
     run_validation_commands, set_source_conflict_resolved,
@@ -1063,7 +1064,7 @@ async fn complete_merge_and_schedule<R: Runtime>(
         let scheduler = Arc::new(scheduler);
         scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
         // Auto-complete path is internal — no UI settle needed → merge_settle_ms
-        let merge_settle_ms = scheduler_config().merge_settle_ms;
+        let merge_settle_ms = default_scheduler_runtime_config().merge_settle_ms;
         tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_millis(merge_settle_ms)).await;
             scheduler.try_schedule_ready_tasks().await;
@@ -1266,7 +1267,7 @@ pub(crate) fn spawn_merge_completion_watcher(
     project_repo: Arc<dyn ProjectRepository>,
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
 ) {
-    let cfg = reconciliation_config();
+    let cfg = default_reconciliation_runtime_config();
     let initial_grace = Duration::from_secs(cfg.merge_watcher_grace_secs);
     let poll_interval = Duration::from_secs(cfg.merge_watcher_poll_secs);
     tokio::spawn(async move {

@@ -25,9 +25,8 @@ use std::sync::{
 use tauri::{AppHandle, Runtime};
 use tokio::sync::{Mutex as TokioMutex, RwLock};
 
-use crate::infrastructure::agents::claude::scheduler_config;
-
 use crate::commands::ExecutionState;
+use crate::application::harness_runtime_registry::default_scheduler_runtime_config;
 use crate::application::runtime_factory::{RuntimeFactoryDeps, build_transition_service_with_fallback};
 use crate::application::chat_service::uses_execution_slot;
 use crate::commands::execution_commands::context_matches_running_status_for_gc;
@@ -97,7 +96,7 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     pub(super) scheduling_lock: TokioMutex<()>,
     /// Number of pending contention-retry spawns currently in flight.
     /// Wrapped in Arc so spawned retry closures can decrement it without downcasting.
-    /// Bounded by scheduler_config().max_contention_retries.
+    /// Bounded by the default scheduler runtime config's `max_contention_retries`.
     pub(super) contention_retry_pending: Arc<AtomicU32>,
 }
 
@@ -387,7 +386,7 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
             Ok(guard) => guard,
             Err(_) => {
                 // Limit concurrent retry spawns to avoid cascading if lock is persistently held.
-                let sched_cfg = scheduler_config();
+                let sched_cfg = default_scheduler_runtime_config();
                 let max_retries = sched_cfg.max_contention_retries as u32;
                 let retry_delay_ms = sched_cfg.contention_retry_delay_ms;
                 let pending = self.contention_retry_pending.load(Ordering::Relaxed);
