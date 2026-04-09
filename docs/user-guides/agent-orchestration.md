@@ -201,7 +201,7 @@ The reviewer runs in the **same conversation** as prior execution cycles, so it 
 
 ### Merger Agent
 
-After you approve a task, the [merge pipeline](merge.md) attempts to rebase and merge the task branch automatically. If there are git conflicts that the programmatic merge couldn't resolve, a **merger agent** (Claude Opus — the most capable model) is spawned.
+After you approve a task, the [merge pipeline](merge.md) attempts to rebase and merge the task branch automatically. If there are git conflicts that the programmatic merge couldn't resolve, a **merger agent** is spawned on the configured merge lane. Today that lane is typically Claude-backed.
 
 The merger:
 1. Gets the correct source and target branches via MCP.
