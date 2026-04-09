@@ -1,5 +1,5 @@
 use super::*;
-use crate::application::harness_runtime_registry::default_verification_config;
+use crate::application::harness_runtime_registry::default_verification_max_rounds;
 use crate::domain::entities::{build_child_session, matching_blocker_followup_session, ChildSessionDraftInput, TaskId};
 use crate::http_server::helpers::get_task_context_impl;
 
@@ -15,7 +15,7 @@ async fn initialize_verification_state(
         ));
     }
 
-    let verify_cfg = default_verification_config();
+    let verification_max_rounds = default_verification_max_rounds();
     let parent_id_str = parent_id.as_str().to_string();
     let verify_result = state
         .app_state
@@ -37,7 +37,7 @@ async fn initialize_verification_state(
                     app_handle,
                     parent_id.as_str(),
                     new_generation,
-                    verify_cfg.max_rounds,
+                    verification_max_rounds,
                 );
             }
             Ok(Some(new_generation))
@@ -277,7 +277,7 @@ pub(crate) async fn create_child_session_impl(
     mut req: CreateChildSessionRequest,
 ) -> Result<CreateChildSessionResponse, JsonError> {
     let parent_id = IdeationSessionId::from_string(req.parent_session_id.clone());
-    let verify_cfg = default_verification_config();
+    let verification_max_rounds = default_verification_max_rounds();
     let mut verification_generation = None;
     req.blocker_fingerprint = resolve_blocker_fingerprint(state, &req).await?;
 
@@ -479,7 +479,7 @@ pub(crate) async fn create_child_session_impl(
     let (effective_initial_prompt, effective_description) = build_effective_prompts(
         &req,
         verification_generation,
-        verify_cfg.max_rounds,
+        verification_max_rounds,
         &parent_session_str,
     );
 
