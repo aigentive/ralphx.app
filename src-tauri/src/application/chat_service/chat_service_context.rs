@@ -35,7 +35,7 @@ use crate::utils::truncate_str;
 use super::super::agent_lane_resolution::ResolvedAgentSpawnSettings;
 use super::chat_service_helpers::resolve_agent_with_team_mode;
 use crate::application::harness_runtime_registry::{
-    resolve_chat_harness_cli, standard_chat_harness_cli_resolvers, ResolvedChatHarnessCli,
+    resolve_chat_harness_cli, ResolvedChatHarnessCli,
 };
 
 /// Maximum number of recent messages to inject into the bootstrap prompt.
@@ -2229,6 +2229,7 @@ pub fn create_assistant_message(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::application::harness_runtime_registry::standard_chat_harness_cli_resolvers;
     use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
     use crate::infrastructure::memory::MemoryArtifactRepository;
     use tokio::process::Command;

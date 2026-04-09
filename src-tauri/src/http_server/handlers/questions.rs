@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use super::*;
 use crate::application::{QuestionAnswer, QuestionOption};
-use crate::application::harness_runtime_registry::default_external_mcp_config;
+use crate::application::harness_runtime_registry::default_external_mcp_human_wait_timeout_secs;
 
 pub async fn request_question(
     State(state): State<HttpServerState>,
@@ -60,7 +60,7 @@ pub async fn request_question(
 }
 
 fn question_wait_timeout() -> tokio::time::Duration {
-    tokio::time::Duration::from_secs(default_external_mcp_config().human_wait_timeout_secs)
+    tokio::time::Duration::from_secs(default_external_mcp_human_wait_timeout_secs())
 }
 
 async fn resolved_answer_or_timeout(

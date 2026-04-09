@@ -216,6 +216,7 @@ pub(crate) fn standard_harness_runtime_adapters() -> HashMap<AgentHarnessKind, H
     })
 }
 
+#[cfg(test)]
 pub(crate) fn standard_harness_probe_registry() -> HashMap<AgentHarnessKind, HarnessProbeFn> {
     standard_harness_runtime_adapters()
         .into_iter()
@@ -223,6 +224,7 @@ pub(crate) fn standard_harness_probe_registry() -> HashMap<AgentHarnessKind, Har
         .collect()
 }
 
+#[cfg(test)]
 pub(crate) fn standard_chat_harness_cli_resolvers(
 ) -> HashMap<AgentHarnessKind, ChatHarnessCliResolver> {
     standard_harness_runtime_adapters()
@@ -336,6 +338,14 @@ pub(crate) fn default_external_mcp_config_path() -> PathBuf {
 
 pub(crate) fn default_external_mcp_port() -> u16 {
     default_external_mcp_config().port
+}
+
+pub(crate) fn default_external_mcp_human_wait_timeout_secs() -> u64 {
+    default_external_mcp_config().human_wait_timeout_secs
+}
+
+pub(crate) fn default_external_mcp_message_queue_cap() -> usize {
+    default_external_mcp_config().external_message_queue_cap as usize
 }
 
 pub(crate) fn default_verification_config() -> VerificationConfig {
