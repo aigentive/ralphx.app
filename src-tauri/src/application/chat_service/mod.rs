@@ -521,6 +521,7 @@ impl<R: Runtime> AppChatService<R> {
             message.to_string(),
             options.metadata.clone(),
             options.created_at.map(|ts| ts.to_rfc3339()),
+            options.harness_override,
         );
         self.emit_event(
             "agent:message_queued",

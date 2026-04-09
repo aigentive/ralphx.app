@@ -1062,30 +1062,22 @@ async fn test_stop_clears_queued_chat_messages() {
         .expect("clear queued chat work");
 
     assert_eq!(cleared, 6);
-    assert!(
-        app_state
-            .message_queue
-            .get_queued(ChatContextType::Ideation, session.id.as_str())
-            .is_empty()
-    );
-    assert!(
-        app_state
-            .message_queue
-            .get_queued(ChatContextType::TaskExecution, task.id.as_str())
-            .is_empty()
-    );
-    assert!(
-        app_state
-            .message_queue
-            .get_queued(ChatContextType::Review, task.id.as_str())
-            .is_empty()
-    );
-    assert!(
-        app_state
-            .message_queue
-            .get_queued(ChatContextType::Merge, task.id.as_str())
-            .is_empty()
-    );
+    assert!(app_state
+        .message_queue
+        .get_queued(ChatContextType::Ideation, session.id.as_str())
+        .is_empty());
+    assert!(app_state
+        .message_queue
+        .get_queued(ChatContextType::TaskExecution, task.id.as_str())
+        .is_empty());
+    assert!(app_state
+        .message_queue
+        .get_queued(ChatContextType::Review, task.id.as_str())
+        .is_empty());
+    assert!(app_state
+        .message_queue
+        .get_queued(ChatContextType::Merge, task.id.as_str())
+        .is_empty());
     assert_eq!(
         app_state
             .message_queue
@@ -1217,6 +1209,7 @@ async fn test_resume_relaunches_one_queued_message_for_active_ideation_session()
         "first queued".to_string(),
         Some(r#"{"source":"pause"}"#.to_string()),
         Some("2026-03-25T10:00:00Z".to_string()),
+        None,
     );
     app_state.message_queue.queue(
         ChatContextType::Ideation,
@@ -1276,6 +1269,7 @@ async fn test_resume_relaunches_queued_task_chat_message() {
         "resume task chat".to_string(),
         Some(r#"{"resume_in_place":true}"#.to_string()),
         None,
+        None,
     );
 
     let mock = Arc::new(MockChatService::new());
@@ -1291,12 +1285,65 @@ async fn test_resume_relaunches_queued_task_chat_message() {
         mock.get_sent_messages().await,
         vec!["resume task chat".to_string()]
     );
-    assert!(
-        app_state
-            .message_queue
-            .get_queued(ChatContextType::Task, task.id.as_str())
-            .is_empty()
+    assert!(app_state
+        .message_queue
+        .get_queued(ChatContextType::Task, task.id.as_str())
+        .is_empty());
+}
+
+#[tokio::test]
+async fn test_resume_relaunches_queued_review_message_with_harness_override() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let project = Project::new("Resume Review".to_string(), "/test/review".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = app_state
+        .task_repo
+        .create(Task::new(project.id.clone(), "Review target".to_string()))
+        .await
+        .unwrap();
+    task.internal_status = InternalStatus::Reviewing;
+    app_state.task_repo.update(&task).await.unwrap();
+
+    app_state.message_queue.queue_with_overrides(
+        ChatContextType::Review,
+        task.id.as_str(),
+        "resume review".to_string(),
+        Some(r#"{"resume_in_place":true}"#.to_string()),
+        None,
+        Some(crate::domain::agents::AgentHarnessKind::Codex),
     );
+
+    let mock = Arc::new(MockChatService::new());
+    let resumed = resume_paused_slot_consuming_queues_with_chat_service(
+        None,
+        &app_state,
+        &execution_state,
+        || Arc::clone(&mock) as Arc<dyn ChatService>,
+    )
+    .await
+    .expect("resume paused review queue");
+
+    assert_eq!(resumed, 1);
+    assert_eq!(
+        mock.get_sent_messages().await,
+        vec!["resume review".to_string()]
+    );
+    let sent_options = mock.get_sent_options().await;
+    assert_eq!(sent_options.len(), 1);
+    assert_eq!(
+        sent_options[0].harness_override,
+        Some(crate::domain::agents::AgentHarnessKind::Codex)
+    );
+    assert!(app_state
+        .message_queue
+        .get_queued(ChatContextType::Review, task.id.as_str())
+        .is_empty());
 }
 
 #[tokio::test]
@@ -1318,6 +1365,7 @@ async fn test_resume_relaunches_queued_project_chat_message() {
         "resume project chat".to_string(),
         Some(r#"{"resume_in_place":true}"#.to_string()),
         None,
+        None,
     );
 
     let mock = Arc::new(MockChatService::new());
@@ -1334,12 +1382,10 @@ async fn test_resume_relaunches_queued_project_chat_message() {
         mock.get_sent_messages().await,
         vec!["resume project chat".to_string()]
     );
-    assert!(
-        app_state
-            .message_queue
-            .get_queued(ChatContextType::Project, project.id.as_str())
-            .is_empty()
-    );
+    assert!(app_state
+        .message_queue
+        .get_queued(ChatContextType::Project, project.id.as_str())
+        .is_empty());
 }
 
 #[tokio::test]
@@ -2047,8 +2093,8 @@ async fn test_resume_skips_project_capped_slot_queue_and_relaunches_other_projec
 }
 
 #[tokio::test]
-async fn test_resume_priority_relaunches_slot_work_before_ideation_when_only_one_global_slot_remains()
- {
+async fn test_resume_priority_relaunches_slot_work_before_ideation_when_only_one_global_slot_remains(
+) {
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
 
@@ -2140,8 +2186,8 @@ async fn test_resume_priority_relaunches_slot_work_before_ideation_when_only_one
 }
 
 #[tokio::test]
-async fn test_resume_mixed_load_relaunches_execution_then_ideation_while_blocked_project_stays_queued()
- {
+async fn test_resume_mixed_load_relaunches_execution_then_ideation_while_blocked_project_stays_queued(
+) {
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
 
@@ -2343,12 +2389,14 @@ async fn test_resume_mixed_context_relaunches_execution_ideation_and_chat_queues
         "resume mixed task chat".to_string(),
         Some(r#"{"resume_in_place":true}"#.to_string()),
         None,
+        None,
     );
     app_state.message_queue.queue_with_overrides(
         ChatContextType::Project,
         project.id.as_str(),
         "resume mixed project chat".to_string(),
         Some(r#"{"resume_in_place":true}"#.to_string()),
+        None,
         None,
     );
 
@@ -2398,30 +2446,22 @@ async fn test_resume_mixed_context_relaunches_execution_ideation_and_chat_queues
             "resume mixed task chat".to_string(),
         ]
     );
-    assert!(
-        app_state
-            .message_queue
-            .get_queued(ChatContextType::Review, review_task.id.as_str())
-            .is_empty()
-    );
-    assert!(
-        app_state
-            .message_queue
-            .get_queued(ChatContextType::Ideation, ideation_session.id.as_str())
-            .is_empty()
-    );
-    assert!(
-        app_state
-            .message_queue
-            .get_queued(ChatContextType::Task, task_chat_task.id.as_str())
-            .is_empty()
-    );
-    assert!(
-        app_state
-            .message_queue
-            .get_queued(ChatContextType::Project, project.id.as_str())
-            .is_empty()
-    );
+    assert!(app_state
+        .message_queue
+        .get_queued(ChatContextType::Review, review_task.id.as_str())
+        .is_empty());
+    assert!(app_state
+        .message_queue
+        .get_queued(ChatContextType::Ideation, ideation_session.id.as_str())
+        .is_empty());
+    assert!(app_state
+        .message_queue
+        .get_queued(ChatContextType::Task, task_chat_task.id.as_str())
+        .is_empty());
+    assert!(app_state
+        .message_queue
+        .get_queued(ChatContextType::Project, project.id.as_str())
+        .is_empty());
 }
 
 #[tokio::test]
@@ -3184,7 +3224,10 @@ async fn test_determine_paused_restore_status_skips_when_no_valid_metadata_or_hi
         .await
         .unwrap();
 
-    let mut task = Task::new(project.id.clone(), "Paused Task Without History".to_string());
+    let mut task = Task::new(
+        project.id.clone(),
+        "Paused Task Without History".to_string(),
+    );
     task.internal_status = InternalStatus::Paused;
     task.metadata = Some(
         serde_json::json!({

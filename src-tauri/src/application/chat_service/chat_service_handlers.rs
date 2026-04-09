@@ -1660,6 +1660,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     msg.to_string(),
                     Some(r#"{"resume_in_place":true}"#.to_string()),
                     None,
+                    Some(effective_harness),
                 );
             }
         }

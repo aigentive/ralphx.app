@@ -49,6 +49,7 @@ pub(super) fn queued_message_to_send_options(
     SendMessageOptions {
         metadata: message.metadata_override.clone(),
         created_at,
+        harness_override: message.harness_override,
         ..Default::default()
     }
 }
@@ -655,15 +656,7 @@ where
                 key.context_type,
                 &key.context_id,
                 &queued.content,
-                SendMessageOptions {
-                    metadata: queued.metadata_override.clone(),
-                    created_at: queued
-                        .created_at_override
-                        .as_deref()
-                        .and_then(|ts| chrono::DateTime::parse_from_rfc3339(ts).ok())
-                        .map(|ts| ts.with_timezone(&chrono::Utc)),
-                    ..Default::default()
-                },
+                queued_message_to_send_options(&queued),
             )
             .await;
 

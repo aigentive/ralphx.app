@@ -15,7 +15,9 @@ use crate::domain::entities::{
 use crate::domain::services::{MessageQueue, QueuedMessage};
 use crate::infrastructure::agents::claude::ToolCall;
 
-use super::{ChatConversationWithMessages, ChatService, ChatServiceError, SendMessageOptions, SendResult};
+use super::{
+    ChatConversationWithMessages, ChatService, ChatServiceError, SendMessageOptions, SendResult,
+};
 
 // ============================================================================
 // MockChatService - For testing
@@ -38,6 +40,8 @@ pub struct MockChatService {
     stop_agent_calls: Mutex<Vec<(ChatContextType, String)>>,
     /// Records each message string passed to send_message (for content assertions in tests).
     sent_messages: Mutex<Vec<String>>,
+    /// Records the send options passed to send_message for replay/resume assertions.
+    sent_options: Mutex<Vec<SendMessageOptions>>,
 }
 
 pub struct MockChatResponse {
@@ -59,6 +63,7 @@ impl MockChatService {
             running_agents: Mutex::new(HashMap::new()),
             stop_agent_calls: Mutex::new(Vec::new()),
             sent_messages: Mutex::new(Vec::new()),
+            sent_options: Mutex::new(Vec::new()),
         }
     }
 
@@ -74,6 +79,7 @@ impl MockChatService {
             running_agents: Mutex::new(HashMap::new()),
             stop_agent_calls: Mutex::new(Vec::new()),
             sent_messages: Mutex::new(Vec::new()),
+            sent_options: Mutex::new(Vec::new()),
         }
     }
 
@@ -88,11 +94,18 @@ impl MockChatService {
         self.sent_messages.lock().await.clone()
     }
 
+    pub async fn get_sent_options(&self) -> Vec<SendMessageOptions> {
+        self.sent_options.lock().await.clone()
+    }
+
     /// Set the agent running state for a specific context.
     /// Key format: "{context_type}/{context_id}" — e.g., "review/task-abc-123".
     /// Used in tests to simulate a running agent without spawning a real process.
     pub async fn set_agent_running(&self, context_key: String, running: bool) {
-        self.running_agents.lock().await.insert(context_key, running);
+        self.running_agents
+            .lock()
+            .await
+            .insert(context_key, running);
     }
 
     pub fn call_count(&self) -> u32 {
@@ -143,9 +156,10 @@ impl ChatService for MockChatService {
         context_type: ChatContextType,
         context_id: &str,
         message: &str,
-        _options: SendMessageOptions,
+        options: SendMessageOptions,
     ) -> Result<SendResult, ChatServiceError> {
         self.sent_messages.lock().await.push(message.to_string());
+        self.sent_options.lock().await.push(options);
 
         let current = self
             .call_count
