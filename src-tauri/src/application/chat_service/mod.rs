@@ -31,7 +31,9 @@ pub(crate) mod verification_child_process_registry;
 use crate::application::interactive_process_registry::{
     InteractiveProcessKey, InteractiveProcessMetadata, InteractiveProcessRegistry,
 };
-use crate::application::harness_runtime_registry::default_harness_runtime_available;
+use crate::application::harness_runtime_registry::{
+    default_harness_runtime_available, resolve_default_chat_service_bootstrap,
+};
 use crate::application::question_state::QuestionState;
 use crate::domain::agents::{AgentHarnessKind, DEFAULT_AGENT_HARNESS};
 use crate::domain::entities::{
@@ -424,21 +426,12 @@ impl<R: Runtime> ClaudeChatService<R> {
         running_agent_registry: Arc<dyn RunningAgentRegistry>,
         memory_event_repo: Arc<dyn MemoryEventRepository>,
     ) -> Self {
-        let cli_path = crate::infrastructure::agents::claude::find_claude_cli()
-            .unwrap_or_else(|| PathBuf::from("claude"));
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let default_working_directory = if cwd.file_name().is_some_and(|name| name == "src-tauri") {
-            cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd)
-        } else {
-            cwd
-        };
-        let plugin_dir =
-            crate::infrastructure::agents::claude::resolve_plugin_dir(&default_working_directory);
+        let bootstrap = resolve_default_chat_service_bootstrap();
 
         Self {
-            cli_path,
-            plugin_dir,
-            default_working_directory,
+            cli_path: bootstrap.cli_path,
+            plugin_dir: bootstrap.plugin_dir,
+            default_working_directory: bootstrap.default_working_directory,
             chat_message_repo,
             chat_attachment_repo,
             artifact_repo,

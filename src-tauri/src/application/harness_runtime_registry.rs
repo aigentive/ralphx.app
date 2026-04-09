@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::domain::agents::{standard_harness_registry, AgentHarnessKind, DEFAULT_AGENT_HARNESS};
-use crate::infrastructure::agents::claude::{find_claude_cli, register_mcp_server};
+use crate::infrastructure::agents::claude::{
+    find_claude_cli, register_mcp_server, resolve_plugin_dir,
+};
 use crate::infrastructure::agents::{find_codex_cli, resolve_codex_cli, CodexCliCapabilities};
 use which::which;
 
@@ -39,6 +41,13 @@ pub(crate) enum ResolvedHarnessStartupIntegration {
         cli_path: PathBuf,
         plugin_dir: PathBuf,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DefaultChatServiceBootstrap {
+    pub cli_path: PathBuf,
+    pub plugin_dir: PathBuf,
+    pub default_working_directory: PathBuf,
 }
 
 impl ResolvedHarnessStartupIntegration {
@@ -224,6 +233,26 @@ pub(crate) fn default_harness_runtime_available() -> bool {
     probe_default_harness().available
 }
 
+fn default_chat_service_working_directory(cwd: PathBuf) -> PathBuf {
+    if cwd.file_name().is_some_and(|name| name == "src-tauri") {
+        cwd.parent()
+            .map(|parent| parent.to_path_buf())
+            .unwrap_or(cwd)
+    } else {
+        cwd
+    }
+}
+
+pub(crate) fn resolve_default_chat_service_bootstrap() -> DefaultChatServiceBootstrap {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let default_working_directory = default_chat_service_working_directory(cwd);
+    DefaultChatServiceBootstrap {
+        cli_path: find_claude_cli().unwrap_or_else(|| PathBuf::from("claude")),
+        plugin_dir: resolve_plugin_dir(&default_working_directory),
+        default_working_directory,
+    }
+}
+
 pub(crate) fn probe_supported_harnesses() -> HashMap<AgentHarnessKind, HarnessRuntimeProbe> {
     standard_harness_runtime_adapters()
         .into_iter()
@@ -343,5 +372,20 @@ mod tests {
             integration.description(),
             "configured MCP server registration"
         );
+    }
+
+    #[test]
+    fn default_chat_service_working_directory_uses_parent_for_src_tauri() {
+        let cwd = PathBuf::from("/tmp/example/src-tauri");
+        assert_eq!(
+            default_chat_service_working_directory(cwd),
+            PathBuf::from("/tmp/example")
+        );
+    }
+
+    #[test]
+    fn default_chat_service_working_directory_keeps_non_src_tauri_paths() {
+        let cwd = PathBuf::from("/tmp/example");
+        assert_eq!(default_chat_service_working_directory(cwd.clone()), cwd);
     }
 }
