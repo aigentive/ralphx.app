@@ -128,11 +128,7 @@ fn test_legacy_claude_session_alias_only_applies_to_claude() {
 #[test]
 fn test_normalize_provider_session_compatibility_from_legacy_claude_field() {
     let (claude_session_id, provider_session_id, provider_harness) =
-        normalize_provider_session_compatibility(
-            Some("legacy-session".to_string()),
-            None,
-            None,
-        );
+        normalize_provider_session_compatibility(Some("legacy-session".to_string()), None, None);
 
     assert_eq!(claude_session_id.as_deref(), Some("legacy-session"));
     assert_eq!(provider_session_id.as_deref(), Some("legacy-session"));
@@ -165,6 +161,35 @@ fn test_normalize_provider_session_compatibility_keeps_codex_without_legacy_alia
     assert_eq!(claude_session_id, None);
     assert_eq!(provider_session_id.as_deref(), Some("codex-session"));
     assert_eq!(provider_harness, Some(AgentHarnessKind::Codex));
+}
+
+#[test]
+fn test_compatible_provider_session_fields_restore_legacy_claude_alias() {
+    let session_id = IdeationSessionId::new();
+    let mut conv = ChatConversation::new_ideation(session_id);
+    conv.provider_harness = Some(AgentHarnessKind::Claude);
+    conv.provider_session_id = Some("claude-session-456".to_string());
+
+    let (claude_session_id, provider_session_id, provider_harness) =
+        conv.compatible_provider_session_fields();
+
+    assert_eq!(claude_session_id.as_deref(), Some("claude-session-456"));
+    assert_eq!(provider_session_id.as_deref(), Some("claude-session-456"));
+    assert_eq!(provider_harness, Some(AgentHarnessKind::Claude));
+}
+
+#[test]
+fn test_compatible_provider_session_fields_derive_provider_metadata_from_legacy_alias() {
+    let session_id = IdeationSessionId::new();
+    let mut conv = ChatConversation::new_ideation(session_id);
+    conv.claude_session_id = Some("legacy-session".to_string());
+
+    let (claude_session_id, provider_session_id, provider_harness) =
+        conv.compatible_provider_session_fields();
+
+    assert_eq!(claude_session_id.as_deref(), Some("legacy-session"));
+    assert_eq!(provider_session_id.as_deref(), Some("legacy-session"));
+    assert_eq!(provider_harness, Some(AgentHarnessKind::Claude));
 }
 
 #[test]

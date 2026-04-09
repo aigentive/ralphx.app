@@ -20,8 +20,7 @@ use tauri::State;
 use crate::application::{AppChatService, AppState, ChatService, SendResult};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
-    normalize_provider_session_compatibility, ChatContextType, ChatConversation,
-    IdeationSessionId, TaskId,
+    ChatContextType, ChatConversation, IdeationSessionId, TaskId,
 };
 use crate::domain::services::QueuedMessage;
 
@@ -118,11 +117,7 @@ pub struct AgentConversationResponse {
 impl From<ChatConversation> for AgentConversationResponse {
     fn from(c: ChatConversation) -> Self {
         let (claude_session_id, provider_session_id, provider_harness) =
-            normalize_provider_session_compatibility(
-                c.claude_session_id.clone(),
-                c.provider_session_id.clone(),
-                c.provider_harness,
-            );
+            c.compatible_provider_session_fields();
 
         Self {
             id: c.id.as_str(),

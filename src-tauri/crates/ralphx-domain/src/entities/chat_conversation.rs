@@ -327,6 +327,17 @@ impl ChatConversation {
             })
     }
 
+    /// Get response-safe provider metadata with legacy compatibility restored.
+    pub fn compatible_provider_session_fields(
+        &self,
+    ) -> (Option<String>, Option<String>, Option<AgentHarnessKind>) {
+        normalize_provider_session_compatibility(
+            self.claude_session_id.clone(),
+            self.provider_session_id.clone(),
+            self.provider_harness,
+        )
+    }
+
     /// Get a display title for this conversation
     pub fn display_title(&self) -> String {
         self.title
