@@ -301,32 +301,23 @@ impl AppState {
         )
         .await;
 
-        if resolved.effective_harness != self.agent_clients.default_harness {
-            let Some(harness_client) = self
-                .agent_clients
-                .explicit_harness_client(resolved.effective_harness)
-            else {
-                return ResolvedBackgroundAgentRuntime {
-                    client: Arc::clone(&self.agent_clients.default_client),
-                    harness: None,
-                    model: None,
-                    logical_effort: None,
-                    approval_policy: None,
-                    sandbox_mode: None,
-                };
+        let selected_client = self
+            .agent_clients
+            .resolve_preferred_available_client(resolved.effective_harness)
+            .await;
+
+        if selected_client.harness.is_some() {
+            return ResolvedBackgroundAgentRuntime {
+                client: selected_client.client,
+                harness: Some(resolved.effective_harness),
+                model: Some(resolved.model),
+                logical_effort: resolved.logical_effort,
+                approval_policy: resolved.approval_policy,
+                sandbox_mode: resolved.sandbox_mode,
             };
+        }
 
-            if harness_client.is_available().await.unwrap_or(false) {
-                return ResolvedBackgroundAgentRuntime {
-                    client: harness_client,
-                    harness: Some(resolved.effective_harness),
-                    model: Some(resolved.model),
-                    logical_effort: resolved.logical_effort,
-                    approval_policy: resolved.approval_policy,
-                    sandbox_mode: resolved.sandbox_mode,
-                };
-            }
-
+        if resolved.effective_harness != self.agent_clients.default_harness {
             tracing::warn!(
                 project_id = project_id.unwrap_or(""),
                 harness = %resolved.effective_harness,
@@ -335,7 +326,7 @@ impl AppState {
         }
 
         ResolvedBackgroundAgentRuntime {
-            client: Arc::clone(&self.agent_clients.default_client),
+            client: selected_client.client,
             harness: None,
             model: None,
             logical_effort: None,
