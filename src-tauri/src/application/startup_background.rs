@@ -1,11 +1,12 @@
-use std::path::PathBuf;
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::application::harness_runtime_registry::resolve_default_external_mcp_bootstrap;
 use crate::domain::repositories::{
-    ExternalEventsRepository, MemoryArchiveRepository, MemoryEntryRepository,
-    ProjectRepository, TaskRepository,
+    ExternalEventsRepository, MemoryArchiveRepository, MemoryEntryRepository, ProjectRepository,
+    TaskRepository,
 };
 use crate::infrastructure::{ExternalMcpHandle, ExternalMcpSupervisor};
 use tauri::Manager;
@@ -47,7 +48,10 @@ pub async fn recover_memory_archive_jobs_on_startup(
     };
 
     if recovered_count > 0 {
-        info!(recovered = recovered_count, "Completed memory archive job recovery");
+        info!(
+            recovered = recovered_count,
+            "Completed memory archive job recovery"
+        );
     }
 }
 
@@ -115,12 +119,22 @@ pub fn spawn_cleanup_loops(
 
 pub async fn maybe_start_external_mcp(
     app_handle: tauri::AppHandle,
-    wait_for_backend_ready: impl Fn(u16, Duration) -> futures::future::BoxFuture<'static, Result<(), String>>,
+    wait_for_backend_ready: impl Fn(
+        u16,
+        Duration,
+    ) -> futures::future::BoxFuture<'static, Result<(), String>>,
 ) {
-    let config = crate::infrastructure::agents::claude::external_mcp_config().clone();
-    if !config.enabled {
-        return;
-    }
+    let bootstrap = match resolve_default_external_mcp_bootstrap() {
+        Ok(None) => return,
+        Ok(Some(bootstrap)) => bootstrap,
+        Err(error) => {
+            warn!(
+                "External MCP bootstrap unavailable, skipping start: {}",
+                error
+            );
+            return;
+        }
+    };
 
     match wait_for_backend_ready(3847, Duration::from_secs(30)).await {
         Err(e) => {
@@ -128,50 +142,29 @@ pub async fn maybe_start_external_mcp(
         }
         Ok(()) => {
             info!("Backend :3847 ready, starting external MCP server");
-            match crate::infrastructure::agents::claude::validate_external_mcp_config(&config) {
-                Err(e) => {
-                    warn!("External MCP config invalid, skipping start: {}", e);
-                }
+            let app_data_dir = app_handle
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| PathBuf::from("."));
+            let supervisor = Arc::new(ExternalMcpSupervisor::new(
+                bootstrap.config,
+                app_handle.clone(),
+                app_data_dir,
+            ));
+            match Arc::clone(&supervisor)
+                .start(bootstrap.node_path, bootstrap.entry_path)
+                .await
+            {
                 Ok(()) => {
-                    let entry_path = crate::infrastructure::agents::claude::find_plugin_dir()
-                        .map(|p| p.join("ralphx-external-mcp/build/index.js"));
-                    match entry_path {
-                        None => {
-                            warn!("Plugin dir not found, cannot start external MCP");
-                        }
-                        Some(ep) if !ep.exists() => {
-                            warn!(
-                                path = %ep.display(),
-                                "External MCP entry not found — run `npm run build` in plugins/app/ralphx-external-mcp"
-                            );
-                        }
-                        Some(ep) => {
-                            let node_path =
-                                crate::infrastructure::agents::claude::node_utils::find_node_binary();
-                            let app_data_dir = app_handle
-                                .path()
-                                .app_data_dir()
-                                .unwrap_or_else(|_| PathBuf::from("."));
-                            let supervisor = Arc::new(ExternalMcpSupervisor::new(
-                                config,
-                                app_handle.clone(),
-                                app_data_dir,
-                            ));
-                            match Arc::clone(&supervisor).start(node_path, ep).await {
-                                Ok(()) => {
-                                    let handle = app_handle.state::<ExternalMcpHandle>();
-                                    if handle.set(supervisor).is_err() {
-                                        warn!("ExternalMcpHandle already initialized");
-                                    } else {
-                                        info!("External MCP supervisor started and registered");
-                                    }
-                                }
-                                Err(e) => {
-                                    warn!("Failed to start external MCP: {}", e);
-                                }
-                            }
-                        }
+                    let handle = app_handle.state::<ExternalMcpHandle>();
+                    if handle.set(supervisor).is_err() {
+                        warn!("ExternalMcpHandle already initialized");
+                    } else {
+                        info!("External MCP supervisor started and registered");
                     }
+                }
+                Err(e) => {
+                    warn!("Failed to start external MCP: {}", e);
                 }
             }
         }

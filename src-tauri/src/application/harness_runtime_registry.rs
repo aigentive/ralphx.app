@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 
 use crate::domain::agents::{standard_harness_registry, AgentHarnessKind, DEFAULT_AGENT_HARNESS};
 use crate::infrastructure::agents::claude::{
-    find_claude_cli, register_mcp_server, resolve_plugin_dir,
+    external_mcp_config, find_claude_cli, node_utils, register_mcp_server, resolve_plugin_dir,
+    validate_external_mcp_config, ExternalMcpConfig,
 };
 use crate::infrastructure::agents::{find_codex_cli, resolve_codex_cli, CodexCliCapabilities};
 use which::which;
@@ -48,6 +49,13 @@ pub(crate) struct DefaultChatServiceBootstrap {
     pub cli_path: PathBuf,
     pub plugin_dir: PathBuf,
     pub default_working_directory: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DefaultExternalMcpBootstrap {
+    pub config: ExternalMcpConfig,
+    pub node_path: PathBuf,
+    pub entry_path: PathBuf,
 }
 
 impl ResolvedHarnessStartupIntegration {
@@ -253,6 +261,41 @@ pub(crate) fn resolve_default_chat_service_bootstrap() -> DefaultChatServiceBoot
     }
 }
 
+pub(crate) fn resolve_default_external_mcp_bootstrap(
+) -> Result<Option<DefaultExternalMcpBootstrap>, String> {
+    let config = external_mcp_config().clone();
+    if !config.enabled {
+        return Ok(None);
+    }
+
+    validate_external_mcp_config(&config)?;
+
+    let entry_path = find_claude_external_mcp_entry()
+        .ok_or_else(|| "Plugin dir not found, cannot start external MCP".to_string())?;
+
+    if !entry_path.exists() {
+        return Err(format!(
+            "External MCP entry not found at {} — run `npm run build` in plugins/app/ralphx-external-mcp",
+            entry_path.display()
+        ));
+    }
+
+    Ok(Some(DefaultExternalMcpBootstrap {
+        config,
+        node_path: node_utils::find_node_binary(),
+        entry_path,
+    }))
+}
+
+fn find_claude_external_mcp_entry() -> Option<PathBuf> {
+    crate::infrastructure::agents::claude::find_plugin_dir()
+        .map(|plugin_dir| external_mcp_entry_for_plugin_dir(&plugin_dir))
+}
+
+fn external_mcp_entry_for_plugin_dir(plugin_dir: &Path) -> PathBuf {
+    plugin_dir.join("ralphx-external-mcp/build/index.js")
+}
+
 pub(crate) fn probe_supported_harnesses() -> HashMap<AgentHarnessKind, HarnessRuntimeProbe> {
     standard_harness_runtime_adapters()
         .into_iter()
@@ -387,5 +430,14 @@ mod tests {
     fn default_chat_service_working_directory_keeps_non_src_tauri_paths() {
         let cwd = PathBuf::from("/tmp/example");
         assert_eq!(default_chat_service_working_directory(cwd.clone()), cwd);
+    }
+
+    #[test]
+    fn external_mcp_entry_for_plugin_dir_appends_expected_relative_path() {
+        let plugin_dir = PathBuf::from("/tmp/plugins/app");
+        assert_eq!(
+            external_mcp_entry_for_plugin_dir(&plugin_dir),
+            plugin_dir.join("ralphx-external-mcp/build/index.js")
+        );
     }
 }
