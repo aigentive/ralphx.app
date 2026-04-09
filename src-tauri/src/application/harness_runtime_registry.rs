@@ -223,6 +223,61 @@ pub(crate) fn probe_supported_harnesses() -> HashMap<AgentHarnessKind, HarnessRu
         .collect()
 }
 
+pub(crate) fn probe_codex_harness_with_capabilities(
+) -> (HarnessRuntimeProbe, Option<CodexCliCapabilities>) {
+    match resolve_codex_cli() {
+        Ok(resolved) => {
+            let capabilities = resolved.capabilities;
+            let missing_core_exec_features = capabilities
+                .missing_core_exec_features()
+                .into_iter()
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            let available = missing_core_exec_features.is_empty();
+            let error = if available {
+                None
+            } else {
+                Some(format!(
+                    "Codex CLI is missing required capability: {}",
+                    missing_core_exec_features.join(", ")
+                ))
+            };
+            (
+                HarnessRuntimeProbe {
+                    binary_path: Some(resolved.path.to_string_lossy().into_owned()),
+                    binary_found: true,
+                    probe_succeeded: true,
+                    available,
+                    missing_core_exec_features,
+                    error,
+                },
+                Some(capabilities),
+            )
+        }
+        Err(error) => {
+            let probe = match find_codex_cli() {
+                Some(cli_path) => HarnessRuntimeProbe {
+                    binary_path: Some(cli_path.to_string_lossy().into_owned()),
+                    binary_found: true,
+                    probe_succeeded: false,
+                    available: false,
+                    missing_core_exec_features: Vec::new(),
+                    error: Some(error),
+                },
+                None => HarnessRuntimeProbe {
+                    binary_path: None,
+                    binary_found: false,
+                    probe_succeeded: false,
+                    available: false,
+                    missing_core_exec_features: Vec::new(),
+                    error: Some(error),
+                },
+            };
+            (probe, None)
+        }
+    }
+}
+
 pub(crate) fn resolve_chat_harness_cli(
     harness: AgentHarnessKind,
     claude_cli_path: &Path,
