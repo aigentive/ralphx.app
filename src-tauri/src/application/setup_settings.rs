@@ -3,11 +3,13 @@ use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::AppState;
+use crate::application::harness_runtime_registry::{
+    default_agent_harness_settings_config, default_execution_settings_config,
+};
 use crate::application::ideation_effort_bootstrap::seed_ideation_effort_defaults;
 use crate::application::ideation_model_bootstrap::seed_ideation_model_settings;
 use crate::application::{load_or_seed_agent_lane_settings_defaults, load_or_seed_execution_settings_defaults};
 use crate::commands::ExecutionState;
-use crate::infrastructure;
 
 pub(crate) fn initialize_settings_defaults(
     app_state: &AppState,
@@ -18,9 +20,8 @@ pub(crate) fn initialize_settings_defaults(
     let init_settings_repo = Arc::clone(&app_state.execution_settings_repo);
     let init_global_settings_repo = Arc::clone(&app_state.global_execution_settings_repo);
     let init_agent_lane_settings_repo = Arc::clone(&app_state.agent_lane_settings_repo);
-    let execution_defaults = infrastructure::agents::claude::execution_defaults_config().clone();
-    let agent_harness_defaults =
-        infrastructure::agents::claude::agent_harness_defaults_config().clone();
+    let execution_defaults = default_execution_settings_config();
+    let agent_harness_defaults = default_agent_harness_settings_config();
     tauri::async_runtime::block_on(async move {
         match load_or_seed_execution_settings_defaults(
             init_settings_repo,

@@ -4,9 +4,10 @@ use std::path::{Path, PathBuf};
 use crate::application::reconciliation::verification_reconciliation::VerificationReconciliationConfig;
 use crate::domain::agents::{standard_harness_registry, AgentHarnessKind, DEFAULT_AGENT_HARNESS};
 use crate::infrastructure::agents::claude::{
-    external_mcp_config, find_claude_cli, node_utils, register_mcp_server, resolve_plugin_dir,
-    ui_feature_flags_config, validate_external_mcp_config, verification_config,
-    ExternalMcpConfig, UiFeatureFlagsConfig, VerificationConfig,
+    agent_harness_defaults_config, execution_defaults_config, external_mcp_config,
+    find_claude_cli, node_utils, register_mcp_server, resolve_plugin_dir, ui_feature_flags_config,
+    validate_external_mcp_config, verification_config, AgentHarnessDefaultsConfig,
+    ExecutionDefaultsConfig, ExternalMcpConfig, UiFeatureFlagsConfig, VerificationConfig,
 };
 use crate::infrastructure::agents::{find_codex_cli, resolve_codex_cli, CodexCliCapabilities};
 use which::which;
@@ -327,6 +328,14 @@ pub(crate) fn default_verification_reconciliation_config() -> VerificationReconc
         external_session_stale_secs: external_mcp.external_session_stale_secs,
         external_session_startup_grace_secs: external_mcp.external_session_startup_grace_secs,
     }
+}
+
+pub(crate) fn default_execution_settings_config() -> ExecutionDefaultsConfig {
+    execution_defaults_config().clone()
+}
+
+pub(crate) fn default_agent_harness_settings_config() -> AgentHarnessDefaultsConfig {
+    agent_harness_defaults_config().clone()
 }
 
 fn find_claude_external_mcp_entry() -> Option<PathBuf> {
