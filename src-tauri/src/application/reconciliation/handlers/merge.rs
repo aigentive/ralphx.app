@@ -10,7 +10,7 @@ use crate::domain::entities::{
 };
 use crate::domain::state_machine::transition_handler::has_branch_missing_metadata;
 use crate::domain::state_machine::transition_handler::metadata_builder::MetadataUpdate;
-use crate::infrastructure::agents::claude::reconciliation_config;
+use crate::application::harness_runtime_registry::default_reconciliation_runtime_config;
 
 use super::super::policy::{
     RecoveryActionKind, RecoveryContext, RecoveryDecision, RecoveryEvidence, ShaComparisonResult,
@@ -146,7 +146,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .build_run_evidence(task, ChatContextType::Merge, run.as_ref())
             .await;
         evidence.is_stale = effective_age
-            >= chrono::Duration::seconds(reconciliation_config().merger_timeout_secs as i64);
+            >= chrono::Duration::seconds(default_reconciliation_runtime_config().merger_timeout_secs as i64);
 
         // Agent is running, registered, and not stale — let it work
         if evidence.run_status == Some(AgentRunStatus::Running)
@@ -168,11 +168,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
             Err(_) => return false,
         };
         let retry_count = Self::merging_auto_retry_count(&updated_task);
-        if retry_count >= reconciliation_config().merging_max_retries as u32 {
+        if retry_count >= default_reconciliation_runtime_config().merging_max_retries as u32 {
             warn!(
                 task_id = task.id.as_str(),
                 retry_count = retry_count,
-                max = reconciliation_config().merging_max_retries,
+                max = default_reconciliation_runtime_config().merging_max_retries,
                 "Merging retry limit reached — transitioning to MergeIncomplete for user retry"
             );
             // Use MergeIncomplete (not MergeConflict) because timeout indicates a hung agent,
@@ -204,7 +204,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         let decision = if decision.action == RecoveryActionKind::Prompt {
             // Grace period: if the agent run was created recently, the PID may not
             // have been registered yet — skip this cycle and let registration catch up.
-            let grace_period_secs = reconciliation_config().merge_registry_grace_period_secs as i64;
+            let grace_period_secs = default_reconciliation_runtime_config().merge_registry_grace_period_secs as i64;
             let within_grace_period = run.as_ref().map_or(false, |r| {
                 let age = chrono::Utc::now() - r.started_at;
                 age < chrono::Duration::seconds(grace_period_secs)
@@ -330,7 +330,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 .ok()
                 .map(|started| (chrono::Utc::now() - started.with_timezone(&chrono::Utc)).num_seconds())
         });
-        let merge_pipeline_ttl = reconciliation_config().attempt_merge_deadline_secs as i64;
+        let merge_pipeline_ttl = default_reconciliation_runtime_config().attempt_merge_deadline_secs as i64;
         if let Some(age_secs) = merge_pipeline_age_secs {
             if age_secs >= merge_pipeline_ttl {
                 warn!(
@@ -482,7 +482,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             can_start: true,
             is_stale: age
                 >= chrono::Duration::minutes(
-                    reconciliation_config().pending_merge_stale_minutes as i64,
+                    default_reconciliation_runtime_config().pending_merge_stale_minutes as i64,
                 ),
             is_deferred,
         };
@@ -673,11 +673,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // Loop-breaking guard: if validation has reverted the merge more than the configured max
         // times, stop auto-retrying and surface to user — the code changes must fix the failures.
         let revert_count = Self::validation_revert_count(task);
-        if revert_count >= reconciliation_config().validation_revert_max_count as u32 {
+        if revert_count >= default_reconciliation_runtime_config().validation_revert_max_count as u32 {
             debug!(
                 task_id = task.id.as_str(),
                 revert_count = revert_count,
-                max = reconciliation_config().validation_revert_max_count,
+                max = default_reconciliation_runtime_config().validation_revert_max_count,
                 "Stopping auto-retry of MergeIncomplete — validation revert loop detected (ValidationFailed)"
             );
             return false;
@@ -689,11 +689,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // stop auto-retrying entirely and leave for human intervention.
         if is_validation {
             let consecutive = Self::consecutive_validation_failures(task);
-            if consecutive >= reconciliation_config().validation_failure_circuit_breaker_count as u32 {
+            if consecutive >= default_reconciliation_runtime_config().validation_failure_circuit_breaker_count as u32 {
                 debug!(
                     task_id = task.id.as_str(),
                     consecutive = consecutive,
-                    max = reconciliation_config().validation_failure_circuit_breaker_count,
+                    max = default_reconciliation_runtime_config().validation_failure_circuit_breaker_count,
                     "Circuit breaker: stopping auto-retry after consecutive validation failures"
                 );
                 return false;
@@ -709,13 +709,13 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // after a validation failure to prevent rapid retry loops.
         if is_validation {
             let cooldown = chrono::Duration::seconds(
-                reconciliation_config().validation_retry_min_cooldown_secs as i64,
+                default_reconciliation_runtime_config().validation_retry_min_cooldown_secs as i64,
             );
             if age < cooldown {
                 debug!(
                     task_id = task.id.as_str(),
                     age_secs = age.num_seconds(),
-                    cooldown_secs = reconciliation_config().validation_retry_min_cooldown_secs,
+                    cooldown_secs = default_reconciliation_runtime_config().validation_retry_min_cooldown_secs,
                     "Skipping MergeIncomplete retry — validation failure cooldown not elapsed"
                 );
                 return false;
@@ -726,7 +726,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // to give other MergeIncomplete tasks a turn.
         if let Some(last_retry) = Self::last_retried_at(task) {
             let since_retry = chrono::Utc::now() - last_retry;
-            let guard_secs = reconciliation_config().merge_starvation_guard_secs as i64;
+            let guard_secs = default_reconciliation_runtime_config().merge_starvation_guard_secs as i64;
             if since_retry < chrono::Duration::seconds(guard_secs) {
                 debug!(
                     task_id = task.id.as_str(),
@@ -740,8 +740,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
         // Circuit breaker — detect repeated identical failures before proceeding.
         // Fires when threshold+ of the last window failure events share the same source.
-        let threshold = reconciliation_config().merge_circuit_breaker_threshold as usize;
-        let window = reconciliation_config().merge_circuit_breaker_window as usize;
+        let threshold = default_reconciliation_runtime_config().merge_circuit_breaker_threshold as usize;
+        let window = default_reconciliation_runtime_config().merge_circuit_breaker_window as usize;
         if let Some(reason) = Self::should_circuit_break(task, threshold, window) {
             warn!(
                 task_id = task.id.as_str(),
@@ -759,7 +759,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
 
         let retry_count = Self::merge_incomplete_auto_retry_count(task);
-        if retry_count >= reconciliation_config().merge_incomplete_max_retries as u32 {
+        if retry_count >= default_reconciliation_runtime_config().merge_incomplete_max_retries as u32 {
             return false;
         }
 
@@ -898,7 +898,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         };
 
         let retry_count = Self::merge_conflict_auto_retry_count(task);
-        if retry_count >= reconciliation_config().merge_conflict_max_retries as u32 {
+        if retry_count >= default_reconciliation_runtime_config().merge_conflict_max_retries as u32 {
             return false;
         }
 
@@ -1008,7 +1008,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .and_then(|ts| {
                 let started = chrono::DateTime::parse_from_rfc3339(ts).ok()?;
                 let age = chrono::Utc::now() - started.with_timezone(&chrono::Utc);
-                let deadline_secs = reconciliation_config().attempt_merge_deadline_secs;
+                let deadline_secs = default_reconciliation_runtime_config().attempt_merge_deadline_secs;
                 Some(age >= chrono::Duration::seconds(deadline_secs as i64))
             })
             .unwrap_or(false)

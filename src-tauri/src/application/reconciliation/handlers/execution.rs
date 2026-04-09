@@ -20,7 +20,7 @@ use crate::domain::entities::{
 use crate::domain::services::RunningAgentKey;
 use crate::domain::state_machine::transition_handler::metadata_builder::MetadataUpdate;
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
-use crate::infrastructure::agents::claude::reconciliation_config;
+use crate::application::harness_runtime_registry::default_reconciliation_runtime_config;
 
 use super::super::policy::{
     RecoveryActionKind, RecoveryContext, RecoveryDecision, RecoveryEvidence, UserRecoveryAction,
@@ -171,7 +171,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             }
         };
 
-        let max_retries = crate::infrastructure::agents::claude::reconciliation_config()
+        let max_retries = default_reconciliation_runtime_config()
             .execution_failed_max_retries as u32;
 
         for project in &projects {
@@ -211,7 +211,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 // Staleness check: skip tasks whose failed_at is older than threshold
                 {
                     let staleness_threshold =
-                        crate::infrastructure::agents::claude::reconciliation_config()
+                        default_reconciliation_runtime_config()
                             .recovery_staleness_secs;
                     if let Some(failed_at_str) = task
                         .metadata
@@ -257,7 +257,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                         ExecutionFailureSource::GitIsolation,
                     );
                     let git_max =
-                        crate::infrastructure::agents::claude::reconciliation_config()
+                        default_reconciliation_runtime_config()
                             .git_isolation_max_retries as u32;
                     (git_count, git_max)
                 } else if is_new_retrying {
@@ -653,7 +653,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
         // C5: Wall-clock timeout for long-running executions
         if let Some(age) = self.latest_status_transition_age(task, status).await {
-            let max_minutes = reconciliation_config().executing_max_wall_clock_minutes as i64;
+            let max_minutes = default_reconciliation_runtime_config().executing_max_wall_clock_minutes as i64;
             if age >= chrono::Duration::minutes(max_minutes) {
                 warn!(
                     task_id = task.id.as_str(),
@@ -752,11 +752,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // E7: Enforce retry limit for execution re-spawns
         if decision.action == RecoveryActionKind::ExecuteEntryActions {
             let retry_count = Self::auto_retry_count_for_status(task, status);
-            if retry_count >= reconciliation_config().executing_max_retries as u32 {
+            if retry_count >= default_reconciliation_runtime_config().executing_max_retries as u32 {
                 warn!(
                     task_id = task.id.as_str(),
                     retry_count = retry_count,
-                    max = reconciliation_config().executing_max_retries,
+                    max = default_reconciliation_runtime_config().executing_max_retries,
                     "Execution retry limit reached — escalating to Failed"
                 );
                 // Pre-write terminal execution_recovery for path #7 (E7: executing retry limit
@@ -938,7 +938,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // Staleness check: skip tasks whose failed_at is older than threshold
         {
             let staleness_threshold =
-                reconciliation_config().recovery_staleness_secs;
+                default_reconciliation_runtime_config().recovery_staleness_secs;
             if let Some(failed_at_str) = task
                 .metadata
                 .as_deref()
@@ -1040,11 +1040,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 &task,
                 ExecutionFailureSource::GitIsolation,
             );
-            let max = reconciliation_config().git_isolation_max_retries as u32;
+            let max = default_reconciliation_runtime_config().git_isolation_max_retries as u32;
             (count, max)
         } else {
             let count = Self::execution_failed_auto_retry_count(&task);
-            let max = reconciliation_config().execution_failed_max_retries as u32;
+            let max = default_reconciliation_runtime_config().execution_failed_max_retries as u32;
             (count, max)
         };
 
@@ -1346,7 +1346,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
         // C5: Wall-clock timeout for long-running reviews
         if let Some(age) = self.latest_status_transition_age(task, status).await {
-            let max_minutes = reconciliation_config().reviewing_max_wall_clock_minutes as i64;
+            let max_minutes = default_reconciliation_runtime_config().reviewing_max_wall_clock_minutes as i64;
             if age >= chrono::Duration::minutes(max_minutes) {
                 warn!(
                     task_id = task.id.as_str(),
@@ -1416,11 +1416,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
                 .and_then(|v| v.get("reviewer_spawn_failure_count").and_then(|c| c.as_u64()))
                 .unwrap_or(0) as u32;
-            if spawn_failure_count >= reconciliation_config().reviewing_max_retries as u32 {
+            if spawn_failure_count >= default_reconciliation_runtime_config().reviewing_max_retries as u32 {
                 warn!(
                     task_id = task.id.as_str(),
                     spawn_failure_count = spawn_failure_count,
-                    max = reconciliation_config().reviewing_max_retries,
+                    max = default_reconciliation_runtime_config().reviewing_max_retries,
                     "Reviewer spawn failure count exhausted retry budget — escalating to Escalated"
                 );
                 return self
@@ -1443,11 +1443,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // E7: Enforce retry limit for review re-spawns
         if decision.action == RecoveryActionKind::ExecuteEntryActions {
             let retry_count = Self::auto_retry_count_for_status(task, status);
-            if retry_count >= reconciliation_config().reviewing_max_retries as u32 {
+            if retry_count >= default_reconciliation_runtime_config().reviewing_max_retries as u32 {
                 warn!(
                     task_id = task.id.as_str(),
                     retry_count = retry_count,
-                    max = reconciliation_config().reviewing_max_retries,
+                    max = default_reconciliation_runtime_config().reviewing_max_retries,
                     "Review retry limit reached — escalating to Escalated"
                 );
                 return self
@@ -1513,7 +1513,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         };
 
         // C5: Wall-clock timeout for long-running QA
-        let max_qa_minutes = reconciliation_config().qa_max_wall_clock_minutes as i64;
+        let max_qa_minutes = default_reconciliation_runtime_config().qa_max_wall_clock_minutes as i64;
         if age >= chrono::Duration::minutes(max_qa_minutes) {
             warn!(
                 task_id = task.id.as_str(),
@@ -1543,7 +1543,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             registry_running: false,
             can_start: self.execution_state.can_start_task(),
             is_stale: age
-                >= chrono::Duration::minutes(reconciliation_config().qa_stale_minutes as i64),
+                >= chrono::Duration::minutes(default_reconciliation_runtime_config().qa_stale_minutes as i64),
             is_deferred: false,
         };
         let decision = self.policy.decide_reconciliation(context, evidence);
@@ -1551,11 +1551,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // E7: Enforce retry limit for QA re-spawns
         if decision.action == RecoveryActionKind::ExecuteEntryActions {
             let retry_count = Self::auto_retry_count_for_status(task, status);
-            if retry_count >= reconciliation_config().qa_max_retries as u32 {
+            if retry_count >= default_reconciliation_runtime_config().qa_max_retries as u32 {
                 warn!(
                     task_id = task.id.as_str(),
                     retry_count = retry_count,
-                    max = reconciliation_config().qa_max_retries,
+                    max = default_reconciliation_runtime_config().qa_max_retries,
                     "QA retry limit reached — escalating to QaFailed"
                 );
                 return self
