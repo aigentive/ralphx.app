@@ -9,8 +9,9 @@ use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use rusqlite::Connection;
 
 use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
+use crate::domain::entities::chat_conversation::compatible_provider_session_fields_from_provider_ref;
 use crate::domain::entities::{
-    legacy_claude_session_alias, ChatContextType, ChatConversation, ChatConversationId,
+    ChatContextType, ChatConversation, ChatConversationId,
 };
 use crate::domain::repositories::ChatConversationRepository;
 use crate::error::AppResult;
@@ -184,10 +185,11 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
         session_ref: &ProviderSessionRef,
     ) -> AppResult<()> {
         let id_str = id.as_str().to_string();
-        let session_id = session_ref.provider_session_id.clone();
-        let harness = session_ref.harness.to_string();
-        let claude_session_id =
-            legacy_claude_session_alias(Some(session_ref.harness), Some(session_id.as_str()));
+        let (claude_session_id, provider_session_id, provider_harness) =
+            compatible_provider_session_fields_from_provider_ref(
+                Some(session_ref.harness),
+                Some(session_ref.provider_session_id.clone()),
+            );
         self.db.run(move |conn| {
             conn.execute(
                 "UPDATE chat_conversations
@@ -198,8 +200,8 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
                  WHERE id = ?5",
                 rusqlite::params![
                     claude_session_id,
-                    session_id,
-                    harness,
+                    provider_session_id,
+                    provider_harness.map(|value| value.to_string()),
                     Utc::now().to_rfc3339(),
                     id_str
                 ],

@@ -272,10 +272,14 @@ impl ChatConversation {
             harness,
             provider_session_id,
         } = session_ref;
-        self.provider_harness = Some(harness);
-        self.provider_session_id = Some(provider_session_id.clone());
-        self.claude_session_id =
-            legacy_claude_session_alias(Some(harness), Some(provider_session_id.as_str()));
+        let (claude_session_id, provider_session_id, provider_harness) =
+            compatible_provider_session_fields_from_provider_ref(
+                Some(harness),
+                Some(provider_session_id),
+            );
+        self.claude_session_id = claude_session_id;
+        self.provider_session_id = provider_session_id;
+        self.provider_harness = provider_harness;
         self.updated_at = Utc::now();
     }
 
@@ -362,6 +366,15 @@ pub fn legacy_claude_session_alias(
     matches!(harness, Some(AgentHarnessKind::Claude))
         .then(|| provider_session_id.map(str::to_string))
         .flatten()
+}
+
+pub fn compatible_provider_session_fields_from_provider_ref(
+    provider_harness: Option<AgentHarnessKind>,
+    provider_session_id: Option<String>,
+) -> (Option<String>, Option<String>, Option<AgentHarnessKind>) {
+    let claude_session_id =
+        legacy_claude_session_alias(provider_harness, provider_session_id.as_deref());
+    (claude_session_id, provider_session_id, provider_harness)
 }
 
 pub fn normalize_provider_session_compatibility(

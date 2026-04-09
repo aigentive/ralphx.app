@@ -126,6 +126,32 @@ fn test_legacy_claude_session_alias_only_applies_to_claude() {
 }
 
 #[test]
+fn test_compatible_provider_session_fields_from_provider_ref_restores_legacy_alias_for_claude() {
+    let (claude_session_id, provider_session_id, provider_harness) =
+        compatible_provider_session_fields_from_provider_ref(
+            Some(AgentHarnessKind::Claude),
+            Some("session-123".to_string()),
+        );
+
+    assert_eq!(claude_session_id.as_deref(), Some("session-123"));
+    assert_eq!(provider_session_id.as_deref(), Some("session-123"));
+    assert_eq!(provider_harness, Some(AgentHarnessKind::Claude));
+}
+
+#[test]
+fn test_compatible_provider_session_fields_from_provider_ref_keeps_codex_without_legacy_alias() {
+    let (claude_session_id, provider_session_id, provider_harness) =
+        compatible_provider_session_fields_from_provider_ref(
+            Some(AgentHarnessKind::Codex),
+            Some("thread-123".to_string()),
+        );
+
+    assert_eq!(claude_session_id, None);
+    assert_eq!(provider_session_id.as_deref(), Some("thread-123"));
+    assert_eq!(provider_harness, Some(AgentHarnessKind::Codex));
+}
+
+#[test]
 fn test_normalize_provider_session_compatibility_from_legacy_claude_field() {
     let (claude_session_id, provider_session_id, provider_harness) =
         normalize_provider_session_compatibility(Some("legacy-session".to_string()), None, None);
