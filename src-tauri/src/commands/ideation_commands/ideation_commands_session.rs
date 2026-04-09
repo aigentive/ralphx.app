@@ -542,11 +542,11 @@ pub async fn spawn_session_namer(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     use crate::application::harness_runtime_registry::{
-        default_repo_root_working_directory, resolve_default_harness_plugin_dir,
+        default_repo_root_working_directory, resolve_default_harness_agent_bootstrap,
     };
     use crate::domain::agents::{AgentConfig, AgentRole};
     use crate::domain::entities::IdeationSessionId;
-    use crate::infrastructure::agents::claude::{agent_names, mcp_agent_type};
+    use crate::infrastructure::agents::claude::agent_names;
 
     // Build the prompt with session context (XML-delineated to prevent injection)
     let prompt = build_session_namer_prompt(&format!(
@@ -556,13 +556,9 @@ pub async fn spawn_session_namer(
 
     // Get the working directory (project root)
     let working_directory = default_repo_root_working_directory();
-    let plugin_dir = resolve_default_harness_plugin_dir(&working_directory);
-
-    // Set RALPHX_AGENT_TYPE so MCP server grants access to update_session_title tool
-    let mut env = std::collections::HashMap::new();
-    env.insert(
-        "RALPHX_AGENT_TYPE".to_string(),
-        mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string(),
+    let bootstrap = resolve_default_harness_agent_bootstrap(
+        agent_names::AGENT_SESSION_NAMER,
+        working_directory,
     );
 
     let project_id = state
@@ -576,11 +572,11 @@ pub async fn spawn_session_namer(
         .await;
 
     let config = AgentConfig {
-        role: AgentRole::Custom(mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string()),
+        role: AgentRole::Custom(bootstrap.agent_role.clone()),
         prompt,
-        working_directory,
-        plugin_dir: Some(plugin_dir),
-        agent: Some(agent_names::AGENT_SESSION_NAMER.to_string()),
+        working_directory: bootstrap.working_directory,
+        plugin_dir: Some(bootstrap.plugin_dir),
+        agent: Some(bootstrap.agent_name),
         model: runtime.model,
         harness: runtime.harness,
         logical_effort: runtime.logical_effort,
@@ -588,7 +584,7 @@ pub async fn spawn_session_namer(
         sandbox_mode: runtime.sandbox_mode,
         max_tokens: None,
         timeout_secs: Some(60), // 60 second timeout for title generation
-        env,
+        env: bootstrap.env,
     };
 
     // Clone the agent client for the background task

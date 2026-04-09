@@ -520,9 +520,9 @@ pub async fn spawn_project_analyzer(
     working_directory: &str,
     app_handle: Option<tauri::AppHandle>,
 ) {
-    use crate::application::harness_runtime_registry::resolve_default_harness_plugin_dir;
+    use crate::application::harness_runtime_registry::resolve_default_harness_agent_bootstrap;
     use crate::domain::agents::{AgentConfig, AgentRole};
-    use crate::infrastructure::agents::claude::{agent_names, mcp_agent_type};
+    use crate::infrastructure::agents::claude::agent_names;
 
     let prompt = format!(
         "<instructions>\n\
@@ -537,13 +537,12 @@ pub async fn spawn_project_analyzer(
     );
 
     let working_directory = PathBuf::from(working_directory);
-    let plugin_dir = resolve_default_harness_plugin_dir(&working_directory);
-
-    let mut env = std::collections::HashMap::new();
-    env.insert(
-        "RALPHX_AGENT_TYPE".to_string(),
-        mcp_agent_type(agent_names::AGENT_PROJECT_ANALYZER).to_string(),
+    let bootstrap = resolve_default_harness_agent_bootstrap(
+        agent_names::AGENT_PROJECT_ANALYZER,
+        working_directory.clone(),
     );
+
+    let mut env = bootstrap.env;
     let pid = project_id.to_string();
     env.insert("RALPHX_PROJECT_ID".to_string(), pid.clone());
 
@@ -553,11 +552,11 @@ pub async fn spawn_project_analyzer(
     let agent_client = Arc::clone(&runtime.client);
 
     let config = AgentConfig {
-        role: AgentRole::Custom(mcp_agent_type(agent_names::AGENT_PROJECT_ANALYZER).to_string()),
+        role: AgentRole::Custom(bootstrap.agent_role.clone()),
         prompt,
         working_directory,
-        plugin_dir: Some(plugin_dir),
-        agent: Some(agent_names::AGENT_PROJECT_ANALYZER.to_string()),
+        plugin_dir: Some(bootstrap.plugin_dir),
+        agent: Some(bootstrap.agent_name),
         model: runtime.model,
         harness: runtime.harness,
         logical_effort: runtime.logical_effort,

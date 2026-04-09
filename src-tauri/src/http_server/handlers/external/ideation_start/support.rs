@@ -1,6 +1,6 @@
 use super::*;
 use crate::application::harness_runtime_registry::{
-    default_repo_root_working_directory, resolve_default_harness_plugin_dir,
+    default_repo_root_working_directory, resolve_default_harness_agent_bootstrap,
 };
 use crate::application::session_namer_prompt::build_session_namer_prompt;
 
@@ -26,29 +26,24 @@ pub(super) async fn spawn_session_namer(
     let agent_client = Arc::clone(&runtime.client);
     tokio::spawn(async move {
         use crate::domain::agents::{AgentConfig, AgentRole};
-        use crate::infrastructure::agents::claude::{agent_names, mcp_agent_type};
+        use crate::infrastructure::agents::claude::agent_names;
         let namer_instructions = build_session_namer_prompt(&format!(
             "<session_id>{}</session_id>\n<user_message>{}</user_message>",
             session_id, prompt
         ));
 
         let working_directory = default_repo_root_working_directory();
-        let plugin_dir = resolve_default_harness_plugin_dir(&working_directory);
-
-        let mut env = std::collections::HashMap::new();
-        env.insert(
-            "RALPHX_AGENT_TYPE".to_string(),
-            mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string(),
+        let bootstrap = resolve_default_harness_agent_bootstrap(
+            agent_names::AGENT_SESSION_NAMER,
+            working_directory,
         );
 
         let config = AgentConfig {
-            role: AgentRole::Custom(
-                mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string(),
-            ),
+            role: AgentRole::Custom(bootstrap.agent_role.clone()),
             prompt: namer_instructions,
-            working_directory,
-            plugin_dir: Some(plugin_dir),
-            agent: Some(agent_names::AGENT_SESSION_NAMER.to_string()),
+            working_directory: bootstrap.working_directory,
+            plugin_dir: Some(bootstrap.plugin_dir),
+            agent: Some(bootstrap.agent_name),
             model: runtime.model,
             harness: runtime.harness,
             logical_effort: runtime.logical_effort,
@@ -56,7 +51,7 @@ pub(super) async fn spawn_session_namer(
             sandbox_mode: runtime.sandbox_mode,
             max_tokens: None,
             timeout_secs: Some(60),
-            env,
+            env: bootstrap.env,
         };
 
         match agent_client.spawn_agent(config).await {

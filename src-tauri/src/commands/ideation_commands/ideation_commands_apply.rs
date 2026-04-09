@@ -956,8 +956,9 @@ pub async fn apply_proposals_to_kanban(
     // Skip if user has set a custom title (title_source == "user").
     if !result.is_user_title {
         use crate::application::harness_runtime_registry::{
-            default_repo_root_working_directory, resolve_default_harness_plugin_dir,
+            default_repo_root_working_directory, resolve_default_harness_agent_bootstrap,
         };
+        use crate::infrastructure::agents::claude::agent_names;
 
         let proposals_context = result.proposal_titles.join("; ");
         let session_id_str = result.session_id.clone();
@@ -967,31 +968,25 @@ pub async fn apply_proposals_to_kanban(
 
         let agent_client = Arc::clone(&runtime.client);
         let working_directory = default_repo_root_working_directory();
-        let plugin_dir = resolve_default_harness_plugin_dir(&working_directory);
+        let bootstrap = resolve_default_harness_agent_bootstrap(
+            agent_names::AGENT_SESSION_NAMER,
+            working_directory,
+        );
 
         tokio::spawn(async move {
             use crate::domain::agents::{AgentConfig, AgentRole};
-            use crate::infrastructure::agents::claude::{agent_names, mcp_agent_type};
 
             let prompt = build_session_namer_prompt(&format!(
                 "<session_id>{}</session_id>\n<accepted_proposals>{}</accepted_proposals>",
                 session_id_str, proposals_context
             ));
 
-            let mut env = std::collections::HashMap::new();
-            env.insert(
-                "RALPHX_AGENT_TYPE".to_string(),
-                mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string(),
-            );
-
             let config = AgentConfig {
-                role: AgentRole::Custom(
-                    mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string(),
-                ),
+                role: AgentRole::Custom(bootstrap.agent_role.clone()),
                 prompt,
-                working_directory,
-                plugin_dir: Some(plugin_dir),
-                agent: Some(agent_names::AGENT_SESSION_NAMER.to_string()),
+                working_directory: bootstrap.working_directory,
+                plugin_dir: Some(bootstrap.plugin_dir),
+                agent: Some(bootstrap.agent_name),
                 model: runtime.model,
                 harness: runtime.harness,
                 logical_effort: runtime.logical_effort,
@@ -999,7 +994,7 @@ pub async fn apply_proposals_to_kanban(
                 sandbox_mode: runtime.sandbox_mode,
                 max_tokens: None,
                 timeout_secs: Some(60),
-                env,
+                env: bootstrap.env,
             };
 
             match agent_client.spawn_agent(config).await {

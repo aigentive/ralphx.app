@@ -4,11 +4,11 @@ use std::path::{Path, PathBuf};
 use crate::application::reconciliation::verification_reconciliation::VerificationReconciliationConfig;
 use crate::domain::agents::{standard_harness_registry, AgentHarnessKind, DEFAULT_AGENT_HARNESS};
 use crate::infrastructure::agents::claude::{
-    agent_harness_defaults_config, execution_defaults_config, external_mcp_config,
-    find_claude_cli, node_utils, reconciliation_config, register_mcp_server, resolve_plugin_dir,
-    scheduler_config, ui_feature_flags_config, validate_external_mcp_config,
-    verification_config, AgentHarnessDefaultsConfig, ExecutionDefaultsConfig, ExternalMcpConfig,
-    ReconciliationConfig, SchedulerConfig, UiFeatureFlagsConfig, VerificationConfig,
+    agent_harness_defaults_config, execution_defaults_config, external_mcp_config, find_claude_cli,
+    node_utils, reconciliation_config, register_mcp_server, resolve_plugin_dir, scheduler_config,
+    ui_feature_flags_config, validate_external_mcp_config, verification_config,
+    AgentHarnessDefaultsConfig, ExecutionDefaultsConfig, ExternalMcpConfig, ReconciliationConfig,
+    SchedulerConfig, UiFeatureFlagsConfig, VerificationConfig,
 };
 use crate::infrastructure::agents::{find_codex_cli, resolve_codex_cli, CodexCliCapabilities};
 use which::which;
@@ -53,6 +53,15 @@ pub(crate) struct DefaultChatServiceBootstrap {
     pub cli_path: PathBuf,
     pub plugin_dir: PathBuf,
     pub default_working_directory: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DefaultHarnessAgentBootstrap {
+    pub working_directory: PathBuf,
+    pub plugin_dir: PathBuf,
+    pub agent_name: String,
+    pub agent_role: String,
+    pub env: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]
@@ -270,6 +279,24 @@ pub(crate) fn resolve_default_chat_service_bootstrap() -> DefaultChatServiceBoot
         cli_path: find_claude_cli().unwrap_or_else(|| PathBuf::from("claude")),
         plugin_dir: resolve_default_harness_plugin_dir(&default_working_directory),
         default_working_directory,
+    }
+}
+
+pub(crate) fn resolve_default_harness_agent_bootstrap(
+    agent_name: &'static str,
+    working_directory: PathBuf,
+) -> DefaultHarnessAgentBootstrap {
+    let plugin_dir = resolve_default_harness_plugin_dir(&working_directory);
+    let agent_role = crate::infrastructure::agents::claude::mcp_agent_type(agent_name).to_string();
+    let mut env = HashMap::new();
+    env.insert("RALPHX_AGENT_TYPE".to_string(), agent_role.clone());
+
+    DefaultHarnessAgentBootstrap {
+        working_directory,
+        plugin_dir,
+        agent_name: agent_name.to_string(),
+        agent_role,
+        env,
     }
 }
 
@@ -498,6 +525,26 @@ mod tests {
         assert_eq!(
             external_mcp_entry_for_plugin_dir(&plugin_dir),
             plugin_dir.join("ralphx-external-mcp/build/index.js")
+        );
+    }
+
+    #[test]
+    fn resolve_default_harness_agent_bootstrap_sets_expected_defaults() {
+        let working_directory = PathBuf::from("/tmp/example");
+        let agent_name = crate::infrastructure::agents::claude::agent_names::AGENT_SESSION_NAMER;
+        let bootstrap =
+            resolve_default_harness_agent_bootstrap(agent_name, working_directory.clone());
+
+        assert_eq!(bootstrap.agent_name, agent_name);
+        assert_eq!(bootstrap.agent_role, "session-namer");
+        assert_eq!(bootstrap.working_directory, working_directory);
+        assert_eq!(
+            bootstrap.env.get("RALPHX_AGENT_TYPE"),
+            Some(&"session-namer".to_string())
+        );
+        assert_eq!(
+            bootstrap.plugin_dir,
+            resolve_default_harness_plugin_dir(&bootstrap.working_directory)
         );
     }
 }
