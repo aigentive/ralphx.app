@@ -299,11 +299,12 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
     );
 
     {
+        use crate::application::harness_runtime_registry::default_verification_reconciliation_config;
         use crate::application::reconciliation::recovery_queue::{
             create_recovery_queue, RecoveryQueueConfig,
         };
         use crate::application::reconciliation::verification_reconciliation::{
-            VerificationReconciliationConfig, VerificationReconciliationService,
+            VerificationReconciliationService,
         };
 
         let recovery_config = RecoveryQueueConfig::default();
@@ -324,15 +325,7 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
         let recovery_queue = Arc::new(recovery_queue);
         startup_background::spawn_recovery_queue_processor(recovery_processor);
 
-        let vcfg = crate::infrastructure::agents::claude::verification_config();
-        let ext_cfg = crate::infrastructure::agents::claude::external_mcp_config();
-        let verification_config = VerificationReconciliationConfig {
-            stale_after_secs: vcfg.reconciliation_stale_after_secs,
-            auto_verify_stale_secs: vcfg.auto_verify_stale_secs,
-            interval_secs: vcfg.reconciliation_interval_secs,
-            external_session_stale_secs: ext_cfg.external_session_stale_secs,
-            external_session_startup_grace_secs: ext_cfg.external_session_startup_grace_secs,
-        };
+        let verification_config = default_verification_reconciliation_config();
         let svc = Arc::new(
             VerificationReconciliationService::new(
                 Arc::clone(&ideation_session_repo),

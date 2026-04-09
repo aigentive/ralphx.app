@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::application::reconciliation::verification_reconciliation::VerificationReconciliationConfig;
 use crate::domain::agents::{standard_harness_registry, AgentHarnessKind, DEFAULT_AGENT_HARNESS};
 use crate::infrastructure::agents::claude::{
     external_mcp_config, find_claude_cli, node_utils, register_mcp_server, resolve_plugin_dir,
-    validate_external_mcp_config, ExternalMcpConfig,
+    ui_feature_flags_config, validate_external_mcp_config, verification_config,
+    ExternalMcpConfig, UiFeatureFlagsConfig, VerificationConfig,
 };
 use crate::infrastructure::agents::{find_codex_cli, resolve_codex_cli, CodexCliCapabilities};
 use which::which;
@@ -305,6 +307,26 @@ pub(crate) fn default_external_mcp_config_path() -> PathBuf {
 
 pub(crate) fn default_external_mcp_port() -> u16 {
     default_external_mcp_config().port
+}
+
+pub(crate) fn default_verification_config() -> VerificationConfig {
+    verification_config().clone()
+}
+
+pub(crate) fn default_ui_feature_flags() -> UiFeatureFlagsConfig {
+    ui_feature_flags_config().clone()
+}
+
+pub(crate) fn default_verification_reconciliation_config() -> VerificationReconciliationConfig {
+    let verification = default_verification_config();
+    let external_mcp = default_external_mcp_config();
+    VerificationReconciliationConfig {
+        stale_after_secs: verification.reconciliation_stale_after_secs,
+        auto_verify_stale_secs: verification.auto_verify_stale_secs,
+        interval_secs: verification.reconciliation_interval_secs,
+        external_session_stale_secs: external_mcp.external_session_stale_secs,
+        external_session_startup_grace_secs: external_mcp.external_session_startup_grace_secs,
+    }
 }
 
 fn find_claude_external_mcp_entry() -> Option<PathBuf> {
