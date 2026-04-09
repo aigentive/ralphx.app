@@ -5,9 +5,13 @@ use std::sync::Arc;
 use tauri::test::{mock_builder, mock_context, noop_assets, MockRuntime};
 use tauri::Manager;
 
-use crate::application::{chat_service::ProviderErrorCategory, AppState};
+use crate::application::{
+    chat_service::verification_child_process_registry::VerificationChildProcessRegistry,
+    chat_service::ProviderErrorCategory, AppState, InteractiveProcessRegistry,
+};
 use crate::domain::entities::{
-    app_state::ExecutionHaltMode, IdeationSessionId, InternalStatus, Project, ProjectId, Task,
+    app_state::ExecutionHaltMode, ChatConversation, IdeationSessionId, InternalStatus, Project,
+    ProjectId, Task,
 };
 use crate::domain::repositories::{StateHistoryMetadata, StatusTransition};
 use crate::error::AppResult;
@@ -865,6 +869,92 @@ async fn invoke_handle_stream_error_cancelled(cancelled: &StreamError) -> (bool,
     .await;
 
     (recovery_spawned, exec.running_count())
+}
+
+#[tokio::test]
+async fn test_recovery_retry_background_context_preserves_execution_side_runtime_deps() {
+    let state = AppState::new_test();
+    let execution_state = Some(Arc::new(ExecutionState::new()));
+    let question_state = Some(Arc::new(crate::application::QuestionState::new()));
+    let interactive_process_registry = Some(Arc::new(InteractiveProcessRegistry::new()));
+    let verification_child_registry = Some(Arc::new(VerificationChildProcessRegistry::new()));
+
+    let retry_child = tokio::process::Command::new("true")
+        .spawn()
+        .expect("spawn test child");
+    let conversation_id = ChatConversationId::new();
+    let task_id = TaskId::new();
+    let mut retry_conv = ChatConversation::new_review(task_id.clone());
+    retry_conv.set_provider_session_ref(crate::domain::agents::ProviderSessionRef {
+        harness: crate::domain::agents::AgentHarnessKind::Codex,
+        provider_session_id: "codex-recovered-session".to_string(),
+    });
+
+    let ctx = build_recovery_retry_background_context::<MockRuntime>(
+        retry_child,
+        crate::domain::agents::AgentHarnessKind::Codex,
+        ChatContextType::Review,
+        task_id.as_str(),
+        conversation_id,
+        "run-id-1",
+        "codex-recovered-session".to_string(),
+        std::path::Path::new("/tmp/worktree"),
+        std::path::Path::new("/tmp/codex"),
+        std::path::Path::new("/tmp/plugin"),
+        &state.chat_message_repo,
+        &state.chat_attachment_repo,
+        &state.artifact_repo,
+        &state.chat_conversation_repo,
+        &state.agent_run_repo,
+        &state.task_repo,
+        &state.task_dependency_repo,
+        &state.project_repo,
+        &state.ideation_session_repo,
+        &Some(Arc::clone(&state.execution_settings_repo)),
+        &Some(Arc::clone(&state.agent_lane_settings_repo)),
+        &Some(Arc::clone(&state.ideation_effort_settings_repo)),
+        &Some(Arc::clone(&state.ideation_model_settings_repo)),
+        &None,
+        &state.activity_event_repo,
+        &state.memory_event_repo,
+        &state.message_queue,
+        &state.running_agent_registry,
+        &execution_state,
+        &question_state,
+        &None,
+        &None::<tauri::AppHandle<MockRuntime>>,
+        Some("run-chain-1".to_string()),
+        Some("retry this review"),
+        retry_conv,
+        Some("ralphx:ralphx-reviewer"),
+        false,
+        &Some(Arc::clone(&state.review_repo)),
+        &Some(Arc::clone(&state.task_step_repo)),
+        &interactive_process_registry,
+        &verification_child_registry,
+    );
+
+    assert_eq!(ctx.harness, crate::domain::agents::AgentHarnessKind::Codex);
+    assert!(ctx.is_retry_attempt);
+    assert!(
+        ctx.repos.task_step_repo.is_some(),
+        "stale-session retry must preserve task_step_repo for execution-side completion handling"
+    );
+    assert!(
+        ctx.repos.review_repo.is_some(),
+        "stale-session retry must preserve review_repo for review/merge completion flows"
+    );
+    assert!(
+        ctx.interactive_process_registry.is_some(),
+        "stale-session retry must preserve interactive_process_registry for execution/review/merge cleanup"
+    );
+    assert!(
+        ctx.verification_child_registry.is_some(),
+        "stale-session retry must preserve verification_child_registry to match the original background run context"
+    );
+
+    let mut child = ctx.child;
+    let _ = child.wait().await;
 }
 
 /// Sub-branch B: Cancelled { turns_finalized: 0, completion_tool_called: true }

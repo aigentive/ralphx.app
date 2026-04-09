@@ -7,8 +7,8 @@ use crate::infrastructure::agents::claude::{
     agent_harness_defaults_config, execution_defaults_config, external_mcp_config, find_claude_cli,
     node_utils, reconciliation_config, register_mcp_server, resolve_plugin_dir, scheduler_config,
     ui_feature_flags_config, validate_external_mcp_config, verification_config,
-    AgentHarnessDefaultsConfig, ExecutionDefaultsConfig, ExternalMcpConfig,
-    SchedulerConfig, SpecialistEntry, UiFeatureFlagsConfig, VerificationConfig,
+    AgentHarnessDefaultsConfig, ExecutionDefaultsConfig, ExternalMcpConfig, SchedulerConfig,
+    SpecialistEntry, UiFeatureFlagsConfig, VerificationConfig,
 };
 use crate::infrastructure::agents::{find_codex_cli, resolve_codex_cli, CodexCliCapabilities};
 use which::which;
@@ -302,7 +302,9 @@ fn resolve_chat_service_cli_path(harness: AgentHarnessKind) -> PathBuf {
     }
 }
 
-pub(crate) fn resolve_chat_service_bootstrap(harness: AgentHarnessKind) -> DefaultChatServiceBootstrap {
+pub(crate) fn resolve_chat_service_bootstrap(
+    harness: AgentHarnessKind,
+) -> DefaultChatServiceBootstrap {
     let default_working_directory = default_repo_root_working_directory();
     DefaultChatServiceBootstrap {
         cli_path: resolve_chat_service_cli_path(harness),
@@ -313,13 +315,6 @@ pub(crate) fn resolve_chat_service_bootstrap(harness: AgentHarnessKind) -> Defau
 
 pub(crate) fn resolve_default_chat_service_bootstrap() -> DefaultChatServiceBootstrap {
     resolve_chat_service_bootstrap(DEFAULT_AGENT_HARNESS)
-}
-
-pub(crate) fn resolve_default_harness_agent_bootstrap(
-    agent_name: &'static str,
-    working_directory: PathBuf,
-) -> DefaultHarnessAgentBootstrap {
-    resolve_harness_agent_bootstrap(DEFAULT_AGENT_HARNESS, agent_name, working_directory)
 }
 
 pub(crate) fn resolve_harness_agent_bootstrap(
@@ -693,8 +688,14 @@ mod tests {
 
     #[test]
     fn default_chat_service_cli_name_matches_standard_harnesses() {
-        assert_eq!(default_chat_service_cli_name(AgentHarnessKind::Claude), "claude");
-        assert_eq!(default_chat_service_cli_name(AgentHarnessKind::Codex), "codex");
+        assert_eq!(
+            default_chat_service_cli_name(AgentHarnessKind::Claude),
+            "claude"
+        );
+        assert_eq!(
+            default_chat_service_cli_name(AgentHarnessKind::Codex),
+            "codex"
+        );
     }
 
     #[test]
@@ -747,8 +748,11 @@ mod tests {
     fn resolve_default_harness_agent_bootstrap_sets_expected_defaults() {
         let working_directory = PathBuf::from("/tmp/example");
         let agent_name = crate::infrastructure::agents::claude::agent_names::AGENT_SESSION_NAMER;
-        let bootstrap =
-            resolve_default_harness_agent_bootstrap(agent_name, working_directory.clone());
+        let bootstrap = resolve_harness_agent_bootstrap(
+            DEFAULT_AGENT_HARNESS,
+            agent_name,
+            working_directory.clone(),
+        );
 
         assert_eq!(bootstrap.agent_name, agent_name);
         assert_eq!(bootstrap.agent_role, "session-namer");
