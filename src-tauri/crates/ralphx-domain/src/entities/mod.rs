@@ -59,7 +59,7 @@ pub use chat_attachment::{ChatAttachment, ChatAttachmentId};
 pub use chat_conversation::{
     legacy_claude_session_alias, normalize_provider_session_compatibility,
     AttributionBackfillStatus, ChatContextType, ChatConversation, ChatConversationId,
-    ConversationAttributionBackfillState,
+    ConversationAttributionBackfillState, ConversationAttributionBackfillSummary,
 };
 pub use execution_plan::{ExecutionPlan, ExecutionPlanStatus, ParseExecutionPlanStatusError};
 pub use ideation::{

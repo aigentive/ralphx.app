@@ -1,7 +1,8 @@
 use super::*;
 use crate::agents::ProviderSessionRef;
 use crate::domain::entities::{
-    ChatContextType, ChatConversation, ConversationAttributionBackfillState, IdeationSessionId,
+    ChatContextType, ChatConversation, ConversationAttributionBackfillState,
+    ConversationAttributionBackfillSummary, IdeationSessionId,
 };
 use std::sync::Arc;
 
@@ -105,6 +106,12 @@ impl ChatConversationRepository for MockChatConversationRepository {
         _state: ConversationAttributionBackfillState,
     ) -> AppResult<()> {
         Ok(())
+    }
+
+    async fn get_attribution_backfill_summary(
+        &self,
+    ) -> AppResult<ConversationAttributionBackfillSummary> {
+        Ok(ConversationAttributionBackfillSummary::default())
     }
 
     async fn delete(&self, _id: &ChatConversationId) -> AppResult<()> {

@@ -12,7 +12,7 @@ use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::entities::chat_conversation::compatible_provider_session_fields_from_provider_ref;
 use crate::domain::entities::{
     AttributionBackfillStatus, ChatContextType, ChatConversation, ChatConversationId,
-    ConversationAttributionBackfillState,
+    ConversationAttributionBackfillState, ConversationAttributionBackfillSummary,
 };
 use crate::domain::repositories::ChatConversationRepository;
 use crate::error::AppResult;
@@ -403,6 +403,41 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
                     ],
                 )?;
                 Ok(())
+            })
+            .await
+    }
+
+    async fn get_attribution_backfill_summary(
+        &self,
+    ) -> AppResult<ConversationAttributionBackfillSummary> {
+        self.db
+            .run(move |conn| {
+                Ok(conn.query_row(
+                    "SELECT
+                        COUNT(*) AS eligible_conversation_count,
+                        COALESCE(SUM(CASE
+                            WHEN attribution_backfill_status IS NULL OR attribution_backfill_status = 'pending'
+                            THEN 1 ELSE 0 END), 0) AS pending_count,
+                        COALESCE(SUM(CASE WHEN attribution_backfill_status = 'running' THEN 1 ELSE 0 END), 0) AS running_count,
+                        COALESCE(SUM(CASE WHEN attribution_backfill_status = 'completed' THEN 1 ELSE 0 END), 0) AS completed_count,
+                        COALESCE(SUM(CASE WHEN attribution_backfill_status = 'partial' THEN 1 ELSE 0 END), 0) AS partial_count,
+                        COALESCE(SUM(CASE WHEN attribution_backfill_status = 'session_not_found' THEN 1 ELSE 0 END), 0) AS session_not_found_count,
+                        COALESCE(SUM(CASE WHEN attribution_backfill_status = 'parse_failed' THEN 1 ELSE 0 END), 0) AS parse_failed_count
+                     FROM chat_conversations
+                     WHERE claude_session_id IS NOT NULL",
+                    [],
+                    |row| {
+                        Ok(ConversationAttributionBackfillSummary {
+                            eligible_conversation_count: row.get("eligible_conversation_count")?,
+                            pending_count: row.get("pending_count")?,
+                            running_count: row.get("running_count")?,
+                            completed_count: row.get("completed_count")?,
+                            partial_count: row.get("partial_count")?,
+                            session_not_found_count: row.get("session_not_found_count")?,
+                            parse_failed_count: row.get("parse_failed_count")?,
+                        })
+                    },
+                )?)
             })
             .await
     }

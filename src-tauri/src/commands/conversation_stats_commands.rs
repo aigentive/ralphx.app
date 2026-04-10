@@ -4,7 +4,8 @@ use tauri::State;
 
 use crate::application::AppState;
 use crate::domain::entities::{
-    AgentRun, AgentRunUsage, ChatConversation, ChatMessage, MessageRole,
+    AgentRun, AgentRunUsage, ChatConversation, ChatMessage, ConversationAttributionBackfillSummary,
+    MessageRole,
 };
 
 #[derive(Debug, Clone, serde::Serialize, PartialEq)]
@@ -84,6 +85,22 @@ pub struct ScopeStatsResponse {
     pub by_effort: Vec<UsageBucketResponse>,
 }
 
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AttributionBackfillSummaryResponse {
+    pub eligible_conversation_count: u64,
+    pub pending_count: u64,
+    pub running_count: u64,
+    pub completed_count: u64,
+    pub partial_count: u64,
+    pub session_not_found_count: u64,
+    pub parse_failed_count: u64,
+    pub remaining_count: u64,
+    pub terminal_count: u64,
+    pub attention_count: u64,
+    pub is_idle: bool,
+}
+
 pub fn build_conversation_stats_response(
     conversation: &ChatConversation,
     messages: &[ChatMessage],
@@ -137,6 +154,24 @@ pub fn build_scope_stats_response(
         by_upstream_provider: aggregates.by_upstream_provider,
         by_model: aggregates.by_model,
         by_effort: aggregates.by_effort,
+    }
+}
+
+pub fn build_attribution_backfill_summary_response(
+    summary: &ConversationAttributionBackfillSummary,
+) -> AttributionBackfillSummaryResponse {
+    AttributionBackfillSummaryResponse {
+        eligible_conversation_count: summary.eligible_conversation_count,
+        pending_count: summary.pending_count,
+        running_count: summary.running_count,
+        completed_count: summary.completed_count,
+        partial_count: summary.partial_count,
+        session_not_found_count: summary.session_not_found_count,
+        parse_failed_count: summary.parse_failed_count,
+        remaining_count: summary.remaining_count(),
+        terminal_count: summary.terminal_count(),
+        attention_count: summary.attention_count(),
+        is_idle: summary.is_idle(),
     }
 }
 
@@ -346,6 +381,18 @@ pub async fn get_task_chat_usage_stats(
         &messages,
         &runs,
     ))
+}
+
+#[tauri::command]
+pub async fn get_chat_attribution_backfill_summary(
+    state: State<'_, AppState>,
+) -> Result<AttributionBackfillSummaryResponse, String> {
+    let summary = state
+        .chat_conversation_repo
+        .get_attribution_backfill_summary()
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(build_attribution_backfill_summary_response(&summary))
 }
 
 async fn collect_project_conversations(

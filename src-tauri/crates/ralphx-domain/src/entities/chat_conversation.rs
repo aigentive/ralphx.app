@@ -166,6 +166,35 @@ pub struct ConversationAttributionBackfillState {
     pub error_summary: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConversationAttributionBackfillSummary {
+    pub eligible_conversation_count: u64,
+    pub pending_count: u64,
+    pub running_count: u64,
+    pub completed_count: u64,
+    pub partial_count: u64,
+    pub session_not_found_count: u64,
+    pub parse_failed_count: u64,
+}
+
+impl ConversationAttributionBackfillSummary {
+    pub fn remaining_count(&self) -> u64 {
+        self.pending_count + self.running_count
+    }
+
+    pub fn attention_count(&self) -> u64 {
+        self.partial_count + self.session_not_found_count + self.parse_failed_count
+    }
+
+    pub fn terminal_count(&self) -> u64 {
+        self.completed_count + self.attention_count()
+    }
+
+    pub fn is_idle(&self) -> bool {
+        self.running_count == 0
+    }
+}
+
 /// A chat conversation linked to a context (ideation session, task, or project)
 ///
 /// Multiple conversations can exist per context to support conversation history.

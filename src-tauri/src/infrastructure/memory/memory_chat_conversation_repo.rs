@@ -7,7 +7,8 @@ use tokio::sync::RwLock;
 
 use crate::domain::agents::ProviderSessionRef;
 use crate::domain::entities::{
-    ChatContextType, ChatConversation, ChatConversationId, ConversationAttributionBackfillState,
+    AttributionBackfillStatus, ChatContextType, ChatConversation, ChatConversationId,
+    ConversationAttributionBackfillState, ConversationAttributionBackfillSummary,
 };
 use crate::domain::repositories::ChatConversationRepository;
 use crate::error::AppResult;
@@ -164,6 +165,33 @@ impl ChatConversationRepository for MemoryChatConversationRepository {
             conversation.update_attribution_backfill_state(state);
         }
         Ok(())
+    }
+
+    async fn get_attribution_backfill_summary(
+        &self,
+    ) -> AppResult<ConversationAttributionBackfillSummary> {
+        let convos = self.conversations.read().await;
+        let mut summary = ConversationAttributionBackfillSummary::default();
+
+        for conversation in convos.values() {
+            if conversation.claude_session_id.is_none() {
+                continue;
+            }
+
+            summary.eligible_conversation_count += 1;
+            match conversation.attribution_backfill_status {
+                None | Some(AttributionBackfillStatus::Pending) => summary.pending_count += 1,
+                Some(AttributionBackfillStatus::Running) => summary.running_count += 1,
+                Some(AttributionBackfillStatus::Completed) => summary.completed_count += 1,
+                Some(AttributionBackfillStatus::Partial) => summary.partial_count += 1,
+                Some(AttributionBackfillStatus::SessionNotFound) => {
+                    summary.session_not_found_count += 1;
+                }
+                Some(AttributionBackfillStatus::ParseFailed) => summary.parse_failed_count += 1,
+            }
+        }
+
+        Ok(summary)
     }
 
     async fn delete(&self, id: &ChatConversationId) -> AppResult<()> {

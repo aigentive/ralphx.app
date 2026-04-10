@@ -1,7 +1,9 @@
 // Tests for SqliteChatConversationRepository (sqlite_chat_conversation_repo.rs)
 // Included via #[cfg(test)] mod in mod.rs
 
-use crate::domain::entities::{ChatContextType, ChatConversation, ChatConversationId};
+use crate::domain::entities::{
+    AttributionBackfillStatus, ChatContextType, ChatConversation, ChatConversationId,
+};
 use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::repositories::ChatConversationRepository;
 use crate::infrastructure::sqlite::SqliteChatConversationRepository;
@@ -212,6 +214,39 @@ async fn test_get_active_for_context_not_found() {
         .unwrap();
 
     assert!(result.is_none());
+}
+
+#[tokio::test]
+async fn test_get_attribution_backfill_summary_counts_legacy_rows() {
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
+
+    let mut pending = make_conversation(ChatContextType::Ideation, "ctx-pending");
+    pending.claude_session_id = Some("claude-pending".to_string());
+
+    let mut completed = make_conversation(ChatContextType::Ideation, "ctx-completed");
+    completed.claude_session_id = Some("claude-completed".to_string());
+    completed.attribution_backfill_status = Some(AttributionBackfillStatus::Completed);
+
+    let mut parse_failed = make_conversation(ChatContextType::Ideation, "ctx-parse-failed");
+    parse_failed.claude_session_id = Some("claude-parse-failed".to_string());
+    parse_failed.attribution_backfill_status = Some(AttributionBackfillStatus::ParseFailed);
+
+    repo.create(pending).await.unwrap();
+    repo.create(completed).await.unwrap();
+    repo.create(parse_failed).await.unwrap();
+    repo.create(make_conversation(ChatContextType::Project, "ctx-non-legacy"))
+        .await
+        .unwrap();
+
+    let summary = repo.get_attribution_backfill_summary().await.unwrap();
+
+    assert_eq!(summary.eligible_conversation_count, 3);
+    assert_eq!(summary.pending_count, 1);
+    assert_eq!(summary.completed_count, 1);
+    assert_eq!(summary.parse_failed_count, 1);
+    assert_eq!(summary.remaining_count(), 1);
+    assert_eq!(summary.attention_count(), 1);
 }
 
 // --- update_claude_session_id ---

@@ -6,8 +6,9 @@
 use async_trait::async_trait;
 
 use crate::agents::{AgentHarnessKind, ProviderSessionRef};
-use crate::domain::entities::{
+use crate::entities::{
     ChatContextType, ChatConversation, ChatConversationId, ConversationAttributionBackfillState,
+    ConversationAttributionBackfillSummary,
 };
 use crate::error::AppResult;
 
@@ -99,6 +100,11 @@ pub trait ChatConversationRepository: Send + Sync {
         id: &ChatConversationId,
         state: ConversationAttributionBackfillState,
     ) -> AppResult<()>;
+
+    /// Return aggregate historical attribution-backfill workflow counts.
+    async fn get_attribution_backfill_summary(
+        &self,
+    ) -> AppResult<ConversationAttributionBackfillSummary>;
 
     /// Delete a conversation and all its messages
     async fn delete(&self, id: &ChatConversationId) -> AppResult<()>;
