@@ -21,6 +21,7 @@ import { GitSettingsSection } from "./GitSettingsSection";
 import { GitHubSettingsSection } from "./GitHubSettingsSection";
 import { ProjectAnalysisSection } from "./ProjectAnalysisSection";
 import { ApiKeysSection } from "./ApiKeysSection";
+import { TranscriptImportSection } from "./TranscriptImportSection";
 import {
   SettingsSkeleton,
   ErrorBanner,
@@ -163,6 +164,7 @@ export function SettingsView({
         disabled={isSaving}
       />
       <GlobalExecutionSection />
+      <TranscriptImportSection />
       <GitSettingsSection />
       <GitHubSettingsSection />
       <ProjectAnalysisSection />

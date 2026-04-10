@@ -28,6 +28,7 @@ import {
 import { IdeationModelSection } from "./IdeationModelSection";
 import { IdeationSettingsPanel } from "./IdeationSettingsPanel";
 import { ProjectAnalysisSection } from "./ProjectAnalysisSection";
+import { TranscriptImportSection } from "./TranscriptImportSection";
 import ExecutionSection from "./sections/ExecutionSection";
 import GlobalExecutionSection from "./sections/GlobalExecutionSection";
 import ModelSection from "./sections/ModelSection";
@@ -83,6 +84,7 @@ export default function SettingsDialog({
       ) : null,
     "execution-harnesses": () => <ExecutionHarnessSection />,
     "global-execution": () => <GlobalExecutionSection />,
+    "transcript-import": () => <TranscriptImportSection />,
     model: () =>
       executionSettings ? (
         <ModelSection

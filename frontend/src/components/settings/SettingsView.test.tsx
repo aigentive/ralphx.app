@@ -15,6 +15,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SettingsView } from "./SettingsView";
 import { DEFAULT_PROJECT_SETTINGS } from "@/types/settings";
+import { useChatAttributionBackfillSummary } from "@/hooks/useChatAttributionBackfillSummary";
 
 const mockSubscribe = vi.fn(() => vi.fn());
 
@@ -23,6 +24,12 @@ vi.mock("@/providers/EventProvider", () => ({
     subscribe: mockSubscribe,
   }),
 }));
+
+vi.mock("@/hooks/useChatAttributionBackfillSummary", () => ({
+  useChatAttributionBackfillSummary: vi.fn(),
+}));
+
+const mockUseChatAttributionBackfillSummary = useChatAttributionBackfillSummary as ReturnType<typeof vi.fn>;
 
 const createTestQueryClient = () =>
   new QueryClient({
@@ -40,6 +47,23 @@ const render = (ui: Parameters<typeof rtlRender>[0]) =>
 describe("SettingsView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseChatAttributionBackfillSummary.mockReturnValue({
+      data: {
+        eligibleConversationCount: 0,
+        pendingCount: 0,
+        runningCount: 0,
+        completedCount: 0,
+        partialCount: 0,
+        sessionNotFoundCount: 0,
+        parseFailedCount: 0,
+        remainingCount: 0,
+        terminalCount: 0,
+        attentionCount: 0,
+        isIdle: true,
+      },
+      isLoading: false,
+      error: null,
+    });
   });
 
   describe("Rendering", () => {
