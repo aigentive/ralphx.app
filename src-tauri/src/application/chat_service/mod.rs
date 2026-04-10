@@ -221,7 +221,36 @@ fn interactive_run_started_provider_session(
     (harness, provider_session_id)
 }
 
+fn should_inherit_parent_harness_for_fresh_spawn(
+    context_type: ChatContextType,
+    task_metadata: Option<&str>,
+) -> bool {
+    if !matches!(
+        context_type,
+        ChatContextType::TaskExecution | ChatContextType::Merge
+    ) {
+        return false;
+    }
+
+    let metadata = task_metadata
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    let trigger_origin = metadata
+        .get("trigger_origin")
+        .and_then(|value| value.as_str());
+
+    trigger_origin == Some("recovery")
+        || metadata
+            .get("startup_recovery_attempts")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(0)
+            > 0
+}
+
 fn conversation_spawn_harness_override(
+    context_type: ChatContextType,
+    task_metadata: Option<&str>,
     conversation: &ChatConversation,
     parent_conversation: Option<&ChatConversation>,
 ) -> Option<AgentHarnessKind> {
@@ -229,11 +258,15 @@ fn conversation_spawn_harness_override(
         .provider_session_ref()
         .map(|session_ref| session_ref.harness)
         .or_else(|| {
-            parent_conversation.and_then(|parent| {
-                parent
-                    .provider_session_ref()
-                    .map(|session_ref| session_ref.harness)
-            })
+            if should_inherit_parent_harness_for_fresh_spawn(context_type, task_metadata) {
+                parent_conversation.and_then(|parent| {
+                    parent
+                        .provider_session_ref()
+                        .map(|session_ref| session_ref.harness)
+                })
+            } else {
+                None
+            }
         })
 }
 
@@ -1245,6 +1278,18 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             .get_or_create_conversation(context_type, context_id)
             .await?;
         let provider_session_ref = conversation.provider_session_ref();
+        let task_metadata = if matches!(
+            context_type,
+            ChatContextType::TaskExecution | ChatContextType::Merge
+        ) {
+            self.task_repo
+                .get_by_id(&TaskId::from_string(context_id.to_string()))
+                .await
+                .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?
+                .and_then(|task| task.metadata)
+        } else {
+            None
+        };
         let parent_conversation = if provider_session_ref.is_none() {
             if let Some(parent_id) = conversation.parent_conversation_id.as_deref() {
                 self.conversation_repo
@@ -1260,11 +1305,22 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
         let spawn_harness_override =
             options
                 .harness_override
-                .or_else(|| conversation_spawn_harness_override(&conversation, parent_conversation.as_ref()));
+                .or_else(|| {
+                    conversation_spawn_harness_override(
+                        context_type,
+                        task_metadata.as_deref(),
+                        &conversation,
+                        parent_conversation.as_ref(),
+                    )
+                });
         tracing::debug!(
             conversation_id = conversation.id.as_str(),
             provider_harness = ?provider_session_ref.as_ref().map(|session_ref| session_ref.harness),
             provider_session_id = ?provider_session_ref.as_ref().map(|session_ref| session_ref.provider_session_id.as_str()),
+            trigger_origin = ?task_metadata
+                .as_deref()
+                .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+                .and_then(|metadata| metadata.get("trigger_origin").and_then(|value| value.as_str().map(str::to_string))),
             parent_provider_harness = ?parent_conversation
                 .as_ref()
                 .and_then(|parent| parent.provider_session_ref().map(|session_ref| session_ref.harness)),
