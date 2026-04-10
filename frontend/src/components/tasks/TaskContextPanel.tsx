@@ -10,6 +10,7 @@ import remarkGfm from "remark-gfm";
 import { taskContextApi } from "@/api/task-context";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { UsageInsightsCard } from "@/components/views/insights/UsageInsightsCard";
 import {
   Collapsible,
   CollapsibleContent,
@@ -28,6 +29,7 @@ import {
 } from "lucide-react";
 import type { TaskContext, ArtifactSummary } from "@/types/task-context";
 import { useState } from "react";
+import { useTaskChatUsageStats } from "@/hooks/useTaskChatUsageStats";
 
 interface TaskContextPanelProps {
   taskId: string;
@@ -400,6 +402,7 @@ export function TaskContextPanel({
   taskId,
   onViewArtifact,
 }: TaskContextPanelProps) {
+  const { data: usageStats } = useTaskChatUsageStats(taskId);
   const { data: context, isLoading, error } = useQuery({
     queryKey: ["task-context", taskId],
     queryFn: () => taskContextApi.getTaskContext(taskId),
@@ -430,6 +433,7 @@ export function TaskContextPanel({
 
   return (
     <div className="space-y-4" data-testid="task-context-panel">
+      {usageStats && <UsageInsightsCard stats={usageStats} />}
       <ProposalSummarySection context={context} />
       <PlanArtifactSection context={context} onViewArtifact={onViewArtifact} />
       <RelatedArtifactsSection context={context} onViewArtifact={onViewArtifact} />
