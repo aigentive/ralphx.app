@@ -1,6 +1,7 @@
 use super::{
     codex_tool_call_content_block, format_agent_exit_stderr, process_exit_details,
-    provider_session_ref_for_harness, stream_mode_for_harness, ProcessExitDetails,
+    provider_session_ref_for_harness, stream_mode_for_harness, upsert_codex_tool_call_snapshot,
+    ProcessExitDetails,
 };
 use crate::domain::agents::{AgentHarnessKind, HarnessStreamMode};
 use crate::infrastructure::agents::claude::{ContentBlockItem, ToolCall};
@@ -98,4 +99,79 @@ fn codex_tool_call_content_block_preserves_orderable_tool_payload() {
         }
         other => panic!("expected tool_use block, got {other:?}"),
     }
+}
+
+#[test]
+fn upsert_codex_tool_call_snapshot_updates_existing_tool_call_in_place() {
+    let mut tool_calls = vec![ToolCall {
+        id: Some("item_1".to_string()),
+        name: "ralphx::get_session_plan".to_string(),
+        arguments: serde_json::json!({ "session_id": "s1" }),
+        result: None,
+        diff_context: None,
+        stats: None,
+    }];
+    let mut content_blocks = vec![codex_tool_call_content_block(&tool_calls[0])];
+
+    upsert_codex_tool_call_snapshot(
+        &mut tool_calls,
+        &mut content_blocks,
+        ToolCall {
+            id: Some("item_1".to_string()),
+            name: "ralphx::get_session_plan".to_string(),
+            arguments: serde_json::json!({ "session_id": "s1" }),
+            result: Some(serde_json::json!({ "plan": null })),
+            diff_context: None,
+            stats: None,
+        },
+    );
+
+    assert_eq!(tool_calls.len(), 1);
+    assert_eq!(tool_calls[0].id.as_deref(), Some("item_1"));
+    assert_eq!(tool_calls[0].result, Some(serde_json::json!({ "plan": null })));
+
+    assert_eq!(content_blocks.len(), 1);
+    match &content_blocks[0] {
+        ContentBlockItem::ToolUse { id, result, .. } => {
+            assert_eq!(id.as_deref(), Some("item_1"));
+            assert_eq!(result, &Some(serde_json::json!({ "plan": null })));
+        }
+        other => panic!("expected tool_use block, got {other:?}"),
+    }
+}
+
+#[test]
+fn upsert_codex_tool_call_snapshot_appends_new_tool_ids_in_order() {
+    let mut tool_calls = Vec::new();
+    let mut content_blocks = Vec::new();
+
+    upsert_codex_tool_call_snapshot(
+        &mut tool_calls,
+        &mut content_blocks,
+        ToolCall {
+            id: Some("item_1".to_string()),
+            name: "ralphx::get_session_plan".to_string(),
+            arguments: serde_json::json!({ "session_id": "s1" }),
+            result: None,
+            diff_context: None,
+            stats: None,
+        },
+    );
+    upsert_codex_tool_call_snapshot(
+        &mut tool_calls,
+        &mut content_blocks,
+        ToolCall {
+            id: Some("item_2".to_string()),
+            name: "ralphx::list_session_proposals".to_string(),
+            arguments: serde_json::json!({ "session_id": "s1" }),
+            result: None,
+            diff_context: None,
+            stats: None,
+        },
+    );
+
+    assert_eq!(tool_calls.len(), 2);
+    assert_eq!(tool_calls[0].id.as_deref(), Some("item_1"));
+    assert_eq!(tool_calls[1].id.as_deref(), Some("item_2"));
+    assert_eq!(content_blocks.len(), 2);
 }

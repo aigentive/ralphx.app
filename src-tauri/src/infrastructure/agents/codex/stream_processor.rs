@@ -67,6 +67,18 @@ pub struct CodexCommandExecution {
     pub exit_code: Option<i32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodexToolCallPhase {
+    Started,
+    Completed,
+}
+
+#[derive(Debug, Clone)]
+pub struct CodexToolCallSnapshot {
+    pub phase: CodexToolCallPhase,
+    pub tool_call: ToolCall,
+}
+
 pub fn parse_codex_event_line(line: &str) -> Option<CodexStreamEvent> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
@@ -97,11 +109,17 @@ pub fn extract_codex_thread_id(event: &CodexStreamEvent) -> Option<String> {
     event.thread_id.clone()
 }
 
-pub fn extract_codex_tool_call(event: &CodexStreamEvent) -> Option<ToolCall> {
+pub fn extract_codex_tool_call_snapshot(event: &CodexStreamEvent) -> Option<CodexToolCallSnapshot> {
     let item = event.item.as_ref()?;
     if item.item_type != "mcp_tool_call" {
         return None;
     }
+
+    let phase = match event.event_type.as_str() {
+        "item.started" => CodexToolCallPhase::Started,
+        "item.completed" => CodexToolCallPhase::Completed,
+        _ => return None,
+    };
 
     let name = match (item.server.as_deref(), item.tool.as_deref()) {
         (Some(server), Some(tool)) => format!("{server}::{tool}"),
@@ -109,13 +127,16 @@ pub fn extract_codex_tool_call(event: &CodexStreamEvent) -> Option<ToolCall> {
         _ => return None,
     };
 
-    Some(ToolCall {
-        id: item.id.clone(),
-        name,
-        arguments: item.arguments.clone().unwrap_or_default(),
-        result: item.result.clone(),
-        diff_context: None,
-        stats: None,
+    Some(CodexToolCallSnapshot {
+        phase,
+        tool_call: ToolCall {
+            id: item.id.clone(),
+            name,
+            arguments: item.arguments.clone().unwrap_or_default(),
+            result: item.result.clone(),
+            diff_context: None,
+            stats: None,
+        },
     })
 }
 

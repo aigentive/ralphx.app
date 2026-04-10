@@ -31,7 +31,8 @@ use crate::infrastructure::agents::claude::{
 };
 use crate::infrastructure::agents::{
     extract_codex_agent_message, extract_codex_command_execution, extract_codex_error_message,
-    extract_codex_thread_id, extract_codex_tool_call, extract_codex_usage, parse_codex_event_line,
+    extract_codex_thread_id, extract_codex_tool_call_snapshot, extract_codex_usage,
+    parse_codex_event_line, CodexToolCallPhase,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -256,6 +257,61 @@ fn codex_tool_call_content_block(tool_call: &ToolCall) -> ContentBlockItem {
         result: tool_call.result.clone(),
         diff_context: None,
     }
+}
+
+fn upsert_codex_tool_call_snapshot(
+    tool_calls: &mut Vec<ToolCall>,
+    content_blocks: &mut Vec<ContentBlockItem>,
+    tool_call: ToolCall,
+) {
+    if let Some(tool_id) = tool_call.id.as_deref() {
+        if let Some(existing) = tool_calls
+            .iter_mut()
+            .find(|existing| existing.id.as_deref() == Some(tool_id))
+        {
+            existing.name = tool_call.name.clone();
+            existing.arguments = tool_call.arguments.clone();
+            if tool_call.result.is_some() || existing.result.is_none() {
+                existing.result = tool_call.result.clone();
+            }
+            if tool_call.diff_context.is_some() || existing.diff_context.is_none() {
+                existing.diff_context = tool_call.diff_context.clone();
+            }
+            if tool_call.stats.is_some() || existing.stats.is_none() {
+                existing.stats = tool_call.stats.clone();
+            }
+        } else {
+            tool_calls.push(tool_call.clone());
+        }
+
+        if let Some(existing_block) = content_blocks.iter_mut().find(|block| {
+            matches!(
+                block,
+                ContentBlockItem::ToolUse { id, .. } if id.as_deref() == Some(tool_id)
+            )
+        }) {
+            *existing_block = codex_tool_call_content_block(&tool_call);
+            return;
+        }
+    } else if let Some(existing) = tool_calls
+        .iter_mut()
+        .find(|existing| existing.name == tool_call.name && existing.arguments == tool_call.arguments)
+    {
+        if tool_call.result.is_some() || existing.result.is_none() {
+            existing.result = tool_call.result.clone();
+        }
+        if tool_call.diff_context.is_some() || existing.diff_context.is_none() {
+            existing.diff_context = tool_call.diff_context.clone();
+        }
+        if tool_call.stats.is_some() || existing.stats.is_none() {
+            existing.stats = tool_call.stats.clone();
+        }
+        return;
+    } else {
+        tool_calls.push(tool_call.clone());
+    }
+
+    content_blocks.push(codex_tool_call_content_block(&tool_call));
 }
 
 fn add_usage_u64(total: &mut Option<u64>, value: Option<u64>) {
@@ -2453,7 +2509,8 @@ async fn process_codex_stream_background<R: Runtime>(
                 }
             }
 
-            if let Some(tool_call) = extract_codex_tool_call(&event) {
+            if let Some(snapshot) = extract_codex_tool_call_snapshot(&event) {
+                let tool_call = snapshot.tool_call;
                 if is_completion_tool_name(&tool_call.name) {
                     tracing::info!(
                         conversation_id = %conversation_id_str,
@@ -2462,9 +2519,14 @@ async fn process_codex_stream_background<R: Runtime>(
                         "Detected completion tool call in Codex stream"
                     );
                 }
-                tool_calls.push(tool_call.clone());
-                content_blocks.push(codex_tool_call_content_block(&tool_call));
-                if is_completion_tool_name(&tool_call.name) {
+                upsert_codex_tool_call_snapshot(
+                    &mut tool_calls,
+                    &mut content_blocks,
+                    tool_call.clone(),
+                );
+                if snapshot.phase == CodexToolCallPhase::Completed
+                    && is_completion_tool_name(&tool_call.name)
+                {
                     tracing::info!(
                         conversation_id = %conversation_id_str,
                         context_id,

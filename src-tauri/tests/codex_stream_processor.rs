@@ -1,7 +1,7 @@
 use ralphx_lib::infrastructure::agents::{
     extract_codex_agent_message, extract_codex_command_execution, extract_codex_error_message,
-    extract_codex_thread_id, extract_codex_tool_call, extract_codex_usage,
-    parse_codex_event_line,
+    extract_codex_thread_id, extract_codex_tool_call_snapshot, extract_codex_usage,
+    parse_codex_event_line, CodexToolCallPhase,
 };
 
 #[test]
@@ -37,7 +37,34 @@ fn extract_codex_thread_id_reads_thread_started_events() {
 }
 
 #[test]
-fn extract_codex_tool_call_maps_mcp_tool_calls_to_normalized_tool_calls() {
+fn extract_codex_tool_call_snapshot_maps_started_mcp_tool_calls() {
+    let event = parse_codex_event_line(
+        r#"{
+            "type":"item.started",
+            "item":{
+                "id":"item_1",
+                "type":"mcp_tool_call",
+                "server":"ralphx",
+                "tool":"respond",
+                "arguments":{"response":"ok"},
+                "status":"in_progress"
+            }
+        }"#,
+    )
+    .expect("event should parse");
+
+    let snapshot =
+        extract_codex_tool_call_snapshot(&event).expect("tool call snapshot should extract");
+
+    assert_eq!(snapshot.phase, CodexToolCallPhase::Started);
+    assert_eq!(snapshot.tool_call.id.as_deref(), Some("item_1"));
+    assert_eq!(snapshot.tool_call.name, "ralphx::respond");
+    assert_eq!(snapshot.tool_call.arguments["response"], "ok");
+    assert_eq!(snapshot.tool_call.result, None);
+}
+
+#[test]
+fn extract_codex_tool_call_snapshot_maps_completed_mcp_tool_calls() {
     let event = parse_codex_event_line(
         r#"{
             "type":"item.completed",
@@ -54,12 +81,39 @@ fn extract_codex_tool_call_maps_mcp_tool_calls_to_normalized_tool_calls() {
     )
     .expect("event should parse");
 
-    let tool_call = extract_codex_tool_call(&event).expect("tool call should extract");
+    let snapshot =
+        extract_codex_tool_call_snapshot(&event).expect("tool call snapshot should extract");
 
-    assert_eq!(tool_call.id.as_deref(), Some("item_1"));
-    assert_eq!(tool_call.name, "ralphx::respond");
-    assert_eq!(tool_call.arguments["response"], "ok");
-    assert_eq!(tool_call.result.expect("result should exist")["content"][0]["type"], "text");
+    assert_eq!(snapshot.phase, CodexToolCallPhase::Completed);
+    assert_eq!(snapshot.tool_call.id.as_deref(), Some("item_1"));
+    assert_eq!(snapshot.tool_call.name, "ralphx::respond");
+    assert_eq!(snapshot.tool_call.arguments["response"], "ok");
+    assert_eq!(
+        snapshot.tool_call.result.expect("result should exist")["content"][0]["type"],
+        "text"
+    );
+}
+
+#[test]
+fn extract_codex_tool_call_snapshot_ignores_non_lifecycle_events() {
+    let event = parse_codex_event_line(
+        r#"{
+            "type":"item.delta",
+            "item":{
+                "id":"item_1",
+                "type":"mcp_tool_call",
+                "server":"ralphx",
+                "tool":"respond",
+                "arguments":{"response":"ok"}
+            }
+        }"#,
+    )
+    .expect("event should parse");
+
+    assert!(
+        extract_codex_tool_call_snapshot(&event).is_none(),
+        "only started/completed should produce tool snapshots"
+    );
 }
 
 #[test]
