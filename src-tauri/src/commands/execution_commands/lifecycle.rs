@@ -1,4 +1,5 @@
 use super::*;
+use crate::domain::state_machine::transition_handler::set_trigger_origin;
 
 /// Pause execution (stops picking up new tasks and transitions running tasks to Paused)
 /// This transitions all agent-active tasks to Paused status via TransitionHandler.
@@ -272,12 +273,7 @@ pub async fn resume_execution(
             // Re-run entry actions to respawn the agent
             // Fetch fresh task after transition
             if let Ok(Some(mut restored_task)) = app_state.task_repo.get_by_id(&task.id).await {
-                // Clear pause_reason metadata on successful resume
-                restored_task.metadata = Some(
-                    crate::application::chat_service::PauseReason::clear_from_task_metadata(
-                        restored_task.metadata.as_deref(),
-                    ),
-                );
+                prepare_resumed_task_for_entry_actions(&mut restored_task);
                 restored_task.touch();
                 let _ = app_state.task_repo.update(&restored_task).await;
 
@@ -411,6 +407,14 @@ pub async fn resume_execution(
         success: true,
         status,
     })
+}
+
+#[doc(hidden)]
+pub(crate) fn prepare_resumed_task_for_entry_actions(task: &mut Task) {
+    task.metadata = Some(crate::application::chat_service::PauseReason::clear_from_task_metadata(
+        task.metadata.as_deref(),
+    ));
+    set_trigger_origin(task, "resume");
 }
 
 #[doc(hidden)]

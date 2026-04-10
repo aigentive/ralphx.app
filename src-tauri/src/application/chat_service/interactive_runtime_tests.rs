@@ -86,3 +86,11 @@ fn should_inherit_parent_harness_for_fresh_spawn_allows_startup_recovery() {
         Some(r#"{"startup_recovery_attempts":1}"#),
     ));
 }
+
+#[test]
+fn should_inherit_parent_harness_for_fresh_spawn_allows_resume() {
+    assert!(should_inherit_parent_harness_for_fresh_spawn(
+        ChatContextType::TaskExecution,
+        Some(r#"{"trigger_origin":"resume"}"#),
+    ));
+}

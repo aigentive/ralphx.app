@@ -240,7 +240,7 @@ fn should_inherit_parent_harness_for_fresh_spawn(
         .get("trigger_origin")
         .and_then(|value| value.as_str());
 
-    trigger_origin == Some("recovery")
+    matches!(trigger_origin, Some("recovery" | "resume"))
         || metadata
             .get("startup_recovery_attempts")
             .and_then(|value| value.as_u64())

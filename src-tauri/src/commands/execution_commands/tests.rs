@@ -1,6 +1,8 @@
 use super::*;
 use crate::application::chat_service::{ChatService, MockChatService};
-use crate::commands::execution_commands::lifecycle::determine_paused_restore_status;
+use crate::commands::execution_commands::lifecycle::{
+    determine_paused_restore_status, prepare_resumed_task_for_entry_actions,
+};
 use crate::domain::entities::{GitMode, IdeationSession};
 use crate::domain::services::RunningAgentKey;
 use std::sync::Arc;
@@ -3212,6 +3214,34 @@ async fn test_determine_paused_restore_status_falls_back_to_history_when_metadat
         Some(InternalStatus::Executing),
         "Malformed pause metadata should fall back to the real pre-pause status from history"
     );
+}
+
+#[test]
+fn test_prepare_resumed_task_for_entry_actions_clears_pause_reason_and_marks_resume() {
+    let mut task = Task::new(
+        ProjectId::from_string("project-resume".to_string()),
+        "Resume marker task".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "pause_reason": {
+                "kind": "user_initiated",
+                "previous_status": "executing",
+                "paused_at": chrono::Utc::now().to_rfc3339(),
+                "scope": "global"
+            },
+            "other_key": "keep-me"
+        })
+        .to_string(),
+    );
+
+    prepare_resumed_task_for_entry_actions(&mut task);
+
+    let metadata: serde_json::Value =
+        serde_json::from_str(task.metadata.as_deref().expect("metadata")).expect("json");
+    assert!(metadata.get("pause_reason").is_none());
+    assert_eq!(metadata["trigger_origin"], "resume");
+    assert_eq!(metadata["other_key"], "keep-me");
 }
 
 #[tokio::test]
