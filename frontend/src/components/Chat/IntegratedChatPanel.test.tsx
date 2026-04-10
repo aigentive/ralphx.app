@@ -329,6 +329,13 @@ describe("IntegratedChatPanel", () => {
         providerHarness: "codex",
         providerSessionId: "thread-codex-1234",
       };
+      useChatStore.setState((state) => ({
+        ...state,
+        effectiveModel: {
+          ...state.effectiveModel,
+          [mockChatPanelContext.storeContextKey]: { id: "gpt-5.4", label: "gpt-5.4" },
+        },
+      }));
 
       render(
         <TestWrapper>
@@ -340,13 +347,13 @@ describe("IntegratedChatPanel", () => {
         expect(screen.getByTestId("chat-session-provider-context")).toBeInTheDocument();
       });
 
-      expect(screen.getByText("Codex")).toBeInTheDocument();
-      expect(screen.getByTestId("chat-session-routing")).toHaveTextContent(
-        "Continuing stored Codex session",
+      const badge = screen.getByTestId("chat-session-provider-badge");
+      expect(badge).toHaveTextContent("Codex");
+      expect(badge).toHaveAttribute(
+        "title",
+        "Continuing stored Codex session (thread-codex...)",
       );
-      expect(screen.getByTestId("chat-session-provider-id")).toHaveTextContent(
-        "thread-c...",
-      );
+      expect(screen.getByText("gpt-5.4")).toBeInTheDocument();
     });
   });
 

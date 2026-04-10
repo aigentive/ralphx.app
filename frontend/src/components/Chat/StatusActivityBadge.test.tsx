@@ -10,6 +10,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 import { StatusActivityBadge } from "./StatusActivityBadge";
 
+let mockFeatureFlags = { activityPage: true, extensibilityPage: true, battleMode: true };
+
 // ============================================================================
 // Store mocks
 // ============================================================================
@@ -69,6 +71,10 @@ vi.mock("@/stores/ideationStore", () => ({
   ),
 }));
 
+vi.mock("@/hooks/useFeatureFlags", () => ({
+  useFeatureFlags: vi.fn(() => ({ data: mockFeatureFlags })),
+}));
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -110,6 +116,7 @@ function clearLastToolCompletion(storeKey: string) {
 
 describe("StatusActivityBadge", () => {
   beforeEach(() => {
+    mockFeatureFlags = { activityPage: true, extensibilityPage: true, battleMode: true };
     for (const key of Object.keys(mockLastAgentEventTimestamp)) {
       delete mockLastAgentEventTimestamp[key];
     }
@@ -237,6 +244,16 @@ describe("StatusActivityBadge", () => {
       />
     );
     expect(container.firstChild).toBeNull();
+  });
+
+  it("hides the activity button when the activity page flag is disabled", () => {
+    mockFeatureFlags = { activityPage: false, extensibilityPage: true, battleMode: true };
+
+    render(<StatusActivityBadge {...baseProps} modelDisplay={{ id: "gpt-5.4", label: "gpt-5.4" }} />);
+
+    expect(screen.queryByLabelText("View activity")).toBeNull();
+    expect(screen.getByText("Agent responding...")).toBeInTheDocument();
+    expect(screen.getByText("gpt-5.4")).toBeInTheDocument();
   });
 
   it("shows status badge text during generating state", () => {
