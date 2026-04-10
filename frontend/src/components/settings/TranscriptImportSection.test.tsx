@@ -52,8 +52,19 @@ describe("TranscriptImportSection", () => {
 
     expect(screen.getByText("Transcript Import")).toBeInTheDocument();
     expect(screen.getByText("Historical Claude transcript import is running in the background.")).toBeInTheDocument();
-    expect(screen.getByText("Pending: 2 · Running: 1 · Partial: 1")).toBeInTheDocument();
-    expect(screen.getByText("Not found: 1 · Parse failed: 0")).toBeInTheDocument();
+    expect(
+      screen.getByText(/imports attribution and usage only when the historical mapping is safe enough/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Partially Imported")).toBeInTheDocument();
+    expect(screen.getByText("Transcript Not Found")).toBeInTheDocument();
+    expect(screen.getByText("Import Failed")).toBeInTheDocument();
+    expect(screen.getByText("Pending: 2 · Running: 1 · Idle: no")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Transcript was found, but historical messages or runs did not map cleanly enough for a full import/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/the matching JSONL transcript file is not on this machine/i),
+    ).toBeInTheDocument();
   });
 
   it("renders loading state", () => {

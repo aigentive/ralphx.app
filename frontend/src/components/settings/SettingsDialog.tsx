@@ -177,7 +177,7 @@ export default function SettingsDialog({
         <div className="flex flex-1 overflow-hidden">
           {/* Left rail — hidden below lg breakpoint */}
           <nav
-            className="hidden lg:flex w-[260px] flex-shrink-0 flex-col overflow-y-auto border-r py-3"
+            className="hidden lg:flex w-[280px] flex-shrink-0 flex-col overflow-y-auto border-r py-3"
             style={{ borderColor: "rgba(255,255,255,0.06)" }}
           >
             {SETTINGS_GROUPS.map((group) => {
@@ -203,19 +203,21 @@ export default function SettingsDialog({
                             setActiveSection(section.id);
                           }
                         }}
-                        className="mx-2 px-3 py-1.5 rounded-md text-sm cursor-pointer transition-colors"
+                        className="mx-2 flex min-h-[36px] items-center rounded-md px-3 py-1.5 text-sm cursor-pointer transition-colors"
                         style={
                           isActive
                             ? {
-                                background: "rgba(255,107,53,0.12)",
-                                color: "var(--accent)",
+                                background: "rgba(255,107,53,0.16)",
+                                color: "var(--text-primary)",
+                                boxShadow: "inset 2px 0 0 var(--accent-primary)",
+                                fontWeight: 600,
                               }
                             : {
                                 color: "var(--text-primary)",
                               }
                         }
                       >
-                        {section.label}
+                        <span className="block truncate">{section.label}</span>
                       </div>
                     );
                   })}
