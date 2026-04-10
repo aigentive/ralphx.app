@@ -181,6 +181,14 @@ When working in `src-tauri/`, also follow:
 | P1 | Frontend transport tests | Completed | Added assertions for the new chat header/message metadata and execution-settings UX changes on top of the existing provider-aware API/event coverage |
 | P1 | Human-facing UX docs | Completed | Refreshed `README.md`, `docs/user-guides/agent-harnesses.md`, `docs/user-guides/configuration.md`, and `docs/user-guides/agent-orchestration.md` so users can find the execution-pipeline harness controls and understand the chat badges |
 
+### Chat Widget Coverage Tracker
+
+| Priority | Stream | Status | Concrete Next Step |
+|---|---|---|---|
+| P0 | Persisted chat payload contract audit | Completed | Audited the real stored/rendered contract: `chat_messages` persist `role`, `content`, `metadata`, `parent_message_id`, `tool_calls` JSON, and `content_blocks` JSON; provider lineage remains conversation/run metadata via `provider_session_id` and `provider_harness` |
+| P0 | Widget registry coverage map | Completed | The registry is now explicitly audited against direct tests: uncovered families were `ArtifactWidget`, `ContextWidget`, `IssuesSummaryWidget`, `MergeWidget`, `ReviewWidget`, `SendMessageWidget`, `StepIndicator`, `StepsManifestWidget`, `TeamTaskWidgets`, and `McpContextWidgets` |
+| P0 | Direct widget-family coverage | Completed | `frontend/src/components/Chat/tool-widgets/registry-coverage.test.tsx` now exercises the previously untested grouped widget families plus registry-level routing with representative parsed chat/tool payloads |
+
 ## High-Value Refactor Targets
 
 | Priority | Area | Why It Matters | Next Step |
