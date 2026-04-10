@@ -164,9 +164,12 @@ describe("MessageItem - Attachment Integration", () => {
     );
 
     expect(screen.getByTestId("message-provider-meta")).toBeInTheDocument();
-    expect(screen.getByText("Codex")).toBeInTheDocument();
-    expect(screen.getByText("Continuing stored Codex session")).toBeInTheDocument();
-    expect(screen.getByText("thread-c...")).toBeInTheDocument();
+    const badge = screen.getByTestId("message-provider-badge");
+    expect(badge).toHaveTextContent("Codex");
+    expect(badge).toHaveAttribute(
+      "title",
+      "Continuing stored Codex session (thread-codex...)",
+    );
   });
 });
 

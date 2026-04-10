@@ -98,3 +98,18 @@ export function describeProviderLineage(
 
   return "New attempt will use current settings";
 }
+
+export function formatProviderTooltip(metadata: ProviderMetadata): string | null {
+  const lineage = describeProviderLineage(metadata);
+  const snippet = formatProviderSessionSnippet(metadata.providerSessionId, 12);
+
+  if (!lineage && !snippet) {
+    return null;
+  }
+
+  if (snippet) {
+    return `${lineage} (${snippet})`;
+  }
+
+  return lineage;
+}

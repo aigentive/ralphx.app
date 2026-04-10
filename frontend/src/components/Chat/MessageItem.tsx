@@ -18,9 +18,8 @@ import { formatTimestamp } from "./MessageItem.utils";
 import { isTaskToolCall } from "./DiffToolCallView.utils";
 import { MessageAttachments, type MessageAttachment } from "./MessageAttachments";
 import {
-  describeProviderLineage,
   formatProviderHarnessLabel,
-  formatProviderSessionSnippet,
+  formatProviderTooltip,
   getProviderHarnessBadgeStyle,
 } from "./provider-harness";
 
@@ -82,15 +81,14 @@ export const MessageItem = React.memo(function MessageItem({
   const isUser = role === "user";
   const providerHarnessLabel = formatProviderHarnessLabel(providerHarness);
   const providerHarnessStyle = getProviderHarnessBadgeStyle(providerHarness);
-  const providerLineage = describeProviderLineage({
+  const providerTooltip = formatProviderTooltip({
     providerHarness,
     providerSessionId,
   });
-  const providerSessionSnippet = formatProviderSessionSnippet(providerSessionId);
   const showProviderMeta =
     !isUser &&
     !teammateName &&
-    (providerHarnessLabel !== null || providerSessionSnippet !== null);
+    providerHarnessLabel !== null;
 
   // Use pre-parsed data directly (parsing now happens at API layer)
   const parsedContentBlocks = contentBlocks ?? [];
@@ -154,22 +152,15 @@ export const MessageItem = React.memo(function MessageItem({
             className="flex items-center gap-2 min-w-0"
             data-testid="message-provider-meta"
           >
-            {providerHarnessLabel && (
-              <span
-                className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]"
-                style={providerHarnessStyle}
-              >
-                {providerHarnessLabel}
-              </span>
-            )}
-            <span className="truncate text-[10px] text-white/45">
-              {providerLineage}
+            <span
+              className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]"
+              style={providerHarnessStyle}
+              title={providerTooltip ?? undefined}
+              aria-label={providerTooltip ?? providerHarnessLabel}
+              data-testid="message-provider-badge"
+            >
+              {providerHarnessLabel}
             </span>
-            {providerSessionSnippet && (
-              <span className="font-mono text-[10px] text-white/35">
-                {providerSessionSnippet}
-              </span>
-            )}
           </div>
         )}
 

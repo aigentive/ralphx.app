@@ -51,49 +51,51 @@ export function ChatSessionToolbar({
 
   return (
     <div
-      className="flex items-center px-3 py-1.5 shrink-0"
+      className="flex items-start gap-3 px-3 py-1.5 shrink-0"
       style={{ borderBottom: "1px solid hsl(220 10% 14%)" }}
     >
-      <div className="flex items-center flex-1 gap-2">
+      <div className="flex min-w-0 flex-1 items-start gap-2">
         {backAction && (
           <button
             data-testid="back-to-plan-button"
             onClick={backAction.onClick}
-            className="flex items-center gap-1 text-xs text-white/50 hover:text-white/80 transition-colors"
+            className="flex shrink-0 items-center gap-1 pt-0.5 text-xs text-white/50 hover:text-white/80 transition-colors"
           >
             {backAction.icon}
             <span>{backAction.label}</span>
           </button>
         )}
         <div
-          className="flex min-w-0 items-center gap-2"
+          className="flex min-w-0 flex-1 flex-col gap-1"
           data-testid="chat-session-provider-context"
         >
-          {harnessLabel && (
-            <span
-              className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]"
-              style={harnessStyle}
-            >
-              {harnessLabel}
-            </span>
-          )}
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {harnessLabel && (
+              <span
+                className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]"
+                style={harnessStyle}
+              >
+                {harnessLabel}
+              </span>
+            )}
+            {providerSessionSnippet && (
+              <span
+                className="font-mono text-[10px] text-white/35"
+                data-testid="chat-session-provider-id"
+              >
+                {providerSessionSnippet}
+              </span>
+            )}
+          </div>
           <span
-            className="truncate text-[11px] text-white/45"
+            className="text-[11px] leading-4 text-white/45"
             data-testid="chat-session-routing"
           >
             {providerLineage}
           </span>
-          {providerSessionSnippet && (
-            <span
-              className="font-mono text-[10px] text-white/35"
-              data-testid="chat-session-provider-id"
-            >
-              {providerSessionSnippet}
-            </span>
-          )}
         </div>
       </div>
-      <div className="flex items-center shrink-0">
+      <div className="flex shrink-0 items-start pt-0.5">
         <StatusActivityBadge
           isAgentActive={isAgentActive}
           agentType={agentType}
