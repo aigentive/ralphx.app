@@ -31,6 +31,7 @@ import { SkillWidget } from "./SkillWidget";
 import { SendMessageWidget } from "./SendMessageWidget";
 import { TaskCreateWidget, TaskUpdateWidget, TaskListWidget, TeamCreateWidget, TeamDeleteWidget } from "./TeamTaskWidgets";
 import { SessionContextWidget, TeamSessionStateWidget, SearchMemoriesWidget, TeamPlanWidget } from "./McpContextWidgets";
+import { getToolCallLookupCandidates } from "./tool-name";
 
 /** Registry type: tool name (lowercase) → React component */
 export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidgetProps>>;
@@ -133,5 +134,12 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
  * Returns undefined if no specialized widget is registered.
  */
 export function getToolCallWidget(toolName: string): ComponentType<ToolCallWidgetProps> | undefined {
-  return TOOL_CALL_WIDGETS[toolName.toLowerCase()];
+  for (const candidate of getToolCallLookupCandidates(toolName)) {
+    const widget = TOOL_CALL_WIDGETS[candidate];
+    if (widget) {
+      return widget;
+    }
+  }
+
+  return undefined;
 }

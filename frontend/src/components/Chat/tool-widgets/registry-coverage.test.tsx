@@ -26,6 +26,7 @@ import {
 import { ContextWidget } from "./ContextWidget";
 import { IssuesSummaryWidget } from "./IssuesSummaryWidget";
 import { TOOL_CALL_WIDGETS, getToolCallWidget } from "./registry";
+import { canonicalizeToolName } from "./tool-name";
 
 describe("tool widget registry coverage", () => {
   it("maps every registered tool name to a specialized widget", () => {
@@ -33,6 +34,17 @@ describe("tool widget registry coverage", () => {
       expect(getToolCallWidget(toolName)).toBeDefined();
       expect(getToolCallWidget(toolName.toUpperCase())).toBeDefined();
     }
+  });
+
+  it("canonicalizes Codex/server-prefixed tool names to the same widgets", () => {
+    expect(canonicalizeToolName("ralphx:get_merge_target")).toBe("get_merge_target");
+    expect(canonicalizeToolName("mcp__ralphx__start_step")).toBe("start_step");
+
+    expect(getToolCallWidget("ralphx:get_merge_target")).toBe(MergeWidget);
+    expect(getToolCallWidget("ralphx:start_step")).toBe(StepIndicator);
+    expect(getToolCallWidget("ralphx:get_task_context")).toBe(ContextWidget);
+    expect(getToolCallWidget("ralphx:get_review_notes")).toBe(ReviewWidget);
+    expect(getToolCallWidget("ralphx:search_memories")).toBe(SearchMemoriesWidget);
   });
 
   it.each([
@@ -145,6 +157,33 @@ describe("tool widget registry coverage", () => {
 
     expect(screen.queryByTestId("tool-call-indicator")).not.toBeInTheDocument();
     expect(screen.getAllByText(new RegExp(expectedText, "i")).length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    {
+      label: "server-prefixed merge widget",
+      toolCall: makeToolCall("ralphx:get_merge_target", {
+        result: { source_branch: "task/chat-widgets", target_branch: "main" },
+      }),
+      expectedTestId: "merge-widget-target",
+    },
+    {
+      label: "server-prefixed step widget",
+      toolCall: makeToolCall("ralphx:start_step", {
+        arguments: { title: "Resolve merge target" },
+      }),
+      expectedText: "Resolve merge target",
+    },
+  ])("routes $label through the same dedicated rendering path", ({ toolCall, expectedTestId, expectedText }) => {
+    render(<ToolCallIndicator toolCall={toolCall} />);
+
+    expect(screen.queryByTestId("tool-call-indicator")).not.toBeInTheDocument();
+    if (expectedTestId) {
+      expect(screen.getByTestId(expectedTestId)).toBeInTheDocument();
+    }
+    if (expectedText) {
+      expect(screen.getAllByText(new RegExp(expectedText, "i")).length).toBeGreaterThan(0);
+    }
   });
 });
 

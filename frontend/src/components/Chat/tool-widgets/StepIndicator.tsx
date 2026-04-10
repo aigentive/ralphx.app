@@ -17,6 +17,7 @@ import React from "react";
 import { StepLine, Badge, InlineIndicator } from "./shared";
 import { colors, getString, getNumber } from "./shared.constants";
 import type { ToolCallWidgetProps, StepLineVariant } from "./shared.constants";
+import { canonicalizeToolName } from "./tool-name";
 
 // ============================================================================
 // Argument / result extraction helpers
@@ -66,20 +67,15 @@ function extractNote(toolCall: ToolCallWidgetProps["toolCall"]): string | undefi
 
 /** Map tool name to StepLine variant */
 function toolNameToVariant(toolName: string): StepLineVariant | null {
-  switch (toolName.toLowerCase()) {
-    case "mcp__ralphx__start_step":
+  switch (canonicalizeToolName(toolName)) {
     case "start_step":
       return "started";
-    case "mcp__ralphx__complete_step":
     case "complete_step":
       return "completed";
-    case "mcp__ralphx__add_step":
     case "add_step":
       return "added";
-    case "mcp__ralphx__skip_step":
     case "skip_step":
       return "skipped";
-    case "mcp__ralphx__fail_step":
     case "fail_step":
       return "failed";
     default:
@@ -186,10 +182,10 @@ export const StepIndicator = React.memo(function StepIndicator({
   toolCall,
   compact = false,
 }: ToolCallWidgetProps) {
-  const toolName = toolCall.name.toLowerCase();
+  const toolName = canonicalizeToolName(toolCall.name);
 
   // Handle get_step_progress separately
-  if (toolName === "get_step_progress" || toolName === "mcp__ralphx__get_step_progress") {
+  if (toolName === "get_step_progress") {
     const progress = extractProgress(toolCall);
     if (progress) {
       return <StepProgressIndicator progress={progress} compact={compact} />;

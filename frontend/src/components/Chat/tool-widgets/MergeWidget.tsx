@@ -15,6 +15,7 @@ import { GitMerge, GitBranch, AlertTriangle, ArrowRight, X } from "lucide-react"
 import { WidgetCard, WidgetHeader, Badge, InlineIndicator, FilePath } from "./shared";
 import { colors, getString, getStringArray, getBool } from "./shared.constants";
 import type { ToolCallWidgetProps } from "./shared.constants";
+import { canonicalizeToolName } from "./tool-name";
 
 /** Shorten a commit SHA to 7 chars */
 function shortSha(sha: string): string {
@@ -348,22 +349,18 @@ function GetMergeTargetWidget({ toolCall, compact = false }: ToolCallWidgetProps
 // ============================================================================
 
 export const MergeWidget = React.memo(function MergeWidget(props: ToolCallWidgetProps) {
-  const toolName = props.toolCall.name.toLowerCase();
+  const toolName = canonicalizeToolName(props.toolCall.name);
 
   switch (toolName) {
-    case "mcp__ralphx__complete_merge":
     case "complete_merge":
       return <div data-testid="merge-widget-complete"><CompleteMergeWidget {...props} /></div>;
 
-    case "mcp__ralphx__report_conflict":
     case "report_conflict":
       return <div data-testid="merge-widget-conflict"><ReportConflictWidget {...props} /></div>;
 
-    case "mcp__ralphx__report_incomplete":
     case "report_incomplete":
       return <div data-testid="merge-widget-incomplete"><ReportIncompleteWidget {...props} /></div>;
 
-    case "mcp__ralphx__get_merge_target":
     case "get_merge_target":
       return <div data-testid="merge-widget-target"><GetMergeTargetWidget {...props} /></div>;
 
