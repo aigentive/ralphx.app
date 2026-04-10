@@ -385,6 +385,8 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         attribution_source: Some("native_runtime".to_string()),
                         provider_harness: Some(harness),
                         provider_session_id: Some(session_id.to_string()),
+                        upstream_provider: None,
+                        provider_profile: None,
                         logical_model: None,
                         effective_model_id: None,
                         logical_effort: None,

@@ -120,6 +120,8 @@ async fn test_update_attribution_updates_message_attribution_fields() {
             attribution_source: Some("historical_backfill_claude_project_jsonl_z_ai".to_string()),
             provider_harness: Some(AgentHarnessKind::Claude),
             provider_session_id: Some("claude-session-123".to_string()),
+            upstream_provider: Some("z_ai".to_string()),
+            provider_profile: Some("z_ai".to_string()),
             logical_model: Some("glm-4.7".to_string()),
             effective_model_id: Some("glm-4.7".to_string()),
             logical_effort: Some(LogicalEffort::High),
@@ -139,6 +141,8 @@ async fn test_update_attribution_updates_message_attribution_fields() {
         updated.provider_session_id.as_deref(),
         Some("claude-session-123")
     );
+    assert_eq!(updated.upstream_provider.as_deref(), Some("z_ai"));
+    assert_eq!(updated.provider_profile.as_deref(), Some("z_ai"));
     assert_eq!(updated.logical_model.as_deref(), Some("glm-4.7"));
     assert_eq!(updated.effective_model_id.as_deref(), Some("glm-4.7"));
     assert_eq!(updated.logical_effort, Some(LogicalEffort::High));

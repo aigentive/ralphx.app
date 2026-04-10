@@ -32,7 +32,7 @@ use crate::domain::entities::{
 
 /// Map a SQLite row to an AgentRun (expects columns: id, conversation_id, status,
 /// started_at, completed_at, error_message, harness, provider_session_id,
-/// logical_model, effective_model_id, logical_effort, effective_effort,
+/// upstream_provider, provider_profile, logical_model, effective_model_id, logical_effort, effective_effort,
 /// input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
 /// estimated_usd, approval_policy, sandbox_mode, run_chain_id, parent_run_id)
 fn row_to_agent_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentRun> {
@@ -51,6 +51,8 @@ fn row_to_agent_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentRun> {
             .get::<_, Option<String>>("harness")?
             .and_then(|value| value.parse::<AgentHarnessKind>().ok()),
         provider_session_id: row.get("provider_session_id")?,
+        upstream_provider: row.get("upstream_provider")?,
+        provider_profile: row.get("provider_profile")?,
         logical_model: row.get("logical_model")?,
         effective_model_id: row.get("effective_model_id")?,
         logical_effort: row
@@ -102,11 +104,11 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                 conn.execute(
                     "INSERT INTO agent_runs (
                         id, conversation_id, status, started_at, completed_at, error_message,
-                        harness, provider_session_id, logical_model, effective_model_id,
+                        harness, provider_session_id, upstream_provider, provider_profile, logical_model, effective_model_id,
                         logical_effort, effective_effort, input_tokens, output_tokens,
                         cache_creation_tokens, cache_read_tokens, estimated_usd,
                         approval_policy, sandbox_mode, run_chain_id, parent_run_id
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
                     rusqlite::params![
                         run.id.as_str(),
                         run.conversation_id.as_str(),
@@ -116,6 +118,8 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                         run.error_message,
                         run.harness.map(|value| value.to_string()),
                         run.provider_session_id,
+                        run.upstream_provider,
+                        run.provider_profile,
                         run.logical_model,
                         run.effective_model_id,
                         run.logical_effort.map(|value| value.to_string()),
@@ -142,7 +146,7 @@ impl AgentRunRepository for SqliteAgentRunRepository {
             .query_optional(move |conn| {
                 conn.query_row(
                     "SELECT id, conversation_id, status, started_at, completed_at, error_message,
-                            harness, provider_session_id, logical_model, effective_model_id,
+                            harness, provider_session_id, upstream_provider, provider_profile, logical_model, effective_model_id,
                             logical_effort, effective_effort, input_tokens, output_tokens,
                             cache_creation_tokens, cache_read_tokens, estimated_usd,
                             approval_policy, sandbox_mode, run_chain_id, parent_run_id
@@ -163,7 +167,7 @@ impl AgentRunRepository for SqliteAgentRunRepository {
             .query_optional(move |conn| {
                 conn.query_row(
                     "SELECT id, conversation_id, status, started_at, completed_at, error_message,
-                            harness, provider_session_id, logical_model, effective_model_id,
+                            harness, provider_session_id, upstream_provider, provider_profile, logical_model, effective_model_id,
                             logical_effort, effective_effort, input_tokens, output_tokens,
                             cache_creation_tokens, cache_read_tokens, estimated_usd,
                             approval_policy, sandbox_mode, run_chain_id, parent_run_id
@@ -184,7 +188,7 @@ impl AgentRunRepository for SqliteAgentRunRepository {
             .query_optional(move |conn| {
                 conn.query_row(
                     "SELECT id, conversation_id, status, started_at, completed_at, error_message,
-                            harness, provider_session_id, logical_model, effective_model_id,
+                            harness, provider_session_id, upstream_provider, provider_profile, logical_model, effective_model_id,
                             logical_effort, effective_effort, input_tokens, output_tokens,
                             cache_creation_tokens, cache_read_tokens, estimated_usd,
                             approval_policy, sandbox_mode, run_chain_id, parent_run_id
@@ -205,7 +209,7 @@ impl AgentRunRepository for SqliteAgentRunRepository {
             .run(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT id, conversation_id, status, started_at, completed_at, error_message,
-                            harness, provider_session_id, logical_model, effective_model_id,
+                            harness, provider_session_id, upstream_provider, provider_profile, logical_model, effective_model_id,
                             logical_effort, effective_effort, input_tokens, output_tokens,
                             cache_creation_tokens, cache_read_tokens, estimated_usd,
                             approval_policy, sandbox_mode, run_chain_id, parent_run_id
@@ -273,14 +277,18 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                     "UPDATE agent_runs
                      SET harness = COALESCE(?1, harness),
                          provider_session_id = COALESCE(?2, provider_session_id),
-                         logical_model = COALESCE(?3, logical_model),
-                         effective_model_id = COALESCE(?4, effective_model_id),
-                         logical_effort = COALESCE(?5, logical_effort),
-                         effective_effort = COALESCE(?6, effective_effort)
-                     WHERE id = ?7",
+                         upstream_provider = COALESCE(?3, upstream_provider),
+                         provider_profile = COALESCE(?4, provider_profile),
+                         logical_model = COALESCE(?5, logical_model),
+                         effective_model_id = COALESCE(?6, effective_model_id),
+                         logical_effort = COALESCE(?7, logical_effort),
+                         effective_effort = COALESCE(?8, effective_effort)
+                     WHERE id = ?9",
                     rusqlite::params![
                         attribution.harness.map(|value| value.to_string()),
                         attribution.provider_session_id,
+                        attribution.upstream_provider,
+                        attribution.provider_profile,
                         attribution.logical_model,
                         attribution.effective_model_id,
                         attribution.logical_effort.map(|value| value.to_string()),
@@ -411,6 +419,8 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                         ar.error_message,
                         ar.harness as run_harness,
                         ar.provider_session_id as run_provider_session_id,
+                        ar.upstream_provider as run_upstream_provider,
+                        ar.provider_profile as run_provider_profile,
                         ar.logical_model,
                         ar.effective_model_id,
                         ar.logical_effort,
@@ -491,6 +501,8 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                                 .get::<_, Option<String>>("run_harness")?
                                 .and_then(|value| value.parse::<AgentHarnessKind>().ok()),
                             provider_session_id: row.get("run_provider_session_id")?,
+                            upstream_provider: row.get("run_upstream_provider")?,
+                            provider_profile: row.get("run_provider_profile")?,
                             logical_model: row.get("logical_model")?,
                             effective_model_id: row.get("effective_model_id")?,
                             logical_effort: row

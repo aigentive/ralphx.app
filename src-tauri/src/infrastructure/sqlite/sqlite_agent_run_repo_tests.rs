@@ -236,6 +236,8 @@ async fn test_update_attribution_updates_agent_run_metadata_fields() {
         &AgentRunAttribution {
             harness: Some(AgentHarnessKind::Claude),
             provider_session_id: Some("claude-session-321".to_string()),
+            upstream_provider: Some("z_ai".to_string()),
+            provider_profile: Some("z_ai".to_string()),
             logical_model: Some("glm-4.7".to_string()),
             effective_model_id: Some("glm-4.7".to_string()),
             logical_effort: Some(LogicalEffort::High),
@@ -251,6 +253,8 @@ async fn test_update_attribution_updates_agent_run_metadata_fields() {
         retrieved.provider_session_id.as_deref(),
         Some("claude-session-321")
     );
+    assert_eq!(retrieved.upstream_provider.as_deref(), Some("z_ai"));
+    assert_eq!(retrieved.provider_profile.as_deref(), Some("z_ai"));
     assert_eq!(retrieved.logical_model.as_deref(), Some("glm-4.7"));
     assert_eq!(retrieved.effective_model_id.as_deref(), Some("glm-4.7"));
     assert_eq!(retrieved.logical_effort, Some(LogicalEffort::High));

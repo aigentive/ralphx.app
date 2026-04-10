@@ -142,6 +142,10 @@ pub struct AgentRunAttribution {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_profile: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub logical_model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effective_model_id: Option<String>,
@@ -187,6 +191,12 @@ pub struct AgentRun {
     /// Provider session ID associated with this run.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_session_id: Option<String>,
+    /// Upstream provider backing the selected harness.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream_provider: Option<String>,
+    /// Optional harness/runtime profile used for the upstream provider.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_profile: Option<String>,
     /// User-facing configured model for the run.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logical_model: Option<String>,
@@ -242,6 +252,8 @@ impl AgentRun {
             error_message: None,
             harness: None,
             provider_session_id: None,
+            upstream_provider: None,
+            provider_profile: None,
             logical_model: None,
             effective_model_id: None,
             logical_effort: None,
@@ -273,6 +285,8 @@ impl AgentRun {
             error_message: None,
             harness: None,
             provider_session_id: None,
+            upstream_provider: None,
+            provider_profile: None,
             logical_model: None,
             effective_model_id: None,
             logical_effort: None,
@@ -334,6 +348,12 @@ impl AgentRun {
         }
         if let Some(value) = attribution.provider_session_id.as_ref() {
             self.provider_session_id = Some(value.clone());
+        }
+        if let Some(value) = attribution.upstream_provider.as_ref() {
+            self.upstream_provider = Some(value.clone());
+        }
+        if let Some(value) = attribution.provider_profile.as_ref() {
+            self.provider_profile = Some(value.clone());
         }
         if let Some(value) = attribution.logical_model.as_ref() {
             self.logical_model = Some(value.clone());

@@ -1845,9 +1845,22 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             .as_ref()
             .map(|session_ref| session_ref.provider_session_id.clone());
         let is_new_conversation = stored_session_id.is_none();
+        let resolved_agent_name = chat_service_helpers::resolve_agent_with_team_mode(
+            &context_type,
+            entity_status.as_deref(),
+            runtime_team_mode,
+        )
+        .to_string();
+        let (upstream_provider, provider_profile) =
+            chat_service_helpers::provider_origin_for_harness(
+                resolved_spawn_settings.effective_harness,
+                Some(&resolved_agent_name),
+            );
 
         agent_run.harness = Some(resolved_spawn_settings.effective_harness);
         agent_run.provider_session_id = stored_session_id.clone();
+        agent_run.upstream_provider = upstream_provider.clone();
+        agent_run.provider_profile = provider_profile.clone();
         agent_run.logical_model = resolved_spawn_settings.configured_model.clone();
         agent_run.effective_model_id = Some(resolved_spawn_settings.model.clone());
         agent_run.logical_effort = resolved_spawn_settings.configured_logical_effort;
@@ -2017,18 +2030,6 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
         }
 
         // 8. Build background context and spawn
-        let team_mode_val = self.team_mode.load(Ordering::Relaxed);
-        let runtime_team_mode = chat_service_helpers::effective_team_mode_for_harness(
-            team_mode_val,
-            resolved_spawn_settings.effective_harness,
-        );
-        let resolved_agent_name = chat_service_helpers::resolve_agent_with_team_mode(
-            &context_type,
-            entity_status.as_deref(),
-            runtime_team_mode,
-        )
-        .to_string();
-
         let bg_ctx = chat_service_send_background::BackgroundRunContext {
             child,
             harness: resolved_spawn_settings.effective_harness,
@@ -2076,6 +2077,8 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
                 attribution_source: Some("native_runtime".to_string()),
                 provider_harness: Some(resolved_spawn_settings.effective_harness),
                 provider_session_id: stored_session_id.clone(),
+                upstream_provider,
+                provider_profile,
                 logical_model: resolved_spawn_settings.configured_model.clone(),
                 effective_model_id: Some(effective_model_id.clone()),
                 logical_effort: resolved_spawn_settings.configured_logical_effort,

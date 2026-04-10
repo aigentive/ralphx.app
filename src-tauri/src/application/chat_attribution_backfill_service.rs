@@ -149,6 +149,8 @@ impl ChatAttributionBackfillService {
             attribution_source: Some(summary.attribution_source()),
             provider_harness: Some(AgentHarnessKind::Claude),
             provider_session_id: Some(session_id.to_string()),
+            upstream_provider: summary.upstream_provider(),
+            provider_profile: None,
             logical_model: summary.primary_model.clone(),
             effective_model_id: summary.primary_model.clone(),
             logical_effort: None,
@@ -157,6 +159,8 @@ impl ChatAttributionBackfillService {
         let run_attribution = AgentRunAttribution {
             harness: Some(AgentHarnessKind::Claude),
             provider_session_id: Some(session_id.to_string()),
+            upstream_provider: summary.upstream_provider(),
+            provider_profile: None,
             logical_model: summary.primary_model.clone(),
             effective_model_id: summary.primary_model.clone(),
             logical_effort: None,

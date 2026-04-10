@@ -283,6 +283,9 @@ mod v20260410101500_chat_message_attribution_tests;
 mod v20260410113000_agent_run_usage;
 #[cfg(test)]
 mod v20260410113000_agent_run_usage_tests;
+mod v20260410143000_upstream_provider_metadata;
+#[cfg(test)]
+mod v20260410143000_upstream_provider_metadata_tests;
 mod v20260410124500_chat_message_usage;
 #[cfg(test)]
 mod v20260410124500_chat_message_usage_tests;
@@ -817,6 +820,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 20260410124500,
         name: "chat_message_usage",
         migrate: v20260410124500_chat_message_usage::migrate,
+    },
+    Migration {
+        version: 20260410143000,
+        name: "upstream_provider_metadata",
+        migrate: v20260410143000_upstream_provider_metadata::migrate,
     },
 ];
 

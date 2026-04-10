@@ -135,6 +135,55 @@ pub fn effective_model_label_for_harness(
     }
 }
 
+pub fn provider_origin_for_harness(
+    harness: AgentHarnessKind,
+    agent_name: Option<&str>,
+) -> (Option<String>, Option<String>) {
+    match harness {
+        AgentHarnessKind::Codex => (Some("openai".to_string()), None),
+        AgentHarnessKind::Claude => {
+            let profile = crate::infrastructure::agents::claude::get_effective_settings_profile(
+                agent_name,
+            )
+            .map(str::to_string);
+            let upstream_provider = profile
+                .as_deref()
+                .and_then(classify_claude_profile_provider)
+                .map(str::to_string)
+                .or_else(|| infer_claude_provider_from_settings(agent_name).map(str::to_string))
+                .or(Some("anthropic".to_string()));
+            (upstream_provider, profile)
+        }
+    }
+}
+
+fn infer_claude_provider_from_settings(agent_name: Option<&str>) -> Option<&'static str> {
+    let settings = crate::infrastructure::agents::claude::get_effective_settings(agent_name)?;
+    let base_url = settings
+        .get("env")
+        .and_then(|value| value.get("ANTHROPIC_BASE_URL"))
+        .and_then(|value| value.as_str());
+
+    match base_url {
+        Some(url) if url.contains("z.ai") => Some("z_ai"),
+        Some(url) if url.contains("openrouter.ai") => Some("openrouter"),
+        Some(_) => Some("anthropic"),
+        None => None,
+    }
+}
+
+fn classify_claude_profile_provider(profile: &str) -> Option<&'static str> {
+    if profile.contains("z_ai") {
+        Some("z_ai")
+    } else if profile.contains("openrouter") {
+        Some("openrouter")
+    } else if profile == "default" {
+        Some("anthropic")
+    } else {
+        None
+    }
+}
+
 pub fn harness_supports_merge_completion_watcher(harness: AgentHarnessKind) -> bool {
     standard_harness_behavior(harness).supports_merge_completion_watcher
 }

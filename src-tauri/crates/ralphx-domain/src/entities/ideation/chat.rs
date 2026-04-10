@@ -90,6 +90,8 @@ pub struct ChatMessageAttribution {
     pub attribution_source: Option<String>,
     pub provider_harness: Option<AgentHarnessKind>,
     pub provider_session_id: Option<String>,
+    pub upstream_provider: Option<String>,
+    pub provider_profile: Option<String>,
     pub logical_model: Option<String>,
     pub effective_model_id: Option<String>,
     pub logical_effort: Option<LogicalEffort>,
@@ -137,6 +139,8 @@ pub struct ChatMessage {
     /// Harness/model metadata for provider-backed assistant messages.
     pub provider_harness: Option<AgentHarnessKind>,
     pub provider_session_id: Option<String>,
+    pub upstream_provider: Option<String>,
+    pub provider_profile: Option<String>,
     pub logical_model: Option<String>,
     pub effective_model_id: Option<String>,
     pub logical_effort: Option<LogicalEffort>,
@@ -169,6 +173,8 @@ impl ChatMessage {
             attribution_source: None,
             provider_harness: None,
             provider_session_id: None,
+            upstream_provider: None,
+            provider_profile: None,
             logical_model: None,
             effective_model_id: None,
             logical_effort: None,
@@ -202,6 +208,8 @@ impl ChatMessage {
             attribution_source: None,
             provider_harness: None,
             provider_session_id: None,
+            upstream_provider: None,
+            provider_profile: None,
             logical_model: None,
             effective_model_id: None,
             logical_effort: None,
@@ -232,6 +240,8 @@ impl ChatMessage {
             attribution_source: None,
             provider_harness: None,
             provider_session_id: None,
+            upstream_provider: None,
+            provider_profile: None,
             logical_model: None,
             effective_model_id: None,
             logical_effort: None,
@@ -262,6 +272,8 @@ impl ChatMessage {
             attribution_source: None,
             provider_harness: None,
             provider_session_id: None,
+            upstream_provider: None,
+            provider_profile: None,
             logical_model: None,
             effective_model_id: None,
             logical_effort: None,
@@ -292,6 +304,8 @@ impl ChatMessage {
             attribution_source: None,
             provider_harness: None,
             provider_session_id: None,
+            upstream_provider: None,
+            provider_profile: None,
             logical_model: None,
             effective_model_id: None,
             logical_effort: None,
@@ -321,6 +335,8 @@ impl ChatMessage {
         self.attribution_source = attribution.attribution_source;
         self.provider_harness = attribution.provider_harness;
         self.provider_session_id = attribution.provider_session_id;
+        self.upstream_provider = attribution.upstream_provider;
+        self.provider_profile = attribution.provider_profile;
         self.logical_model = attribution.logical_model;
         self.effective_model_id = attribution.effective_model_id;
         self.logical_effort = attribution.logical_effort;
@@ -342,6 +358,12 @@ impl ChatMessage {
         }
         if let Some(value) = attribution.provider_session_id.as_ref() {
             self.provider_session_id = Some(value.clone());
+        }
+        if let Some(value) = attribution.upstream_provider.as_ref() {
+            self.upstream_provider = Some(value.clone());
+        }
+        if let Some(value) = attribution.provider_profile.as_ref() {
+            self.provider_profile = Some(value.clone());
         }
         if let Some(value) = attribution.logical_model.as_ref() {
             self.logical_model = Some(value.clone());
@@ -410,6 +432,8 @@ impl ChatMessage {
             .flatten()
             .and_then(|value| value.parse::<AgentHarnessKind>().ok());
         let provider_session_id: Option<String> = row.get("provider_session_id").ok().flatten();
+        let upstream_provider: Option<String> = row.get("upstream_provider").ok().flatten();
+        let provider_profile: Option<String> = row.get("provider_profile").ok().flatten();
         let logical_model: Option<String> = row.get("logical_model").ok().flatten();
         let effective_model_id: Option<String> = row.get("effective_model_id").ok().flatten();
         let logical_effort = row
@@ -441,6 +465,8 @@ impl ChatMessage {
             attribution_source,
             provider_harness,
             provider_session_id,
+            upstream_provider,
+            provider_profile,
             logical_model,
             effective_model_id,
             logical_effort,

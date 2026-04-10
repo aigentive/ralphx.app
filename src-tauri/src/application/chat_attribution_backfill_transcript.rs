@@ -44,6 +44,17 @@ impl HistoricalTranscriptSummary {
             self.provider_profile.suffix()
         )
     }
+
+    pub fn upstream_provider(&self) -> Option<String> {
+        match self.provider_profile {
+            HistoricalClaudeProviderProfile::Anthropic => Some("anthropic".to_string()),
+            HistoricalClaudeProviderProfile::ZAi => Some("z_ai".to_string()),
+            HistoricalClaudeProviderProfile::OpenAiCompat => Some("openai_compat".to_string()),
+            HistoricalClaudeProviderProfile::Unknown | HistoricalClaudeProviderProfile::Mixed => {
+                None
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

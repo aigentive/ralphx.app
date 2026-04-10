@@ -248,6 +248,8 @@ async fn test_get_by_id_roundtrips_message_attribution_fields() {
             attribution_source: Some("native_runtime".to_string()),
             provider_harness: Some(AgentHarnessKind::Codex),
             provider_session_id: Some("codex-session-123".to_string()),
+            upstream_provider: Some("openai".to_string()),
+            provider_profile: None,
             logical_model: Some("gpt-5.4".to_string()),
             effective_model_id: Some("gpt-5.4".to_string()),
             logical_effort: Some(LogicalEffort::High),
@@ -263,6 +265,8 @@ async fn test_get_by_id_roundtrips_message_attribution_fields() {
         found.provider_session_id,
         Some("codex-session-123".to_string())
     );
+    assert_eq!(found.upstream_provider.as_deref(), Some("openai"));
+    assert_eq!(found.provider_profile, None);
     assert_eq!(found.logical_model, Some("gpt-5.4".to_string()));
     assert_eq!(found.effective_model_id, Some("gpt-5.4".to_string()));
     assert_eq!(found.logical_effort, Some(LogicalEffort::High));
@@ -374,6 +378,8 @@ async fn test_update_attribution_updates_message_attribution_fields() {
             attribution_source: Some("historical_backfill_claude_project_jsonl_anthropic".to_string()),
             provider_harness: Some(AgentHarnessKind::Claude),
             provider_session_id: Some("claude-session-999".to_string()),
+            upstream_provider: Some("anthropic".to_string()),
+            provider_profile: Some("default".to_string()),
             logical_model: Some("claude-sonnet-4-6".to_string()),
             effective_model_id: Some("claude-sonnet-4-6".to_string()),
             logical_effort: Some(LogicalEffort::Medium),
@@ -393,6 +399,8 @@ async fn test_update_attribution_updates_message_attribution_fields() {
         found.provider_session_id.as_deref(),
         Some("claude-session-999")
     );
+    assert_eq!(found.upstream_provider.as_deref(), Some("anthropic"));
+    assert_eq!(found.provider_profile.as_deref(), Some("default"));
     assert_eq!(found.logical_model.as_deref(), Some("claude-sonnet-4-6"));
     assert_eq!(
         found.effective_model_id.as_deref(),

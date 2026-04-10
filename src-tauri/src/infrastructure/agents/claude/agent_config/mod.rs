@@ -60,6 +60,8 @@ pub struct AgentConfig {
     pub preapproved_cli_tools: Vec<String>,
     pub system_prompt_file: String,
     pub model: Option<String>,
+    /// Effective claude settings profile selection for this agent (if any).
+    pub settings_profile: Option<String>,
     /// Effective settings JSON for this agent (if any), resolved from settings_profile.
     pub settings: Option<serde_json::Value>,
     /// Optional per-agent effort level override (e.g. "max"). Validated at parse time.
@@ -519,6 +521,7 @@ fn parse_config_with_lookup(
             preapproved_cli_tools: raw.preapproved_cli_tools.clone(),
             system_prompt_file: system_prompt,
             model: raw.model.clone(),
+            settings_profile: agent_profile_selection.clone(),
             settings: agent_settings,
             effort: raw.effort.clone().filter(|v| validate_effort(v, &raw.name)),
             permission_mode: raw.permission_mode.clone(),
@@ -1018,6 +1021,17 @@ pub fn get_effective_settings(agent_name: Option<&str>) -> Option<&'static serde
         }
     }
     loaded.claude.settings.as_ref()
+}
+
+pub fn get_effective_settings_profile(agent_name: Option<&str>) -> Option<&'static str> {
+    let loaded = LOADED_CONFIG_CELL.get_or_init(load_config);
+    if let Some(name) = agent_name {
+        let lookup_name = name.strip_prefix("ralphx:").unwrap_or(name);
+        if let Some(agent) = loaded.agents.iter().find(|c| c.name == lookup_name) {
+            return agent.settings_profile.as_deref();
+        }
+    }
+    None
 }
 
 pub fn get_allowed_tools(agent_name: &str) -> Option<String> {

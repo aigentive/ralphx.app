@@ -362,6 +362,8 @@ fn build_recovery_retry_background_context<R: Runtime>(
             attribution_source: Some("native_runtime".to_string()),
             provider_harness: Some(recovery_harness),
             provider_session_id: Some(new_session_id.clone()),
+            upstream_provider: None,
+            provider_profile: None,
             logical_model: None,
             effective_model_id: None,
             logical_effort: None,
