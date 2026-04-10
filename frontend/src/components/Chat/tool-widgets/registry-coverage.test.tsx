@@ -2,7 +2,8 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
-import { ToolCallIndicator, type ToolCall } from "../ToolCallIndicator";
+import { ToolCallIndicator } from "../ToolCallIndicator";
+import { makeToolCall } from "../__tests__/chatRenderFixtures";
 import { ArtifactWidget } from "./ArtifactWidget";
 import {
   SearchMemoriesWidget,
@@ -25,29 +26,6 @@ import {
 import { ContextWidget } from "./ContextWidget";
 import { IssuesSummaryWidget } from "./IssuesSummaryWidget";
 import { TOOL_CALL_WIDGETS, getToolCallWidget } from "./registry";
-
-function makeToolCall(
-  name: string,
-  {
-    id = `${name}-1`,
-    arguments: args = {},
-    result,
-    error,
-  }: {
-    id?: string;
-    arguments?: unknown;
-    result?: unknown;
-    error?: string;
-  } = {},
-): ToolCall {
-  return {
-    id,
-    name,
-    arguments: args,
-    ...(result !== undefined ? { result } : {}),
-    ...(error !== undefined ? { error } : {}),
-  };
-}
 
 describe("tool widget registry coverage", () => {
   it("maps every registered tool name to a specialized widget", () => {

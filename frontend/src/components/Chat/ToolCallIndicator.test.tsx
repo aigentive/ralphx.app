@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
+import { makeToolCall } from "./__tests__/chatRenderFixtures";
 
 /**
  * ToolCallIndicator tests.
@@ -15,12 +16,11 @@ import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
 describe("ToolCallIndicator", () => {
   describe("Rendering (generic fallback)", () => {
     it("renders collapsed by default", () => {
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("update_task", {
         id: "call-1",
-        name: "update_task",
         arguments: { task_id: "task-1" },
         result: { ok: true },
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
@@ -32,11 +32,10 @@ describe("ToolCallIndicator", () => {
     });
 
     it("shows tool icon and chevron", () => {
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("custom_tool", {
         id: "call-1",
-        name: "custom_tool",
         arguments: { data: "test" },
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
@@ -45,11 +44,10 @@ describe("ToolCallIndicator", () => {
     });
 
     it("applies custom className", () => {
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("custom_tool", {
         id: "call-1",
-        name: "custom_tool",
         arguments: { data: "test" },
-      };
+      });
 
       const { container } = render(
         <ToolCallIndicator toolCall={toolCall} className="custom-class" />
@@ -63,12 +61,11 @@ describe("ToolCallIndicator", () => {
   describe("Interaction (generic fallback)", () => {
     it("expands when clicked", async () => {
       const user = userEvent.setup();
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("update_task", {
         id: "call-1",
-        name: "update_task",
         arguments: { task_id: "task-1" },
         result: { ok: true },
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
@@ -87,11 +84,10 @@ describe("ToolCallIndicator", () => {
 
     it("collapses when clicked again", async () => {
       const user = userEvent.setup();
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("add_task_note", {
         id: "call-1",
-        name: "add_task_note",
         arguments: { task_id: "task-abc", note: "test" },
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
@@ -108,11 +104,10 @@ describe("ToolCallIndicator", () => {
 
     it("has correct aria-expanded attribute", async () => {
       const user = userEvent.setup();
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("custom_tool", {
         id: "call-1",
-        name: "custom_tool",
         arguments: { data: "test" },
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
@@ -129,11 +124,10 @@ describe("ToolCallIndicator", () => {
 
   describe("Summary generation", () => {
     it("shows file path for write tool", () => {
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("write", {
         id: "call-1",
-        name: "write",
         arguments: { file_path: "/app/config.json" },
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
       expect(screen.getByText("write")).toBeInTheDocument();
@@ -141,11 +135,10 @@ describe("ToolCallIndicator", () => {
     });
 
     it("shows file path for edit tool", () => {
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("edit", {
         id: "call-1",
-        name: "edit",
         arguments: { file_path: "/src/main.rs" },
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
       expect(screen.getByText("edit")).toBeInTheDocument();
@@ -153,11 +146,10 @@ describe("ToolCallIndicator", () => {
     });
 
     it("shows update_task summary", () => {
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("update_task", {
         id: "call-1",
-        name: "update_task",
         arguments: { task_id: "task-789" },
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
       expect(screen.getByText("update_task")).toBeInTheDocument();
@@ -165,11 +157,10 @@ describe("ToolCallIndicator", () => {
     });
 
     it("shows add_task_note summary", () => {
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("add_task_note", {
         id: "call-1",
-        name: "add_task_note",
         arguments: { task_id: "task-abc", note: "Fixed the bug" },
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
       expect(screen.getByText("add_task_note")).toBeInTheDocument();
@@ -177,11 +168,10 @@ describe("ToolCallIndicator", () => {
     });
 
     it("shows tool name for unknown tools", () => {
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("custom_tool", {
         id: "call-1",
-        name: "custom_tool",
         arguments: { foo: "bar" },
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
       expect(screen.getByText("custom_tool")).toBeInTheDocument();
@@ -192,11 +182,10 @@ describe("ToolCallIndicator", () => {
 
   describe("Expanded details", () => {
     it("displays tool name badge in collapsed view", () => {
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("custom_tool", {
         id: "call-1",
-        name: "custom_tool",
         arguments: { action: "test" },
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
@@ -206,15 +195,14 @@ describe("ToolCallIndicator", () => {
 
     it("displays formatted arguments when expanded", async () => {
       const user = userEvent.setup();
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("custom_tool", {
         id: "call-1",
-        name: "custom_tool",
         arguments: {
           title: "Test Task",
           description: "A test description",
           priority: "high",
         },
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
@@ -230,12 +218,11 @@ describe("ToolCallIndicator", () => {
 
     it("displays result when present", async () => {
       const user = userEvent.setup();
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("custom_tool", {
         id: "call-1",
-        name: "custom_tool",
         arguments: { action: "get" },
         result: "hello\n",
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
@@ -248,11 +235,10 @@ describe("ToolCallIndicator", () => {
 
     it("does not display result section when result is undefined", async () => {
       const user = userEvent.setup();
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("custom_tool", {
         id: "call-1",
-        name: "custom_tool",
         arguments: { action: "get" },
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
@@ -264,12 +250,11 @@ describe("ToolCallIndicator", () => {
 
   describe("Error handling", () => {
     it("displays error indicator when tool call failed", () => {
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("custom_tool", {
         id: "call-1",
-        name: "custom_tool",
         arguments: { action: "fail" },
         error: "Command not found",
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
@@ -278,12 +263,11 @@ describe("ToolCallIndicator", () => {
 
     it("displays error message in expanded view", async () => {
       const user = userEvent.setup();
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("custom_tool", {
         id: "call-1",
-        name: "custom_tool",
         arguments: { path: "/nonexistent.txt" },
         error: "File not found: /nonexistent.txt",
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
@@ -296,13 +280,12 @@ describe("ToolCallIndicator", () => {
 
     it("does not display result when error is present", async () => {
       const user = userEvent.setup();
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("custom_tool", {
         id: "call-1",
-        name: "custom_tool",
         arguments: { action: "list" },
         result: "should not show",
         error: "Some error occurred",
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
@@ -314,12 +297,11 @@ describe("ToolCallIndicator", () => {
     });
 
     it("applies error styling when tool call failed", () => {
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("custom_tool", {
         id: "call-1",
-        name: "custom_tool",
         arguments: { action: "fail" },
         error: "Command failed",
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
@@ -331,11 +313,10 @@ describe("ToolCallIndicator", () => {
 
   describe("Accessibility", () => {
     it("has accessible label for toggle button", () => {
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("custom_tool", {
         id: "call-1",
-        name: "custom_tool",
         arguments: { data: "test" },
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 
@@ -347,11 +328,10 @@ describe("ToolCallIndicator", () => {
 
     it("updates aria-label when expanded", async () => {
       const user = userEvent.setup();
-      const toolCall: ToolCall = {
+      const toolCall: ToolCall = makeToolCall("custom_tool", {
         id: "call-1",
-        name: "custom_tool",
         arguments: { data: "test" },
-      };
+      });
 
       render(<ToolCallIndicator toolCall={toolCall} />);
 

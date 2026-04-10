@@ -189,6 +189,28 @@ When working in `src-tauri/`, also follow:
 | P0 | Widget registry coverage map | Completed | The registry is now explicitly audited against direct tests: uncovered families were `ArtifactWidget`, `ContextWidget`, `IssuesSummaryWidget`, `MergeWidget`, `ReviewWidget`, `SendMessageWidget`, `StepIndicator`, `StepsManifestWidget`, `TeamTaskWidgets`, and `McpContextWidgets` |
 | P0 | Direct widget-family coverage | Completed | `frontend/src/components/Chat/tool-widgets/registry-coverage.test.tsx` now exercises the previously untested grouped widget families plus registry-level routing with representative parsed chat/tool payloads |
 
+### Chat Render Architecture Tracker
+
+| Priority | Stream | Status | Concrete Next Step |
+|---|---|---|---|
+| P0 | Render-layer map | Completed | The render stack is now explicitly identified as: raw persisted `ChatMessage` payloads → API parsing/transforms → `MessageItem` content-block rendering → `ToolCallIndicator` generic/task/diff/widget dispatch → specialized widget families |
+| P0 | Shared chat render fixtures | Completed | `frontend/src/components/Chat/__tests__/chatRenderFixtures.ts` now provides canonical builders for raw ideation messages, parsed `ToolCall`s, `ContentBlockItem`s, message attachments, and `MessageItem` props so render tests stop inventing divergent shapes |
+| P0 | High-churn render test migration | Completed | `ChatMessage.test.tsx`, `MessageItem.test.tsx`, `ToolCallIndicator.test.tsx`, and `tool-widgets/registry-coverage.test.tsx` now share the same canonical fixture builders for raw-payload, parsed-message, and widget-routing coverage |
+| P1 | Legacy chat render duplication | Open | Decide whether `frontend/src/components/Chat/ChatMessage.tsx` remains an intentionally separate legacy ideation renderer or should converge toward the `MessageItem` render contract to reduce duplicate parsing/render rules |
+| P1 | Test noise burn-down | Open | Burn down unrelated frontend suite warnings (`act(...)`, Radix dialog a11y warnings, noisy mocked query failures) so future chat/UI regressions have cleaner signal |
+
+### Chat Replay E2E Tracker
+
+| Priority | Stream | Status | Concrete Next Step |
+|---|---|---|---|
+| P0 | Real DB fixture taxonomy | Completed | Local `src-tauri/ralphx.db` sampling now identifies the real replay families: compact two-message worker/reviewer/merger runs plus long ideation orchestrator sessions with `Agent`, `TaskCreate`, `TaskUpdate`, `SendMessage`, MCP context, and `Read`/`Grep`/`Glob` blocks |
+| P0 | Seedable mock chat scenarios | Completed | `frontend/src/api-mock/chat.ts` now exposes resettable DB-derived scenarios for `ideation_db_widget_mix`, `execution_db_compact`, `review_db_compact`, and `merge_db_compact` through `window.__mockChatApi` |
+| P0 | Playwright chat replay fixture | Completed | `frontend/tests/fixtures/chat.fixtures.ts` now seeds chat replay scenarios into the web-mode mock API and invalidates React Query before navigating to the ideation chat surface |
+| P0 | Ideation chat replay visual coverage | Completed | `frontend/tests/visual/views/ideation/ideation-chat-replay.spec.ts` now covers the DB-derived ideation conversation panel and snapshots mixed provider/widget rendering in the real `IntegratedChatPanel` path |
+| P0 | Execution/review/merge chat replay visual coverage | Completed | `frontend/tests/visual/views/task-detail/task-chat-replay.spec.ts` now covers compact worker, reviewer, and merger DB-derived conversations through the real task-detail integrated chat path |
+| P1 | Replay scenario module hygiene | Completed | DB-derived replay payloads now live in `frontend/src/api-mock/chat-scenarios.ts`, leaving `frontend/src/api-mock/chat.ts` focused on controller/state behavior instead of mixing API flow with large embedded fixtures |
+| P1 | Replay fixture realism expansion | Open | Add one richer execution-side scenario with multiple assistant turns and mixed widgets once real review/merge replay needs exceed the current compact two-message seed set |
+
 ## High-Value Refactor Targets
 
 | Priority | Area | Why It Matters | Next Step |

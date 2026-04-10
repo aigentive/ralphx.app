@@ -7,28 +7,27 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { MessageItem } from "./MessageItem";
-import type { MessageAttachment } from "./MessageAttachments";
+import {
+  makeContentText,
+  makeContentToolUse,
+  makeMessageAttachment,
+  makeMessageItemProps,
+  makeToolCall,
+} from "./__tests__/chatRenderFixtures";
 
 describe("MessageItem - Attachment Integration", () => {
-  const baseProps = {
+  const baseProps = makeMessageItemProps({
     role: "user",
-    content: "Hello world",
-    createdAt: new Date().toISOString(),
-  };
+  });
 
-  const mockAttachments: MessageAttachment[] = [
-    {
-      id: "att-1",
-      fileName: "test.txt",
-      fileSize: 1024,
-      mimeType: "text/plain",
-    },
-    {
+  const mockAttachments = [
+    makeMessageAttachment({ id: "att-1", fileName: "test.txt" }),
+    makeMessageAttachment({
       id: "att-2",
       fileName: "image.png",
       fileSize: 2048,
       mimeType: "image/png",
-    },
+    }),
   ];
 
   it("renders MessageAttachments for user messages with attachments", () => {
@@ -108,10 +107,7 @@ describe("MessageItem - Attachment Integration", () => {
   });
 
   it("works with content blocks rendering", () => {
-    const contentBlocks = [
-      { type: "text" as const, text: "First block" },
-      { type: "text" as const, text: "Second block" },
-    ];
+    const contentBlocks = [makeContentText("First block"), makeContentText("Second block")];
 
     render(
       <MessageItem
@@ -133,12 +129,11 @@ describe("MessageItem - Attachment Integration", () => {
 
   it("works with legacy rendering (toolCalls + text)", () => {
     const toolCalls = [
-      {
+      makeToolCall("read_file", {
         id: "call-1",
-        name: "read_file",
         arguments: { path: "test.txt" },
         result: "file content",
-      },
+      }),
     ];
 
     render(
@@ -182,23 +177,19 @@ describe("MessageItem - Child tool call suppression for Task/Agent spawns", () =
     // A message with a Task tool call that has child tool calls in its result
     const childToolUseId = "child-toolu-001";
     const contentBlocks = [
-      {
-        type: "tool_use" as const,
+      makeContentToolUse("Task", {
         id: "task-toolu-001",
-        name: "Task",
         arguments: { description: "Explore files", subagent_type: "Explore" },
         result: [
           { type: "tool_use", id: childToolUseId, name: "Glob", input: { pattern: "**/*.ts" } },
           { type: "tool_result", tool_use_id: childToolUseId, content: ["file1.ts"] },
         ],
-      },
-      {
-        type: "tool_use" as const,
+      }),
+      makeContentToolUse("Glob", {
         id: childToolUseId,
-        name: "Glob",
         arguments: { pattern: "**/*.ts" },
         result: ["file1.ts"],
-      },
+      }),
     ];
 
     const { container } = render(
@@ -221,23 +212,19 @@ describe("MessageItem - Child tool call suppression for Task/Agent spawns", () =
   it("suppresses child tool_use blocks that belong to an Agent result", () => {
     const childToolUseId = "child-toolu-agent-001";
     const contentBlocks = [
-      {
-        type: "tool_use" as const,
+      makeContentToolUse("Agent", {
         id: "agent-toolu-001",
-        name: "Agent",
         arguments: { description: "Research code", subagent_type: "general-purpose" },
         result: [
           { type: "tool_use", id: childToolUseId, name: "Grep", input: { pattern: "useState" } },
           { type: "tool_result", tool_use_id: childToolUseId, content: "found 5 matches" },
         ],
-      },
-      {
-        type: "tool_use" as const,
+      }),
+      makeContentToolUse("Grep", {
         id: childToolUseId,
-        name: "Grep",
         arguments: { pattern: "useState" },
         result: "found 5 matches",
-      },
+      }),
     ];
 
     const { container } = render(
@@ -255,20 +242,16 @@ describe("MessageItem - Child tool call suppression for Task/Agent spawns", () =
   it("does NOT suppress tool_use blocks that are not nested in Task/Agent results", () => {
     // Two independent tool calls: one Read, one Bash — neither is a Task/Agent spawn
     const contentBlocks = [
-      {
-        type: "tool_use" as const,
+      makeContentToolUse("read", {
         id: "read-001",
-        name: "read",
         arguments: { file_path: "/src/main.ts" },
         result: "file content",
-      },
-      {
-        type: "tool_use" as const,
+      }),
+      makeContentToolUse("custom_tool", {
         id: "bash-001",
-        name: "custom_tool",
         arguments: { command: "ls" },
         result: "file1\nfile2",
-      },
+      }),
     ];
 
     const { container } = render(
@@ -284,24 +267,20 @@ describe("MessageItem - Child tool call suppression for Task/Agent spawns", () =
     // Verify that both the tool_use ID and tool_result's tool_use_id are suppressed
     const childId = "child-abc";
     const contentBlocks = [
-      {
-        type: "tool_use" as const,
+      makeContentToolUse("Agent", {
         id: "agent-toolu-002",
-        name: "Agent",
         arguments: { description: "Plan work", subagent_type: "Plan" },
         result: [
           { type: "tool_use", id: childId, name: "Read", input: { file_path: "/foo.ts" } },
           { type: "tool_result", tool_use_id: childId, content: "file content" },
         ],
-      },
+      }),
       // The child tool_use appears again at top level (as emitted by stream)
-      {
-        type: "tool_use" as const,
+      makeContentToolUse("Read", {
         id: childId,
-        name: "Read",
         arguments: { file_path: "/foo.ts" },
         result: "file content",
-      },
+      }),
     ];
 
     const { container } = render(
@@ -320,24 +299,20 @@ describe("MessageItem - Child tool call suppression for Task/Agent spawns", () =
   it("renders non-suppressed tool calls alongside Agent card", () => {
     // A message with an Agent call AND an independent (non-child) tool call
     const contentBlocks = [
-      {
-        type: "tool_use" as const,
+      makeContentToolUse("Agent", {
         id: "agent-toolu-003",
-        name: "Agent",
         arguments: { description: "Explore code", subagent_type: "Explore" },
         result: [
           { type: "tool_use", id: "child-nested", name: "Glob", input: { pattern: "**/*.ts" } },
           { type: "tool_result", tool_use_id: "child-nested", content: [] },
         ],
-      },
+      }),
       // Independent tool call (NOT a child of the Agent result)
-      {
-        type: "tool_use" as const,
+      makeContentToolUse("custom_standalone_tool", {
         id: "independent-001",
-        name: "custom_standalone_tool",
         arguments: { key: "value" },
         result: "ok",
-      },
+      }),
     ];
 
     const { container } = render(
@@ -404,7 +379,11 @@ describe("MessageItem - Empty content guard (legacy rendering path)", () => {
   it("renders tool calls alongside empty assistant content (no text bubble, but tool cards show)", () => {
     // Use a tool name not in the widget registry so generic ToolCallIndicator renders
     const toolCalls = [
-      { id: "tc-1", name: "read_file", arguments: { path: "/foo.ts" }, result: "content" },
+      makeToolCall("read_file", {
+        id: "tc-1",
+        arguments: { path: "/foo.ts" },
+        result: "content",
+      }),
     ];
     const { container } = render(
       <MessageItem role="assistant" content="" createdAt={createdAt} toolCalls={toolCalls} />

@@ -317,6 +317,10 @@ export const useIdeationStore = create<IdeationState & IdeationActions>()(
   }))
 );
 
+if (typeof window !== "undefined" && !window.__TAURI_INTERNALS__) {
+  window.__ideationStore = useIdeationStore;
+}
+
 // ============================================================================
 // Selectors (defined outside store for memoization)
 // ============================================================================

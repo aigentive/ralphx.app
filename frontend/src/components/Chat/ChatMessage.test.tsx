@@ -7,78 +7,46 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { ChatMessage } from "./ChatMessage";
 import type { ChatMessage as ChatMessageType } from "@/types/ideation";
+import { makeIdeationChatMessage } from "./__tests__/chatRenderFixtures";
 
 // ============================================================================
 // Test Data
 // ============================================================================
 
-const userMessage: ChatMessageType = {
+const userMessage: ChatMessageType = makeIdeationChatMessage({
   id: "msg-1",
-  sessionId: "session-1",
-  projectId: "project-1",
-  taskId: null,
   role: "user",
   content: "Hello, I need help with authentication",
-  metadata: null,
-  parentMessageId: null,
-  conversationId: null,
-  toolCalls: null,
   createdAt: "2026-01-24T12:00:00Z",
-};
+});
 
-const orchestratorMessage: ChatMessageType = {
+const orchestratorMessage: ChatMessageType = makeIdeationChatMessage({
   id: "msg-2",
-  sessionId: "session-1",
-  projectId: "project-1",
-  taskId: null,
   role: "orchestrator",
   content: "I can help you design an authentication system.",
-  metadata: null,
   parentMessageId: "msg-1",
-  conversationId: null,
-  toolCalls: null,
   createdAt: "2026-01-24T12:01:00Z",
-};
+});
 
-const systemMessage: ChatMessageType = {
+const systemMessage: ChatMessageType = makeIdeationChatMessage({
   id: "msg-3",
-  sessionId: "session-1",
-  projectId: "project-1",
-  taskId: null,
   role: "system",
   content: "Session started",
-  metadata: null,
-  parentMessageId: null,
-  conversationId: null,
-  toolCalls: null,
   createdAt: "2026-01-24T11:59:00Z",
-};
+});
 
-const markdownMessage: ChatMessageType = {
+const markdownMessage: ChatMessageType = makeIdeationChatMessage({
   id: "msg-4",
-  sessionId: "session-1",
-  projectId: "project-1",
-  taskId: null,
   role: "orchestrator",
   content:
     "Here's a **bold** suggestion:\n\n1. First step\n2. Second step\n\n```typescript\nconst auth = new Auth();\n```",
-  metadata: null,
-  parentMessageId: null,
-  conversationId: null,
-  toolCalls: null,
   createdAt: "2026-01-24T12:05:00Z",
-};
+});
 
-const messageWithToolCalls: ChatMessageType = {
+const messageWithToolCalls: ChatMessageType = makeIdeationChatMessage({
   id: "msg-5",
-  sessionId: "session-1",
-  projectId: "project-1",
-  taskId: null,
   role: "orchestrator",
   content: "I'll create a task proposal for you.",
-  metadata: null,
-  parentMessageId: null,
-  conversationId: null,
   toolCalls: JSON.stringify([
     {
       id: "call-1",
@@ -104,18 +72,12 @@ const messageWithToolCalls: ChatMessageType = {
     },
   ]),
   createdAt: "2026-01-24T12:10:00Z",
-};
+});
 
-const messageWithFailedToolCall: ChatMessageType = {
+const messageWithFailedToolCall: ChatMessageType = makeIdeationChatMessage({
   id: "msg-6",
-  sessionId: "session-1",
-  projectId: "project-1",
-  taskId: null,
   role: "orchestrator",
   content: "I tried to read the file but encountered an error.",
-  metadata: null,
-  parentMessageId: null,
-  conversationId: null,
   toolCalls: JSON.stringify([
     {
       id: "call-3",
@@ -127,7 +89,7 @@ const messageWithFailedToolCall: ChatMessageType = {
     },
   ]),
   createdAt: "2026-01-24T12:15:00Z",
-};
+});
 
 // ============================================================================
 // Tests
@@ -251,11 +213,11 @@ describe("ChatMessage", () => {
     });
 
     it("renders inline code", () => {
-      const inlineCodeMessage: ChatMessageType = {
+      const inlineCodeMessage: ChatMessageType = makeIdeationChatMessage({
         ...orchestratorMessage,
         id: "msg-inline",
         content: "Try using `useState` hook",
-      };
+      });
       render(<ChatMessage message={inlineCodeMessage} />);
 
       const codeElement = screen.getByText("useState");

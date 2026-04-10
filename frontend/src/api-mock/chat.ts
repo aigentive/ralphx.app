@@ -4,17 +4,23 @@
  * Mirrors the interface of src/api/chat.ts with mock implementations.
  */
 
-import {
-  normalizeConversationProviderMetadata,
-  type ChatConversation,
-  type ContextType,
+import type {
+  ChatConversation,
+  ContextType,
 } from "@/types/chat-conversation";
+import { normalizeConversationProviderMetadata } from "@/types/chat-conversation";
 import type {
   ChatMessageResponse,
   QueuedMessageResponse,
   SendAgentMessageResult,
 } from "@/api/chat";
 import { generateTestUuid } from "@/test/mock-data";
+import {
+  cloneMockChatMessage,
+  getMockChatScenario,
+  listMockChatScenarios,
+  type MockChatScenarioName,
+} from "./chat-scenarios";
 
 // ============================================================================
 // Mock State
@@ -23,6 +29,61 @@ import { generateTestUuid } from "@/test/mock-data";
 const mockConversations: Map<string, ChatConversation> = new Map();
 const mockMessages: Map<string, ChatMessageResponse[]> = new Map();
 const mockQueuedMessages: Map<string, QueuedMessageResponse[]> = new Map();
+
+export interface MockChatController {
+  reset(): void;
+  seedScenario(name: MockChatScenarioName): void;
+  listScenarios(): MockChatScenarioName[];
+  listConversations(
+    contextType: ContextType,
+    contextId: string
+  ): Promise<ChatConversation[]>;
+  getConversation(
+    conversationId: string
+  ): Promise<{ conversation: ChatConversation; messages: ChatMessageResponse[] }>;
+}
+
+export function resetMockChatState(): void {
+  mockConversations.clear();
+  mockMessages.clear();
+  mockQueuedMessages.clear();
+}
+
+export function seedMockChatScenario(name: MockChatScenarioName): void {
+  const scenario = getMockChatScenario(name);
+  resetMockChatState();
+
+  for (const conversation of scenario.conversations) {
+    mockConversations.set(conversation.id, conversation);
+  }
+
+  for (const [conversationId, messages] of Object.entries(scenario.messages)) {
+    mockMessages.set(
+      conversationId,
+      messages.map((message) => cloneMockChatMessage(message))
+    );
+  }
+
+  for (const [key, queued] of Object.entries(scenario.queuedMessages ?? {})) {
+    mockQueuedMessages.set(key, [...queued]);
+  }
+}
+
+function exposeMockChatController(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.__mockChatApi = {
+    reset: resetMockChatState,
+    seedScenario: seedMockChatScenario,
+    listScenarios: listMockChatScenarios,
+    listConversations: mockListConversations,
+    getConversation: mockGetConversation,
+  };
+}
+
+exposeMockChatController();
 
 // ============================================================================
 // Mock Chat API Functions
