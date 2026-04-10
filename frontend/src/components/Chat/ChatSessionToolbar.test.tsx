@@ -117,6 +117,32 @@ describe("ChatSessionToolbar", () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it("does not reserve an empty status slot for historical activity when the activity page flag is disabled", () => {
+    mockUseConversationStats.mockReturnValue({
+      data: null,
+      isLoading: false,
+    });
+    mockUseFeatureFlags.mockReturnValue({
+      data: { activityPage: false },
+    });
+
+    const { container } = render(
+      <ChatSessionToolbar
+        isAgentActive={false}
+        agentType="agent"
+        contextType="ideation"
+        contextId="session-1"
+        conversationId="conv-1"
+        hasActivity={true}
+        fallbackConversation={null}
+        fallbackMessages={null}
+      />,
+    );
+
+    expect(screen.queryByTestId("chat-session-toolbar-row")).not.toBeInTheDocument();
+    expect(container.firstChild).toBeNull();
+  });
+
   it("keeps provider context and live status on the same row", () => {
     mockUseConversationStats.mockReturnValue({
       data: makeStats(),

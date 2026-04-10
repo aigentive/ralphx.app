@@ -13,6 +13,7 @@ import { ModelChip } from "./ModelChip";
 import { EffortChip } from "./EffortChip";
 import { ConversationStatsPopover } from "./ConversationStatsPopover";
 import { useConversationStats } from "@/hooks/useConversationStats";
+import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 
 export interface ChatSessionToolbarProps {
   backAction?: {
@@ -55,6 +56,7 @@ export function ChatSessionToolbar({
   fallbackConversation,
   fallbackMessages,
 }: ChatSessionToolbarProps) {
+  const { data: featureFlags } = useFeatureFlags();
   const statsQuery = useConversationStats(conversationId ?? null, {
     fallbackConversation,
     fallbackMessages,
@@ -75,7 +77,10 @@ export function ChatSessionToolbar({
     modelDisplay != null ||
     effortKey != null ||
     showStats;
-  const showStatus = isAgentActive || agentStatus === "waiting_for_input" || hasActivity === true;
+  const showStatus =
+    isAgentActive ||
+    agentStatus === "waiting_for_input" ||
+    (hasActivity === true && featureFlags.activityPage === true);
 
   if (!backAction && !showProviderContext && !showStatus) {
     return null;
