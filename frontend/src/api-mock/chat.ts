@@ -44,6 +44,14 @@ type MockChildSessionStatusOverride = {
 export interface MockChatController {
   reset(): void;
   seedScenario(name: MockChatScenarioName): void;
+  seedConversation(
+    conversation: ChatConversation,
+    messages: ChatMessageResponse[]
+  ): void;
+  replaceMessages(
+    conversationId: string,
+    messages: ChatMessageResponse[]
+  ): void;
   listScenarios(): MockChatScenarioName[];
   getChildSessionStatus(sessionId: string): Promise<ChildSessionStatusResponse>;
   setChildSessionStatusOverride(
@@ -95,6 +103,53 @@ export function seedMockChatScenario(name: MockChatScenarioName): void {
   }
 }
 
+function cloneConversation(conversation: ChatConversation): ChatConversation {
+  return { ...conversation };
+}
+
+function refreshConversationMessageStats(conversationId: string): void {
+  const conversation = mockConversations.get(conversationId);
+  if (!conversation) {
+    return;
+  }
+
+  const messages = mockMessages.get(conversationId) ?? [];
+  const lastMessageAt =
+    messages.length > 0
+      ? messages[messages.length - 1]?.createdAt ?? conversation.lastMessageAt
+      : null;
+
+  mockConversations.set(conversationId, {
+    ...conversation,
+    messageCount: messages.length,
+    lastMessageAt,
+    updatedAt: lastMessageAt ?? conversation.updatedAt,
+  });
+}
+
+export function seedMockConversation(
+  conversation: ChatConversation,
+  messages: ChatMessageResponse[]
+): void {
+  mockConversations.set(conversation.id, cloneConversation(conversation));
+  mockMessages.set(
+    conversation.id,
+    messages.map((message) => cloneMockChatMessage(message))
+  );
+  refreshConversationMessageStats(conversation.id);
+}
+
+export function replaceMockConversationMessages(
+  conversationId: string,
+  messages: ChatMessageResponse[]
+): void {
+  mockMessages.set(
+    conversationId,
+    messages.map((message) => cloneMockChatMessage(message))
+  );
+  refreshConversationMessageStats(conversationId);
+}
+
 function exposeMockChatController(): void {
   if (typeof window === "undefined") {
     return;
@@ -103,6 +158,8 @@ function exposeMockChatController(): void {
   window.__mockChatApi = {
     reset: resetMockChatState,
     seedScenario: seedMockChatScenario,
+    seedConversation: seedMockConversation,
+    replaceMessages: replaceMockConversationMessages,
     listScenarios: listMockChatScenarios,
     getChildSessionStatus: mockGetChildSessionStatus,
     setChildSessionStatusOverride: mockSetChildSessionStatusOverride,
@@ -305,6 +362,10 @@ export async function mockIsAgentRunning(
 // ============================================================================
 
 export const mockChatApi = {
+  reset: resetMockChatState,
+  seedScenario: seedMockChatScenario,
+  seedConversation: seedMockConversation,
+  replaceMessages: replaceMockConversationMessages,
   listConversations: mockListConversations,
   getConversation: mockGetConversation,
   createConversation: mockCreateConversation,

@@ -15,6 +15,7 @@ use crate::domain::entities::{
 };
 use crate::domain::repositories::{StateHistoryMetadata, StatusTransition};
 use crate::error::AppResult;
+use crate::infrastructure::agents::claude::{ContentBlockItem, ToolCall};
 
 /// Configurable mock: `get_by_id` returns the stored task (or None).
 struct StubTaskRepo {
@@ -1024,6 +1025,132 @@ async fn test_handle_stream_error_cancelled_turns_finalized_re_increments_slot()
         count_after,
         1,
         "turns_finalized>0 path must re-increment slot once to compensate for TurnComplete's decrement"
+    );
+}
+
+#[tokio::test]
+async fn test_handle_stream_error_preserves_existing_content_blocks_when_appending_agent_error() {
+    let state = AppState::new_test();
+    let conversation_id = ChatConversationId::new();
+    let context_id = IdeationSessionId::new();
+    let pre_assistant_message = crate::application::chat_service::chat_service_context::create_assistant_message(
+        ChatContextType::Ideation,
+        context_id.as_str(),
+        "Recovered ideation response",
+        conversation_id.clone(),
+        &[ToolCall {
+            id: Some("tool-1".to_string()),
+            name: "ralphx::get_session_plan".to_string(),
+            arguments: serde_json::json!({ "session_id": context_id.as_str() }),
+            result: Some(serde_json::json!({ "status": "ok" })),
+            diff_context: None,
+            stats: None,
+        }],
+        &[
+            ContentBlockItem::Text {
+                text: "Recovered ideation response".to_string(),
+            },
+            ContentBlockItem::ToolUse {
+                id: Some("tool-1".to_string()),
+                name: "ralphx::get_session_plan".to_string(),
+                arguments: serde_json::json!({ "session_id": context_id.as_str() }),
+                result: Some(serde_json::json!({ "status": "ok" })),
+                diff_context: None,
+            },
+        ],
+    );
+    let pre_assistant_message_id = pre_assistant_message.id.as_str().to_string();
+    state
+        .chat_message_repo
+        .create(pre_assistant_message)
+        .await
+        .expect("insert pre-assistant message");
+
+    let event_ctx = crate::application::chat_service::event_context(
+        &conversation_id,
+        &ChatContextType::Ideation,
+        context_id.as_str(),
+    );
+    let stream_error = StreamError::AgentExit {
+        exit_code: Some(1),
+        stderr: "user cancelled MCP tool call".to_string(),
+    };
+
+    let recovery_spawned = handle_stream_error::<MockRuntime>(
+        "user cancelled MCP tool call",
+        Some(&stream_error),
+        ChatContextType::Ideation,
+        context_id.as_str(),
+        conversation_id,
+        "run-id-1",
+        &pre_assistant_message_id,
+        &event_ctx,
+        None,
+        crate::domain::agents::AgentHarnessKind::Codex,
+        false,
+        None,
+        None,
+        None,
+        std::path::Path::new("/tmp/codex"),
+        std::path::Path::new("/tmp/plugin"),
+        std::path::Path::new("/tmp"),
+        &state.chat_message_repo,
+        &state.chat_attachment_repo,
+        &state.artifact_repo,
+        &state.chat_conversation_repo,
+        &state.agent_run_repo,
+        &state.task_repo,
+        &state.task_dependency_repo,
+        &state.project_repo,
+        &state.ideation_session_repo,
+        &None,
+        &state.activity_event_repo,
+        &state.message_queue,
+        &state.running_agent_registry,
+        &state.memory_event_repo,
+        &None,
+        &None,
+        &None,
+        &None,
+        &None::<tauri::AppHandle<MockRuntime>>,
+        None,
+        false,
+        None,
+        &None,
+        &None,
+        &None,
+        &None,
+    )
+    .await;
+
+    assert!(
+        !recovery_spawned,
+        "generic agent error append path must not spawn recovery"
+    );
+
+    let stored = state
+        .chat_message_repo
+        .get_by_id(&ChatMessageId::from_string(pre_assistant_message_id))
+        .await
+        .expect("reload message")
+        .expect("message should still exist");
+
+    assert!(
+        stored.content.contains("[Agent error:"),
+        "agent error note should still be appended to the flushed assistant/orchestrator content"
+    );
+    assert!(
+        stored.content_blocks.is_some(),
+        "error finalization must preserve previously persisted content_blocks instead of clearing ordered widget hydration"
+    );
+    let blocks: serde_json::Value = serde_json::from_str(
+        stored.content_blocks.as_deref().expect("content blocks JSON should be present"),
+    )
+    .expect("content blocks should remain valid JSON");
+    assert_eq!(
+        blocks.as_array().map(|items| items.len()),
+        Some(2),
+        "the pre-error text + tool-use blocks should remain available for final replay rendering"
     );
 }
 

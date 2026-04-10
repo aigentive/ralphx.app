@@ -36,6 +36,7 @@ import { useTeamStore, selectTeammateByName, selectTeamMessages, EMPTY_TEAM_MESS
 import { ToolCallStoreKeyContext } from "./tool-widgets/ToolCallStoreKeyContext";
 import type { TeamMessage } from "@/stores/teamStore";
 import { TeamMessageBubble } from "./TeamMessageBubble";
+import { isProviderRole } from "@/lib/chat/provider-role";
 
 // ============================================================================
 // Constants
@@ -430,17 +431,17 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // assistant message if its content is empty/whitespace — prevents the empty "pill" flash.
     const hasActiveStreaming = (streamingContentBlocks && streamingContentBlocks.length > 0) ||
                               (streamingTasks && streamingTasks.size > 0);
-    const shouldFilterLastAssistant = hasActiveStreaming || isFinalizing;
+    const shouldFilterLastProviderMessage = hasActiveStreaming || isFinalizing;
 
     // When filter clears (streaming/finalizing ends), scroll to bottom so the newly
     // revealed finalized assistant message is visible.
     useEffect(() => {
       if (scrollToTimestamp) return; // Don't auto-scroll in history mode
-      if (prevShouldFilterRef.current && !shouldFilterLastAssistant) {
+      if (prevShouldFilterRef.current && !shouldFilterLastProviderMessage) {
         scrollToBottom();
       }
-      prevShouldFilterRef.current = shouldFilterLastAssistant;
-    }, [shouldFilterLastAssistant, scrollToBottom, scrollToTimestamp]);
+      prevShouldFilterRef.current = shouldFilterLastProviderMessage;
+    }, [shouldFilterLastProviderMessage, scrollToBottom, scrollToTimestamp]);
 
     const timeline = useMemo((): TimelineItem[] => {
       const items: TimelineItem[] = [];
@@ -452,22 +453,25 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       //
       // Use ID-based filtering: find the assistant message with the most recent createdAt
       // (with id as tiebreaker) so filtering is stable regardless of array order.
-      const filteredMessages = shouldFilterLastAssistant
+      const filteredMessages = shouldFilterLastProviderMessage
         ? (() => {
-            // Find the most recently created assistant message by timestamp (stable, not index)
-            let latestAssistantId: string | null = null;
-            let latestAssistantTime = -Infinity;
+            // Find the most recently created provider message by timestamp (stable, not index)
+            let latestProviderMessageId: string | null = null;
+            let latestProviderMessageTime = -Infinity;
             for (const msg of messages) {
-              if (msg.role === "assistant") {
+              if (isProviderRole(msg.role)) {
                 const t = new Date(msg.createdAt).getTime();
-                if (t > latestAssistantTime || (t === latestAssistantTime && msg.id > (latestAssistantId ?? ""))) {
-                  latestAssistantTime = t;
-                  latestAssistantId = msg.id;
+                if (
+                  t > latestProviderMessageTime ||
+                  (t === latestProviderMessageTime && msg.id > (latestProviderMessageId ?? ""))
+                ) {
+                  latestProviderMessageTime = t;
+                  latestProviderMessageId = msg.id;
                 }
               }
             }
-            if (latestAssistantId !== null) {
-              return messages.filter((msg) => msg.id !== latestAssistantId);
+            if (latestProviderMessageId !== null) {
+              return messages.filter((msg) => msg.id !== latestProviderMessageId);
             }
             return messages;
           })()
@@ -528,7 +532,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       }
 
       return items;
-    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, attachmentsMap, teamFilter, teamMessages]);
+    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastProviderMessage, attachmentsMap, teamFilter, teamMessages]);
 
     // Initial load scroll — fires when conversation changes and timeline populates.
     // Uses one-shot ResizeObserver on the scroller element to detect when virtual
@@ -725,7 +729,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       }
 
       // Look up teammate info if sender is present and message is from assistant
-      const { teammateName, teammateColor } = msg.role === "assistant"
+      const { teammateName, teammateColor } = isProviderRole(msg.role)
         ? getTeammateInfo(msg.sender)
         : { teammateName: null, teammateColor: null };
 
@@ -814,7 +818,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               } catch { /* not JSON, render normally */ }
             }
 
-            const { teammateName, teammateColor } = msg.role === "assistant"
+            const { teammateName, teammateColor } = isProviderRole(msg.role)
               ? getTeammateInfo(msg.sender)
               : { teammateName: null, teammateColor: null };
 

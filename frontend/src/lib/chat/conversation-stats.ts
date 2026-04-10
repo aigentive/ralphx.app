@@ -3,9 +3,10 @@ import type {
   ConversationStatsResponse,
 } from "@/api/chat";
 import type { ChatConversation } from "@/types/chat-conversation";
+import { isProviderRole } from "@/lib/chat/provider-role";
 
 function isProviderMessage(message: ChatMessageResponse): boolean {
-  return message.role !== "user" && message.role !== "system";
+  return isProviderRole(message.role);
 }
 
 function hasUsage(message: ChatMessageResponse): boolean {

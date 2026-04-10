@@ -21,6 +21,7 @@ import { useEventBus } from "@/providers/EventProvider";
 import { chatKeys } from "@/hooks/useChat";
 import { conversationStatsKey } from "@/hooks/useConversationStats";
 import { getContextConfig } from "@/lib/chat-context-registry";
+import { isProviderRole } from "@/lib/chat/provider-role";
 import type { ContextType } from "@/types/chat-conversation";
 import type { AgentRunCompletedPayload } from "@/types/events";
 import type { ToolCall } from "@/components/Chat/ToolCallIndicator";
@@ -446,7 +447,7 @@ export function useChatEvents({
         if (!payload.conversation_id) return;
         if (!isRelevant(payload)) return;
 
-        if (payload.role === "assistant") {
+        if (isProviderRole(payload.role)) {
           const convId = payload.conversation_id;
           const assistantMessageId = payload.message_id;
 

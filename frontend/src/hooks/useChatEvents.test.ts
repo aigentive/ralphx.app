@@ -516,6 +516,25 @@ describe("useChatEvents", () => {
       expect(props.setIsFinalizing).toHaveBeenCalledWith(true);
     });
 
+    it("should set isFinalizing=true on orchestrator message_created (same batch as clearing state)", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:message_created", {
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+          role: "orchestrator",
+        });
+      });
+
+      expect(props.setStreamingContentBlocks).toHaveBeenCalledTimes(1);
+      expect(props.setStreamingToolCalls).toHaveBeenCalledTimes(1);
+      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
+      expect(props.setIsFinalizing).toHaveBeenCalledTimes(1);
+      expect(props.setIsFinalizing).toHaveBeenCalledWith(true);
+    });
+
     it("should set isFinalizing=false after 3s safety timeout when no message_id provided", () => {
       vi.useFakeTimers();
       const props = makeProps();

@@ -216,6 +216,72 @@ describe("ChatMessageList - Scroll Behavior", () => {
       // Content rendered but scroll behavior controlled by hook
       expect(screen.getByText(/New content/)).toBeInTheDocument();
     });
+
+    it("filters the latest orchestrator provider row while ideation streaming content is visible", () => {
+      const messages: ChatMessageData[] = [
+        {
+          id: "msg-user",
+          role: "user",
+          content: "hello",
+          createdAt: new Date(2026, 0, 1, 12, 0).toISOString(),
+          toolCalls: null,
+          contentBlocks: null,
+        },
+        {
+          id: "msg-orchestrator",
+          role: "orchestrator",
+          content: "Persisted orchestrator message",
+          createdAt: new Date(2026, 0, 1, 12, 1).toISOString(),
+          toolCalls: null,
+          contentBlocks: null,
+        },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          isSending={true}
+          streamingContentBlocks={[{ type: "text", text: "Live ideation chunk" }]}
+        />
+      );
+
+      expect(screen.getByText("hello")).toBeInTheDocument();
+      expect(screen.getByText("Live ideation chunk")).toBeInTheDocument();
+      expect(screen.queryByText("Persisted orchestrator message")).not.toBeInTheDocument();
+    });
+
+    it("keeps the latest orchestrator provider row hidden while finalizing after streaming", () => {
+      const messages: ChatMessageData[] = [
+        {
+          id: "msg-user",
+          role: "user",
+          content: "hello",
+          createdAt: new Date(2026, 0, 1, 12, 0).toISOString(),
+          toolCalls: null,
+          contentBlocks: null,
+        },
+        {
+          id: "msg-orchestrator",
+          role: "orchestrator",
+          content: "Persisted orchestrator message",
+          createdAt: new Date(2026, 0, 1, 12, 1).toISOString(),
+          toolCalls: null,
+          contentBlocks: null,
+        },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          isFinalizing={true}
+        />
+      );
+
+      expect(screen.getByText("hello")).toBeInTheDocument();
+      expect(screen.queryByText("Persisted orchestrator message")).not.toBeInTheDocument();
+    });
   });
 
   describe("manual scroll detection", () => {

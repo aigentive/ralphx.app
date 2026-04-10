@@ -508,20 +508,20 @@ pub(super) async fn apply_system_wide_provider_pause<R: Runtime>(
     );
 }
 
-/// Read existing message content and tool_calls from the database.
+/// Read existing message content, tool_calls, and content_blocks from the database.
 ///
 /// Used before error finalization to preserve any content that was flushed
 /// during streaming, so the error note is appended rather than overwriting.
 async fn read_existing_message_content(
     chat_message_repo: &Arc<dyn ChatMessageRepository>,
     message_id: &str,
-) -> (String, Option<String>) {
+) -> (String, Option<String>, Option<String>) {
     match chat_message_repo
         .get_by_id(&ChatMessageId::from_string(message_id.to_string()))
         .await
     {
-        Ok(Some(msg)) => (msg.content, msg.tool_calls),
-        _ => (String::new(), None),
+        Ok(Some(msg)) => (msg.content, msg.tool_calls, msg.content_blocks),
+        _ => (String::new(), None, None),
     }
 }
 
@@ -1313,7 +1313,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
             .await;
 
         // Update pre-created message — append stop note to any content already flushed
-        let (existing_content, existing_tool_calls) =
+        let (existing_content, existing_tool_calls, existing_content_blocks) =
             read_existing_message_content(chat_message_repo, pre_assistant_msg_id).await;
         let stop_note = if existing_content.is_empty() {
             "[Agent stopped]".to_string()
@@ -1328,7 +1328,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
             &get_assistant_role(&context_type).to_string(),
             &stop_note,
             existing_tool_calls.as_deref(),
-            None,
+            existing_content_blocks.as_deref(),
         )
         .await;
 
@@ -1623,7 +1623,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     }
 
     // Read existing content before overwriting — append error to any content already flushed
-    let (existing_content, existing_tool_calls) =
+    let (existing_content, existing_tool_calls, existing_content_blocks) =
         read_existing_message_content(chat_message_repo, pre_assistant_msg_id).await;
     let error_note = if existing_content.is_empty() {
         format!("{} {}]", super::AGENT_ERROR_PREFIX, redacted_error)
@@ -1643,7 +1643,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
         &get_assistant_role(&context_type).to_string(),
         &error_note,
         existing_tool_calls.as_deref(),
-        None,
+        existing_content_blocks.as_deref(),
     )
     .await;
 
