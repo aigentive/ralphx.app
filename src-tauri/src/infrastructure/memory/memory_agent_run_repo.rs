@@ -5,7 +5,8 @@ use std::collections::HashMap;
 use tokio::sync::RwLock;
 
 use crate::domain::entities::{
-    AgentRun, AgentRunId, AgentRunStatus, AgentRunUsage, ChatConversationId,
+    AgentRun, AgentRunAttribution, AgentRunId, AgentRunStatus, AgentRunUsage,
+    ChatConversationId,
     InterruptedConversation,
 };
 use crate::domain::repositories::AgentRunRepository;
@@ -93,6 +94,18 @@ impl AgentRunRepository for MemoryAgentRunRepository {
         let mut runs = self.runs.write().await;
         if let Some(run) = runs.get_mut(id) {
             run.apply_usage(usage);
+        }
+        Ok(())
+    }
+
+    async fn update_attribution(
+        &self,
+        id: &AgentRunId,
+        attribution: &AgentRunAttribution,
+    ) -> AppResult<()> {
+        let mut runs = self.runs.write().await;
+        if let Some(run) = runs.get_mut(id) {
+            run.apply_attribution(attribution);
         }
         Ok(())
     }

@@ -1,6 +1,6 @@
 use super::*;
 use crate::domain::agents::{AgentHarnessKind, LogicalEffort};
-use crate::domain::entities::AgentRunUsage;
+use crate::domain::entities::{AgentRunAttribution, AgentRunUsage};
 
 #[tokio::test]
 async fn test_create_and_get() {
@@ -89,6 +89,40 @@ async fn test_update_usage() {
     assert_eq!(retrieved.cache_creation_tokens, Some(5));
     assert_eq!(retrieved.cache_read_tokens, Some(10));
     assert_eq!(retrieved.estimated_usd, Some(0.0035));
+}
+
+#[tokio::test]
+async fn test_update_attribution() {
+    let repo = MemoryAgentRunRepository::new();
+    let conversation_id = ChatConversationId::new();
+    let run = AgentRun::new(conversation_id);
+    let id = run.id;
+
+    repo.create(run).await.unwrap();
+    repo.update_attribution(
+        &id,
+        &AgentRunAttribution {
+            harness: Some(AgentHarnessKind::Claude),
+            provider_session_id: Some("claude-session-456".to_string()),
+            logical_model: Some("glm-4.7".to_string()),
+            effective_model_id: Some("glm-4.7".to_string()),
+            logical_effort: Some(LogicalEffort::High),
+            effective_effort: Some("high".to_string()),
+        },
+    )
+    .await
+    .unwrap();
+
+    let retrieved = repo.get_by_id(&id).await.unwrap().unwrap();
+    assert_eq!(retrieved.harness, Some(AgentHarnessKind::Claude));
+    assert_eq!(
+        retrieved.provider_session_id.as_deref(),
+        Some("claude-session-456")
+    );
+    assert_eq!(retrieved.logical_model.as_deref(), Some("glm-4.7"));
+    assert_eq!(retrieved.effective_model_id.as_deref(), Some("glm-4.7"));
+    assert_eq!(retrieved.logical_effort, Some(LogicalEffort::High));
+    assert_eq!(retrieved.effective_effort.as_deref(), Some("high"));
 }
 
 #[tokio::test]

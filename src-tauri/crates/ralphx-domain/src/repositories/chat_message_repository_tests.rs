@@ -1,6 +1,6 @@
 use super::*;
 use crate::agents::ProviderSessionRef;
-use crate::domain::entities::AgentRunUsage;
+use crate::domain::entities::{AgentRunUsage, ChatMessageAttribution};
 use std::sync::Arc;
 
 // Mock implementation for testing trait object usage
@@ -183,6 +183,14 @@ impl ChatMessageRepository for MockChatMessageRepository {
     }
 
     async fn update_usage(&self, _id: &ChatMessageId, _usage: &AgentRunUsage) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn update_attribution(
+        &self,
+        _id: &ChatMessageId,
+        _attribution: &ChatMessageAttribution,
+    ) -> AppResult<()> {
         Ok(())
     }
 

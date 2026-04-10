@@ -9,8 +9,8 @@ use rusqlite::Connection;
 
 use crate::domain::agents::ProviderSessionRef;
 use crate::domain::entities::{
-    AgentRunUsage, ChatConversationId, ChatMessage, ChatMessageId, IdeationSessionId, ProjectId,
-    TaskId,
+    AgentRunUsage, ChatConversationId, ChatMessage, ChatMessageAttribution, ChatMessageId,
+    IdeationSessionId, ProjectId, TaskId,
 };
 use crate::domain::repositories::ChatMessageRepository;
 use crate::error::AppResult;
@@ -307,6 +307,41 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
                         usage.cache_creation_tokens,
                         usage.cache_read_tokens,
                         usage.estimated_usd,
+                        id_str,
+                    ],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn update_attribution(
+        &self,
+        id: &ChatMessageId,
+        attribution: &ChatMessageAttribution,
+    ) -> AppResult<()> {
+        let id_str = id.as_str().to_string();
+        let attribution = attribution.clone();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE chat_messages
+                     SET attribution_source = COALESCE(?1, attribution_source),
+                         provider_harness = COALESCE(?2, provider_harness),
+                         provider_session_id = COALESCE(?3, provider_session_id),
+                         logical_model = COALESCE(?4, logical_model),
+                         effective_model_id = COALESCE(?5, effective_model_id),
+                         logical_effort = COALESCE(?6, logical_effort),
+                         effective_effort = COALESCE(?7, effective_effort)
+                     WHERE id = ?8",
+                    rusqlite::params![
+                        attribution.attribution_source,
+                        attribution.provider_harness.map(|value| value.to_string()),
+                        attribution.provider_session_id,
+                        attribution.logical_model,
+                        attribution.effective_model_id,
+                        attribution.logical_effort.map(|value| value.to_string()),
+                        attribution.effective_effort,
                         id_str,
                     ],
                 )?;

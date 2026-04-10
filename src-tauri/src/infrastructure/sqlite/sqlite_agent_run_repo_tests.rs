@@ -1,6 +1,6 @@
 use super::*;
 use crate::domain::agents::{AgentHarnessKind, LogicalEffort, ProviderSessionRef};
-use crate::domain::entities::{AgentRunUsage, IdeationSessionId};
+use crate::domain::entities::{AgentRunAttribution, AgentRunUsage, IdeationSessionId};
 use crate::testing::SqliteTestDb;
 
 fn setup_repo() -> (SqliteTestDb, SqliteAgentRunRepository) {
@@ -220,6 +220,41 @@ async fn test_create_and_get_by_id() {
     assert_eq!(r.estimated_usd, Some(0.0215));
     assert_eq!(r.approval_policy, Some("on-request".to_string()));
     assert_eq!(r.sandbox_mode, Some("workspace-write".to_string()));
+}
+
+#[tokio::test]
+async fn test_update_attribution_updates_agent_run_metadata_fields() {
+    let (db, repo) = setup_repo();
+    let conv = db.seed_ideation_conversation();
+
+    let run = AgentRun::new(conv.id);
+    let run_id = run.id;
+    repo.create(run).await.unwrap();
+
+    repo.update_attribution(
+        &run_id,
+        &AgentRunAttribution {
+            harness: Some(AgentHarnessKind::Claude),
+            provider_session_id: Some("claude-session-321".to_string()),
+            logical_model: Some("glm-4.7".to_string()),
+            effective_model_id: Some("glm-4.7".to_string()),
+            logical_effort: Some(LogicalEffort::High),
+            effective_effort: Some("high".to_string()),
+        },
+    )
+    .await
+    .unwrap();
+
+    let retrieved = repo.get_by_id(&run_id).await.unwrap().unwrap();
+    assert_eq!(retrieved.harness, Some(AgentHarnessKind::Claude));
+    assert_eq!(
+        retrieved.provider_session_id.as_deref(),
+        Some("claude-session-321")
+    );
+    assert_eq!(retrieved.logical_model.as_deref(), Some("glm-4.7"));
+    assert_eq!(retrieved.effective_model_id.as_deref(), Some("glm-4.7"));
+    assert_eq!(retrieved.logical_effort, Some(LogicalEffort::High));
+    assert_eq!(retrieved.effective_effort.as_deref(), Some("high"));
 }
 
 #[tokio::test]

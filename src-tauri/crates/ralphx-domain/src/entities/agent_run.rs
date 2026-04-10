@@ -135,6 +135,22 @@ pub struct AgentRunUsage {
     pub estimated_usd: Option<f64>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct AgentRunAttribution {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub harness: Option<AgentHarnessKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_model_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_effort: Option<LogicalEffort>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_effort: Option<String>,
+}
+
 impl AgentRunUsage {
     pub fn is_empty(&self) -> bool {
         self.input_tokens.is_none()
@@ -309,6 +325,27 @@ impl AgentRun {
         }
         if let Some(value) = usage.estimated_usd {
             self.estimated_usd = Some(value);
+        }
+    }
+
+    pub fn apply_attribution(&mut self, attribution: &AgentRunAttribution) {
+        if let Some(value) = attribution.harness {
+            self.harness = Some(value);
+        }
+        if let Some(value) = attribution.provider_session_id.as_ref() {
+            self.provider_session_id = Some(value.clone());
+        }
+        if let Some(value) = attribution.logical_model.as_ref() {
+            self.logical_model = Some(value.clone());
+        }
+        if let Some(value) = attribution.effective_model_id.as_ref() {
+            self.effective_model_id = Some(value.clone());
+        }
+        if let Some(value) = attribution.logical_effort {
+            self.logical_effort = Some(value);
+        }
+        if let Some(value) = attribution.effective_effort.as_ref() {
+            self.effective_effort = Some(value.clone());
         }
     }
 

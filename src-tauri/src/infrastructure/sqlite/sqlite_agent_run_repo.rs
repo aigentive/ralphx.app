@@ -26,8 +26,8 @@ fn parse_datetime(s: &str) -> DateTime<Utc> {
 }
 
 use crate::domain::entities::{
-    AgentRun, AgentRunId, AgentRunStatus, AgentRunUsage, ChatContextType, ChatConversation,
-    ChatConversationId, InterruptedConversation,
+    AgentRun, AgentRunAttribution, AgentRunId, AgentRunStatus, AgentRunUsage, ChatContextType,
+    ChatConversation, ChatConversationId, InterruptedConversation,
 };
 
 /// Map a SQLite row to an AgentRun (expects columns: id, conversation_id, status,
@@ -252,6 +252,39 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                         usage.cache_creation_tokens,
                         usage.cache_read_tokens,
                         usage.estimated_usd,
+                        id,
+                    ],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn update_attribution(
+        &self,
+        id: &AgentRunId,
+        attribution: &AgentRunAttribution,
+    ) -> AppResult<()> {
+        let id = id.as_str().to_string();
+        let attribution = attribution.clone();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE agent_runs
+                     SET harness = COALESCE(?1, harness),
+                         provider_session_id = COALESCE(?2, provider_session_id),
+                         logical_model = COALESCE(?3, logical_model),
+                         effective_model_id = COALESCE(?4, effective_model_id),
+                         logical_effort = COALESCE(?5, logical_effort),
+                         effective_effort = COALESCE(?6, effective_effort)
+                     WHERE id = ?7",
+                    rusqlite::params![
+                        attribution.harness.map(|value| value.to_string()),
+                        attribution.provider_session_id,
+                        attribution.logical_model,
+                        attribution.effective_model_id,
+                        attribution.logical_effort.map(|value| value.to_string()),
+                        attribution.effective_effort,
                         id,
                     ],
                 )?;

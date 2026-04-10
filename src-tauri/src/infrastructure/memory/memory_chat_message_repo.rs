@@ -9,8 +9,8 @@ use async_trait::async_trait;
 
 use crate::domain::agents::ProviderSessionRef;
 use crate::domain::entities::{
-    AgentRunUsage, ChatConversationId, ChatMessage, ChatMessageId, IdeationSessionId,
-    MessageRole, ProjectId, TaskId,
+    AgentRunUsage, ChatConversationId, ChatMessage, ChatMessageAttribution, ChatMessageId,
+    IdeationSessionId, MessageRole, ProjectId, TaskId,
 };
 use crate::domain::repositories::ChatMessageRepository;
 use crate::error::AppResult;
@@ -218,6 +218,18 @@ impl ChatMessageRepository for MemoryChatMessageRepository {
         let mut messages = self.messages.write().unwrap();
         if let Some(message) = messages.get_mut(&id.to_string()) {
             message.apply_usage(usage);
+        }
+        Ok(())
+    }
+
+    async fn update_attribution(
+        &self,
+        id: &ChatMessageId,
+        attribution: &ChatMessageAttribution,
+    ) -> AppResult<()> {
+        let mut messages = self.messages.write().unwrap();
+        if let Some(message) = messages.get_mut(&id.to_string()) {
+            message.apply_attribution(attribution);
         }
         Ok(())
     }

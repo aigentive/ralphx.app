@@ -254,7 +254,11 @@ pub(crate) async fn run_startup_pipeline(deps: StartupPipelineDeps) -> AppResult
     });
     chat_resumption.run().await;
 
-    startup_background::spawn_chat_attribution_backfill(Arc::clone(&conversation_repo));
+    startup_background::spawn_chat_attribution_backfill(
+        Arc::clone(&conversation_repo),
+        Arc::clone(&chat_message_repo),
+        Arc::clone(&agent_run_repo),
+    );
 
     let reconcile_transition_service = Arc::new(startup_transition_factory.build(
         core_runtime_deps,

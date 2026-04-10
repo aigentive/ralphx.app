@@ -1,6 +1,6 @@
 use super::*;
 use crate::agents::{AgentHarnessKind, LogicalEffort};
-use crate::domain::entities::{AgentRun, AgentRunUsage, ChatConversationId};
+use crate::domain::entities::{AgentRun, AgentRunAttribution, AgentRunUsage, ChatConversationId};
 use std::sync::Arc;
 
 // Mock implementation for testing trait object usage
@@ -68,6 +68,14 @@ impl AgentRunRepository for MockAgentRunRepository {
     }
 
     async fn update_usage(&self, _id: &AgentRunId, _usage: &AgentRunUsage) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn update_attribution(
+        &self,
+        _id: &AgentRunId,
+        _attribution: &AgentRunAttribution,
+    ) -> AppResult<()> {
         Ok(())
     }
 

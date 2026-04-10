@@ -333,6 +333,30 @@ impl ChatMessage {
         self.provider_session_id = Some(session_ref.provider_session_id.clone());
     }
 
+    pub fn apply_attribution(&mut self, attribution: &ChatMessageAttribution) {
+        if let Some(value) = attribution.attribution_source.as_ref() {
+            self.attribution_source = Some(value.clone());
+        }
+        if let Some(value) = attribution.provider_harness {
+            self.provider_harness = Some(value);
+        }
+        if let Some(value) = attribution.provider_session_id.as_ref() {
+            self.provider_session_id = Some(value.clone());
+        }
+        if let Some(value) = attribution.logical_model.as_ref() {
+            self.logical_model = Some(value.clone());
+        }
+        if let Some(value) = attribution.effective_model_id.as_ref() {
+            self.effective_model_id = Some(value.clone());
+        }
+        if let Some(value) = attribution.logical_effort {
+            self.logical_effort = Some(value);
+        }
+        if let Some(value) = attribution.effective_effort.as_ref() {
+            self.effective_effort = Some(value.clone());
+        }
+    }
+
     pub fn apply_usage(&mut self, usage: &AgentRunUsage) {
         if let Some(value) = usage.input_tokens {
             self.input_tokens = Some(value);

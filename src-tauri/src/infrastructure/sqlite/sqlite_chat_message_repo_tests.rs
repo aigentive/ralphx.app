@@ -357,6 +357,51 @@ async fn test_update_usage_updates_message_usage_fields() {
     assert_eq!(found.estimated_usd, Some(0.19));
 }
 
+#[tokio::test]
+async fn test_update_attribution_updates_message_attribution_fields() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
+
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
+    let message = ChatMessage::orchestrator_in_session(session_id, "Attribution update");
+    repo.create(message.clone()).await.unwrap();
+
+    repo.update_attribution(
+        &message.id,
+        &ChatMessageAttribution {
+            attribution_source: Some("historical_backfill_claude_project_jsonl_anthropic".to_string()),
+            provider_harness: Some(AgentHarnessKind::Claude),
+            provider_session_id: Some("claude-session-999".to_string()),
+            logical_model: Some("claude-sonnet-4-6".to_string()),
+            effective_model_id: Some("claude-sonnet-4-6".to_string()),
+            logical_effort: Some(LogicalEffort::Medium),
+            effective_effort: Some("medium".to_string()),
+        },
+    )
+    .await
+    .unwrap();
+
+    let found = repo.get_by_id(&message.id).await.unwrap().unwrap();
+    assert_eq!(
+        found.attribution_source.as_deref(),
+        Some("historical_backfill_claude_project_jsonl_anthropic")
+    );
+    assert_eq!(found.provider_harness, Some(AgentHarnessKind::Claude));
+    assert_eq!(
+        found.provider_session_id.as_deref(),
+        Some("claude-session-999")
+    );
+    assert_eq!(found.logical_model.as_deref(), Some("claude-sonnet-4-6"));
+    assert_eq!(
+        found.effective_model_id.as_deref(),
+        Some("claude-sonnet-4-6")
+    );
+    assert_eq!(found.logical_effort, Some(LogicalEffort::Medium));
+    assert_eq!(found.effective_effort.as_deref(), Some("medium"));
+}
+
 // ==================== GET BY SESSION TESTS ====================
 
 #[tokio::test]

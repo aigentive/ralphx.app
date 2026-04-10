@@ -35,7 +35,10 @@ pub use activity_event::{
     ActivityEvent, ActivityEventId, ActivityEventRole, ActivityEventType,
     ParseActivityEventRoleError, ParseActivityEventTypeError,
 };
-pub use agent_run::{AgentRun, AgentRunId, AgentRunStatus, AgentRunUsage, InterruptedConversation};
+pub use agent_run::{
+    AgentRun, AgentRunAttribution, AgentRunId, AgentRunStatus, AgentRunUsage,
+    InterruptedConversation,
+};
 pub use event_type::{EventType, ParseEventTypeError};
 pub use api_key::{
     ApiKey, AuditLogEntry, PERMISSION_ADMIN, PERMISSION_CREATE_PROJECT, PERMISSION_MAX,
