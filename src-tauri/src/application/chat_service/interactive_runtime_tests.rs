@@ -80,6 +80,37 @@ fn conversation_spawn_harness_override_skips_parent_for_retry() {
 }
 
 #[test]
+fn conversation_spawn_harness_override_skips_parent_without_continuation_metadata() {
+    let task_id = TaskId::from_string("task-parent-3".to_string());
+    let child = ChatConversation::new_task_execution(task_id.clone());
+    let mut parent = ChatConversation::new_task_execution(task_id);
+    parent.set_provider_session_ref(ProviderSessionRef {
+        harness: AgentHarnessKind::Codex,
+        provider_session_id: "codex-parent-session".to_string(),
+    });
+
+    let harness =
+        conversation_spawn_harness_override(ChatContextType::TaskExecution, None, &child, Some(&parent));
+
+    assert_eq!(harness, None);
+}
+
+#[test]
+fn conversation_spawn_harness_override_skips_parent_for_merge_new_attempt() {
+    let task_id = TaskId::from_string("task-parent-4".to_string());
+    let child = ChatConversation::new_merge(task_id.clone());
+    let mut parent = ChatConversation::new_merge(task_id);
+    parent.set_provider_session_ref(ProviderSessionRef {
+        harness: AgentHarnessKind::Codex,
+        provider_session_id: "codex-parent-session".to_string(),
+    });
+
+    let harness = conversation_spawn_harness_override(ChatContextType::Merge, None, &child, Some(&parent));
+
+    assert_eq!(harness, None);
+}
+
+#[test]
 fn should_inherit_parent_harness_for_fresh_spawn_allows_startup_recovery() {
     assert!(should_inherit_parent_harness_for_fresh_spawn(
         ChatContextType::Merge,

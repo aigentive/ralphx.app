@@ -159,7 +159,7 @@ When working in `src-tauri/`, also follow:
 | Priority | Item | Status | Note |
 |---|---|---|---|
 | P0 | P0.1 Reviewer fresh-cycle harness semantics | Completed | Landed: fresh reviewer cycles now ignore stale stored provider harness lineage for spawn settings, while review-chat continuations still preserve stored provider session behavior |
-| P0 | P0.2 Stopped restart semantics by lane | Planned | Verify worker/re-execution/reviewer/merger restarts obey continuation-vs-new-attempt rules after settings changes |
+| P0 | P0.2 Stopped restart semantics by lane | Completed | Landed: manual stopped restarts now have explicit proof coverage for the rule that reviewer fresh cycles use current settings, while task/merge fresh spawns without continuation metadata do not inherit parent provider lineage; this keeps worker, re-execution, and merger restarts on the new-attempt path unless an explicit continuation override exists |
 | P0 | P0.3 Startup recovery semantics by lane | Planned | Verify startup recovery relaunches preserve lineage for execution/review/merge without regressing new-attempt behavior |
 | P0 | P0.4 Merge retry and merge-conflict relaunch semantics | Planned | Audit merge retry/conflict paths so Codex runtime selection follows canonical stored lineage where appropriate |
 | P0 | P0.5 Re-execution semantics after settings change | Planned | Verify explicit retry/re-execution paths switch to current settings unless an explicit harness override exists |
