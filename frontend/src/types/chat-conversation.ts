@@ -68,6 +68,8 @@ export const ChatConversationSchema = z.object({
   claudeSessionId: z.string().nullable().optional(),
   providerSessionId: z.string().nullable(),
   providerHarness: ProviderHarnessSchema.nullable(),
+  upstreamProvider: z.string().nullable().optional(),
+  providerProfile: z.string().nullable().optional(),
   title: z.string().nullable(),
   messageCount: z.number().int().min(0),
   lastMessageAt: z.string().datetime().nullable(),

@@ -7,6 +7,7 @@ pub mod api_key_commands;
 pub mod agent_profile_commands;
 pub mod artifact_commands;
 pub mod chat_attachment_commands;
+pub mod conversation_stats_commands;
 pub mod chat_responses;
 pub mod diagnostic_commands;
 pub mod diff_commands;
@@ -64,6 +65,11 @@ pub use chat_attachment_commands::{
     delete_chat_attachment, link_attachments_to_message, list_conversation_attachments,
     list_message_attachments, upload_chat_attachment, ChatAttachmentResponse, LinkAttachmentsInput,
     UploadChatAttachmentInput,
+};
+pub use conversation_stats_commands::{
+    build_conversation_stats_response, get_agent_conversation_stats,
+    ConversationAttributionCoverageResponse, ConversationStatsResponse,
+    ConversationUsageCoverageResponse, UsageBucketResponse, UsageTotalsResponse,
 };
 pub use chat_responses::ChatMessageResponse;
 pub use diagnostic_commands::{

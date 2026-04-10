@@ -5,6 +5,7 @@ import {
   parseToolCalls,
   listConversations,
   getConversation,
+  getConversationStats,
   createConversation,
   getAgentRunStatus,
   sendAgentMessage,
@@ -68,6 +69,8 @@ describe("chat api", () => {
       contextId: "p1",
       providerSessionId: "thread-1",
       providerHarness: "codex",
+      upstreamProvider: null,
+      providerProfile: null,
       claudeSessionId: null,
     });
   });
@@ -181,6 +184,93 @@ describe("chat api", () => {
 
     expect(mockInvoke).toHaveBeenCalledWith("get_agent_conversation", { conversationId: "c1" });
     expect(result.messages[0]).toMatchObject({ id: "m1", createdAt: "2026-01-24T10:00:00Z" });
+  });
+
+  it("gets conversation stats with camelCase totals and buckets", async () => {
+    mockInvoke.mockResolvedValue({
+      conversation_id: "c1",
+      context_type: "project",
+      context_id: "p1",
+      provider_harness: "codex",
+      upstream_provider: "openai",
+      provider_profile: null,
+      attribution_backfill_status: null,
+      attribution_backfill_source: null,
+      message_usage_totals: {
+        input_tokens: 120,
+        output_tokens: 40,
+        cache_creation_tokens: 5,
+        cache_read_tokens: 8,
+        estimated_usd: 0.42,
+      },
+      run_usage_totals: {
+        input_tokens: 999,
+        output_tokens: 111,
+        cache_creation_tokens: 0,
+        cache_read_tokens: 0,
+        estimated_usd: 1.25,
+      },
+      effective_usage_totals: {
+        input_tokens: 120,
+        output_tokens: 40,
+        cache_creation_tokens: 5,
+        cache_read_tokens: 8,
+        estimated_usd: 0.42,
+      },
+      usage_coverage: {
+        provider_message_count: 1,
+        provider_messages_with_usage: 1,
+        run_count: 1,
+        runs_with_usage: 1,
+        effective_totals_source: "messages",
+      },
+      attribution_coverage: {
+        provider_message_count: 1,
+        provider_messages_with_attribution: 1,
+        run_count: 1,
+        runs_with_attribution: 1,
+      },
+      by_harness: [{
+        key: "codex",
+        count: 1,
+        usage: {
+          input_tokens: 120,
+          output_tokens: 40,
+          cache_creation_tokens: 5,
+          cache_read_tokens: 8,
+          estimated_usd: 0.42,
+        },
+      }],
+      by_upstream_provider: [],
+      by_model: [],
+      by_effort: [],
+    });
+
+    const result = await getConversationStats("c1");
+
+    expect(mockInvoke).toHaveBeenCalledWith("get_agent_conversation_stats", {
+      conversationId: "c1",
+    });
+    expect(result).toMatchObject({
+      conversationId: "c1",
+      providerHarness: "codex",
+      upstreamProvider: "openai",
+      usageCoverage: {
+        effectiveTotalsSource: "messages",
+      },
+      effectiveUsageTotals: {
+        inputTokens: 120,
+        estimatedUsd: 0.42,
+      },
+      byHarness: [
+        {
+          key: "codex",
+          usage: {
+            inputTokens: 120,
+          },
+        },
+      ],
+    });
   });
 
   it("creates conversation", async () => {

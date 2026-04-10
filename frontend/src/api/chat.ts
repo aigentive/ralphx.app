@@ -261,6 +261,8 @@ const ChatConversationResponseSchema = z.object({
   claude_session_id: z.string().nullable(),
   provider_session_id: z.string().nullable().optional(),
   provider_harness: z.string().min(1).nullable().optional(),
+  upstream_provider: z.string().nullable().optional(),
+  provider_profile: z.string().nullable().optional(),
   title: z.string().nullable(),
   message_count: z.number(),
   last_message_at: z.string().nullable(),
@@ -294,11 +296,165 @@ function transformConversation(raw: RawConversation): ChatConversation {
     contextType: raw.context_type as ContextType,
     contextId: raw.context_id,
     ...providerMetadata,
+    upstreamProvider: raw.upstream_provider ?? null,
+    providerProfile: raw.provider_profile ?? null,
     title: raw.title,
     messageCount: raw.message_count,
     lastMessageAt: raw.last_message_at,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
+  };
+}
+
+export interface UsageTotalsResponse {
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  estimatedUsd: number | null;
+}
+
+export interface UsageBucketResponse {
+  key: string;
+  count: number;
+  usage: UsageTotalsResponse;
+}
+
+export interface ConversationUsageCoverageResponse {
+  providerMessageCount: number;
+  providerMessagesWithUsage: number;
+  runCount: number;
+  runsWithUsage: number;
+  effectiveTotalsSource: string;
+}
+
+export interface ConversationAttributionCoverageResponse {
+  providerMessageCount: number;
+  providerMessagesWithAttribution: number;
+  runCount: number;
+  runsWithAttribution: number;
+}
+
+export interface ConversationStatsResponse {
+  conversationId: string;
+  contextType: ContextType;
+  contextId: string;
+  providerHarness: string | null;
+  upstreamProvider: string | null;
+  providerProfile: string | null;
+  attributionBackfillStatus: string | null;
+  attributionBackfillSource: string | null;
+  messageUsageTotals: UsageTotalsResponse;
+  runUsageTotals: UsageTotalsResponse;
+  effectiveUsageTotals: UsageTotalsResponse;
+  usageCoverage: ConversationUsageCoverageResponse;
+  attributionCoverage: ConversationAttributionCoverageResponse;
+  byHarness: UsageBucketResponse[];
+  byUpstreamProvider: UsageBucketResponse[];
+  byModel: UsageBucketResponse[];
+  byEffort: UsageBucketResponse[];
+}
+
+const UsageTotalsResponseSchema = z.object({
+  input_tokens: z.number(),
+  output_tokens: z.number(),
+  cache_creation_tokens: z.number(),
+  cache_read_tokens: z.number(),
+  estimated_usd: z.number().nullable(),
+});
+
+const UsageBucketResponseSchema = z.object({
+  key: z.string(),
+  count: z.number(),
+  usage: UsageTotalsResponseSchema,
+});
+
+const ConversationUsageCoverageResponseSchema = z.object({
+  provider_message_count: z.number(),
+  provider_messages_with_usage: z.number(),
+  run_count: z.number(),
+  runs_with_usage: z.number(),
+  effective_totals_source: z.string(),
+});
+
+const ConversationAttributionCoverageResponseSchema = z.object({
+  provider_message_count: z.number(),
+  provider_messages_with_attribution: z.number(),
+  run_count: z.number(),
+  runs_with_attribution: z.number(),
+});
+
+const ConversationStatsResponseSchema = z.object({
+  conversation_id: z.string(),
+  context_type: z.string(),
+  context_id: z.string(),
+  provider_harness: z.string().nullable(),
+  upstream_provider: z.string().nullable(),
+  provider_profile: z.string().nullable(),
+  attribution_backfill_status: z.string().nullable(),
+  attribution_backfill_source: z.string().nullable(),
+  message_usage_totals: UsageTotalsResponseSchema,
+  run_usage_totals: UsageTotalsResponseSchema,
+  effective_usage_totals: UsageTotalsResponseSchema,
+  usage_coverage: ConversationUsageCoverageResponseSchema,
+  attribution_coverage: ConversationAttributionCoverageResponseSchema,
+  by_harness: z.array(UsageBucketResponseSchema),
+  by_upstream_provider: z.array(UsageBucketResponseSchema),
+  by_model: z.array(UsageBucketResponseSchema),
+  by_effort: z.array(UsageBucketResponseSchema),
+});
+
+type RawConversationStats = z.infer<typeof ConversationStatsResponseSchema>;
+
+function transformUsageTotals(raw: z.infer<typeof UsageTotalsResponseSchema>): UsageTotalsResponse {
+  return {
+    inputTokens: raw.input_tokens,
+    outputTokens: raw.output_tokens,
+    cacheCreationTokens: raw.cache_creation_tokens,
+    cacheReadTokens: raw.cache_read_tokens,
+    estimatedUsd: raw.estimated_usd,
+  };
+}
+
+function transformUsageBucket(raw: z.infer<typeof UsageBucketResponseSchema>): UsageBucketResponse {
+  return {
+    key: raw.key,
+    count: raw.count,
+    usage: transformUsageTotals(raw.usage),
+  };
+}
+
+function transformConversationStats(raw: RawConversationStats): ConversationStatsResponse {
+  return {
+    conversationId: raw.conversation_id,
+    contextType: raw.context_type as ContextType,
+    contextId: raw.context_id,
+    providerHarness: raw.provider_harness,
+    upstreamProvider: raw.upstream_provider,
+    providerProfile: raw.provider_profile,
+    attributionBackfillStatus: raw.attribution_backfill_status,
+    attributionBackfillSource: raw.attribution_backfill_source,
+    messageUsageTotals: transformUsageTotals(raw.message_usage_totals),
+    runUsageTotals: transformUsageTotals(raw.run_usage_totals),
+    effectiveUsageTotals: transformUsageTotals(raw.effective_usage_totals),
+    usageCoverage: {
+      providerMessageCount: raw.usage_coverage.provider_message_count,
+      providerMessagesWithUsage: raw.usage_coverage.provider_messages_with_usage,
+      runCount: raw.usage_coverage.run_count,
+      runsWithUsage: raw.usage_coverage.runs_with_usage,
+      effectiveTotalsSource: raw.usage_coverage.effective_totals_source,
+    },
+    attributionCoverage: {
+      providerMessageCount: raw.attribution_coverage.provider_message_count,
+      providerMessagesWithAttribution:
+        raw.attribution_coverage.provider_messages_with_attribution,
+      runCount: raw.attribution_coverage.run_count,
+      runsWithAttribution: raw.attribution_coverage.runs_with_attribution,
+    },
+    byHarness: raw.by_harness.map(transformUsageBucket),
+    byUpstreamProvider: raw.by_upstream_provider.map(transformUsageBucket),
+    byModel: raw.by_model.map(transformUsageBucket),
+    byEffort: raw.by_effort.map(transformUsageBucket),
   };
 }
 
@@ -388,6 +544,17 @@ export async function getConversation(
   };
 }
 
+export async function getConversationStats(
+  conversationId: string
+): Promise<ConversationStatsResponse | null> {
+  const raw = await typedInvoke(
+    "get_agent_conversation_stats",
+    { conversationId },
+    ConversationStatsResponseSchema.nullable()
+  );
+  return raw ? transformConversationStats(raw) : null;
+}
+
 /**
  * Create a new conversation
  * @param contextType The context type
@@ -460,6 +627,7 @@ export const chatApi = {
   // Conversation management
   listConversations,
   getConversation,
+  getConversationStats,
   createConversation,
   getAgentRunStatus,
   // Message sending & queue
