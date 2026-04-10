@@ -976,7 +976,7 @@ impl<R: Runtime> AppChatService<R> {
             session_messages,
             session_total,
             is_external_mcp,
-            stored_session_id,
+            stored_session_id.clone(),
             resolved_spawn_settings,
         )
         .await
@@ -2036,7 +2036,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             context_id: context_id.to_string(),
             conversation_id,
             agent_run_id: agent_run_id.clone(),
-            stored_session_id,
+            stored_session_id: stored_session_id.clone(),
             working_directory,
             cli_path: selected_cli_path,
             plugin_dir: self.plugin_dir.clone(),
@@ -2072,6 +2072,19 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             conversation: Some(conversation.clone()),
             agent_name: Some(resolved_agent_name),
             team_mode: runtime_team_mode,
+            assistant_message_attribution: crate::domain::entities::ChatMessageAttribution {
+                attribution_source: Some("native_runtime".to_string()),
+                provider_harness: Some(resolved_spawn_settings.effective_harness),
+                provider_session_id: stored_session_id.clone(),
+                logical_model: resolved_spawn_settings.configured_model.clone(),
+                effective_model_id: Some(effective_model_id.clone()),
+                logical_effort: resolved_spawn_settings.configured_logical_effort,
+                effective_effort: Some(chat_service_helpers::effective_effort_for_harness(
+                    resolved_spawn_settings.effective_harness,
+                    resolved_spawn_settings.claude_effort.as_deref(),
+                    resolved_spawn_settings.logical_effort,
+                )),
+            },
             cancellation_token,
             team_service: self.team_service.clone(),
             streaming_state_cache: self.streaming_state_cache.clone(),

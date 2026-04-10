@@ -5,6 +5,7 @@
 
 use async_trait::async_trait;
 
+use crate::agents::ProviderSessionRef;
 use crate::domain::entities::{
     ChatConversationId, ChatMessage, ChatMessageId, IdeationSessionId, ProjectId, TaskId,
 };
@@ -72,6 +73,13 @@ pub trait ChatMessageRepository: Send + Sync {
         content: &str,
         tool_calls: Option<&str>,
         content_blocks: Option<&str>,
+    ) -> AppResult<()>;
+
+    /// Update the provider session reference for a message once the runtime confirms it.
+    async fn update_provider_session_ref(
+        &self,
+        id: &ChatMessageId,
+        session_ref: &ProviderSessionRef,
     ) -> AppResult<()>;
 
     /// Count assistant/orchestrator messages in a session newer than the given message ID.

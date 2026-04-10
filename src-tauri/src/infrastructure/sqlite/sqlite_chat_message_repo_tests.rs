@@ -1,8 +1,10 @@
 // Tests for SqliteChatMessageRepository
 
 use super::sqlite_chat_message_repo::SqliteChatMessageRepository;
+use crate::domain::agents::{AgentHarnessKind, LogicalEffort, ProviderSessionRef};
 use crate::domain::entities::{
-    ChatMessage, ChatMessageId, IdeationSession, IdeationSessionId, ProjectId, TaskId,
+    ChatMessage, ChatMessageAttribution, ChatMessageId, IdeationSession, IdeationSessionId,
+    ProjectId, TaskId,
 };
 use crate::domain::repositories::ChatMessageRepository;
 use crate::testing::SqliteTestDb;
@@ -231,6 +233,69 @@ async fn test_get_by_id_preserves_all_fields() {
     assert_eq!(found.content, "Full message");
     assert_eq!(found.metadata, Some(r#"{"context": "test"}"#.to_string()));
     assert!(found.is_orchestrator());
+}
+
+#[tokio::test]
+async fn test_get_by_id_roundtrips_message_attribution_fields() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
+
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
+    let message = ChatMessage::orchestrator_in_session(session_id, "Attributed message")
+        .with_attribution(ChatMessageAttribution {
+            attribution_source: Some("native_runtime".to_string()),
+            provider_harness: Some(AgentHarnessKind::Codex),
+            provider_session_id: Some("codex-session-123".to_string()),
+            logical_model: Some("gpt-5.4".to_string()),
+            effective_model_id: Some("gpt-5.4".to_string()),
+            logical_effort: Some(LogicalEffort::High),
+            effective_effort: Some("high".to_string()),
+        });
+
+    repo.create(message.clone()).await.unwrap();
+    let found = repo.get_by_id(&message.id).await.unwrap().unwrap();
+
+    assert_eq!(found.attribution_source, Some("native_runtime".to_string()));
+    assert_eq!(found.provider_harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(
+        found.provider_session_id,
+        Some("codex-session-123".to_string())
+    );
+    assert_eq!(found.logical_model, Some("gpt-5.4".to_string()));
+    assert_eq!(found.effective_model_id, Some("gpt-5.4".to_string()));
+    assert_eq!(found.logical_effort, Some(LogicalEffort::High));
+    assert_eq!(found.effective_effort, Some("high".to_string()));
+}
+
+#[tokio::test]
+async fn test_update_provider_session_ref_updates_message_provider_fields() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
+
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
+    let message = ChatMessage::orchestrator_in_session(session_id, "Provider ref update");
+    repo.create(message.clone()).await.unwrap();
+
+    repo.update_provider_session_ref(
+        &message.id,
+        &ProviderSessionRef {
+            harness: AgentHarnessKind::Codex,
+            provider_session_id: "codex-session-456".to_string(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let found = repo.get_by_id(&message.id).await.unwrap().unwrap();
+    assert_eq!(found.provider_harness, Some(AgentHarnessKind::Codex));
+    assert_eq!(
+        found.provider_session_id,
+        Some("codex-session-456".to_string())
+    );
 }
 
 // ==================== GET BY SESSION TESTS ====================

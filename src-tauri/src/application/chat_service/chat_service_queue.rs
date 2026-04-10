@@ -380,7 +380,16 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         conversation_id,
                         &[],
                         &[],
-                    );
+                    )
+                    .with_attribution(crate::domain::entities::ChatMessageAttribution {
+                        attribution_source: Some("native_runtime".to_string()),
+                        provider_harness: Some(harness),
+                        provider_session_id: Some(session_id.to_string()),
+                        logical_model: None,
+                        effective_model_id: None,
+                        logical_effort: None,
+                        effective_effort: None,
+                    });
                     let queue_assistant_msg_id = queue_assistant_msg.id.as_str().to_string();
                     let _ = chat_message_repo.create(queue_assistant_msg).await;
 
@@ -412,7 +421,21 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                             let response = outcome.response_text;
                             let tools = outcome.tool_calls;
                             let blocks = outcome.content_blocks;
+                            let provider_session_id = outcome.session_id;
                             let queue_stderr = outcome.stderr_text;
+                            if let Some(ref provider_session_id) = provider_session_id {
+                                let _ = chat_message_repo
+                                    .update_provider_session_ref(
+                                        &crate::domain::entities::ChatMessageId::from_string(
+                                            queue_assistant_msg_id.clone(),
+                                        ),
+                                        &crate::domain::agents::ProviderSessionRef {
+                                            harness,
+                                            provider_session_id: provider_session_id.clone(),
+                                        },
+                                    )
+                                    .await;
+                            }
                             if has_meaningful_output(&response, tools.len(), &queue_stderr) {
                                 let tool_calls_json = serde_json::to_string(&tools).ok();
                                 let content_blocks_json = serde_json::to_string(&blocks).ok();

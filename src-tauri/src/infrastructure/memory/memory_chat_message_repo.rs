@@ -7,6 +7,7 @@ use std::sync::RwLock;
 
 use async_trait::async_trait;
 
+use crate::domain::agents::ProviderSessionRef;
 use crate::domain::entities::{
     ChatConversationId, ChatMessage, ChatMessageId, IdeationSessionId, MessageRole, ProjectId,
     TaskId,
@@ -197,6 +198,18 @@ impl ChatMessageRepository for MemoryChatMessageRepository {
             msg.content = content.to_string();
             msg.tool_calls = tool_calls.map(|s| s.to_string());
             msg.content_blocks = content_blocks.map(|s| s.to_string());
+        }
+        Ok(())
+    }
+
+    async fn update_provider_session_ref(
+        &self,
+        id: &ChatMessageId,
+        session_ref: &ProviderSessionRef,
+    ) -> AppResult<()> {
+        let mut messages = self.messages.write().unwrap();
+        if let Some(message) = messages.get_mut(&id.to_string()) {
+            message.update_provider_session_ref(session_ref);
         }
         Ok(())
     }

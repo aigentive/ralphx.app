@@ -26,7 +26,8 @@ use crate::commands::ExecutionState;
 use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::entities::ChatConversation;
 use crate::domain::entities::{
-    AgentRunId, ChatContextType, ChatConversationId, InternalStatus, TaskId,
+    AgentRunId, ChatContextType, ChatConversationId, ChatMessageAttribution, InternalStatus,
+    TaskId,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, ArtifactRepository,
@@ -94,6 +95,7 @@ pub(super) struct BackgroundRunContext<R: Runtime> {
     pub conversation: Option<ChatConversation>,
     pub agent_name: Option<String>,
     pub team_mode: bool,
+    pub assistant_message_attribution: ChatMessageAttribution,
     // Cancellation
     pub cancellation_token: CancellationToken,
     // Team state
@@ -190,6 +192,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             conversation,
             agent_name,
             team_mode,
+            assistant_message_attribution,
             cancellation_token,
             team_service,
             streaming_state_cache,
@@ -262,7 +265,8 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
         // Create empty assistant message BEFORE streaming starts (crash recovery)
         let pre_assistant_msg = chat_service_context::create_assistant_message(
             context_type, &context_id, "", conversation_id, &[], &[],
-        );
+        )
+        .with_attribution(assistant_message_attribution.clone());
         let pre_assistant_msg_id = pre_assistant_msg.id.as_str().to_string();
         let _ = chat_message_repo.create(pre_assistant_msg).await;
 
@@ -395,6 +399,18 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                             "[CHAT_SERVICE] Failed to persist provider_session_id — next resume attempt will use stale session ID"
                         );
                     }
+
+                    let _ = chat_message_repo
+                        .update_provider_session_ref(
+                            &crate::domain::entities::ChatMessageId::from_string(
+                                pre_assistant_msg_id.clone(),
+                            ),
+                            &ProviderSessionRef {
+                                harness,
+                                provider_session_id: sess_id.clone(),
+                            },
+                        )
+                        .await;
                 } else {
                     tracing::warn!("[CHAT_SERVICE] No provider session_id captured from stream - queue processing will be skipped!");
                 }

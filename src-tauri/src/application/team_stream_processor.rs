@@ -185,6 +185,13 @@ pub fn start_teammate_stream<R: Runtime>(
                     parent_message_id: None,
                     tool_calls: None,
                     content_blocks: None,
+                    attribution_source: None,
+                    provider_harness: None,
+                    provider_session_id: None,
+                    logical_model: None,
+                    effective_model_id: None,
+                    logical_effort: None,
+                    effective_effort: None,
                     created_at: chrono::Utc::now(),
                 };
                 let msg_id = msg.id.as_str().to_string();
@@ -340,6 +347,13 @@ pub fn start_teammate_stream<R: Runtime>(
                                             parent_message_id: None,
                                             tool_calls: None,
                                             content_blocks: None,
+                                            attribution_source: None,
+                                            provider_harness: None,
+                                            provider_session_id: None,
+                                            logical_model: None,
+                                            effective_model_id: None,
+                                            logical_effort: None,
+                                            effective_effort: None,
                                             created_at: chrono::Utc::now(),
                                         };
                                         let new_id = msg.id.as_str().to_string();
