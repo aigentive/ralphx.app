@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 import { StatusActivityBadge } from "./StatusActivityBadge";
 import type { AgentType, StatusActivityBadgeProps } from "./StatusActivityBadge";
-import type { ContextType, ModelDisplay } from "@/types/chat-conversation";
+import type { ContextType, ModelDisplay, ChatConversation } from "@/types/chat-conversation";
 import type { AgentStatus } from "@/stores/chatStore";
+import type { ChatMessageResponse } from "@/api/chat";
 import {
   formatProviderHarnessLabel,
   formatProviderEvidenceTooltip,
@@ -32,6 +33,8 @@ export interface ChatSessionToolbarProps {
   providerSessionId?: string | null;
   upstreamProvider?: string | null;
   providerProfile?: string | null;
+  fallbackConversation?: ChatConversation | null | undefined;
+  fallbackMessages?: ChatMessageResponse[] | null | undefined;
 }
 
 export function ChatSessionToolbar({
@@ -49,8 +52,13 @@ export function ChatSessionToolbar({
   providerSessionId,
   upstreamProvider,
   providerProfile,
+  fallbackConversation,
+  fallbackMessages,
 }: ChatSessionToolbarProps) {
-  const statsQuery = useConversationStats(conversationId ?? null);
+  const statsQuery = useConversationStats(conversationId ?? null, {
+    fallbackConversation,
+    fallbackMessages,
+  });
   const effortKey = statsQuery.data?.byEffort[0]?.key ?? null;
   const harnessLabel = formatProviderHarnessLabel(providerHarness);
   const harnessStyle = getProviderHarnessBadgeStyle(providerHarness);
@@ -94,7 +102,11 @@ export function ChatSessionToolbar({
           )}
           {modelDisplay && <ModelChip model={modelDisplay} />}
           {effortKey && <EffortChip effort={effortKey} />}
-          <ConversationStatsPopover conversationId={conversationId ?? null} />
+          <ConversationStatsPopover
+            conversationId={conversationId ?? null}
+            fallbackConversation={fallbackConversation}
+            fallbackMessages={fallbackMessages}
+          />
         </div>
       </div>
       <div className="flex min-w-0 items-center justify-end">

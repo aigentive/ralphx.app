@@ -4,7 +4,7 @@ use ralphx_lib::application::chat_service::{
     AgentTaskStartedPayload, AgentToolCallPayload, CompletionSignalTracker, StreamError,
     StreamOutcome, StreamTimeoutConfig,
 };
-use ralphx_lib::domain::entities::ChatContextType;
+use ralphx_lib::domain::entities::{AgentRunUsage, ChatContextType};
 use ralphx_lib::infrastructure::agents::claude::stream_timeouts;
 use ralphx_lib::utils::secret_redactor::redact;
 use std::time::Duration;
@@ -233,6 +233,18 @@ fn test_completion_tool_detection_accepts_merge_mcp_name() {
 #[test]
 fn test_completion_tool_detection_accepts_finalize_proposals_mcp_name() {
     assert!(is_completion_tool_name("mcp__ralphx__finalize_proposals"));
+}
+
+#[test]
+fn test_completion_tool_detection_accepts_codex_double_colon_names() {
+    for tool_name in [
+        "ralphx::execution_complete",
+        "ralphx::complete_review",
+        "ralphx::complete_merge",
+        "ralphx::finalize_proposals",
+    ] {
+        assert!(is_completion_tool_name(tool_name), "{tool_name} should mark completion");
+    }
 }
 
 #[test]
@@ -705,6 +717,7 @@ fn test_stream_outcome_turns_finalized_controls_post_loop_behavior() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: Some("session-1".to_string()),
+        usage: AgentRunUsage::default(),
         stderr_text: String::new(),
         turns_finalized: 2,
         execution_slot_held: false, // idle between turns at exit
@@ -727,6 +740,7 @@ fn test_stream_outcome_turns_finalized_controls_post_loop_behavior() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: Some("session-2".to_string()),
+        usage: AgentRunUsage::default(),
         stderr_text: String::new(),
         turns_finalized: 0,
         execution_slot_held: true, // normal exit — slot still held
@@ -757,6 +771,7 @@ fn test_stream_outcome_execution_slot_held_reflects_interactive_state() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: None,
+        usage: AgentRunUsage::default(),
         stderr_text: String::new(),
         turns_finalized: 1,
         execution_slot_held: false,
@@ -773,6 +788,7 @@ fn test_stream_outcome_execution_slot_held_reflects_interactive_state() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: None,
+        usage: AgentRunUsage::default(),
         stderr_text: String::new(),
         turns_finalized: 0,
         execution_slot_held: true,
@@ -829,6 +845,7 @@ fn test_will_process_queue_suppressed_on_silent_exit() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: Some("session-abc".to_string()),
+        usage: AgentRunUsage::default(),
         stderr_text: String::new(),
         turns_finalized: 1,
         execution_slot_held: false,
@@ -849,6 +866,7 @@ fn test_will_process_queue_suppressed_on_silent_exit() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: Some("session-abc".to_string()),
+        usage: AgentRunUsage::default(),
         stderr_text: String::new(),
         turns_finalized: 1,
         execution_slot_held: false,
@@ -867,6 +885,7 @@ fn test_will_process_queue_suppressed_on_silent_exit() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: None,
+        usage: AgentRunUsage::default(),
         stderr_text: String::new(),
         turns_finalized: 1,
         execution_slot_held: false,
@@ -1119,6 +1138,7 @@ fn test_silent_interactive_exit_flag_semantics() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: Some("sess-1".to_string()),
+        usage: AgentRunUsage::default(),
         stderr_text: String::new(),
         turns_finalized: 1,
         execution_slot_held: false, // slot released at TurnComplete
@@ -1133,6 +1153,7 @@ fn test_silent_interactive_exit_flag_semantics() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: None,
+        usage: AgentRunUsage::default(),
         stderr_text: String::new(),
         turns_finalized: 0,
         execution_slot_held: true, // slot not yet released
@@ -1148,6 +1169,7 @@ fn test_silent_interactive_exit_flag_semantics() {
         tool_calls: vec![],
         content_blocks: vec![],
         session_id: None,
+        usage: AgentRunUsage::default(),
         stderr_text: "error: session expired".to_string(),
         turns_finalized: 1,
         execution_slot_held: false,

@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { IntegratedChatPanel } from "./IntegratedChatPanel";
@@ -410,6 +410,67 @@ describe("IntegratedChatPanel", () => {
       });
       expect(screen.getByTestId("chat-session-stats-button")).toBeInTheDocument();
       expect(screen.queryByText(/Continuing stored Codex session/)).not.toBeInTheDocument();
+    });
+
+    it("shows fallback conversation stats when the dedicated stats query returns null", async () => {
+      mockChatPanelContext.currentContextType = "ideation";
+      mockChatPanelContext.currentContextId = "session-1";
+      mockChatPanelContext.storeContextKey = "ideation:session-1";
+      mockChatPanelContext.activeConversationId = "conv-1";
+      useChatMockState.conversation = {
+        id: "conv-1",
+        contextType: "ideation",
+        contextId: "session-1",
+        providerHarness: "codex",
+        providerSessionId: "thread-codex-1234",
+        upstreamProvider: "openai",
+        providerProfile: null,
+      } as typeof useChatMockState.conversation;
+      useChatMockState.messages = [
+        {
+          id: "user-1",
+          role: "user",
+          content: "Hey hello",
+          createdAt: "2026-04-10T10:00:00Z",
+          toolCalls: null,
+          contentBlocks: null,
+        },
+        {
+          id: "assistant-1",
+          role: "orchestrator",
+          content: "response",
+          createdAt: "2026-04-10T10:01:00Z",
+          toolCalls: null,
+          contentBlocks: null,
+          providerHarness: "codex",
+          upstreamProvider: "openai",
+          effectiveModelId: "gpt-5.4",
+          effectiveEffort: "xhigh",
+          inputTokens: 120,
+          outputTokens: 40,
+          cacheCreationTokens: 5,
+          cacheReadTokens: 8,
+          estimatedUsd: 0.42,
+        },
+      ] as typeof useChatMockState.messages;
+      vi.mocked(chatApi.getConversationStats).mockResolvedValue(null);
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      const statsButton = await screen.findByTestId("chat-session-stats-button");
+      fireEvent.click(statsButton);
+
+      expect(await screen.findByText("Conversation stats")).toBeInTheDocument();
+      expect(screen.queryByText("Stats are not available for this conversation.")).not.toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText("120")).toBeInTheDocument();
+        expect(screen.getByText("40")).toBeInTheDocument();
+        expect(screen.getByText("$0.42")).toBeInTheDocument();
+      });
     });
   });
 

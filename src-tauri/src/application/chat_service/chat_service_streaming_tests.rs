@@ -1,8 +1,9 @@
 use super::{
-    format_agent_exit_stderr, process_exit_details, provider_session_ref_for_harness,
-    stream_mode_for_harness, ProcessExitDetails,
+    codex_tool_call_content_block, format_agent_exit_stderr, process_exit_details,
+    provider_session_ref_for_harness, stream_mode_for_harness, ProcessExitDetails,
 };
 use crate::domain::agents::{AgentHarnessKind, HarnessStreamMode};
+use crate::infrastructure::agents::claude::{ContentBlockItem, ToolCall};
 use std::os::unix::process::ExitStatusExt;
 
 #[test]
@@ -66,4 +67,35 @@ fn provider_session_ref_for_harness_keeps_harness_and_id() {
 
     assert_eq!(session_ref.harness, AgentHarnessKind::Codex);
     assert_eq!(session_ref.provider_session_id, "thread-123");
+}
+
+#[test]
+fn codex_tool_call_content_block_preserves_orderable_tool_payload() {
+    let tool_call = ToolCall {
+        id: Some("tool-1".to_string()),
+        name: "ralphx::get_task_context".to_string(),
+        arguments: serde_json::json!({ "task_id": "task-1" }),
+        result: Some(serde_json::json!({ "title": "Task" })),
+        diff_context: None,
+        stats: None,
+    };
+
+    let block = codex_tool_call_content_block(&tool_call);
+
+    match block {
+        ContentBlockItem::ToolUse {
+            id,
+            name,
+            arguments,
+            result,
+            diff_context,
+        } => {
+            assert_eq!(id.as_deref(), Some("tool-1"));
+            assert_eq!(name, "ralphx::get_task_context");
+            assert_eq!(arguments, serde_json::json!({ "task_id": "task-1" }));
+            assert_eq!(result, Some(serde_json::json!({ "title": "Task" })));
+            assert!(diff_context.is_none());
+        }
+        other => panic!("expected tool_use block, got {other:?}"),
+    }
 }

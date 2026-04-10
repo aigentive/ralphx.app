@@ -30,6 +30,7 @@ import { buildStoreKey, parseStoreKey } from "@/lib/chat-context-registry";
 import { findStoreKeyForContextId } from "@/lib/agent-event-utils";
 import { chatKeys } from "./useChat";
 import { ideationKeys } from "./useIdeation";
+import { conversationStatsKey } from "./useConversationStats";
 import type { Unsubscribe } from "@/lib/event-bus";
 import { logger } from "@/lib/logger";
 
@@ -122,6 +123,7 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
       clearPendingPlan(storeKey);
       queryClient.invalidateQueries({ queryKey: chatKeys.agentRun(conversationId) });
       queryClient.invalidateQueries({ queryKey: chatKeys.conversation(conversationId) });
+      queryClient.invalidateQueries({ queryKey: conversationStatsKey(conversationId) });
     }
 
     // Reverse lookup: when a child verification session terminates, find any parent that has
@@ -219,6 +221,9 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         queryClient.invalidateQueries({
           queryKey: chatKeys.conversationList(context_type as ContextType, eventContextId),
         });
+        queryClient.invalidateQueries({
+          queryKey: conversationStatsKey(conversation_id),
+        });
 
         // Invalidate ideation session list so hasPendingPrompt badge clears
         // when drain service launches a waiting-for-capacity session
@@ -297,6 +302,9 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
             queryKey: chatKeys.conversation(conversation_id), // use payload ID, not stale closure
           });
         }
+        queryClient.invalidateQueries({
+          queryKey: conversationStatsKey(conversation_id),
+        });
       })
     );
 
@@ -380,6 +388,9 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
             queryKey: chatKeys.conversation(conversation_id),
           });
         }
+        queryClient.invalidateQueries({
+          queryKey: conversationStatsKey(conversation_id),
+        });
       })
     );
 

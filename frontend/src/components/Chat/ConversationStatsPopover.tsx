@@ -1,9 +1,13 @@
 import { BarChart2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useConversationStats } from "@/hooks/useConversationStats";
+import type { ChatMessageResponse } from "@/api/chat";
+import type { ChatConversation } from "@/types/chat-conversation";
 
 interface ConversationStatsPopoverProps {
   conversationId: string | null;
+  fallbackConversation?: ChatConversation | null | undefined;
+  fallbackMessages?: ChatMessageResponse[] | null | undefined;
 }
 
 function formatInteger(value: number): string {
@@ -25,8 +29,13 @@ function formatUsd(value: number | null): string {
 
 export function ConversationStatsPopover({
   conversationId,
+  fallbackConversation,
+  fallbackMessages,
 }: ConversationStatsPopoverProps) {
-  const statsQuery = useConversationStats(conversationId);
+  const statsQuery = useConversationStats(conversationId, {
+    fallbackConversation,
+    fallbackMessages,
+  });
   const stats = statsQuery.data;
 
   if (!conversationId) {

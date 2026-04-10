@@ -719,8 +719,9 @@ describe("useChatEvents", () => {
       expect(props.setStreamingToolCalls).not.toHaveBeenCalled();
       expect(props.setStreamingTasks).not.toHaveBeenCalled();
       expect(props.setIsFinalizing).not.toHaveBeenCalled();
-      // But invalidateQueries should still be called
-      expect(mockInvalidateQueries).toHaveBeenCalled();
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["chat", "conversation-stats", CONV_ID],
+      });
     });
 
     it("should NOT clear streaming state on user message", () => {
@@ -739,8 +740,27 @@ describe("useChatEvents", () => {
       expect(props.setStreamingContentBlocks).not.toHaveBeenCalled();
       expect(props.setStreamingToolCalls).not.toHaveBeenCalled();
       expect(props.setStreamingTasks).not.toHaveBeenCalled();
-      // But invalidateQueries should still be called
-      expect(mockInvalidateQueries).toHaveBeenCalled();
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["chat", "conversation-stats", CONV_ID],
+      });
+    });
+
+    it("should invalidate conversation stats on assistant message", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:message_created", {
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+          role: "assistant",
+          message_id: "msg-123",
+        });
+      });
+
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["chat", "conversation-stats", CONV_ID],
+      });
     });
   });
 
@@ -769,8 +789,9 @@ describe("useChatEvents", () => {
         { id: "tc1", name: "Read", arguments: {} },
       ]);
       expect(toolCallResult).toEqual([]);
-      // Query invalidation is now owned by useAgentEvents — not called here
-      expect(mockInvalidateQueries).not.toHaveBeenCalled();
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["chat", "conversation-stats", CONV_ID],
+      });
     });
   });
 
@@ -799,8 +820,9 @@ describe("useChatEvents", () => {
         { id: "tc1", name: "Read", arguments: {} },
       ]);
       expect(toolCallResult).toEqual([]);
-      // Query invalidation is now owned by useAgentEvents — not called here
-      expect(mockInvalidateQueries).not.toHaveBeenCalled();
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ["chat", "conversation-stats", CONV_ID],
+      });
     });
   });
 

@@ -19,6 +19,7 @@ import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEventBus } from "@/providers/EventProvider";
 import { chatKeys } from "@/hooks/useChat";
+import { conversationStatsKey } from "@/hooks/useConversationStats";
 import { getContextConfig } from "@/lib/chat-context-registry";
 import type { ContextType } from "@/types/chat-conversation";
 import type { AgentRunCompletedPayload } from "@/types/events";
@@ -507,6 +508,9 @@ export function useChatEvents({
         queryClient.invalidateQueries({
           queryKey: chatKeys.conversation(payload.conversation_id),
         });
+        queryClient.invalidateQueries({
+          queryKey: conversationStatsKey(payload.conversation_id),
+        });
       })
     );
 
@@ -527,6 +531,10 @@ export function useChatEvents({
           store.clearToolCallStartTimes(storeKey);
           store.clearToolCallCompletionTimestamps(storeKey);
         }
+
+        queryClient.invalidateQueries({
+          queryKey: conversationStatsKey(payload.conversation_id),
+        });
       })
     );
 
@@ -540,6 +548,10 @@ export function useChatEvents({
         setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
         setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
         setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
+
+        queryClient.invalidateQueries({
+          queryKey: conversationStatsKey(payload.conversation_id),
+        });
       })
     );
 

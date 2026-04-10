@@ -170,6 +170,9 @@ describe("useAgentEvents — child termination reverse lookup (PO6)", () => {
       "session:" + PARENT_SESSION_ID,
       "idle"
     );
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["chat", "conversation-stats", "conv-" + CHILD_SESSION_ID],
+    });
   });
 
   it("(PO6-error) child error event clears parent activeVerificationChildId and sets parent idle", () => {

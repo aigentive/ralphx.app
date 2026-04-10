@@ -38,13 +38,19 @@ describe("tool widget registry coverage", () => {
 
   it("canonicalizes Codex/server-prefixed tool names to the same widgets", () => {
     expect(canonicalizeToolName("ralphx:get_merge_target")).toBe("get_merge_target");
+    expect(canonicalizeToolName("ralphx::get_merge_target")).toBe("get_merge_target");
     expect(canonicalizeToolName("mcp__ralphx__start_step")).toBe("start_step");
 
     expect(getToolCallWidget("ralphx:get_merge_target")).toBe(MergeWidget);
+    expect(getToolCallWidget("ralphx::get_merge_target")).toBe(MergeWidget);
     expect(getToolCallWidget("ralphx:start_step")).toBe(StepIndicator);
+    expect(getToolCallWidget("ralphx::start_step")).toBe(StepIndicator);
     expect(getToolCallWidget("ralphx:get_task_context")).toBe(ContextWidget);
+    expect(getToolCallWidget("ralphx::get_task_context")).toBe(ContextWidget);
     expect(getToolCallWidget("ralphx:get_review_notes")).toBe(ReviewWidget);
+    expect(getToolCallWidget("ralphx::get_review_notes")).toBe(ReviewWidget);
     expect(getToolCallWidget("ralphx:search_memories")).toBe(SearchMemoriesWidget);
+    expect(getToolCallWidget("ralphx::search_memories")).toBe(SearchMemoriesWidget);
   });
 
   it.each([
@@ -168,8 +174,22 @@ describe("tool widget registry coverage", () => {
       expectedTestId: "merge-widget-target",
     },
     {
+      label: "double-colon merge widget",
+      toolCall: makeToolCall("ralphx::get_merge_target", {
+        result: { source_branch: "task/chat-widgets", target_branch: "main" },
+      }),
+      expectedTestId: "merge-widget-target",
+    },
+    {
       label: "server-prefixed step widget",
       toolCall: makeToolCall("ralphx:start_step", {
+        arguments: { title: "Resolve merge target" },
+      }),
+      expectedText: "Resolve merge target",
+    },
+    {
+      label: "double-colon step widget",
+      toolCall: makeToolCall("ralphx::start_step", {
         arguments: { title: "Resolve merge target" },
       }),
       expectedText: "Resolve merge target",

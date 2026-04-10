@@ -880,6 +880,8 @@ export function IntegratedChatPanel({
             providerSessionId={activeConversationMeta?.providerSessionId ?? null}
             upstreamProvider={activeConversationMeta?.upstreamProvider ?? null}
             providerProfile={activeConversationMeta?.providerProfile ?? null}
+            fallbackConversation={activeConversationMeta}
+            fallbackMessages={sortedMessages}
             {...(toolbarBackAction !== undefined ? { backAction: toolbarBackAction } : {})}
             {...(effectiveModel !== undefined ? { modelDisplay: effectiveModel } : {})}
           />

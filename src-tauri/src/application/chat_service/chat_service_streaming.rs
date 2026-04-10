@@ -128,7 +128,27 @@ const COMPLETION_TOOL_NAMES: &[&str] = &[
 
 #[doc(hidden)]
 pub fn is_completion_tool_name(name: &str) -> bool {
-    COMPLETION_TOOL_NAMES.contains(&name)
+    let normalized = name.trim().to_ascii_lowercase();
+
+    if COMPLETION_TOOL_NAMES.contains(&normalized.as_str()) {
+        return true;
+    }
+
+    if let Some(tool_name) = normalized.strip_prefix("ralphx::") {
+        return matches!(
+            tool_name,
+            "execution_complete" | "complete_review" | "complete_merge" | "finalize_proposals"
+        );
+    }
+
+    if let Some(tool_name) = normalized.strip_prefix("ralphx:") {
+        return matches!(
+            tool_name,
+            "execution_complete" | "complete_review" | "complete_merge" | "finalize_proposals"
+        );
+    }
+
+    false
 }
 
 /// Final flush of accumulated content to DB before returning an error.
@@ -185,6 +205,37 @@ async fn persist_assistant_message_usage(
         let _ = repo
             .update_usage(&ChatMessageId::from_string(message_id.clone()), usage)
             .await;
+    }
+}
+
+async fn persist_assistant_message_snapshot(
+    chat_message_repo: &Option<Arc<dyn ChatMessageRepository>>,
+    assistant_message_id: &Option<String>,
+    response_text: &str,
+    tool_calls: &[ToolCall],
+    content_blocks: &[ContentBlockItem],
+) {
+    if let (Some(repo), Some(message_id)) = (chat_message_repo.as_ref(), assistant_message_id.as_ref()) {
+        let tool_calls_json = serde_json::to_string(tool_calls).ok();
+        let content_blocks_json = serde_json::to_string(content_blocks).ok();
+        let _ = repo
+            .update_content(
+                &ChatMessageId::from_string(message_id.clone()),
+                response_text,
+                tool_calls_json.as_deref(),
+                content_blocks_json.as_deref(),
+            )
+            .await;
+    }
+}
+
+fn codex_tool_call_content_block(tool_call: &ToolCall) -> ContentBlockItem {
+    ContentBlockItem::ToolUse {
+        id: tool_call.id.clone(),
+        name: tool_call.name.clone(),
+        arguments: tool_call.arguments.clone(),
+        result: tool_call.result.clone(),
+        diff_context: None,
     }
 }
 
@@ -2223,7 +2274,7 @@ async fn process_codex_stream_background<R: Runtime>(
     let mut lines = stdout_reader.lines();
     let mut response_text = String::new();
     let mut tool_calls = Vec::<ToolCall>::new();
-    let content_blocks = Vec::<ContentBlockItem>::new();
+    let mut content_blocks = Vec::<ContentBlockItem>::new();
     let mut errors = Vec::<String>::new();
     let mut session_id: Option<String> = None;
     let mut usage = AgentRunUsage::default();
@@ -2235,6 +2286,7 @@ async fn process_codex_stream_background<R: Runtime>(
     let max_wall_clock = std::time::Duration::from_secs(stream_timeouts().max_wall_clock_secs);
     let mut last_flush = std::time::Instant::now();
     const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+    let mut completion_signal_tracker = CompletionSignalTracker::default();
     let heartbeat_key = running_agent_registry
         .as_ref()
         .map(|_| RunningAgentKey::new(context_type.to_string(), context_id));
@@ -2333,6 +2385,16 @@ async fn process_codex_stream_background<R: Runtime>(
                     response_text.push_str("\n\n");
                 }
                 response_text.push_str(&text);
+                content_blocks.push(ContentBlockItem::Text { text: text.clone() });
+
+                persist_assistant_message_snapshot(
+                    &chat_message_repo,
+                    &assistant_message_id,
+                    &response_text,
+                    &tool_calls,
+                    &content_blocks,
+                )
+                .await;
 
                 if let Some(ref handle) = app_handle {
                     let _ = handle.emit(
@@ -2350,7 +2412,24 @@ async fn process_codex_stream_background<R: Runtime>(
             }
 
             if let Some(tool_call) = extract_codex_tool_call(&event) {
+                if is_completion_tool_name(&tool_call.name) {
+                    tracing::info!(
+                        conversation_id = %conversation_id_str,
+                        context_id,
+                        tool_name = %tool_call.name,
+                        "Detected completion tool call in Codex stream"
+                    );
+                }
                 tool_calls.push(tool_call.clone());
+                content_blocks.push(codex_tool_call_content_block(&tool_call));
+                if is_completion_tool_name(&tool_call.name) {
+                    tracing::info!(
+                        conversation_id = %conversation_id_str,
+                        context_id,
+                        tool_name = %tool_call.name,
+                        "Completion tool call observed during Codex streaming; enabling shutdown grace period"
+                    );
+                }
                 streaming_state_cache
                     .upsert_tool_call(
                         &conversation_id_str,
@@ -2367,6 +2446,15 @@ async fn process_codex_stream_background<R: Runtime>(
                         },
                     )
                     .await;
+
+                persist_assistant_message_snapshot(
+                    &chat_message_repo,
+                    &assistant_message_id,
+                    &response_text,
+                    &tool_calls,
+                    &content_blocks,
+                )
+                .await;
 
                 if let Some(ref handle) = app_handle {
                     let _ = handle.emit(
@@ -2408,6 +2496,10 @@ async fn process_codex_stream_background<R: Runtime>(
                         let _ = repo.save(event).await;
                     }
                 }
+
+                if is_completion_tool_name(&tool_call.name) {
+                    completion_signal_tracker.mark_completion_called();
+                }
             }
 
             if let Some(command_execution) = extract_codex_command_execution(&event) {
@@ -2431,6 +2523,9 @@ async fn process_codex_stream_background<R: Runtime>(
 
             if let Some(event_usage) = extract_codex_usage(&event) {
                 accumulate_codex_usage(&mut usage, event_usage);
+                persist_assistant_message_usage(&chat_message_repo, &assistant_message_id, &usage)
+                    .await;
+                persist_agent_run_usage(&agent_run_repo, &agent_run_id, &usage).await;
             }
         } else if lines_seen > 0 && last_parsed_at.elapsed() >= timeout_config.parse_stall_timeout {
             let _ = child.kill().await;
@@ -2451,18 +2546,14 @@ async fn process_codex_stream_background<R: Runtime>(
         }
 
         if last_flush.elapsed() >= FLUSH_INTERVAL {
-            if let (Some(ref repo), Some(ref msg_id)) = (&chat_message_repo, &assistant_message_id)
-            {
-                let current_tools = serde_json::to_string(&tool_calls).ok();
-                let _ = repo
-                    .update_content(
-                        &ChatMessageId::from_string(msg_id.clone()),
-                        &response_text,
-                        current_tools.as_deref(),
-                        None,
-                    )
-                    .await;
-            }
+            persist_assistant_message_snapshot(
+                &chat_message_repo,
+                &assistant_message_id,
+                &response_text,
+                &tool_calls,
+                &content_blocks,
+            )
+            .await;
             last_flush = std::time::Instant::now();
         }
 
@@ -2520,7 +2611,10 @@ async fn process_codex_stream_background<R: Runtime>(
         });
     }
 
-    if !status.success() && !outcome.has_meaningful_output() {
+    if !status.success()
+        && !outcome.has_meaningful_output()
+        && !completion_signal_tracker.was_called()
+    {
         let stderr_trimmed = outcome.stderr_text.trim().to_string();
         if let Some(provider_error) =
             super::chat_service_errors::classify_provider_error(&stderr_trimmed)
