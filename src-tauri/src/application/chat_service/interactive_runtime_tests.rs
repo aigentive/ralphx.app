@@ -1,4 +1,4 @@
-use super::interactive_run_started_provider_session;
+use super::{conversation_spawn_harness_override, interactive_run_started_provider_session};
 use crate::application::interactive_process_registry::InteractiveProcessMetadata;
 use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::entities::{ChatConversation, IdeationSessionId, TaskId};
@@ -34,4 +34,19 @@ fn interactive_run_started_provider_session_falls_back_to_conversation_session_r
 
     assert_eq!(harness, AgentHarnessKind::Claude);
     assert_eq!(provider_session_id.as_deref(), Some("claude-session-123"));
+}
+
+#[test]
+fn conversation_spawn_harness_override_falls_back_to_parent_conversation() {
+    let task_id = TaskId::from_string("task-parent-1".to_string());
+    let child = ChatConversation::new_task_execution(task_id.clone());
+    let mut parent = ChatConversation::new_task_execution(task_id);
+    parent.set_provider_session_ref(ProviderSessionRef {
+        harness: AgentHarnessKind::Codex,
+        provider_session_id: "codex-parent-session".to_string(),
+    });
+
+    let harness = conversation_spawn_harness_override(&child, Some(&parent));
+
+    assert_eq!(harness, Some(AgentHarnessKind::Codex));
 }

@@ -221,6 +221,22 @@ fn interactive_run_started_provider_session(
     (harness, provider_session_id)
 }
 
+fn conversation_spawn_harness_override(
+    conversation: &ChatConversation,
+    parent_conversation: Option<&ChatConversation>,
+) -> Option<AgentHarnessKind> {
+    conversation
+        .provider_session_ref()
+        .map(|session_ref| session_ref.harness)
+        .or_else(|| {
+            parent_conversation.and_then(|parent| {
+                parent
+                    .provider_session_ref()
+                    .map(|session_ref| session_ref.harness)
+            })
+        })
+}
+
 // ============================================================================
 // ChatService trait
 // ============================================================================
@@ -1229,10 +1245,29 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             .get_or_create_conversation(context_type, context_id)
             .await?;
         let provider_session_ref = conversation.provider_session_ref();
+        let parent_conversation = if provider_session_ref.is_none() {
+            if let Some(parent_id) = conversation.parent_conversation_id.as_deref() {
+                self.conversation_repo
+                    .get_by_id(&ChatConversationId::from_string(parent_id.to_string()))
+                    .await
+                    .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let spawn_harness_override =
+            options
+                .harness_override
+                .or_else(|| conversation_spawn_harness_override(&conversation, parent_conversation.as_ref()));
         tracing::debug!(
             conversation_id = conversation.id.as_str(),
             provider_harness = ?provider_session_ref.as_ref().map(|session_ref| session_ref.harness),
             provider_session_id = ?provider_session_ref.as_ref().map(|session_ref| session_ref.provider_session_id.as_str()),
+            parent_provider_harness = ?parent_conversation
+                .as_ref()
+                .and_then(|parent| parent.provider_session_ref().map(|session_ref| session_ref.harness)),
             "chat_service.send_message conversation (new spawn path)"
         );
 
@@ -1718,11 +1753,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
                 project_id.as_deref(),
                 context_type,
                 entity_status.as_deref(),
-                options.harness_override.or_else(|| {
-                    conversation
-                        .provider_session_ref()
-                        .map(|session_ref| session_ref.harness)
-                }),
+                spawn_harness_override,
                 None,
                 self.agent_lane_settings_repo.as_ref(),
                 self.ideation_model_settings_repo.as_ref(),
