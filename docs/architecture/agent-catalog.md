@@ -2,7 +2,7 @@
 
 > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
 
-Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a Claude CLI instance spawned by the Rust backend with specific model, tools, MCP tool scopes, and system prompts.
+Complete catalog of all 20 agent definitions in `ralphx.yaml`. These entries remain the shared prompt/tool source of truth even though runtime harness selection is now provider-neutral; the actual execution lane may resolve to Claude or Codex depending on lane settings and harness availability.
 
 ---
 

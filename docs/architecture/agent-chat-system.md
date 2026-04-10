@@ -1,6 +1,8 @@
 # Agent Chat System Architecture
 
 > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
+>
+> **Scope note:** The chat runtime is now provider-neutral at the app boundary (`AppChatService`) and can resolve Claude or Codex per lane. This document still uses Claude-flavored CLI examples where the lower-level transport is Claude-specific; treat those as implementation examples, not the universal runtime contract.
 
 ---
 
@@ -13,7 +15,7 @@ User message
       → ChatService.send_message()
         → resolve_agent(context_type, entity_status) → agent name
         → build_command(cli_path, plugin_dir, conversation, ...) → SpawnableCommand
-          → claude --agent ralphx:<name> --plugin-dir ./plugins/app -p "<prompt>"
+          → selected harness CLI (`claude ...` | `codex ...`)
             → MCP tools via HTTP :3847 → ralphx-mcp-server → Tauri backend
         → stream_response() → parse JSON-stream events
           → Tauri app_handle.emit("agent:*", payload)
@@ -28,7 +30,7 @@ User message
 |-----------|------|-------------|
 | ChatService | Orchestrates send/queue/stop/resume | `src-tauri/src/application/chat_service/mod.rs` |
 | Agent Resolution | Maps context_type + status → agent name | `chat_service_helpers.rs` → `resolve_agent()` |
-| Command Builder | Builds Claude CLI invocation with --agent flag | `chat_service_context.rs` → `build_command()` |
+| Command Builder | Builds harness-specific CLI invocation and resume settings | `chat_service_context.rs` → `build_command()` |
 | Streaming Parser | Parses JSON-stream output, emits events | `chat_service_streaming.rs` |
 | MCP Server | Tool proxy: agent → HTTP :3847 → Tauri backend | `plugins/app/ralphx-mcp-server/src/` |
 | Event System | Tauri emit → EventBus → React hooks | `src/lib/events.ts`, `src/hooks/useAgentEvents.ts` |
@@ -42,7 +44,7 @@ User message
 3. Create `ChatMessage` (user role) + persist
 4. Resolve agent name via `resolve_agent(context_type, entity_status)`
 5. Build `SpawnableCommand` with `--agent ralphx:<name>` + env vars
-6. Spawn Claude CLI process in background task
+6. Spawn the selected harness process in a background task
 7. Emit `agent:run_started` → return `SendResult { conversation_id, agent_run_id }`
 8. Stream stdout → parse events → emit `agent:chunk`, `agent:tool_call`, etc.
 9. On completion → persist assistant message → emit `agent:run_completed`
@@ -50,7 +52,7 @@ User message
 
 ### Data Flow: Resumed Conversation
 
-Steps 1-3 same, but step 5 includes `--resume <claude_session_id>` flag. Prompt is raw user text (no XML wrapper). Fresh review cycles (`reviewer` agent) always start new sessions to avoid stale context.
+Steps 1-3 same, but step 5 uses the harness-native continuation path when provider session lineage is preserved. Legacy `claude_session_id` may still appear as a compatibility alias, but canonical provider metadata is `provider_harness` + `provider_session_id`. Fresh review cycles (`reviewer` agent) always start new sessions to avoid stale context.
 
 ---
 
@@ -168,9 +170,9 @@ Defined in both backend (`chat_service_types.rs::events`) and frontend (`src/lib
 
 | Event | Key Payload Fields |
 |-------|-------------------|
-| `agent:run_started` | run_id, conversation_id, context_type, context_id, run_chain_id?, parent_run_id? |
+| `agent:run_started` | run_id, conversation_id, context_type, context_id, run_chain_id?, parent_run_id?, provider_harness?, provider_session_id? |
 | `agent:message_created` | message_id, conversation_id, context_type, context_id, role, content |
-| `agent:run_completed` | conversation_id, context_type, context_id, claude_session_id?, run_chain_id? |
+| `agent:run_completed` | conversation_id, context_type, context_id, provider_harness?, provider_session_id?, claude_session_id? (legacy alias), run_chain_id? |
 | `agent:chunk` | text, conversation_id, context_type, context_id |
 | `agent:tool_call` | tool_name, tool_id?, arguments, result?, conversation_id, context_type, context_id, diff_context?, parent_tool_use_id? |
 | `agent:error` | conversation_id?, context_type, context_id, error, stderr? |

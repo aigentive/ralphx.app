@@ -1,6 +1,8 @@
-# Claude CLI Spawning System — Architecture Reference
+# Claude CLI Spawning System — Claude-Specific Architecture Reference
 
 ## Overview
+
+This file is intentionally Claude-centric. RalphX now has a provider-neutral harness layer above this transport, so use this document for Claude-specific spawning/plugin/MCP details, not as the universal runtime contract for Codex or future harnesses.
 
 RalphX spawns Claude CLI processes as child OS processes via `tokio::process::Command`. Each agent type gets a dynamically-constructed CLI invocation with agent-specific tool restrictions, MCP configuration, model selection, settings profiles, and permission handling. A TypeScript MCP server (`ralphx-mcp-server`) acts as a stdio proxy between Claude and the Tauri backend HTTP server at `:3847`.
 
