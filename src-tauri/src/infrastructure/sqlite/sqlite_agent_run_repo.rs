@@ -406,6 +406,8 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                         c.claude_session_id,
                         c.provider_session_id as conv_provider_session_id,
                         c.provider_harness as conv_provider_harness,
+                        c.upstream_provider as conv_upstream_provider,
+                        c.provider_profile as conv_provider_profile,
                         c.title,
                         c.message_count,
                         c.last_message_at,
@@ -459,6 +461,10 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                         let provider_harness = row
                             .get::<_, Option<String>>("conv_provider_harness")?
                             .and_then(|value| value.parse::<AgentHarnessKind>().ok());
+                        let upstream_provider: Option<String> =
+                            row.get("conv_upstream_provider")?;
+                        let provider_profile: Option<String> =
+                            row.get("conv_provider_profile")?;
                         let conv_created_at_str: String = row.get("conv_created_at")?;
                         let conv_updated_at_str: String = row.get("conv_updated_at")?;
                         let last_message_at_str: Option<String> = row.get("last_message_at")?;
@@ -469,6 +475,8 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                             claude_session_id,
                             provider_session_id,
                             provider_harness,
+                            upstream_provider,
+                            provider_profile,
                             title: row.get("title")?,
                             message_count: row.get("message_count")?,
                             last_message_at: last_message_at_str.map(|s| parse_datetime(&s)),

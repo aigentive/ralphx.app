@@ -45,6 +45,14 @@ pub trait ChatConversationRepository: Send + Sync {
     /// Clear the provider session reference for a conversation.
     async fn clear_provider_session_ref(&self, id: &ChatConversationId) -> AppResult<()>;
 
+    /// Update provider-origin metadata for a conversation.
+    async fn update_provider_origin(
+        &self,
+        id: &ChatConversationId,
+        upstream_provider: Option<&str>,
+        provider_profile: Option<&str>,
+    ) -> AppResult<()>;
+
     /// Compatibility helper for legacy Claude-specific callers.
     async fn update_claude_session_id(
         &self,

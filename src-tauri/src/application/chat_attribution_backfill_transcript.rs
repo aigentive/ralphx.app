@@ -55,6 +55,13 @@ impl HistoricalTranscriptSummary {
             }
         }
     }
+
+    pub fn provider_profile_name(&self) -> Option<String> {
+        match self.provider_profile {
+            HistoricalClaudeProviderProfile::Unknown => None,
+            profile => Some(profile.suffix().to_string()),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

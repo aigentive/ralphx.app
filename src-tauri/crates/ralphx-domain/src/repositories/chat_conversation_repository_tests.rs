@@ -70,6 +70,15 @@ impl ChatConversationRepository for MockChatConversationRepository {
         Ok(())
     }
 
+    async fn update_provider_origin(
+        &self,
+        _id: &ChatConversationId,
+        _upstream_provider: Option<&str>,
+        _provider_profile: Option<&str>,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
     async fn update_title(&self, _id: &ChatConversationId, _title: &str) -> AppResult<()> {
         Ok(())
     }

@@ -1288,7 +1288,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
         // 2. Get or create conversation (only reached when Gate 1 misses or fails).
         //    For TaskExecution/Merge this creates a fresh conversation (force_fresh=true),
         //    which is correct for new spawns.
-        let (conversation, _) = self
+        let (mut conversation, _) = self
             .get_or_create_conversation(context_type, context_id)
             .await?;
         let provider_session_ref = conversation.provider_session_ref();
@@ -1856,6 +1856,23 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
                 resolved_spawn_settings.effective_harness,
                 Some(&resolved_agent_name),
             );
+
+        if conversation.upstream_provider != upstream_provider
+            || conversation.provider_profile != provider_profile
+        {
+            if let Err(error) = self
+                .conversation_repo
+                .update_provider_origin(
+                    &conversation.id,
+                    upstream_provider.as_deref(),
+                    provider_profile.as_deref(),
+                )
+                .await
+            {
+                cleanup_and_err!(ChatServiceError::RepositoryError(error.to_string()));
+            }
+            conversation.set_provider_origin(upstream_provider.clone(), provider_profile.clone());
+        }
 
         agent_run.harness = Some(resolved_spawn_settings.effective_harness);
         agent_run.provider_session_id = stored_session_id.clone();

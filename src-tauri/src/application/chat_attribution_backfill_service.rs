@@ -145,12 +145,21 @@ impl ChatAttributionBackfillService {
                 .map_err(|error| error.to_string())?;
         }
 
+        self.conversation_repo
+            .update_provider_origin(
+                &conversation.id,
+                summary.upstream_provider().as_deref(),
+                summary.provider_profile_name().as_deref(),
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+
         let attribution = ChatMessageAttribution {
             attribution_source: Some(summary.attribution_source()),
             provider_harness: Some(AgentHarnessKind::Claude),
             provider_session_id: Some(session_id.to_string()),
             upstream_provider: summary.upstream_provider(),
-            provider_profile: None,
+            provider_profile: summary.provider_profile_name(),
             logical_model: summary.primary_model.clone(),
             effective_model_id: summary.primary_model.clone(),
             logical_effort: None,
@@ -160,7 +169,7 @@ impl ChatAttributionBackfillService {
             harness: Some(AgentHarnessKind::Claude),
             provider_session_id: Some(session_id.to_string()),
             upstream_provider: summary.upstream_provider(),
-            provider_profile: None,
+            provider_profile: summary.provider_profile_name(),
             logical_model: summary.primary_model.clone(),
             effective_model_id: summary.primary_model.clone(),
             logical_effort: None,

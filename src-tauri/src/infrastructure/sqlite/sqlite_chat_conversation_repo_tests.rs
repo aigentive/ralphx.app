@@ -23,6 +23,8 @@ fn make_conversation(context_type: ChatContextType, context_id: &str) -> ChatCon
         claude_session_id: None,
         provider_session_id: None,
         provider_harness: None,
+        upstream_provider: None,
+        provider_profile: None,
         title: None,
         message_count: 0,
         last_message_at: None,
@@ -73,6 +75,8 @@ async fn test_create_preserves_optional_fields() {
         claude_session_id: Some("session-xyz".to_string()),
         provider_session_id: Some("session-xyz".to_string()),
         provider_harness: Some(AgentHarnessKind::Claude),
+        upstream_provider: Some("anthropic".to_string()),
+        provider_profile: Some("default".to_string()),
         title: Some("My Conversation".to_string()),
         message_count: 5,
         last_message_at: Some(now),
@@ -93,6 +97,8 @@ async fn test_create_preserves_optional_fields() {
     assert_eq!(loaded.claude_session_id, Some("session-xyz".to_string()));
     assert_eq!(loaded.provider_session_id, Some("session-xyz".to_string()));
     assert_eq!(loaded.provider_harness, Some(AgentHarnessKind::Claude));
+    assert_eq!(loaded.upstream_provider.as_deref(), Some("anthropic"));
+    assert_eq!(loaded.provider_profile.as_deref(), Some("default"));
     assert_eq!(loaded.title, Some("My Conversation".to_string()));
     assert_eq!(loaded.message_count, 5);
     assert!(loaded.last_message_at.is_some());
@@ -270,6 +276,8 @@ async fn test_clear_claude_session_id() {
         claude_session_id: Some("existing-session".to_string()),
         provider_session_id: Some("existing-session".to_string()),
         provider_harness: Some(AgentHarnessKind::Claude),
+        upstream_provider: None,
+        provider_profile: None,
         title: None,
         message_count: 0,
         last_message_at: None,
@@ -292,6 +300,24 @@ async fn test_clear_claude_session_id() {
     assert!(loaded.claude_session_id.is_none());
     assert!(loaded.provider_session_id.is_none());
     assert!(loaded.provider_harness.is_none());
+}
+
+#[tokio::test]
+async fn test_update_provider_origin() {
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
+
+    let conv = make_conversation(ChatContextType::Ideation, "ctx-1");
+    let conv_id = conv.id.clone();
+    repo.create(conv).await.unwrap();
+
+    repo.update_provider_origin(&conv_id, Some("z_ai"), Some("z_ai"))
+        .await
+        .unwrap();
+
+    let loaded = repo.get_by_id(&conv_id).await.unwrap().unwrap();
+    assert_eq!(loaded.upstream_provider.as_deref(), Some("z_ai"));
+    assert_eq!(loaded.provider_profile.as_deref(), Some("z_ai"));
 }
 
 // --- update_title ---

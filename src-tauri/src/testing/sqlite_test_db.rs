@@ -173,12 +173,12 @@ impl SqliteTestDb {
             conn.execute(
                 "INSERT INTO chat_conversations (
                     id, context_type, context_id, claude_session_id, provider_session_id,
-                    provider_harness, title, message_count, last_message_at, created_at,
+                    provider_harness, upstream_provider, provider_profile, title, message_count, last_message_at, created_at,
                     updated_at, parent_conversation_id, attribution_backfill_status,
                     attribution_backfill_source, attribution_backfill_source_path,
                     attribution_backfill_last_attempted_at, attribution_backfill_completed_at,
                     attribution_backfill_error_summary
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
                 rusqlite::params![
                     conversation.id.as_str(),
                     conversation.context_type.to_string(),
@@ -188,6 +188,8 @@ impl SqliteTestDb {
                     conversation
                         .provider_harness
                         .map(|value| value.to_string()),
+                    conversation.upstream_provider.as_deref(),
+                    conversation.provider_profile.as_deref(),
                     conversation.title.as_deref(),
                     conversation.message_count,
                     conversation.last_message_at.as_ref().map(|dt| dt.to_rfc3339()),

@@ -186,6 +186,10 @@ pub struct ChatConversation {
     pub provider_session_id: Option<String>,
     /// Harness that owns the provider session.
     pub provider_harness: Option<AgentHarnessKind>,
+    /// Upstream provider behind the selected harness.
+    pub upstream_provider: Option<String>,
+    /// Optional runtime/profile selector for the upstream provider.
+    pub provider_profile: Option<String>,
     /// Auto-generated or user-set title for this conversation
     pub title: Option<String>,
     /// Number of messages in this conversation
@@ -219,6 +223,8 @@ impl ChatConversation {
             claude_session_id: None,
             provider_session_id: None,
             provider_harness: None,
+            upstream_provider: None,
+            provider_profile: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -244,6 +250,8 @@ impl ChatConversation {
             claude_session_id: None,
             provider_session_id: None,
             provider_harness: None,
+            upstream_provider: None,
+            provider_profile: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -269,6 +277,8 @@ impl ChatConversation {
             claude_session_id: None,
             provider_session_id: None,
             provider_harness: None,
+            upstream_provider: None,
+            provider_profile: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -295,6 +305,8 @@ impl ChatConversation {
             claude_session_id: None,
             provider_session_id: None,
             provider_harness: None,
+            upstream_provider: None,
+            provider_profile: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -320,6 +332,8 @@ impl ChatConversation {
             claude_session_id: None,
             provider_session_id: None,
             provider_harness: None,
+            upstream_provider: None,
+            provider_profile: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -345,6 +359,8 @@ impl ChatConversation {
             claude_session_id: None,
             provider_session_id: None,
             provider_harness: None,
+            upstream_provider: None,
+            provider_profile: None,
             title: None,
             message_count: 0,
             last_message_at: None,
@@ -403,6 +419,16 @@ impl ChatConversation {
         self.claude_session_id = None;
         self.provider_session_id = None;
         self.provider_harness = None;
+        self.updated_at = Utc::now();
+    }
+
+    pub fn set_provider_origin(
+        &mut self,
+        upstream_provider: Option<String>,
+        provider_profile: Option<String>,
+    ) {
+        self.upstream_provider = upstream_provider;
+        self.provider_profile = provider_profile;
         self.updated_at = Utc::now();
     }
 

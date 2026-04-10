@@ -91,6 +91,22 @@ impl ChatConversationRepository for MemoryChatConversationRepository {
         Ok(())
     }
 
+    async fn update_provider_origin(
+        &self,
+        id: &ChatConversationId,
+        upstream_provider: Option<&str>,
+        provider_profile: Option<&str>,
+    ) -> AppResult<()> {
+        let mut convos = self.conversations.write().await;
+        if let Some(conversation) = convos.get_mut(id) {
+            conversation.set_provider_origin(
+                upstream_provider.map(str::to_string),
+                provider_profile.map(str::to_string),
+            );
+        }
+        Ok(())
+    }
+
     async fn update_title(&self, id: &ChatConversationId, title: &str) -> AppResult<()> {
         let mut convos = self.conversations.write().await;
         if let Some(conv) = convos.get_mut(id) {

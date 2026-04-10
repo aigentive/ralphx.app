@@ -80,3 +80,20 @@ async fn test_update_provider_session_ref_for_codex() {
     );
     assert_eq!(retrieved.claude_session_id, None);
 }
+
+#[tokio::test]
+async fn test_update_provider_origin() {
+    let repo = MemoryChatConversationRepository::new();
+    let session_id = IdeationSessionId::new();
+    let conv = ChatConversation::new_ideation(session_id);
+    let id = conv.id;
+
+    repo.create(conv).await.unwrap();
+    repo.update_provider_origin(&id, Some("z_ai"), Some("z_ai"))
+        .await
+        .unwrap();
+
+    let retrieved = repo.get_by_id(&id).await.unwrap().unwrap();
+    assert_eq!(retrieved.upstream_provider.as_deref(), Some("z_ai"));
+    assert_eq!(retrieved.provider_profile.as_deref(), Some("z_ai"));
+}
