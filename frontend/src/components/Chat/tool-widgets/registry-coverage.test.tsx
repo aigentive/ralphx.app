@@ -293,10 +293,22 @@ describe("chat widget families without prior direct coverage", () => {
             result: { source_branch: "task/chat-widgets", target_branch: "main" },
           })}
         />
+        <MergeWidget
+          toolCall={makeToolCall("ralphx:complete_merge", {
+            arguments: { commit_sha: "def9876543" },
+            result: {
+              success: true,
+              message: "Freshness conflict resolved, routing back to origin state",
+              new_status: "executing",
+            },
+          })}
+        />
       </>,
     );
 
     expect(screen.getByText("Merge completed")).toBeInTheDocument();
+    expect(screen.getByText("Branch update applied")).toBeInTheDocument();
+    expect(screen.getByText("Task returned to execution after freshness resolution")).toBeInTheDocument();
     await user.click(screen.getByText(/Conflict: Manual resolution required/i));
     expect(screen.getByText(/MessageItem.tsx/)).toBeInTheDocument();
     await user.click(screen.getAllByText(/Validation failed/i)[0]!);
