@@ -46,7 +46,9 @@ async fn test_backfill_imports_single_run_single_message_conversation() {
 
     write_transcript(
         &temp.path().join("session-1.jsonl"),
-        &[r#"{"type":"assistant","message":{"id":"msg-1","model":"glm-4.7","usage":{"input_tokens":30,"output_tokens":7,"cache_read_input_tokens":11},"content":[{"type":"text","text":"done"}]}}"#],
+        &[
+            r#"{"type":"assistant","message":{"id":"msg-1","model":"glm-4.7","usage":{"input_tokens":30,"output_tokens":7,"cache_read_input_tokens":11},"content":[{"type":"text","text":"done"}]}}"#,
+        ],
     );
 
     let service = ChatAttributionBackfillService::new(
@@ -85,7 +87,10 @@ async fn test_backfill_imports_single_run_single_message_conversation() {
         updated_message.attribution_source.as_deref(),
         Some("historical_backfill_claude_project_jsonl_z_ai")
     );
-    assert_eq!(updated_message.provider_harness, Some(AgentHarnessKind::Claude));
+    assert_eq!(
+        updated_message.provider_harness,
+        Some(AgentHarnessKind::Claude)
+    );
     assert_eq!(updated_message.logical_model.as_deref(), Some("glm-4.7"));
     assert_eq!(updated_message.input_tokens, Some(30));
     assert_eq!(updated_message.output_tokens, Some(7));
@@ -147,13 +152,11 @@ async fn test_backfill_marks_multi_message_conversation_partial() {
         updated_conversation.attribution_backfill_status,
         Some(AttributionBackfillStatus::Partial)
     );
-    assert!(
-        updated_conversation
-            .attribution_backfill_error_summary
-            .as_deref()
-            .unwrap_or("")
-            .contains("provider messages")
-    );
+    assert!(updated_conversation
+        .attribution_backfill_error_summary
+        .as_deref()
+        .unwrap_or("")
+        .contains("provider messages"));
 
     let first_message = chat_message_repo
         .get_by_id(&first_id)
@@ -210,4 +213,69 @@ async fn test_backfill_marks_missing_transcript_not_found() {
         updated_conversation.attribution_backfill_status,
         Some(AttributionBackfillStatus::SessionNotFound)
     );
+}
+
+#[tokio::test]
+async fn test_backfill_indexes_nested_transcript_paths_once() {
+    let conversation_repo = Arc::new(MemoryChatConversationRepository::new());
+    let chat_message_repo = Arc::new(MemoryChatMessageRepository::new());
+    let agent_run_repo = Arc::new(MemoryAgentRunRepository::new());
+    let temp = tempfile::tempdir().unwrap();
+
+    let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
+    conversation.claude_session_id = Some("nested-session".to_string());
+    let conversation = conversation_repo.create(conversation).await.unwrap();
+
+    let message = make_orchestrator_message(conversation.id, "Nested summary");
+    let message_id = message.id.clone();
+    chat_message_repo.create(message).await.unwrap();
+
+    let run = AgentRun::new(conversation.id);
+    let run_id = run.id;
+    agent_run_repo.create(run).await.unwrap();
+
+    let nested_dir = temp.path().join("project-a").join("subagent");
+    std::fs::create_dir_all(&nested_dir).unwrap();
+    write_transcript(
+        &nested_dir.join("nested-session.jsonl"),
+        &[
+            r#"{"type":"assistant","message":{"id":"msg-nested","model":"claude-sonnet-4-6","usage":{"input_tokens":9,"output_tokens":4},"content":[{"type":"text","text":"nested"}]}}"#,
+        ],
+    );
+
+    let service = ChatAttributionBackfillService::new(
+        conversation_repo.clone(),
+        chat_message_repo.clone(),
+        agent_run_repo.clone(),
+        temp.path().to_path_buf(),
+    );
+
+    assert_eq!(service.run_pending_batch(10).await.unwrap(), 1);
+
+    let updated_conversation = conversation_repo
+        .get_by_id(&conversation.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_conversation.attribution_backfill_status,
+        Some(AttributionBackfillStatus::Completed)
+    );
+    assert!(updated_conversation
+        .attribution_backfill_source_path
+        .as_deref()
+        .unwrap_or("")
+        .contains("project-a/subagent/nested-session.jsonl"));
+
+    let updated_message = chat_message_repo
+        .get_by_id(&message_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated_message.input_tokens, Some(9));
+    assert_eq!(updated_message.output_tokens, Some(4));
+
+    let updated_run = agent_run_repo.get_by_id(&run_id).await.unwrap().unwrap();
+    assert_eq!(updated_run.input_tokens, Some(9));
+    assert_eq!(updated_run.output_tokens, Some(4));
 }

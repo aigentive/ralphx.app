@@ -2,11 +2,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::Utc;
+use futures::stream::{self, StreamExt};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tracing::{info, warn};
 
-use crate::application::chat_attribution_backfill_transcript::parse_claude_session_transcript;
+use crate::application::chat_attribution_backfill_transcript::{
+    build_claude_transcript_index, parse_claude_session_transcript_from_path,
+    HistoricalTranscriptIndex,
+};
 use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::entities::{
     AgentRunAttribution, AttributionBackfillStatus, ChatContextType, ChatMessageAttribution,
@@ -19,6 +23,9 @@ use crate::error::AppResult;
 
 const CLAUDE_BACKFILL_SOURCE: &str = "claude_project_jsonl";
 pub const CHAT_ATTRIBUTION_BACKFILL_PROGRESS_EVENT: &str = "chat:attribution_backfill_progress";
+const DEFAULT_BATCH_CONCURRENCY: usize = 1;
+const STARTUP_BATCH_SIZE: u32 = 100;
+const STARTUP_BATCH_CONCURRENCY: usize = 4;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -96,89 +103,147 @@ impl ChatAttributionBackfillService {
     }
 
     pub async fn run_pending_batch(&self, limit: u32) -> AppResult<u32> {
+        let transcript_index = Arc::new(self.build_transcript_index().await);
+        self.run_pending_batch_with_options(
+            limit,
+            transcript_index,
+            None,
+            DEFAULT_BATCH_CONCURRENCY,
+        )
+        .await
+    }
+
+    async fn build_transcript_index(&self) -> HistoricalTranscriptIndex {
+        let transcript_root = self.transcript_root.clone();
+        match tokio::task::spawn_blocking(move || build_claude_transcript_index(&transcript_root))
+            .await
+        {
+            Ok(index) => index,
+            Err(error) => {
+                warn!(
+                    error = %error,
+                    "Failed to build Claude transcript index for attribution backfill"
+                );
+                HistoricalTranscriptIndex::default()
+            }
+        }
+    }
+
+    async fn run_pending_batch_with_options(
+        &self,
+        limit: u32,
+        transcript_index: Arc<HistoricalTranscriptIndex>,
+        app_handle: Option<&AppHandle>,
+        concurrency: usize,
+    ) -> AppResult<u32> {
         let conversations = self
             .conversation_repo
             .list_needing_attribution_backfill(limit)
             .await?;
 
+        let mut in_flight = stream::iter(conversations.into_iter().map(|conversation| {
+            let transcript_index = Arc::clone(&transcript_index);
+            let app_handle = app_handle.cloned();
+            async move {
+                self.process_backfill_conversation(conversation, transcript_index, app_handle)
+                    .await
+            }
+        }))
+        .buffer_unordered(concurrency.max(1));
+
         let mut processed = 0u32;
-        for conversation in conversations {
-            let Some(session_id) = conversation.claude_session_id.clone() else {
-                continue;
-            };
-            let started_at = Utc::now();
-            self.conversation_repo
-                .update_attribution_backfill_state(
-                    &conversation.id,
-                    ConversationAttributionBackfillState {
-                        status: Some(AttributionBackfillStatus::Running),
-                        source: Some(CLAUDE_BACKFILL_SOURCE.to_string()),
-                        source_path: conversation.attribution_backfill_source_path.clone(),
-                        last_attempted_at: Some(started_at),
-                        completed_at: None,
-                        error_summary: None,
-                    },
-                )
-                .await?;
-
-            let final_state = match self
-                .import_session_transcript(&conversation, &session_id)
-                .await
-            {
-                Ok(ImportOutcome::NotFound) => ConversationAttributionBackfillState {
-                    status: Some(AttributionBackfillStatus::SessionNotFound),
-                    source: Some(CLAUDE_BACKFILL_SOURCE.to_string()),
-                    source_path: None,
-                    last_attempted_at: Some(started_at),
-                    completed_at: None,
-                    error_summary: None,
-                },
-                Ok(ImportOutcome::Completed { path }) => ConversationAttributionBackfillState {
-                    status: Some(AttributionBackfillStatus::Completed),
-                    source: Some(CLAUDE_BACKFILL_SOURCE.to_string()),
-                    source_path: Some(path.display().to_string()),
-                    last_attempted_at: Some(started_at),
-                    completed_at: Some(Utc::now()),
-                    error_summary: None,
-                },
-                Ok(ImportOutcome::Partial { path, reason }) => {
-                    ConversationAttributionBackfillState {
-                        status: Some(AttributionBackfillStatus::Partial),
-                        source: Some(CLAUDE_BACKFILL_SOURCE.to_string()),
-                        source_path: Some(path.display().to_string()),
-                        last_attempted_at: Some(started_at),
-                        completed_at: None,
-                        error_summary: Some(truncate_error(&reason)),
-                    }
-                }
-                Err(error) => ConversationAttributionBackfillState {
-                    status: Some(AttributionBackfillStatus::ParseFailed),
-                    source: Some(CLAUDE_BACKFILL_SOURCE.to_string()),
-                    source_path: None,
-                    last_attempted_at: Some(started_at),
-                    completed_at: None,
-                    error_summary: Some(truncate_error(&error.to_string())),
-                },
-            };
-
-            self.conversation_repo
-                .update_attribution_backfill_state(&conversation.id, final_state)
-                .await?;
-            processed += 1;
+        while let Some(result) = in_flight.next().await {
+            processed += result? as u32;
         }
 
         Ok(processed)
+    }
+
+    async fn process_backfill_conversation(
+        &self,
+        conversation: crate::domain::entities::ChatConversation,
+        transcript_index: Arc<HistoricalTranscriptIndex>,
+        app_handle: Option<AppHandle>,
+    ) -> AppResult<bool> {
+        let Some(session_id) = conversation.claude_session_id.clone() else {
+            return Ok(false);
+        };
+
+        let started_at = Utc::now();
+        self.conversation_repo
+            .update_attribution_backfill_state(
+                &conversation.id,
+                ConversationAttributionBackfillState {
+                    status: Some(AttributionBackfillStatus::Running),
+                    source: Some(CLAUDE_BACKFILL_SOURCE.to_string()),
+                    source_path: conversation.attribution_backfill_source_path.clone(),
+                    last_attempted_at: Some(started_at),
+                    completed_at: None,
+                    error_summary: None,
+                },
+            )
+            .await?;
+
+        let final_state = match self
+            .import_session_transcript(&conversation, &session_id, transcript_index.as_ref())
+            .await
+        {
+            Ok(ImportOutcome::NotFound) => ConversationAttributionBackfillState {
+                status: Some(AttributionBackfillStatus::SessionNotFound),
+                source: Some(CLAUDE_BACKFILL_SOURCE.to_string()),
+                source_path: None,
+                last_attempted_at: Some(started_at),
+                completed_at: None,
+                error_summary: None,
+            },
+            Ok(ImportOutcome::Completed { path }) => ConversationAttributionBackfillState {
+                status: Some(AttributionBackfillStatus::Completed),
+                source: Some(CLAUDE_BACKFILL_SOURCE.to_string()),
+                source_path: Some(path.display().to_string()),
+                last_attempted_at: Some(started_at),
+                completed_at: Some(Utc::now()),
+                error_summary: None,
+            },
+            Ok(ImportOutcome::Partial { path, reason }) => ConversationAttributionBackfillState {
+                status: Some(AttributionBackfillStatus::Partial),
+                source: Some(CLAUDE_BACKFILL_SOURCE.to_string()),
+                source_path: Some(path.display().to_string()),
+                last_attempted_at: Some(started_at),
+                completed_at: None,
+                error_summary: Some(truncate_error(&reason)),
+            },
+            Err(error) => ConversationAttributionBackfillState {
+                status: Some(AttributionBackfillStatus::ParseFailed),
+                source: Some(CLAUDE_BACKFILL_SOURCE.to_string()),
+                source_path: None,
+                last_attempted_at: Some(started_at),
+                completed_at: None,
+                error_summary: Some(truncate_error(&error.to_string())),
+            },
+        };
+
+        self.conversation_repo
+            .update_attribution_backfill_state(&conversation.id, final_state)
+            .await?;
+
+        emit_backfill_progress(self, app_handle.as_ref(), 1).await;
+        Ok(true)
     }
 
     async fn import_session_transcript(
         &self,
         conversation: &crate::domain::entities::ChatConversation,
         session_id: &str,
+        transcript_index: &HistoricalTranscriptIndex,
     ) -> Result<ImportOutcome, String> {
-        let Some(summary) = parse_claude_session_transcript(&self.transcript_root, session_id)?
-        else {
+        let Some(path) = transcript_index.get(session_id).cloned() else {
             return Ok(ImportOutcome::NotFound);
         };
+
+        let summary =
+            tokio::task::spawn_blocking(move || parse_claude_session_transcript_from_path(&path))
+                .await
+                .map_err(|error| format!("transcript parse task failed: {}", error))??;
 
         if conversation.provider_session_id.is_none() || conversation.provider_harness.is_none() {
             self.conversation_repo
@@ -330,10 +395,18 @@ pub async fn run_startup_chat_attribution_backfill_with_events(
     service: Arc<ChatAttributionBackfillService>,
     app_handle: Option<AppHandle>,
 ) {
-    const BATCH_SIZE: u32 = 50;
+    let transcript_index = Arc::new(service.build_transcript_index().await);
 
     loop {
-        match service.run_pending_batch(BATCH_SIZE).await {
+        match service
+            .run_pending_batch_with_options(
+                STARTUP_BATCH_SIZE,
+                Arc::clone(&transcript_index),
+                app_handle.as_ref(),
+                STARTUP_BATCH_CONCURRENCY,
+            )
+            .await
+        {
             Ok(0) => {
                 emit_backfill_progress(&service, app_handle.as_ref(), 0).await;
                 info!("Claude attribution backfill startup pass complete");

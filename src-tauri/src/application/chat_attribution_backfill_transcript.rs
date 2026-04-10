@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -35,6 +35,8 @@ pub(crate) struct HistoricalTranscriptSummary {
     pub total_usage: AgentRunUsage,
     pub assistant_turn_count: usize,
 }
+
+pub(crate) type HistoricalTranscriptIndex = HashMap<String, PathBuf>;
 
 impl HistoricalTranscriptSummary {
     pub fn attribution_source(&self) -> String {
@@ -88,13 +90,10 @@ impl AssistantTurnAccumulator {
     }
 }
 
-pub(crate) fn parse_claude_session_transcript(
-    root: &Path,
-    session_id: &str,
-) -> Result<Option<HistoricalTranscriptSummary>, String> {
-    let Some(path) = find_session_transcript_path(root, session_id) else {
-        return Ok(None);
-    };
+pub(crate) fn parse_claude_session_transcript_from_path(
+    path: &Path,
+) -> Result<HistoricalTranscriptSummary, String> {
+    let path = path.to_path_buf();
 
     let content = fs::read_to_string(&path)
         .map_err(|error| format!("failed to read transcript {}: {}", path.display(), error))?;
@@ -163,16 +162,19 @@ pub(crate) fn parse_claude_session_transcript(
             &mut total_usage.cache_creation_tokens,
             turn.usage.cache_creation_tokens,
         );
-        add_usage_u64(&mut total_usage.cache_read_tokens, turn.usage.cache_read_tokens);
+        add_usage_u64(
+            &mut total_usage.cache_read_tokens,
+            turn.usage.cache_read_tokens,
+        );
     }
 
-    Ok(Some(HistoricalTranscriptSummary {
+    Ok(HistoricalTranscriptSummary {
         path,
         primary_model,
         provider_profile: profile,
         total_usage,
         assistant_turn_count: turns.len(),
-    }))
+    })
 }
 
 fn parse_usage(raw: Option<&serde_json::Value>) -> AgentRunUsage {
@@ -249,13 +251,13 @@ fn max_usage_u64(total: &mut Option<u64>, value: Option<u64>) {
     }
 }
 
-fn find_session_transcript_path(root: &Path, session_id: &str) -> Option<PathBuf> {
+pub(crate) fn build_claude_transcript_index(root: &Path) -> HistoricalTranscriptIndex {
     if !root.exists() {
-        return None;
+        return HashMap::new();
     }
 
+    let mut index = HashMap::new();
     let mut stack = vec![root.to_path_buf()];
-    let target = format!("{}.jsonl", session_id);
 
     while let Some(dir) = stack.pop() {
         let entries = match fs::read_dir(&dir) {
@@ -270,15 +272,21 @@ fn find_session_transcript_path(root: &Path, session_id: &str) -> Option<PathBuf
                 continue;
             }
 
-            if path
-                .file_name()
-                .and_then(|raw| raw.to_str())
-                .is_some_and(|name| name == target)
-            {
-                return Some(path);
+            if path.extension().and_then(|raw| raw.to_str()) != Some("jsonl") {
+                continue;
             }
+
+            let Some(session_id) = path
+                .file_stem()
+                .and_then(|raw| raw.to_str())
+                .filter(|value| !value.is_empty())
+            else {
+                continue;
+            };
+
+            index.entry(session_id.to_string()).or_insert(path);
         }
     }
 
-    None
+    index
 }
