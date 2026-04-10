@@ -12,7 +12,6 @@ import { Calendar, Download } from "lucide-react";
 import { formatMinutesHuman } from "@/lib/formatters";
 import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
 import type { ScopeUsageStats } from "@/api/metrics";
-import { useChatAttributionBackfillSummary } from "@/hooks/useChatAttributionBackfillSummary";
 import { useProjectStats } from "@/hooks/useProjectStats";
 import { useProjectChatUsageStats } from "@/hooks/useProjectChatUsageStats";
 import { useProjectTrends } from "@/hooks/useProjectTrends";
@@ -27,7 +26,6 @@ import {
 import { StatCard } from "./insights/StatCard";
 import { TrendChart } from "./insights/TrendChart";
 import { EffortEstimationPanel } from "./insights/EffortEstimationPanel";
-import { AttributionBackfillCard } from "./insights/AttributionBackfillCard";
 import {
   CycleTimeBreakdown,
   ColumnDwellTimeBreakdown,
@@ -204,7 +202,6 @@ export function InsightsView() {
   const statsQuery = useProjectStats(projectId, weekStartDay, tzOffsetMinutes);
   const usageStatsQuery = useProjectChatUsageStats(projectId);
   const trendsQuery = useProjectTrends(projectId, weekStartDay, tzOffsetMinutes);
-  const attributionBackfillSummaryQuery = useChatAttributionBackfillSummary();
 
   // No active project
   if (!projectId) {
@@ -262,11 +259,6 @@ export function InsightsView() {
       weekStartDay={weekStartDay}
       onWeekStartDayChange={setWeekStartDay}
       {...(usageStatsQuery.data !== undefined ? { usageStats: usageStatsQuery.data } : {})}
-      {...(
-        attributionBackfillSummaryQuery.data !== undefined
-          ? { attributionBackfillSummary: attributionBackfillSummaryQuery.data }
-          : {}
-      )}
     />
   );
 }
@@ -274,7 +266,6 @@ export function InsightsView() {
 function InsightsContent({
   stats,
   usageStats,
-  attributionBackfillSummary,
   trends,
   projectId,
   hasEnoughForTrends,
@@ -284,7 +275,6 @@ function InsightsContent({
 }: {
   stats: ProjectStats;
   usageStats?: ScopeUsageStats;
-  attributionBackfillSummary?: import("@/api/metrics").AttributionBackfillSummary;
   trends: ProjectTrends;
   projectId: string;
   hasEnoughForTrends: boolean;
@@ -425,14 +415,7 @@ function InsightsContent({
               <EmeSection stats={stats} showEme={showEme} projectId={projectId} />
             </div>
 
-            {usageStats && (
-              <UsageInsightsCard stats={usageStats} />
-            )}
-
-            {attributionBackfillSummary &&
-              attributionBackfillSummary.eligibleConversationCount > 0 && (
-                <AttributionBackfillCard summary={attributionBackfillSummary} />
-              )}
+            {usageStats && <UsageInsightsCard stats={usageStats} />}
 
             {/* Trend charts */}
             {!hasEnoughForTrends ? (

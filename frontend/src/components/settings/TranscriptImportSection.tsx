@@ -57,7 +57,7 @@ export function TranscriptImportSection() {
     <SectionCard
       icon={<DatabaseBackup className="w-4 h-4 text-[var(--accent-primary)]" />}
       title="Transcript Import"
-      description="Best-effort historical Claude transcript attribution and usage backfill."
+      description="Best-effort historical Claude transcript attribution and usage backfill. Updates live while this screen is open."
     >
       {isLoading && (
         <p className="text-sm text-[var(--text-muted)]">

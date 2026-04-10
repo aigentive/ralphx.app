@@ -2,13 +2,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::Utc;
+use serde::Serialize;
+use tauri::{AppHandle, Emitter};
 use tracing::{info, warn};
 
 use crate::application::chat_attribution_backfill_transcript::parse_claude_session_transcript;
 use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use crate::domain::entities::{
     AgentRunAttribution, AttributionBackfillStatus, ChatContextType, ChatMessageAttribution,
-    ConversationAttributionBackfillState, MessageRole,
+    ConversationAttributionBackfillState, ConversationAttributionBackfillSummary, MessageRole,
 };
 use crate::domain::repositories::{
     AgentRunRepository, ChatConversationRepository, ChatMessageRepository,
@@ -16,6 +18,46 @@ use crate::domain::repositories::{
 use crate::error::AppResult;
 
 const CLAUDE_BACKFILL_SOURCE: &str = "claude_project_jsonl";
+pub const CHAT_ATTRIBUTION_BACKFILL_PROGRESS_EVENT: &str = "chat:attribution_backfill_progress";
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatAttributionBackfillProgressPayload {
+    pub processed_in_batch: u32,
+    pub eligible_conversation_count: u64,
+    pub pending_count: u64,
+    pub running_count: u64,
+    pub completed_count: u64,
+    pub partial_count: u64,
+    pub session_not_found_count: u64,
+    pub parse_failed_count: u64,
+    pub remaining_count: u64,
+    pub terminal_count: u64,
+    pub attention_count: u64,
+    pub is_idle: bool,
+}
+
+impl ChatAttributionBackfillProgressPayload {
+    fn from_summary(
+        summary: ConversationAttributionBackfillSummary,
+        processed_in_batch: u32,
+    ) -> Self {
+        Self {
+            processed_in_batch,
+            eligible_conversation_count: summary.eligible_conversation_count,
+            pending_count: summary.pending_count,
+            running_count: summary.running_count,
+            completed_count: summary.completed_count,
+            partial_count: summary.partial_count,
+            session_not_found_count: summary.session_not_found_count,
+            parse_failed_count: summary.parse_failed_count,
+            remaining_count: summary.remaining_count(),
+            terminal_count: summary.terminal_count(),
+            attention_count: summary.attention_count(),
+            is_idle: summary.is_idle(),
+        }
+    }
+}
 
 pub struct ChatAttributionBackfillService {
     conversation_repo: Arc<dyn ChatConversationRepository>,
@@ -45,6 +87,12 @@ impl ChatAttributionBackfillService {
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".claude")
             .join("projects")
+    }
+
+    pub async fn get_backfill_summary(&self) -> AppResult<ConversationAttributionBackfillSummary> {
+        self.conversation_repo
+            .get_attribution_backfill_summary()
+            .await
     }
 
     pub async fn run_pending_batch(&self, limit: u32) -> AppResult<u32> {
@@ -275,21 +323,56 @@ enum ImportOutcome {
 }
 
 pub async fn run_startup_chat_attribution_backfill(service: Arc<ChatAttributionBackfillService>) {
+    run_startup_chat_attribution_backfill_with_events(service, None).await;
+}
+
+pub async fn run_startup_chat_attribution_backfill_with_events(
+    service: Arc<ChatAttributionBackfillService>,
+    app_handle: Option<AppHandle>,
+) {
     const BATCH_SIZE: u32 = 50;
 
     loop {
         match service.run_pending_batch(BATCH_SIZE).await {
             Ok(0) => {
+                emit_backfill_progress(&service, app_handle.as_ref(), 0).await;
                 info!("Claude attribution backfill startup pass complete");
                 break;
             }
             Ok(processed) => {
+                emit_backfill_progress(&service, app_handle.as_ref(), processed).await;
                 info!(processed, "Processed Claude attribution backfill batch");
             }
             Err(error) => {
+                emit_backfill_progress(&service, app_handle.as_ref(), 0).await;
                 warn!(error = %error, "Claude attribution backfill startup pass failed");
                 break;
             }
+        }
+    }
+}
+
+async fn emit_backfill_progress(
+    service: &ChatAttributionBackfillService,
+    app_handle: Option<&AppHandle>,
+    processed_in_batch: u32,
+) {
+    let Some(handle) = app_handle else {
+        return;
+    };
+
+    match service.get_backfill_summary().await {
+        Ok(summary) => {
+            let _ = handle.emit(
+                CHAT_ATTRIBUTION_BACKFILL_PROGRESS_EVENT,
+                ChatAttributionBackfillProgressPayload::from_summary(summary, processed_in_batch),
+            );
+        }
+        Err(error) => {
+            warn!(
+                error = %error,
+                "Failed to emit chat attribution backfill progress event"
+            );
         }
     }
 }
