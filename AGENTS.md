@@ -154,6 +154,19 @@ When working in `src-tauri/`, also follow:
 | P0 | Validation / merge gate | Planned | Before merge, run a deliberate endgame matrix covering Rust backend, frontend type/tests, representative Codex capability tests, execution/review/merge regressions, and one final `cargo clean` in `src-tauri` |
 | P1 | Docs / rules final sweep | In progress | Finish architecture/reference/doc wording so Codex multi-harness support, Claude-only team mode, and legacy compatibility are all explicit and current before merge |
 
+### Concrete Merge Checklist
+
+| Priority | Item | Status | Note |
+|---|---|---|---|
+| P0 | P0.1 Reviewer fresh-cycle harness semantics | Completed | Landed: fresh reviewer cycles now ignore stale stored provider harness lineage for spawn settings, while review-chat continuations still preserve stored provider session behavior |
+| P0 | P0.2 Stopped restart semantics by lane | Planned | Verify worker/re-execution/reviewer/merger restarts obey continuation-vs-new-attempt rules after settings changes |
+| P0 | P0.3 Startup recovery semantics by lane | Planned | Verify startup recovery relaunches preserve lineage for execution/review/merge without regressing new-attempt behavior |
+| P0 | P0.4 Merge retry and merge-conflict relaunch semantics | Planned | Audit merge retry/conflict paths so Codex runtime selection follows canonical stored lineage where appropriate |
+| P0 | P0.5 Re-execution semantics after settings change | Planned | Verify explicit retry/re-execution paths switch to current settings unless an explicit harness override exists |
+| P0 | P0.6 Event / transport parity recheck | Planned | Reconfirm provider-neutral payloads and legacy aliases after the remaining runtime parity fixes land |
+| P0 | P0.7 Endgame validation matrix | Planned | Run backend/frontend/Codex capability/regression matrix, then final `cargo clean` |
+| P1 | P1.1 Docs / rules / user-guide final sweep | Planned | Finish architecture docs, `.claude/rules`, and user-facing multi-harness guidance after code parity is complete |
+
 ## High-Value Refactor Targets
 
 | Priority | Area | Why It Matters | Next Step |

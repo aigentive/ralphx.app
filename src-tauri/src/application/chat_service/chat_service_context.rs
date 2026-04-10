@@ -414,6 +414,23 @@ fn claude_resume_session_id(conversation: &ChatConversation) -> Option<String> {
     conversation.compatible_provider_session_fields().0
 }
 
+fn is_fresh_review_cycle(conversation: &ChatConversation, agent_name: &str) -> bool {
+    conversation.context_type == ChatContextType::Review && agent_name == agent_names::AGENT_REVIEWER
+}
+
+fn stored_harness_override_for_spawn_settings(
+    conversation: &ChatConversation,
+    agent_name: &str,
+) -> Option<AgentHarnessKind> {
+    if is_fresh_review_cycle(conversation, agent_name) {
+        None
+    } else {
+        conversation
+            .provider_session_ref()
+            .map(|session_ref| session_ref.harness)
+    }
+}
+
 /// XML-escape content for safe embedding in XML elements.
 fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -1378,8 +1395,7 @@ pub async fn build_command(
     // For reviewer agent (not review-chat), start fresh session each review cycle.
     // Resuming causes the model to see old "Review already submitted" messages.
     // But review-chat needs session persistence for user conversation continuity.
-    let is_fresh_review_cycle = conversation.context_type == ChatContextType::Review
-        && agent_name == agent_names::AGENT_REVIEWER;
+    let is_fresh_review_cycle = is_fresh_review_cycle(conversation, agent_name);
     let claude_resume_session_id = claude_resume_session_id(conversation);
     let should_resume = claude_resume_session_id.is_some()
         && !is_fresh_review_cycle
@@ -1401,9 +1417,7 @@ pub async fn build_command(
             project_id,
             conversation.context_type,
             entity_status,
-            conversation
-                .provider_session_ref()
-                .map(|session_ref| session_ref.harness),
+            stored_harness_override_for_spawn_settings(conversation, agent_name),
             model_override,
             agent_lane_settings_repo.as_ref(),
             ideation_model_settings_repo.as_ref(),
@@ -2349,6 +2363,42 @@ mod tests {
             Some("claude-session".to_string())
         );
         assert_eq!(claude_resume_session_id(&codex_conversation), None);
+    }
+
+    #[test]
+    fn stored_harness_override_ignores_stale_provider_for_fresh_reviewer_cycle() {
+        let mut review_conversation =
+            ChatConversation::new_review(TaskId::from_string("task-review".to_string()));
+        review_conversation.set_provider_session_ref(ProviderSessionRef {
+            harness: AgentHarnessKind::Codex,
+            provider_session_id: "codex-review-session".to_string(),
+        });
+
+        assert_eq!(
+            stored_harness_override_for_spawn_settings(
+                &review_conversation,
+                agent_names::AGENT_REVIEWER
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn stored_harness_override_keeps_provider_for_review_chat_continuations() {
+        let mut review_conversation =
+            ChatConversation::new_review(TaskId::from_string("task-review-chat".to_string()));
+        review_conversation.set_provider_session_ref(ProviderSessionRef {
+            harness: AgentHarnessKind::Codex,
+            provider_session_id: "codex-review-session".to_string(),
+        });
+
+        assert_eq!(
+            stored_harness_override_for_spawn_settings(
+                &review_conversation,
+                agent_names::AGENT_REVIEW_CHAT
+            ),
+            Some(AgentHarnessKind::Codex)
+        );
     }
 
     #[test]
