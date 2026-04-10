@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 use crate::agents::{AgentHarnessKind, LogicalEffort, ProviderSessionRef};
+use crate::entities::AgentRunUsage;
 use super::types::parse_datetime_helper;
 use crate::entities::{
     ChatConversationId, ChatMessageId, IdeationSessionId, ProjectId, TaskId,
@@ -95,6 +96,15 @@ pub struct ChatMessageAttribution {
     pub effective_effort: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ChatMessageUsage {
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub cache_creation_tokens: Option<u64>,
+    pub cache_read_tokens: Option<u64>,
+    pub estimated_usd: Option<f64>,
+}
+
 /// A chat message in an ideation session or project/task context
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
@@ -131,6 +141,12 @@ pub struct ChatMessage {
     pub effective_model_id: Option<String>,
     pub logical_effort: Option<LogicalEffort>,
     pub effective_effort: Option<String>,
+    /// Usage/cost metadata captured for this assistant message.
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub cache_creation_tokens: Option<u64>,
+    pub cache_read_tokens: Option<u64>,
+    pub estimated_usd: Option<f64>,
     /// When the message was created
     pub created_at: DateTime<Utc>,
 }
@@ -157,6 +173,11 @@ impl ChatMessage {
             effective_model_id: None,
             logical_effort: None,
             effective_effort: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            estimated_usd: None,
             created_at: Utc::now(),
         }
     }
@@ -185,6 +206,11 @@ impl ChatMessage {
             effective_model_id: None,
             logical_effort: None,
             effective_effort: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            estimated_usd: None,
             created_at: Utc::now(),
         }
     }
@@ -210,6 +236,11 @@ impl ChatMessage {
             effective_model_id: None,
             logical_effort: None,
             effective_effort: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            estimated_usd: None,
             created_at: Utc::now(),
         }
     }
@@ -235,6 +266,11 @@ impl ChatMessage {
             effective_model_id: None,
             logical_effort: None,
             effective_effort: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            estimated_usd: None,
             created_at: Utc::now(),
         }
     }
@@ -260,6 +296,11 @@ impl ChatMessage {
             effective_model_id: None,
             logical_effort: None,
             effective_effort: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            estimated_usd: None,
             created_at: Utc::now(),
         }
     }
@@ -290,6 +331,24 @@ impl ChatMessage {
     pub fn update_provider_session_ref(&mut self, session_ref: &ProviderSessionRef) {
         self.provider_harness = Some(session_ref.harness);
         self.provider_session_id = Some(session_ref.provider_session_id.clone());
+    }
+
+    pub fn apply_usage(&mut self, usage: &AgentRunUsage) {
+        if let Some(value) = usage.input_tokens {
+            self.input_tokens = Some(value);
+        }
+        if let Some(value) = usage.output_tokens {
+            self.output_tokens = Some(value);
+        }
+        if let Some(value) = usage.cache_creation_tokens {
+            self.cache_creation_tokens = Some(value);
+        }
+        if let Some(value) = usage.cache_read_tokens {
+            self.cache_read_tokens = Some(value);
+        }
+        if let Some(value) = usage.estimated_usd {
+            self.estimated_usd = Some(value);
+        }
     }
 
     /// Check if this is a user message
@@ -335,6 +394,12 @@ impl ChatMessage {
             .flatten()
             .and_then(|value| value.parse::<LogicalEffort>().ok());
         let effective_effort: Option<String> = row.get("effective_effort").ok().flatten();
+        let input_tokens: Option<u64> = row.get("input_tokens").ok().flatten();
+        let output_tokens: Option<u64> = row.get("output_tokens").ok().flatten();
+        let cache_creation_tokens: Option<u64> =
+            row.get("cache_creation_tokens").ok().flatten();
+        let cache_read_tokens: Option<u64> = row.get("cache_read_tokens").ok().flatten();
+        let estimated_usd: Option<f64> = row.get("estimated_usd").ok().flatten();
         let created_at_str: String = row.get("created_at")?;
 
         Ok(Self {
@@ -356,6 +421,11 @@ impl ChatMessage {
             effective_model_id,
             logical_effort,
             effective_effort,
+            input_tokens,
+            output_tokens,
+            cache_creation_tokens,
+            cache_read_tokens,
+            estimated_usd,
             created_at: parse_datetime_helper(created_at_str),
         })
     }

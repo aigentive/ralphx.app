@@ -1,4 +1,5 @@
 use super::*;
+use crate::domain::entities::AgentRunUsage;
 
 #[tokio::test]
 async fn test_create_and_get() {
@@ -73,4 +74,33 @@ async fn test_get_recent_by_session() {
 
     let recent = repo.get_recent_by_session(&session_id, 3).await.unwrap();
     assert_eq!(recent.len(), 3);
+}
+
+#[tokio::test]
+async fn test_update_usage_updates_message_usage_fields() {
+    let repo = MemoryChatMessageRepository::new();
+    let session_id = IdeationSessionId::new();
+    let message = ChatMessage::orchestrator_in_session(session_id, "Usage message");
+    let message_id = message.id.clone();
+
+    repo.create(message).await.unwrap();
+    repo.update_usage(
+        &message_id,
+        &AgentRunUsage {
+            input_tokens: Some(90),
+            output_tokens: Some(24),
+            cache_creation_tokens: Some(8),
+            cache_read_tokens: Some(33),
+            estimated_usd: Some(0.015),
+        },
+    )
+    .await
+    .unwrap();
+
+    let updated = repo.get_by_id(&message_id).await.unwrap().unwrap();
+    assert_eq!(updated.input_tokens, Some(90));
+    assert_eq!(updated.output_tokens, Some(24));
+    assert_eq!(updated.cache_creation_tokens, Some(8));
+    assert_eq!(updated.cache_read_tokens, Some(33));
+    assert_eq!(updated.estimated_usd, Some(0.015));
 }

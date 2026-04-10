@@ -7,7 +7,8 @@ use async_trait::async_trait;
 
 use crate::agents::ProviderSessionRef;
 use crate::domain::entities::{
-    ChatConversationId, ChatMessage, ChatMessageId, IdeationSessionId, ProjectId, TaskId,
+    AgentRunUsage, ChatConversationId, ChatMessage, ChatMessageId, IdeationSessionId, ProjectId,
+    TaskId,
 };
 use crate::error::AppResult;
 
@@ -81,6 +82,9 @@ pub trait ChatMessageRepository: Send + Sync {
         id: &ChatMessageId,
         session_ref: &ProviderSessionRef,
     ) -> AppResult<()>;
+
+    /// Update captured usage/cost metadata for a persisted assistant message.
+    async fn update_usage(&self, id: &ChatMessageId, usage: &AgentRunUsage) -> AppResult<()>;
 
     /// Count assistant/orchestrator messages in a session newer than the given message ID.
     ///

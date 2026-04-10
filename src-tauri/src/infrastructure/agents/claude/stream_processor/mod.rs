@@ -554,6 +554,10 @@ impl StreamProcessor {
         self.current_turn_usage = AgentRunUsage::default();
     }
 
+    pub fn current_turn_usage(&self) -> AgentRunUsage {
+        self.current_turn_usage.clone()
+    }
+
     /// Get the final result after stream is complete
     pub fn finish(mut self) -> StreamResult {
         // Flush any remaining text as a content block

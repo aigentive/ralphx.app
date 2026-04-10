@@ -9,8 +9,8 @@ use async_trait::async_trait;
 
 use crate::domain::agents::ProviderSessionRef;
 use crate::domain::entities::{
-    ChatConversationId, ChatMessage, ChatMessageId, IdeationSessionId, MessageRole, ProjectId,
-    TaskId,
+    AgentRunUsage, ChatConversationId, ChatMessage, ChatMessageId, IdeationSessionId,
+    MessageRole, ProjectId, TaskId,
 };
 use crate::domain::repositories::ChatMessageRepository;
 use crate::error::AppResult;
@@ -210,6 +210,14 @@ impl ChatMessageRepository for MemoryChatMessageRepository {
         let mut messages = self.messages.write().unwrap();
         if let Some(message) = messages.get_mut(&id.to_string()) {
             message.update_provider_session_ref(session_ref);
+        }
+        Ok(())
+    }
+
+    async fn update_usage(&self, id: &ChatMessageId, usage: &AgentRunUsage) -> AppResult<()> {
+        let mut messages = self.messages.write().unwrap();
+        if let Some(message) = messages.get_mut(&id.to_string()) {
+            message.apply_usage(usage);
         }
         Ok(())
     }

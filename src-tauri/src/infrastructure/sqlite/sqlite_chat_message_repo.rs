@@ -9,7 +9,8 @@ use rusqlite::Connection;
 
 use crate::domain::agents::ProviderSessionRef;
 use crate::domain::entities::{
-    ChatConversationId, ChatMessage, ChatMessageId, IdeationSessionId, ProjectId, TaskId,
+    AgentRunUsage, ChatConversationId, ChatMessage, ChatMessageId, IdeationSessionId, ProjectId,
+    TaskId,
 };
 use crate::domain::repositories::ChatMessageRepository;
 use crate::error::AppResult;
@@ -57,17 +58,24 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
         let effective_model_id = message.effective_model_id.clone();
         let logical_effort = message.logical_effort.map(|value| value.to_string());
         let effective_effort = message.effective_effort.clone();
+        let input_tokens = message.input_tokens;
+        let output_tokens = message.output_tokens;
+        let cache_creation_tokens = message.cache_creation_tokens;
+        let cache_read_tokens = message.cache_read_tokens;
+        let estimated_usd = message.estimated_usd;
         let created_at = message.created_at.to_rfc3339();
 
         self.db.run(move |conn| {
             conn.execute(
-                "INSERT INTO chat_messages (id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, attribution_source, provider_harness, provider_session_id, logical_model, effective_model_id, logical_effort, effective_effort, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+                "INSERT INTO chat_messages (id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, attribution_source, provider_harness, provider_session_id, logical_model, effective_model_id, logical_effort, effective_effort, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, estimated_usd, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
                 rusqlite::params![
                     id, session_id, project_id, task_id, conversation_id,
                     role, content, metadata, parent_message_id, tool_calls, content_blocks,
                     attribution_source, provider_harness, provider_session_id, logical_model,
-                    effective_model_id, logical_effort, effective_effort, created_at,
+                    effective_model_id, logical_effort, effective_effort, input_tokens,
+                    output_tokens, cache_creation_tokens, cache_read_tokens, estimated_usd,
+                    created_at,
                 ],
             )?;
             Ok(())
@@ -80,7 +88,7 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
         let id_str = id.as_str().to_string();
         self.db.query_optional(move |conn| {
             conn.query_row(
-                "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, attribution_source, provider_harness, provider_session_id, logical_model, effective_model_id, logical_effort, effective_effort, created_at
+                "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, attribution_source, provider_harness, provider_session_id, logical_model, effective_model_id, logical_effort, effective_effort, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, estimated_usd, created_at
                  FROM chat_messages WHERE id = ?1",
                 [&id_str],
                 ChatMessage::from_row,
@@ -92,7 +100,7 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
         let session_id_str = session_id.as_str().to_string();
         self.db.run(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, attribution_source, provider_harness, provider_session_id, logical_model, effective_model_id, logical_effort, effective_effort, created_at
+                "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, attribution_source, provider_harness, provider_session_id, logical_model, effective_model_id, logical_effort, effective_effort, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, estimated_usd, created_at
                  FROM chat_messages WHERE session_id = ?1 ORDER BY created_at ASC, rowid ASC",
             )?;
             let messages = stmt
@@ -107,7 +115,7 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
         self.db.run(move |conn| {
             // Get messages that belong to a project but NOT to a session (direct project chat)
             let mut stmt = conn.prepare(
-                "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, attribution_source, provider_harness, provider_session_id, logical_model, effective_model_id, logical_effort, effective_effort, created_at
+                "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, attribution_source, provider_harness, provider_session_id, logical_model, effective_model_id, logical_effort, effective_effort, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, estimated_usd, created_at
                  FROM chat_messages WHERE project_id = ?1 AND session_id IS NULL ORDER BY created_at ASC, rowid ASC",
             )?;
             let messages = stmt
@@ -121,7 +129,7 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
         let task_id_str = task_id.as_str().to_string();
         self.db.run(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, attribution_source, provider_harness, provider_session_id, logical_model, effective_model_id, logical_effort, effective_effort, created_at
+                "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, attribution_source, provider_harness, provider_session_id, logical_model, effective_model_id, logical_effort, effective_effort, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, estimated_usd, created_at
                  FROM chat_messages WHERE task_id = ?1 ORDER BY created_at ASC, rowid ASC",
             )?;
             let messages = stmt
@@ -138,7 +146,7 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
         let conv_id_str = conversation_id.as_str().to_string();
         self.db.run(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, attribution_source, provider_harness, provider_session_id, logical_model, effective_model_id, logical_effort, effective_effort, created_at
+                "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, attribution_source, provider_harness, provider_session_id, logical_model, effective_model_id, logical_effort, effective_effort, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, estimated_usd, created_at
                  FROM chat_messages WHERE conversation_id = ?1 ORDER BY created_at ASC, rowid ASC",
             )?;
             let messages = stmt
@@ -201,7 +209,7 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
         self.db.run(move |conn| {
             // Get the most recent user/orchestrator messages, but return them in ascending order
             let mut stmt = conn.prepare(
-                "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, attribution_source, provider_harness, provider_session_id, logical_model, effective_model_id, logical_effort, effective_effort, created_at
+                "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, attribution_source, provider_harness, provider_session_id, logical_model, effective_model_id, logical_effort, effective_effort, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, estimated_usd, created_at
                  FROM chat_messages WHERE session_id = ?1 AND role IN ('user', 'orchestrator') ORDER BY created_at DESC, rowid DESC LIMIT ?2",
             )?;
             let mut messages: Vec<ChatMessage> = stmt
@@ -224,7 +232,7 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
         let session_id_str = session_id.as_str().to_string();
         self.db.run(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, attribution_source, provider_harness, provider_session_id, logical_model, effective_model_id, logical_effort, effective_effort, created_at
+                "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, attribution_source, provider_harness, provider_session_id, logical_model, effective_model_id, logical_effort, effective_effort, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, estimated_usd, created_at
                  FROM chat_messages WHERE session_id = ?1 AND role IN ('user', 'orchestrator') ORDER BY created_at DESC, rowid DESC LIMIT ?2 OFFSET ?3",
             )?;
             let mut messages: Vec<ChatMessage> = stmt
@@ -274,6 +282,33 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
                          provider_session_id = ?2
                      WHERE id = ?3",
                     rusqlite::params![harness, provider_session_id, id_str],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn update_usage(&self, id: &ChatMessageId, usage: &AgentRunUsage) -> AppResult<()> {
+        let id_str = id.as_str().to_string();
+        let usage = usage.clone();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE chat_messages
+                     SET input_tokens = COALESCE(?1, input_tokens),
+                         output_tokens = COALESCE(?2, output_tokens),
+                         cache_creation_tokens = COALESCE(?3, cache_creation_tokens),
+                         cache_read_tokens = COALESCE(?4, cache_read_tokens),
+                         estimated_usd = COALESCE(?5, estimated_usd)
+                     WHERE id = ?6",
+                    rusqlite::params![
+                        usage.input_tokens,
+                        usage.output_tokens,
+                        usage.cache_creation_tokens,
+                        usage.cache_read_tokens,
+                        usage.estimated_usd,
+                        id_str,
+                    ],
                 )?;
                 Ok(())
             })

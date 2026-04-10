@@ -172,6 +172,22 @@ async fn persist_agent_run_usage(
     }
 }
 
+async fn persist_assistant_message_usage(
+    chat_message_repo: &Option<Arc<dyn ChatMessageRepository>>,
+    assistant_message_id: &Option<String>,
+    usage: &AgentRunUsage,
+) {
+    if usage.is_empty() {
+        return;
+    }
+
+    if let (Some(repo), Some(message_id)) = (chat_message_repo.as_ref(), assistant_message_id.as_ref()) {
+        let _ = repo
+            .update_usage(&ChatMessageId::from_string(message_id.clone()), usage)
+            .await;
+    }
+}
+
 fn add_usage_u64(total: &mut Option<u64>, value: Option<u64>) {
     if let Some(value) = value {
         *total = Some(total.unwrap_or(0) + value);
@@ -1180,6 +1196,13 @@ pub async fn process_stream_background<R: Runtime>(
                                 content_blocks_json.as_deref(),
                             )
                             .await;
+                            let turn_usage = processor.current_turn_usage();
+                            persist_assistant_message_usage(
+                                &chat_message_repo,
+                                &assistant_message_id,
+                                &turn_usage,
+                            )
+                            .await;
                         }
 
                         // Persist session_id to DB on first TurnComplete
@@ -2007,6 +2030,8 @@ pub async fn process_stream_background<R: Runtime>(
         &outcome.content_blocks,
     )
     .await;
+    persist_assistant_message_usage(&chat_message_repo, &assistant_message_id, &outcome.usage)
+        .await;
     persist_agent_run_usage(&agent_run_repo, &agent_run_id, &outcome.usage).await;
 
     // Check if cancellation was requested during/after stream processing.
@@ -2478,6 +2503,8 @@ async fn process_codex_stream_background<R: Runtime>(
         &outcome.content_blocks,
     )
     .await;
+    persist_assistant_message_usage(&chat_message_repo, &assistant_message_id, &outcome.usage)
+        .await;
     persist_agent_run_usage(&agent_run_repo, &agent_run_id, &outcome.usage).await;
 
     if !errors.is_empty() {

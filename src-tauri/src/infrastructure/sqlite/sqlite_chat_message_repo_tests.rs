@@ -3,8 +3,8 @@
 use super::sqlite_chat_message_repo::SqliteChatMessageRepository;
 use crate::domain::agents::{AgentHarnessKind, LogicalEffort, ProviderSessionRef};
 use crate::domain::entities::{
-    ChatMessage, ChatMessageAttribution, ChatMessageId, IdeationSession, IdeationSessionId,
-    ProjectId, TaskId,
+    AgentRunUsage, ChatMessage, ChatMessageAttribution, ChatMessageId, IdeationSession,
+    IdeationSessionId, ProjectId, TaskId,
 };
 use crate::domain::repositories::ChatMessageRepository;
 use crate::testing::SqliteTestDb;
@@ -296,6 +296,65 @@ async fn test_update_provider_session_ref_updates_message_provider_fields() {
         found.provider_session_id,
         Some("codex-session-456".to_string())
     );
+}
+
+#[tokio::test]
+async fn test_get_by_id_roundtrips_message_usage_fields() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
+
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
+    let mut message = ChatMessage::orchestrator_in_session(session_id, "Usage message");
+    message.apply_usage(&AgentRunUsage {
+        input_tokens: Some(120),
+        output_tokens: Some(35),
+        cache_creation_tokens: Some(12),
+        cache_read_tokens: Some(48),
+        estimated_usd: Some(0.042),
+    });
+
+    repo.create(message.clone()).await.unwrap();
+    let found = repo.get_by_id(&message.id).await.unwrap().unwrap();
+
+    assert_eq!(found.input_tokens, Some(120));
+    assert_eq!(found.output_tokens, Some(35));
+    assert_eq!(found.cache_creation_tokens, Some(12));
+    assert_eq!(found.cache_read_tokens, Some(48));
+    assert_eq!(found.estimated_usd, Some(0.042));
+}
+
+#[tokio::test]
+async fn test_update_usage_updates_message_usage_fields() {
+    let db = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&db, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&db, &project_id);
+
+    let repo = SqliteChatMessageRepository::new(db.new_connection());
+    let message = ChatMessage::orchestrator_in_session(session_id, "Usage update");
+    repo.create(message.clone()).await.unwrap();
+
+    repo.update_usage(
+        &message.id,
+        &AgentRunUsage {
+            input_tokens: Some(200),
+            output_tokens: Some(60),
+            cache_creation_tokens: Some(15),
+            cache_read_tokens: Some(70),
+            estimated_usd: Some(0.19),
+        },
+    )
+    .await
+    .unwrap();
+
+    let found = repo.get_by_id(&message.id).await.unwrap().unwrap();
+    assert_eq!(found.input_tokens, Some(200));
+    assert_eq!(found.output_tokens, Some(60));
+    assert_eq!(found.cache_creation_tokens, Some(15));
+    assert_eq!(found.cache_read_tokens, Some(70));
+    assert_eq!(found.estimated_usd, Some(0.19));
 }
 
 // ==================== GET BY SESSION TESTS ====================

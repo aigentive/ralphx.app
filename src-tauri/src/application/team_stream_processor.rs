@@ -192,6 +192,11 @@ pub fn start_teammate_stream<R: Runtime>(
                     effective_model_id: None,
                     logical_effort: None,
                     effective_effort: None,
+                    input_tokens: None,
+                    output_tokens: None,
+                    cache_creation_tokens: None,
+                    cache_read_tokens: None,
+                    estimated_usd: None,
                     created_at: chrono::Utc::now(),
                 };
                 let msg_id = msg.id.as_str().to_string();
@@ -354,6 +359,11 @@ pub fn start_teammate_stream<R: Runtime>(
                                             effective_model_id: None,
                                             logical_effort: None,
                                             effective_effort: None,
+                                            input_tokens: None,
+                                            output_tokens: None,
+                                            cache_creation_tokens: None,
+                                            cache_read_tokens: None,
+                                            estimated_usd: None,
                                             created_at: chrono::Utc::now(),
                                         };
                                         let new_id = msg.id.as_str().to_string();

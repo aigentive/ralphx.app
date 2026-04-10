@@ -150,6 +150,18 @@ pub struct AgentMessageResponse {
     pub content: String,
     pub tool_calls: Option<serde_json::Value>,
     pub content_blocks: Option<serde_json::Value>,
+    pub attribution_source: Option<String>,
+    pub provider_harness: Option<String>,
+    pub provider_session_id: Option<String>,
+    pub logical_model: Option<String>,
+    pub effective_model_id: Option<String>,
+    pub logical_effort: Option<String>,
+    pub effective_effort: Option<String>,
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub cache_creation_tokens: Option<u64>,
+    pub cache_read_tokens: Option<u64>,
+    pub estimated_usd: Option<f64>,
     pub created_at: String,
 }
 
@@ -445,6 +457,18 @@ pub async fn get_agent_conversation(
                         content_blocks: m
                             .content_blocks
                             .and_then(|cb| serde_json::from_str(&cb).ok()),
+                        attribution_source: m.attribution_source,
+                        provider_harness: m.provider_harness.map(|value| value.to_string()),
+                        provider_session_id: m.provider_session_id,
+                        logical_model: m.logical_model,
+                        effective_model_id: m.effective_model_id,
+                        logical_effort: m.logical_effort.map(|value| value.to_string()),
+                        effective_effort: m.effective_effort,
+                        input_tokens: m.input_tokens,
+                        output_tokens: m.output_tokens,
+                        cache_creation_tokens: m.cache_creation_tokens,
+                        cache_read_tokens: m.cache_read_tokens,
+                        estimated_usd: m.estimated_usd,
                         created_at: m.created_at.to_rfc3339(),
                     })
                     .collect(),

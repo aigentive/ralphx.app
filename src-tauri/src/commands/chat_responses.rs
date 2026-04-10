@@ -27,6 +27,11 @@ pub struct ChatMessageResponse {
     pub effective_model_id: Option<String>,
     pub logical_effort: Option<String>,
     pub effective_effort: Option<String>,
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub cache_creation_tokens: Option<u64>,
+    pub cache_read_tokens: Option<u64>,
+    pub estimated_usd: Option<f64>,
     pub created_at: String,
 }
 
@@ -51,6 +56,11 @@ impl From<ChatMessage> for ChatMessageResponse {
             effective_model_id: message.effective_model_id,
             logical_effort: message.logical_effort.map(|value| value.to_string()),
             effective_effort: message.effective_effort,
+            input_tokens: message.input_tokens,
+            output_tokens: message.output_tokens,
+            cache_creation_tokens: message.cache_creation_tokens,
+            cache_read_tokens: message.cache_read_tokens,
+            estimated_usd: message.estimated_usd,
             created_at: message.created_at.to_rfc3339(),
         }
     }
