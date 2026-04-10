@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { StatusActivityBadge } from "./StatusActivityBadge";
 import type { AgentType, StatusActivityBadgeProps } from "./StatusActivityBadge";
 import type { ContextType, ModelDisplay, ChatConversation } from "@/types/chat-conversation";
@@ -57,8 +57,51 @@ export function ChatSessionToolbar({
   fallbackMessages,
 }: ChatSessionToolbarProps) {
   const { data: featureFlags } = useFeatureFlags();
-  const statsQuery = useConversationStats(conversationId ?? null, {
+  const statsFallbackConversation = useMemo(() => {
+    if (fallbackConversation) {
+      return fallbackConversation;
+    }
+
+    if (!conversationId || !contextId) {
+      return null;
+    }
+
+    const lastMessageAt =
+      fallbackMessages && fallbackMessages.length > 0
+        ? (fallbackMessages[fallbackMessages.length - 1]?.createdAt ?? null)
+        : null;
+    const timestamp = lastMessageAt ?? new Date().toISOString();
+
+    return {
+      id: conversationId,
+      contextType,
+      contextId,
+      claudeSessionId:
+        providerHarness === "claude" ? (providerSessionId ?? null) : null,
+      providerSessionId: providerSessionId ?? null,
+      providerHarness: providerHarness ?? null,
+      upstreamProvider: upstreamProvider ?? null,
+      providerProfile: providerProfile ?? null,
+      title: null,
+      messageCount: fallbackMessages?.length ?? 0,
+      lastMessageAt,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+  }, [
     fallbackConversation,
+    conversationId,
+    contextType,
+    contextId,
+    providerHarness,
+    providerSessionId,
+    upstreamProvider,
+    providerProfile,
+    fallbackMessages,
+  ]);
+
+  const statsQuery = useConversationStats(conversationId ?? null, {
+    fallbackConversation: statsFallbackConversation,
     fallbackMessages,
   });
   const stats = statsQuery.data;
@@ -127,7 +170,7 @@ export function ChatSessionToolbar({
               {showStats && (
                 <ConversationStatsPopover
                   conversationId={conversationId ?? null}
-                  fallbackConversation={fallbackConversation}
+                  fallbackConversation={statsFallbackConversation}
                   fallbackMessages={fallbackMessages}
                   stats={stats}
                   isLoading={statsQuery.isLoading}

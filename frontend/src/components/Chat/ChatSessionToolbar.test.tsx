@@ -171,4 +171,40 @@ describe("ChatSessionToolbar", () => {
     expect(row).toContainElement(screen.getByTestId("chat-session-status-inline"));
     expect(screen.getByText("Agent responding...")).toBeInTheDocument();
   });
+
+  it("builds a synthetic fallback conversation when metadata has not hydrated yet", () => {
+    mockUseConversationStats.mockReturnValue({
+      data: null,
+      isLoading: false,
+    });
+
+    render(
+      <ChatSessionToolbar
+        isAgentActive={false}
+        agentType="agent"
+        contextType="ideation"
+        contextId="session-1"
+        conversationId="conv-1"
+        providerHarness="codex"
+        providerSessionId="thread-1"
+        upstreamProvider="openai"
+        providerProfile="default"
+        fallbackConversation={null}
+        fallbackMessages={[]}
+      />,
+    );
+
+    expect(mockUseConversationStats).toHaveBeenCalledWith("conv-1", {
+      fallbackConversation: expect.objectContaining({
+        id: "conv-1",
+        contextType: "ideation",
+        contextId: "session-1",
+        providerHarness: "codex",
+        providerSessionId: "thread-1",
+        upstreamProvider: "openai",
+        providerProfile: "default",
+      }),
+      fallbackMessages: [],
+    });
+  });
 });
