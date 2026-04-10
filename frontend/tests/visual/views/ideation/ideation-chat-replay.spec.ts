@@ -19,6 +19,10 @@ test.describe("Ideation Chat Replay", () => {
   test("matches ideation chat replay snapshot", async ({ page }) => {
     const panel = page.locator('[data-testid="conversation-panel"]');
     await expect(panel).toBeVisible();
+    await expect(panel.getByText(/Continuing stored Claude session/i)).toBeVisible();
+    await expect(panel.getByText("Preferred default for automatic PR creation?")).toBeVisible();
+    await expect(panel.getByText("to layer1-critic")).toBeVisible();
+    await expect(panel.getByText("src-tauri/src/application/chat_service/mod.rs")).toBeVisible();
     await expect(panel).toHaveScreenshot("ideation-chat-replay.png", {
       maxDiffPixelRatio: 0.01,
     });
