@@ -50,50 +50,51 @@ export function ChatSessionToolbar({
 
   return (
     <div
-      className="flex items-center gap-3 px-3 py-1.5 shrink-0"
+      className="flex items-start gap-3 px-3 py-1.5 shrink-0"
       style={{ borderBottom: "1px solid hsl(220 10% 14%)" }}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-start gap-2">
         {backAction && (
           <button
             data-testid="back-to-plan-button"
             onClick={backAction.onClick}
-            className="flex shrink-0 items-center gap-1 text-xs text-white/50 hover:text-white/80 transition-colors"
+            className="flex shrink-0 items-center gap-1 pt-0.5 text-xs text-white/50 hover:text-white/80 transition-colors"
           >
             {backAction.icon}
             <span>{backAction.label}</span>
           </button>
         )}
         <div
-          className="flex min-w-0 flex-1 items-center gap-2"
+          className="flex min-w-0 flex-1 flex-col gap-1"
           data-testid="chat-session-provider-context"
         >
-          {harnessLabel && (
-            <span
-              className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]"
-              style={harnessStyle}
-              title={providerTooltip ?? undefined}
-              aria-label={providerTooltip ?? harnessLabel}
-              data-testid="chat-session-provider-badge"
-            >
-              {harnessLabel}
-            </span>
-          )}
-          {modelDisplay && <ModelChip model={modelDisplay} />}
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {harnessLabel && (
+              <span
+                className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]"
+                style={harnessStyle}
+                title={providerTooltip ?? undefined}
+                aria-label={providerTooltip ?? harnessLabel}
+                data-testid="chat-session-provider-badge"
+              >
+                {harnessLabel}
+              </span>
+            )}
+            {modelDisplay && <ModelChip model={modelDisplay} />}
+          </div>
+          <StatusActivityBadge
+            isAgentActive={isAgentActive}
+            agentType={agentType}
+            contextType={contextType}
+            contextId={contextId}
+            {...(hasActivity !== undefined ? { hasActivity } : {})}
+            {...(agentStatus !== undefined ? { agentStatus } : {})}
+            {...(storeKey !== undefined ? { storeKey } : {})}
+            {...(modelDisplay !== undefined ? { modelDisplay } : {})}
+            hideModelChip
+            layout="inline"
+          />
         </div>
-      </div>
-      <div className="flex shrink-0 items-center">
-        <StatusActivityBadge
-          isAgentActive={isAgentActive}
-          agentType={agentType}
-          contextType={contextType}
-          contextId={contextId}
-          {...(hasActivity !== undefined ? { hasActivity } : {})}
-          {...(agentStatus !== undefined ? { agentStatus } : {})}
-          {...(storeKey !== undefined ? { storeKey } : {})}
-          {...(modelDisplay !== undefined ? { modelDisplay } : {})}
-          hideModelChip
-        />
       </div>
     </div>
   );

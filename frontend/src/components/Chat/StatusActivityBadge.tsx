@@ -59,6 +59,8 @@ export interface StatusActivityBadgeProps {
   modelDisplay?: ModelDisplay;
   /** Hide model chip when the parent renders model context separately */
   hideModelChip?: boolean;
+  /** Compact inline rendering for stacked header layouts */
+  layout?: "badge" | "inline";
 }
 
 // ============================================================================
@@ -137,6 +139,7 @@ export function StatusActivityBadge({
   storeKey,
   modelDisplay,
   hideModelChip = false,
+  layout = "badge",
 }: StatusActivityBadgeProps) {
   const { data: featureFlags } = useFeatureFlags();
   const setActivityFilter = useUiStore((s) => s.setActivityFilter);
@@ -197,6 +200,7 @@ export function StatusActivityBadge({
   const isWaiting = agentStatus === "waiting_for_input";
   const showActivityButton = featureFlags.activityPage;
   const showModelChip = Boolean(modelDisplay) && !hideModelChip;
+  const isInlineLayout = layout === "inline";
 
   // Hidden state: idle with no activity
   if (!isAgentActive && !isWaiting && !hasActivity) {
@@ -225,6 +229,26 @@ export function StatusActivityBadge({
 
   // Waiting for input: show subtle badge without spinner
   if (isWaiting) {
+    if (isInlineLayout) {
+      return (
+        <div className="flex items-center gap-1.5 min-w-0 text-[11px] text-white/55">
+          <CirclePause className="h-3 w-3 shrink-0 text-white/45" />
+          <span className="truncate">Awaiting input</span>
+          {showActivityButton && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleActivityClick}
+              className="ml-1 shrink-0 h-6 px-1.5 text-[#ff6b35] hover:text-[#ff6b35]/80"
+              aria-label="View activity"
+            >
+              <Activity className="w-3.5 h-3.5" />
+            </Button>
+          )}
+        </div>
+      );
+    }
+
     return (
       <div className="flex items-center gap-1.5 shrink-0">
         {showModelChip && modelDisplay && <ModelChip model={modelDisplay} />}
@@ -276,6 +300,31 @@ export function StatusActivityBadge({
   } else {
     badgeLabel = getStatusText(agentType);
     badgeColorClass = "";
+  }
+
+  if (isInlineLayout) {
+    return (
+      <div className="flex items-center gap-1.5 min-w-0 text-[11px] text-white/55">
+        <Loader2 className="h-3 w-3 shrink-0 animate-spin text-white/55" />
+        <span className={badgeColorClass ? `${badgeColorClass} truncate` : "truncate"}>
+          {badgeLabel}
+        </span>
+        {storeKey && lastEventTimestamp > 0 && !showToolActive && !activeVerificationChildId && (
+          <LastActivity lastEventTimestamp={lastEventTimestamp} />
+        )}
+        {showActivityButton && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleActivityClick}
+            className="ml-1 shrink-0 h-6 px-1.5 text-[#ff6b35] hover:text-[#ff6b35]/80"
+            aria-label="View activity"
+          >
+            <Activity className="w-3.5 h-3.5" />
+          </Button>
+        )}
+      </div>
+    );
   }
 
   // Active/generating state: badge with status text, spinner, last activity, and activity button
