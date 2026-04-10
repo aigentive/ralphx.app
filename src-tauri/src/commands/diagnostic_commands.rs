@@ -9,6 +9,29 @@ use crate::application::harness_runtime_registry::{
 use crate::application::AppState;
 use crate::infrastructure::agents::CodexCliCapabilities;
 
+#[derive(Debug, Clone)]
+pub struct CodexCliProbeStatus {
+    pub binary_path: Option<String>,
+    pub binary_found: bool,
+    pub probe_succeeded: bool,
+    pub available: bool,
+    pub missing_core_exec_features: Vec<String>,
+    pub error: Option<String>,
+}
+
+impl From<HarnessRuntimeProbe> for CodexCliProbeStatus {
+    fn from(value: HarnessRuntimeProbe) -> Self {
+        Self {
+            binary_path: value.binary_path,
+            binary_found: value.binary_found,
+            probe_succeeded: value.probe_succeeded,
+            available: value.available,
+            missing_core_exec_features: value.missing_core_exec_features,
+            error: value.error,
+        }
+    }
+}
+
 /// Serializable IPR entry for agent health report
 #[derive(Debug, Clone, Serialize)]
 pub struct IprEntryResponse {
@@ -90,8 +113,9 @@ pub async fn get_agent_health(state: State<'_, AppState>) -> Result<AgentHealthR
     })
 }
 
-pub(crate) fn build_codex_cli_diagnostics_response(
-    probe: HarnessRuntimeProbe,
+#[doc(hidden)]
+pub fn build_codex_cli_diagnostics_response(
+    probe: CodexCliProbeStatus,
     capabilities: Option<CodexCliCapabilities>,
 ) -> CodexCliDiagnosticsResponse {
     match capabilities {
@@ -130,7 +154,7 @@ pub(crate) fn build_codex_cli_diagnostics_response(
 #[tauri::command]
 pub fn get_codex_cli_diagnostics() -> Result<CodexCliDiagnosticsResponse, String> {
     let (probe, capabilities) = probe_codex_harness_with_capabilities();
-    Ok(build_codex_cli_diagnostics_response(probe, capabilities))
+    Ok(build_codex_cli_diagnostics_response(probe.into(), capabilities))
 }
 
 #[cfg(test)]
@@ -140,7 +164,7 @@ mod tests {
     #[test]
     fn build_codex_cli_diagnostics_response_preserves_probe_error_without_capabilities() {
         let response = build_codex_cli_diagnostics_response(
-            HarnessRuntimeProbe {
+            CodexCliProbeStatus {
                 binary_path: Some("/usr/local/bin/codex".to_string()),
                 binary_found: true,
                 probe_succeeded: false,

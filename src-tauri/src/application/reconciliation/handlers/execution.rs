@@ -1115,7 +1115,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
 
         // GAP B6: Concurrency guard — skip if at max_concurrent capacity
-        if !self.execution_state.can_start_any_execution_context() {
+        if !self.execution_state.can_start_task() {
             tracing::debug!(
                 task_id = task.id.as_str(),
                 "Skipping failed execution reconciliation: at max concurrency — will try next cycle"
@@ -1681,7 +1681,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
             let _ = self
                 .transition_service
-                .transition_task(&task.id, InternalStatus::Failed)
+                .transition_task_corrective(&task.id, InternalStatus::Failed, None, "system")
                 .await;
             return true;
         }
@@ -1703,7 +1703,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
 
         // Can we start a task right now?
-        if !self.execution_state.can_start_any_execution_context() {
+        if !self.execution_state.can_start_task() {
             return false; // At max concurrency — retry on next reconciliation cycle
         }
         if !self.project_has_execution_capacity(&task.project_id).await {
@@ -1827,7 +1827,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             let _ = self.task_repo.update(&updated).await;
             let _ = self
                 .transition_service
-                .transition_task(&task.id, InternalStatus::Failed)
+                .transition_task_corrective(&task.id, InternalStatus::Failed, None, "system")
                 .await;
             return true;
         }
@@ -1836,7 +1836,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
-        if !self.execution_state.can_start_any_execution_context() {
+        if !self.execution_state.can_start_task() {
             return false;
         }
         if !self.project_has_execution_capacity(&task.project_id).await {
@@ -2150,6 +2150,25 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 }
 
                 // Set preserve_steps flag so on_enter skips step reset for manual restart
+                let task = match self.task_repo.get_by_id(&task.id).await {
+                    Ok(Some(t)) => t,
+                    Ok(None) => {
+                        warn!(
+                            task_id = task.id.as_str(),
+                            "Task not found after recording ManualRetry event in manual restart"
+                        );
+                        return false;
+                    }
+                    Err(e) => {
+                        warn!(
+                            task_id = task.id.as_str(),
+                            error = %e,
+                            "Failed to re-fetch task after recording ManualRetry event in manual restart"
+                        );
+                        task.clone()
+                    }
+                };
+
                 if let Err(e) = self.set_preserve_steps_metadata(&task).await {
                     warn!(
                         task_id = task.id.as_str(),

@@ -6,8 +6,8 @@
 //   3. Webhook delivery + HMAC signature (end-to-end via ConcreteWebhookPublisher)
 //   4. Webhook failure tracking → deactivation after 10 consecutive failures
 //
-// Uses `AppState::new_test()` (in-memory repos) and `ConcreteWebhookPublisher` with
-// `MockWebhookHttpClient` — no network calls, no DB files.
+// Uses the SQLite-backed apply-test app state for the ideation/apply pipeline and
+// `ConcreteWebhookPublisher` with `MockWebhookHttpClient` — no network calls.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,7 +24,7 @@ use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
     IdeationSession, IdeationSessionId, Priority, Project, ProjectId, ProposalCategory,
-    TaskProposal,
+    TaskProposal, VerificationStatus,
 };
 use ralphx_lib::domain::repositories::{WebhookRegistration, WebhookRegistrationRepository};
 use ralphx_lib::domain::state_machine::services::WebhookPublisher as WebhookPublisherTrait;
@@ -42,7 +42,7 @@ type HmacSha256 = Hmac<Sha256>;
 // ============================================================================
 
 async fn setup_test_state() -> HttpServerState {
-    let app_state = Arc::new(AppState::new_test());
+    let app_state = Arc::new(AppState::new_sqlite_for_apply_test());
     let execution_state = Arc::new(ExecutionState::new());
     let tracker = TeamStateTracker::new();
     let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
@@ -59,7 +59,7 @@ fn make_project(id: &str, name: &str) -> Project {
     Project {
         id: ProjectId::from_string(id.to_string()),
         name: name.to_string(),
-        working_directory: "/tmp/test".to_string(),
+        working_directory: format!("/tmp/{}", id),
         git_mode: GitMode::Worktree,
         base_branch: None,
         worktree_parent_directory: None,
@@ -77,7 +77,10 @@ fn make_project(id: &str, name: &str) -> Project {
 }
 
 fn make_proposal(session_id: IdeationSessionId, title: &str) -> TaskProposal {
-    TaskProposal::new(session_id, title, ProposalCategory::Feature, Priority::Medium)
+    let mut proposal =
+        TaskProposal::new(session_id, title, ProposalCategory::Feature, Priority::Medium);
+    proposal.affected_paths = Some(r#"["src/webhook/test_scope.rs"]"#.to_string());
+    proposal
 }
 
 async fn acknowledge_dependencies(state: &HttpServerState, session_id: &str) {
@@ -87,6 +90,15 @@ async fn acknowledge_dependencies(state: &HttpServerState, session_id: &str) {
     )
     .await
     .expect("Failed to analyze and acknowledge dependencies");
+}
+
+async fn mark_session_verified(state: &HttpServerState, session_id: &IdeationSessionId) {
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(session_id, VerificationStatus::Verified, false, None)
+        .await
+        .expect("Failed to mark session verified");
 }
 
 /// Recompute HMAC-SHA256(secret, data) → lowercase hex (same algorithm as WebhookPublisher).
@@ -201,6 +213,7 @@ async fn test_pipeline_session_to_tasks_e2e() {
 
     // --- Step 4: Simulate dependency review before finalize/apply ---
     acknowledge_dependencies(&state, session_id.as_str()).await;
+    mark_session_verified(&state, &session_id).await;
 
     // --- Step 5: Apply proposals (accept + schedule) via HTTP handler ---
     let apply_req = ExternalApplyProposalsRequest {
@@ -732,6 +745,7 @@ async fn test_full_pipeline_with_webhook_registration() {
 
     // Multi-proposal apply requires dependency review acknowledgment first.
     acknowledge_dependencies(&state, session_id.as_str()).await;
+    mark_session_verified(&state, &session_id).await;
 
     // --- Apply proposals → creates tasks ---
     let apply_req = ExternalApplyProposalsRequest {

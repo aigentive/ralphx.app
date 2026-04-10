@@ -146,7 +146,10 @@ fn make_project(id: &str) -> Project {
 }
 
 fn make_proposal(session_id: IdeationSessionId, title: &str) -> TaskProposal {
-    TaskProposal::new(session_id, title, ProposalCategory::Feature, Priority::Medium)
+    let mut proposal =
+        TaskProposal::new(session_id, title, ProposalCategory::Feature, Priority::Medium);
+    proposal.affected_paths = Some(r#"["src/ideation/test_scope.rs"]"#.to_string());
+    proposal
 }
 
 // ============================================================================
@@ -173,7 +176,11 @@ async fn get_events(
 async fn test_session_created_emits_event() {
     let recording = Arc::new(RecordingWebhookPublisher::new());
     let mem_events = Arc::new(MemoryExternalEventsRepository::new());
-    let state = make_http_state(AppState::new_test(), Arc::clone(&recording), Arc::clone(&mem_events));
+    let state = make_http_state(
+        AppState::new_sqlite_test(),
+        Arc::clone(&recording),
+        Arc::clone(&mem_events),
+    );
 
     let project_id = "proj-session-created";
     state
@@ -287,7 +294,11 @@ async fn test_plan_created_emits_event() {
 async fn test_proposals_ready_and_session_accepted_emit_events() {
     let recording = Arc::new(RecordingWebhookPublisher::new());
     let mem_events = Arc::new(MemoryExternalEventsRepository::new());
-    let state = make_http_state(AppState::new_test(), Arc::clone(&recording), Arc::clone(&mem_events));
+    let state = make_http_state(
+        AppState::new_sqlite_test(),
+        Arc::clone(&recording),
+        Arc::clone(&mem_events),
+    );
 
     let project_id = "proj-proposals-ready";
     let session_id = IdeationSessionId::new();
@@ -380,7 +391,11 @@ async fn test_proposals_ready_and_session_accepted_emit_events() {
 async fn test_session_accepted_emits_event_when_proposals_applied() {
     let recording = Arc::new(RecordingWebhookPublisher::new());
     let mem_events = Arc::new(MemoryExternalEventsRepository::new());
-    let state = make_http_state(AppState::new_test(), Arc::clone(&recording), Arc::clone(&mem_events));
+    let state = make_http_state(
+        AppState::new_sqlite_test(),
+        Arc::clone(&recording),
+        Arc::clone(&mem_events),
+    );
 
     let project_id = "proj-session-accepted";
     let session_id = IdeationSessionId::new();

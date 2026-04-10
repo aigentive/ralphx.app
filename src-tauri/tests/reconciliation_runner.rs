@@ -190,7 +190,7 @@ fn stop_policy_resets_when_not_completed() {
 #[tokio::test]
 async fn recover_execution_stop_noops_for_paused_task() {
     let app_state = AppState::new_test();
-    let execution_state = Arc::new(ExecutionState::new());
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(2));
     let reconciler = build_reconciler(&app_state, &execution_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
@@ -211,7 +211,7 @@ async fn recover_execution_stop_noops_for_paused_task() {
 #[tokio::test]
 async fn recover_execution_stop_noops_for_stopped_task() {
     let app_state = AppState::new_test();
-    let execution_state = Arc::new(ExecutionState::new());
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(2));
     let reconciler = build_reconciler(&app_state, &execution_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
@@ -6062,13 +6062,13 @@ async fn reconcile_failed_concurrency_guard_skip_at_max_concurrent() {
     use ralphx_lib::domain::entities::Project;
 
     let app_state = AppState::new_test();
-    let execution_state = Arc::new(ExecutionState::new());
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(2));
     let reconciler = build_reconciler(&app_state, &execution_state);
 
     let project = Project::new("Test Project".into(), "/tmp".into());
     app_state.project_repo.create(project.clone()).await.unwrap();
 
-    // Fill up max_concurrent slots (default = 2)
+    // Fill up max_concurrent slots (configured = 2 for this test)
     execution_state.increment_running();
     execution_state.increment_running();
     assert!(!execution_state.can_start_task(), "pre-condition: at max capacity");
@@ -7610,8 +7610,7 @@ async fn reconcile_failed_git_isolation_removes_stale_worktree_dir() {
     );
 }
 
-/// Max-retries test: git-isolation exhaustion returns false WITHOUT setting stop_retrying.
-/// Subsequent timeout retry budget must remain independent.
+/// Max-retries test: git-isolation exhaustion returns false and seals the failed attempt.
 #[tokio::test]
 async fn reconcile_failed_git_isolation_exhaustion_skips_without_stop_retrying() {
     use ralphx_lib::domain::entities::{
@@ -7665,15 +7664,15 @@ async fn reconcile_failed_git_isolation_exhaustion_skips_without_stop_retrying()
 
     assert!(!result, "git-isolation budget exhausted: should return false");
 
-    // CRITICAL: stop_retrying must NOT be set — timeout retries have their own budget
+    // Git-isolation exhaustion is terminal for the current task attempt.
     let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
     let updated_recovery =
         ExecutionRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
             .expect("parse metadata")
             .expect("execution_recovery should exist");
     assert!(
-        !updated_recovery.stop_retrying,
-        "git-isolation exhaustion must NOT set stop_retrying (independent retry budgets)"
+        updated_recovery.stop_retrying,
+        "git-isolation exhaustion must set stop_retrying to seal the failed attempt"
     );
 }
 

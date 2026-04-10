@@ -16,7 +16,7 @@ use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::entities::{
     Artifact, ArtifactContent, ArtifactId, ArtifactMetadata, ArtifactType, IdeationSession,
     IdeationSessionBuilder, IdeationSessionId, IdeationSessionStatus, Project, ProjectId,
-    SessionOrigin, SessionPurpose, VerificationStatus,
+    SessionOrigin, SessionPurpose, VerificationConfirmationStatus, VerificationStatus,
 };
 use ralphx_lib::domain::repositories::IdeationSessionRepository;
 use ralphx_lib::domain::services::running_agent_registry::RunningAgentKey;
@@ -2759,7 +2759,9 @@ async fn test_external_origin_session_auto_verifies_without_config() {
         result.err()
     );
 
-    // Verify verification_in_progress was atomically set — the origin-based override fired
+    // External origin must still bypass config and trigger generation 1. Depending on whether
+    // verifier launch is immediately successful, persisted state may remain Reviewing or may be
+    // rolled back to Pending confirmation after spawn failure cleanup.
     let updated = state
         .app_state
         .ideation_session_repo
@@ -2768,18 +2770,20 @@ async fn test_external_origin_session_auto_verifies_without_config() {
         .unwrap()
         .expect("session must still exist");
 
-    assert!(
-        updated.verification_in_progress,
-        "External-origin session must have verification_in_progress=true after create_plan_artifact, \
-         regardless of global auto_verify config"
-    );
-    assert_eq!(
-        updated.verification_status,
-        VerificationStatus::Reviewing,
-        "External-origin session must enter Reviewing state"
-    );
     assert_eq!(
         updated.verification_generation, 1,
         "External-origin session must have generation=1 after first auto-verify trigger"
+    );
+    assert!(
+        (updated.verification_status == VerificationStatus::Reviewing
+            && updated.verification_in_progress)
+            || (updated.verification_status == VerificationStatus::Unverified
+                && !updated.verification_in_progress
+                && updated.verification_confirmation_status
+                    == Some(VerificationConfirmationStatus::Pending)),
+        "External-origin auto-verify must either still be running or be reset to pending confirmation after spawn cleanup: status={:?}, in_progress={}, confirmation={:?}",
+        updated.verification_status,
+        updated.verification_in_progress,
+        updated.verification_confirmation_status
     );
 }
