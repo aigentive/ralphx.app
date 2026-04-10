@@ -280,9 +280,12 @@ mod v20260410093000_chat_attribution_backfill_state_tests;
 mod v20260410101500_chat_message_attribution;
 #[cfg(test)]
 mod v20260410101500_chat_message_attribution_tests;
+mod v20260410113000_agent_run_usage;
+#[cfg(test)]
+mod v20260410113000_agent_run_usage_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i64 = 20260410101500;
+pub const SCHEMA_VERSION: i64 = 20260410113000;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -801,6 +804,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 20260410101500,
         name: "chat_message_attribution",
         migrate: v20260410101500_chat_message_attribution::migrate,
+    },
+    Migration {
+        version: 20260410113000,
+        name: "agent_run_usage",
+        migrate: v20260410113000_agent_run_usage::migrate,
     },
 ];
 

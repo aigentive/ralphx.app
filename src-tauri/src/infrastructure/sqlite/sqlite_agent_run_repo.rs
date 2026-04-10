@@ -33,7 +33,8 @@ use crate::domain::entities::{
 /// Map a SQLite row to an AgentRun (expects columns: id, conversation_id, status,
 /// started_at, completed_at, error_message, harness, provider_session_id,
 /// logical_model, effective_model_id, logical_effort, effective_effort,
-/// approval_policy, sandbox_mode, run_chain_id, parent_run_id)
+/// input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+/// estimated_usd, approval_policy, sandbox_mode, run_chain_id, parent_run_id)
 fn row_to_agent_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentRun> {
     let status_str: String = row.get("status")?;
     let started_at_str: String = row.get("started_at")?;
@@ -56,6 +57,11 @@ fn row_to_agent_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentRun> {
             .get::<_, Option<String>>("logical_effort")?
             .and_then(|value| value.parse::<LogicalEffort>().ok()),
         effective_effort: row.get("effective_effort")?,
+        input_tokens: row.get("input_tokens")?,
+        output_tokens: row.get("output_tokens")?,
+        cache_creation_tokens: row.get("cache_creation_tokens")?,
+        cache_read_tokens: row.get("cache_read_tokens")?,
+        estimated_usd: row.get("estimated_usd")?,
         approval_policy: row.get("approval_policy")?,
         sandbox_mode: row.get("sandbox_mode")?,
         run_chain_id: row.get("run_chain_id")?,
@@ -97,9 +103,10 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                     "INSERT INTO agent_runs (
                         id, conversation_id, status, started_at, completed_at, error_message,
                         harness, provider_session_id, logical_model, effective_model_id,
-                        logical_effort, effective_effort, approval_policy, sandbox_mode,
-                        run_chain_id, parent_run_id
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                        logical_effort, effective_effort, input_tokens, output_tokens,
+                        cache_creation_tokens, cache_read_tokens, estimated_usd,
+                        approval_policy, sandbox_mode, run_chain_id, parent_run_id
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
                     rusqlite::params![
                         run.id.as_str(),
                         run.conversation_id.as_str(),
@@ -113,6 +120,11 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                         run.effective_model_id,
                         run.logical_effort.map(|value| value.to_string()),
                         run.effective_effort,
+                        run.input_tokens,
+                        run.output_tokens,
+                        run.cache_creation_tokens,
+                        run.cache_read_tokens,
+                        run.estimated_usd,
                         run.approval_policy,
                         run.sandbox_mode,
                         run.run_chain_id,
@@ -131,8 +143,9 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                 conn.query_row(
                     "SELECT id, conversation_id, status, started_at, completed_at, error_message,
                             harness, provider_session_id, logical_model, effective_model_id,
-                            logical_effort, effective_effort, approval_policy, sandbox_mode,
-                            run_chain_id, parent_run_id
+                            logical_effort, effective_effort, input_tokens, output_tokens,
+                            cache_creation_tokens, cache_read_tokens, estimated_usd,
+                            approval_policy, sandbox_mode, run_chain_id, parent_run_id
                      FROM agent_runs WHERE id = ?1",
                     [&id],
                     |row| row_to_agent_run(row),
@@ -151,8 +164,9 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                 conn.query_row(
                     "SELECT id, conversation_id, status, started_at, completed_at, error_message,
                             harness, provider_session_id, logical_model, effective_model_id,
-                            logical_effort, effective_effort, approval_policy, sandbox_mode,
-                            run_chain_id, parent_run_id
+                            logical_effort, effective_effort, input_tokens, output_tokens,
+                            cache_creation_tokens, cache_read_tokens, estimated_usd,
+                            approval_policy, sandbox_mode, run_chain_id, parent_run_id
                      FROM agent_runs WHERE conversation_id = ?1 ORDER BY started_at DESC LIMIT 1",
                     [&conversation_id],
                     |row| row_to_agent_run(row),
@@ -171,8 +185,9 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                 conn.query_row(
                     "SELECT id, conversation_id, status, started_at, completed_at, error_message,
                             harness, provider_session_id, logical_model, effective_model_id,
-                            logical_effort, effective_effort, approval_policy, sandbox_mode,
-                            run_chain_id, parent_run_id
+                            logical_effort, effective_effort, input_tokens, output_tokens,
+                            cache_creation_tokens, cache_read_tokens, estimated_usd,
+                            approval_policy, sandbox_mode, run_chain_id, parent_run_id
                      FROM agent_runs WHERE conversation_id = ?1 AND status = 'running' ORDER BY started_at DESC LIMIT 1",
                     [&conversation_id],
                     |row| row_to_agent_run(row),
@@ -191,8 +206,9 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                 let mut stmt = conn.prepare(
                     "SELECT id, conversation_id, status, started_at, completed_at, error_message,
                             harness, provider_session_id, logical_model, effective_model_id,
-                            logical_effort, effective_effort, approval_policy, sandbox_mode,
-                            run_chain_id, parent_run_id
+                            logical_effort, effective_effort, input_tokens, output_tokens,
+                            cache_creation_tokens, cache_read_tokens, estimated_usd,
+                            approval_policy, sandbox_mode, run_chain_id, parent_run_id
                      FROM agent_runs WHERE conversation_id = ?1 ORDER BY started_at DESC",
                 )?;
                 let runs = stmt
@@ -339,6 +355,11 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                         ar.effective_model_id,
                         ar.logical_effort,
                         ar.effective_effort,
+                        ar.input_tokens,
+                        ar.output_tokens,
+                        ar.cache_creation_tokens,
+                        ar.cache_read_tokens,
+                        ar.estimated_usd,
                         ar.approval_policy,
                         ar.sandbox_mode,
                         ar.run_chain_id,
@@ -416,6 +437,11 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                                 .get::<_, Option<String>>("logical_effort")?
                                 .and_then(|value| value.parse::<LogicalEffort>().ok()),
                             effective_effort: row.get("effective_effort")?,
+                            input_tokens: row.get("input_tokens")?,
+                            output_tokens: row.get("output_tokens")?,
+                            cache_creation_tokens: row.get("cache_creation_tokens")?,
+                            cache_read_tokens: row.get("cache_read_tokens")?,
+                            estimated_usd: row.get("estimated_usd")?,
                             approval_policy: row.get("approval_policy")?,
                             sandbox_mode: row.get("sandbox_mode")?,
                             run_chain_id: row.get("run_chain_id")?,

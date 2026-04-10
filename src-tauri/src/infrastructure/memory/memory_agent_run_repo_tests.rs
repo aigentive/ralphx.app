@@ -9,6 +9,11 @@ async fn test_create_and_get() {
     run.harness = Some(AgentHarnessKind::Codex);
     run.provider_session_id = Some("session-123".to_string());
     run.logical_effort = Some(LogicalEffort::Medium);
+    run.input_tokens = Some(123);
+    run.output_tokens = Some(45);
+    run.cache_creation_tokens = Some(6);
+    run.cache_read_tokens = Some(78);
+    run.estimated_usd = Some(0.009);
     let id = run.id;
 
     repo.create(run.clone()).await.unwrap();
@@ -18,6 +23,11 @@ async fn test_create_and_get() {
     assert_eq!(retrieved.harness, Some(AgentHarnessKind::Codex));
     assert_eq!(retrieved.provider_session_id, Some("session-123".to_string()));
     assert_eq!(retrieved.logical_effort, Some(LogicalEffort::Medium));
+    assert_eq!(retrieved.input_tokens, Some(123));
+    assert_eq!(retrieved.output_tokens, Some(45));
+    assert_eq!(retrieved.cache_creation_tokens, Some(6));
+    assert_eq!(retrieved.cache_read_tokens, Some(78));
+    assert_eq!(retrieved.estimated_usd, Some(0.009));
 }
 
 #[tokio::test]

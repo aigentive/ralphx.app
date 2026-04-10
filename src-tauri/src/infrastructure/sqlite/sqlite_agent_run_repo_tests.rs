@@ -191,6 +191,11 @@ async fn test_create_and_get_by_id() {
     run.effective_model_id = Some("gpt-5.4".to_string());
     run.logical_effort = Some(LogicalEffort::XHigh);
     run.effective_effort = Some("high".to_string());
+    run.input_tokens = Some(1200);
+    run.output_tokens = Some(450);
+    run.cache_creation_tokens = Some(80);
+    run.cache_read_tokens = Some(320);
+    run.estimated_usd = Some(0.0215);
     run.approval_policy = Some("on-request".to_string());
     run.sandbox_mode = Some("workspace-write".to_string());
     let run_id = run.id;
@@ -208,6 +213,11 @@ async fn test_create_and_get_by_id() {
     assert_eq!(r.effective_model_id, Some("gpt-5.4".to_string()));
     assert_eq!(r.logical_effort, Some(LogicalEffort::XHigh));
     assert_eq!(r.effective_effort, Some("high".to_string()));
+    assert_eq!(r.input_tokens, Some(1200));
+    assert_eq!(r.output_tokens, Some(450));
+    assert_eq!(r.cache_creation_tokens, Some(80));
+    assert_eq!(r.cache_read_tokens, Some(320));
+    assert_eq!(r.estimated_usd, Some(0.0215));
     assert_eq!(r.approval_policy, Some("on-request".to_string()));
     assert_eq!(r.sandbox_mode, Some("workspace-write".to_string()));
 }

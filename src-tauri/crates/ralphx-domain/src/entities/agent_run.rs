@@ -159,6 +159,21 @@ pub struct AgentRun {
     /// Resolved provider-specific effort actually used.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effective_effort: Option<String>,
+    /// Provider input tokens attributed to this run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    /// Provider output tokens attributed to this run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    /// Provider cache creation tokens attributed to this run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_creation_tokens: Option<u64>,
+    /// Provider cache read/hit tokens attributed to this run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<u64>,
+    /// Estimated USD cost attributed to this run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_usd: Option<f64>,
     /// Approval policy used for the run.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub approval_policy: Option<String>,
@@ -191,6 +206,11 @@ impl AgentRun {
             effective_model_id: None,
             logical_effort: None,
             effective_effort: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            estimated_usd: None,
             approval_policy: None,
             sandbox_mode: None,
             run_chain_id: Some(chain_id),
@@ -217,6 +237,11 @@ impl AgentRun {
             effective_model_id: None,
             logical_effort: None,
             effective_effort: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_creation_tokens: None,
+            cache_read_tokens: None,
+            estimated_usd: None,
             approval_policy: None,
             sandbox_mode: None,
             run_chain_id: Some(run_chain_id),
