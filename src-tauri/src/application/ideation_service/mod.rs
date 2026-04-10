@@ -26,6 +26,10 @@ use crate::error::{AppError, AppResult};
 use chrono::Utc;
 use std::sync::Arc;
 
+pub(crate) fn build_default_ideation_session_title() -> String {
+    format!("Ideation Session {}", Utc::now().format("%Y-%m-%d %H:%M"))
+}
+
 /// Service for orchestrating ideation workflow
 pub struct IdeationService<
     S: IdeationSessionRepository,
@@ -78,12 +82,7 @@ where
     ) -> AppResult<IdeationSession> {
         let session = match title {
             Some(t) => IdeationSession::new_with_title(project_id, t),
-            None => {
-                // Generate a default title based on timestamp
-                let default_title =
-                    format!("Ideation Session {}", Utc::now().format("%Y-%m-%d %H:%M"));
-                IdeationSession::new_with_title(project_id, default_title)
-            }
+            None => IdeationSession::new_with_title(project_id, build_default_ideation_session_title()),
         };
 
         self.session_repo.create(session).await

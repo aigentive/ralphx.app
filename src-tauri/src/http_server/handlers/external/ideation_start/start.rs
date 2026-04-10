@@ -1,4 +1,5 @@
 use super::*;
+use crate::application::ideation_service::build_default_ideation_session_title;
 
 #[derive(Debug, Deserialize)]
 pub struct StartIdeationRequest {
@@ -190,7 +191,10 @@ pub async fn start_ideation_http(
     }
 
     let mut session_builder = match req.title.clone() {
-        None => IdeationSession::new(project_id.clone()),
+        None => IdeationSession::new_with_title(
+            project_id.clone(),
+            build_default_ideation_session_title(),
+        ),
         Some(t) => IdeationSession::new_with_title(project_id.clone(), t),
     };
     session_builder.origin = SessionOrigin::External;

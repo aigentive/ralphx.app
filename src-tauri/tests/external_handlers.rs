@@ -550,6 +550,51 @@ async fn test_start_ideation_with_title_preserved() {
     );
 }
 
+#[tokio::test]
+async fn test_start_ideation_without_title_assigns_default_title() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-default-title";
+    let p = make_project(project_id, "Default Title Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let result = start_ideation_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        axum::http::HeaderMap::new(),
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: None,
+            prompt: Some("Hello from external ideation".to_string()),
+            initial_prompt: None,
+            idempotency_key: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+
+    let session_id = IdeationSessionId::from_string(response.session_id.clone());
+    let fetched = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .expect("Session should exist in repo");
+
+    let title = fetched.title.expect("External ideation should not leave title empty");
+    assert!(
+        !title.trim().is_empty(),
+        "External ideation default title must be non-empty"
+    );
+    assert_ne!(
+        title, "Untitled Plan",
+        "External ideation should assign a real default title instead of relying on UI fallback"
+    );
+}
+
 /// Non-existent project_id → 404
 #[tokio::test]
 async fn test_start_ideation_invalid_project_returns_404() {
