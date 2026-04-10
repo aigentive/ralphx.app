@@ -26,6 +26,8 @@ pub mod events {
     pub const AGENT_RUN_COMPLETED: &str = "agent:run_completed";
     /// Agent turn completed event (interactive mode: turn done but process still alive)
     pub const AGENT_TURN_COMPLETED: &str = "agent:turn_completed";
+    /// Agent usage updated event (live mid-turn usage persisted)
+    pub const AGENT_USAGE_UPDATED: &str = "agent:usage_updated";
     /// Agent message created event
     pub const AGENT_MESSAGE_CREATED: &str = "agent:message_created";
     /// Agent error event
@@ -175,6 +177,14 @@ pub struct AgentChunkPayload {
     pub context_type: String,
     pub context_id: String,
     pub seq: u64,
+}
+
+/// Payload for agent:usage_updated event
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentUsageUpdatedPayload {
+    pub conversation_id: String,
+    pub context_type: String,
+    pub context_id: String,
 }
 
 /// Payload for agent:tool_call event

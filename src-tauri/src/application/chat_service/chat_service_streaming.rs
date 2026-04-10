@@ -37,6 +37,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::utils::truncate_str;
 use super::chat_service_errors::StreamError;
+use super::chat_service_types::AgentUsageUpdatedPayload;
 use super::streaming_state_cache::{CachedStreamingTask, CachedToolCall, StreamingStateCache};
 use super::{
     event_context, events, has_meaningful_output, AgentChunkPayload, AgentHookPayload,
@@ -205,6 +206,24 @@ async fn persist_assistant_message_usage(
         let _ = repo
             .update_usage(&ChatMessageId::from_string(message_id.clone()), usage)
             .await;
+    }
+}
+
+fn emit_usage_updated_event<R: Runtime>(
+    app_handle: &Option<AppHandle<R>>,
+    conversation_id: &str,
+    context_type: &str,
+    context_id: &str,
+) {
+    if let Some(handle) = app_handle.as_ref() {
+        let _ = handle.emit(
+            events::AGENT_USAGE_UPDATED,
+            AgentUsageUpdatedPayload {
+                conversation_id: conversation_id.to_string(),
+                context_type: context_type.to_string(),
+                context_id: context_id.to_string(),
+            },
+        );
     }
 }
 
@@ -581,6 +600,7 @@ pub async fn process_stream_background<R: Runtime>(
     // lets the timeout handler know work is still happening.
     let mut active_task_tracker = ActiveTaskTracker::default();
     let mut completion_signal_tracker = CompletionSignalTracker::default();
+    let mut last_emitted_usage = AgentRunUsage::default();
 
     // Count of turns fully finalized in the loop (interactive mode).
     // Used to tell the caller whether post-loop finalization should be skipped.
@@ -1254,6 +1274,15 @@ pub async fn process_stream_background<R: Runtime>(
                                 &turn_usage,
                             )
                             .await;
+                            if turn_usage != last_emitted_usage {
+                                emit_usage_updated_event(
+                                    &app_handle,
+                                    &conversation_id_str,
+                                    &context_type_str,
+                                    &context_id_str,
+                                );
+                                last_emitted_usage = turn_usage;
+                            }
                         }
 
                         // Persist session_id to DB on first TurnComplete
@@ -1926,6 +1955,23 @@ pub async fn process_stream_background<R: Runtime>(
                 &processor.content_blocks,
             )
             .await;
+            let current_turn_usage = processor.current_turn_usage();
+            persist_assistant_message_usage(
+                &chat_message_repo,
+                &assistant_message_id,
+                &current_turn_usage,
+            )
+            .await;
+            persist_agent_run_usage(&agent_run_repo, &agent_run_id, &current_turn_usage).await;
+            if current_turn_usage != last_emitted_usage {
+                emit_usage_updated_event(
+                    &app_handle,
+                    &conversation_id_str,
+                    &context_type_str,
+                    &context_id_str,
+                );
+                last_emitted_usage = current_turn_usage;
+            }
             last_flush = std::time::Instant::now();
         }
 
@@ -2282,6 +2328,7 @@ async fn process_codex_stream_background<R: Runtime>(
     let mut last_flush = std::time::Instant::now();
     const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
     let mut completion_signal_tracker = CompletionSignalTracker::default();
+    let mut last_emitted_usage = AgentRunUsage::default();
     let heartbeat_key = running_agent_registry
         .as_ref()
         .map(|_| RunningAgentKey::new(context_type.to_string(), context_id));
@@ -2521,6 +2568,15 @@ async fn process_codex_stream_background<R: Runtime>(
                 persist_assistant_message_usage(&chat_message_repo, &assistant_message_id, &usage)
                     .await;
                 persist_agent_run_usage(&agent_run_repo, &agent_run_id, &usage).await;
+                if usage != last_emitted_usage {
+                    emit_usage_updated_event(
+                        &app_handle,
+                        &conversation_id_str,
+                        &context_type_str,
+                        &context_id_str,
+                    );
+                    last_emitted_usage = usage.clone();
+                }
             }
         } else if lines_seen > 0 && last_parsed_at.elapsed() >= timeout_config.parse_stall_timeout {
             let _ = child.kill().await;

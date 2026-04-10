@@ -96,6 +96,14 @@ const liveProviderMessage = {
   createdAt: "2026-04-10T10:01:00.000Z",
 };
 
+const liveProviderMessageWithUsage = {
+  ...liveProviderMessage,
+  inputTokens: 76286,
+  outputTokens: 12148,
+  cacheCreationTokens: 12000,
+  cacheReadTokens: 37920,
+};
+
 const finalizedProviderMessage = {
   ...liveProviderMessage,
   content: "I am preparing the plan now.\n\nHere is the final plan summary.",
@@ -295,5 +303,36 @@ test.describe("Chat Contract", () => {
     await expect(page.locator('[data-testid="ideation-widget-get-session-plan"]')).toHaveCount(1);
     await expect(page.getByText("Here is the final plan summary.")).toHaveCount(1);
     await expect(page.getByText("I am preparing the plan now.")).toHaveCount(1);
+  });
+
+  test("hydrates conversation stats during a live turn before finalization", async ({ page }) => {
+    await seedIdeationConversation(page, [
+      userMessage,
+      {
+        ...liveProviderMessage,
+        inputTokens: null,
+        outputTokens: null,
+        cacheCreationTokens: null,
+        cacheReadTokens: null,
+      },
+    ]);
+
+    const statsButton = page.getByTestId("chat-session-stats-button");
+    await expect(statsButton).toBeVisible();
+    await statsButton.click();
+    await expect(page.getByText("Aggregated from none.")).toBeVisible();
+    await expect(page.getByText("Unavailable")).toBeVisible();
+
+    await replaceConversationMessages(page, [userMessage, liveProviderMessageWithUsage]);
+    await emitChatEvent(page, "agent:usage_updated", {
+      conversation_id: conversationId,
+      context_id: contextId,
+      context_type: "ideation",
+    });
+
+    await expect(page.getByText("Aggregated from messages.")).toBeVisible();
+    await expect(page.getByText("76.3k")).toBeVisible();
+    await expect(page.getByText("12.1k")).toBeVisible();
+    await expect(page.getByText("49.9k")).toBeVisible();
   });
 });
