@@ -9,6 +9,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
         use crate::domain::state_machine::transition_handler::{
             clear_merge_deferred_metadata, has_merge_deferred_metadata,
             is_merge_deferred_timed_out, DEFERRED_MERGE_TIMEOUT_SECONDS,
+            set_trigger_origin,
         };
 
         let pid = ProjectId::from_string(project_id.to_string());
@@ -135,6 +136,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
 
             // Clear the legacy deferred flag
             clear_merge_deferred_metadata(&mut updated);
+            set_trigger_origin(&mut updated, "recovery");
             updated.touch();
 
             if let Err(e) = self.task_repo.update(&updated).await {
@@ -173,7 +175,8 @@ impl<R: Runtime> TaskSchedulerService<R> {
     pub(super) async fn retry_main_merges_impl(&self) {
         use crate::domain::state_machine::transition_handler::{
             clear_main_merge_deferred_metadata, has_main_merge_deferred_metadata,
-            is_main_merge_deferred_timed_out, DEFERRED_MERGE_TIMEOUT_SECONDS,
+            is_main_merge_deferred_timed_out, set_trigger_origin,
+            DEFERRED_MERGE_TIMEOUT_SECONDS,
         };
 
         // Query all projects for main-merge-deferred tasks
@@ -353,6 +356,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
 
             // Clear the main_merge_deferred flag
             clear_main_merge_deferred_metadata(&mut updated);
+            set_trigger_origin(&mut updated, "recovery");
             updated.touch();
 
             if let Err(e) = self.task_repo.update(&updated).await {

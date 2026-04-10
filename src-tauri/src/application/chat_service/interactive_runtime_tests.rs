@@ -82,6 +82,27 @@ fn conversation_spawn_harness_override_skips_parent_for_retry() {
 }
 
 #[test]
+fn conversation_spawn_harness_override_skips_parent_for_revision_reexecution() {
+    let task_id = TaskId::from_string("task-parent-2b".to_string());
+    let child = ChatConversation::new_task_execution(task_id.clone());
+    let mut parent = ChatConversation::new_task_execution(task_id);
+    parent.set_provider_session_ref(ProviderSessionRef {
+        harness: AgentHarnessKind::Codex,
+        provider_session_id: "codex-parent-session".to_string(),
+    });
+
+    let harness = conversation_spawn_harness_override(
+        get_agent_name(&ChatContextType::TaskExecution),
+        ChatContextType::TaskExecution,
+        Some(r#"{"trigger_origin":"revision"}"#),
+        &child,
+        Some(&parent),
+    );
+
+    assert_eq!(harness, None);
+}
+
+#[test]
 fn conversation_spawn_harness_override_skips_parent_without_continuation_metadata() {
     let task_id = TaskId::from_string("task-parent-3".to_string());
     let child = ChatConversation::new_task_execution(task_id.clone());

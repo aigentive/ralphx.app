@@ -658,6 +658,12 @@ async fn test_retry_deferred_merges_clears_flag_on_deferred_task() {
                 .contains("merge_deferred"),
         "merge_deferred flag should be cleared"
     );
+    let metadata = updated
+        .metadata
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .unwrap_or_default();
+    assert_eq!(metadata["trigger_origin"], "recovery");
 }
 
 #[tokio::test]
@@ -1020,6 +1026,12 @@ async fn test_retry_main_merges_clears_flag_on_deferred_task() {
                 .contains("main_merge_deferred"),
         "main_merge_deferred flag should be cleared"
     );
+    let metadata = updated
+        .metadata
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .unwrap_or_default();
+    assert_eq!(metadata["trigger_origin"], "recovery");
 }
 
 #[tokio::test]
