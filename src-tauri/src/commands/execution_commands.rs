@@ -68,6 +68,7 @@ use scheduling::schedule_ready_tasks_for_project;
 
 mod lifecycle;
 
+pub(crate) use lifecycle::prepare_resumed_task_for_entry_actions;
 pub use lifecycle::{
     pause_execution,
     resume_execution,

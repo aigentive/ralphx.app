@@ -5,7 +5,9 @@ use super::types::{
     AnswerUserQuestionInput, AnswerUserQuestionResponse, CreateTaskInput, InjectTaskInput,
     InjectTaskResponse, TaskResponse, UnblockTaskResponse, UpdateTaskInput,
 };
+use crate::application::chat_service::PauseReason;
 use crate::application::{AppState, TaskTransitionService};
+use crate::commands::execution_commands::prepare_resumed_task_for_entry_actions;
 use crate::commands::execution_commands::project_has_execution_capacity_for_state;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
@@ -1255,8 +1257,6 @@ pub async fn resume_task(
     execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<TaskResponse, String> {
-    use crate::application::chat_service::PauseReason;
-
     let task_id = TaskId::from_string(task_id);
 
     // Get the paused task
@@ -1322,10 +1322,9 @@ pub async fn resume_task(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Task not found after transition: {}", task_id.as_str()))?;
 
-    // Clear pause metadata
-    restored_task.metadata = Some(PauseReason::clear_from_task_metadata(
-        restored_task.metadata.as_deref(),
-    ));
+    // Mark this as a continuation resume before re-running entry actions so
+    // fresh execution/merge spawns preserve prior harness lineage.
+    prepare_resumed_task_for_entry_actions(&mut restored_task);
     restored_task.touch();
     state
         .task_repo
@@ -1580,9 +1579,7 @@ pub async fn resume_tasks_in_group(
         };
 
         let mut restored_task = updated_task;
-        restored_task.metadata = Some(PauseReason::clear_from_task_metadata(
-            restored_task.metadata.as_deref(),
-        ));
+        prepare_resumed_task_for_entry_actions(&mut restored_task);
         restored_task.touch();
         let _ = state.task_repo.update(&restored_task).await;
 
