@@ -15,6 +15,7 @@ import {
   isAgentRunning,
   chatApi,
   getConversationActiveState,
+  getChildSessionStatus,
 } from "./chat";
 import type { ConversationActiveStateResponse } from "./chat";
 
@@ -23,6 +24,8 @@ const mockInvoke = invoke as ReturnType<typeof vi.fn>;
 describe("chat api", () => {
   beforeEach(() => {
     mockInvoke.mockReset();
+    delete window.__TAURI_INTERNALS__;
+    delete window.__mockChatApi;
   });
 
   it("parses tool calls", () => {
@@ -206,6 +209,34 @@ describe("chat api", () => {
     mockInvoke.mockResolvedValue(null);
     const result = await getAgentRunStatus("c1");
     expect(result).toBeNull();
+  });
+
+  it("uses the web-mode chat mock for child session status when available", async () => {
+    window.__mockChatApi = {
+      reset: vi.fn(),
+      seedScenario: vi.fn(),
+      listScenarios: vi.fn().mockReturnValue([]),
+      listConversations: vi.fn(),
+      getConversation: vi.fn(),
+      getChildSessionStatus: vi.fn().mockResolvedValue({
+        session_id: "child-1",
+        title: "Mock child session",
+        agent_state: { estimated_status: "likely_generating" },
+        recent_messages: [],
+        lastEffectiveModel: "gpt-5.4-mini",
+      }),
+      setChildSessionStatusOverride: vi.fn(),
+      clearChildSessionStatusOverrides: vi.fn(),
+    };
+
+    const result = await getChildSessionStatus("child-1");
+
+    expect(window.__mockChatApi.getChildSessionStatus).toHaveBeenCalledWith("child-1");
+    expect(result).toMatchObject({
+      session_id: "child-1",
+      title: "Mock child session",
+      lastEffectiveModel: "gpt-5.4-mini",
+    });
   });
 
   it("sends unified agent message", async () => {

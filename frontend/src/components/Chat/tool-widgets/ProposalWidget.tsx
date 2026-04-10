@@ -123,58 +123,60 @@ export const ProposalWidget = React.memo(function ProposalWidget({
   }
 
   return (
-    <WidgetRow compact={compact}>
-      {/* Action icon */}
-      <span
-        style={{
-          width: 14,
-          height: 14,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-          color: config.color,
-        }}
-      >
-        {config.icon}
-      </span>
-
-      {/* Title (truncated) */}
-      <span
-        style={{
-          flex: 1,
-          fontSize: compact ? 10.5 : 11,
-          color: action === "deleted" ? colors.textMuted : colors.textSecondary,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          textDecoration: action === "deleted" ? "line-through" : undefined,
-        }}
-      >
-        {title}
-      </span>
-
-      {/* Category chip (only for create/update) */}
-      {category && action !== "deleted" && (
-        <Badge variant="accent" compact>{category}</Badge>
-      )}
-
-      {/* Changed fields summary (only for update) */}
-      {changedFields.length > 0 && (
+    <div data-testid={`proposal-widget-${action}`}>
+      <WidgetRow compact={compact}>
+        {/* Action icon */}
         <span
           style={{
-            fontSize: 10,
-            color: colors.textMuted,
+            width: 14,
+            height: 14,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
             flexShrink: 0,
-            whiteSpace: "nowrap",
+            color: config.color,
           }}
         >
-          {changedFields.join(", ")}
+          {config.icon}
         </span>
-      )}
 
-      {/* Action badge */}
-      <Badge variant={config.badgeVariant} compact>{config.label}</Badge>
-    </WidgetRow>
+        {/* Title (truncated) */}
+        <span
+          style={{
+            flex: 1,
+            fontSize: compact ? 10.5 : 11,
+            color: action === "deleted" ? colors.textMuted : colors.textSecondary,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            textDecoration: action === "deleted" ? "line-through" : undefined,
+          }}
+        >
+          {title}
+        </span>
+
+        {/* Category chip (only for create/update) */}
+        {category && action !== "deleted" && (
+          <Badge variant="accent" compact>{category}</Badge>
+        )}
+
+        {/* Changed fields summary (only for update) */}
+        {changedFields.length > 0 && (
+          <span
+            style={{
+              fontSize: 10,
+              color: colors.textMuted,
+              flexShrink: 0,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {changedFields.join(", ")}
+          </span>
+        )}
+
+        {/* Action badge */}
+        <Badge variant={config.badgeVariant} compact>{config.label}</Badge>
+      </WidgetRow>
+    </div>
   );
 });

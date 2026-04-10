@@ -353,26 +353,28 @@ export const MergeWidget = React.memo(function MergeWidget(props: ToolCallWidget
   switch (toolName) {
     case "mcp__ralphx__complete_merge":
     case "complete_merge":
-      return <CompleteMergeWidget {...props} />;
+      return <div data-testid="merge-widget-complete"><CompleteMergeWidget {...props} /></div>;
 
     case "mcp__ralphx__report_conflict":
     case "report_conflict":
-      return <ReportConflictWidget {...props} />;
+      return <div data-testid="merge-widget-conflict"><ReportConflictWidget {...props} /></div>;
 
     case "mcp__ralphx__report_incomplete":
     case "report_incomplete":
-      return <ReportIncompleteWidget {...props} />;
+      return <div data-testid="merge-widget-incomplete"><ReportIncompleteWidget {...props} /></div>;
 
     case "mcp__ralphx__get_merge_target":
     case "get_merge_target":
-      return <GetMergeTargetWidget {...props} />;
+      return <div data-testid="merge-widget-target"><GetMergeTargetWidget {...props} /></div>;
 
     default:
       return (
+        <div data-testid="merge-widget-fallback">
         <InlineIndicator
           icon={<GitMerge size={12} style={{ color: colors.textMuted }} />}
           text={props.toolCall.name}
         />
+        </div>
       );
   }
 });

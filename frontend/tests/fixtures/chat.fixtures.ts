@@ -1,14 +1,25 @@
 import { expect, Page } from "@playwright/test";
 import { setupApp } from "./setup.fixtures";
 import {
-  IDEATION_REPLAY_CONTEXT,
+  IDEATION_REPLAY_CONTEXTS,
   TASK_REPLAY_CONTEXTS,
   type MockChatScenarioName,
 } from "@/api-mock/chat-scenarios";
+import type { ChildSessionStatusResponse } from "@/api/chat";
 
 export type ChatScenarioName = MockChatScenarioName;
 
-type TaskChatScenarioName = Exclude<ChatScenarioName, "ideation_db_widget_mix">;
+type ChildSessionStatusOverride = {
+  response?: ChildSessionStatusResponse;
+  error?: string;
+  delayMs?: number;
+};
+
+type IdeationChatScenarioName = Extract<
+  ChatScenarioName,
+  "ideation_db_widget_mix" | "ideation_widget_matrix"
+>;
+type TaskChatScenarioName = Exclude<ChatScenarioName, IdeationChatScenarioName>;
 
 export async function seedChatScenario(page: Page, scenario: ChatScenarioName) {
   await page.evaluate(({ scenarioName }) => {
@@ -25,12 +36,49 @@ export async function seedChatScenario(page: Page, scenario: ChatScenarioName) {
   }, { scenarioName: scenario });
 }
 
-export async function setupIdeationChatScenario(page: Page, scenario: Extract<ChatScenarioName, "ideation_db_widget_mix">) {
+export async function setChildSessionStatusOverride(
+  page: Page,
+  sessionId: string,
+  override: ChildSessionStatusOverride
+) {
+  await page.evaluate(({ childSessionId, childOverride }) => {
+    const mockChatApi = (window as Window).__mockChatApi;
+
+    if (!mockChatApi) {
+      throw new Error("Mock chat API not available");
+    }
+
+    mockChatApi.setChildSessionStatusOverride(childSessionId, childOverride);
+  }, { childSessionId: sessionId, childOverride: override });
+}
+
+async function seedChildSessionOverrides(
+  page: Page,
+  overrides: Record<string, ChildSessionStatusOverride> | undefined
+) {
+  if (!overrides) {
+    return;
+  }
+
+  for (const [sessionId, override] of Object.entries(overrides)) {
+    await setChildSessionStatusOverride(page, sessionId, override);
+  }
+}
+
+export async function setupIdeationChatScenario(
+  page: Page,
+  scenario: IdeationChatScenarioName,
+  options?: {
+    childSessionOverrides?: Record<string, ChildSessionStatusOverride>;
+  }
+) {
+  const replayContext = IDEATION_REPLAY_CONTEXTS[scenario];
   await setupApp(page);
   await page.click('[data-testid="nav-ideation"]');
   await page.waitForSelector('[data-testid="ideation-view"]', { timeout: 10000 });
   await page.waitForTimeout(250);
   await seedChatScenario(page, scenario);
+  await seedChildSessionOverrides(page, options?.childSessionOverrides);
   await page.evaluate(async (replayContext) => {
     const chatStore = (window as Window).__chatStore;
     const ideationStore = (window as Window).__ideationStore;
@@ -49,9 +97,9 @@ export async function setupIdeationChatScenario(page: Page, scenario: Extract<Ch
     }
 
     ideationStore.getState().selectSession({
-      id: "session-mock-1",
+      id: contextId,
       projectId: "project-mock-1",
-      title: "Demo Ideation Session",
+      title: contextId === "session-widget-matrix" ? "Widget Matrix Session" : "Demo Ideation Session",
       titleSource: null,
       status: "active",
       planArtifactId: null,
@@ -60,7 +108,7 @@ export async function setupIdeationChatScenario(page: Page, scenario: Extract<Ch
       teamMode: null,
       teamConfig: null,
       createdAt: "2026-03-11T21:51:34.589194Z",
-      updatedAt: "2026-03-11T21:58:43.308888Z",
+      updatedAt: "2026-04-10T08:15:00.000000Z",
       archivedAt: null,
       convertedAt: null,
       verificationStatus: "unverified",
@@ -83,14 +131,14 @@ export async function setupIdeationChatScenario(page: Page, scenario: Extract<Ch
     );
 
     chatStore?.getState().setActiveConversation(`session:${contextId}`, conversationId);
-  }, IDEATION_REPLAY_CONTEXT);
+  }, replayContext);
   await page.waitForFunction((replayContext) => {
     const chatStore = (window as Window).__chatStore;
     return (
       chatStore?.getState().activeConversationIds?.[`session:${replayContext.contextId}`] ===
       replayContext.conversationId
     );
-  }, IDEATION_REPLAY_CONTEXT);
+  }, replayContext);
   await expect(page.locator('[data-testid="conversation-panel"]')).toBeVisible();
   await expect(page.locator('[data-testid="integrated-chat-messages"]')).toBeVisible();
   await expect(page.locator('[data-testid="chat-session-provider-context"]')).toBeVisible();

@@ -6,6 +6,7 @@ import type { ChatConversation, AgentRun, ContextType } from "../types/chat-conv
 import { normalizeConversationProviderMetadata } from "../types/chat-conversation";
 import type { ToolCall } from "../components/Chat/ToolCallIndicator";
 import type { ContentBlockItem } from "../components/Chat/MessageItem";
+import { isWebMode } from "@/lib/tauri-detection";
 
 // ============================================================================
 // Typed Invoke Helper
@@ -215,6 +216,13 @@ export interface ChildSessionStatusResponse {
 export async function getChildSessionStatus(
   sessionId: string
 ): Promise<ChildSessionStatusResponse> {
+  if (isWebMode()) {
+    const mockedResponse = await window.__mockChatApi?.getChildSessionStatus(sessionId);
+    if (mockedResponse) {
+      return mockedResponse;
+    }
+  }
+
   const res = await fetch(
     `http://localhost:3847/api/ideation/sessions/${sessionId}/child-status?include_messages=true&message_limit=5`
   );

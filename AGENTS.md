@@ -211,6 +211,27 @@ When working in `src-tauri/`, also follow:
 | P1 | Replay scenario module hygiene | Completed | DB-derived replay payloads now live in `frontend/src/api-mock/chat-scenarios.ts`, leaving `frontend/src/api-mock/chat.ts` focused on controller/state behavior instead of mixing API flow with large embedded fixtures |
 | P1 | Replay fixture realism expansion | Open | Add one richer execution-side scenario with multiple assistant turns and mixed widgets once real review/merge replay needs exceed the current compact two-message seed set |
 
+### Chat Widget Snapshot Matrix
+
+| Priority | Widget Family | Status | Concrete Next Step |
+|---|---|---|---|
+| P0 | Proposal widget states | Completed | `frontend/tests/visual/views/chat/chat-widget-matrix.spec.ts` now snapshots create / update / delete proposal states via the `ideation_widget_matrix` replay scenario and `proposal-widget-*` selectors |
+| P0 | Verification widget states | Completed | `frontend/tests/visual/views/chat/chat-widget-matrix.spec.ts` now snapshots update / get / pending verification states via the `ideation_widget_matrix` replay scenario and `verification-widget-*` selectors |
+| P0 | SendMessage + ideation question states | Completed | `frontend/tests/visual/views/chat/chat-widget-matrix.spec.ts` now snapshots broadcast send-message plus question / plan-create / plan-update ideation states via `send-message-widget-*` and `ideation-widget-*` selectors |
+| P0 | Review widget states | Completed | `frontend/tests/visual/views/chat/chat-widget-matrix.spec.ts` now snapshots approved complete-review and expanded review-notes states via the `review_widget_matrix` replay scenario |
+| P0 | Merge widget states | Completed | `frontend/tests/visual/views/chat/chat-widget-matrix.spec.ts` now snapshots target / conflict / incomplete / complete merge states via the `merge_widget_matrix` replay scenario and `merge-widget-*` selectors |
+| P0 | ChildSessionWidget visual states | Completed | `frontend/tests/visual/views/chat/chat-widget-matrix.spec.ts` now snapshots active / pending-capacity / loading / error child-session cards via the shared web-mode mock chat controller instead of brittle hook-only mocks |
+| P1 | Execution file/search widgets | Covered via composite replay | Keep `execution_db_compact` task replay coverage for `Read`, `Grep`, and `bash`; only add isolated snapshots if layout churn starts escaping the current replay + unit tests |
+| P1 | Context / artifact / team / MCP widgets | Covered via direct RTL coverage | Registry-level render coverage plus mixed replay is the current source of truth; promote specific isolated snapshots only if future visual churn shows those clusters are unstable |
+
+### Chat Render Contract Tracker
+
+| Priority | Area | Status | Concrete Next Step |
+|---|---|---|---|
+| P0 | Persisted chat message shape map | Completed | Replay fixtures now explicitly treat provider lineage as conversation-level metadata and widget rendering as message `content_blocks` / `tool_calls` driven, with the matrix scenarios sourced from DB-derived conversation patterns |
+| P1 | Shared render fixture builders | In progress | Keep consolidating `frontend/src/components/Chat/__tests__/chatRenderFixtures.ts` and replay-scenario builders so new widget coverage stops inventing bespoke payload shapes in every spec |
+| P1 | Mixed long-form replay realism | Open | Add one richer execution/review replay with more than two assistant turns once real regressions show the compact worker/reviewer/merge seeds are no longer enough |
+
 ## High-Value Refactor Targets
 
 | Priority | Area | Why It Matters | Next Step |

@@ -319,16 +319,16 @@ export const VerificationWidget = React.memo(function VerificationWidget(props: 
 
   switch (toolType) {
     case "update_plan_verification":
-      return <UpdateVerification {...props} />;
+      return <div data-testid="verification-widget-update"><UpdateVerification {...props} /></div>;
     case "get_plan_verification":
-      return <GetVerification {...props} />;
+      return <div data-testid="verification-widget-get"><GetVerification {...props} /></div>;
     case "get_child_session_status":
-      return <ChildSessionStatus {...props} />;
+      return <div data-testid="verification-widget-child-status"><ChildSessionStatus {...props} /></div>;
     case "get_verification_confirmation_status":
-      return <VerificationConfirmationStatus {...props} />;
+      return <div data-testid="verification-widget-confirmation"><VerificationConfirmationStatus {...props} /></div>;
     case "get_pending_confirmations":
-      return <PendingConfirmations {...props} />;
+      return <div data-testid="verification-widget-pending"><PendingConfirmations {...props} /></div>;
     default:
-      return <InlineIndicator text={props.toolCall.name} />;
+      return <div data-testid="verification-widget-fallback"><InlineIndicator text={props.toolCall.name} /></div>;
   }
 });

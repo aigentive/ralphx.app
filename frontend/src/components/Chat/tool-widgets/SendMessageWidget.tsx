@@ -99,92 +99,94 @@ export const SendMessageWidget = React.memo(function SendMessageWidget({
   const previewText = parsed.summary ?? truncateLines(parsed.content, 3);
 
   return (
-    <WidgetCard
-      className={className}
-      compact={compact}
-      defaultExpanded={false}
-      header={
-        <WidgetHeader
-          icon={<MessageSquare size={14} />}
-          title={headerTitle}
-          badge={
-            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              {parsed.recipient && parsed.type === "broadcast" && (
-                <RecipientPill name="all" compact={compact} />
-              )}
-              {typeBadge}
-            </span>
-          }
-          compact={compact}
-        />
-      }
-    >
-      {/* Preview text */}
-      {previewText && (
-        <div
-          style={{
-            fontSize: compact ? 10.5 : 11,
-            lineHeight: 1.5,
-            color: colors.textSecondary,
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-            padding: "2px 0",
-          }}
-        >
-          {previewText}
-        </div>
-      )}
+    <div data-testid={`send-message-widget-${parsed.type}`}>
+      <WidgetCard
+        className={className}
+        compact={compact}
+        defaultExpanded={false}
+        header={
+          <WidgetHeader
+            icon={<MessageSquare size={14} />}
+            title={headerTitle}
+            badge={
+              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                {parsed.recipient && parsed.type === "broadcast" && (
+                  <RecipientPill name="all" compact={compact} />
+                )}
+                {typeBadge}
+              </span>
+            }
+            compact={compact}
+          />
+        }
+      >
+        {/* Preview text */}
+        {previewText && (
+          <div
+            style={{
+              fontSize: compact ? 10.5 : 11,
+              lineHeight: 1.5,
+              color: colors.textSecondary,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              padding: "2px 0",
+            }}
+          >
+            {previewText}
+          </div>
+        )}
 
-      {/* Full content (shown when expanded, only if different from preview) */}
-      {parsed.summary && parsed.content && parsed.content !== parsed.summary && (
-        <div
-          style={{
-            fontSize: compact ? 10 : 10.5,
-            lineHeight: 1.5,
-            color: colors.textMuted,
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-            marginTop: 4,
-            padding: "4px 6px",
-            background: colors.bgTerminal,
-            borderRadius: 4,
-          }}
-        >
-          {parsed.content}
-        </div>
-      )}
+        {/* Full content (shown when expanded, only if different from preview) */}
+        {parsed.summary && parsed.content && parsed.content !== parsed.summary && (
+          <div
+            style={{
+              fontSize: compact ? 10 : 10.5,
+              lineHeight: 1.5,
+              color: colors.textMuted,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              marginTop: 4,
+              padding: "4px 6px",
+              background: colors.bgTerminal,
+              borderRadius: 4,
+            }}
+          >
+            {parsed.content}
+          </div>
+        )}
 
-      {/* Approve indicator for shutdown/plan responses */}
-      {parsed.approve !== undefined && (
-        <div
-          style={{
-            fontSize: compact ? 10 : 10.5,
-            color: parsed.approve ? colors.success : colors.error,
-            marginTop: 4,
-          }}
-        >
-          {parsed.approve ? "Approved" : "Rejected"}
-        </div>
-      )}
+        {/* Approve indicator for shutdown/plan responses */}
+        {parsed.approve !== undefined && (
+          <div
+            style={{
+              fontSize: compact ? 10 : 10.5,
+              color: parsed.approve ? colors.success : colors.error,
+              marginTop: 4,
+            }}
+          >
+            {parsed.approve ? "Approved" : "Rejected"}
+          </div>
+        )}
 
-      {/* Result display */}
-      {toolCall.result != null && !toolCall.error && (
-        <ResultDisplay result={toolCall.result} compact={compact} />
-      )}
+        {/* Result display */}
+        {toolCall.result != null && !toolCall.error && (
+          <ResultDisplay result={toolCall.result} compact={compact} />
+        )}
 
-      {/* Error display */}
-      {toolCall.error && (
-        <div
-          style={{
-            fontSize: compact ? 10 : 10.5,
-            color: colors.error,
-            marginTop: 4,
-          }}
-        >
-          {toolCall.error}
-        </div>
-      )}
-    </WidgetCard>
+        {/* Error display */}
+        {toolCall.error && (
+          <div
+            style={{
+              fontSize: compact ? 10 : 10.5,
+              color: colors.error,
+              marginTop: 4,
+            }}
+          >
+            {toolCall.error}
+          </div>
+        )}
+      </WidgetCard>
+    </div>
   );
 });
 

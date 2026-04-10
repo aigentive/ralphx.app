@@ -465,30 +465,30 @@ export const IdeationWidget = React.memo(function IdeationWidget(props: ToolCall
 
   switch (toolType) {
     case "create_plan_artifact":
-      return <PlanCreated {...props} />;
+      return <div data-testid="ideation-widget-create-plan"><PlanCreated {...props} /></div>;
     case "update_plan_artifact":
-      return <PlanUpdated {...props} />;
+      return <div data-testid="ideation-widget-update-plan"><PlanUpdated {...props} /></div>;
     case "edit_plan_artifact":
-      return <PlanEdited {...props} />;
+      return <div data-testid="ideation-widget-edit-plan"><PlanEdited {...props} /></div>;
     case "send_ideation_session_message":
-      return <SessionMessage {...props} />;
+      return <div data-testid="ideation-widget-session-message"><SessionMessage {...props} /></div>;
     case "link_proposals_to_plan":
-      return <LinkProposals {...props} />;
+      return <div data-testid="ideation-widget-link-proposals"><LinkProposals {...props} /></div>;
     case "ask_user_question":
-      return <AskUserQuestion {...props} />;
+      return <div data-testid="ideation-widget-ask-question"><AskUserQuestion {...props} /></div>;
     case "list_session_proposals":
-      return <ListProposals {...props} />;
+      return <div data-testid="ideation-widget-list-proposals"><ListProposals {...props} /></div>;
     case "get_proposal":
-      return <GetProposal {...props} />;
+      return <div data-testid="ideation-widget-get-proposal"><GetProposal {...props} /></div>;
     case "get_session_plan":
-      return <GetSessionPlan {...props} />;
+      return <div data-testid="ideation-widget-get-session-plan"><GetSessionPlan {...props} /></div>;
     case "analyze_session_dependencies":
-      return <AnalyzeDependencies {...props} />;
+      return <div data-testid="ideation-widget-analyze-deps"><AnalyzeDependencies {...props} /></div>;
     case "finalize_proposals":
-      return <FinalizeProposals {...props} />;
+      return <div data-testid="ideation-widget-finalize"><FinalizeProposals {...props} /></div>;
     case "cross_project_guide":
-      return <CrossProjectGuide {...props} />;
+      return <div data-testid="ideation-widget-cross-project"><CrossProjectGuide {...props} /></div>;
     default:
-      return <InlineIndicator text={props.toolCall.name} />;
+      return <div data-testid="ideation-widget-fallback"><InlineIndicator text={props.toolCall.name} /></div>;
   }
 });

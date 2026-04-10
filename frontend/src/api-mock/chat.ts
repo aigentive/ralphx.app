@@ -11,6 +11,7 @@ import type {
 import { normalizeConversationProviderMetadata } from "@/types/chat-conversation";
 import type {
   ChatMessageResponse,
+  ChildSessionStatusResponse,
   QueuedMessageResponse,
   SendAgentMessageResult,
 } from "@/api/chat";
@@ -29,11 +30,25 @@ import {
 const mockConversations: Map<string, ChatConversation> = new Map();
 const mockMessages: Map<string, ChatMessageResponse[]> = new Map();
 const mockQueuedMessages: Map<string, QueuedMessageResponse[]> = new Map();
+const mockChildSessionStatuses: Map<string, ChildSessionStatusResponse> = new Map();
+const mockChildSessionStatusOverrides: Map<string, MockChildSessionStatusOverride> = new Map();
+
+type MockChildSessionStatusOverride = {
+  response?: ChildSessionStatusResponse;
+  error?: string;
+  delayMs?: number;
+};
 
 export interface MockChatController {
   reset(): void;
   seedScenario(name: MockChatScenarioName): void;
   listScenarios(): MockChatScenarioName[];
+  getChildSessionStatus(sessionId: string): Promise<ChildSessionStatusResponse>;
+  setChildSessionStatusOverride(
+    sessionId: string,
+    override: MockChildSessionStatusOverride
+  ): void;
+  clearChildSessionStatusOverrides(): void;
   listConversations(
     contextType: ContextType,
     contextId: string
@@ -47,6 +62,8 @@ export function resetMockChatState(): void {
   mockConversations.clear();
   mockMessages.clear();
   mockQueuedMessages.clear();
+  mockChildSessionStatuses.clear();
+  mockChildSessionStatusOverrides.clear();
 }
 
 export function seedMockChatScenario(name: MockChatScenarioName): void {
@@ -67,6 +84,10 @@ export function seedMockChatScenario(name: MockChatScenarioName): void {
   for (const [key, queued] of Object.entries(scenario.queuedMessages ?? {})) {
     mockQueuedMessages.set(key, [...queued]);
   }
+
+  for (const [sessionId, status] of Object.entries(scenario.childSessionStatuses ?? {})) {
+    mockChildSessionStatuses.set(sessionId, { ...status });
+  }
 }
 
 function exposeMockChatController(): void {
@@ -78,6 +99,9 @@ function exposeMockChatController(): void {
     reset: resetMockChatState,
     seedScenario: seedMockChatScenario,
     listScenarios: listMockChatScenarios,
+    getChildSessionStatus: mockGetChildSessionStatus,
+    setChildSessionStatusOverride: mockSetChildSessionStatusOverride,
+    clearChildSessionStatusOverrides: mockClearChildSessionStatusOverrides,
     listConversations: mockListConversations,
     getConversation: mockGetConversation,
   };
@@ -140,6 +164,49 @@ export async function mockCreateConversation(
   };
   mockConversations.set(conversation.id, conversation);
   return conversation;
+}
+
+function cloneChildSessionStatus(
+  status: ChildSessionStatusResponse
+): ChildSessionStatusResponse {
+  return {
+    ...status,
+    agent_state: { ...status.agent_state },
+    recent_messages: status.recent_messages.map((message) => ({ ...message })),
+  };
+}
+
+function mockSetChildSessionStatusOverride(
+  sessionId: string,
+  override: MockChildSessionStatusOverride
+): void {
+  mockChildSessionStatusOverrides.set(sessionId, override);
+}
+
+function mockClearChildSessionStatusOverrides(): void {
+  mockChildSessionStatusOverrides.clear();
+}
+
+export async function mockGetChildSessionStatus(
+  sessionId: string
+): Promise<ChildSessionStatusResponse> {
+  const override = mockChildSessionStatusOverrides.get(sessionId);
+  const delayMs = override?.delayMs ?? 0;
+
+  if (delayMs > 0) {
+    await new Promise((resolve) => globalThis.setTimeout(resolve, delayMs));
+  }
+
+  if (override?.error) {
+    throw new Error(override.error);
+  }
+
+  const response = override?.response ?? mockChildSessionStatuses.get(sessionId);
+  if (!response) {
+    throw new Error(`No mock child session status seeded for ${sessionId}`);
+  }
+
+  return cloneChildSessionStatus(response);
 }
 
 export async function mockGetAgentRunStatus(
@@ -221,6 +288,7 @@ export const mockChatApi = {
   listConversations: mockListConversations,
   getConversation: mockGetConversation,
   createConversation: mockCreateConversation,
+  getChildSessionStatus: mockGetChildSessionStatus,
   getAgentRunStatus: mockGetAgentRunStatus,
   sendAgentMessage: mockSendAgentMessage,
   getQueuedAgentMessages: mockGetQueuedAgentMessages,
