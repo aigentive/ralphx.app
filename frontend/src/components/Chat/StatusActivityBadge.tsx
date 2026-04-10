@@ -304,7 +304,10 @@ export function StatusActivityBadge({
 
   if (isInlineLayout) {
     return (
-      <div className="flex items-center gap-1.5 min-w-0 text-[11px] text-white/55">
+      <div
+        className="flex items-center gap-1.5 min-w-0 text-[11px] text-white/55"
+        data-testid="chat-session-status-inline"
+      >
         <Loader2 className="h-3 w-3 shrink-0 animate-spin text-white/55" />
         <span className={badgeColorClass ? `${badgeColorClass} truncate` : "truncate"}>
           {badgeLabel}

@@ -8,10 +8,27 @@ interface ConversationStatsPopoverProps {
   conversationId: string | null;
   fallbackConversation?: ChatConversation | null | undefined;
   fallbackMessages?: ChatMessageResponse[] | null | undefined;
+  stats?: ReturnType<typeof useConversationStats>["data"];
+  isLoading?: boolean;
 }
 
 function formatInteger(value: number): string {
   return new Intl.NumberFormat("en-US").format(value);
+}
+
+function formatCompactInteger(value: number): string {
+  if (Math.abs(value) < 10_000) {
+    return formatInteger(value);
+  }
+
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  })
+    .format(value)
+    .replace("K", "k")
+    .replace("M", "m")
+    .replace("B", "b");
 }
 
 function formatUsd(value: number | null): string {
@@ -31,12 +48,15 @@ export function ConversationStatsPopover({
   conversationId,
   fallbackConversation,
   fallbackMessages,
+  stats: providedStats,
+  isLoading: providedIsLoading,
 }: ConversationStatsPopoverProps) {
   const statsQuery = useConversationStats(conversationId, {
     fallbackConversation,
     fallbackMessages,
   });
-  const stats = statsQuery.data;
+  const stats = providedStats ?? statsQuery.data;
+  const isLoading = providedIsLoading ?? statsQuery.isLoading;
 
   if (!conversationId) {
     return null;
@@ -65,7 +85,7 @@ export function ConversationStatsPopover({
           </div>
         </div>
 
-        {statsQuery.isLoading ? (
+        {isLoading ? (
           <div className="p-3 text-sm text-white/55">Loading conversation stats...</div>
         ) : !stats ? (
           <div className="p-3 text-sm text-white/55">Stats are not available for this conversation.</div>
@@ -75,19 +95,19 @@ export function ConversationStatsPopover({
               <div className="rounded-md border border-white/6 bg-white/[0.03] p-2">
                 <div className="text-[10px] uppercase tracking-[0.08em] text-white/38">Input</div>
                 <div className="text-sm text-white/88 mt-1">
-                  {formatInteger(stats.effectiveUsageTotals.inputTokens)}
+                  {formatCompactInteger(stats.effectiveUsageTotals.inputTokens)}
                 </div>
               </div>
               <div className="rounded-md border border-white/6 bg-white/[0.03] p-2">
                 <div className="text-[10px] uppercase tracking-[0.08em] text-white/38">Output</div>
                 <div className="text-sm text-white/88 mt-1">
-                  {formatInteger(stats.effectiveUsageTotals.outputTokens)}
+                  {formatCompactInteger(stats.effectiveUsageTotals.outputTokens)}
                 </div>
               </div>
               <div className="rounded-md border border-white/6 bg-white/[0.03] p-2">
                 <div className="text-[10px] uppercase tracking-[0.08em] text-white/38">Cache</div>
                 <div className="text-sm text-white/88 mt-1">
-                  {formatInteger(
+                  {formatCompactInteger(
                     stats.effectiveUsageTotals.cacheCreationTokens +
                       stats.effectiveUsageTotals.cacheReadTokens,
                   )}
@@ -108,9 +128,11 @@ export function ConversationStatsPopover({
                   Messages: {stats.usageCoverage.providerMessagesWithUsage}/
                   {stats.usageCoverage.providerMessageCount}
                 </div>
-                <div className="text-white/70">
-                  Runs: {stats.usageCoverage.runsWithUsage}/{stats.usageCoverage.runCount}
-                </div>
+                {stats.usageCoverage.runCount > 0 && (
+                  <div className="text-white/70">
+                    Runs: {stats.usageCoverage.runsWithUsage}/{stats.usageCoverage.runCount}
+                  </div>
+                )}
               </div>
               <div>
                 <div className="uppercase tracking-[0.08em] text-white/38">Attribution</div>
@@ -118,10 +140,12 @@ export function ConversationStatsPopover({
                   Messages: {stats.attributionCoverage.providerMessagesWithAttribution}/
                   {stats.attributionCoverage.providerMessageCount}
                 </div>
-                <div className="text-white/70">
-                  Runs: {stats.attributionCoverage.runsWithAttribution}/
-                  {stats.attributionCoverage.runCount}
-                </div>
+                {stats.attributionCoverage.runCount > 0 && (
+                  <div className="text-white/70">
+                    Runs: {stats.attributionCoverage.runsWithAttribution}/
+                    {stats.attributionCoverage.runCount}
+                  </div>
+                )}
               </div>
             </div>
 

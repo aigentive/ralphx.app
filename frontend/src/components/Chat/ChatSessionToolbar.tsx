@@ -59,7 +59,8 @@ export function ChatSessionToolbar({
     fallbackConversation,
     fallbackMessages,
   });
-  const effortKey = statsQuery.data?.byEffort[0]?.key ?? null;
+  const stats = statsQuery.data;
+  const effortKey = stats?.byEffort[0]?.key ?? null;
   const harnessLabel = formatProviderHarnessLabel(providerHarness);
   const harnessStyle = getProviderHarnessBadgeStyle(providerHarness);
   const providerTooltip = formatProviderEvidenceTooltip({
@@ -68,13 +69,27 @@ export function ChatSessionToolbar({
     upstreamProvider,
     providerProfile,
   });
+  const showStats = Boolean(stats);
+  const showProviderContext =
+    harnessLabel !== null ||
+    modelDisplay != null ||
+    effortKey != null ||
+    showStats;
+  const showStatus = isAgentActive || agentStatus === "waiting_for_input" || hasActivity === true;
+
+  if (!backAction && !showProviderContext && !showStatus) {
+    return null;
+  }
 
   return (
     <div
-      className="flex flex-col gap-1 px-3 py-1.5 shrink-0"
+      className="px-3 py-1.5 shrink-0"
       style={{ borderBottom: "1px solid hsl(220 10% 14%)" }}
     >
-      <div className="flex min-w-0 items-center gap-2">
+      <div
+        className="flex min-w-0 items-center gap-2"
+        data-testid="chat-session-toolbar-row"
+      >
         {backAction && (
           <button
             data-testid="back-to-plan-button"
@@ -85,43 +100,55 @@ export function ChatSessionToolbar({
             <span>{backAction.label}</span>
           </button>
         )}
-        <div
-          className="flex min-w-0 flex-1 items-center gap-2"
-          data-testid="chat-session-provider-context"
-        >
-          {harnessLabel && (
-            <span
-              className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]"
-              style={harnessStyle}
-              title={providerTooltip ?? undefined}
-              aria-label={providerTooltip ?? harnessLabel}
-              data-testid="chat-session-provider-badge"
+        <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+          {showProviderContext ? (
+            <div
+              className="flex min-w-0 flex-1 items-center gap-2"
+              data-testid="chat-session-provider-context"
             >
-              {harnessLabel}
-            </span>
+              {harnessLabel && (
+                <span
+                  className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]"
+                  style={harnessStyle}
+                  title={providerTooltip ?? undefined}
+                  aria-label={providerTooltip ?? harnessLabel}
+                  data-testid="chat-session-provider-badge"
+                >
+                  {harnessLabel}
+                </span>
+              )}
+              {modelDisplay && <ModelChip model={modelDisplay} />}
+              {effortKey && <EffortChip effort={effortKey} />}
+              {showStats && (
+                <ConversationStatsPopover
+                  conversationId={conversationId ?? null}
+                  fallbackConversation={fallbackConversation}
+                  fallbackMessages={fallbackMessages}
+                  stats={stats}
+                  isLoading={statsQuery.isLoading}
+                />
+              )}
+            </div>
+          ) : (
+            <div className="flex-1" />
           )}
-          {modelDisplay && <ModelChip model={modelDisplay} />}
-          {effortKey && <EffortChip effort={effortKey} />}
-          <ConversationStatsPopover
-            conversationId={conversationId ?? null}
-            fallbackConversation={fallbackConversation}
-            fallbackMessages={fallbackMessages}
-          />
+          {showStatus && (
+            <div className="shrink-0">
+              <StatusActivityBadge
+                isAgentActive={isAgentActive}
+                agentType={agentType}
+                contextType={contextType}
+                contextId={contextId}
+                {...(hasActivity !== undefined ? { hasActivity } : {})}
+                {...(agentStatus !== undefined ? { agentStatus } : {})}
+                {...(storeKey !== undefined ? { storeKey } : {})}
+                {...(modelDisplay !== undefined ? { modelDisplay } : {})}
+                hideModelChip
+                layout="inline"
+              />
+            </div>
+          )}
         </div>
-      </div>
-      <div className="flex min-w-0 items-center justify-end">
-        <StatusActivityBadge
-          isAgentActive={isAgentActive}
-          agentType={agentType}
-          contextType={contextType}
-          contextId={contextId}
-          {...(hasActivity !== undefined ? { hasActivity } : {})}
-          {...(agentStatus !== undefined ? { agentStatus } : {})}
-          {...(storeKey !== undefined ? { storeKey } : {})}
-          {...(modelDisplay !== undefined ? { modelDisplay } : {})}
-          hideModelChip
-          layout="inline"
-        />
       </div>
     </div>
   );
