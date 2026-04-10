@@ -420,6 +420,62 @@ async fn test_delete_nonexistent_is_ok() {
     assert!(result.is_ok());
 }
 
+#[tokio::test]
+async fn test_list_needing_attribution_backfill_only_returns_pending_rows() {
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
+
+    let mut pending = make_conversation(ChatContextType::Ideation, "ctx-pending");
+    pending.claude_session_id = Some("claude-pending".to_string());
+    let pending_id = pending.id;
+
+    let mut running = make_conversation(ChatContextType::Ideation, "ctx-running");
+    running.claude_session_id = Some("claude-running".to_string());
+    running.attribution_backfill_status = Some(AttributionBackfillStatus::Running);
+
+    let mut partial = make_conversation(ChatContextType::Ideation, "ctx-partial");
+    partial.claude_session_id = Some("claude-partial".to_string());
+    partial.attribution_backfill_status = Some(AttributionBackfillStatus::Partial);
+
+    repo.create(pending).await.unwrap();
+    repo.create(running).await.unwrap();
+    repo.create(partial).await.unwrap();
+
+    let needing = repo.list_needing_attribution_backfill(10).await.unwrap();
+    assert_eq!(needing.len(), 1);
+    assert_eq!(needing[0].id, pending_id);
+}
+
+#[tokio::test]
+async fn test_reset_running_attribution_backfill_to_pending() {
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
+
+    let mut running = make_conversation(ChatContextType::Ideation, "ctx-running");
+    running.claude_session_id = Some("claude-running".to_string());
+    running.attribution_backfill_status = Some(AttributionBackfillStatus::Running);
+    let running_id = running.id;
+
+    let mut completed = make_conversation(ChatContextType::Ideation, "ctx-completed");
+    completed.claude_session_id = Some("claude-completed".to_string());
+    completed.attribution_backfill_status = Some(AttributionBackfillStatus::Completed);
+
+    repo.create(running).await.unwrap();
+    repo.create(completed).await.unwrap();
+
+    let reset_count = repo
+        .reset_running_attribution_backfill_to_pending()
+        .await
+        .unwrap();
+    assert_eq!(reset_count, 1);
+
+    let updated = repo.get_by_id(&running_id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.attribution_backfill_status,
+        Some(AttributionBackfillStatus::Pending)
+    );
+}
+
 // --- delete_by_context ---
 
 #[tokio::test]

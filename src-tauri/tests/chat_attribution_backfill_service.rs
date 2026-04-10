@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use ralphx_lib::application::chat_attribution_backfill_service::ChatAttributionBackfillService;
+use ralphx_lib::application::chat_attribution_backfill_service::{
+    run_startup_chat_attribution_backfill, ChatAttributionBackfillService,
+};
 use ralphx_lib::domain::agents::AgentHarnessKind;
 use ralphx_lib::domain::entities::{
     AgentRun, AttributionBackfillStatus, ChatConversation, ChatMessage, IdeationSessionId,
@@ -278,4 +280,92 @@ async fn test_backfill_indexes_nested_transcript_paths_once() {
     let updated_run = agent_run_repo.get_by_id(&run_id).await.unwrap().unwrap();
     assert_eq!(updated_run.input_tokens, Some(9));
     assert_eq!(updated_run.output_tokens, Some(4));
+}
+
+#[tokio::test]
+async fn test_startup_backfill_resets_stale_running_without_retrying_partial_rows() {
+    let conversation_repo = Arc::new(MemoryChatConversationRepository::new());
+    let chat_message_repo = Arc::new(MemoryChatMessageRepository::new());
+    let agent_run_repo = Arc::new(MemoryAgentRunRepository::new());
+    let temp = tempfile::tempdir().unwrap();
+
+    let mut running = ChatConversation::new_ideation(IdeationSessionId::new());
+    running.claude_session_id = Some("stale-running".to_string());
+    running.attribution_backfill_status = Some(AttributionBackfillStatus::Running);
+    let running = conversation_repo.create(running).await.unwrap();
+
+    let running_message = make_orchestrator_message(running.id, "Recovered summary");
+    let running_message_id = running_message.id.clone();
+    chat_message_repo.create(running_message).await.unwrap();
+    agent_run_repo.create(AgentRun::new(running.id)).await.unwrap();
+
+    let mut partial = ChatConversation::new_ideation(IdeationSessionId::new());
+    partial.claude_session_id = Some("keep-partial".to_string());
+    partial.attribution_backfill_status = Some(AttributionBackfillStatus::Partial);
+    partial.attribution_backfill_error_summary = Some("ambiguous transcript".to_string());
+    let partial = conversation_repo.create(partial).await.unwrap();
+
+    let partial_message = make_orchestrator_message(partial.id, "Ambiguous summary");
+    chat_message_repo.create(partial_message).await.unwrap();
+    agent_run_repo.create(AgentRun::new(partial.id)).await.unwrap();
+
+    write_transcript(
+        &temp.path().join("stale-running.jsonl"),
+        &[
+            r#"{"type":"assistant","message":{"id":"msg-running","model":"claude-sonnet-4-6","usage":{"input_tokens":8,"output_tokens":3},"content":[{"type":"text","text":"recovered"}]}}"#,
+        ],
+    );
+    write_transcript(
+        &temp.path().join("keep-partial.jsonl"),
+        &[
+            r#"{"type":"assistant","message":{"id":"msg-a","model":"claude-sonnet-4-6","usage":{"input_tokens":5,"output_tokens":2},"content":[{"type":"text","text":"a"}]}}"#,
+            r#"{"type":"assistant","message":{"id":"msg-b","model":"claude-sonnet-4-6","usage":{"input_tokens":7,"output_tokens":3},"content":[{"type":"text","text":"b"}]}}"#,
+        ],
+    );
+
+    let service = Arc::new(ChatAttributionBackfillService::new(
+        conversation_repo.clone(),
+        chat_message_repo.clone(),
+        agent_run_repo.clone(),
+        temp.path().to_path_buf(),
+    ));
+
+    run_startup_chat_attribution_backfill(service).await;
+
+    let updated_running = conversation_repo
+        .get_by_id(&running.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_running.attribution_backfill_status,
+        Some(AttributionBackfillStatus::Completed)
+    );
+
+    let updated_partial = conversation_repo
+        .get_by_id(&partial.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_partial.attribution_backfill_status,
+        Some(AttributionBackfillStatus::Partial)
+    );
+    assert_eq!(
+        updated_partial.attribution_backfill_error_summary.as_deref(),
+        Some("ambiguous transcript")
+    );
+
+    let updated_message = chat_message_repo
+        .get_by_id(&running_message_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated_message.input_tokens, Some(8));
+
+    let summary = conversation_repo.get_attribution_backfill_summary().await.unwrap();
+    assert_eq!(summary.completed_count, 1);
+    assert_eq!(summary.partial_count, 1);
+    assert_eq!(summary.running_count, 0);
+    assert_eq!(summary.pending_count, 0);
 }

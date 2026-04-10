@@ -360,15 +360,33 @@ impl ChatConversationRepository for SqliteChatConversationRepository {
                      WHERE claude_session_id IS NOT NULL
                        AND (
                            attribution_backfill_status IS NULL
-                           OR attribution_backfill_status NOT IN ('completed', 'running')
+                           OR attribution_backfill_status = 'pending'
                        )
-                     ORDER BY updated_at DESC
+                     ORDER BY COALESCE(attribution_backfill_last_attempted_at, created_at) ASC,
+                              created_at ASC
                      LIMIT ?1",
                 )?;
                 let conversations = stmt
                     .query_map([limit], row_to_conversation)?
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(conversations)
+            })
+            .await
+    }
+
+    async fn reset_running_attribution_backfill_to_pending(&self) -> AppResult<u64> {
+        self.db
+            .run(move |conn| {
+                let updated = conn.execute(
+                    "UPDATE chat_conversations
+                     SET attribution_backfill_status = 'pending',
+                         attribution_backfill_completed_at = NULL,
+                         updated_at = ?1
+                     WHERE claude_session_id IS NOT NULL
+                       AND attribution_backfill_status = 'running'",
+                    rusqlite::params![Utc::now().to_rfc3339()],
+                )?;
+                Ok(updated as u64)
             })
             .await
     }

@@ -141,18 +141,40 @@ impl ChatConversationRepository for MemoryChatConversationRepository {
             .values()
             .filter(|conversation| {
                 conversation.claude_session_id.is_some()
-                    && !matches!(
+                    && matches!(
                         conversation.attribution_backfill_status,
-                        Some(crate::domain::entities::AttributionBackfillStatus::Completed)
-                            | Some(crate::domain::entities::AttributionBackfillStatus::Running)
+                        None
+                            | Some(crate::domain::entities::AttributionBackfillStatus::Pending)
                     )
             })
             .cloned()
             .collect();
-        filtered.sort_by_key(|conversation| conversation.updated_at);
-        filtered.reverse();
+        filtered.sort_by_key(|conversation| {
+            conversation
+                .attribution_backfill_last_attempted_at
+                .unwrap_or(conversation.created_at)
+        });
         filtered.truncate(limit as usize);
         Ok(filtered)
+    }
+
+    async fn reset_running_attribution_backfill_to_pending(&self) -> AppResult<u64> {
+        let mut convos = self.conversations.write().await;
+        let mut updated = 0u64;
+        for conversation in convos.values_mut() {
+            if conversation.claude_session_id.is_some()
+                && matches!(
+                    conversation.attribution_backfill_status,
+                    Some(AttributionBackfillStatus::Running)
+                )
+            {
+                conversation.attribution_backfill_status = Some(AttributionBackfillStatus::Pending);
+                conversation.attribution_backfill_completed_at = None;
+                conversation.updated_at = Utc::now();
+                updated += 1;
+            }
+        }
+        Ok(updated)
     }
 
     async fn update_attribution_backfill_state(

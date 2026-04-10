@@ -88,11 +88,21 @@ pub trait ChatConversationRepository: Send + Sync {
     ) -> AppResult<()>;
 
     /// List conversations backed by historical Claude sessions that still need
-    /// attribution backfill work.
+    /// attribution backfill work in the current pass.
+    ///
+    /// Automatic startup passes should only claim `pending` / unset work. Rows
+    /// already marked `partial`, `session_not_found`, or `parse_failed` need an
+    /// explicit repair/retry flow instead of being re-claimed forever.
     async fn list_needing_attribution_backfill(
         &self,
         limit: u32,
     ) -> AppResult<Vec<ChatConversation>>;
+
+    /// Reset stale `running` attribution-backfill rows back to `pending`.
+    ///
+    /// This is used on startup so an interrupted prior import pass does not
+    /// leave rows permanently excluded from future automatic runs.
+    async fn reset_running_attribution_backfill_to_pending(&self) -> AppResult<u64>;
 
     /// Update attribution backfill workflow state for a conversation.
     async fn update_attribution_backfill_state(

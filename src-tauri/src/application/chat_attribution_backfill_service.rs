@@ -395,6 +395,26 @@ pub async fn run_startup_chat_attribution_backfill_with_events(
     service: Arc<ChatAttributionBackfillService>,
     app_handle: Option<AppHandle>,
 ) {
+    match service
+        .conversation_repo
+        .reset_running_attribution_backfill_to_pending()
+        .await
+    {
+        Ok(reset_count) if reset_count > 0 => {
+            info!(
+                reset_count,
+                "Reset stale running Claude attribution backfill rows to pending"
+            );
+        }
+        Ok(_) => {}
+        Err(error) => {
+            warn!(
+                error = %error,
+                "Failed to reset stale running Claude attribution backfill rows before startup pass"
+            );
+        }
+    }
+
     let transcript_index = Arc::new(service.build_transcript_index().await);
 
     loop {

@@ -134,3 +134,62 @@ async fn test_get_attribution_backfill_summary_counts_legacy_states() {
     assert_eq!(summary.remaining_count(), 2);
     assert_eq!(summary.attention_count(), 1);
 }
+
+#[tokio::test]
+async fn test_list_needing_attribution_backfill_only_returns_pending_work() {
+    let repo = MemoryChatConversationRepository::new();
+
+    let mut pending = ChatConversation::new_ideation(IdeationSessionId::new());
+    pending.claude_session_id = Some("claude-pending".to_string());
+
+    let mut running = ChatConversation::new_ideation(IdeationSessionId::new());
+    running.claude_session_id = Some("claude-running".to_string());
+    running.attribution_backfill_status = Some(AttributionBackfillStatus::Running);
+
+    let mut partial = ChatConversation::new_ideation(IdeationSessionId::new());
+    partial.claude_session_id = Some("claude-partial".to_string());
+    partial.attribution_backfill_status = Some(AttributionBackfillStatus::Partial);
+
+    let mut not_found = ChatConversation::new_ideation(IdeationSessionId::new());
+    not_found.claude_session_id = Some("claude-not-found".to_string());
+    not_found.attribution_backfill_status = Some(AttributionBackfillStatus::SessionNotFound);
+
+    repo.create(pending.clone()).await.unwrap();
+    repo.create(running).await.unwrap();
+    repo.create(partial).await.unwrap();
+    repo.create(not_found).await.unwrap();
+
+    let needing = repo.list_needing_attribution_backfill(10).await.unwrap();
+
+    assert_eq!(needing.len(), 1);
+    assert_eq!(needing[0].id, pending.id);
+}
+
+#[tokio::test]
+async fn test_reset_running_attribution_backfill_to_pending() {
+    let repo = MemoryChatConversationRepository::new();
+
+    let mut running = ChatConversation::new_ideation(IdeationSessionId::new());
+    running.claude_session_id = Some("claude-running".to_string());
+    running.attribution_backfill_status = Some(AttributionBackfillStatus::Running);
+    let running_id = running.id;
+
+    let mut completed = ChatConversation::new_ideation(IdeationSessionId::new());
+    completed.claude_session_id = Some("claude-completed".to_string());
+    completed.attribution_backfill_status = Some(AttributionBackfillStatus::Completed);
+
+    repo.create(running).await.unwrap();
+    repo.create(completed).await.unwrap();
+
+    let reset_count = repo
+        .reset_running_attribution_backfill_to_pending()
+        .await
+        .unwrap();
+    assert_eq!(reset_count, 1);
+
+    let updated = repo.get_by_id(&running_id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.attribution_backfill_status,
+        Some(AttributionBackfillStatus::Pending)
+    );
+}
