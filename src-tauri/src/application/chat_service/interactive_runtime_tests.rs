@@ -1,6 +1,6 @@
 use super::{
-    conversation_spawn_harness_override, interactive_run_started_provider_session,
-    should_inherit_parent_harness_for_fresh_spawn,
+    conversation_spawn_harness_override, get_agent_name, interactive_run_started_provider_session,
+    should_inherit_parent_harness_for_fresh_spawn, spawn_settings_require_task_metadata,
 };
 use crate::application::interactive_process_registry::InteractiveProcessMetadata;
 use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
@@ -50,6 +50,7 @@ fn conversation_spawn_harness_override_falls_back_to_parent_conversation_for_rec
     });
 
     let harness = conversation_spawn_harness_override(
+        get_agent_name(&ChatContextType::TaskExecution),
         ChatContextType::TaskExecution,
         Some(r#"{"trigger_origin":"recovery"}"#),
         &child,
@@ -70,6 +71,7 @@ fn conversation_spawn_harness_override_skips_parent_for_retry() {
     });
 
     let harness = conversation_spawn_harness_override(
+        get_agent_name(&ChatContextType::TaskExecution),
         ChatContextType::TaskExecution,
         Some(r#"{"trigger_origin":"retry"}"#),
         &child,
@@ -90,7 +92,13 @@ fn conversation_spawn_harness_override_skips_parent_without_continuation_metadat
     });
 
     let harness =
-        conversation_spawn_harness_override(ChatContextType::TaskExecution, None, &child, Some(&parent));
+        conversation_spawn_harness_override(
+            get_agent_name(&ChatContextType::TaskExecution),
+            ChatContextType::TaskExecution,
+            None,
+            &child,
+            Some(&parent),
+        );
 
     assert_eq!(harness, None);
 }
@@ -105,7 +113,95 @@ fn conversation_spawn_harness_override_skips_parent_for_merge_new_attempt() {
         provider_session_id: "codex-parent-session".to_string(),
     });
 
-    let harness = conversation_spawn_harness_override(ChatContextType::Merge, None, &child, Some(&parent));
+    let harness = conversation_spawn_harness_override(
+        get_agent_name(&ChatContextType::Merge),
+        ChatContextType::Merge,
+        None,
+        &child,
+        Some(&parent),
+    );
+
+    assert_eq!(harness, None);
+}
+
+#[test]
+fn conversation_spawn_harness_override_falls_back_to_parent_for_execution_startup_recovery() {
+    let task_id = TaskId::from_string("task-parent-4a".to_string());
+    let child = ChatConversation::new_task_execution(task_id.clone());
+    let mut parent = ChatConversation::new_task_execution(task_id);
+    parent.set_provider_session_ref(ProviderSessionRef {
+        harness: AgentHarnessKind::Codex,
+        provider_session_id: "codex-parent-session".to_string(),
+    });
+
+    let harness = conversation_spawn_harness_override(
+        get_agent_name(&ChatContextType::TaskExecution),
+        ChatContextType::TaskExecution,
+        Some(r#"{"startup_recovery_attempts":1}"#),
+        &child,
+        Some(&parent),
+    );
+
+    assert_eq!(harness, Some(AgentHarnessKind::Codex));
+}
+
+#[test]
+fn conversation_spawn_harness_override_falls_back_to_parent_for_merge_startup_recovery() {
+    let task_id = TaskId::from_string("task-parent-4b".to_string());
+    let child = ChatConversation::new_merge(task_id.clone());
+    let mut parent = ChatConversation::new_merge(task_id);
+    parent.set_provider_session_ref(ProviderSessionRef {
+        harness: AgentHarnessKind::Codex,
+        provider_session_id: "codex-parent-session".to_string(),
+    });
+
+    let harness = conversation_spawn_harness_override(
+        get_agent_name(&ChatContextType::Merge),
+        ChatContextType::Merge,
+        Some(r#"{"startup_recovery_attempts":1}"#),
+        &child,
+        Some(&parent),
+    );
+
+    assert_eq!(harness, Some(AgentHarnessKind::Codex));
+}
+
+#[test]
+fn conversation_spawn_harness_override_preserves_stored_review_harness_for_startup_recovery() {
+    let task_id = TaskId::from_string("task-parent-5".to_string());
+    let mut review = ChatConversation::new_review(task_id);
+    review.set_provider_session_ref(ProviderSessionRef {
+        harness: AgentHarnessKind::Codex,
+        provider_session_id: "codex-review-session".to_string(),
+    });
+
+    let harness = conversation_spawn_harness_override(
+        get_agent_name(&ChatContextType::Review),
+        ChatContextType::Review,
+        Some(r#"{"startup_recovery_attempts":1}"#),
+        &review,
+        None,
+    );
+
+    assert_eq!(harness, Some(AgentHarnessKind::Codex));
+}
+
+#[test]
+fn conversation_spawn_harness_override_skips_stale_review_harness_for_fresh_cycle() {
+    let task_id = TaskId::from_string("task-parent-6".to_string());
+    let mut review = ChatConversation::new_review(task_id);
+    review.set_provider_session_ref(ProviderSessionRef {
+        harness: AgentHarnessKind::Codex,
+        provider_session_id: "codex-review-session".to_string(),
+    });
+
+    let harness = conversation_spawn_harness_override(
+        get_agent_name(&ChatContextType::Review),
+        ChatContextType::Review,
+        None,
+        &review,
+        None,
+    );
 
     assert_eq!(harness, None);
 }
@@ -124,4 +220,14 @@ fn should_inherit_parent_harness_for_fresh_spawn_allows_resume() {
         ChatContextType::TaskExecution,
         Some(r#"{"trigger_origin":"resume"}"#),
     ));
+}
+
+#[test]
+fn spawn_settings_require_task_metadata_includes_review() {
+    assert!(spawn_settings_require_task_metadata(
+        ChatContextType::TaskExecution
+    ));
+    assert!(spawn_settings_require_task_metadata(ChatContextType::Review));
+    assert!(spawn_settings_require_task_metadata(ChatContextType::Merge));
+    assert!(!spawn_settings_require_task_metadata(ChatContextType::Ideation));
 }

@@ -221,17 +221,7 @@ fn interactive_run_started_provider_session(
     (harness, provider_session_id)
 }
 
-fn should_inherit_parent_harness_for_fresh_spawn(
-    context_type: ChatContextType,
-    task_metadata: Option<&str>,
-) -> bool {
-    if !matches!(
-        context_type,
-        ChatContextType::TaskExecution | ChatContextType::Merge
-    ) {
-        return false;
-    }
-
+fn continuation_metadata_requests_lineage(task_metadata: Option<&str>) -> bool {
     let metadata = task_metadata
         .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
         .unwrap_or_else(|| serde_json::json!({}));
@@ -248,16 +238,40 @@ fn should_inherit_parent_harness_for_fresh_spawn(
             > 0
 }
 
+fn should_inherit_parent_harness_for_fresh_spawn(
+    context_type: ChatContextType,
+    task_metadata: Option<&str>,
+) -> bool {
+    matches!(
+        context_type,
+        ChatContextType::TaskExecution | ChatContextType::Merge
+    ) && continuation_metadata_requests_lineage(task_metadata)
+}
+
+fn spawn_settings_require_task_metadata(context_type: ChatContextType) -> bool {
+    matches!(
+        context_type,
+        ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge
+    )
+}
+
 fn conversation_spawn_harness_override(
+    agent_name: &str,
     context_type: ChatContextType,
     task_metadata: Option<&str>,
     conversation: &ChatConversation,
     parent_conversation: Option<&ChatConversation>,
 ) -> Option<AgentHarnessKind> {
-    conversation
-        .provider_session_ref()
-        .map(|session_ref| session_ref.harness)
-        .or_else(|| {
+    let review_reviewer_agent = context_type == ChatContextType::Review
+        && agent_name == get_agent_name(&ChatContextType::Review);
+
+    conversation.provider_session_ref().and_then(|session_ref| {
+        if review_reviewer_agent && !continuation_metadata_requests_lineage(task_metadata) {
+            None
+        } else {
+            Some(session_ref.harness)
+        }
+    }).or_else(|| {
             if should_inherit_parent_harness_for_fresh_spawn(context_type, task_metadata) {
                 parent_conversation.and_then(|parent| {
                     parent
@@ -1278,10 +1292,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             .get_or_create_conversation(context_type, context_id)
             .await?;
         let provider_session_ref = conversation.provider_session_ref();
-        let task_metadata = if matches!(
-            context_type,
-            ChatContextType::TaskExecution | ChatContextType::Merge
-        ) {
+        let task_metadata = if spawn_settings_require_task_metadata(context_type) {
             self.task_repo
                 .get_by_id(&TaskId::from_string(context_id.to_string()))
                 .await
@@ -1302,11 +1313,19 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
         } else {
             None
         };
+        let entity_status = self.get_entity_status(context_type, context_id).await;
+        let team_mode_val = self.team_mode.load(Ordering::Relaxed);
+        let agent_name = chat_service_helpers::resolve_agent_with_team_mode(
+            &context_type,
+            entity_status.as_deref(),
+            team_mode_val,
+        );
         let spawn_harness_override =
             options
                 .harness_override
                 .or_else(|| {
                     conversation_spawn_harness_override(
+                        agent_name,
                         context_type,
                         task_metadata.as_deref(),
                         &conversation,
@@ -1748,10 +1767,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             "chat_service.send_message working_directory resolved"
         );
 
-        // 6a. Fetch entity status for dynamic agent resolution
-        let entity_status = self.get_entity_status(context_type, context_id).await;
-
-        // 6b. Resolve project ID for RALPHX_PROJECT_ID env var
+        // 6a. Resolve project ID for RALPHX_PROJECT_ID env var
         let project_id = chat_service_context::resolve_project_id(
             context_type,
             context_id,
@@ -1797,12 +1813,6 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
         }
 
         // 7a. Build and spawn command
-        let team_mode_val = self.team_mode.load(Ordering::Relaxed);
-        let agent_name = chat_service_helpers::resolve_agent_with_team_mode(
-            &context_type,
-            entity_status.as_deref(),
-            team_mode_val,
-        );
         let resolved_spawn_settings =
             crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
                 agent_name,
