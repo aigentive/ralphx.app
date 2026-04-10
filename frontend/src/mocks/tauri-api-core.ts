@@ -8,7 +8,11 @@
 import { mockWorkflowsApi, mockProjectsApi, mockGetGitBranches, mockGetGitDefaultBranch } from "@/api-mock/projects";
 import { mockTasksApi } from "@/api-mock/tasks";
 import { mockTaskGraphApi } from "@/api-mock/task-graph";
-import { mockListConversations, mockGetConversation } from "@/api-mock/chat";
+import {
+  mockGetConversation,
+  mockGetConversationStats,
+  mockListConversations,
+} from "@/api-mock/chat";
 import { mockReviewsApi } from "@/api-mock/reviews";
 import { mockIdeationApi } from "@/api-mock/ideation";
 import { mockExecutionApi } from "@/api-mock/execution";
@@ -131,6 +135,74 @@ const commandHandlers: Record<
     ),
   get_conversation: async (args) =>
     mockGetConversation(args.conversationId as string),
+  get_agent_conversation_stats: async (args) => {
+    const stats = await mockGetConversationStats(args.conversationId as string);
+    if (!stats) {
+      return null;
+    }
+
+    const toSnakeUsage = (usage: {
+      inputTokens: number;
+      outputTokens: number;
+      cacheCreationTokens: number;
+      cacheReadTokens: number;
+      estimatedUsd: number | null;
+    }) => ({
+      input_tokens: usage.inputTokens,
+      output_tokens: usage.outputTokens,
+      cache_creation_tokens: usage.cacheCreationTokens,
+      cache_read_tokens: usage.cacheReadTokens,
+      estimated_usd: usage.estimatedUsd,
+    });
+
+    return {
+      conversation_id: stats.conversationId,
+      context_type: stats.contextType,
+      context_id: stats.contextId,
+      provider_harness: stats.providerHarness,
+      upstream_provider: stats.upstreamProvider,
+      provider_profile: stats.providerProfile,
+      attribution_backfill_status: stats.attributionBackfillStatus,
+      attribution_backfill_source: stats.attributionBackfillSource,
+      message_usage_totals: toSnakeUsage(stats.messageUsageTotals),
+      run_usage_totals: toSnakeUsage(stats.runUsageTotals),
+      effective_usage_totals: toSnakeUsage(stats.effectiveUsageTotals),
+      usage_coverage: {
+        provider_message_count: stats.usageCoverage.providerMessageCount,
+        provider_messages_with_usage: stats.usageCoverage.providerMessagesWithUsage,
+        run_count: stats.usageCoverage.runCount,
+        runs_with_usage: stats.usageCoverage.runsWithUsage,
+        effective_totals_source: stats.usageCoverage.effectiveTotalsSource,
+      },
+      attribution_coverage: {
+        provider_message_count: stats.attributionCoverage.providerMessageCount,
+        provider_messages_with_attribution:
+          stats.attributionCoverage.providerMessagesWithAttribution,
+        run_count: stats.attributionCoverage.runCount,
+        runs_with_attribution: stats.attributionCoverage.runsWithAttribution,
+      },
+      by_harness: stats.byHarness.map((bucket) => ({
+        key: bucket.key,
+        count: bucket.count,
+        usage: toSnakeUsage(bucket.usage),
+      })),
+      by_upstream_provider: stats.byUpstreamProvider.map((bucket) => ({
+        key: bucket.key,
+        count: bucket.count,
+        usage: toSnakeUsage(bucket.usage),
+      })),
+      by_model: stats.byModel.map((bucket) => ({
+        key: bucket.key,
+        count: bucket.count,
+        usage: toSnakeUsage(bucket.usage),
+      })),
+      by_effort: stats.byEffort.map((bucket) => ({
+        key: bucket.key,
+        count: bucket.count,
+        usage: toSnakeUsage(bucket.usage),
+      })),
+    };
+  },
 
   // Ideation commands
   list_ideation_sessions: async (args) => {

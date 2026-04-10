@@ -12,10 +12,12 @@ import { normalizeConversationProviderMetadata } from "@/types/chat-conversation
 import type {
   ChatMessageResponse,
   ChildSessionStatusResponse,
+  ConversationStatsResponse,
   QueuedMessageResponse,
   SendAgentMessageResult,
 } from "@/api/chat";
 import { generateTestUuid } from "@/test/mock-data";
+import { buildFallbackConversationStats } from "@/lib/chat/conversation-stats";
 import {
   cloneMockChatMessage,
   getMockChatScenario,
@@ -56,6 +58,9 @@ export interface MockChatController {
   getConversation(
     conversationId: string
   ): Promise<{ conversation: ChatConversation; messages: ChatMessageResponse[] }>;
+  getConversationStats(
+    conversationId: string
+  ): Promise<ConversationStatsResponse | null>;
 }
 
 export function resetMockChatState(): void {
@@ -104,6 +109,7 @@ function exposeMockChatController(): void {
     clearChildSessionStatusOverrides: mockClearChildSessionStatusOverrides,
     listConversations: mockListConversations,
     getConversation: mockGetConversation,
+    getConversationStats: mockGetConversationStats,
   };
 }
 
@@ -145,6 +151,20 @@ export async function mockGetConversation(
     conversation,
     messages: mockMessages.get(conversationId) ?? [],
   };
+}
+
+export async function mockGetConversationStats(
+  conversationId: string
+): Promise<ConversationStatsResponse | null> {
+  const conversation = mockConversations.get(conversationId);
+  if (!conversation) {
+    return null;
+  }
+
+  return buildFallbackConversationStats(
+    conversation,
+    mockMessages.get(conversationId) ?? []
+  );
 }
 
 export async function mockCreateConversation(
