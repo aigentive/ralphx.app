@@ -3,6 +3,15 @@ export interface ProviderMetadata {
   providerSessionId?: string | null | undefined;
   upstreamProvider?: string | null | undefined;
   providerProfile?: string | null | undefined;
+  logicalModel?: string | null | undefined;
+  effectiveModelId?: string | null | undefined;
+  logicalEffort?: string | null | undefined;
+  effectiveEffort?: string | null | undefined;
+  inputTokens?: number | null | undefined;
+  outputTokens?: number | null | undefined;
+  cacheCreationTokens?: number | null | undefined;
+  cacheReadTokens?: number | null | undefined;
+  estimatedUsd?: number | null | undefined;
 }
 
 export interface ProviderHarnessBadgeStyle {
@@ -137,4 +146,48 @@ export function formatProviderEvidenceTooltip(metadata: ProviderMetadata): strin
   }
 
   return details.length > 0 ? details.join(" • ") : null;
+}
+
+export function formatProviderModelEffortLabel(metadata: ProviderMetadata): string | null {
+  const model = metadata.effectiveModelId ?? metadata.logicalModel;
+  const effort = metadata.effectiveEffort ?? metadata.logicalEffort;
+
+  if (model && effort) {
+    return `${model} · ${effort}`;
+  }
+
+  return model ?? effort ?? null;
+}
+
+export function formatProviderUsageTooltip(metadata: ProviderMetadata): string | null {
+  const details: string[] = [];
+
+  if (metadata.inputTokens != null) {
+    details.push(`Input: ${metadata.inputTokens.toLocaleString("en-US")}`);
+  }
+  if (metadata.outputTokens != null) {
+    details.push(`Output: ${metadata.outputTokens.toLocaleString("en-US")}`);
+  }
+
+  const cacheTotal =
+    (metadata.cacheCreationTokens ?? 0) + (metadata.cacheReadTokens ?? 0);
+  if (cacheTotal > 0) {
+    details.push(`Cache: ${cacheTotal.toLocaleString("en-US")}`);
+  }
+
+  if (metadata.estimatedUsd != null) {
+    details.push(`Est. cost: $${metadata.estimatedUsd.toFixed(2)}`);
+  }
+
+  return details.length > 0 ? details.join(" • ") : null;
+}
+
+export function formatMessageAttributionTooltip(
+  metadata: ProviderMetadata,
+): string | null {
+  const evidence = formatProviderEvidenceTooltip(metadata);
+  const modelEffort = formatProviderModelEffortLabel(metadata);
+  const usage = formatProviderUsageTooltip(metadata);
+
+  return [evidence, modelEffort, usage].filter(Boolean).join(" • ") || null;
 }

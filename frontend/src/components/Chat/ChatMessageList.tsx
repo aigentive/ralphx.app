@@ -77,6 +77,19 @@ export interface ChatMessageData {
   attachments?: MessageAttachment[];
   sender?: string | null;
   metadata?: string | null;
+  providerHarness?: string | null;
+  providerSessionId?: string | null;
+  upstreamProvider?: string | null;
+  providerProfile?: string | null;
+  logicalModel?: string | null;
+  effectiveModelId?: string | null;
+  logicalEffort?: string | null;
+  effectiveEffort?: string | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  cacheCreationTokens?: number | null;
+  cacheReadTokens?: number | null;
+  estimatedUsd?: number | null;
 }
 
 /** Discriminated union for timeline items when hook events are interleaved */
@@ -727,8 +740,19 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             {...(msg.attachments && { attachments: msg.attachments })}
             teammateName={teammateName}
             teammateColor={teammateColor}
-            providerHarness={providerHarness}
-            providerSessionId={providerSessionId}
+            providerHarness={msg.providerHarness ?? providerHarness}
+            providerSessionId={msg.providerSessionId ?? providerSessionId}
+            upstreamProvider={msg.upstreamProvider}
+            providerProfile={msg.providerProfile}
+            logicalModel={msg.logicalModel}
+            effectiveModelId={msg.effectiveModelId}
+            logicalEffort={msg.logicalEffort}
+            effectiveEffort={msg.effectiveEffort}
+            inputTokens={msg.inputTokens}
+            outputTokens={msg.outputTokens}
+            cacheCreationTokens={msg.cacheCreationTokens}
+            cacheReadTokens={msg.cacheReadTokens}
+            estimatedUsd={msg.estimatedUsd}
           />
         </div>
       );
@@ -805,8 +829,19 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                   {...(msg.attachments && { attachments: msg.attachments })}
                   teammateName={teammateName}
                   teammateColor={teammateColor}
-                  providerHarness={providerHarness}
-                  providerSessionId={providerSessionId}
+                  providerHarness={msg.providerHarness ?? providerHarness}
+                  providerSessionId={msg.providerSessionId ?? providerSessionId}
+                  upstreamProvider={msg.upstreamProvider}
+                  providerProfile={msg.providerProfile}
+                  logicalModel={msg.logicalModel}
+                  effectiveModelId={msg.effectiveModelId}
+                  logicalEffort={msg.logicalEffort}
+                  effectiveEffort={msg.effectiveEffort}
+                  inputTokens={msg.inputTokens}
+                  outputTokens={msg.outputTokens}
+                  cacheCreationTokens={msg.cacheCreationTokens}
+                  cacheReadTokens={msg.cacheReadTokens}
+                  estimatedUsd={msg.estimatedUsd}
                 />
               </div>
             );

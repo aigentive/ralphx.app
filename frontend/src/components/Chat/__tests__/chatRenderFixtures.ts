@@ -89,6 +89,19 @@ export function makeMessageItemProps(
     ...(overrides.providerSessionId !== undefined
       ? { providerSessionId: overrides.providerSessionId }
       : {}),
+    ...(overrides.upstreamProvider !== undefined ? { upstreamProvider: overrides.upstreamProvider } : {}),
+    ...(overrides.providerProfile !== undefined ? { providerProfile: overrides.providerProfile } : {}),
+    ...(overrides.logicalModel !== undefined ? { logicalModel: overrides.logicalModel } : {}),
+    ...(overrides.effectiveModelId !== undefined ? { effectiveModelId: overrides.effectiveModelId } : {}),
+    ...(overrides.logicalEffort !== undefined ? { logicalEffort: overrides.logicalEffort } : {}),
+    ...(overrides.effectiveEffort !== undefined ? { effectiveEffort: overrides.effectiveEffort } : {}),
+    ...(overrides.inputTokens !== undefined ? { inputTokens: overrides.inputTokens } : {}),
+    ...(overrides.outputTokens !== undefined ? { outputTokens: overrides.outputTokens } : {}),
+    ...(overrides.cacheCreationTokens !== undefined
+      ? { cacheCreationTokens: overrides.cacheCreationTokens }
+      : {}),
+    ...(overrides.cacheReadTokens !== undefined ? { cacheReadTokens: overrides.cacheReadTokens } : {}),
+    ...(overrides.estimatedUsd !== undefined ? { estimatedUsd: overrides.estimatedUsd } : {}),
   };
 }
 

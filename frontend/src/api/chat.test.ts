@@ -175,6 +175,20 @@ describe("chat api", () => {
           content: "Hello",
           tool_calls: null,
           content_blocks: null,
+          attribution_source: "native",
+          provider_harness: "codex",
+          provider_session_id: "thread-2",
+          upstream_provider: "openai",
+          provider_profile: null,
+          logical_model: "gpt-5.4",
+          effective_model_id: "gpt-5.4",
+          logical_effort: "high",
+          effective_effort: "high",
+          input_tokens: 120,
+          output_tokens: 40,
+          cache_creation_tokens: 5,
+          cache_read_tokens: 8,
+          estimated_usd: 0.42,
           created_at: "2026-01-24T10:00:00Z",
         },
       ],
@@ -183,7 +197,18 @@ describe("chat api", () => {
     const result = await getConversation("c1");
 
     expect(mockInvoke).toHaveBeenCalledWith("get_agent_conversation", { conversationId: "c1" });
-    expect(result.messages[0]).toMatchObject({ id: "m1", createdAt: "2026-01-24T10:00:00Z" });
+    expect(result.messages[0]).toMatchObject({
+      id: "m1",
+      createdAt: "2026-01-24T10:00:00Z",
+      attributionSource: "native",
+      providerHarness: "codex",
+      providerSessionId: "thread-2",
+      upstreamProvider: "openai",
+      logicalModel: "gpt-5.4",
+      effectiveEffort: "high",
+      inputTokens: 120,
+      estimatedUsd: 0.42,
+    });
   });
 
   it("gets conversation stats with camelCase totals and buckets", async () => {

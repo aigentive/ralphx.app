@@ -18,8 +18,9 @@ import { formatTimestamp } from "./MessageItem.utils";
 import { isTaskToolCall } from "./DiffToolCallView.utils";
 import { MessageAttachments, type MessageAttachment } from "./MessageAttachments";
 import {
+  formatMessageAttributionTooltip,
+  formatProviderModelEffortLabel,
   formatProviderHarnessLabel,
-  formatProviderTooltip,
   getProviderHarnessBadgeStyle,
 } from "./provider-harness";
 
@@ -60,6 +61,17 @@ export interface MessageItemProps {
   teammateColor?: string | null | undefined;
   providerHarness?: string | null | undefined;
   providerSessionId?: string | null | undefined;
+  upstreamProvider?: string | null | undefined;
+  providerProfile?: string | null | undefined;
+  logicalModel?: string | null | undefined;
+  effectiveModelId?: string | null | undefined;
+  logicalEffort?: string | null | undefined;
+  effectiveEffort?: string | null | undefined;
+  inputTokens?: number | null | undefined;
+  outputTokens?: number | null | undefined;
+  cacheCreationTokens?: number | null | undefined;
+  cacheReadTokens?: number | null | undefined;
+  estimatedUsd?: number | null | undefined;
 }
 
 // ============================================================================
@@ -77,18 +89,46 @@ export const MessageItem = React.memo(function MessageItem({
   teammateColor,
   providerHarness,
   providerSessionId,
+  upstreamProvider,
+  providerProfile,
+  logicalModel,
+  effectiveModelId,
+  logicalEffort,
+  effectiveEffort,
+  inputTokens,
+  outputTokens,
+  cacheCreationTokens,
+  cacheReadTokens,
+  estimatedUsd,
 }: MessageItemProps) {
   const isUser = role === "user";
   const providerHarnessLabel = formatProviderHarnessLabel(providerHarness);
   const providerHarnessStyle = getProviderHarnessBadgeStyle(providerHarness);
-  const providerTooltip = formatProviderTooltip({
+  const modelEffortLabel = formatProviderModelEffortLabel({
+    logicalModel,
+    effectiveModelId,
+    logicalEffort,
+    effectiveEffort,
+  });
+  const providerTooltip = formatMessageAttributionTooltip({
     providerHarness,
     providerSessionId,
+    upstreamProvider,
+    providerProfile,
+    logicalModel,
+    effectiveModelId,
+    logicalEffort,
+    effectiveEffort,
+    inputTokens,
+    outputTokens,
+    cacheCreationTokens,
+    cacheReadTokens,
+    estimatedUsd,
   });
   const showProviderMeta =
     !isUser &&
     !teammateName &&
-    providerHarnessLabel !== null;
+    (providerHarnessLabel !== null || modelEffortLabel !== null);
 
   // Use pre-parsed data directly (parsing now happens at API layer)
   const parsedContentBlocks = contentBlocks ?? [];
@@ -156,11 +196,21 @@ export const MessageItem = React.memo(function MessageItem({
               className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]"
               style={providerHarnessStyle}
               title={providerTooltip ?? undefined}
-              aria-label={providerTooltip ?? providerHarnessLabel}
+              aria-label={providerTooltip ?? providerHarnessLabel ?? undefined}
               data-testid="message-provider-badge"
             >
               {providerHarnessLabel}
             </span>
+            {modelEffortLabel && (
+              <span
+                className="text-[10px] min-w-0 truncate"
+                style={{ color: "rgba(255,255,255,0.48)" }}
+                title={providerTooltip ?? undefined}
+                data-testid="message-model-effort"
+              >
+                {modelEffortLabel}
+              </span>
+            )}
           </div>
         )}
 
@@ -235,5 +285,16 @@ export const MessageItem = React.memo(function MessageItem({
     && prev.teammateName === next.teammateName
     && prev.teammateColor === next.teammateColor
     && prev.providerHarness === next.providerHarness
-    && prev.providerSessionId === next.providerSessionId;
+    && prev.providerSessionId === next.providerSessionId
+    && prev.upstreamProvider === next.upstreamProvider
+    && prev.providerProfile === next.providerProfile
+    && prev.logicalModel === next.logicalModel
+    && prev.effectiveModelId === next.effectiveModelId
+    && prev.logicalEffort === next.logicalEffort
+    && prev.effectiveEffort === next.effectiveEffort
+    && prev.inputTokens === next.inputTokens
+    && prev.outputTokens === next.outputTokens
+    && prev.cacheCreationTokens === next.cacheCreationTokens
+    && prev.cacheReadTokens === next.cacheReadTokens
+    && prev.estimatedUsd === next.estimatedUsd;
 });

@@ -44,6 +44,20 @@ export interface ChatMessageResponse {
   contentBlocks: ContentBlockItem[] | null;
   /** Sender name for team mode messages (teammate name or "lead") */
   sender: string | null;
+  attributionSource?: string | null;
+  providerHarness?: string | null;
+  providerSessionId?: string | null;
+  upstreamProvider?: string | null;
+  providerProfile?: string | null;
+  logicalModel?: string | null;
+  effectiveModelId?: string | null;
+  logicalEffort?: string | null;
+  effectiveEffort?: string | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  cacheCreationTokens?: number | null;
+  cacheReadTokens?: number | null;
+  estimatedUsd?: number | null;
   createdAt: string;
 }
 
@@ -479,6 +493,20 @@ const AgentMessageSchema = z.object({
   tool_calls: z.any().nullable(),
   content_blocks: z.any().nullable(),
   sender: z.string().nullable().optional(),
+  attribution_source: z.string().nullable().optional(),
+  provider_harness: z.string().nullable().optional(),
+  provider_session_id: z.string().nullable().optional(),
+  upstream_provider: z.string().nullable().optional(),
+  provider_profile: z.string().nullable().optional(),
+  logical_model: z.string().nullable().optional(),
+  effective_model_id: z.string().nullable().optional(),
+  logical_effort: z.string().nullable().optional(),
+  effective_effort: z.string().nullable().optional(),
+  input_tokens: z.number().nullable().optional(),
+  output_tokens: z.number().nullable().optional(),
+  cache_creation_tokens: z.number().nullable().optional(),
+  cache_read_tokens: z.number().nullable().optional(),
+  estimated_usd: z.number().nullable().optional(),
   created_at: z.string(),
 });
 
@@ -492,6 +520,20 @@ function transformAgentMessage(raw: RawAgentMessage): ChatMessageResponse {
     taskId: null,
     role: raw.role,
     sender: raw.sender ?? null,
+    attributionSource: raw.attribution_source ?? null,
+    providerHarness: raw.provider_harness ?? null,
+    providerSessionId: raw.provider_session_id ?? null,
+    upstreamProvider: raw.upstream_provider ?? null,
+    providerProfile: raw.provider_profile ?? null,
+    logicalModel: raw.logical_model ?? null,
+    effectiveModelId: raw.effective_model_id ?? null,
+    logicalEffort: raw.logical_effort ?? null,
+    effectiveEffort: raw.effective_effort ?? null,
+    inputTokens: raw.input_tokens ?? null,
+    outputTokens: raw.output_tokens ?? null,
+    cacheCreationTokens: raw.cache_creation_tokens ?? null,
+    cacheReadTokens: raw.cache_read_tokens ?? null,
+    estimatedUsd: raw.estimated_usd ?? null,
     content: raw.content,
     metadata: null,
     parentMessageId: null,

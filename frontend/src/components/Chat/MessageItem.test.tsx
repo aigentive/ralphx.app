@@ -160,15 +160,24 @@ describe("MessageItem - Attachment Integration", () => {
         role="assistant"
         providerHarness="codex"
         providerSessionId="thread-codex-1234"
+        upstreamProvider="openai"
+        effectiveModelId="gpt-5.4"
+        effectiveEffort="high"
+        inputTokens={120}
+        outputTokens={40}
+        cacheCreationTokens={5}
+        cacheReadTokens={8}
+        estimatedUsd={0.42}
       />
     );
 
     expect(screen.getByTestId("message-provider-meta")).toBeInTheDocument();
     const badge = screen.getByTestId("message-provider-badge");
     expect(badge).toHaveTextContent("Codex");
+    expect(screen.getByTestId("message-model-effort")).toHaveTextContent("gpt-5.4 · high");
     expect(badge).toHaveAttribute(
       "title",
-      "Continuing stored Codex session (thread-codex...)",
+      "Harness: Codex • Upstream: openai • Session ref: thread-codex... • gpt-5.4 · high • Input: 120 • Output: 40 • Cache: 13 • Est. cost: $0.42",
     );
   });
 });
