@@ -1,5 +1,6 @@
 export type SettingsSectionId =
   | "execution"
+  | "execution-harnesses"
   | "global-execution"
   | "model"
   | "review"
@@ -31,6 +32,7 @@ export const SETTINGS_GROUPS: { id: SettingsGroupId; label: string }[] = [
 
 export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
   { id: "execution", groupId: "general", label: "Execution" },
+  { id: "execution-harnesses", groupId: "general", label: "Execution Agents" },
   { id: "global-execution", groupId: "general", label: "Global Execution" },
   { id: "model", groupId: "general", label: "Model" },
   { id: "review", groupId: "general", label: "Review" },
@@ -39,7 +41,7 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
   { id: "github", groupId: "workspace", label: "GitHub" },
   { id: "project-analysis", groupId: "workspace", label: "Project Analysis" },
   { id: "ideation-workflow", groupId: "ideation", label: "Workflow" },
-  { id: "ideation-harnesses", groupId: "general", label: "Agent Harnesses" },
+  { id: "ideation-harnesses", groupId: "ideation", label: "Ideation Agents" },
   { id: "ideation-effort", groupId: "ideation", label: "Effort" },
   { id: "ideation-models", groupId: "ideation", label: "Models" },
   { id: "api-keys", groupId: "access", label: "API Keys" },

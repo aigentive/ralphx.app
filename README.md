@@ -124,7 +124,7 @@ RalphX manages AI agent development workflows. It was itself built by AI agents.
 | **Backend** | Rust | Memory-safe. Compile-time guarantees. No GC pauses. |
 | **Frontend** | React 19 + TypeScript | Strict types. Responsive Kanban, graph view, real-time activity stream. |
 | **Database** | SQLite (local) | Zero deployment. No server. Data never leaves your machine. |
-| **AI Runtime** | Claude via MCP | 24 specialized agents with three-tier permission scoping. |
+| **AI Runtime** | Claude + Codex via lane-based harnesses | Provider-neutral orchestration with per-lane routing, recovery, and chat lineage. |
 | **State Machine** | Rust enum + exhaustive match | Runtime-enforced transitions. Compile-time exhaustiveness checking. |
 | **Git** | Worktree isolation | Parallel execution. AI never touches your working directory. |
 
@@ -161,6 +161,10 @@ RalphX manages AI agent development workflows. It was itself built by AI agents.
 - Git
 
 RalphX can route different workflow lanes through different harnesses. Claude remains the default, while Codex can be enabled incrementally for supported lanes. See [`docs/user-guides/agent-harnesses.md`](docs/user-guides/agent-harnesses.md).
+
+Harness controls are exposed directly in the desktop app:
+- `Settings → General → Execution Agents` for worker, reviewer, re-executor, and merger lanes
+- `Settings → Ideation → Ideation Agents` for ideation, verifier, and specialist lanes
 
 ### Install
 
@@ -201,6 +205,7 @@ You intervene when the review gate escalates. Otherwise, it ships.
 | [Graph View](docs/user-guides/graph-view.md) | Dependency graph, critical path, timeline, Battle Mode |
 | [Execution Pipeline](docs/user-guides/execution.md) | Worker/coder/reviewer agents, concurrency, recovery |
 | [Merge Pipeline](docs/user-guides/merge.md) | Merge strategies, validation, conflict resolution |
+| [Agent Harnesses](docs/user-guides/agent-harnesses.md) | Claude/Codex lane routing, execution agent settings, chat lineage |
 | [Task State Machine](docs/user-guides/task-state-machine.md) | All 24 states, transitions, and invariants |
 | [Agent Orchestration](docs/user-guides/agent-orchestration.md) | 24 agents, roles, permissions, three-tier scoping |
 | [Configuration](docs/user-guides/configuration.md) | Project settings, model config, methodology plugins |

@@ -24,6 +24,12 @@ import {
 import type { ChatConversation, ContextType, AgentRun, AgentRunStatus } from "@/types/chat-conversation";
 import { useQueries, type Query } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
+import {
+  describeProviderLineage,
+  formatProviderHarnessLabel,
+  formatProviderSessionSnippet,
+  getProviderHarnessBadgeStyle,
+} from "./provider-harness";
 
 // ============================================================================
 // Types
@@ -124,26 +130,6 @@ function formatExecutionDate(createdAt: string): string {
   } catch {
     return "Unknown";
   }
-}
-
-function getHarnessLabel(conversation: ChatConversation): string | null {
-  if (conversation.providerHarness === "codex") {
-    return "Codex";
-  }
-
-  if (conversation.providerHarness === "claude") {
-    return "Claude";
-  }
-
-  if (!conversation.providerHarness) {
-    return null;
-  }
-
-  return conversation.providerHarness
-    .split(/[-_]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 }
 
 // ============================================================================
@@ -263,7 +249,16 @@ export function ConversationSelector({
           sortedConversations.map((conversation, index) => {
             const isActive = conversation.id === activeConversationId;
             const title = getConversationTitle(conversation, index);
-            const harnessLabel = getHarnessLabel(conversation);
+            const harnessLabel = formatProviderHarnessLabel(
+              conversation.providerHarness,
+            );
+            const harnessBadgeStyle = getProviderHarnessBadgeStyle(
+              conversation.providerHarness,
+            );
+            const providerLineage = describeProviderLineage(conversation, "selector");
+            const providerSessionSnippet = formatProviderSessionSnippet(
+              conversation.providerSessionId,
+            );
 
             // Get agent run status for agent context conversations (execution/review)
             const agentRunStatus = isAgentContext && statusQueries[index]
@@ -312,26 +307,7 @@ export function ConversationSelector({
                       {harnessLabel && (
                         <span
                           className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]"
-                          style={{
-                            color:
-                              conversation.providerHarness === "codex"
-                                ? "hsl(14 100% 68%)"
-                                : conversation.providerHarness === "claude"
-                                  ? "hsl(220 10% 68%)"
-                                  : "hsl(150 55% 63%)",
-                            backgroundColor:
-                              conversation.providerHarness === "codex"
-                                ? "hsla(14 100% 60% / 0.12)"
-                                : conversation.providerHarness === "claude"
-                                  ? "hsla(220 10% 100% / 0.06)"
-                                  : "hsla(150 55% 45% / 0.12)",
-                            border:
-                              conversation.providerHarness === "codex"
-                                ? "1px solid hsla(14 100% 60% / 0.18)"
-                                : conversation.providerHarness === "claude"
-                                  ? "1px solid hsla(220 10% 100% / 0.08)"
-                                  : "1px solid hsla(150 55% 45% / 0.2)",
-                          }}
+                          style={harnessBadgeStyle}
                         >
                           {harnessLabel}
                         </span>
@@ -363,6 +339,18 @@ export function ConversationSelector({
                           }}>
                             {agentRunStatus.charAt(0).toUpperCase() + agentRunStatus.slice(1)}
                           </span>
+                        </>
+                      )}
+                    </div>
+                    <div
+                      className="mt-1 flex items-center gap-2 text-[10px]"
+                      style={{ color: "hsl(220 10% 58%)" }}
+                    >
+                      <span>{providerLineage}</span>
+                      {providerSessionSnippet && (
+                        <>
+                          <span>•</span>
+                          <span className="font-mono">{providerSessionSnippet}</span>
                         </>
                       )}
                     </div>
@@ -404,26 +392,7 @@ export function ConversationSelector({
                       {harnessLabel && (
                         <span
                           className="ml-2 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]"
-                          style={{
-                            color:
-                              conversation.providerHarness === "codex"
-                                ? "hsl(14 100% 68%)"
-                                : conversation.providerHarness === "claude"
-                                  ? "hsl(220 10% 68%)"
-                                  : "hsl(150 55% 63%)",
-                            backgroundColor:
-                              conversation.providerHarness === "codex"
-                                ? "hsla(14 100% 60% / 0.12)"
-                                : conversation.providerHarness === "claude"
-                                  ? "hsla(220 10% 100% / 0.06)"
-                                  : "hsla(150 55% 45% / 0.12)",
-                            border:
-                              conversation.providerHarness === "codex"
-                                ? "1px solid hsla(14 100% 60% / 0.18)"
-                                : conversation.providerHarness === "claude"
-                                  ? "1px solid hsla(220 10% 100% / 0.08)"
-                                  : "1px solid hsla(150 55% 45% / 0.2)",
-                          }}
+                          style={harnessBadgeStyle}
                         >
                           {harnessLabel}
                         </span>
@@ -441,6 +410,18 @@ export function ConversationSelector({
                         {conversation.messageCount}{" "}
                         {conversation.messageCount === 1 ? "message" : "messages"}
                       </span>
+                    </div>
+                    <div
+                      className="mt-1 flex items-center gap-2 text-[10px]"
+                      style={{ color: "hsl(220 10% 58%)" }}
+                    >
+                      <span>{providerLineage}</span>
+                      {providerSessionSnippet && (
+                        <>
+                          <span>•</span>
+                          <span className="font-mono">{providerSessionSnippet}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </DropdownMenuItem>

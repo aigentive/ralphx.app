@@ -319,6 +319,37 @@ describe("IntegratedChatPanel", () => {
     });
   });
 
+  describe("provider context", () => {
+    it("shows active harness and stored-session context in the toolbar", async () => {
+      mockChatPanelContext.activeConversationId = "conv-1";
+      useChatMockState.conversations = [{ id: "conv-1" }];
+      useChatMockState.conversation = {
+        contextType: "task",
+        contextId: "task-1",
+        providerHarness: "codex",
+        providerSessionId: "thread-codex-1234",
+      };
+
+      render(
+        <TestWrapper>
+          <IntegratedChatPanel projectId="project-1" />
+        </TestWrapper>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("chat-session-provider-context")).toBeInTheDocument();
+      });
+
+      expect(screen.getByText("Codex")).toBeInTheDocument();
+      expect(screen.getByTestId("chat-session-routing")).toHaveTextContent(
+        "Continuing stored Codex session",
+      );
+      expect(screen.getByTestId("chat-session-provider-id")).toHaveTextContent(
+        "thread-c...",
+      );
+    });
+  });
+
   describe("Status badge - agent activity", () => {
     it("does not show active agent badge when no agent is running", () => {
       render(

@@ -5,6 +5,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { useUiStore } from "@/stores/uiStore";
 import type { ProjectSettings } from "@/types/settings";
@@ -19,7 +21,10 @@ import { ExternalMcpSettingsPanel } from "./ExternalMcpSettingsPanel";
 import { GitSettingsSection } from "./GitSettingsSection";
 import { GitHubSettingsSection } from "./GitHubSettingsSection";
 import { IdeationEffortSection } from "./IdeationEffortSection";
-import { IdeationHarnessSection } from "./IdeationHarnessSection";
+import {
+  ExecutionHarnessSection,
+  IdeationHarnessSection,
+} from "./IdeationHarnessSection";
 import { IdeationModelSection } from "./IdeationModelSection";
 import { IdeationSettingsPanel } from "./IdeationSettingsPanel";
 import { ProjectAnalysisSection } from "./ProjectAnalysisSection";
@@ -76,6 +81,7 @@ export default function SettingsDialog({
           disabled={disabled}
         />
       ) : null,
+    "execution-harnesses": () => <ExecutionHarnessSection />,
     "global-execution": () => <GlobalExecutionSection />,
     model: () =>
       executionSettings ? (
@@ -129,6 +135,10 @@ export default function SettingsDialog({
           border: "1px solid rgba(255,255,255,0.08)",
         }}
       >
+        <DialogTitle className="sr-only">Settings</DialogTitle>
+        <DialogDescription className="sr-only">
+          Configure execution, ideation, workspace, and access settings.
+        </DialogDescription>
         {/* Header */}
         <div
           className="flex items-center justify-between px-4 py-3 border-b shrink-0"

@@ -114,6 +114,9 @@ interface ChatMessageListProps {
   teamFilter?: "lead" | string | undefined;
   /** Context key for team store lookup (team mode) */
   contextKey?: string | undefined;
+  /** Provider metadata for the active conversation */
+  providerHarness?: string | null | undefined;
+  providerSessionId?: string | null | undefined;
 }
 
 // ============================================================================
@@ -138,6 +141,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       isFinalizing = false,
       teamFilter,
       contextKey,
+      providerHarness,
+      providerSessionId,
     },
     ref
   ) {
@@ -589,6 +594,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                     createdAt={new Date().toISOString()}
                     toolCalls={null}
                     contentBlocks={null}
+                    providerHarness={providerHarness}
+                    providerSessionId={providerSessionId}
                   />
                 );
               }
@@ -644,7 +651,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     }), [
       failedRun, onDismissFailedRun,
       streamingToolCalls, streamingTasks, streamingContentBlocks,
-      isSending, isAgentRunning, handleFooterRef,
+      isSending, isAgentRunning, handleFooterRef, providerHarness, providerSessionId,
     ]);
 
     // Detect when a teammate tab filter produces zero timeline items but messages exist.
@@ -720,10 +727,12 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             {...(msg.attachments && { attachments: msg.attachments })}
             teammateName={teammateName}
             teammateColor={teammateColor}
+            providerHarness={providerHarness}
+            providerSessionId={providerSessionId}
           />
         </div>
       );
-    }, [getTeammateInfo]);
+    }, [getTeammateInfo, providerHarness, providerSessionId]);
 
     if (isTestEnv) {
       return (
@@ -796,6 +805,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                   {...(msg.attachments && { attachments: msg.attachments })}
                   teammateName={teammateName}
                   teammateColor={teammateColor}
+                  providerHarness={providerHarness}
+                  providerSessionId={providerSessionId}
                 />
               </div>
             );
@@ -815,6 +826,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                     createdAt={new Date().toISOString()}
                     toolCalls={null}
                     contentBlocks={null}
+                    providerHarness={providerHarness}
+                    providerSessionId={providerSessionId}
                   />
                 );
               }

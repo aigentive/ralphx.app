@@ -6,7 +6,7 @@
  * - Closes via close button / Escape / backdrop
  * - Deep-link section init from modalContext.section
  * - Section switching via left rail
- * - All 12 sections render without throwing
+ * - All settings sections render without throwing
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -35,6 +35,20 @@ vi.mock("@/stores/uiStore", () => ({
 
 vi.mock("@/providers/EventProvider", () => ({
   useEventBus: () => ({ subscribe: vi.fn(() => vi.fn()) }),
+}));
+
+vi.mock("./sections/GlobalExecutionSection", () => ({
+  default: () => <div data-testid="global-execution-section">Global Execution</div>,
+}));
+
+vi.mock("./ExternalMcpSettingsPanel", () => ({
+  ExternalMcpSettingsPanel: () => (
+    <div data-testid="external-mcp-section">External MCP</div>
+  ),
+}));
+
+vi.mock("./GitHubSettingsSection", () => ({
+  GitHubSettingsSection: () => <div data-testid="github-section">GitHub</div>,
 }));
 
 // ---------------------------------------------------------------------------
@@ -157,6 +171,14 @@ describe("SettingsDialog", () => {
       // Model section content is rendered (unique testid)
       expect(screen.getByTestId("model-selection")).toBeInTheDocument();
     });
+
+    it("initializes to Execution Agents section when modalContext.section is 'execution-harnesses'", () => {
+      uiState.activeModal = "settings";
+      uiState.modalContext = { section: "execution-harnesses" };
+      render(<SettingsDialog {...defaultProps} />);
+
+      expect(screen.getByText("Execution Pipeline Agents")).toBeInTheDocument();
+    });
   });
 
   // --------------------------------------------------------------------------
@@ -197,7 +219,7 @@ describe("SettingsDialog", () => {
   });
 
   // --------------------------------------------------------------------------
-  // All 12 sections render without throwing
+  // All sections render without throwing
   // --------------------------------------------------------------------------
 
   describe("All sections render without throwing", () => {
@@ -239,7 +261,7 @@ describe("SettingsDialog", () => {
       render(<SettingsDialog {...defaultProps} />);
 
       const dialog = screen.getByTestId("settings-dialog");
-      expect(within(dialog).getByText("Settings")).toBeInTheDocument();
+      expect(within(dialog).getAllByText("Settings").length).toBeGreaterThan(0);
     });
   });
 });

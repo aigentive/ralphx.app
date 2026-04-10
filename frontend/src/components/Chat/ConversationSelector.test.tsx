@@ -176,6 +176,20 @@ describe("ConversationSelector", () => {
     expect(screen.getByText("Openai")).toBeInTheDocument();
   });
 
+  it("shows stored-session versus new-attempt provider copy", async () => {
+    const user = userEvent.setup();
+    render(<ConversationSelector {...defaultProps} />);
+
+    const trigger = screen.getByTestId("conversation-selector-trigger");
+    await user.click(trigger);
+
+    expect(screen.getByText("Stored Claude session")).toBeInTheDocument();
+    expect(screen.getByText("Stored Codex session")).toBeInTheDocument();
+    expect(
+      screen.getByText("New attempt will use current settings"),
+    ).toBeInTheDocument();
+  });
+
   it("generates fallback title for conversations without title", async () => {
     const user = userEvent.setup();
     render(<ConversationSelector {...defaultProps} />);

@@ -7,7 +7,7 @@ Today RalphX supports two harnesses:
 | Harness | Best fit today | Notes |
 |---|---|---|
 | `claude` | Full execution pipeline, team mode, mature plugin/MCP flows | Still the default harness |
-| `codex` | Core ideation and verification flows, solo execution where explicitly configured | Uses Codex CLI semantics, not Claude plugin semantics |
+| `codex` | Ideation plus execution, review, and merge lanes when explicitly configured | Uses Codex CLI semantics, not Claude plugin semantics |
 
 ---
 
@@ -21,9 +21,9 @@ That means you can configure different harnesses for different workflow lanes, f
 |---|---|
 | Ideation primary | Codex |
 | Ideation verifier | Codex |
-| Execution worker | Claude |
-| Execution reviewer | Claude |
-| Execution merger | Claude |
+| Execution worker | Codex |
+| Execution reviewer | Codex |
+| Execution merger | Codex |
 
 This lets you adopt Codex incrementally without forcing the whole product onto a single runtime.
 
@@ -46,7 +46,10 @@ The goal is to make adding a future harness a targeted extension of that shared 
 
 ## Where you configure it
 
-Use **Settings → Ideation** for the currently exposed lane-level harness controls.
+Use the dedicated harness screens in the desktop app:
+
+- **Settings → General → Execution Agents** for worker, reviewer, re-executor, and merger lanes
+- **Settings → Ideation → Ideation Agents** for ideation, verifier, and specialist lanes
 
 RalphX stores harness settings with the same layered precedence used elsewhere:
 
@@ -56,8 +59,6 @@ RalphX stores harness settings with the same layered precedence used elsewhere:
 4. built-in defaults
 
 The backend also supports per-lane model, effort, approval-policy, sandbox, and fallback-harness settings.
-
-Execution/review/merge lanes already have backend storage and runtime plumbing for harness settings, but the current user-facing settings UI is still centered on the ideation surface first.
 
 ---
 
@@ -69,6 +70,7 @@ Codex support is intentionally incremental. The current product contract is:
 |---|---|
 | Team mode | Claude-only |
 | Codex team sessions | Not supported; Codex runs are normalized to solo mode |
+| Codex execution/review/merge | Supported when those lanes are configured to Codex |
 | Legacy Claude sessions/data | Still supported; provider-neutral fields are additive |
 | Harness fallback | A lane may fall back to another harness if configured to do so |
 
@@ -97,8 +99,11 @@ You may see harness-related behavior in several places:
 
 | Surface | What you will see |
 |---|---|
-| Conversation history | Harness badges such as Claude or Codex |
-| Ideation settings | Lane-level harness selection and related options |
+| Conversation history | Harness badges plus stored-session vs new-attempt routing hints |
+| Active chat header | Current harness plus provider-session lineage for the selected run |
+| Assistant messages | Provider metadata badges for the active conversation when a stored harness/session exists |
+| Execution settings | First-class execution lane harness selection and related options |
+| Ideation settings | First-class ideation lane harness selection and related options |
 | Runtime availability checks | Errors that refer to the selected harness, not only Claude |
 | Recovery/resume flows | Provider-aware session recovery instead of Claude-only assumptions |
 
@@ -114,9 +119,9 @@ Use Claude when you need:
 
 Use Codex when you want:
 
-- Codex-native ideation or verification
+- Codex-native ideation, execution, review, or merge on a specific lane
 - Codex sandbox/approval semantics for that lane
-- incremental adoption without moving execution/review/merge yet
+- incremental adoption without moving the whole product to one runtime
 
 ---
 
@@ -126,6 +131,7 @@ If you are enabling Codex for the first time, start with:
 
 1. ideation primary
 2. ideation verifier
-3. leave execution/review/merge on Claude
+3. execution worker
+4. execution reviewer / merger once you are comfortable with that project’s workflow
 
-That gives you the lowest-risk adoption path while the multi-harness execution surface continues to mature.
+That gives you the lowest-risk adoption path while still letting you graduate into a full Codex-backed execution pipeline per project.

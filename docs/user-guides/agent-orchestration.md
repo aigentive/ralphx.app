@@ -10,7 +10,7 @@ RalphX doesn't execute your tasks directly — it orchestrates a team of special
 |----------|--------|
 | What runs my task? | A **worker** agent orchestrates — it delegates actual coding to parallel **coder** agents. |
 | Who reviews my code? | A **reviewer** agent analyzes the diff and calls pass/fail. You then approve or request changes. |
-| What handles merge conflicts? | A **merger** agent resolves git conflicts programmatically. Today that lane is typically Claude-backed. |
+| What handles merge conflicts? | A **merger** agent resolves git conflicts programmatically. That lane is configured in **Settings → General → Execution Agents**. |
 | How do agents get their instructions? | Via the task context, plan artifact, and their built-in system prompts. You don't write agent prompts. |
 | Can I talk to a running agent? | Yes — use the chat panel to send messages to active agents. They receive your messages mid-execution. |
 | What if the AI asks me a question? | An in-line **User Question** dialog appears — answer it before the agent continues. |
@@ -49,7 +49,7 @@ RalphX doesn't execute your tasks directly — it orchestrates a team of special
 
 Every action in RalphX is performed by a configured AI agent harness. When you move a task to **Ready**, a worker agent is spawned automatically. When execution finishes, a reviewer agent runs. If there's a merge conflict, a merger agent resolves it. You don't start agents manually — the pipeline handles orchestration based on task state.
 
-Harness selection is lane-based, not app-wide. In practice today, execution/review/merge are still usually Claude-backed for the broadest feature coverage, while Codex rollout is strongest on ideation and ideation verification first.
+Harness selection is lane-based, not app-wide. Claude remains the broadest-coverage default, but execution, review, and merge lanes can also be routed to Codex when you configure them that way.
 
 ```
 You describe a feature (Ideation Studio)
@@ -76,6 +76,12 @@ You describe a feature (Ideation Studio)
 ```
 
 Agents are ephemeral. They start when a task enters a state that requires them, run until their job is done, and exit. RalphX automatically manages spawning, monitoring, and recovery.
+
+The chat UI surfaces that runtime choice directly:
+
+- conversation history shows harness badges and stored-session routing hints
+- the active chat header shows the current harness plus provider-session lineage
+- assistant messages show provider metadata when the conversation is continuing on a stored harness session
 
 ---
 
@@ -203,7 +209,7 @@ The reviewer runs in the **same conversation** as prior execution cycles, so it 
 
 ### Merger Agent
 
-After you approve a task, the [merge pipeline](merge.md) attempts to rebase and merge the task branch automatically. If there are git conflicts that the programmatic merge couldn't resolve, a **merger agent** is spawned on the configured merge lane. Today that lane is typically Claude-backed.
+After you approve a task, the [merge pipeline](merge.md) attempts to rebase and merge the task branch automatically. If there are git conflicts that the programmatic merge couldn't resolve, a **merger agent** is spawned on the configured merge lane.
 
 The merger:
 1. Gets the correct source and target branches via MCP.

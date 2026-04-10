@@ -17,6 +17,12 @@ import { TextBubble } from "./TextBubble";
 import { formatTimestamp } from "./MessageItem.utils";
 import { isTaskToolCall } from "./DiffToolCallView.utils";
 import { MessageAttachments, type MessageAttachment } from "./MessageAttachments";
+import {
+  describeProviderLineage,
+  formatProviderHarnessLabel,
+  formatProviderSessionSnippet,
+  getProviderHarnessBadgeStyle,
+} from "./provider-harness";
 
 // ============================================================================
 // Types
@@ -53,6 +59,8 @@ export interface MessageItemProps {
   teammateName?: string | null | undefined;
   /** Teammate color for left-border indicator */
   teammateColor?: string | null | undefined;
+  providerHarness?: string | null | undefined;
+  providerSessionId?: string | null | undefined;
 }
 
 // ============================================================================
@@ -68,8 +76,21 @@ export const MessageItem = React.memo(function MessageItem({
   attachments,
   teammateName,
   teammateColor,
+  providerHarness,
+  providerSessionId,
 }: MessageItemProps) {
   const isUser = role === "user";
+  const providerHarnessLabel = formatProviderHarnessLabel(providerHarness);
+  const providerHarnessStyle = getProviderHarnessBadgeStyle(providerHarness);
+  const providerLineage = describeProviderLineage({
+    providerHarness,
+    providerSessionId,
+  });
+  const providerSessionSnippet = formatProviderSessionSnippet(providerSessionId);
+  const showProviderMeta =
+    !isUser &&
+    !teammateName &&
+    (providerHarnessLabel !== null || providerSessionSnippet !== null);
 
   // Use pre-parsed data directly (parsing now happens at API layer)
   const parsedContentBlocks = contentBlocks ?? [];
@@ -128,6 +149,30 @@ export const MessageItem = React.memo(function MessageItem({
       )}
 
       <div className="flex flex-col gap-3 min-w-0 w-full">
+        {showProviderMeta && (
+          <div
+            className="flex items-center gap-2 min-w-0"
+            data-testid="message-provider-meta"
+          >
+            {providerHarnessLabel && (
+              <span
+                className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]"
+                style={providerHarnessStyle}
+              >
+                {providerHarnessLabel}
+              </span>
+            )}
+            <span className="truncate text-[10px] text-white/45">
+              {providerLineage}
+            </span>
+            {providerSessionSnippet && (
+              <span className="font-mono text-[10px] text-white/35">
+                {providerSessionSnippet}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Render attachments for user messages */}
         {isUser && attachments && attachments.length > 0 && (
           <MessageAttachments attachments={attachments} />
@@ -197,5 +242,7 @@ export const MessageItem = React.memo(function MessageItem({
     && prev.contentBlocks === next.contentBlocks
     && prev.attachments === next.attachments
     && prev.teammateName === next.teammateName
-    && prev.teammateColor === next.teammateColor;
+    && prev.teammateColor === next.teammateColor
+    && prev.providerHarness === next.providerHarness
+    && prev.providerSessionId === next.providerSessionId;
 });

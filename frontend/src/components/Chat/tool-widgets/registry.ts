@@ -3,6 +3,7 @@
  *
  * Maps tool names to specialized React widget components.
  * ToolCallIndicator checks this registry before falling back to the generic renderer.
+ * Harness/session identity is rendered by the chat chrome, not hard-coded into individual widgets.
  *
  * To register a new widget:
  *   1. Create src/components/Chat/tool-widgets/YourWidget.tsx implementing ToolCallWidgetProps

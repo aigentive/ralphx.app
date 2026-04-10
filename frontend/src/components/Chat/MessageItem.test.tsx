@@ -157,6 +157,22 @@ describe("MessageItem - Attachment Integration", () => {
     // Tool calls should render (we can check for tool call indicator presence)
     expect(screen.getByText("read_file")).toBeInTheDocument();
   });
+
+  it("renders provider metadata for assistant messages when available", () => {
+    render(
+      <MessageItem
+        {...baseProps}
+        role="assistant"
+        providerHarness="codex"
+        providerSessionId="thread-codex-1234"
+      />
+    );
+
+    expect(screen.getByTestId("message-provider-meta")).toBeInTheDocument();
+    expect(screen.getByText("Codex")).toBeInTheDocument();
+    expect(screen.getByText("Continuing stored Codex session")).toBeInTheDocument();
+    expect(screen.getByText("thread-c...")).toBeInTheDocument();
+  });
 });
 
 describe("MessageItem - Child tool call suppression for Task/Agent spawns", () => {

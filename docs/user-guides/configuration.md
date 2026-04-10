@@ -227,15 +227,9 @@ The supervisor runs _alongside_ the worker — it does not consume an extra conc
 
 ## Agent Harness and Model Configuration
 
-**Location:** Settings → Ideation
+**Location:** Settings → General → Execution Agents and Settings → Ideation → Ideation Agents
 
-RalphX now supports lane-level harness selection for the ideation surface. The backend also stores per-lane model, effort, approval-policy, sandbox, and fallback settings.
-
-The current settings rollout is intentionally staged:
-
-- the visible settings UI is focused on ideation lanes first
-- execution/review/merge lanes already have backend storage and runtime plumbing
-- Claude remains the broadest-coverage default while Codex adoption is intended to be incremental
+RalphX supports lane-level harness selection across both the ideation surface and the execution pipeline. Each lane stores its own harness, model, effort, approval-policy, sandbox, and fallback settings.
 
 ### Ideation Harness Settings
 
@@ -248,12 +242,23 @@ The current settings rollout is intentionally staged:
 | **Sandbox mode** | Harness sandbox mode for that lane |
 | **Fallback harness** | Optional fallback if the preferred harness is unavailable |
 
+### Execution Pipeline Harness Settings
+
+The execution harness screen exposes the same controls for the runtime lanes that ship code:
+
+| Lane | Purpose |
+|------|---------|
+| **Execution Worker** | Primary task execution lane |
+| **Execution Reviewer** | Review lane after execution completes |
+| **Execution Re-executor** | Follow-up execution lane after review requests changes |
+| **Execution Merger** | Merge-conflict and merge completion lane |
+
 ### Current product defaults
 
 | Lane family | Typical default today |
 |-------------|-----------------------|
-| Ideation lanes | Codex-capable where configured |
-| Execution/review/merge lanes | Claude by default |
+| Ideation lanes | Claude by default, Codex-capable where configured |
+| Execution/review/merge lanes | Claude by default, Codex-capable where configured |
 
 ### Important limits
 
@@ -261,6 +266,7 @@ The current settings rollout is intentionally staged:
 |-------|------------------|
 | Team mode | Claude-only |
 | Codex team sessions | Not supported; Codex is treated as solo-only |
+| Codex execution/review/merge | Supported when those lanes are configured to Codex |
 | Legacy session data | Still supported through provider-neutral compatibility fields |
 
 ### Recommended rollout
@@ -269,7 +275,8 @@ If you are enabling Codex for the first time, use this order:
 
 1. ideation primary
 2. ideation verifier
-3. keep execution, review, and merge on Claude until you explicitly want to expand the rollout
+3. execution worker
+4. execution reviewer / merger once you are comfortable with that project’s workflow
 
 See [Agent Harnesses](agent-harnesses.md) for the current support matrix and rollout guidance.
 

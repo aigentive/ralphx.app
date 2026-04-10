@@ -542,6 +542,27 @@ export function IntegratedChatPanel({
 
   // Effective conversation ID: teammate's when on teammate tab, lead's otherwise
   const effectiveConversationId = isTeammateTab ? teammateConversationId : activeConversationId;
+  const activeConversationMeta = useMemo(() => {
+    const queriedConversation = isTeammateTab
+      ? teammateConversation.data?.conversation
+      : activeConversation.data?.conversation;
+
+    if (queriedConversation) {
+      return queriedConversation;
+    }
+
+    return (
+      conversationsData?.find(
+        (conversation) => conversation.id === effectiveConversationId,
+      ) ?? null
+    );
+  }, [
+    isTeammateTab,
+    teammateConversation.data?.conversation,
+    activeConversation.data?.conversation,
+    conversationsData,
+    effectiveConversationId,
+  ]);
 
   // Memoize messagesData to avoid dependency chain issues in useEffect hooks
   // No time-based filtering needed - we switch context types based on historical state
@@ -854,6 +875,8 @@ export function IntegratedChatPanel({
             contextId={ideationSessionId || selectedTaskId || null}
             agentStatus={isHistoryMode ? "idle" : agentStatus}
             storeKey={storeContextKey}
+            providerHarness={activeConversationMeta?.providerHarness ?? null}
+            providerSessionId={activeConversationMeta?.providerSessionId ?? null}
             {...(toolbarBackAction !== undefined ? { backAction: toolbarBackAction } : {})}
             {...(effectiveModel !== undefined ? { modelDisplay: effectiveModel } : {})}
           />
@@ -910,6 +933,8 @@ export function IntegratedChatPanel({
               isFinalizing={isFinalizing}
               teamFilter={activeTeam ? teamFilter : undefined}
               contextKey={activeTeam ? storeContextKey : undefined}
+              providerHarness={activeConversationMeta?.providerHarness ?? null}
+              providerSessionId={activeConversationMeta?.providerSessionId ?? null}
             />
           )}
 

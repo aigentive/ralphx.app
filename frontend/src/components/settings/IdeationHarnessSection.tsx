@@ -124,6 +124,8 @@ const LANE_GROUPS: {
   },
 ];
 
+type HarnessSectionScope = "ideation" | "execution";
+
 function defaultsForHarness(
   lane: AgentLane,
   harness: KnownHarness,
@@ -449,10 +451,12 @@ function HarnessSubsection({
   title,
   projectId,
   projectName,
+  scope,
 }: {
   title: string;
   projectId: string | null;
   projectName: string | null;
+  scope: HarnessSectionScope;
 }) {
   const [showError, setShowError] = useState(false);
   const {
@@ -508,10 +512,14 @@ function HarnessSubsection({
         <h4 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h4>
         <p className="text-xs text-[var(--text-muted)] mt-1">
           {title === "Global Defaults"
-            ? "Harness selection for ideation and execution lanes. These overrides take precedence over the legacy ideation model and effort screens."
+            ? scope === "execution"
+              ? "Default harness policy for execution worker, reviewer, re-executor, and merger lanes."
+              : "Default harness policy for ideation leads, verification, and specialist lanes."
             : projectId
               ? `Project overrides for ${projectName ?? "the active project"}.`
-              : "Select a project to override harnesses for specific ideation and execution lanes."}
+              : scope === "execution"
+                ? "Select a project to override execution-pipeline agents for a specific project."
+                : "Select a project to override ideation agents for a specific project."}
         </p>
       </div>
 
@@ -523,7 +531,7 @@ function HarnessSubsection({
       )}
 
       <div className={isDisabled ? "opacity-50 pointer-events-none" : undefined}>
-        {LANE_GROUPS.map((group, groupIndex) => {
+        {LANE_GROUPS.filter((group) => group.id === scope).map((group, groupIndex) => {
           const groupLanes = lanes.filter((lane) => group.lanes.includes(lane.lane));
           if (groupLanes.length === 0) {
             return null;
@@ -560,7 +568,15 @@ function HarnessSubsection({
   );
 }
 
-export function IdeationHarnessSection() {
+function AgentHarnessSection({
+  scope,
+  title,
+  description,
+}: {
+  scope: HarnessSectionScope;
+  title: string;
+  description: string;
+}) {
   const activeProject = useProjectStore(selectActiveProject);
   const projectId = activeProject?.id ?? null;
   const projectName = activeProject?.name ?? null;
@@ -568,14 +584,15 @@ export function IdeationHarnessSection() {
   return (
     <SectionCard
       icon={<Cpu className="w-5 h-5 text-[var(--accent-primary)]" />}
-      title="Agent Harnesses"
-      description="Choose Claude or Codex per ideation and execution lane. Codex ideation currently runs in solo mode while execution lanes are configurable independently."
+      title={title}
+      description={description}
     >
       <div className="space-y-6">
         <HarnessSubsection
           title="Global Defaults"
           projectId={null}
           projectName={null}
+          scope={scope}
         />
 
         <Separator className="bg-[var(--border-subtle)]" />
@@ -584,8 +601,29 @@ export function IdeationHarnessSection() {
           title="Project Overrides"
           projectId={projectId}
           projectName={projectName}
+          scope={scope}
         />
       </div>
     </SectionCard>
+  );
+}
+
+export function IdeationHarnessSection() {
+  return (
+    <AgentHarnessSection
+      scope="ideation"
+      title="Ideation Agents"
+      description="Choose Claude or Codex for ideation leads, verification, and specialist lanes. Codex ideation still runs in solo mode, so these settings mainly control planning and verifier routing."
+    />
+  );
+}
+
+export function ExecutionHarnessSection() {
+  return (
+    <AgentHarnessSection
+      scope="execution"
+      title="Execution Pipeline Agents"
+      description="Choose Claude or Codex for the worker, reviewer, re-executor, and merger lanes. These settings control the live execution pipeline, including Codex approval, sandbox, and fallback behavior per lane."
+    />
   );
 }
