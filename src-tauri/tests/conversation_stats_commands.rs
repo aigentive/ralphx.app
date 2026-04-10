@@ -1,7 +1,10 @@
-use ralphx_lib::commands::conversation_stats_commands::build_conversation_stats_response;
+use ralphx_lib::commands::conversation_stats_commands::{
+    build_conversation_stats_response, build_scope_stats_response,
+};
 use ralphx_lib::domain::agents::{AgentHarnessKind, LogicalEffort, ProviderSessionRef};
 use ralphx_lib::domain::entities::{
-    AgentRun, AttributionBackfillStatus, ChatConversation, ChatMessage, IdeationSessionId,
+    AgentRun, AttributionBackfillStatus, ChatContextType, ChatConversation, ChatMessage,
+    IdeationSessionId, MessageRole, ProjectId, TaskId,
 };
 
 #[test]
@@ -87,4 +90,48 @@ fn test_conversation_stats_falls_back_to_run_usage_when_messages_lack_usage() {
     assert_eq!(response.by_upstream_provider[0].key, "z_ai");
     assert_eq!(response.by_model[0].key, "glm-4.7");
     assert_eq!(response.attribution_coverage.provider_messages_with_attribution, 1);
+}
+
+#[test]
+fn test_scope_stats_include_context_breakdown_and_conversation_count() {
+    let project_id = ProjectId::from_string("project-1".to_string());
+    let task_id = TaskId::from_string("task-1".to_string());
+    let session_id = IdeationSessionId::new();
+
+    let project_conversation = ChatConversation::new_project(project_id.clone());
+    let mut task_conversation = ChatConversation::new_task(task_id);
+    task_conversation.context_type = ChatContextType::TaskExecution;
+
+    let mut project_message = ChatMessage::user_in_project(project_id.clone(), "project");
+    project_message.role = MessageRole::Orchestrator;
+    project_message.conversation_id = Some(project_conversation.id);
+    project_message.provider_harness = Some(AgentHarnessKind::Codex);
+    project_message.effective_model_id = Some("gpt-5.4".to_string());
+    project_message.effective_effort = Some("high".to_string());
+    project_message.input_tokens = Some(100);
+    project_message.output_tokens = Some(20);
+
+    let mut task_message = ChatMessage::orchestrator_in_session(session_id, "task");
+    task_message.conversation_id = Some(task_conversation.id);
+    task_message.provider_harness = Some(AgentHarnessKind::Codex);
+    task_message.effective_model_id = Some("gpt-5.4".to_string());
+    task_message.effective_effort = Some("high".to_string());
+    task_message.input_tokens = Some(30);
+    task_message.output_tokens = Some(10);
+
+    let response = build_scope_stats_response(
+        "project",
+        project_id.as_str(),
+        &[project_conversation, task_conversation],
+        &[project_message, task_message],
+        &[],
+    );
+
+    assert_eq!(response.scope_type, "project");
+    assert_eq!(response.conversation_count, 2);
+    assert_eq!(response.usage_coverage.effective_totals_source, "messages");
+    assert_eq!(response.effective_usage_totals.input_tokens, 130);
+    assert_eq!(response.by_context_type.len(), 2);
+    assert_eq!(response.by_context_type[0].key, "project");
+    assert_eq!(response.by_context_type[1].key, "task_execution");
 }

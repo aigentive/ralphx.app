@@ -67,9 +67,10 @@ pub use chat_attachment_commands::{
     UploadChatAttachmentInput,
 };
 pub use conversation_stats_commands::{
-    build_conversation_stats_response, get_agent_conversation_stats,
-    ConversationAttributionCoverageResponse, ConversationStatsResponse,
-    ConversationUsageCoverageResponse, UsageBucketResponse, UsageTotalsResponse,
+    build_conversation_stats_response, build_scope_stats_response, get_agent_conversation_stats,
+    get_project_chat_usage_stats, get_task_chat_usage_stats, ConversationAttributionCoverageResponse,
+    ConversationStatsResponse, ConversationUsageCoverageResponse, ScopeStatsResponse,
+    UsageBucketResponse, UsageTotalsResponse,
 };
 pub use chat_responses::ChatMessageResponse;
 pub use diagnostic_commands::{

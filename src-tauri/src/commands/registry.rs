@@ -108,6 +108,8 @@ macro_rules! register_tauri_commands {
             commands::merge_pipeline_commands::get_merge_progress,
             commands::merge_pipeline_commands::get_merge_phase_list,
             commands::conversation_stats_commands::get_agent_conversation_stats,
+            commands::conversation_stats_commands::get_project_chat_usage_stats,
+            commands::conversation_stats_commands::get_task_chat_usage_stats,
             // Metrics commands
             commands::metrics_commands::get_project_stats,
             commands::metrics_commands::get_project_trends,

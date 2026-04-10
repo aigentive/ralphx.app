@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use tauri::State;
 
@@ -66,11 +66,109 @@ pub struct ConversationStatsResponse {
     pub by_effort: Vec<UsageBucketResponse>,
 }
 
+#[derive(Debug, Clone, serde::Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ScopeStatsResponse {
+    pub scope_type: String,
+    pub scope_id: String,
+    pub conversation_count: u64,
+    pub message_usage_totals: UsageTotalsResponse,
+    pub run_usage_totals: UsageTotalsResponse,
+    pub effective_usage_totals: UsageTotalsResponse,
+    pub usage_coverage: ConversationUsageCoverageResponse,
+    pub attribution_coverage: ConversationAttributionCoverageResponse,
+    pub by_context_type: Vec<UsageBucketResponse>,
+    pub by_harness: Vec<UsageBucketResponse>,
+    pub by_upstream_provider: Vec<UsageBucketResponse>,
+    pub by_model: Vec<UsageBucketResponse>,
+    pub by_effort: Vec<UsageBucketResponse>,
+}
+
 pub fn build_conversation_stats_response(
     conversation: &ChatConversation,
     messages: &[ChatMessage],
     runs: &[AgentRun],
 ) -> ConversationStatsResponse {
+    let aggregates = build_usage_aggregates(&[conversation.clone()], messages, runs);
+
+    ConversationStatsResponse {
+        conversation_id: conversation.id.as_str(),
+        context_type: conversation.context_type.to_string(),
+        context_id: conversation.context_id.clone(),
+        provider_harness: conversation.provider_harness.map(|value| value.to_string()),
+        upstream_provider: conversation.upstream_provider.clone(),
+        provider_profile: conversation.provider_profile.clone(),
+        attribution_backfill_status: conversation
+            .attribution_backfill_status
+            .map(|value| value.to_string()),
+        attribution_backfill_source: conversation.attribution_backfill_source.clone(),
+        message_usage_totals: aggregates.message_usage_totals,
+        run_usage_totals: aggregates.run_usage_totals,
+        effective_usage_totals: aggregates.effective_usage_totals,
+        usage_coverage: aggregates.usage_coverage,
+        attribution_coverage: aggregates.attribution_coverage,
+        by_harness: aggregates.by_harness,
+        by_upstream_provider: aggregates.by_upstream_provider,
+        by_model: aggregates.by_model,
+        by_effort: aggregates.by_effort,
+    }
+}
+
+pub fn build_scope_stats_response(
+    scope_type: &str,
+    scope_id: &str,
+    conversations: &[ChatConversation],
+    messages: &[ChatMessage],
+    runs: &[AgentRun],
+) -> ScopeStatsResponse {
+    let aggregates = build_usage_aggregates(conversations, messages, runs);
+
+    ScopeStatsResponse {
+        scope_type: scope_type.to_string(),
+        scope_id: scope_id.to_string(),
+        conversation_count: conversations.len() as u64,
+        message_usage_totals: aggregates.message_usage_totals,
+        run_usage_totals: aggregates.run_usage_totals,
+        effective_usage_totals: aggregates.effective_usage_totals,
+        usage_coverage: aggregates.usage_coverage,
+        attribution_coverage: aggregates.attribution_coverage,
+        by_context_type: aggregates.by_context_type,
+        by_harness: aggregates.by_harness,
+        by_upstream_provider: aggregates.by_upstream_provider,
+        by_model: aggregates.by_model,
+        by_effort: aggregates.by_effort,
+    }
+}
+
+#[derive(Debug, Clone)]
+struct UsageAggregateResult {
+    message_usage_totals: UsageTotalsResponse,
+    run_usage_totals: UsageTotalsResponse,
+    effective_usage_totals: UsageTotalsResponse,
+    usage_coverage: ConversationUsageCoverageResponse,
+    attribution_coverage: ConversationAttributionCoverageResponse,
+    by_context_type: Vec<UsageBucketResponse>,
+    by_harness: Vec<UsageBucketResponse>,
+    by_upstream_provider: Vec<UsageBucketResponse>,
+    by_model: Vec<UsageBucketResponse>,
+    by_effort: Vec<UsageBucketResponse>,
+}
+
+fn build_usage_aggregates(
+    conversations: &[ChatConversation],
+    messages: &[ChatMessage],
+    runs: &[AgentRun],
+) -> UsageAggregateResult {
+    let conversation_contexts: HashMap<_, _> = conversations
+        .iter()
+        .map(|conversation| {
+            (
+                conversation.id,
+                conversation.context_type.to_string(),
+            )
+        })
+        .collect();
+
     let provider_messages: Vec<&ChatMessage> = messages
         .iter()
         .filter(|message| is_provider_message(message.role))
@@ -99,9 +197,17 @@ pub fn build_conversation_stats_response(
         "none"
     };
 
-    let (by_harness, by_upstream_provider, by_model, by_effort, effective_usage_totals) =
+    let (by_context_type, by_harness, by_upstream_provider, by_model, by_effort, effective_usage_totals) =
         match effective_usage_source {
             "messages" => (
+                aggregate_message_buckets(
+                    &provider_messages_with_usage,
+                    |message| {
+                        message.conversation_id.and_then(|conversation_id| {
+                            conversation_contexts.get(&conversation_id).cloned()
+                        })
+                    },
+                ),
                 aggregate_message_buckets(
                     &provider_messages_with_usage,
                     |message| message.provider_harness.map(|value| value.to_string()),
@@ -126,6 +232,9 @@ pub fn build_conversation_stats_response(
                 message_usage_totals.clone(),
             ),
             "runs" => (
+                aggregate_run_buckets(&runs_with_usage, |run| {
+                    conversation_contexts.get(&run.conversation_id).cloned()
+                }),
                 aggregate_run_buckets(&runs_with_usage, |run| run.harness.map(|value| value.to_string())),
                 aggregate_run_buckets(&runs_with_usage, |run| run.upstream_provider.clone()),
                 aggregate_run_buckets(&runs_with_usage, |run| run.effective_model_id.clone()),
@@ -141,21 +250,12 @@ pub fn build_conversation_stats_response(
                 Vec::new(),
                 Vec::new(),
                 Vec::new(),
+                Vec::new(),
                 UsageTotalsResponse::default(),
             ),
         };
 
-    ConversationStatsResponse {
-        conversation_id: conversation.id.as_str(),
-        context_type: conversation.context_type.to_string(),
-        context_id: conversation.context_id.clone(),
-        provider_harness: conversation.provider_harness.map(|value| value.to_string()),
-        upstream_provider: conversation.upstream_provider.clone(),
-        provider_profile: conversation.provider_profile.clone(),
-        attribution_backfill_status: conversation
-            .attribution_backfill_status
-            .map(|value| value.to_string()),
-        attribution_backfill_source: conversation.attribution_backfill_source.clone(),
+    UsageAggregateResult {
         message_usage_totals,
         run_usage_totals,
         effective_usage_totals,
@@ -172,6 +272,7 @@ pub fn build_conversation_stats_response(
             run_count: runs.len() as u64,
             runs_with_attribution,
         },
+        by_context_type,
         by_harness,
         by_upstream_provider,
         by_model,
@@ -211,6 +312,149 @@ pub async fn get_agent_conversation_stats(
         &messages,
         &runs,
     )))
+}
+
+#[tauri::command]
+pub async fn get_project_chat_usage_stats(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<ScopeStatsResponse, String> {
+    let project_id_obj = crate::domain::entities::ProjectId::from_string(project_id.clone());
+    let conversations = collect_project_conversations(&state, &project_id_obj).await?;
+    let (messages, runs) = collect_conversation_payloads(&state, &conversations).await?;
+    Ok(build_scope_stats_response(
+        "project",
+        project_id_obj.as_str(),
+        &conversations,
+        &messages,
+        &runs,
+    ))
+}
+
+#[tauri::command]
+pub async fn get_task_chat_usage_stats(
+    task_id: String,
+    state: State<'_, AppState>,
+) -> Result<ScopeStatsResponse, String> {
+    let task_id_obj = crate::domain::entities::TaskId::from_string(task_id.clone());
+    let conversations = collect_task_conversations(&state, &task_id_obj).await?;
+    let (messages, runs) = collect_conversation_payloads(&state, &conversations).await?;
+    Ok(build_scope_stats_response(
+        "task",
+        task_id_obj.as_str(),
+        &conversations,
+        &messages,
+        &runs,
+    ))
+}
+
+async fn collect_project_conversations(
+    state: &AppState,
+    project_id: &crate::domain::entities::ProjectId,
+) -> Result<Vec<ChatConversation>, String> {
+    let mut conversation_map: BTreeMap<String, ChatConversation> = BTreeMap::new();
+    collect_context_conversations(
+        state,
+        &mut conversation_map,
+        crate::domain::entities::ChatContextType::Project,
+        project_id.as_str(),
+    )
+    .await?;
+
+    let tasks = state
+        .task_repo
+        .get_by_project(project_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    for task in tasks {
+        collect_task_contexts(state, &mut conversation_map, &task.id).await?;
+    }
+
+    let ideation_sessions = state
+        .ideation_session_repo
+        .get_by_project(project_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    for session in ideation_sessions {
+        collect_context_conversations(
+            state,
+            &mut conversation_map,
+            crate::domain::entities::ChatContextType::Ideation,
+            session.id.as_str(),
+        )
+        .await?;
+    }
+
+    Ok(conversation_map.into_values().collect())
+}
+
+async fn collect_task_conversations(
+    state: &AppState,
+    task_id: &crate::domain::entities::TaskId,
+) -> Result<Vec<ChatConversation>, String> {
+    let mut conversation_map: BTreeMap<String, ChatConversation> = BTreeMap::new();
+    collect_task_contexts(state, &mut conversation_map, task_id).await?;
+    Ok(conversation_map.into_values().collect())
+}
+
+async fn collect_task_contexts(
+    state: &AppState,
+    conversation_map: &mut BTreeMap<String, ChatConversation>,
+    task_id: &crate::domain::entities::TaskId,
+) -> Result<(), String> {
+    for context_type in [
+        crate::domain::entities::ChatContextType::Task,
+        crate::domain::entities::ChatContextType::TaskExecution,
+        crate::domain::entities::ChatContextType::Review,
+        crate::domain::entities::ChatContextType::Merge,
+    ] {
+        collect_context_conversations(state, conversation_map, context_type, task_id.as_str()).await?;
+    }
+    Ok(())
+}
+
+async fn collect_context_conversations(
+    state: &AppState,
+    conversation_map: &mut BTreeMap<String, ChatConversation>,
+    context_type: crate::domain::entities::ChatContextType,
+    context_id: &str,
+) -> Result<(), String> {
+    let conversations = state
+        .chat_conversation_repo
+        .get_by_context(context_type, context_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    for conversation in conversations {
+        conversation_map.insert(conversation.id.as_str(), conversation);
+    }
+    Ok(())
+}
+
+async fn collect_conversation_payloads(
+    state: &AppState,
+    conversations: &[ChatConversation],
+) -> Result<(Vec<ChatMessage>, Vec<AgentRun>), String> {
+    let mut messages = Vec::new();
+    let mut runs = Vec::new();
+
+    for conversation in conversations {
+        messages.extend(
+            state
+                .chat_message_repo
+                .get_by_conversation(&conversation.id)
+                .await
+                .map_err(|error| error.to_string())?,
+        );
+        runs.extend(
+            state
+                .agent_run_repo
+                .get_by_conversation(&conversation.id)
+                .await
+                .map_err(|error| error.to_string())?,
+        );
+    }
+
+    Ok((messages, runs))
 }
 
 #[derive(Default, Clone)]
