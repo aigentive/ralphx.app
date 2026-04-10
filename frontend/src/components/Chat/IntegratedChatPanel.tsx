@@ -875,8 +875,11 @@ export function IntegratedChatPanel({
             contextId={ideationSessionId || selectedTaskId || null}
             agentStatus={isHistoryMode ? "idle" : agentStatus}
             storeKey={storeContextKey}
+            conversationId={effectiveConversationId}
             providerHarness={activeConversationMeta?.providerHarness ?? null}
             providerSessionId={activeConversationMeta?.providerSessionId ?? null}
+            upstreamProvider={activeConversationMeta?.upstreamProvider ?? null}
+            providerProfile={activeConversationMeta?.providerProfile ?? null}
             {...(toolbarBackAction !== undefined ? { backAction: toolbarBackAction } : {})}
             {...(effectiveModel !== undefined ? { modelDisplay: effectiveModel } : {})}
           />

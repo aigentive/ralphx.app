@@ -174,6 +174,7 @@ vi.mock("@/hooks/useChatAttachments", () => ({
 vi.mock("@/api/chat", () => ({
   chatApi: {
     listConversations: vi.fn().mockResolvedValue([]),
+    getConversationStats: vi.fn().mockResolvedValue(null),
     getAgentRunStatus: vi.fn().mockResolvedValue(null),
     sendAgentMessage: vi.fn().mockResolvedValue({ conversationId: "conv-1" }),
   },
@@ -320,7 +321,7 @@ describe("IntegratedChatPanel", () => {
   });
 
   describe("provider context", () => {
-    it("shows active harness and stored-session context in the toolbar", async () => {
+    it("shows harness, model, effort, and stats in the toolbar without continuity copy", async () => {
       mockChatPanelContext.activeConversationId = "conv-1";
       useChatMockState.conversations = [{ id: "conv-1" }];
       useChatMockState.conversation = {
@@ -328,7 +329,57 @@ describe("IntegratedChatPanel", () => {
         contextId: "task-1",
         providerHarness: "codex",
         providerSessionId: "thread-codex-1234",
+        upstreamProvider: "openai",
+        providerProfile: null,
       };
+      vi.mocked(chatApi.getConversationStats).mockResolvedValue({
+        conversationId: "conv-1",
+        contextType: "task",
+        contextId: "task-1",
+        providerHarness: "codex",
+        upstreamProvider: "openai",
+        providerProfile: null,
+        attributionBackfillStatus: null,
+        attributionBackfillSource: null,
+        messageUsageTotals: {
+          inputTokens: 120,
+          outputTokens: 40,
+          cacheCreationTokens: 5,
+          cacheReadTokens: 8,
+          estimatedUsd: 0.42,
+        },
+        runUsageTotals: {
+          inputTokens: 120,
+          outputTokens: 40,
+          cacheCreationTokens: 5,
+          cacheReadTokens: 8,
+          estimatedUsd: 0.42,
+        },
+        effectiveUsageTotals: {
+          inputTokens: 120,
+          outputTokens: 40,
+          cacheCreationTokens: 5,
+          cacheReadTokens: 8,
+          estimatedUsd: 0.42,
+        },
+        usageCoverage: {
+          providerMessageCount: 1,
+          providerMessagesWithUsage: 1,
+          runCount: 1,
+          runsWithUsage: 1,
+          effectiveTotalsSource: "messages",
+        },
+        attributionCoverage: {
+          providerMessageCount: 1,
+          providerMessagesWithAttribution: 1,
+          runCount: 1,
+          runsWithAttribution: 1,
+        },
+        byHarness: [{ key: "codex", count: 1, usage: { inputTokens: 120, outputTokens: 40, cacheCreationTokens: 5, cacheReadTokens: 8, estimatedUsd: 0.42 } }],
+        byUpstreamProvider: [{ key: "openai", count: 1, usage: { inputTokens: 120, outputTokens: 40, cacheCreationTokens: 5, cacheReadTokens: 8, estimatedUsd: 0.42 } }],
+        byModel: [{ key: "gpt-5.4", count: 1, usage: { inputTokens: 120, outputTokens: 40, cacheCreationTokens: 5, cacheReadTokens: 8, estimatedUsd: 0.42 } }],
+        byEffort: [{ key: "high", count: 1, usage: { inputTokens: 120, outputTokens: 40, cacheCreationTokens: 5, cacheReadTokens: 8, estimatedUsd: 0.42 } }],
+      });
       useChatStore.setState((state) => ({
         ...state,
         effectiveModel: {
@@ -351,9 +402,14 @@ describe("IntegratedChatPanel", () => {
       expect(badge).toHaveTextContent("Codex");
       expect(badge).toHaveAttribute(
         "title",
-        "Continuing stored Codex session (thread-codex...)",
+        "Harness: Codex • Upstream: openai • Session ref: thread-codex...",
       );
       expect(screen.getByText("gpt-5.4")).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText("High")).toBeInTheDocument();
+      });
+      expect(screen.getByTestId("chat-session-stats-button")).toBeInTheDocument();
+      expect(screen.queryByText(/Continuing stored Codex session/)).not.toBeInTheDocument();
     });
   });
 

@@ -1,6 +1,8 @@
 export interface ProviderMetadata {
   providerHarness?: string | null | undefined;
   providerSessionId?: string | null | undefined;
+  upstreamProvider?: string | null | undefined;
+  providerProfile?: string | null | undefined;
 }
 
 export interface ProviderHarnessBadgeStyle {
@@ -112,4 +114,27 @@ export function formatProviderTooltip(metadata: ProviderMetadata): string | null
   }
 
   return lineage;
+}
+
+export function formatProviderEvidenceTooltip(metadata: ProviderMetadata): string | null {
+  const details: string[] = [];
+  const harnessLabel = formatProviderHarnessLabel(metadata.providerHarness);
+
+  if (harnessLabel) {
+    details.push(`Harness: ${harnessLabel}`);
+  }
+
+  if (metadata.upstreamProvider) {
+    details.push(`Upstream: ${metadata.upstreamProvider}`);
+  }
+
+  if (metadata.providerProfile) {
+    details.push(`Profile: ${metadata.providerProfile}`);
+  }
+
+  if (metadata.providerSessionId) {
+    details.push(`Session ref: ${formatProviderSessionSnippet(metadata.providerSessionId, 12)}`);
+  }
+
+  return details.length > 0 ? details.join(" • ") : null;
 }
