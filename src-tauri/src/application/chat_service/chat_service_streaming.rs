@@ -1918,19 +1918,14 @@ pub async fn process_stream_background<R: Runtime>(
 
         // Debounced flush: persist accumulated content every 2s for crash recovery
         if last_flush.elapsed() >= FLUSH_INTERVAL {
-            if let (Some(ref repo), Some(ref msg_id)) = (&chat_message_repo, &assistant_message_id)
-            {
-                let current_text = processor.response_text.clone();
-                let current_tools = serde_json::to_string(&processor.tool_calls).ok();
-                let _ = repo
-                    .update_content(
-                        &ChatMessageId::from_string(msg_id.clone()),
-                        &current_text,
-                        current_tools.as_deref(),
-                        None, // content_blocks only on final update
-                    )
-                    .await;
-            }
+            persist_assistant_message_snapshot(
+                &chat_message_repo,
+                &assistant_message_id,
+                &processor.response_text,
+                &processor.tool_calls,
+                &processor.content_blocks,
+            )
+            .await;
             last_flush = std::time::Instant::now();
         }
 
