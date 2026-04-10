@@ -10,6 +10,8 @@ pub use types::{
     ParsedLine, StreamEvent, StreamMessage, StreamResult, ToolCall, ToolCallStats, UserContent,
 };
 
+use crate::domain::entities::AgentRunUsage;
+
 // Re-export types and parser helpers only used by tests (via `use super::*`)
 #[cfg(test)]
 pub(crate) use parser::{parse_usage_text, value_to_text};
@@ -36,6 +38,10 @@ pub struct StreamProcessor {
     pub result_errors: Vec<String>,
     /// Optional error subtype from the result message
     pub result_subtype: Option<String>,
+    /// Usage accumulated across already-finalized turns in this run.
+    finalized_usage: AgentRunUsage,
+    /// Usage currently accumulating for the in-flight turn.
+    current_turn_usage: AgentRunUsage,
 
     // Internal state for partial tool calls
     current_tool_name: String,
@@ -95,6 +101,11 @@ impl StreamProcessor {
         let mut events = Vec::new();
 
         match msg {
+            StreamMessage::MessageDelta { usage, .. } => {
+                if let Some(usage) = usage.as_ref() {
+                    update_turn_usage_from_value(&mut self.current_turn_usage, usage);
+                }
+            }
             StreamMessage::ContentBlockStart { content_block, .. } => {
                 if content_block.block_type == "tool_use" {
                     // Flush any accumulated text before starting tool call
@@ -217,8 +228,13 @@ impl StreamProcessor {
                 is_error,
                 errors,
                 subtype,
+                cost_usd,
                 ..
             } => {
+                if cost_usd > 0.0 {
+                    self.current_turn_usage.estimated_usd =
+                        Some(self.current_turn_usage.estimated_usd.unwrap_or(0.0) + cost_usd);
+                }
                 // Only capture session_id from top-level (lead's own) result events.
                 // Teammate result events carry a non-None parent_tool_use_id; capturing
                 // their session_id would overwrite the lead's session and cause --resume
@@ -252,6 +268,9 @@ impl StreamProcessor {
                 message,
                 session_id,
             } => {
+                if let Some(usage) = message.usage.as_ref() {
+                    update_turn_usage_from_value(&mut self.current_turn_usage, usage);
+                }
                 // Handle --verbose mode assistant messages (full content in one message)
                 for content in message.content {
                     match content {
@@ -531,6 +550,8 @@ impl StreamProcessor {
         self.result_is_error = false;
         self.result_errors.clear();
         self.result_subtype = None;
+        accumulate_usage(&mut self.finalized_usage, &self.current_turn_usage);
+        self.current_turn_usage = AgentRunUsage::default();
     }
 
     /// Get the final result after stream is complete
@@ -547,10 +568,88 @@ impl StreamProcessor {
             tool_calls: self.tool_calls,
             content_blocks: self.content_blocks,
             session_id: self.session_id,
+            usage: combined_usage(&self.finalized_usage, &self.current_turn_usage),
             is_error: self.result_is_error,
             errors: self.result_errors,
             error_subtype: self.result_subtype,
         }
+    }
+}
+
+fn usage_value_as_u64(usage: &serde_json::Value, key: &str) -> Option<u64> {
+    usage.get(key).and_then(|value| value.as_u64())
+}
+
+fn update_turn_usage_from_value(target: &mut AgentRunUsage, usage: &serde_json::Value) {
+    update_max_usage_field(
+        &mut target.input_tokens,
+        usage_value_as_u64(usage, "input_tokens"),
+    );
+    update_max_usage_field(
+        &mut target.output_tokens,
+        usage_value_as_u64(usage, "output_tokens"),
+    );
+    update_max_usage_field(
+        &mut target.cache_creation_tokens,
+        usage_value_as_u64(usage, "cache_creation_input_tokens")
+            .or_else(|| usage_value_as_u64(usage, "cache_creation_tokens")),
+    );
+    update_max_usage_field(
+        &mut target.cache_read_tokens,
+        usage_value_as_u64(usage, "cache_read_input_tokens")
+            .or_else(|| usage_value_as_u64(usage, "cache_read_tokens"))
+            .or_else(|| usage_value_as_u64(usage, "cached_input_tokens")),
+    );
+}
+
+fn update_max_usage_field(target: &mut Option<u64>, next: Option<u64>) {
+    if let Some(value) = next {
+        if value > target.unwrap_or(0) {
+            *target = Some(value);
+        }
+    }
+}
+
+fn add_optional_u64(lhs: Option<u64>, rhs: Option<u64>) -> Option<u64> {
+    match (lhs, rhs) {
+        (Some(left), Some(right)) => Some(left + right),
+        (Some(left), None) => Some(left),
+        (None, Some(right)) => Some(right),
+        (None, None) => None,
+    }
+}
+
+fn add_optional_f64(lhs: Option<f64>, rhs: Option<f64>) -> Option<f64> {
+    match (lhs, rhs) {
+        (Some(left), Some(right)) => Some(left + right),
+        (Some(left), None) => Some(left),
+        (None, Some(right)) => Some(right),
+        (None, None) => None,
+    }
+}
+
+fn accumulate_usage(total: &mut AgentRunUsage, turn: &AgentRunUsage) {
+    total.input_tokens = add_optional_u64(total.input_tokens, turn.input_tokens);
+    total.output_tokens = add_optional_u64(total.output_tokens, turn.output_tokens);
+    total.cache_creation_tokens =
+        add_optional_u64(total.cache_creation_tokens, turn.cache_creation_tokens);
+    total.cache_read_tokens = add_optional_u64(total.cache_read_tokens, turn.cache_read_tokens);
+    total.estimated_usd = add_optional_f64(total.estimated_usd, turn.estimated_usd);
+}
+
+fn combined_usage(finalized: &AgentRunUsage, current_turn: &AgentRunUsage) -> AgentRunUsage {
+    AgentRunUsage {
+        input_tokens: add_optional_u64(finalized.input_tokens, current_turn.input_tokens),
+        output_tokens: add_optional_u64(finalized.output_tokens, current_turn.output_tokens),
+        cache_creation_tokens: add_optional_u64(
+            finalized.cache_creation_tokens,
+            current_turn.cache_creation_tokens,
+        ),
+        cache_read_tokens: add_optional_u64(
+            finalized.cache_read_tokens,
+            current_turn.cache_read_tokens,
+        ),
+        estimated_usd: add_optional_f64(finalized.estimated_usd, current_turn.estimated_usd),
     }
 }
 

@@ -156,3 +156,47 @@ pub fn extract_codex_usage(event: &CodexStreamEvent) -> Option<CodexUsage> {
 
     event.usage.clone()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_codex_usage_ignores_non_turn_completed_events() {
+        let event = CodexStreamEvent {
+            event_type: "item.completed".to_string(),
+            thread_id: None,
+            item: None,
+            usage: Some(CodexUsage {
+                input_tokens: Some(10),
+                cached_input_tokens: Some(3),
+                output_tokens: Some(5),
+            }),
+        };
+
+        assert_eq!(extract_codex_usage(&event), None);
+    }
+
+    #[test]
+    fn extract_codex_usage_returns_turn_usage() {
+        let event = CodexStreamEvent {
+            event_type: "turn.completed".to_string(),
+            thread_id: Some("thread-123".to_string()),
+            item: None,
+            usage: Some(CodexUsage {
+                input_tokens: Some(101),
+                cached_input_tokens: Some(22),
+                output_tokens: Some(33),
+            }),
+        };
+
+        assert_eq!(
+            extract_codex_usage(&event),
+            Some(CodexUsage {
+                input_tokens: Some(101),
+                cached_input_tokens: Some(22),
+                output_tokens: Some(33),
+            })
+        );
+    }
+}

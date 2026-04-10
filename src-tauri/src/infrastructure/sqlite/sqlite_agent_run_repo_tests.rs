@@ -1,6 +1,6 @@
 use super::*;
 use crate::domain::agents::{AgentHarnessKind, LogicalEffort, ProviderSessionRef};
-use crate::domain::entities::IdeationSessionId;
+use crate::domain::entities::{AgentRunUsage, IdeationSessionId};
 use crate::testing::SqliteTestDb;
 
 fn setup_repo() -> (SqliteTestDb, SqliteAgentRunRepository) {
@@ -228,6 +228,36 @@ async fn test_get_by_id_not_found() {
 
     let fake_id = AgentRunId::from_string("nonexistent-id".to_string());
     assert!(repo.get_by_id(&fake_id).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn test_update_usage_persists_fields() {
+    let (db, repo) = setup_repo();
+    let conv = db.seed_ideation_conversation();
+
+    let run = AgentRun::new(conv.id);
+    let run_id = run.id;
+    repo.create(run).await.unwrap();
+
+    repo.update_usage(
+        &run_id,
+        &AgentRunUsage {
+            input_tokens: Some(77),
+            output_tokens: Some(31),
+            cache_creation_tokens: Some(9),
+            cache_read_tokens: Some(18),
+            estimated_usd: Some(0.0042),
+        },
+    )
+    .await
+    .unwrap();
+
+    let retrieved = repo.get_by_id(&run_id).await.unwrap().unwrap();
+    assert_eq!(retrieved.input_tokens, Some(77));
+    assert_eq!(retrieved.output_tokens, Some(31));
+    assert_eq!(retrieved.cache_creation_tokens, Some(9));
+    assert_eq!(retrieved.cache_read_tokens, Some(18));
+    assert_eq!(retrieved.estimated_usd, Some(0.0042));
 }
 
 // ─── get_latest / get_active ─────────────────────────────────────────────────

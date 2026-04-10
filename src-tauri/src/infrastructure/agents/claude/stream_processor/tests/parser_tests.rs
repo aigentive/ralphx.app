@@ -69,7 +69,7 @@ fn test_parse_result() {
 
 #[test]
 fn test_parse_assistant_message() {
-    let line = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Hello world"}],"stop_reason":"end_turn"},"session_id":"sess-123"}"#;
+    let line = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Hello world"}],"stop_reason":"end_turn","usage":{"input_tokens":123,"output_tokens":45,"cache_read_input_tokens":67}},"session_id":"sess-123"}"#;
     let parsed = StreamProcessor::parse_line(line);
 
     let parsed = parsed.expect("Expected Some(ParsedLine)");
@@ -86,6 +86,14 @@ fn test_parse_assistant_message() {
     };
     assert_eq!(session_id, Some("sess-123".to_string()));
     assert_eq!(message.content.len(), 1);
+    assert_eq!(
+        message
+            .usage
+            .as_ref()
+            .and_then(|usage| usage.get("input_tokens"))
+            .and_then(|value| value.as_u64()),
+        Some(123)
+    );
     assert!(
         matches!(&message.content[0], AssistantContent::Text { .. }),
         "Expected Text content, got different variant"

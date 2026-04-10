@@ -121,6 +121,30 @@ impl AgentRunStatus {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct AgentRunUsage {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_creation_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_usd: Option<f64>,
+}
+
+impl AgentRunUsage {
+    pub fn is_empty(&self) -> bool {
+        self.input_tokens.is_none()
+            && self.output_tokens.is_none()
+            && self.cache_creation_tokens.is_none()
+            && self.cache_read_tokens.is_none()
+            && self.estimated_usd.is_none()
+    }
+}
+
 /// An agent run tracks the execution of a Claude agent for a conversation
 ///
 /// This enables:
@@ -268,6 +292,24 @@ impl AgentRun {
         self.status = AgentRunStatus::Cancelled;
         self.completed_at = Some(Utc::now());
         self.error_message = None;
+    }
+
+    pub fn apply_usage(&mut self, usage: &AgentRunUsage) {
+        if let Some(value) = usage.input_tokens {
+            self.input_tokens = Some(value);
+        }
+        if let Some(value) = usage.output_tokens {
+            self.output_tokens = Some(value);
+        }
+        if let Some(value) = usage.cache_creation_tokens {
+            self.cache_creation_tokens = Some(value);
+        }
+        if let Some(value) = usage.cache_read_tokens {
+            self.cache_read_tokens = Some(value);
+        }
+        if let Some(value) = usage.estimated_usd {
+            self.estimated_usd = Some(value);
+        }
     }
 
     /// Get the duration of the run (if completed)

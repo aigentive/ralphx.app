@@ -3,6 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::domain::entities::AgentRunUsage;
+
 // ============================================================================
 // Stream Message Types (from Claude CLI stream-json output)
 // ============================================================================
@@ -108,6 +110,8 @@ pub struct AssistantMessage {
     pub content: Vec<AssistantContent>,
     #[serde(default)]
     pub stop_reason: Option<String>,
+    #[serde(default)]
+    pub usage: Option<serde_json::Value>,
 }
 
 /// Content block in assistant message
@@ -327,6 +331,7 @@ pub struct StreamResult {
     /// Content blocks in order (text and tool calls interleaved)
     pub content_blocks: Vec<ContentBlockItem>,
     pub session_id: Option<String>,
+    pub usage: AgentRunUsage,
     pub is_error: bool,
     pub errors: Vec<String>,
     pub error_subtype: Option<String>,

@@ -206,6 +206,7 @@ fn test_task_completed_injects_stats_into_tool_call() {
                 }),
             }],
             stop_reason: None,
+            usage: None,
         },
         session_id: None,
     });

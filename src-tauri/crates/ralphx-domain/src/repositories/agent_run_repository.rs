@@ -6,7 +6,8 @@
 use async_trait::async_trait;
 
 use crate::domain::entities::{
-    AgentRun, AgentRunId, AgentRunStatus, ChatConversationId, InterruptedConversation,
+    AgentRun, AgentRunId, AgentRunStatus, AgentRunUsage, ChatConversationId,
+    InterruptedConversation,
 };
 use crate::error::AppResult;
 
@@ -40,6 +41,9 @@ pub trait AgentRunRepository: Send + Sync {
 
     /// Update run status
     async fn update_status(&self, id: &AgentRunId, status: AgentRunStatus) -> AppResult<()>;
+
+    /// Persist usage/cost metadata for a run without changing its lifecycle status.
+    async fn update_usage(&self, id: &AgentRunId, usage: &AgentRunUsage) -> AppResult<()>;
 
     /// Complete a run (set status to Completed and completed_at timestamp)
     async fn complete(&self, id: &AgentRunId) -> AppResult<()>;

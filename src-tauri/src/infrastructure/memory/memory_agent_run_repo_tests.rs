@@ -1,5 +1,6 @@
 use super::*;
 use crate::domain::agents::{AgentHarnessKind, LogicalEffort};
+use crate::domain::entities::AgentRunUsage;
 
 #[tokio::test]
 async fn test_create_and_get() {
@@ -59,6 +60,35 @@ async fn test_complete() {
     let retrieved = repo.get_by_id(&id).await.unwrap().unwrap();
     assert_eq!(retrieved.status, AgentRunStatus::Completed);
     assert!(retrieved.completed_at.is_some());
+}
+
+#[tokio::test]
+async fn test_update_usage() {
+    let repo = MemoryAgentRunRepository::new();
+    let conversation_id = ChatConversationId::new();
+    let run = AgentRun::new(conversation_id);
+    let id = run.id;
+
+    repo.create(run).await.unwrap();
+    repo.update_usage(
+        &id,
+        &AgentRunUsage {
+            input_tokens: Some(50),
+            output_tokens: Some(20),
+            cache_creation_tokens: Some(5),
+            cache_read_tokens: Some(10),
+            estimated_usd: Some(0.0035),
+        },
+    )
+    .await
+    .unwrap();
+
+    let retrieved = repo.get_by_id(&id).await.unwrap().unwrap();
+    assert_eq!(retrieved.input_tokens, Some(50));
+    assert_eq!(retrieved.output_tokens, Some(20));
+    assert_eq!(retrieved.cache_creation_tokens, Some(5));
+    assert_eq!(retrieved.cache_read_tokens, Some(10));
+    assert_eq!(retrieved.estimated_usd, Some(0.0035));
 }
 
 #[tokio::test]

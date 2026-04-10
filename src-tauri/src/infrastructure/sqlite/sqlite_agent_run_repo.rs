@@ -26,7 +26,7 @@ fn parse_datetime(s: &str) -> DateTime<Utc> {
 }
 
 use crate::domain::entities::{
-    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, ChatConversation,
+    AgentRun, AgentRunId, AgentRunStatus, AgentRunUsage, ChatContextType, ChatConversation,
     ChatConversationId, InterruptedConversation,
 };
 
@@ -227,6 +227,33 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                 conn.execute(
                     "UPDATE agent_runs SET status = ?1 WHERE id = ?2",
                     rusqlite::params![status_str, id],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn update_usage(&self, id: &AgentRunId, usage: &AgentRunUsage) -> AppResult<()> {
+        let id = id.as_str().to_string();
+        let usage = usage.clone();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE agent_runs
+                     SET input_tokens = COALESCE(?1, input_tokens),
+                         output_tokens = COALESCE(?2, output_tokens),
+                         cache_creation_tokens = COALESCE(?3, cache_creation_tokens),
+                         cache_read_tokens = COALESCE(?4, cache_read_tokens),
+                         estimated_usd = COALESCE(?5, estimated_usd)
+                     WHERE id = ?6",
+                    rusqlite::params![
+                        usage.input_tokens,
+                        usage.output_tokens,
+                        usage.cache_creation_tokens,
+                        usage.cache_read_tokens,
+                        usage.estimated_usd,
+                        id,
+                    ],
                 )?;
                 Ok(())
             })

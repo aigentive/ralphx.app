@@ -17,8 +17,8 @@ use crate::domain::agents::{
     standard_harness_behavior, AgentHarnessKind, HarnessStreamMode, ProviderSessionRef,
 };
 use crate::domain::entities::{
-    ActivityEvent, ActivityEventType, AgentRunId, ChatContextType, ChatConversationId,
-    ChatMessageId, TaskId,
+    ActivityEvent, ActivityEventType, AgentRunId, AgentRunUsage, ChatContextType,
+    ChatConversationId, ChatMessageId, TaskId,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatConversationRepository,
@@ -31,7 +31,7 @@ use crate::infrastructure::agents::claude::{
 };
 use crate::infrastructure::agents::{
     extract_codex_agent_message, extract_codex_command_execution, extract_codex_error_message,
-    extract_codex_thread_id, extract_codex_tool_call, parse_codex_event_line,
+    extract_codex_thread_id, extract_codex_tool_call, extract_codex_usage, parse_codex_event_line,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -156,6 +156,37 @@ async fn flush_content_before_error(
     }
 }
 
+async fn persist_agent_run_usage(
+    agent_run_repo: &Option<Arc<dyn AgentRunRepository>>,
+    agent_run_id: &Option<String>,
+    usage: &AgentRunUsage,
+) {
+    if usage.is_empty() {
+        return;
+    }
+
+    if let (Some(repo), Some(run_id)) = (agent_run_repo.as_ref(), agent_run_id.as_ref()) {
+        let _ = repo
+            .update_usage(&AgentRunId::from_string(run_id.clone()), usage)
+            .await;
+    }
+}
+
+fn add_usage_u64(total: &mut Option<u64>, value: Option<u64>) {
+    if let Some(value) = value {
+        *total = Some(total.unwrap_or(0) + value);
+    }
+}
+
+fn accumulate_codex_usage(
+    total: &mut AgentRunUsage,
+    usage: crate::infrastructure::agents::CodexUsage,
+) {
+    add_usage_u64(&mut total.input_tokens, usage.input_tokens);
+    add_usage_u64(&mut total.cache_read_tokens, usage.cached_input_tokens);
+    add_usage_u64(&mut total.output_tokens, usage.output_tokens);
+}
+
 /// Per-context-type timeout thresholds for stream processing.
 ///
 /// Different agent contexts have different expected run durations.
@@ -217,6 +248,7 @@ pub struct StreamOutcome {
     pub tool_calls: Vec<ToolCall>,
     pub content_blocks: Vec<ContentBlockItem>,
     pub session_id: Option<String>,
+    pub usage: AgentRunUsage,
     pub stderr_text: String,
     /// Number of turns fully finalized during interactive streaming
     /// (via `TurnComplete` events). When > 0 and `response_text` is empty,
@@ -1959,6 +1991,7 @@ pub async fn process_stream_background<R: Runtime>(
         tool_calls: result.tool_calls,
         content_blocks: result.content_blocks,
         session_id: result.session_id,
+        usage: result.usage,
         stderr_text: stderr_content,
         turns_finalized,
         execution_slot_held,
@@ -1974,6 +2007,7 @@ pub async fn process_stream_background<R: Runtime>(
         &outcome.content_blocks,
     )
     .await;
+    persist_agent_run_usage(&agent_run_repo, &agent_run_id, &outcome.usage).await;
 
     // Check if cancellation was requested during/after stream processing.
     // Fixes race where EOF from killed process wins the tokio::select! over
@@ -2113,8 +2147,8 @@ async fn process_codex_stream_background<R: Runtime>(
     cancellation_token: CancellationToken,
     streaming_state_cache: StreamingStateCache,
     running_agent_registry: Option<Arc<dyn RunningAgentRegistry>>,
-    _agent_run_repo: Option<Arc<dyn AgentRunRepository>>,
-    _agent_run_id: Option<String>,
+    agent_run_repo: Option<Arc<dyn AgentRunRepository>>,
+    agent_run_id: Option<String>,
     _execution_state: Option<Arc<crate::commands::ExecutionState>>,
     conversation_repo: Option<Arc<dyn ChatConversationRepository>>,
 ) -> Result<StreamOutcome, StreamError> {
@@ -2167,6 +2201,7 @@ async fn process_codex_stream_background<R: Runtime>(
     let content_blocks = Vec::<ContentBlockItem>::new();
     let mut errors = Vec::<String>::new();
     let mut session_id: Option<String> = None;
+    let mut usage = AgentRunUsage::default();
     let mut lines_seen = 0usize;
     let mut lines_parsed = 0usize;
     let mut stream_seq = 0u64;
@@ -2368,6 +2403,10 @@ async fn process_codex_stream_background<R: Runtime>(
             if let Some(error) = extract_codex_error_message(&event) {
                 errors.push(error);
             }
+
+            if let Some(event_usage) = extract_codex_usage(&event) {
+                accumulate_codex_usage(&mut usage, event_usage);
+            }
         } else if lines_seen > 0 && last_parsed_at.elapsed() >= timeout_config.parse_stall_timeout {
             let _ = child.kill().await;
             flush_content_before_error(
@@ -2424,6 +2463,7 @@ async fn process_codex_stream_background<R: Runtime>(
         tool_calls,
         content_blocks,
         session_id: session_id.clone(),
+        usage,
         stderr_text: stderr_content.clone(),
         turns_finalized: 0,
         execution_slot_held: true,
@@ -2438,6 +2478,7 @@ async fn process_codex_stream_background<R: Runtime>(
         &outcome.content_blocks,
     )
     .await;
+    persist_agent_run_usage(&agent_run_repo, &agent_run_id, &outcome.usage).await;
 
     if !errors.is_empty() {
         let error_message = errors.join("; ");

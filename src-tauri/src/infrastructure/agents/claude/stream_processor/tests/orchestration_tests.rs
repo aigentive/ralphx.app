@@ -49,6 +49,7 @@ fn test_processor_assistant_message() {
                 },
             ],
             stop_reason: Some("end_turn".to_string()),
+            usage: None,
         },
         session_id: Some("session-abc".to_string()),
     };
@@ -94,6 +95,95 @@ fn test_processor_session_id_from_result() {
 
     let result = processor.finish();
     assert_eq!(result.session_id, Some("result-session".to_string()));
+}
+
+#[test]
+fn test_processor_collects_usage_from_assistant_and_result() {
+    let mut processor = StreamProcessor::new();
+
+    let assistant = StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "Usage-bearing response".to_string(),
+            }],
+            stop_reason: Some("end_turn".to_string()),
+            usage: Some(serde_json::json!({
+                "input_tokens": 1200,
+                "output_tokens": 340,
+                "cache_creation_input_tokens": 50,
+                "cache_read_input_tokens": 210
+            })),
+        },
+        session_id: Some("usage-session".to_string()),
+    };
+    processor.process_message(assistant);
+
+    processor.process_message(StreamMessage::Result {
+        result: Some("done".to_string()),
+        session_id: Some("usage-session".to_string()),
+        is_error: false,
+        errors: Vec::new(),
+        subtype: None,
+        cost_usd: 0.0125,
+    });
+
+    let result = processor.finish();
+    assert_eq!(result.usage.input_tokens, Some(1200));
+    assert_eq!(result.usage.output_tokens, Some(340));
+    assert_eq!(result.usage.cache_creation_tokens, Some(50));
+    assert_eq!(result.usage.cache_read_tokens, Some(210));
+    assert_eq!(result.usage.estimated_usd, Some(0.0125));
+}
+
+#[test]
+fn test_processor_usage_accumulates_across_turns() {
+    let mut processor = StreamProcessor::new();
+
+    processor.process_message(StreamMessage::MessageDelta {
+        delta: None,
+        usage: Some(serde_json::json!({
+            "input_tokens": 100,
+            "output_tokens": 25
+        })),
+    });
+    processor.process_message(StreamMessage::Result {
+        result: Some("turn 1".to_string()),
+        session_id: Some("session-1".to_string()),
+        is_error: false,
+        errors: Vec::new(),
+        subtype: None,
+        cost_usd: 0.001,
+    });
+    processor.reset_for_next_turn();
+
+    processor.process_message(StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "turn 2".to_string(),
+            }],
+            stop_reason: Some("end_turn".to_string()),
+            usage: Some(serde_json::json!({
+                "input_tokens": 50,
+                "output_tokens": 10,
+                "cached_input_tokens": 30
+            })),
+        },
+        session_id: Some("session-1".to_string()),
+    });
+    processor.process_message(StreamMessage::Result {
+        result: Some("turn 2".to_string()),
+        session_id: Some("session-1".to_string()),
+        is_error: false,
+        errors: Vec::new(),
+        subtype: None,
+        cost_usd: 0.002,
+    });
+
+    let result = processor.finish();
+    assert_eq!(result.usage.input_tokens, Some(150));
+    assert_eq!(result.usage.output_tokens, Some(35));
+    assert_eq!(result.usage.cache_read_tokens, Some(30));
+    assert_eq!(result.usage.estimated_usd, Some(0.003));
 }
 
 #[test]
@@ -164,6 +254,7 @@ fn test_processor_thinking_block_verbose() {
                 },
             ],
             stop_reason: Some("end_turn".to_string()),
+            usage: None,
         },
         session_id: Some("sess-456".to_string()),
     };
@@ -218,6 +309,7 @@ fn test_verbose_mode_no_double_emission() {
                 text: "Hello world".to_string(),
             }],
             stop_reason: Some("end_turn".to_string()),
+            usage: None,
         },
         session_id: None,
     };
@@ -254,6 +346,7 @@ fn test_verbose_only_text_emission() {
                 text: "Verbose response".to_string(),
             }],
             stop_reason: Some("end_turn".to_string()),
+            usage: None,
         },
         session_id: None,
     };
@@ -291,6 +384,7 @@ fn test_task_continuation_synthesis_text_not_dropped() {
                 text: "Good call, spawning subagent...".to_string(),
             }],
             stop_reason: Some("tool_use".to_string()),
+            usage: None,
         },
         session_id: None,
     };
@@ -302,6 +396,7 @@ fn test_task_continuation_synthesis_text_not_dropped() {
                 text: "Confirmed: dead code removed successfully.".to_string(),
             }],
             stop_reason: Some("end_turn".to_string()),
+            usage: None,
         },
         session_id: None,
     };
@@ -361,6 +456,7 @@ fn test_streaming_deltas_dedup_still_works() {
                 text: "Hello world".to_string(),
             }],
             stop_reason: Some("end_turn".to_string()),
+            usage: None,
         },
         session_id: None,
     };
@@ -397,6 +493,7 @@ fn test_three_api_calls_all_text_accumulated() {
                 text: "Step one: planning.".to_string(),
             }],
             stop_reason: Some("tool_use".to_string()),
+            usage: None,
         },
         session_id: None,
     };
@@ -408,6 +505,7 @@ fn test_three_api_calls_all_text_accumulated() {
                 text: "Step two: executing.".to_string(),
             }],
             stop_reason: Some("tool_use".to_string()),
+            usage: None,
         },
         session_id: None,
     };
@@ -419,6 +517,7 @@ fn test_three_api_calls_all_text_accumulated() {
                 text: "Step three: done.".to_string(),
             }],
             stop_reason: Some("end_turn".to_string()),
+            usage: None,
         },
         session_id: None,
     };
@@ -480,6 +579,7 @@ fn test_text_plus_tool_use_then_synthesis_text_not_dropped() {
                     }),
                 },
             ],
+            usage: None,
             stop_reason: Some("tool_use".to_string()),
         },
         session_id: None,
@@ -492,6 +592,7 @@ fn test_text_plus_tool_use_then_synthesis_text_not_dropped() {
                 text: "Found 3 unused functions.".to_string(),
             }],
             stop_reason: Some("end_turn".to_string()),
+            usage: None,
         },
         session_id: None,
     };
@@ -551,6 +652,7 @@ fn test_had_streaming_text_deltas_resets_across_turns() {
                 text: "streamed text".to_string(),
             }],
             stop_reason: Some("end_turn".to_string()),
+            usage: None,
         },
         session_id: None,
     };
@@ -574,6 +676,7 @@ fn test_had_streaming_text_deltas_resets_across_turns() {
                 text: "Turn two result.".to_string(),
             }],
             stop_reason: Some("end_turn".to_string()),
+            usage: None,
         },
         session_id: None,
     };
@@ -616,6 +719,7 @@ fn test_empty_text_in_second_api_call_handled_gracefully() {
                 text: "First call.".to_string(),
             }],
             stop_reason: Some("tool_use".to_string()),
+            usage: None,
         },
         session_id: None,
     };
@@ -627,6 +731,7 @@ fn test_empty_text_in_second_api_call_handled_gracefully() {
                 text: String::new(),
             }],
             stop_reason: Some("end_turn".to_string()),
+            usage: None,
         },
         session_id: None,
     };
@@ -714,6 +819,7 @@ fn test_streaming_mode_assumption_documented() {
                 text: "streamed".to_string(),
             }],
             stop_reason: Some("end_turn".to_string()),
+            usage: None,
         },
         session_id: None,
     };
