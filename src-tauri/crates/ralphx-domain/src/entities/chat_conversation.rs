@@ -115,6 +115,57 @@ impl std::str::FromStr for ChatContextType {
     }
 }
 
+/// Status of historical attribution backfill for a conversation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AttributionBackfillStatus {
+    Pending,
+    Running,
+    Completed,
+    Partial,
+    SessionNotFound,
+    ParseFailed,
+}
+
+impl fmt::Display for AttributionBackfillStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AttributionBackfillStatus::Pending => write!(f, "pending"),
+            AttributionBackfillStatus::Running => write!(f, "running"),
+            AttributionBackfillStatus::Completed => write!(f, "completed"),
+            AttributionBackfillStatus::Partial => write!(f, "partial"),
+            AttributionBackfillStatus::SessionNotFound => write!(f, "session_not_found"),
+            AttributionBackfillStatus::ParseFailed => write!(f, "parse_failed"),
+        }
+    }
+}
+
+impl std::str::FromStr for AttributionBackfillStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pending" => Ok(AttributionBackfillStatus::Pending),
+            "running" => Ok(AttributionBackfillStatus::Running),
+            "completed" => Ok(AttributionBackfillStatus::Completed),
+            "partial" => Ok(AttributionBackfillStatus::Partial),
+            "session_not_found" => Ok(AttributionBackfillStatus::SessionNotFound),
+            "parse_failed" => Ok(AttributionBackfillStatus::ParseFailed),
+            _ => Err(format!("Invalid attribution backfill status: {}", s)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ConversationAttributionBackfillState {
+    pub status: Option<AttributionBackfillStatus>,
+    pub source: Option<String>,
+    pub source_path: Option<String>,
+    pub last_attempted_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub error_summary: Option<String>,
+}
+
 /// A chat conversation linked to a context (ideation session, task, or project)
 ///
 /// Multiple conversations can exist per context to support conversation history.
@@ -148,6 +199,13 @@ pub struct ChatConversation {
     /// ID of the prior execution's conversation (for TaskExecution re-runs only).
     /// Enables UI navigation between execution generations.
     pub parent_conversation_id: Option<String>,
+    /// Historical attribution backfill state for compatibility imports.
+    pub attribution_backfill_status: Option<AttributionBackfillStatus>,
+    pub attribution_backfill_source: Option<String>,
+    pub attribution_backfill_source_path: Option<String>,
+    pub attribution_backfill_last_attempted_at: Option<DateTime<Utc>>,
+    pub attribution_backfill_completed_at: Option<DateTime<Utc>>,
+    pub attribution_backfill_error_summary: Option<String>,
 }
 
 impl ChatConversation {
@@ -167,6 +225,12 @@ impl ChatConversation {
             created_at: now,
             updated_at: now,
             parent_conversation_id: None,
+            attribution_backfill_status: None,
+            attribution_backfill_source: None,
+            attribution_backfill_source_path: None,
+            attribution_backfill_last_attempted_at: None,
+            attribution_backfill_completed_at: None,
+            attribution_backfill_error_summary: None,
         }
     }
 
@@ -186,6 +250,12 @@ impl ChatConversation {
             created_at: now,
             updated_at: now,
             parent_conversation_id: None,
+            attribution_backfill_status: None,
+            attribution_backfill_source: None,
+            attribution_backfill_source_path: None,
+            attribution_backfill_last_attempted_at: None,
+            attribution_backfill_completed_at: None,
+            attribution_backfill_error_summary: None,
         }
     }
 
@@ -205,6 +275,12 @@ impl ChatConversation {
             created_at: now,
             updated_at: now,
             parent_conversation_id: None,
+            attribution_backfill_status: None,
+            attribution_backfill_source: None,
+            attribution_backfill_source_path: None,
+            attribution_backfill_last_attempted_at: None,
+            attribution_backfill_completed_at: None,
+            attribution_backfill_error_summary: None,
         }
     }
 
@@ -225,6 +301,12 @@ impl ChatConversation {
             created_at: now,
             updated_at: now,
             parent_conversation_id: None,
+            attribution_backfill_status: None,
+            attribution_backfill_source: None,
+            attribution_backfill_source_path: None,
+            attribution_backfill_last_attempted_at: None,
+            attribution_backfill_completed_at: None,
+            attribution_backfill_error_summary: None,
         }
     }
 
@@ -244,6 +326,12 @@ impl ChatConversation {
             created_at: now,
             updated_at: now,
             parent_conversation_id: None,
+            attribution_backfill_status: None,
+            attribution_backfill_source: None,
+            attribution_backfill_source_path: None,
+            attribution_backfill_last_attempted_at: None,
+            attribution_backfill_completed_at: None,
+            attribution_backfill_error_summary: None,
         }
     }
 
@@ -263,7 +351,26 @@ impl ChatConversation {
             created_at: now,
             updated_at: now,
             parent_conversation_id: None,
+            attribution_backfill_status: None,
+            attribution_backfill_source: None,
+            attribution_backfill_source_path: None,
+            attribution_backfill_last_attempted_at: None,
+            attribution_backfill_completed_at: None,
+            attribution_backfill_error_summary: None,
         }
+    }
+
+    pub fn update_attribution_backfill_state(
+        &mut self,
+        state: ConversationAttributionBackfillState,
+    ) {
+        self.attribution_backfill_status = state.status;
+        self.attribution_backfill_source = state.source;
+        self.attribution_backfill_source_path = state.source_path;
+        self.attribution_backfill_last_attempted_at = state.last_attempted_at;
+        self.attribution_backfill_completed_at = state.completed_at;
+        self.attribution_backfill_error_summary = state.error_summary;
+        self.updated_at = Utc::now();
     }
 
     /// Update the canonical provider session reference.

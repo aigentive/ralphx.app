@@ -6,7 +6,9 @@ use std::collections::HashMap;
 use tokio::sync::RwLock;
 
 use crate::domain::agents::ProviderSessionRef;
-use crate::domain::entities::{ChatContextType, ChatConversation, ChatConversationId};
+use crate::domain::entities::{
+    ChatContextType, ChatConversation, ChatConversationId, ConversationAttributionBackfillState,
+};
 use crate::domain::repositories::ChatConversationRepository;
 use crate::error::AppResult;
 
@@ -109,6 +111,41 @@ impl ChatConversationRepository for MemoryChatConversationRepository {
             conv.message_count = message_count;
             conv.last_message_at = Some(last_message_at);
             conv.updated_at = Utc::now();
+        }
+        Ok(())
+    }
+
+    async fn list_needing_attribution_backfill(
+        &self,
+        limit: u32,
+    ) -> AppResult<Vec<ChatConversation>> {
+        let convos = self.conversations.read().await;
+        let mut filtered: Vec<ChatConversation> = convos
+            .values()
+            .filter(|conversation| {
+                conversation.claude_session_id.is_some()
+                    && !matches!(
+                        conversation.attribution_backfill_status,
+                        Some(crate::domain::entities::AttributionBackfillStatus::Completed)
+                            | Some(crate::domain::entities::AttributionBackfillStatus::Running)
+                    )
+            })
+            .cloned()
+            .collect();
+        filtered.sort_by_key(|conversation| conversation.updated_at);
+        filtered.reverse();
+        filtered.truncate(limit as usize);
+        Ok(filtered)
+    }
+
+    async fn update_attribution_backfill_state(
+        &self,
+        id: &ChatConversationId,
+        state: ConversationAttributionBackfillState,
+    ) -> AppResult<()> {
+        let mut convos = self.conversations.write().await;
+        if let Some(conversation) = convos.get_mut(id) {
+            conversation.update_attribution_backfill_state(state);
         }
         Ok(())
     }

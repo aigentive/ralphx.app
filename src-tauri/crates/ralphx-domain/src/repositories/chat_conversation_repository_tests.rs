@@ -1,6 +1,8 @@
 use super::*;
 use crate::agents::ProviderSessionRef;
-use crate::domain::entities::{ChatContextType, ChatConversation, IdeationSessionId};
+use crate::domain::entities::{
+    ChatContextType, ChatConversation, ConversationAttributionBackfillState, IdeationSessionId,
+};
 use std::sync::Arc;
 
 // Mock implementation for testing trait object usage
@@ -77,6 +79,21 @@ impl ChatConversationRepository for MockChatConversationRepository {
         _id: &ChatConversationId,
         _message_count: i64,
         _last_message_at: chrono::DateTime<chrono::Utc>,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn list_needing_attribution_backfill(
+        &self,
+        _limit: u32,
+    ) -> AppResult<Vec<ChatConversation>> {
+        Ok(self.conversations.clone())
+    }
+
+    async fn update_attribution_backfill_state(
+        &self,
+        _id: &ChatConversationId,
+        _state: ConversationAttributionBackfillState,
     ) -> AppResult<()> {
         Ok(())
     }

@@ -384,6 +384,12 @@ impl AgentRunRepository for SqliteAgentRunRepository {
                             created_at: parse_datetime(&conv_created_at_str),
                             updated_at: parse_datetime(&conv_updated_at_str),
                             parent_conversation_id: None,
+                            attribution_backfill_status: None,
+                            attribution_backfill_source: None,
+                            attribution_backfill_source_path: None,
+                            attribution_backfill_last_attempted_at: None,
+                            attribution_backfill_completed_at: None,
+                            attribution_backfill_error_summary: None,
                         };
                         conversation.normalize_provider_session_fields();
 

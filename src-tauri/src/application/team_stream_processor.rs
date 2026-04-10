@@ -104,6 +104,12 @@ pub fn start_teammate_stream<R: Runtime>(
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                     parent_conversation_id: None,
+                    attribution_backfill_status: None,
+                    attribution_backfill_source: None,
+                    attribution_backfill_source_path: None,
+                    attribution_backfill_last_attempted_at: None,
+                    attribution_backfill_completed_at: None,
+                    attribution_backfill_error_summary: None,
                 };
                 let conv_id = conv.id;
                 match conv_repo.create(conv).await {

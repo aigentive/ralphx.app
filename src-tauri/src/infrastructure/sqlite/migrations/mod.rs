@@ -274,9 +274,12 @@ mod v20260407073000_provider_harness_metadata_tests;
 mod v20260407103000_agent_lane_settings;
 #[cfg(test)]
 mod v20260407103000_agent_lane_settings_tests;
+mod v20260410093000_chat_attribution_backfill_state;
+#[cfg(test)]
+mod v20260410093000_chat_attribution_backfill_state_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i64 = 20260407103000;
+pub const SCHEMA_VERSION: i64 = 20260410093000;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -785,6 +788,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 20260407103000,
         name: "agent_lane_settings",
         migrate: v20260407103000_agent_lane_settings::migrate,
+    },
+    Migration {
+        version: 20260410093000,
+        name: "chat_attribution_backfill_state",
+        migrate: v20260410093000_chat_attribution_backfill_state::migrate,
     },
 ];
 

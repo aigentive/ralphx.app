@@ -6,7 +6,9 @@
 use async_trait::async_trait;
 
 use crate::agents::{AgentHarnessKind, ProviderSessionRef};
-use crate::domain::entities::{ChatContextType, ChatConversation, ChatConversationId};
+use crate::domain::entities::{
+    ChatContextType, ChatConversation, ChatConversationId, ConversationAttributionBackfillState,
+};
 use crate::error::AppResult;
 
 /// Repository trait for ChatConversation persistence.
@@ -74,6 +76,20 @@ pub trait ChatConversationRepository: Send + Sync {
         id: &ChatConversationId,
         message_count: i64,
         last_message_at: chrono::DateTime<chrono::Utc>,
+    ) -> AppResult<()>;
+
+    /// List conversations backed by historical Claude sessions that still need
+    /// attribution backfill work.
+    async fn list_needing_attribution_backfill(
+        &self,
+        limit: u32,
+    ) -> AppResult<Vec<ChatConversation>>;
+
+    /// Update attribution backfill workflow state for a conversation.
+    async fn update_attribution_backfill_state(
+        &self,
+        id: &ChatConversationId,
+        state: ConversationAttributionBackfillState,
     ) -> AppResult<()>;
 
     /// Delete a conversation and all its messages

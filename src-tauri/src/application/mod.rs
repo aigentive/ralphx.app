@@ -9,6 +9,7 @@ pub mod app_state;
 pub mod ideation_harness_availability;
 pub mod apply_service;
 pub mod chat_attachment_service;
+pub mod chat_attribution_backfill_service;
 pub mod chat_resumption;
 pub mod chat_service;
 pub mod dependency_service;

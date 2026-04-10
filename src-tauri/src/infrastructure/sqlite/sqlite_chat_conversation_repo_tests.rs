@@ -29,6 +29,12 @@ fn make_conversation(context_type: ChatContextType, context_id: &str) -> ChatCon
         created_at: now,
         updated_at: now,
         parent_conversation_id: None,
+        attribution_backfill_status: None,
+        attribution_backfill_source: None,
+        attribution_backfill_source_path: None,
+        attribution_backfill_last_attempted_at: None,
+        attribution_backfill_completed_at: None,
+        attribution_backfill_error_summary: None,
     }
 }
 
@@ -73,6 +79,12 @@ async fn test_create_preserves_optional_fields() {
         created_at: now,
         updated_at: now,
         parent_conversation_id: Some(parent_id_str.clone()),
+        attribution_backfill_status: None,
+        attribution_backfill_source: None,
+        attribution_backfill_source_path: None,
+        attribution_backfill_last_attempted_at: None,
+        attribution_backfill_completed_at: None,
+        attribution_backfill_error_summary: None,
     };
 
     repo.create(conv.clone()).await.unwrap();
@@ -264,6 +276,12 @@ async fn test_clear_claude_session_id() {
         created_at: now,
         updated_at: now,
         parent_conversation_id: None,
+        attribution_backfill_status: None,
+        attribution_backfill_source: None,
+        attribution_backfill_source_path: None,
+        attribution_backfill_last_attempted_at: None,
+        attribution_backfill_completed_at: None,
+        attribution_backfill_error_summary: None,
     };
     let conv_id = conv.id.clone();
     repo.create(conv).await.unwrap();
