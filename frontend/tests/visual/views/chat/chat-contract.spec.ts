@@ -106,6 +106,7 @@ const liveProviderMessageWithUsage = {
 
 const finalizedProviderMessage = {
   ...liveProviderMessage,
+  id: "msg-provider-final-1",
   content: "I am preparing the plan now.\n\nHere is the final plan summary.",
   contentBlocks: [
     { type: "text", text: "I am preparing the plan now." },
@@ -295,6 +296,78 @@ test.describe("Chat Contract", () => {
 
     expect(firstBox?.y).toBeLessThan(widgetBox?.y ?? Number.POSITIVE_INFINITY);
     expect(widgetBox?.y).toBeLessThan(secondBox?.y ?? Number.POSITIVE_INFINITY);
+  });
+
+  test("bridges the message_created-to-refetch gap without leaking the stale provider row", async ({ page }) => {
+    await seedIdeationConversation(page, [userMessage, liveProviderMessage]);
+
+    await emitChatEvent(page, "agent:tool_call", {
+      tool_name: "ralphx::get_session_plan",
+      tool_id: "tool-session-plan-1",
+      arguments: { session_id: contextId },
+      result: { status: "ok" },
+      conversation_id: conversationId,
+      context_id: contextId,
+      context_type: "ideation",
+    });
+    await emitChatEvent(page, "agent:chunk", {
+      text: "I am preparing the plan now.",
+      conversation_id: conversationId,
+      context_id: contextId,
+    });
+
+    await expect(page.getByText("I am preparing the plan now.")).toHaveCount(1);
+    await expect(page.locator('[data-testid="ideation-widget-get-session-plan"]')).toHaveCount(1);
+
+    await emitChatEvent(page, "agent:message_created", {
+      conversation_id: conversationId,
+      context_id: contextId,
+      context_type: "ideation",
+      role: "orchestrator",
+      message_id: finalizedProviderMessage.id,
+    });
+
+    await expect(page.getByText("Hello there, this is a test message")).toBeVisible();
+    await expect(page.getByText("I am preparing the plan now.")).toHaveCount(0);
+    await expect(page.locator('[data-testid="ideation-widget-get-session-plan"]')).toHaveCount(0);
+
+    await replaceConversationMessages(page, [userMessage, finalizedProviderMessage]);
+
+    await expect(page.getByText("I am preparing the plan now.")).toHaveCount(1);
+    await expect(page.getByText("Here is the final plan summary.")).toHaveCount(1);
+    await expect(page.locator('[data-testid="ideation-widget-get-session-plan"]')).toHaveCount(1);
+  });
+
+  test("keeps the persisted live snapshot visible when a turn completes without a finalized replacement row", async ({ page }) => {
+    await seedIdeationConversation(page, [userMessage, liveProviderMessage]);
+
+    await emitChatEvent(page, "agent:tool_call", {
+      tool_name: "ralphx::get_session_plan",
+      tool_id: "tool-session-plan-1",
+      arguments: { session_id: contextId },
+      result: { status: "ok" },
+      conversation_id: conversationId,
+      context_id: contextId,
+      context_type: "ideation",
+    });
+    await emitChatEvent(page, "agent:chunk", {
+      text: "I am preparing the plan now.",
+      conversation_id: conversationId,
+      context_id: contextId,
+      context_type: "ideation",
+    });
+
+    await expect(page.getByText("I am preparing the plan now.")).toHaveCount(1);
+    await expect(page.locator('[data-testid="ideation-widget-get-session-plan"]')).toHaveCount(1);
+
+    await emitChatEvent(page, "agent:turn_completed", {
+      conversation_id: conversationId,
+      context_id: contextId,
+      context_type: "ideation",
+    });
+
+    await expect(page.getByText("I am preparing the plan now.")).toHaveCount(1);
+    await expect(page.locator('[data-testid="ideation-widget-get-session-plan"]')).toHaveCount(1);
   });
 
   test("keeps finalized widgets visible when appended raw content diverges from persisted content blocks", async ({ page }) => {

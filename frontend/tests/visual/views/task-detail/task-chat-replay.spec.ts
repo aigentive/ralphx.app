@@ -102,6 +102,7 @@ const executionLiveProviderMessage = {
 
 const executionFinalProviderMessage = {
   ...executionLiveProviderMessage,
+  id: "msg-execution-assistant-final-1",
   content: "I am reading the message renderer now.\n\nThe provider metadata row is isolated to MessageItem and remains safe to adjust.",
   contentBlocks: [
     { type: "text", text: "I am reading the message renderer now." },
@@ -223,6 +224,7 @@ const reviewLiveProviderMessage = {
 
 const reviewFinalProviderMessage = {
   ...reviewLiveProviderMessage,
+  id: "msg-review-assistant-contract-final-1",
   content: "I am completing the review now.\n\nChanges are still required before approval.",
   contentBlocks: [
     { type: "text", text: "I am completing the review now." },
@@ -343,6 +345,7 @@ const mergeLiveProviderMessage = {
 
 const mergeFinalProviderMessage = {
   ...mergeLiveProviderMessage,
+  id: "msg-merge-assistant-final-1",
   content: "I am checking the merge target now.\n\nThe target is main, and the merge conflict is isolated to src/commands/gateway.ts.",
   contentBlocks: [
     { type: "text", text: "I am checking the merge target now." },
