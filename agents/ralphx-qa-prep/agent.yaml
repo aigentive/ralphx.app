@@ -1,0 +1,3 @@
+name: ralphx-qa-prep
+role: qa_prep
+description: Generates testable acceptance criteria and browser-oriented QA steps for a task.

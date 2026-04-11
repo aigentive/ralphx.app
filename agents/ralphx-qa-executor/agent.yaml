@@ -1,0 +1,3 @@
+name: ralphx-qa-executor
+role: qa_executor
+description: Refines QA plans against the actual implementation and executes browser-based validation.

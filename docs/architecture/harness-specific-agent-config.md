@@ -336,6 +336,22 @@ Requirements for the support cohort:
 - keep both harnesses on the same prompt body unless a real harness divergence appears
 - Codex prompt tests must still reject Claude-only syntax
 
+Shared-prompt general cohort:
+- `ralphx-deep-researcher`
+- `ralphx-orchestrator`
+- `ralphx-supervisor`
+- `ralphx-qa-prep`
+- `ralphx-qa-executor`
+
+Requirements for the general cohort:
+- preserve existing Claude prompt bodies exactly through canonical `shared/prompt.md`
+- keep both harnesses on the same prompt body unless a real harness divergence appears
+- Codex prompt tests must still reject Claude-only syntax
+
+Status:
+- landed
+- the only remaining live legacy runtime prompt is `orchestrator-ideation-readonly`
+
 ## Phase 4: Specialists And Critics
 
 Migrate:
