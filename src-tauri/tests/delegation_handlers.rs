@@ -116,6 +116,9 @@ async fn test_delegate_start_creates_child_session_and_completes_with_mock_clien
         State(state),
         Json(DelegateWaitRequest {
             job_id: start.job_id.clone(),
+            include_child_status: Some(true),
+            include_messages: Some(false),
+            message_limit: None,
         }),
     )
     .await
@@ -132,6 +135,14 @@ async fn test_delegate_start_creates_child_session_and_completes_with_mock_clien
         waited.history.iter().map(|entry| entry.status.as_str()).collect::<Vec<_>>(),
         vec!["running", "completed"]
     );
+    let child_status = waited.child_status.expect("child status should be hydrated");
+    assert_eq!(child_status.session.id, waited.child_session_id);
+    assert_eq!(
+        child_status.session.parent_session_id.as_deref(),
+        Some(parent.id.as_str())
+    );
+    assert_eq!(child_status.agent_state.estimated_status, "idle");
+    assert!(child_status.recent_messages.is_none());
 
     let spawn_calls = codex_mock.get_spawn_calls().await;
     assert_eq!(spawn_calls.len(), 1);

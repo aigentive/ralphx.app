@@ -12,6 +12,7 @@ pub use acceptance::*;
 pub use dependency_analysis::*;
 pub use proposals::*;
 pub use runtime::*;
+pub(crate) use runtime::build_child_session_status_response;
 pub use verification::*;
 pub(crate) use verification::{stop_and_archive_children, stop_verification_children, ChildFilter};
 

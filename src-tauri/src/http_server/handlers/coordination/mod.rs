@@ -7,15 +7,17 @@ use crate::application::harness_runtime_registry::resolve_harness_plugin_dir;
 use crate::domain::agents::{AgentConfig, AgentRole};
 use crate::domain::entities::{ChatContextType, IdeationSessionId};
 use crate::http_server::delegation::DelegationJobSnapshot;
+use crate::http_server::handlers::ideation::build_child_session_status_response;
 use crate::http_server::handlers::session_linking::create_child_session_impl;
 use crate::http_server::types::{
-    CreateChildSessionRequest, DelegateCancelRequest, DelegateStartRequest, DelegateWaitRequest,
-    HttpServerState,
+    ChildSessionStatusParams, CreateChildSessionRequest, DelegateCancelRequest,
+    DelegateStartRequest, DelegateWaitRequest, HttpServerState,
 };
 use crate::infrastructure::agents::claude::mcp_agent_type;
 use crate::infrastructure::agents::harness_agent_catalog::{
     load_canonical_agent_definition, resolve_project_root_from_plugin_dir,
 };
+use tracing::warn;
 
 type JsonError = (StatusCode, Json<serde_json::Value>);
 
@@ -303,11 +305,32 @@ pub async fn wait_delegate(
     State(state): State<HttpServerState>,
     Json(req): Json<DelegateWaitRequest>,
 ) -> Result<Json<DelegationJobSnapshot>, JsonError> {
-    let snapshot = state
+    let mut snapshot = state
         .delegation_service
         .snapshot(&req.job_id)
         .await
         .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Delegation job not found"))?;
+    if req.include_child_status.unwrap_or(true) {
+        let params = ChildSessionStatusParams {
+            include_messages: req.include_messages,
+            message_limit: req.message_limit,
+        };
+        match build_child_session_status_response(&state, &snapshot.child_session_id, &params).await
+        {
+            Ok(child_status) => {
+                snapshot.child_status = Some(child_status);
+            }
+            Err((status, error)) => {
+                warn!(
+                    job_id = snapshot.job_id,
+                    child_session_id = snapshot.child_session_id,
+                    status = status.as_u16(),
+                    error = %error.0["error"].as_str().unwrap_or("unknown error"),
+                    "Failed to hydrate delegation child status"
+                );
+            }
+        }
+    }
     Ok(Json(snapshot))
 }
 

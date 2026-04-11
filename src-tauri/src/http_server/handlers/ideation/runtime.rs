@@ -100,6 +100,16 @@ pub async fn get_child_session_status_handler(
     Path(session_id): Path<String>,
     Query(params): Query<ChildSessionStatusParams>,
 ) -> Result<Json<ChildSessionStatusResponse>, JsonError> {
+    Ok(Json(
+        build_child_session_status_response(&state, &session_id, &params).await?,
+    ))
+}
+
+pub(crate) async fn build_child_session_status_response(
+    state: &HttpServerState,
+    session_id: &str,
+    params: &ChildSessionStatusParams,
+) -> Result<ChildSessionStatusResponse, JsonError> {
     use crate::domain::entities::ideation::{VerificationMetadata, VerificationStatus};
     use crate::domain::entities::IdeationSessionId;
     use crate::domain::services::RunningAgentKey;
@@ -109,7 +119,7 @@ pub async fn get_child_session_status_handler(
         VerificationInfo,
     };
 
-    let session_id_obj = IdeationSessionId::from_string(session_id.clone());
+    let session_id_obj = IdeationSessionId::from_string(session_id.to_string());
 
     // Step 1: Fetch session — 404 if not found
     let session = state
@@ -125,8 +135,8 @@ pub async fn get_child_session_status_handler(
 
     // Step 2: Check RunningAgentRegistry under both "session" and "ideation" keys.
     // Ideation sessions can be registered under either key depending on how they were spawned.
-    let session_key = RunningAgentKey::new("session", &session_id);
-    let ideation_key = RunningAgentKey::new("ideation", &session_id);
+    let session_key = RunningAgentKey::new("session", session_id);
+    let ideation_key = RunningAgentKey::new("ideation", session_id);
     let registry = &state.app_state.running_agent_registry;
 
     let agent_info = if let Some(info) = registry.get(&session_key).await {
@@ -251,13 +261,13 @@ pub async fn get_child_session_status_handler(
         last_effective_model: session.last_effective_model.clone(),
     };
 
-    Ok(Json(ChildSessionStatusResponse {
+    Ok(ChildSessionStatusResponse {
         session: session_summary,
         agent_state,
         verification,
         recent_messages,
         pending_initial_prompt: session.pending_initial_prompt.clone(),
-    }))
+    })
 }
 
 /// POST /api/ideation/sessions/:id/message

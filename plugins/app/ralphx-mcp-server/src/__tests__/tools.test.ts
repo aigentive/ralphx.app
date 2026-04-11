@@ -978,6 +978,13 @@ describe('delegation bridge tools', () => {
     );
   });
 
+  it('delegate_wait should support child-status hydration options', () => {
+    const tool = allTools.find((entry) => entry.name === 'delegate_wait');
+    expect(tool?.inputSchema.properties).toHaveProperty('include_child_status');
+    expect(tool?.inputSchema.properties).toHaveProperty('include_messages');
+    expect(tool?.inputSchema.properties).toHaveProperty('message_limit');
+  });
+
   it.each([ORCHESTRATOR_IDEATION, IDEATION_TEAM_LEAD, PLAN_VERIFIER])(
     '%s should expose delegation bridge tools',
     (agent) => {

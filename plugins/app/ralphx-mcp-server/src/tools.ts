@@ -613,13 +613,25 @@ export const ALL_TOOLS: Tool[] = [
   {
     name: "delegate_wait",
     description:
-      "Wait for or poll a RalphX-native delegated specialist job. Returns the current job snapshot, including terminal content or error when complete.",
+      "Wait for or poll a RalphX-native delegated specialist job. Returns the current job snapshot, including terminal content or error when complete, and can optionally include live child-session status/messages.",
     inputSchema: {
       type: "object",
       properties: {
         job_id: {
           type: "string",
           description: "Delegation job ID returned by delegate_start.",
+        },
+        include_child_status: {
+          type: "boolean",
+          description: "Whether to hydrate live child-session status into the returned snapshot. Default: true.",
+        },
+        include_messages: {
+          type: "boolean",
+          description: "Whether child_status should include recent child-session messages. Default: false.",
+        },
+        message_limit: {
+          type: "number",
+          description: "Optional message limit when include_messages is true. Clamped to 50.",
         },
       },
       required: ["job_id"],

@@ -1055,6 +1055,9 @@ pub struct DelegateStartRequest {
 #[derive(Debug, Deserialize)]
 pub struct DelegateWaitRequest {
     pub job_id: String,
+    pub include_child_status: Option<bool>,
+    pub include_messages: Option<bool>,
+    pub message_limit: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]

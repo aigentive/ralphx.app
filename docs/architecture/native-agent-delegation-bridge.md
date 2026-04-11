@@ -78,10 +78,11 @@
   - ideation parent -> child session continuity for delegated specialists
   - explicit parent turn/message lineage in request metadata, agent env, prompt context, and returned job snapshots
   - per-job status history (`running`, `completed`, `failed`, `cancelled`) on the snapshot contract
+  - `delegate_wait` hydration of live child-session status, with optional recent-message inclusion through the existing child-session status contract
 - Still required:
   - non-ideation parent contexts
   - provider-session continuity / resume
-  - richer live progress relay beyond terminal status history
+  - richer live progress relay beyond child-session snapshot hydration
   - prompt migration for specialist paths still assuming Claude-native delegation
 
 ## Non-Negotiables

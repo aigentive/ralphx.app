@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::domain::agents::{AgentHandle, AgentHarnessKind};
+use crate::http_server::types::ChildSessionStatusResponse;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DelegationHistoryEntry {
@@ -27,6 +28,7 @@ pub struct DelegationJobSnapshot {
     pub started_at: String,
     pub completed_at: Option<String>,
     pub history: Vec<DelegationHistoryEntry>,
+    pub child_status: Option<ChildSessionStatusResponse>,
 }
 
 #[derive(Debug, Clone)]
@@ -76,6 +78,7 @@ impl DelegationService {
                 timestamp: started_at,
                 detail: None,
             }],
+            child_status: None,
         };
 
         self.jobs.write().await.insert(

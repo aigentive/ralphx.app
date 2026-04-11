@@ -783,6 +783,12 @@ describe('delegation bridge tools', () => {
         expect(tool?.inputSchema.properties).toHaveProperty('parent_message_id');
         expect(tool?.inputSchema.required).toEqual(expect.arrayContaining(['parent_session_id', 'agent_name', 'prompt']));
     });
+    it('delegate_wait should support child-status hydration options', () => {
+        const tool = allTools.find((entry) => entry.name === 'delegate_wait');
+        expect(tool?.inputSchema.properties).toHaveProperty('include_child_status');
+        expect(tool?.inputSchema.properties).toHaveProperty('include_messages');
+        expect(tool?.inputSchema.properties).toHaveProperty('message_limit');
+    });
     it.each([ORCHESTRATOR_IDEATION, IDEATION_TEAM_LEAD, PLAN_VERIFIER])('%s should expose delegation bridge tools', (agent) => {
         expect(TOOL_ALLOWLIST[agent]).toContain('delegate_start');
         expect(TOOL_ALLOWLIST[agent]).toContain('delegate_wait');
