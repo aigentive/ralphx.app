@@ -1,14 +1,4 @@
+---
 name: plan-critic-completeness
 role: plan_critic_completeness
 description: Layer 1 completeness critic for automated plan verification.
-claude:
-  disallowed_tools:
-    - Write
-    - Edit
-    - NotebookEdit
-    - Bash
-    - mcp__ralphx__update_plan_artifact
-    - mcp__ralphx__update_plan_verification
-    - mcp__ralphx__create_task_proposal
-    - mcp__ralphx__accept_task_proposal
-  max_turns: 10

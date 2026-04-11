@@ -1,6 +1,6 @@
 use super::{
     load_canonical_agent_definition, load_harness_agent_prompt, resolve_harness_agent_prompt_path,
-    AgentPromptHarness,
+    try_load_canonical_claude_metadata, AgentPromptHarness,
 };
 use std::path::PathBuf;
 
@@ -75,6 +75,23 @@ const CLAUDE_ONLY_CANONICAL_AGENTS: &[(&str, &str, &str)] = &[
 
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
+}
+
+fn canonical_agent_names(root: &std::path::Path) -> Vec<String> {
+    let mut names = std::fs::read_dir(root.join("agents"))
+        .expect("canonical agents dir should exist")
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let file_type = entry.file_type().ok()?;
+            if file_type.is_dir() {
+                Some(entry.file_name().to_string_lossy().to_string())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    names.sort();
+    names
 }
 
 fn strip_frontmatter(markdown: &str) -> String {
@@ -261,4 +278,36 @@ fn codex_ideation_pilot_prompts_declare_codex_native_delegation_contract() {
         load_harness_agent_prompt(&root, "ideation-team-lead", AgentPromptHarness::Codex).is_none(),
         "ideation-team-lead should not have a codex prompt while team mode is unsupported"
     );
+}
+
+#[test]
+fn canonical_agent_tree_is_schema_valid_and_loadable() {
+    let root = project_root();
+
+    for agent_name in canonical_agent_names(&root) {
+        let definition = load_canonical_agent_definition(&root, &agent_name)
+            .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
+        assert_eq!(definition.name, agent_name);
+
+        try_load_canonical_claude_metadata(&root, &agent_name)
+            .unwrap_or_else(|error| panic!("invalid claude metadata for {agent_name}: {error}"));
+
+        let shared_prompt_path = root
+            .join("agents")
+            .join(&agent_name)
+            .join("shared/prompt.md");
+        let claude_prompt_path = root
+            .join("agents")
+            .join(&agent_name)
+            .join("claude/prompt.md");
+        let codex_prompt_path = root
+            .join("agents")
+            .join(&agent_name)
+            .join("codex/prompt.md");
+
+        assert!(
+            shared_prompt_path.exists() || claude_prompt_path.exists() || codex_prompt_path.exists(),
+            "canonical agent {agent_name} must define at least one prompt"
+        );
+    }
 }

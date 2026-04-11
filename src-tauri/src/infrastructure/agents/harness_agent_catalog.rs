@@ -7,16 +7,16 @@ const AGENT_FILE_NAME: &str = "agent.yaml";
 const SHARED_PROMPT_DIR_NAME: &str = "shared";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CanonicalAgentDefinition {
     pub name: String,
     pub role: String,
     #[serde(default)]
     pub description: Option<String>,
-    #[serde(default)]
-    pub claude: CanonicalClaudeAgentMetadata,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct CanonicalClaudeAgentMetadata {
     #[serde(default)]
     pub disallowed_tools: Vec<String>,
@@ -86,6 +86,28 @@ pub fn has_canonical_agent_definition(project_root: &Path, agent_name: &str) -> 
         .exists()
 }
 
+pub fn load_canonical_claude_metadata(
+    project_root: &Path,
+    agent_name: &str,
+) -> CanonicalClaudeAgentMetadata {
+    try_load_canonical_claude_metadata(project_root, agent_name).unwrap_or_default()
+}
+
+pub fn try_load_canonical_claude_metadata(
+    project_root: &Path,
+    agent_name: &str,
+) -> Result<CanonicalClaudeAgentMetadata, String> {
+    match load_harness_agent_metadata(project_root, agent_name, AgentPromptHarness::Claude) {
+        Some(raw) => serde_yaml::from_str::<CanonicalClaudeAgentMetadata>(&raw).map_err(|error| {
+            format!(
+                "Failed to parse Claude harness metadata for agent {}: {error}",
+                canonical_agent_name(agent_name)
+            )
+        }),
+        None => Ok(CanonicalClaudeAgentMetadata::default()),
+    }
+}
+
 pub fn resolve_harness_agent_prompt_path(
     project_root: &Path,
     agent_name: &str,
@@ -116,6 +138,18 @@ pub fn load_harness_agent_prompt(
     let prompt_path = resolve_harness_agent_prompt_path(project_root, agent_name, harness)?;
     let raw = std::fs::read_to_string(prompt_path).ok()?;
     Some(raw.trim().to_string())
+}
+
+fn load_harness_agent_metadata(
+    project_root: &Path,
+    agent_name: &str,
+    harness: AgentPromptHarness,
+) -> Option<String> {
+    load_canonical_agent_definition(project_root, agent_name)?;
+    let metadata_path = canonical_agent_root(project_root, agent_name)
+        .join(harness.as_dir())
+        .join(AGENT_FILE_NAME);
+    std::fs::read_to_string(metadata_path).ok()
 }
 
 #[cfg(test)]

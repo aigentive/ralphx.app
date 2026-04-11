@@ -389,18 +389,22 @@ fn test_materialize_generated_plugin_dir_renders_canonical_claude_frontmatter_wi
         r#"name: orchestrator-ideation
 role: ideation_orchestrator
 description: Facilitates ideation sessions and generates task proposals for RalphX.
-claude:
-  disallowed_tools:
-    - Write
-    - Edit
-    - NotebookEdit
-  skills:
-    - task-decomposition
-    - priority-assessment
-    - dependency-analysis
 "#,
     )
     .expect("write shared definition");
+    std::fs::write(
+        agent_root.join("claude/agent.yaml"),
+        r#"disallowed_tools:
+  - Write
+  - Edit
+  - NotebookEdit
+skills:
+  - task-decomposition
+  - priority-assessment
+  - dependency-analysis
+"#,
+    )
+    .expect("write claude metadata");
     std::fs::write(
         agent_root.join("claude/prompt.md"),
         "Canonical Claude ideation prompt",
@@ -498,15 +502,19 @@ fn test_materialize_generated_plugin_dir_renders_canonical_claude_max_turns() {
         r#"name: plan-verifier
 role: plan_verifier
 description: Dedicated plan verification agent that runs the adversarial round loop for ideation plans.
-claude:
-  disallowed_tools:
-    - Write
-    - Edit
-    - NotebookEdit
-  max_turns: 80
 "#,
     )
     .expect("write shared definition");
+    std::fs::write(
+        agent_root.join("claude/agent.yaml"),
+        r#"disallowed_tools:
+  - Write
+  - Edit
+  - NotebookEdit
+max_turns: 80
+"#,
+    )
+    .expect("write claude metadata");
     std::fs::write(
         agent_root.join("claude/prompt.md"),
         "Canonical plan verifier prompt",

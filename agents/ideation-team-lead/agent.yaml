@@ -1,12 +1,4 @@
+---
 name: ideation-team-lead
 role: ideation_team_lead
 description: Coordinates ideation teams and synthesizes teammate findings into a master plan.
-claude:
-  disallowed_tools:
-    - Write
-    - Edit
-    - NotebookEdit
-  skills:
-    - task-decomposition
-    - priority-assessment
-    - dependency-analysis

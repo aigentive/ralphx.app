@@ -1,0 +1,9 @@
+---
+disallowed_tools:
+- Write
+- Edit
+- NotebookEdit
+skills:
+- task-decomposition
+- priority-assessment
+- dependency-analysis

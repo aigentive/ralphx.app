@@ -1,9 +1,4 @@
+---
 name: ideation-specialist-code-quality
 role: ideation_specialist_code_quality
 description: Research code quality improvements for ideation teams.
-claude:
-  disallowed_tools:
-    - Write
-    - Edit
-    - NotebookEdit
-    - Bash

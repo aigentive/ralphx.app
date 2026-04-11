@@ -78,21 +78,12 @@ agents/
     shared/
       prompt.md
     claude/
+      agent.yaml
       prompt.md
     codex/
+      agent.yaml
       prompt.md
 ```
-
-Possible later extension if needed:
-
-```text
-agents/
-  <agent-name>/
-    claude/agent.yaml
-    codex/agent.yaml
-```
-
-Do not start with duplicated per-harness YAML unless concrete requirements force it.
 
 The important distinction is:
 - `shared/prompt.md` means “this text is intentionally harness-neutral and safe for every enabled harness”
@@ -109,13 +100,10 @@ Belongs in `agent.yaml`:
 - canonical agent id/name
 - role classification
 - lane binding intent
-- shared MCP tool grants
-- shared preapproved CLI tools or delegated capabilities
 - shared model/effort policy defaults where truly harness-neutral
 - settings profile hooks
 - whether the agent is helper-only, orchestrator, team lead, specialist, critic, worker, reviewer, merger, etc.
 - generation flags needed to produce harness artifacts
-- rare harness-specific metadata blocks only when they are truly canonical and non-derivable; current examples: Claude-only `disallowed_tools`, `skills`, and `max_turns`
 
 Belongs in `shared/prompt.md` only when truly harness-neutral:
 
@@ -125,6 +113,13 @@ Belongs in `shared/prompt.md` only when truly harness-neutral:
 - repo-specific constraints that are equally valid on every supported harness
 
 ### Harness-Specific
+
+Belongs in `<harness>/agent.yaml` when needed:
+
+- harness-only metadata such as `disallowed_tools`
+- harness-only skills
+- harness-only generation hints like Claude `max_turns`
+- future harness-specific runtime metadata that is not universally meaningful
 
 Belongs in harness-specific prompt/config:
 
@@ -142,10 +137,11 @@ Belongs in harness-specific prompt/config:
 Resolution must be explicit and deterministic:
 
 1. Load `agent.yaml`
-2. If `<agent>/<harness>/prompt.md` exists, use it
-3. Else if `shared/prompt.md` exists, use it
-4. Else if the agent is canonical but has no prompt for that harness, treat it as unsupported on that harness
-5. Only non-canonical legacy agents may fall back to the old Claude plugin prompt source during migration
+2. Load optional `<harness>/agent.yaml` shallow overlay for that harness
+3. If `<agent>/<harness>/prompt.md` exists, use it
+4. Else if `shared/prompt.md` exists, use it
+5. Else if the agent is canonical but has no prompt for that harness, treat it as unsupported on that harness
+6. Only non-canonical legacy agents may fall back to the old Claude plugin prompt source during migration
 
 Non-negotiable:
 - never use `claude/prompt.md` as an implicit fallback for Codex
@@ -249,6 +245,7 @@ Before behavior changes:
 
 Implement:
 - `agents/<agent>/agent.yaml`
+- optional `agents/<agent>/<harness>/agent.yaml`
 - optional `agents/<agent>/shared/prompt.md`
 - optional `agents/<agent>/claude/prompt.md`
 - optional `agents/<agent>/codex/prompt.md`

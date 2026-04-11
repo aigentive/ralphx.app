@@ -2,7 +2,8 @@ use crate::infrastructure::agents::claude::plugin_repo_root;
 use crate::infrastructure::agents::claude::{claude_runtime_config, get_agent_config};
 use crate::infrastructure::agents::harness_agent_catalog::{
     load_canonical_agent_definition, load_harness_agent_prompt, resolve_project_root_from_plugin_dir,
-    AgentPromptHarness, CanonicalAgentDefinition,
+    try_load_canonical_claude_metadata, AgentPromptHarness, CanonicalAgentDefinition,
+    CanonicalClaudeAgentMetadata,
 };
 use std::collections::HashSet;
 use std::fs;
@@ -122,6 +123,7 @@ fn sync_generated_agent_prompts(
             else {
                 continue;
             };
+            let claude_metadata = try_load_canonical_claude_metadata(project_root, &short_name)?;
 
             let generated_target = generated_plugin_dir.join(&relative_output);
             if let Some(parent) = generated_target.parent() {
@@ -132,7 +134,12 @@ fn sync_generated_agent_prompts(
                     )
                 })?;
             }
-            let rendered = render_generated_agent_markdown(&short_name, &definition, &prompt_body)?;
+            let rendered = render_generated_agent_markdown(
+                &short_name,
+                &definition,
+                &claude_metadata,
+                &prompt_body,
+            )?;
             fs::write(&generated_target, rendered).map_err(|error| {
                 format!(
                     "Failed to write generated Claude agent prompt {}: {error}",
@@ -191,15 +198,17 @@ fn claude_output_relative_path(
 fn render_generated_agent_markdown(
     agent_name: &str,
     definition: &CanonicalAgentDefinition,
+    claude_metadata: &CanonicalClaudeAgentMetadata,
     prompt_body: &str,
 ) -> Result<String, String> {
-    let frontmatter = build_claude_frontmatter(agent_name, definition)?;
+    let frontmatter = build_claude_frontmatter(agent_name, definition, claude_metadata)?;
     Ok(format!("{frontmatter}\n\n{prompt_body}\n"))
 }
 
 fn build_claude_frontmatter(
     agent_name: &str,
     definition: &CanonicalAgentDefinition,
+    claude_metadata: &CanonicalClaudeAgentMetadata,
 ) -> Result<String, String> {
     let agent_config = get_agent_config(agent_name).ok_or_else(|| {
         format!(
@@ -238,9 +247,9 @@ fn build_claude_frontmatter(
     lines.push(format!("        - {}", yaml_scalar("--agent-type")?));
     lines.push(format!("        - {}", yaml_scalar(agent_name)?));
 
-    if !definition.claude.disallowed_tools.is_empty() {
+    if !claude_metadata.disallowed_tools.is_empty() {
         lines.push("disallowedTools:".to_string());
-        for tool in &definition.claude.disallowed_tools {
+        for tool in &claude_metadata.disallowed_tools {
             lines.push(format!("  - {}", yaml_scalar(tool)?));
         }
     }
@@ -249,13 +258,13 @@ fn build_claude_frontmatter(
         lines.push(format!("model: {}", yaml_scalar(model)?));
     }
 
-    if let Some(max_turns) = definition.claude.max_turns {
+    if let Some(max_turns) = claude_metadata.max_turns {
         lines.push(format!("maxTurns: {max_turns}"));
     }
 
-    if !definition.claude.skills.is_empty() {
+    if !claude_metadata.skills.is_empty() {
         lines.push("skills:".to_string());
-        for skill in &definition.claude.skills {
+        for skill in &claude_metadata.skills {
             lines.push(format!("  - {}", yaml_scalar(skill)?));
         }
     }
