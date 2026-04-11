@@ -1,6 +1,6 @@
 /**
  * Agent short names — single source of truth for TOOL_ALLOWLIST keys.
- * These match the canonical agent ids under `agents/*/agent.yaml` and the
+ * These match the canonical agent ids under `agents/<agent>/agent.yaml` and the
  * generated Claude frontmatter names where those must stay aligned.
  */
 

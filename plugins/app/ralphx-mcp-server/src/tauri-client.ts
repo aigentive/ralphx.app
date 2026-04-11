@@ -3,6 +3,8 @@
  * All MCP tools forward to these endpoints (proxy pattern)
  */
 
+import { safeTrace } from "./redact.js";
+
 const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
 
 const MAX_RETRIES = 3;
@@ -137,8 +139,24 @@ async function executeFetch(
   label: string
 ): Promise<unknown> {
   return withRetry(async () => {
+    safeTrace("backend.request", {
+      label,
+      method: init.method ?? "GET",
+      url,
+      has_body: typeof init.body === "string" ? init.body.length > 0 : Boolean(init.body),
+      body: typeof init.body === "string" ? init.body : undefined,
+    });
+
     try {
       const response = await fetch(url, init);
+
+      safeTrace("backend.response", {
+        label,
+        method: init.method ?? "GET",
+        url,
+        status: response.status,
+        ok: response.ok,
+      });
 
       if (!response.ok) {
         throw await parseErrorResponse(response, url);
@@ -147,10 +165,25 @@ async function executeFetch(
       return await safeJsonParse(response);
     } catch (error) {
       if (error instanceof TauriClientError) {
+        safeTrace("backend.error", {
+          label,
+          method: init.method ?? "GET",
+          url,
+          status_code: error.statusCode,
+          message: error.message,
+          details: error.details,
+        });
         throw error;
       }
 
       // Network or other fetch errors
+      safeTrace("backend.error", {
+        label,
+        method: init.method ?? "GET",
+        url,
+        status_code: 0,
+        message: error instanceof Error ? error.message : String(error),
+      });
       throw new TauriClientError(
         `Failed to connect to Tauri backend at ${url}: ${
           error instanceof Error ? error.message : String(error)

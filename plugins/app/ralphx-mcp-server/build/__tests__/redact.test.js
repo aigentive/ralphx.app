@@ -1,8 +1,20 @@
 /**
  * Tests for secret redaction — mirrors the Rust secret_redactor test patterns.
  */
-import { describe, it, expect } from "vitest";
-import { redactSecrets, safeError } from "../redact.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, it, expect } from "vitest";
+import { getTraceLogPath, redactSecrets, resetTraceLogPathForTests, safeError, safeTrace, } from "../redact.js";
+afterEach(() => {
+    delete process.env.RALPHX_MCP_TRACE_DIR;
+    delete process.env.RALPHX_AGENT_TYPE;
+    delete process.env.RALPHX_CONTEXT_TYPE;
+    delete process.env.RALPHX_CONTEXT_ID;
+    delete process.env.RALPHX_TASK_ID;
+    delete process.env.RALPHX_PROJECT_ID;
+    resetTraceLogPathForTests();
+});
 describe("redactSecrets — pattern matching", () => {
     // Pattern 1: Anthropic API keys
     it("redacts Anthropic API key (sk-ant-)", () => {
@@ -118,6 +130,24 @@ describe("safeError — integration", () => {
     it("accepts Error objects", () => {
         const err = new Error("sk-ant-api03-abcdefghijklmnopqrstuvwxyz123456");
         expect(() => safeError("Error:", err)).not.toThrow();
+    });
+});
+describe("safeTrace — file logging", () => {
+    it("writes redacted trace records to the configured trace dir", () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-mcp-trace-"));
+        process.env.RALPHX_MCP_TRACE_DIR = tempDir;
+        process.env.RALPHX_AGENT_TYPE = "orchestrator-ideation";
+        process.env.RALPHX_CONTEXT_TYPE = "ideation";
+        process.env.RALPHX_CONTEXT_ID = "session-123";
+        safeTrace("tool.request", {
+            api_key: "sk-ant-api03-abcdefghijklmnopqrstuvwxyz123456",
+        });
+        const logPath = getTraceLogPath();
+        const contents = fs.readFileSync(logPath, "utf8");
+        expect(logPath.startsWith(tempDir)).toBe(true);
+        expect(contents).toContain("\"event\":\"tool.request\"");
+        expect(contents).toContain("sk-ant-***REDACTED***");
+        expect(contents).not.toContain("abcdefghijklmnopqrstuvwxyz123456");
     });
 });
 //# sourceMappingURL=redact.test.js.map

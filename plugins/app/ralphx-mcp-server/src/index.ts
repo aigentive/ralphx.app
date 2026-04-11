@@ -21,7 +21,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { callTauri, callTauriGet, TauriClientError } from "./tauri-client.js";
-import { safeError } from "./redact.js";
+import { getTraceLogPath, safeError, safeTrace } from "./redact.js";
 import {
   getFilteredTools,
   isToolAllowed,
@@ -111,6 +111,31 @@ type TeamArtifactSummary = {
   created_at: string;
   author_teammate?: string | null;
 };
+
+function summarizeResult(result: unknown): Record<string, unknown> {
+  if (result === null) {
+    return { kind: "null" };
+  }
+  if (result === undefined) {
+    return { kind: "undefined" };
+  }
+  if (typeof result === "string") {
+    return { kind: "string", length: result.length };
+  }
+  if (typeof result === "number" || typeof result === "boolean") {
+    return { kind: typeof result, value: result };
+  }
+  if (Array.isArray(result)) {
+    return { kind: "array", length: result.length };
+  }
+  if (typeof result === "object") {
+    return {
+      kind: "object",
+      keys: Object.keys(result as Record<string, unknown>).slice(0, 20),
+    };
+  }
+  return { kind: typeof result };
+}
 
 export function selectLatestArtifactsByPrefix(
   artifacts: TeamArtifactSummary[],
@@ -330,6 +355,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   safeError(
     `[RalphX MCP] Agent type: ${AGENT_TYPE}, Tools: ${toolNames.length > 0 ? toolNames.join(", ") : "none"} + permission_request`
   );
+  safeTrace("tools.list", {
+    agent_type: AGENT_TYPE,
+    tools: toolNames,
+    includes_permission_request: true,
+  });
 
   return { tools: allTools };
 });
@@ -339,14 +369,24 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
  */
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
+  safeTrace("tool.request", { name, args });
 
   // Special handling for permission_request tool (always allowed, not scoped by agent type)
   if (name === "permission_request") {
     try {
-      return await handlePermissionRequest(
+      const result = await handlePermissionRequest(
         args as Parameters<typeof handlePermissionRequest>[0]
       );
+      safeTrace("tool.success", {
+        name,
+        result: summarizeResult(result),
+      });
+      return result;
     } catch (error) {
+      safeTrace("tool.error", {
+        name,
+        error: error instanceof Error ? error.message : String(error),
+      });
       const message = error instanceof Error ? error.message : String(error);
       return {
         content: [{ type: "text", text: JSON.stringify({ behavior: "deny", message }) }],
@@ -369,8 +409,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
     }
     try {
-      return await handleAskUserQuestion(args as unknown as AskUserQuestionArgs);
+      const result = await handleAskUserQuestion(args as unknown as AskUserQuestionArgs);
+      safeTrace("tool.success", {
+        name,
+        result: summarizeResult(result),
+      });
+      return result;
     } catch (error) {
+      safeTrace("tool.error", {
+        name,
+        error: error instanceof Error ? error.message : String(error),
+      });
       const message = error instanceof Error ? error.message : String(error);
       return {
         content: [{ type: "text", text: `ERROR: Unexpected error: ${message}` }],
@@ -395,13 +444,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
     const leadSessionId = globalThis.process.env.RALPHX_LEAD_SESSION_ID;
     try {
-      return await handleRequestTeamPlan(
+      const result = await handleRequestTeamPlan(
         args as unknown as RequestTeamPlanArgs,
         RALPHX_CONTEXT_TYPE ?? "ideation",
         RALPHX_CONTEXT_ID ?? "",
         leadSessionId
       );
+      safeTrace("tool.success", {
+        name,
+        result: summarizeResult(result),
+      });
+      return result;
     } catch (error) {
+      safeTrace("tool.error", {
+        name,
+        error: error instanceof Error ? error.message : String(error),
+      });
       const message = error instanceof Error ? error.message : String(error);
       return {
         content: [{ type: "text", text: `ERROR: Unexpected error: ${message}` }],
@@ -419,6 +477,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         : `Agent type "${AGENT_TYPE}" has no MCP tools available. This agent should use filesystem tools (Read, Grep, Glob, Bash, Edit, Write) instead.`;
 
     safeError(`[RalphX MCP] Unauthorized tool call: ${name}`);
+    safeTrace("tool.denied", { name, reason: "unauthorized" });
 
     return {
       content: [
@@ -438,6 +497,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   );
   if (scopeError) {
     safeError(`[RalphX MCP] Task scope violation: ${name}`);
+    safeTrace("tool.denied", { name, reason: "task_scope_violation" });
 
     return {
       content: [
@@ -457,6 +517,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   );
   if (projectScopeError) {
     safeError(`[RalphX MCP] Project scope violation: ${name}`);
+    safeTrace("tool.denied", { name, reason: "project_scope_violation" });
 
     return {
       content: [
@@ -475,6 +536,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       `[RalphX MCP] Calling Tauri: ${name} with args:`,
       JSON.stringify(args)
     );
+    safeTrace("tool.dispatch", { name });
 
     let result: unknown;
 
@@ -1006,6 +1068,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     safeError(`[RalphX MCP] Success: ${name}`);
+    safeTrace("tool.success", {
+      name,
+      result: summarizeResult(result),
+    });
 
     // Return result as JSON text
     return {
@@ -1018,6 +1084,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     };
   } catch (error) {
     safeError(`[RalphX MCP] Error calling ${name}:`, error);
+    safeTrace("tool.error", {
+      name,
+      error: error instanceof Error ? error.message : String(error),
+      details: error instanceof TauriClientError ? error.details : undefined,
+    });
 
     if (error instanceof TauriClientError) {
       return {
@@ -1058,6 +1129,11 @@ async function main() {
   safeError(
     `[RalphX MCP] Tauri API URL: ${process.env.TAURI_API_URL || "http://127.0.0.1:3847"}`
   );
+  safeError(`[RalphX MCP] Trace log: ${getTraceLogPath()}`);
+  safeTrace("server.start", {
+    argv: process.argv.slice(2),
+    tauri_api_url: process.env.TAURI_API_URL || "http://127.0.0.1:3847",
+  });
 
   // Log all tools if in debug mode or if RALPHX_DEBUG_TOOLS is set
   if (AGENT_TYPE === "debug" || process.env.RALPHX_DEBUG_TOOLS === "1") {
@@ -1075,6 +1151,7 @@ async function main() {
   await server.connect(transport);
 
   console.error("[RalphX MCP] Server running on stdio");
+  safeTrace("server.ready");
 }
 
 // Global handler for unhandled promise rejections.

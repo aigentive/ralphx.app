@@ -20,4 +20,7 @@ export declare function redactSecrets(input: string): string;
  * Usage: safeError("[RalphX MCP] Error calling", name, error)
  */
 export declare function safeError(...args: unknown[]): void;
+export declare function getTraceLogPath(): string;
+export declare function resetTraceLogPathForTests(): void;
+export declare function safeTrace(event: string, payload?: unknown): void;
 //# sourceMappingURL=redact.d.ts.map
