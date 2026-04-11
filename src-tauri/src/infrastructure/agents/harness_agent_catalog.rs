@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 const CANONICAL_AGENTS_DIR: &str = "agents";
 const PROMPT_FILE_NAME: &str = "prompt.md";
-const SHARED_FILE_NAME: &str = "shared.yaml";
+const AGENT_FILE_NAME: &str = "agent.yaml";
 const SHARED_PROMPT_DIR_NAME: &str = "shared";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -70,8 +70,8 @@ pub fn load_canonical_agent_definition(
     agent_name: &str,
 ) -> Option<CanonicalAgentDefinition> {
     let short_name = canonical_agent_name(agent_name);
-    let shared_path = canonical_agent_root(project_root, short_name).join(SHARED_FILE_NAME);
-    let raw = std::fs::read_to_string(shared_path).ok()?;
+    let agent_path = canonical_agent_root(project_root, short_name).join(AGENT_FILE_NAME);
+    let raw = std::fs::read_to_string(agent_path).ok()?;
     let definition = serde_yaml::from_str::<CanonicalAgentDefinition>(&raw).ok()?;
     if definition.name == short_name {
         Some(definition)
@@ -82,7 +82,7 @@ pub fn load_canonical_agent_definition(
 
 pub fn has_canonical_agent_definition(project_root: &Path, agent_name: &str) -> bool {
     canonical_agent_root(project_root, agent_name)
-        .join(SHARED_FILE_NAME)
+        .join(AGENT_FILE_NAME)
         .exists()
 }
 

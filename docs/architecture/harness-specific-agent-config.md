@@ -74,7 +74,7 @@ Recommended initial structure:
 ```text
 agents/
   <agent-name>/
-    shared.yaml
+    agent.yaml
     shared/
       prompt.md
     claude/
@@ -104,7 +104,7 @@ Missing harness-specific prompt must never mean “fall back to some other harne
 
 ### Shared
 
-Belongs in `shared.yaml`:
+Belongs in `agent.yaml`:
 
 - canonical agent id/name
 - role classification
@@ -141,7 +141,7 @@ Belongs in harness-specific prompt/config:
 
 Resolution must be explicit and deterministic:
 
-1. Load `shared.yaml`
+1. Load `agent.yaml`
 2. If `<agent>/<harness>/prompt.md` exists, use it
 3. Else if `shared/prompt.md` exists, use it
 4. Else if the agent is canonical but has no prompt for that harness, treat it as unsupported on that harness
@@ -248,7 +248,7 @@ Before behavior changes:
 ## Phase 1: Canonical Config Skeleton
 
 Implement:
-- `agents/<agent>/shared.yaml`
+- `agents/<agent>/agent.yaml`
 - optional `agents/<agent>/shared/prompt.md`
 - optional `agents/<agent>/claude/prompt.md`
 - optional `agents/<agent>/codex/prompt.md`

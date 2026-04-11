@@ -16,7 +16,7 @@ fn compose_codex_prompt_prefers_canonical_codex_prompt_when_available() {
     std::fs::create_dir_all(root.join("agents/session-namer/codex"))
         .expect("create canonical codex dir");
     std::fs::write(
-        root.join("agents/session-namer/shared.yaml"),
+        root.join("agents/session-namer/agent.yaml"),
         "name: session-namer\nrole: session_namer\n",
     )
     .expect("write shared definition");
@@ -72,7 +72,7 @@ fn compose_codex_prompt_uses_shared_prompt_when_harness_is_explicitly_allowed() 
     std::fs::create_dir_all(root.join("agents/session-namer/shared"))
         .expect("create shared prompt dir");
     std::fs::write(
-        root.join("agents/session-namer/shared.yaml"),
+        root.join("agents/session-namer/agent.yaml"),
         "name: session-namer\nrole: session_namer\n",
     )
     .expect("write shared definition");
@@ -108,7 +108,7 @@ fn compose_codex_prompt_does_not_fall_back_to_legacy_prompt_when_canonical_agent
     std::fs::create_dir_all(root.join("agents/ideation-team-lead/claude"))
         .expect("create canonical claude dir");
     std::fs::write(
-        root.join("agents/ideation-team-lead/shared.yaml"),
+        root.join("agents/ideation-team-lead/agent.yaml"),
         "name: ideation-team-lead\nrole: ideation_team_lead\n",
     )
     .expect("write shared definition");

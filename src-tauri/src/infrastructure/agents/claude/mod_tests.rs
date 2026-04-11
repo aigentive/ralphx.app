@@ -385,7 +385,7 @@ fn test_materialize_generated_plugin_dir_renders_canonical_claude_frontmatter_wi
     let agent_root = root.join("agents/orchestrator-ideation");
     std::fs::create_dir_all(agent_root.join("claude")).expect("create canonical claude dir");
     std::fs::write(
-        agent_root.join("shared.yaml"),
+        agent_root.join("agent.yaml"),
         r#"name: orchestrator-ideation
 role: ideation_orchestrator
 description: Facilitates ideation sessions and generates task proposals for RalphX.
@@ -455,7 +455,7 @@ fn test_materialize_generated_plugin_dir_supports_shared_prompt_without_legacy_f
     let agent_root = root.join("agents/session-namer");
     std::fs::create_dir_all(agent_root.join("shared")).expect("create shared prompt dir");
     std::fs::write(
-        agent_root.join("shared.yaml"),
+        agent_root.join("agent.yaml"),
         r#"name: session-namer
 role: session_namer
 description: Generates concise ideation session titles from user or plan context.
@@ -494,7 +494,7 @@ fn test_materialize_generated_plugin_dir_renders_canonical_claude_max_turns() {
     let agent_root = root.join("agents/plan-verifier");
     std::fs::create_dir_all(agent_root.join("claude")).expect("create canonical claude dir");
     std::fs::write(
-        agent_root.join("shared.yaml"),
+        agent_root.join("agent.yaml"),
         r#"name: plan-verifier
 role: plan_verifier
 description: Dedicated plan verification agent that runs the adversarial round loop for ideation plans.

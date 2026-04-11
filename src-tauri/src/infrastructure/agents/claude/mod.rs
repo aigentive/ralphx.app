@@ -1472,7 +1472,7 @@ mod tests {
 
         std::fs::create_dir_all(repo_root.join("agents/session-namer/shared")).unwrap();
         std::fs::write(
-            repo_root.join("agents/session-namer/shared.yaml"),
+            repo_root.join("agents/session-namer/agent.yaml"),
             "name: session-namer\nrole: session_namer\n",
         )
         .unwrap();
