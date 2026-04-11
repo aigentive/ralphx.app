@@ -1,4 +1,4 @@
 ---
 name: plan-verifier
 role: plan_verifier
-description: Dedicated plan verification agent that runs the adversarial round loop for ideation plans.
+description: "Dedicated plan verification agent. Owns the adversarial round loop \u2014 spawning Layer 1 and Layer 2 critics, merging gaps, revising the plan, and checking convergence. Always runs as a verification child session of an ideation session."

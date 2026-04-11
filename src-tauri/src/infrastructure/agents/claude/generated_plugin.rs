@@ -235,17 +235,19 @@ fn build_claude_frontmatter(
         }
     }
 
-    lines.push("mcpServers:".to_string());
-    lines.push(format!("  - {}:", yaml_scalar(mcp_server_name)?));
-    lines.push("      type: stdio".to_string());
-    lines.push("      command: node".to_string());
-    lines.push("      args:".to_string());
-    lines.push(format!(
-        "        - {}",
-        yaml_scalar("${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js")?
-    ));
-    lines.push(format!("        - {}", yaml_scalar("--agent-type")?));
-    lines.push(format!("        - {}", yaml_scalar(agent_name)?));
+    if !agent_config.allowed_mcp_tools.is_empty() {
+        lines.push("mcpServers:".to_string());
+        lines.push(format!("  - {}:", yaml_scalar(mcp_server_name)?));
+        lines.push("      type: stdio".to_string());
+        lines.push("      command: node".to_string());
+        lines.push("      args:".to_string());
+        lines.push(format!(
+            "        - {}",
+            yaml_scalar("${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js")?
+        ));
+        lines.push(format!("        - {}", yaml_scalar("--agent-type")?));
+        lines.push(format!("        - {}", yaml_scalar(agent_name)?));
+    }
 
     if !claude_metadata.disallowed_tools.is_empty() {
         lines.push("disallowedTools:".to_string());

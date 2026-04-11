@@ -536,3 +536,34 @@ max_turns: 80
         "expected canonical prompt body to be preserved, got: {generated_prompt}"
     );
 }
+
+#[test]
+fn test_materialize_generated_plugin_dir_omits_mcp_servers_for_agents_without_mcp_tools() {
+    let (_dir, root, plugin_dir) = make_temp_project_plugin_dir();
+    let agent_root = root.join("agents/ralphx-supervisor");
+    std::fs::create_dir_all(agent_root.join("shared")).expect("create shared prompt dir");
+    std::fs::write(
+        agent_root.join("agent.yaml"),
+        r#"name: ralphx-supervisor
+role: supervisor
+description: Monitors task execution and intervenes when problems occur
+"#,
+    )
+    .expect("write shared definition");
+    std::fs::write(
+        agent_root.join("shared/prompt.md"),
+        "Canonical supervisor prompt",
+    )
+    .expect("write shared prompt");
+
+    let generated_dir =
+        materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
+    let generated_prompt =
+        std::fs::read_to_string(generated_dir.join("agents/ralphx-supervisor.md"))
+            .expect("read generated supervisor prompt");
+
+    assert!(
+        !generated_prompt.contains("\nmcpServers:"),
+        "expected no MCP server frontmatter for agents without MCP tools, got: {generated_prompt}"
+    );
+}

@@ -1,0 +1,5 @@
+---
+disallowed_tools:
+- NotebookEdit
+skills:
+- qa-evaluation

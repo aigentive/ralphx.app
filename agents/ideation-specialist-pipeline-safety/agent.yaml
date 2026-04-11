@@ -1,4 +1,4 @@
 ---
 name: ideation-specialist-pipeline-safety
 role: ideation_specialist_pipeline_safety
-description: Evaluate ideation plans for pipeline safety risks against known failure archetypes.
+description: "Evaluate ideation plans for pipeline safety risks \u2014 cross-reference proposed changes against the 5 synthetic failure archetypes (merge worktree lifecycle, auto-transition churn, SQLite concurrent access, agent status desync, incomplete event coverage)"

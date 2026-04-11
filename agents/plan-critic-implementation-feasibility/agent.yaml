@@ -1,4 +1,4 @@
 ---
 name: plan-critic-implementation-feasibility
 role: plan_critic_implementation_feasibility
-description: Layer 2 implementation-feasibility critic for automated plan verification.
+description: "Layer 2 critic (dual-lens: minimal/surgical + defense-in-depth) for automated plan verification. Reads actual codebase to find functional gaps in proposed changes, then emits a structured best-effort artifact."

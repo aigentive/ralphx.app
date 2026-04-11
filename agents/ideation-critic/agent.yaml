@@ -1,4 +1,4 @@
 ---
 name: ideation-critic
 role: ideation_critic
-description: Stress-test ideation approaches with adversarial analysis.
+description: "Stress-test all approaches with adversarial analysis"

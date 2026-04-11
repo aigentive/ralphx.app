@@ -1,4 +1,4 @@
 ---
 name: session-namer
 role: session_namer
-description: Generates concise ideation session titles from user or plan context.
+description: "Generates concise titles for ideation sessions based on user's first message or imported plan content"

@@ -1,3 +1,3 @@
 name: ralphx-qa-executor
 role: qa_executor
-description: Refines QA plans against the actual implementation and executes browser-based validation.
+description: "Executes QA tests via agent-browser and evaluates results"
