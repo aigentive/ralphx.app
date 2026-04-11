@@ -2,7 +2,7 @@
 //
 // Catalog construction (2026-04-06):
 //   grep -r 'model' src-tauri/src/infrastructure/agents/claude/model_resolver.rs | grep -v '//' | head -40
-//   grep -r 'model:' plugins/app/agents/*.md | grep -v '#' | head -20
+//   grep -r 'model:' agents/*/claude/agent.yaml agents/*/agent.yaml | grep -v '#' | head -20
 //
 // Unique model strings found in ralphx.yaml and agent .md files:
 //   sonnet, opus, haiku  (short aliases used by all agents in ralphx.yaml)

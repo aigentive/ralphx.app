@@ -1,7 +1,7 @@
 /**
  * Agent Configuration for Welcome Screen Constellation
  *
- * Real agents from plugins/app/agents/ with orbital parameters
+ * Real canonical agents from `agents/` with orbital parameters
  * for the animated constellation.
  *
  * Agents are organized into three orbital tiers:

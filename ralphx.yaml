@@ -12,7 +12,7 @@
 #   Rust agent name constants and MCP allowlists.
 # - system_prompt_file:
 #   Full project-root-relative path to an agent markdown file (e.g.
-#   `plugins/app/agents/worker.md`) used to build
+#   `agents/ralphx-worker/claude/prompt.md`) used to build
 #   `--append-system-prompt` content.
 # - model:
 #   Optional Claude model alias passed as `--model` for this agent

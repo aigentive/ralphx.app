@@ -2,16 +2,16 @@
 //
 // Single source of truth for all fully-qualified agent names used throughout
 // the RalphX Rust backend. These match the `ralphx:<name>` format where `<name>`
-// is the `name:` field from each agent's frontmatter in plugins/app/agents/*.md.
+// is the canonical agent id from `agents/*/agent.yaml`.
 //
-// If an agent is renamed in the plugin, update ONLY this file.
+// If an agent is renamed in canonical config, update ONLY this file.
 
 /// Plugin prefix for all RalphX agents
 pub const PLUGIN_PREFIX: &str = "ralphx:";
 
 // ── Short names (without "ralphx:" prefix) ───────────────────────────────
 // Used by AGENT_CONFIGS in agent_config/ and MCP TOOL_ALLOWLIST in tools.ts.
-// These match the `name:` field in each agent's frontmatter (plugins/app/agents/*.md).
+// These match the canonical agent ids in `agents/*/agent.yaml`.
 
 pub const SHORT_ORCHESTRATOR_IDEATION: &str = "orchestrator-ideation";
 pub const SHORT_ORCHESTRATOR_IDEATION_READONLY: &str = "orchestrator-ideation-readonly";

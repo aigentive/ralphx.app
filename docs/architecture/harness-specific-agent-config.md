@@ -42,7 +42,7 @@ Codex currently wraps those same prompts via `compose_codex_prompt(...)`, which 
 ### Source Of Truth Today
 
 - Runtime agent config is loaded from [ralphx.yaml](/Users/lazabogdan/Code/ralphx/ralphx.yaml)
-- Prompt bodies live in [plugins/app/agents](/Users/lazabogdan/Code/ralphx/plugins/app/agents)
+- Canonical prompt bodies now live under [agents](/Users/lazabogdan/Code/ralphx/agents)
 - Claude runtime resolves `system_prompt_file` from [agent_config/mod.rs](/Users/lazabogdan/Code/ralphx/src-tauri/src/infrastructure/agents/claude/agent_config/mod.rs)
 - Claude runtime/plugin bootstrap is built in [claude/mod.rs](/Users/lazabogdan/Code/ralphx/src-tauri/src/infrastructure/agents/claude/mod.rs)
 - Codex currently loads those same prompt files through [compose_codex_prompt](/Users/lazabogdan/Code/ralphx/src-tauri/src/infrastructure/agents/codex/mod.rs)
@@ -219,7 +219,7 @@ Generate Claude assets from canonical config:
 - `mcpServers` declarations where needed
 - default output path `agents/<agent-name>.md`; do not add per-agent output-path config until a real override case exists
 
-These outputs should be written into the generated Claude plugin cache dir. `plugins/app/agents/` remains migration fallback only and must stop being treated as authored source.
+These outputs should be written into the generated Claude plugin cache dir. `plugins/app/agents/` is no longer an authored-source fallback.
 
 ### Required Output For Codex
 
@@ -488,8 +488,8 @@ The migration is successful when:
 1. Codex-native delegation/subagent model
 Do we map RalphX specialists/critics to Codex-native subagents, Codex tools, or keep some delegation in RalphX MCP/backend instead?
 
-2. Generated asset location
-Do generated Claude plugin assets remain committed in `plugins/app/agents/`, or do we generate them into a build artifact directory and sync them at runtime/build time?
+2. Generated asset cache policy
+Do we want a stronger cache lifecycle/versioning policy for generated Claude plugin assets beyond the current generated runtime directory?
 
 3. Shared versus harness-specific model defaults
 Should model/effort defaults remain shared unless overridden, or should they move into harness sections early?

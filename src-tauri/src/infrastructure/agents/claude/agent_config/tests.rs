@@ -140,6 +140,28 @@ fn test_all_live_runtime_agents_have_canonical_claude_prompts() {
 }
 
 #[test]
+fn test_live_runtime_agents_no_longer_reference_deprecated_plugin_prompt_paths() {
+    for agent in agent_configs() {
+        if agent.name == SHORT_IDEATION_TEAM_MEMBER {
+            continue;
+        }
+
+        assert!(
+            !agent.system_prompt_file.starts_with("plugins/app/agents/"),
+            "live runtime agent {} still points at deleted legacy prompt path {}",
+            agent.name,
+            agent.system_prompt_file
+        );
+        assert!(
+            agent.system_prompt_file.starts_with("agents/"),
+            "live runtime agent {} should point at canonical prompt paths, got {}",
+            agent.name,
+            agent.system_prompt_file
+        );
+    }
+}
+
+#[test]
 fn test_plan_verifier_prompt_includes_resumable_task_and_retry_context_rules() {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
     let prompt =

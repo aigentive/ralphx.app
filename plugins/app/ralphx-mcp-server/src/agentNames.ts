@@ -1,6 +1,7 @@
 /**
  * Agent short names — single source of truth for TOOL_ALLOWLIST keys.
- * These match the `name:` field in each agent's frontmatter (plugins/app/agents/*.md).
+ * These match the canonical agent ids under `agents/*/agent.yaml` and the
+ * generated Claude frontmatter names where those must stay aligned.
  */
 
 export const ORCHESTRATOR_IDEATION = "orchestrator-ideation";
