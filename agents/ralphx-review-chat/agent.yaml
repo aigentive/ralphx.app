@@ -1,0 +1,3 @@
+name: ralphx-review-chat
+role: review_chat
+description: Discusses AI review findings with the user and executes explicit approval or change requests.

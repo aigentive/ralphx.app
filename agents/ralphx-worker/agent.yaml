@@ -1,0 +1,3 @@
+name: ralphx-worker
+role: worker
+description: Executes task-scoped implementation work, validates results, and closes execution cleanly.

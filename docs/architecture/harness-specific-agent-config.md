@@ -298,7 +298,20 @@ Requirements for that pair:
 
 Status:
 - landed
-- next execution-side candidates are `ralphx-worker`, `ralphx-coder`, and `ralphx-review-chat`
+- the next execution/user-facing cohort (`ralphx-worker`, `ralphx-coder`, `ralphx-review-chat`) is also landed
+
+Requirements that were enforced for the execution/user-facing cohort:
+- preserve existing Claude prompt bodies exactly through canonical `claude/prompt.md`
+- author real Codex prompt bodies for:
+  - `ralphx-worker`
+  - `ralphx-coder`
+  - `ralphx-review-chat`
+- Codex prompt tests must reject Claude-only syntax and team/task registry assumptions
+- worker/coder Codex prompts should preserve the execution/re-execution/state/validation contract without assuming Claude `Task(...)` helpers
+
+Next core execution-side candidates:
+- `chat-task`
+- `chat-project`
 
 ## Phase 4: Specialists And Critics
 

@@ -1,0 +1,3 @@
+name: ralphx-coder
+role: worker
+description: Executes bounded implementation sub-scopes under worker-owned task coordination.
