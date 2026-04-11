@@ -309,9 +309,21 @@ Requirements that were enforced for the execution/user-facing cohort:
 - Codex prompt tests must reject Claude-only syntax and team/task registry assumptions
 - worker/coder Codex prompts should preserve the execution/re-execution/state/validation contract without assuming Claude `Task(...)` helpers
 
-Next core execution-side candidates:
+Status:
+- the low-divergence chat assistant cohort (`chat-task`, `chat-project`) is landed as shared-prompt canonical agents
+
+Shared-prompt agents:
 - `chat-task`
 - `chat-project`
+
+Requirements for the chat assistant cohort:
+- preserve existing Claude prompt bodies exactly through canonical `shared/prompt.md`
+- both Claude and Codex should resolve the same shared prompt body unless a real harness divergence appears later
+- Codex prompt tests must still reject Claude-only syntax
+
+Next support/specialist candidates:
+- `review-history`
+- remaining support/chat helpers that still read legacy plugin-authored prompts
 
 ## Phase 4: Specialists And Critics
 

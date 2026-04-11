@@ -84,6 +84,11 @@ const CROSS_HARNESS_WORKFLOW_AGENTS: &[(&str, &str, &str)] = &[
     ("ralphx-review-chat", "review_chat", "review-chat"),
 ];
 
+const CROSS_HARNESS_CHAT_AGENTS: &[(&str, &str, &str)] = &[
+    ("chat-task", "task_chat", "chat-task"),
+    ("chat-project", "project_chat", "chat-project"),
+];
+
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
@@ -142,6 +147,13 @@ fn pilot_agent_definitions_load_from_canonical_tree() {
     }
 
     for (agent_name, role, _) in CROSS_HARNESS_WORKFLOW_AGENTS {
+        let definition = load_canonical_agent_definition(&root, agent_name)
+            .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
+        assert_eq!(definition.name, *agent_name);
+        assert_eq!(definition.role, *role);
+    }
+
+    for (agent_name, role, _) in CROSS_HARNESS_CHAT_AGENTS {
         let definition = load_canonical_agent_definition(&root, agent_name)
             .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
         assert_eq!(definition.name, *agent_name);
@@ -232,6 +244,33 @@ fn pilot_agent_prompt_paths_exist_for_both_harnesses() {
             "expected codex prompt path for {agent_name}"
         );
     }
+
+    for (agent_name, _, _) in CROSS_HARNESS_CHAT_AGENTS {
+        let claude_path =
+            resolve_harness_agent_prompt_path(&root, agent_name, AgentPromptHarness::Claude);
+        let codex_path =
+            resolve_harness_agent_prompt_path(&root, agent_name, AgentPromptHarness::Codex);
+        assert!(
+            claude_path.is_some(),
+            "expected claude prompt path for {agent_name}"
+        );
+        assert!(
+            codex_path.is_some(),
+            "expected codex prompt path for {agent_name}"
+        );
+        assert!(
+            claude_path
+                .as_ref()
+                .is_some_and(|path| path.ends_with(format!("agents/{agent_name}/shared/prompt.md"))),
+            "expected {agent_name} claude prompt to resolve through shared/prompt.md"
+        );
+        assert!(
+            codex_path
+                .as_ref()
+                .is_some_and(|path| path.ends_with(format!("agents/{agent_name}/shared/prompt.md"))),
+            "expected {agent_name} codex prompt to resolve through shared/prompt.md"
+        );
+    }
 }
 
 #[test]
@@ -275,6 +314,18 @@ fn canonical_claude_prompts_match_legacy_prompt_bodies_for_pilot_agents() {
     }
 
     for (agent_name, _, legacy_file_stem) in CROSS_HARNESS_WORKFLOW_AGENTS {
+        let canonical = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Claude)
+            .unwrap_or_else(|| panic!("missing canonical claude prompt for {agent_name}"));
+        let legacy_raw = std::fs::read_to_string(
+            root.join("plugins/app/agents")
+                .join(format!("{legacy_file_stem}.md")),
+        )
+        .unwrap_or_else(|_| panic!("missing legacy prompt for {agent_name}"));
+
+        assert_eq!(canonical, strip_frontmatter(&legacy_raw));
+    }
+
+    for (agent_name, _, legacy_file_stem) in CROSS_HARNESS_CHAT_AGENTS {
         let canonical = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Claude)
             .unwrap_or_else(|| panic!("missing canonical claude prompt for {agent_name}"));
         let legacy_raw = std::fs::read_to_string(
@@ -386,6 +437,17 @@ fn codex_execution_prompts_avoid_claude_only_team_and_task_syntax() {
     }
 
     for (agent_name, _, _) in CROSS_HARNESS_WORKFLOW_AGENTS {
+        let prompt = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Codex)
+            .unwrap_or_else(|| panic!("missing codex prompt for {agent_name}"));
+        for banned in banned_terms {
+            assert!(
+                !prompt.contains(banned),
+                "codex prompt for {agent_name} must not contain Claude-only syntax `{banned}`"
+            );
+        }
+    }
+
+    for (agent_name, _, _) in CROSS_HARNESS_CHAT_AGENTS {
         let prompt = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Codex)
             .unwrap_or_else(|| panic!("missing codex prompt for {agent_name}"));
         for banned in banned_terms {
