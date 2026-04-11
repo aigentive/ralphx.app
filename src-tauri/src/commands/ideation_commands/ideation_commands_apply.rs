@@ -963,9 +963,7 @@ pub async fn apply_proposals_to_kanban(
 
         let proposals_context = result.proposal_titles.join("; ");
         let session_id_str = result.session_id.clone();
-        let runtime = state
-            .resolve_ideation_background_agent_runtime(Some(result.project_id.as_str()))
-            .await;
+        let runtime = state.resolve_session_namer_runtime().await;
 
         let agent_client = Arc::clone(&runtime.client);
         let working_directory = default_repo_root_working_directory();
@@ -974,6 +972,7 @@ pub async fn apply_proposals_to_kanban(
             agent_names::AGENT_SESSION_NAMER,
             working_directory,
         );
+        let harness_for_log = runtime.harness;
 
         tokio::spawn(async move {
             use crate::domain::agents::{AgentConfig, AgentRole};
@@ -1001,6 +1000,11 @@ pub async fn apply_proposals_to_kanban(
 
             match agent_client.spawn_agent(config).await {
                 Ok(handle) => {
+                    tracing::info!(
+                        session_id = %session_id_str,
+                        harness = ?harness_for_log,
+                        "Re-triggering session namer after ideation acceptance"
+                    );
                     if let Err(e) = agent_client.wait_for_completion(&handle).await {
                         tracing::warn!("Session namer re-trigger failed: {}", e);
                     }

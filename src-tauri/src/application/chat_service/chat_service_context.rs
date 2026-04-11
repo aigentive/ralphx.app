@@ -876,12 +876,32 @@ async fn format_session_history_with_artifacts(
     ))
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum IdeationBootstrapMode {
+    Fresh,
+    Continuation,
+    ProviderResume,
+    Recovery,
+}
+
+impl IdeationBootstrapMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Fresh => "fresh",
+            Self::Continuation => "continuation",
+            Self::ProviderResume => "provider_resume",
+            Self::Recovery => "recovery",
+        }
+    }
+}
+
 fn build_initial_prompt_with_history(
     context_type: ChatContextType,
     context_id: &str,
     user_message: &str,
     history: &str,
     ideation_subagent_model_cap: Option<&str>,
+    ideation_bootstrap_mode: IdeationBootstrapMode,
 ) -> String {
     match context_type {
         ChatContextType::Ideation => {
@@ -910,9 +930,15 @@ fn build_initial_prompt_with_history(
                  <data>\n\
                  <context_id>{}</context_id>\n\
                  <session_id>{}</session_id>\n\
+                 <session_bootstrap_mode>{}</session_bootstrap_mode>\n\
                  {}{}<user_message>{}</user_message>\n\
                  </data>",
-                context_id, context_id, history_block, subagent_policy_block, user_message
+                context_id,
+                context_id,
+                ideation_bootstrap_mode.as_str(),
+                history_block,
+                subagent_policy_block,
+                user_message
             )
         }
         ChatContextType::Task => {
@@ -1007,6 +1033,7 @@ async fn build_initial_prompt_with_session_artifacts(
         user_message,
         &history,
         ideation_subagent_model_cap,
+        IdeationBootstrapMode::Recovery,
     ))
 }
 
@@ -1253,7 +1280,19 @@ pub fn build_initial_prompt(
     } else {
         String::new()
     };
-    build_initial_prompt_with_history(context_type, context_id, user_message, &history, None)
+    let bootstrap_mode = if context_type == ChatContextType::Ideation && history.is_empty() {
+        IdeationBootstrapMode::Fresh
+    } else {
+        IdeationBootstrapMode::Continuation
+    };
+    build_initial_prompt_with_history(
+        context_type,
+        context_id,
+        user_message,
+        &history,
+        None,
+        bootstrap_mode,
+    )
 }
 
 /// Build the initial prompt for a resumed session.
@@ -1267,7 +1306,14 @@ pub fn build_resume_initial_prompt(
     _session_messages: &[ChatMessage],
     _total_available: usize,
 ) -> String {
-    build_initial_prompt_with_history(context_type, context_id, user_message, "", None)
+    build_initial_prompt_with_history(
+        context_type,
+        context_id,
+        user_message,
+        "",
+        None,
+        IdeationBootstrapMode::ProviderResume,
+    )
 }
 
 /// Determine if a file is text-based from mime type or extension
@@ -2572,6 +2618,46 @@ mod tests {
         assert!(
             prompt.contains(&format!("<session_id>{}</session_id>", session_id.as_str())),
             "Ideation prompt should expose an explicit session_id alias"
+        );
+        assert!(
+            prompt.contains("<session_bootstrap_mode>recovery</session_bootstrap_mode>"),
+            "Recovery prompts must tell ideation agents they are reconstructing from stored history"
+        );
+    }
+
+    #[test]
+    fn build_initial_prompt_marks_fresh_ideation_sessions_explicitly() {
+        let session_id = IdeationSessionId::new();
+
+        let prompt = build_initial_prompt(
+            ChatContextType::Ideation,
+            session_id.as_str(),
+            "hey there",
+            &[],
+            0,
+        );
+
+        assert!(
+            prompt.contains("<session_bootstrap_mode>fresh</session_bootstrap_mode>"),
+            "Fresh ideation sessions must be marked explicitly so prompt logic can skip recovery-only MCP calls"
+        );
+    }
+
+    #[test]
+    fn build_resume_initial_prompt_marks_provider_resume_explicitly() {
+        let session_id = IdeationSessionId::new();
+
+        let prompt = build_resume_initial_prompt(
+            ChatContextType::Ideation,
+            session_id.as_str(),
+            "continue",
+            &[],
+            0,
+        );
+
+        assert!(
+            prompt.contains("<session_bootstrap_mode>provider_resume</session_bootstrap_mode>"),
+            "True provider resume prompts must be distinguished from fresh ideation and recovery reconstruction"
         );
     }
 

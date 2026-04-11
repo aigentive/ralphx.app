@@ -21,10 +21,9 @@ pub(super) async fn spawn_session_namer(
     session_id: String,
     prompt: String,
 ) {
-    let runtime = app
-        .resolve_ideation_background_agent_runtime(Some(project_id))
-        .await;
+    let runtime = app.resolve_session_namer_runtime().await;
     let agent_client = Arc::clone(&runtime.client);
+    let project_id = project_id.to_string();
     tokio::spawn(async move {
         use crate::domain::agents::{AgentConfig, AgentRole};
         use crate::infrastructure::agents::claude::agent_names;
@@ -39,6 +38,7 @@ pub(super) async fn spawn_session_namer(
             agent_names::AGENT_SESSION_NAMER,
             working_directory,
         );
+        let harness_for_log = runtime.harness;
 
         let config = AgentConfig {
             role: AgentRole::Custom(bootstrap.agent_role.clone()),
@@ -56,6 +56,12 @@ pub(super) async fn spawn_session_namer(
             env: bootstrap.env,
         };
 
+        tracing::info!(
+            session_id = %session_id,
+            project_id = %project_id,
+            harness = ?harness_for_log,
+            "Spawning external ideation session namer agent"
+        );
         match agent_client.spawn_agent(config).await {
             Ok(handle) => {
                 if let Err(e) = agent_client.wait_for_completion(&handle).await {

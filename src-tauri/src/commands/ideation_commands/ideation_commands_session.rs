@@ -560,9 +560,7 @@ pub async fn spawn_session_namer(
         .await
         .map_err(|e| e.to_string())?
         .map(|session| session.project_id.as_str().to_string());
-    let runtime = state
-        .resolve_ideation_background_agent_runtime(project_id.as_deref())
-        .await;
+    let runtime = state.resolve_session_namer_runtime().await;
     let helper_harness = runtime.harness.unwrap_or(DEFAULT_AGENT_HARNESS);
 
     // Get the working directory (project root)
@@ -573,6 +571,7 @@ pub async fn spawn_session_namer(
         working_directory,
     );
 
+    let harness_for_log = runtime.harness;
     let config = AgentConfig {
         role: AgentRole::Custom(bootstrap.agent_role.clone()),
         prompt,
@@ -594,6 +593,12 @@ pub async fn spawn_session_namer(
 
     // Spawn in background (fire-and-forget)
     tokio::spawn(async move {
+        tracing::info!(
+            session_id = %session_id,
+            project_id = project_id.as_deref().unwrap_or(""),
+            harness = ?harness_for_log,
+            "Spawning session namer agent"
+        );
         match agent_client.spawn_agent(config).await {
             Ok(handle) => {
                 // Wait for completion in the background

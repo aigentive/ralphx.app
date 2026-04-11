@@ -336,6 +336,22 @@ impl AppState {
         }
     }
 
+    pub(crate) async fn resolve_session_namer_runtime(&self) -> ResolvedBackgroundAgentRuntime {
+        let selected_client = self
+            .agent_clients
+            .resolve_preferred_available_client(self.agent_clients.default_harness)
+            .await;
+
+        ResolvedBackgroundAgentRuntime {
+            client: selected_client.client,
+            harness: selected_client.harness,
+            model: None,
+            logical_effort: None,
+            approval_policy: None,
+            sandbox_mode: None,
+        }
+    }
+
     /// Create AppState for production use with SQLite repositories.
     /// Opens the database at the default path and runs migrations.
     pub fn new_production(app_handle: AppHandle) -> AppResult<Self> {
