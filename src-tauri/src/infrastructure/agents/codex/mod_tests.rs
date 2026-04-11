@@ -73,7 +73,7 @@ fn compose_codex_prompt_uses_shared_prompt_when_harness_is_explicitly_allowed() 
         .expect("create shared prompt dir");
     std::fs::write(
         root.join("agents/session-namer/shared.yaml"),
-        "name: session-namer\nrole: session_namer\nshared_prompt_harnesses:\n  - codex\n",
+        "name: session-namer\nrole: session_namer\n",
     )
     .expect("write shared definition");
     std::fs::write(

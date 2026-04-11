@@ -1,7 +1,3 @@
 name: session-namer
 role: session_namer
 description: Generates concise ideation session titles from user or plan context.
-claude_plugin_output: plugins/app/agents/session-namer.md
-shared_prompt_harnesses:
-  - claude
-  - codex

@@ -1,4 +1,5 @@
 use crate::infrastructure::agents::claude::plugin_repo_root;
+use crate::infrastructure::agents::claude::{claude_runtime_config, get_agent_config};
 use crate::infrastructure::agents::harness_agent_catalog::{
     load_canonical_agent_definition, load_harness_agent_prompt, resolve_project_root_from_plugin_dir,
     AgentPromptHarness, CanonicalAgentDefinition,
@@ -122,8 +123,6 @@ fn sync_generated_agent_prompts(
                 continue;
             };
 
-            let legacy_source = base_plugin_dir.join(&relative_output);
-            let frontmatter = load_frontmatter_block(&legacy_source)?;
             let generated_target = generated_plugin_dir.join(&relative_output);
             if let Some(parent) = generated_target.parent() {
                 fs::create_dir_all(parent).map_err(|error| {
@@ -133,10 +132,7 @@ fn sync_generated_agent_prompts(
                     )
                 })?;
             }
-            let rendered = match frontmatter {
-                Some(frontmatter) => format!("{frontmatter}\n\n{prompt_body}\n"),
-                None => format!("{prompt_body}\n"),
-            };
+            let rendered = render_generated_agent_markdown(&short_name, &definition, &prompt_body)?;
             fs::write(&generated_target, rendered).map_err(|error| {
                 format!(
                     "Failed to write generated Claude agent prompt {}: {error}",
@@ -186,55 +182,118 @@ fn sync_generated_agent_prompts(
 }
 
 fn claude_output_relative_path(
-    definition: &CanonicalAgentDefinition,
+    _definition: &CanonicalAgentDefinition,
     short_name: &str,
 ) -> Result<PathBuf, String> {
-    let configured = definition
-        .claude_plugin_output
-        .as_deref()
-        .unwrap_or_else(|| short_name);
-    let raw_path = PathBuf::from(configured);
-    let relative = raw_path
-        .strip_prefix("plugins/app")
-        .or_else(|_| raw_path.strip_prefix("ralphx-plugin"))
-        .unwrap_or(raw_path.as_path())
-        .to_path_buf();
-
-    if relative.is_absolute() {
-        return Err(format!(
-            "Canonical Claude plugin output for {} must be repo-relative: {}",
-            short_name,
-            relative.display()
-        ));
-    }
-
-    if relative.components().next().is_none() {
-        return Ok(PathBuf::from("agents").join(format!("{short_name}.md")));
-    }
-
-    Ok(relative)
+    Ok(PathBuf::from("agents").join(format!("{short_name}.md")))
 }
 
-fn load_frontmatter_block(path: &Path) -> Result<Option<String>, String> {
-    let raw = match fs::read_to_string(path) {
-        Ok(raw) => raw,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => {
-            return Err(format!(
-                "Failed to read legacy Claude agent prompt {}: {error}",
-                path.display()
-            ))
-        }
-    };
+fn render_generated_agent_markdown(
+    agent_name: &str,
+    definition: &CanonicalAgentDefinition,
+    prompt_body: &str,
+) -> Result<String, String> {
+    let frontmatter = build_claude_frontmatter(agent_name, definition)?;
+    Ok(format!("{frontmatter}\n\n{prompt_body}\n"))
+}
 
-    if let Some(after_first) = raw.strip_prefix("---") {
-        if let Some(end_idx) = after_first.find("\n---") {
-            let frontmatter_end = 3 + end_idx + "\n---".len();
-            return Ok(Some(raw[..frontmatter_end].trim().to_string()));
+fn build_claude_frontmatter(
+    agent_name: &str,
+    definition: &CanonicalAgentDefinition,
+) -> Result<String, String> {
+    let agent_config = get_agent_config(agent_name).ok_or_else(|| {
+        format!(
+            "Canonical Claude agent {} is missing runtime config in ralphx.yaml",
+            agent_name
+        )
+    })?;
+    let mcp_server_name = &claude_runtime_config().mcp_server_name;
+    let tools = build_claude_frontmatter_tools(agent_config, mcp_server_name);
+
+    let mut lines = vec![
+        "---".to_string(),
+        format!("name: {}", yaml_scalar(&definition.name)?),
+    ];
+
+    if let Some(description) = definition.description.as_deref() {
+        lines.push(format!("description: {}", yaml_scalar(description)?));
+    }
+
+    if !tools.is_empty() {
+        lines.push("tools:".to_string());
+        for tool in tools {
+            lines.push(format!("  - {}", yaml_scalar(&tool)?));
         }
     }
 
-    Ok(None)
+    lines.push("mcpServers:".to_string());
+    lines.push(format!("  - {}:", yaml_scalar(mcp_server_name)?));
+    lines.push("      type: stdio".to_string());
+    lines.push("      command: node".to_string());
+    lines.push("      args:".to_string());
+    lines.push(format!(
+        "        - {}",
+        yaml_scalar("${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js")?
+    ));
+    lines.push(format!("        - {}", yaml_scalar("--agent-type")?));
+    lines.push(format!("        - {}", yaml_scalar(agent_name)?));
+
+    if !definition.claude.disallowed_tools.is_empty() {
+        lines.push("disallowedTools:".to_string());
+        for tool in &definition.claude.disallowed_tools {
+            lines.push(format!("  - {}", yaml_scalar(tool)?));
+        }
+    }
+
+    if let Some(model) = agent_config.model.as_deref() {
+        lines.push(format!("model: {}", yaml_scalar(model)?));
+    }
+
+    if !definition.claude.skills.is_empty() {
+        lines.push("skills:".to_string());
+        for skill in &definition.claude.skills {
+            lines.push(format!("  - {}", yaml_scalar(skill)?));
+        }
+    }
+
+    lines.push("---".to_string());
+    Ok(lines.join("\n"))
+}
+
+fn build_claude_frontmatter_tools(
+    agent_config: &crate::infrastructure::agents::claude::AgentConfig,
+    mcp_server_name: &str,
+) -> Vec<String> {
+    let mut tools = Vec::new();
+    if !agent_config.mcp_only {
+        tools.extend(agent_config.resolved_cli_tools.iter().cloned());
+    }
+
+    tools.extend(
+        agent_config
+            .allowed_mcp_tools
+            .iter()
+            .map(|tool| normalize_frontmatter_mcp_tool(tool, mcp_server_name)),
+    );
+    tools.extend(agent_config.preapproved_cli_tools.iter().cloned());
+
+    let mut seen = HashSet::new();
+    tools.retain(|tool| seen.insert(tool.clone()));
+    tools
+}
+
+fn normalize_frontmatter_mcp_tool(tool: &str, mcp_server_name: &str) -> String {
+    if tool.starts_with("mcp__") {
+        tool.to_string()
+    } else {
+        format!("mcp__{mcp_server_name}__{tool}")
+    }
+}
+
+fn yaml_scalar(value: &str) -> Result<String, String> {
+    serde_yaml::to_string(value)
+        .map(|rendered| rendered.trim().to_string())
+        .map_err(|error| format!("Failed to render YAML scalar {value:?}: {error}"))
 }
 
 fn ensure_symlink(source: &Path, target: &Path) -> Result<(), String> {

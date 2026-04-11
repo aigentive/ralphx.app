@@ -1473,7 +1473,7 @@ mod tests {
         std::fs::create_dir_all(repo_root.join("agents/session-namer/shared")).unwrap();
         std::fs::write(
             repo_root.join("agents/session-namer/shared.yaml"),
-            "name: session-namer\nrole: session_namer\nclaude_plugin_output: plugins/app/agents/session-namer.md\nshared_prompt_harnesses:\n  - claude\n",
+            "name: session-namer\nrole: session_namer\n",
         )
         .unwrap();
         std::fs::write(

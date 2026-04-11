@@ -112,6 +112,7 @@ Belongs in `shared.yaml`:
 - settings profile hooks
 - whether the agent is helper-only, orchestrator, team lead, specialist, critic, worker, reviewer, merger, etc.
 - generation flags needed to produce harness artifacts
+- rare harness-specific metadata blocks only when they are truly canonical and non-derivable; current example: Claude-only `disallowed_tools` / `skills`
 
 Belongs in `shared/prompt.md` only when truly harness-neutral:
 
@@ -139,7 +140,7 @@ Resolution must be explicit and deterministic:
 
 1. Load `shared.yaml`
 2. If `<agent>/<harness>/prompt.md` exists, use it
-3. Else if `shared/prompt.md` exists and `shared.yaml` declares that harness safe for shared-prompt usage, use it
+3. Else if `shared/prompt.md` exists, use it
 4. Else if the agent is canonical but has no prompt for that harness, treat it as unsupported on that harness
 5. Only non-canonical legacy agents may fall back to the old Claude plugin prompt source during migration
 
@@ -216,6 +217,7 @@ Generate Claude assets from canonical config:
 - frontmatter
 - tool lists
 - `mcpServers` declarations where needed
+- default output path `agents/<agent-name>.md`; do not add per-agent output-path config until a real override case exists
 
 These outputs should be written into the generated Claude plugin cache dir. `plugins/app/agents/` remains migration fallback only and must stop being treated as authored source.
 

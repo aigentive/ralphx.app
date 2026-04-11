@@ -21,6 +21,21 @@ fn make_temp_plugin_dir() -> (tempfile::TempDir, std::path::PathBuf) {
     (dir, plugin_dir)
 }
 
+fn make_temp_project_plugin_dir() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
+    let dir = tempfile::TempDir::new().unwrap();
+    let root = dir.path().to_path_buf();
+    let plugin_dir = root.join("plugins/app");
+    std::fs::create_dir_all(plugin_dir.join("agents")).unwrap();
+    std::fs::create_dir_all(plugin_dir.join("ralphx-mcp-server/build")).unwrap();
+    std::fs::write(plugin_dir.join("ralphx-mcp-server/build/index.js"), "// fake").unwrap();
+    std::fs::write(
+        plugin_dir.join(".mcp.json"),
+        r#"{"mcpServers":{"ralphx":{"type":"stdio","command":"node","args":["${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"]}}}"#,
+    )
+    .unwrap();
+    (dir, root, plugin_dir)
+}
+
 /// Parse the JSON args array from a generated MCP config temp file.
 fn get_json_args(config_path: &Path) -> Vec<String> {
     let content = std::fs::read_to_string(config_path).expect("read config file");
@@ -362,4 +377,113 @@ fn test_create_mcp_config_non_external_mcp_keeps_ask_user_question() {
         );
     }
     drop(dir);
+}
+
+#[test]
+fn test_materialize_generated_plugin_dir_renders_canonical_claude_frontmatter_without_legacy_agent_file() {
+    let (_dir, root, plugin_dir) = make_temp_project_plugin_dir();
+    let agent_root = root.join("agents/orchestrator-ideation");
+    std::fs::create_dir_all(agent_root.join("claude")).expect("create canonical claude dir");
+    std::fs::write(
+        agent_root.join("shared.yaml"),
+        r#"name: orchestrator-ideation
+role: ideation_orchestrator
+description: Facilitates ideation sessions and generates task proposals for RalphX.
+claude:
+  disallowed_tools:
+    - Write
+    - Edit
+    - NotebookEdit
+  skills:
+    - task-decomposition
+    - priority-assessment
+    - dependency-analysis
+"#,
+    )
+    .expect("write shared definition");
+    std::fs::write(
+        agent_root.join("claude/prompt.md"),
+        "Canonical Claude ideation prompt",
+    )
+    .expect("write claude prompt");
+
+    let generated_dir =
+        materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
+    let generated_prompt = std::fs::read_to_string(
+        generated_dir.join("agents/orchestrator-ideation.md"),
+    )
+    .expect("read generated agent prompt");
+
+    assert!(
+        generated_prompt.contains("name: orchestrator-ideation"),
+        "expected generated frontmatter name, got: {generated_prompt}"
+    );
+    assert!(
+        generated_prompt.contains("description: Facilitates ideation sessions"),
+        "expected generated description, got: {generated_prompt}"
+    );
+    assert!(
+        generated_prompt.contains("mcp__ralphx__create_task_proposal"),
+        "expected MCP tool grants from runtime config, got: {generated_prompt}"
+    );
+    assert!(
+        generated_prompt.contains("Task(Explore)")
+            && generated_prompt.contains("Task(ralphx:ideation-specialist-ux)"),
+        "expected derived preapproved task variants in generated frontmatter, got: {generated_prompt}"
+    );
+    assert!(
+        generated_prompt.contains("disallowedTools:\n  - Write\n  - Edit\n  - NotebookEdit"),
+        "expected canonical claude disallowed tools, got: {generated_prompt}"
+    );
+    assert!(
+        generated_prompt.contains("skills:\n  - task-decomposition"),
+        "expected canonical claude skills, got: {generated_prompt}"
+    );
+    assert!(
+        generated_prompt.contains("model: opus"),
+        "expected runtime-derived model in generated frontmatter, got: {generated_prompt}"
+    );
+    assert!(
+        generated_prompt.contains("Canonical Claude ideation prompt"),
+        "expected canonical prompt body to be preserved, got: {generated_prompt}"
+    );
+}
+
+#[test]
+fn test_materialize_generated_plugin_dir_supports_shared_prompt_without_legacy_frontmatter() {
+    let (_dir, root, plugin_dir) = make_temp_project_plugin_dir();
+    let agent_root = root.join("agents/session-namer");
+    std::fs::create_dir_all(agent_root.join("shared")).expect("create shared prompt dir");
+    std::fs::write(
+        agent_root.join("shared.yaml"),
+        r#"name: session-namer
+role: session_namer
+description: Generates concise ideation session titles from user or plan context.
+"#,
+    )
+    .expect("write shared definition");
+    std::fs::write(
+        agent_root.join("shared/prompt.md"),
+        "Shared session naming prompt",
+    )
+    .expect("write shared prompt");
+
+    let generated_dir =
+        materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
+    let generated_prompt =
+        std::fs::read_to_string(generated_dir.join("agents/session-namer.md"))
+            .expect("read generated session namer prompt");
+
+    assert!(
+        generated_prompt.contains("model: sonnet"),
+        "expected runtime-derived model in generated frontmatter, got: {generated_prompt}"
+    );
+    assert!(
+        generated_prompt.contains("mcp__ralphx__update_session_title"),
+        "expected session-namer MCP tool in generated frontmatter, got: {generated_prompt}"
+    );
+    assert!(
+        generated_prompt.contains("Shared session naming prompt"),
+        "expected shared canonical prompt body to be preserved, got: {generated_prompt}"
+    );
 }

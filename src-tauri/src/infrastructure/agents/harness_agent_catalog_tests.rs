@@ -36,13 +36,6 @@ fn pilot_agent_definitions_load_from_canonical_tree() {
             .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
         assert_eq!(definition.name, *agent_name);
         assert_eq!(definition.role, *role);
-        assert!(
-            definition
-                .claude_plugin_output
-                .as_deref()
-                .is_some_and(|path| path.ends_with(&format!("{agent_name}.md"))),
-            "expected claude plugin output path for {agent_name}"
-        );
     }
 }
 

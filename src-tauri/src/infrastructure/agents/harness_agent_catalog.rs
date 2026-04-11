@@ -13,9 +13,15 @@ pub struct CanonicalAgentDefinition {
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
-    pub claude_plugin_output: Option<String>,
+    pub claude: CanonicalClaudeAgentMetadata,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+pub struct CanonicalClaudeAgentMetadata {
     #[serde(default)]
-    pub shared_prompt_harnesses: Vec<String>,
+    pub disallowed_tools: Vec<String>,
+    #[serde(default)]
+    pub skills: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,13 +32,6 @@ pub enum AgentPromptHarness {
 
 impl AgentPromptHarness {
     fn as_dir(self) -> &'static str {
-        match self {
-            Self::Claude => "claude",
-            Self::Codex => "codex",
-        }
-    }
-
-    fn as_str(self) -> &'static str {
         match self {
             Self::Claude => "claude",
             Self::Codex => "codex",
@@ -90,7 +89,7 @@ pub fn resolve_harness_agent_prompt_path(
     agent_name: &str,
     harness: AgentPromptHarness,
 ) -> Option<PathBuf> {
-    let definition = load_canonical_agent_definition(project_root, agent_name)?;
+    load_canonical_agent_definition(project_root, agent_name)?;
     let agent_root = canonical_agent_root(project_root, agent_name);
     let prompt_path = agent_root
         .join(harness.as_dir())
@@ -100,12 +99,7 @@ pub fn resolve_harness_agent_prompt_path(
     }
 
     let shared_prompt_path = agent_root.join(SHARED_PROMPT_DIR_NAME).join(PROMPT_FILE_NAME);
-    if shared_prompt_path.exists()
-        && definition
-            .shared_prompt_harnesses
-            .iter()
-            .any(|supported| supported == harness.as_str())
-    {
+    if shared_prompt_path.exists() {
         Some(shared_prompt_path)
     } else {
         None
