@@ -1,0 +1,9 @@
+name: ideation-specialist-pipeline-safety
+role: ideation_specialist_pipeline_safety
+description: Evaluate ideation plans for pipeline safety risks against known failure archetypes.
+claude:
+  disallowed_tools:
+    - Write
+    - Edit
+    - NotebookEdit
+    - Bash

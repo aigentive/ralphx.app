@@ -1,0 +1,9 @@
+name: ideation-specialist-intent
+role: ideation_specialist_intent
+description: Verify plan intent alignment against the user's original request.
+claude:
+  disallowed_tools:
+    - Write
+    - Edit
+    - NotebookEdit
+    - Bash

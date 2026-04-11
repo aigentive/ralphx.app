@@ -1,0 +1,9 @@
+name: ideation-specialist-state-machine
+role: ideation_specialist_state_machine
+description: Evaluate plans modifying task state transitions for safety.
+claude:
+  disallowed_tools:
+    - Write
+    - Edit
+    - NotebookEdit
+    - Bash

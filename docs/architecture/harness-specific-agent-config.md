@@ -11,6 +11,7 @@ In progress.
 Landed so far:
 - phase 1 pilot skeleton under `agents/` for `orchestrator-ideation`, `ideation-team-lead`, and `session-namer`
 - verification cohort canonicalized for Claude generation: `plan-verifier`, `plan-critic-completeness`, `plan-critic-implementation-feasibility`
+- specialist/debate cohort canonicalized as Claude-only agents: ideation specialists plus `ideation-advocate` / `ideation-critic`
 - resolver-backed canonical prompt loading for migrated agents on the Codex path
 - `ideation-team-lead` intentionally remains Claude-only because Codex team mode is not supported; canonical agents without a Codex prompt no longer silently inherit the legacy Claude prompt
 - Claude runtime now materializes a generated plugin cache dir instead of reading authored prompt files directly from `plugins/app/agents`

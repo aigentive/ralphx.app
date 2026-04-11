@@ -1,0 +1,9 @@
+name: ideation-critic
+role: ideation_critic
+description: Stress-test ideation approaches with adversarial analysis.
+claude:
+  disallowed_tools:
+    - Write
+    - Edit
+    - NotebookEdit
+    - Bash

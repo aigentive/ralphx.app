@@ -18,6 +18,29 @@ const CLAUDE_ONLY_CANONICAL_AGENTS: &[(&str, &str)] = &[
         "plan-critic-implementation-feasibility",
         "plan_critic_implementation_feasibility",
     ),
+    ("ideation-specialist-backend", "ideation_specialist_backend"),
+    ("ideation-specialist-frontend", "ideation_specialist_frontend"),
+    ("ideation-specialist-infra", "ideation_specialist_infra"),
+    ("ideation-specialist-ux", "ideation_specialist_ux"),
+    (
+        "ideation-specialist-code-quality",
+        "ideation_specialist_code_quality",
+    ),
+    (
+        "ideation-specialist-prompt-quality",
+        "ideation_specialist_prompt_quality",
+    ),
+    ("ideation-specialist-intent", "ideation_specialist_intent"),
+    (
+        "ideation-specialist-state-machine",
+        "ideation_specialist_state_machine",
+    ),
+    (
+        "ideation-specialist-pipeline-safety",
+        "ideation_specialist_pipeline_safety",
+    ),
+    ("ideation-advocate", "ideation_advocate"),
+    ("ideation-critic", "ideation_critic"),
 ];
 
 fn project_root() -> PathBuf {

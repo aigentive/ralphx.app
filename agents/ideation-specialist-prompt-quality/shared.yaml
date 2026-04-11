@@ -1,0 +1,9 @@
+name: ideation-specialist-prompt-quality
+role: ideation_specialist_prompt_quality
+description: Review agent prompt files for context-engineering quality issues.
+claude:
+  disallowed_tools:
+    - Write
+    - Edit
+    - NotebookEdit
+    - Bash
