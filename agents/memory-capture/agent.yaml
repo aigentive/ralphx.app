@@ -1,0 +1,3 @@
+name: memory-capture
+role: memory_capture
+description: Extracts high-value reusable knowledge from completed conversations into project memory.

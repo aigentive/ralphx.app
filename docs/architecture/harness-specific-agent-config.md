@@ -325,6 +325,17 @@ Next support/specialist candidates:
 - `review-history`
 - remaining support/chat helpers that still read legacy plugin-authored prompts
 
+Shared-prompt support cohort:
+- `ralphx-review-history`
+- `project-analyzer`
+- `memory-capture`
+- `memory-maintainer`
+
+Requirements for the support cohort:
+- preserve existing Claude prompt bodies exactly through canonical `shared/prompt.md`
+- keep both harnesses on the same prompt body unless a real harness divergence appears
+- Codex prompt tests must still reject Claude-only syntax
+
 ## Phase 4: Specialists And Critics
 
 Migrate:

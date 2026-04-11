@@ -1,0 +1,3 @@
+name: memory-maintainer
+role: memory_maintainer
+description: Maintains canonical project memory through ingestion, deduplication, rewrite, and archive upkeep.
