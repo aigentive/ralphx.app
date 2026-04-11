@@ -68,6 +68,8 @@ async fn test_delegate_start_creates_child_session_and_completes_with_mock_clien
         State(state.clone()),
         Json(DelegateStartRequest {
             parent_session_id: parent.id.as_str().to_string(),
+            parent_turn_id: Some("turn-42".to_string()),
+            parent_message_id: Some("msg-99".to_string()),
             child_session_id: None,
             agent_name: "ralphx-ideation".to_string(),
             prompt: "Review the proposal set and summarize the main implementation risks."
@@ -86,10 +88,14 @@ async fn test_delegate_start_creates_child_session_and_completes_with_mock_clien
     .0;
 
     assert_eq!(start.parent_session_id, parent.id.as_str());
+    assert_eq!(start.parent_turn_id.as_deref(), Some("turn-42"));
+    assert_eq!(start.parent_message_id.as_deref(), Some("msg-99"));
     assert_eq!(start.agent_name, "ralphx-ideation");
     assert_eq!(start.harness, "codex");
     assert_eq!(start.status, "running");
     assert_ne!(start.child_session_id, parent.id.as_str());
+    assert_eq!(start.history.len(), 1);
+    assert_eq!(start.history[0].status, "running");
 
     let child_id = IdeationSessionId::from_string(start.child_session_id.clone());
     let child = state
@@ -120,6 +126,12 @@ async fn test_delegate_start_creates_child_session_and_completes_with_mock_clien
     assert_eq!(waited.status, "completed");
     assert_eq!(waited.content.as_deref(), Some("MOCK_COMPLETION"));
     assert!(waited.error.is_none());
+    assert_eq!(waited.parent_turn_id.as_deref(), Some("turn-42"));
+    assert_eq!(waited.parent_message_id.as_deref(), Some("msg-99"));
+    assert_eq!(
+        waited.history.iter().map(|entry| entry.status.as_str()).collect::<Vec<_>>(),
+        vec!["running", "completed"]
+    );
 
     let spawn_calls = codex_mock.get_spawn_calls().await;
     assert_eq!(spawn_calls.len(), 1);
@@ -127,6 +139,8 @@ async fn test_delegate_start_creates_child_session_and_completes_with_mock_clien
         MockCallType::Spawn { prompt, .. } => {
             assert!(prompt.contains("Delegated Risk Review") || prompt.contains("Delegated task:"));
             assert!(prompt.contains(parent.id.as_str()));
+            assert!(prompt.contains("Parent turn id: `turn-42`"));
+            assert!(prompt.contains("Parent message id: `msg-99`"));
             assert!(prompt.contains(waited.child_session_id.as_str()));
             assert!(prompt.contains("summarize the main implementation risks"));
         }
@@ -143,6 +157,8 @@ async fn test_delegate_start_rejects_unknown_agent_name() {
         State(state),
         Json(DelegateStartRequest {
             parent_session_id: parent.id.as_str().to_string(),
+            parent_turn_id: Some("turn-bad".to_string()),
+            parent_message_id: Some("msg-bad".to_string()),
             child_session_id: None,
             agent_name: "ralphx-does-not-exist".to_string(),
             prompt: "noop".to_string(),

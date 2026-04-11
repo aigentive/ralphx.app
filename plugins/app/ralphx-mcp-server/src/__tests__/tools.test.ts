@@ -971,6 +971,8 @@ describe('delegation bridge tools', () => {
   it('delegate_start should require parent_session_id, agent_name, and prompt', () => {
     const tool = allTools.find((entry) => entry.name === 'delegate_start');
     expect(tool?.inputSchema.type).toBe('object');
+    expect(tool?.inputSchema.properties).toHaveProperty('parent_turn_id');
+    expect(tool?.inputSchema.properties).toHaveProperty('parent_message_id');
     expect(tool?.inputSchema.required).toEqual(
       expect.arrayContaining(['parent_session_id', 'agent_name', 'prompt'])
     );

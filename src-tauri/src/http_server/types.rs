@@ -1037,6 +1037,8 @@ pub struct TeamConfigInput {
 #[derive(Debug, Deserialize)]
 pub struct DelegateStartRequest {
     pub parent_session_id: String,
+    pub parent_turn_id: Option<String>,
+    pub parent_message_id: Option<String>,
     pub child_session_id: Option<String>,
     pub agent_name: String,
     pub prompt: String,

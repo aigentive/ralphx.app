@@ -76,10 +76,12 @@
   - backend delegation job registry with running/completed/failed/cancelled snapshots
   - canonical agent lookup + harness-aware spawn through the existing runtime clients
   - ideation parent -> child session continuity for delegated specialists
+  - explicit parent turn/message lineage in request metadata, agent env, prompt context, and returned job snapshots
+  - per-job status history (`running`, `completed`, `failed`, `cancelled`) on the snapshot contract
 - Still required:
-  - parent-turn metadata and richer coordination history
   - non-ideation parent contexts
   - provider-session continuity / resume
+  - richer live progress relay beyond terminal status history
   - prompt migration for specialist paths still assuming Claude-native delegation
 
 ## Non-Negotiables

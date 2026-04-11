@@ -132,11 +132,25 @@ async fn load_parent_project_working_directory(
 fn build_delegated_prompt(
     agent_name: &str,
     parent_session_id: &str,
+    parent_turn_id: Option<&str>,
+    parent_message_id: Option<&str>,
     child_session_id: &str,
     prompt: &str,
 ) -> String {
+    let mut metadata_lines = vec![
+        format!("Parent ideation session: `{parent_session_id}`"),
+        format!("Child session: `{child_session_id}`"),
+    ];
+    if let Some(turn_id) = parent_turn_id {
+        metadata_lines.push(format!("Parent turn id: `{turn_id}`"));
+    }
+    if let Some(message_id) = parent_message_id {
+        metadata_lines.push(format!("Parent message id: `{message_id}`"));
+    }
+
     format!(
-        "You are running as delegated RalphX specialist `{agent_name}`.\nParent ideation session: `{parent_session_id}`\nChild session: `{child_session_id}`\nOperate through the RalphX MCP tools available to your role and treat the child session as your working context.\n\nDelegated task:\n{prompt}"
+        "You are running as delegated RalphX specialist `{agent_name}`.\n{}\nOperate through the RalphX MCP tools available to your role and treat the child session as your working context.\n\nDelegated task:\n{prompt}",
+        metadata_lines.join("\n"),
     )
 }
 
@@ -183,12 +197,26 @@ pub(crate) async fn start_delegate_impl(
         "RALPHX_PARENT_SESSION_ID".to_string(),
         req.parent_session_id.clone(),
     );
+    if let Some(parent_turn_id) = &req.parent_turn_id {
+        env.insert(
+            "RALPHX_PARENT_TURN_ID".to_string(),
+            parent_turn_id.clone(),
+        );
+    }
+    if let Some(parent_message_id) = &req.parent_message_id {
+        env.insert(
+            "RALPHX_PARENT_MESSAGE_ID".to_string(),
+            parent_message_id.clone(),
+        );
+    }
 
     let config = AgentConfig {
         role: agent_role_for(&definition.name, &definition.role),
         prompt: build_delegated_prompt(
             &definition.name,
             &req.parent_session_id,
+            req.parent_turn_id.as_deref(),
+            req.parent_message_id.as_deref(),
             &child_session_id,
             &req.prompt,
         ),
@@ -225,6 +253,8 @@ pub(crate) async fn start_delegate_impl(
         .register_running(
             job_id.clone(),
             req.parent_session_id.clone(),
+            req.parent_turn_id.clone(),
+            req.parent_message_id.clone(),
             child_session_id,
             definition.name.clone(),
             harness,

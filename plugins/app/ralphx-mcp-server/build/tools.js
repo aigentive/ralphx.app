@@ -490,6 +490,14 @@ export const ALL_TOOLS = [
                     type: "string",
                     description: "The parent ideation session that owns the delegated work.",
                 },
+                parent_turn_id: {
+                    type: "string",
+                    description: "Optional parent coordination turn id for lineage and continuity tracking.",
+                },
+                parent_message_id: {
+                    type: "string",
+                    description: "Optional parent message id that triggered this delegated specialist run.",
+                },
                 child_session_id: {
                     type: "string",
                     description: "Optional existing child session to reuse for RalphX-side continuity.",

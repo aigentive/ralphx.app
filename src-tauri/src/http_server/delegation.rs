@@ -6,9 +6,18 @@ use tokio::sync::RwLock;
 use crate::domain::agents::{AgentHandle, AgentHarnessKind};
 
 #[derive(Debug, Clone, serde::Serialize)]
+pub struct DelegationHistoryEntry {
+    pub status: String,
+    pub timestamp: String,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct DelegationJobSnapshot {
     pub job_id: String,
     pub parent_session_id: String,
+    pub parent_turn_id: Option<String>,
+    pub parent_message_id: Option<String>,
     pub child_session_id: String,
     pub agent_name: String,
     pub harness: String,
@@ -17,6 +26,7 @@ pub struct DelegationJobSnapshot {
     pub error: Option<String>,
     pub started_at: String,
     pub completed_at: Option<String>,
+    pub history: Vec<DelegationHistoryEntry>,
 }
 
 #[derive(Debug, Clone)]
@@ -40,22 +50,32 @@ impl DelegationService {
         &self,
         job_id: String,
         parent_session_id: String,
+        parent_turn_id: Option<String>,
+        parent_message_id: Option<String>,
         child_session_id: String,
         agent_name: String,
         harness: AgentHarnessKind,
         handle: AgentHandle,
     ) -> DelegationJobSnapshot {
+        let started_at = Utc::now().to_rfc3339();
         let snapshot = DelegationJobSnapshot {
             job_id: job_id.clone(),
             parent_session_id,
+            parent_turn_id,
+            parent_message_id,
             child_session_id,
             agent_name,
             harness: harness.to_string(),
             status: "running".to_string(),
             content: None,
             error: None,
-            started_at: Utc::now().to_rfc3339(),
+            started_at: started_at.clone(),
             completed_at: None,
+            history: vec![DelegationHistoryEntry {
+                status: "running".to_string(),
+                timestamp: started_at,
+                detail: None,
+            }],
         };
 
         self.jobs.write().await.insert(
@@ -89,7 +109,13 @@ impl DelegationService {
         record.snapshot.status = "completed".to_string();
         record.snapshot.content = Some(content);
         record.snapshot.error = None;
-        record.snapshot.completed_at = Some(Utc::now().to_rfc3339());
+        let completed_at = Utc::now().to_rfc3339();
+        record.snapshot.completed_at = Some(completed_at.clone());
+        record.snapshot.history.push(DelegationHistoryEntry {
+            status: "completed".to_string(),
+            timestamp: completed_at,
+            detail: None,
+        });
         record.handle = None;
     }
 
@@ -102,8 +128,14 @@ impl DelegationService {
             return;
         }
         record.snapshot.status = "failed".to_string();
-        record.snapshot.error = Some(error);
-        record.snapshot.completed_at = Some(Utc::now().to_rfc3339());
+        let completed_at = Utc::now().to_rfc3339();
+        record.snapshot.error = Some(error.clone());
+        record.snapshot.completed_at = Some(completed_at.clone());
+        record.snapshot.history.push(DelegationHistoryEntry {
+            status: "failed".to_string(),
+            timestamp: completed_at,
+            detail: Some(error),
+        });
         record.handle = None;
     }
 
@@ -115,7 +147,13 @@ impl DelegationService {
         let record = jobs.get_mut(job_id)?;
         let handle = record.handle.take()?;
         record.snapshot.status = "cancelled".to_string();
-        record.snapshot.completed_at = Some(Utc::now().to_rfc3339());
+        let completed_at = Utc::now().to_rfc3339();
+        record.snapshot.completed_at = Some(completed_at.clone());
+        record.snapshot.history.push(DelegationHistoryEntry {
+            status: "cancelled".to_string(),
+            timestamp: completed_at,
+            detail: None,
+        });
         Some((record.harness, handle, record.snapshot.clone()))
     }
 }
