@@ -1029,7 +1029,7 @@ async fn test_handle_stream_error_cancelled_turns_finalized_re_increments_slot()
 }
 
 #[tokio::test]
-async fn test_handle_stream_error_preserves_existing_content_blocks_when_appending_agent_error() {
+async fn test_handle_stream_error_preserves_existing_content_blocks_without_serializing_nonfatal_mcp_cancellation() {
     let state = AppState::new_test();
     let conversation_id = ChatConversationId::new();
     let context_id = IdeationSessionId::new();
@@ -1125,6 +1125,116 @@ async fn test_handle_stream_error_preserves_existing_content_blocks_when_appendi
 
     assert!(
         !recovery_spawned,
+        "non-fatal MCP cancellation path must not spawn recovery"
+    );
+
+    let stored = state
+        .chat_message_repo
+        .get_by_id(&ChatMessageId::from_string(pre_assistant_message_id))
+        .await
+        .expect("reload message")
+        .expect("message should still exist");
+
+    assert_eq!(
+        stored.content, "Recovered ideation response",
+        "non-fatal MCP cancellation text must not be appended into persisted assistant/orchestrator content"
+    );
+    assert!(
+        stored.content_blocks.is_some(),
+        "non-fatal MCP cancellation finalization must preserve previously persisted content_blocks instead of clearing ordered widget hydration"
+    );
+    let blocks: serde_json::Value = serde_json::from_str(
+        stored.content_blocks.as_deref().expect("content blocks JSON should be present"),
+    )
+    .expect("content blocks should remain valid JSON");
+    assert_eq!(
+        blocks.as_array().map(|items| items.len()),
+        Some(2),
+        "the pre-error text + tool-use blocks should remain available for final replay rendering"
+    );
+}
+
+#[tokio::test]
+async fn test_handle_stream_error_appends_generic_agent_error_to_existing_content() {
+    let state = AppState::new_test();
+    let conversation_id = ChatConversationId::new();
+    let context_id = IdeationSessionId::new();
+    let pre_assistant_message = crate::application::chat_service::chat_service_context::create_assistant_message(
+        ChatContextType::Ideation,
+        context_id.as_str(),
+        "Recovered ideation response",
+        conversation_id.clone(),
+        &[],
+        &[ContentBlockItem::Text {
+            text: "Recovered ideation response".to_string(),
+        }],
+    );
+    let pre_assistant_message_id = pre_assistant_message.id.as_str().to_string();
+    state
+        .chat_message_repo
+        .create(pre_assistant_message)
+        .await
+        .expect("insert pre-assistant message");
+
+    let event_ctx = crate::application::chat_service::event_context(
+        &conversation_id,
+        &ChatContextType::Ideation,
+        context_id.as_str(),
+    );
+    let stream_error = StreamError::AgentExit {
+        exit_code: Some(1),
+        stderr: "unexpected agent crash".to_string(),
+    };
+
+    let recovery_spawned = handle_stream_error::<MockRuntime>(
+        "unexpected agent crash",
+        Some(&stream_error),
+        ChatContextType::Ideation,
+        context_id.as_str(),
+        conversation_id,
+        "run-id-2",
+        &pre_assistant_message_id,
+        &event_ctx,
+        None,
+        crate::domain::agents::AgentHarnessKind::Codex,
+        false,
+        None,
+        None,
+        None,
+        std::path::Path::new("/tmp/codex"),
+        std::path::Path::new("/tmp/plugin"),
+        std::path::Path::new("/tmp"),
+        &state.chat_message_repo,
+        &state.chat_attachment_repo,
+        &state.artifact_repo,
+        &state.chat_conversation_repo,
+        &state.agent_run_repo,
+        &state.task_repo,
+        &state.task_dependency_repo,
+        &state.project_repo,
+        &state.ideation_session_repo,
+        &None,
+        &state.activity_event_repo,
+        &state.message_queue,
+        &state.running_agent_registry,
+        &state.memory_event_repo,
+        &None,
+        &None,
+        &None,
+        &None,
+        &None::<tauri::AppHandle<MockRuntime>>,
+        None,
+        false,
+        None,
+        &None,
+        &None,
+        &None,
+        &None,
+    )
+    .await;
+
+    assert!(
+        !recovery_spawned,
         "generic agent error append path must not spawn recovery"
     );
 
@@ -1137,20 +1247,11 @@ async fn test_handle_stream_error_preserves_existing_content_blocks_when_appendi
 
     assert!(
         stored.content.contains("[Agent error:"),
-        "agent error note should still be appended to the flushed assistant/orchestrator content"
+        "generic agent failures must still be appended into persisted assistant/orchestrator content"
     );
     assert!(
-        stored.content_blocks.is_some(),
-        "error finalization must preserve previously persisted content_blocks instead of clearing ordered widget hydration"
-    );
-    let blocks: serde_json::Value = serde_json::from_str(
-        stored.content_blocks.as_deref().expect("content blocks JSON should be present"),
-    )
-    .expect("content blocks should remain valid JSON");
-    assert_eq!(
-        blocks.as_array().map(|items| items.len()),
-        Some(2),
-        "the pre-error text + tool-use blocks should remain available for final replay rendering"
+        stored.content.contains("unexpected agent crash"),
+        "generic agent failures must keep the error details in the appended note"
     );
 }
 

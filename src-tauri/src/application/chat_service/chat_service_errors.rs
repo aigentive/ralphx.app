@@ -543,6 +543,15 @@ pub fn classify_provider_error(error_text: &str) -> Option<StreamError> {
     None
 }
 
+/// Return true when stderr indicates the agent terminated because the user
+/// cancelled an MCP tool call rather than because the assistant produced a
+/// user-visible failure that should be serialized into the transcript.
+pub fn is_nonfatal_mcp_tool_cancellation(error_text: &str) -> bool {
+    let lower = error_text.to_lowercase();
+    lower.contains("mcp tool call")
+        && (lower.contains("user cancelled") || lower.contains("user canceled"))
+}
+
 /// Parse a retry-after timestamp from error messages.
 /// Looks for patterns like "will reset at 2026-02-15 14:15:20"
 #[doc(hidden)]
@@ -666,4 +675,22 @@ pub fn classify_agent_error(
         }
     }
     AppError::Agent(error_message.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_nonfatal_mcp_tool_cancellation;
+
+    #[test]
+    fn detects_user_cancelled_mcp_tool_call_variants() {
+        assert!(is_nonfatal_mcp_tool_cancellation(
+            "user cancelled MCP tool call"
+        ));
+        assert!(is_nonfatal_mcp_tool_cancellation(
+            "Agent failed: user canceled mcp tool call"
+        ));
+        assert!(!is_nonfatal_mcp_tool_cancellation(
+            "tool call failed: provider timeout"
+        ));
+    }
 }

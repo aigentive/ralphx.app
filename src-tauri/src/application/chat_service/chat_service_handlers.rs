@@ -41,7 +41,9 @@ use crate::domain::state_machine::services::TaskScheduler;
 use crate::error::AppError;
 
 use super::chat_service_context;
-use super::chat_service_errors::{classify_agent_error, StreamError};
+use super::chat_service_errors::{
+    classify_agent_error, is_nonfatal_mcp_tool_cancellation, StreamError,
+};
 use super::chat_service_helpers::get_assistant_role;
 use super::chat_service_types::{AgentErrorPayload, AgentRunCompletedPayload};
 use super::EventContextPayload;
@@ -1625,7 +1627,19 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     // Read existing content before overwriting — append error to any content already flushed
     let (existing_content, existing_tool_calls, existing_content_blocks) =
         read_existing_message_content(chat_message_repo, pre_assistant_msg_id).await;
-    let error_note = if existing_content.is_empty() {
+    let suppress_transcript_error_note = matches!(
+        stream_error,
+        Some(StreamError::AgentExit { stderr, .. }) if is_nonfatal_mcp_tool_cancellation(stderr)
+    );
+    let error_note = if suppress_transcript_error_note {
+        tracing::info!(
+            conversation_id = conversation_id.as_str(),
+            context_type = %context_type,
+            context_id,
+            "Suppressing non-fatal MCP cancellation note from persisted assistant transcript"
+        );
+        existing_content
+    } else if existing_content.is_empty() {
         format!("{} {}]", super::AGENT_ERROR_PREFIX, redacted_error)
     } else {
         format!(
