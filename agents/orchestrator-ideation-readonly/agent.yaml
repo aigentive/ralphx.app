@@ -1,0 +1,3 @@
+name: orchestrator-ideation-readonly
+role: ideation_orchestrator_readonly
+description: Advises on accepted ideation sessions in read-only mode and creates child sessions for follow-up work.

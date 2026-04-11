@@ -352,6 +352,14 @@ Status:
 - landed
 - the only remaining live legacy runtime prompt is `orchestrator-ideation-readonly`
 
+Final live runtime prompt:
+- `orchestrator-ideation-readonly`
+
+Requirements for the readonly ideation agent:
+- preserve the existing Claude prompt body exactly through canonical `claude/prompt.md`
+- keep Claude-only readonly metadata in `claude/agent.yaml`
+- author a Codex-native readonly ideation prompt that preserves accepted-session / child-session semantics without `Task(...)` or other Claude-only orchestration syntax
+
 ## Phase 4: Specialists And Critics
 
 Migrate:
