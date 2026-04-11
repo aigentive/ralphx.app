@@ -19,6 +19,8 @@ pub struct CanonicalAgentDefinition {
 #[serde(deny_unknown_fields)]
 pub struct CanonicalClaudeAgentMetadata {
     #[serde(default)]
+    pub frontmatter_name: Option<String>,
+    #[serde(default)]
     pub disallowed_tools: Vec<String>,
     #[serde(default)]
     pub skills: Vec<String>,

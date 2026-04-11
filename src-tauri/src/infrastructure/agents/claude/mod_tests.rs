@@ -8,6 +8,8 @@
 /// - create_mcp_config(): --agent-type still present alongside --allowed-tools
 /// - create_mcp_config(): no --allowed-tools arg when agent has no mcp_tools config
 use super::*;
+use serde_yaml::Value;
+use std::collections::BTreeSet;
 use std::path::Path;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -51,6 +53,73 @@ fn get_json_args(config_path: &Path) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn repo_project_root() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
+}
+
+fn split_frontmatter(markdown: &str) -> (Value, String) {
+    let after_start = markdown
+        .strip_prefix("---\n")
+        .expect("expected frontmatter start delimiter");
+    let (frontmatter, body) = after_start
+        .split_once("\n---\n")
+        .expect("expected frontmatter end delimiter");
+    let parsed = serde_yaml::from_str(frontmatter).expect("valid yaml frontmatter");
+    (parsed, body.trim().to_string())
+}
+
+fn frontmatter_tools_set(frontmatter: &Value) -> BTreeSet<String> {
+    frontmatter["tools"]
+        .as_sequence()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn frontmatter_has_mcp_servers(frontmatter: &Value) -> bool {
+    !matches!(frontmatter.get("mcpServers"), None | Some(Value::Null))
+}
+
+fn expected_frontmatter_tools(agent_name: &str) -> BTreeSet<String> {
+    let agent_config = get_agent_config(agent_name)
+        .unwrap_or_else(|| panic!("missing runtime config for {agent_name}"));
+    let mcp_server_name = &claude_runtime_config().mcp_server_name;
+
+    let mut tools = BTreeSet::new();
+    if !agent_config.mcp_only {
+        tools.extend(agent_config.resolved_cli_tools.iter().cloned());
+    }
+    tools.extend(agent_config.allowed_mcp_tools.iter().map(|tool| {
+        if tool.starts_with("mcp__") {
+            tool.to_string()
+        } else {
+            format!("mcp__{mcp_server_name}__{tool}")
+        }
+    }));
+    tools.extend(agent_config.preapproved_cli_tools.iter().cloned());
+    tools
+}
+
+fn legacy_agent_file_stem(agent_name: &str) -> String {
+    match agent_name {
+        "ralphx-coder" => "coder".to_string(),
+        "ralphx-merger" => "merger".to_string(),
+        "ralphx-review-chat" => "review-chat".to_string(),
+        "ralphx-review-history" => "review-history".to_string(),
+        "ralphx-reviewer" => "reviewer".to_string(),
+        "ralphx-worker" => "worker".to_string(),
+        "ralphx-worker-team" => "worker-team".to_string(),
+        "ralphx-deep-researcher" => "deep-researcher".to_string(),
+        "ralphx-orchestrator" => "orchestrator".to_string(),
+        "ralphx-supervisor" => "supervisor".to_string(),
+        "ralphx-qa-executor" => "qa-executor".to_string(),
+        "ralphx-qa-prep" => "qa-prep".to_string(),
+        other => other.to_string(),
+    }
 }
 
 // ─── validate_mcp_tool_name ──────────────────────────────────────────────────
@@ -566,4 +635,71 @@ description: Monitors task execution and intervenes when problems occur
         !generated_prompt.contains("\nmcpServers:"),
         "expected no MCP server frontmatter for agents without MCP tools, got: {generated_prompt}"
     );
+}
+
+#[test]
+fn test_materialize_generated_plugin_dir_matches_legacy_frontmatter_semantics_for_live_agents() {
+    let root = repo_project_root();
+    let plugin_dir = root.join("plugins/app");
+    let generated_dir =
+        materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
+    let agents_root = root.join("agents");
+    let legacy_agents_root = root.join("plugins/app/agents");
+
+    for entry in std::fs::read_dir(&agents_root).expect("canonical agents dir should exist") {
+        let entry = entry.expect("canonical agent entry");
+        if !entry.file_type().expect("agent entry type").is_dir() {
+            continue;
+        }
+
+        let agent_name = entry.file_name().to_string_lossy().to_string();
+        let legacy_file_stem = legacy_agent_file_stem(&agent_name);
+        let legacy_path = legacy_agents_root.join(format!("{legacy_file_stem}.md"));
+        if !legacy_path.exists() {
+            continue;
+        }
+
+        let generated_path = generated_dir.join("agents").join(format!("{agent_name}.md"));
+        let legacy_markdown =
+            std::fs::read_to_string(&legacy_path).expect("read legacy agent markdown");
+        let generated_markdown =
+            std::fs::read_to_string(&generated_path).expect("read generated agent markdown");
+
+        let (legacy_frontmatter, legacy_body) = split_frontmatter(&legacy_markdown);
+        let (generated_frontmatter, generated_body) = split_frontmatter(&generated_markdown);
+
+        assert_eq!(
+            legacy_frontmatter["name"].as_str(),
+            generated_frontmatter["name"].as_str(),
+            "generated Claude name drifted for {agent_name}"
+        );
+        assert_eq!(
+            legacy_frontmatter["description"].as_str(),
+            generated_frontmatter["description"].as_str(),
+            "generated Claude description drifted for {agent_name}"
+        );
+        assert_eq!(
+            legacy_frontmatter["model"].as_str(),
+            generated_frontmatter["model"].as_str(),
+            "generated Claude model drifted for {agent_name}"
+        );
+        assert_eq!(
+            expected_frontmatter_tools(&agent_name),
+            frontmatter_tools_set(&generated_frontmatter),
+            "generated Claude tools drifted from runtime config for {agent_name}"
+        );
+        assert_eq!(
+            !get_agent_config(&agent_name)
+                .unwrap_or_else(|| panic!("missing runtime config for {agent_name}"))
+                .allowed_mcp_tools
+                .is_empty(),
+            frontmatter_has_mcp_servers(&generated_frontmatter),
+            "generated Claude mcpServers presence drifted from runtime config for {agent_name}"
+        );
+        assert_eq!(
+            legacy_body,
+            generated_body,
+            "generated Claude prompt body drifted for {agent_name}"
+        );
+    }
 }
