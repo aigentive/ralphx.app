@@ -133,28 +133,28 @@ agent_harness_defaults:
     model: gpt-5.4
     effort: xhigh
     approval_policy: never
-    sandbox_mode: workspace-write
+    sandbox_mode: danger-full-access
     fallback_harness: claude
   ideation_verifier:
     harness: codex
     model: gpt-5.4-mini
     effort: medium
     approval_policy: never
-    sandbox_mode: workspace-write
+    sandbox_mode: danger-full-access
     fallback_harness: claude
   ideation_subagent:
     harness: codex
     model: gpt-5.4-mini
     effort: medium
     approval_policy: never
-    sandbox_mode: workspace-write
+    sandbox_mode: danger-full-access
     fallback_harness: claude
   ideation_verifier_subagent:
     harness: codex
     model: gpt-5.4-mini
     effort: medium
     approval_policy: never
-    sandbox_mode: workspace-write
+    sandbox_mode: danger-full-access
     fallback_harness: claude
   execution_worker:
     harness: claude

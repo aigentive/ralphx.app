@@ -66,6 +66,11 @@ const FALLBACK_HARNESS_OPTIONS = [
   { value: "claude", label: "Claude" },
 ] as const;
 
+const CODEX_LOCKED_APPROVAL_POLICY = "never";
+const CODEX_LOCKED_SANDBOX_MODE = "danger-full-access";
+const CODEX_MCP_REQUIREMENT_COPY =
+  "Temporarily locked for Codex: RalphX MCP tools currently require Never approval and Danger Full Access.";
+
 const LANE_META: Record<
   AgentLane,
   { label: string; description: string }
@@ -153,8 +158,8 @@ function defaultsForHarness(
       harness,
       model: "gpt-5.4",
       effort: "xhigh",
-      approvalPolicy: "on-request",
-      sandboxMode: "workspace-write",
+      approvalPolicy: CODEX_LOCKED_APPROVAL_POLICY,
+      sandboxMode: CODEX_LOCKED_SANDBOX_MODE,
       fallbackHarness: "claude",
     };
   }
@@ -164,8 +169,8 @@ function defaultsForHarness(
       harness,
       model: "gpt-5.4-mini",
       effort: "medium",
-      approvalPolicy: "on-request",
-      sandboxMode: "workspace-write",
+      approvalPolicy: CODEX_LOCKED_APPROVAL_POLICY,
+      sandboxMode: CODEX_LOCKED_SANDBOX_MODE,
       fallbackHarness: "claude",
     };
   }
@@ -175,8 +180,8 @@ function defaultsForHarness(
       harness,
       model: "gpt-5.4",
       effort: "xhigh",
-      approvalPolicy: "on-request",
-      sandboxMode: "workspace-write",
+      approvalPolicy: CODEX_LOCKED_APPROVAL_POLICY,
+      sandboxMode: CODEX_LOCKED_SANDBOX_MODE,
       fallbackHarness: "claude",
     };
   }
@@ -185,8 +190,8 @@ function defaultsForHarness(
     harness,
     model: "gpt-5.4-mini",
     effort: "medium",
-    approvalPolicy: null,
-    sandboxMode: null,
+    approvalPolicy: CODEX_LOCKED_APPROVAL_POLICY,
+    sandboxMode: CODEX_LOCKED_SANDBOX_MODE,
     fallbackHarness: "claude",
   };
 }
@@ -263,6 +268,7 @@ function HarnessRow({
     lane.missingCoreExecFeatures.length > 0;
   const modelKey = `${lane.lane}-${lane.row?.model ?? ""}-${configuredHarness}`;
   const showCodexControls = configuredHarness === "codex";
+  const codexPolicyLocked = showCodexControls;
 
   return (
     <div className={isLast ? undefined : "border-b border-[var(--border-subtle)]"}>
@@ -368,9 +374,12 @@ function HarnessRow({
                   onValueChange={(value) =>
                     onLaneChange({ approvalPolicy: fromSelectValue(value) })
                   }
-                  disabled={disabled}
+                  disabled={disabled || codexPolicyLocked}
                 >
-                  <SelectTrigger className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]">
+                  <SelectTrigger
+                    data-testid={`approval-${lane.lane}`}
+                    className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]"
+                  >
                     <SelectValue placeholder="Select approval policy" />
                   </SelectTrigger>
                   <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
@@ -391,9 +400,12 @@ function HarnessRow({
                   onValueChange={(value) =>
                     onLaneChange({ sandboxMode: fromSelectValue(value) })
                   }
-                  disabled={disabled}
+                  disabled={disabled || codexPolicyLocked}
                 >
-                  <SelectTrigger className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]">
+                  <SelectTrigger
+                    data-testid={`sandbox-${lane.lane}`}
+                    className="h-8 bg-[var(--bg-surface)] border-[var(--border-default)]"
+                  >
                     <SelectValue placeholder="Select sandbox mode" />
                   </SelectTrigger>
                   <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-default)]">
@@ -428,6 +440,9 @@ function HarnessRow({
                   </SelectContent>
                 </Select>
               </div>
+              <p className="text-[11px] text-[var(--text-muted)] md:col-span-2">
+                {CODEX_MCP_REQUIREMENT_COPY}
+              </p>
             </>
           )}
         </div>

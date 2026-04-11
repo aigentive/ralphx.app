@@ -76,29 +76,32 @@ fn should_upgrade_legacy_codex_lane(
         return false;
     }
 
-    let legacy_approval = match lane {
+    if desired.approval_policy.as_deref() != Some("never")
+        || desired.sandbox_mode.as_deref() != Some("danger-full-access")
+    {
+        return false;
+    }
+
+    let legacy_pairs: &[(Option<&str>, Option<&str>)] = match lane {
         AgentLane::IdeationPrimary
         | AgentLane::IdeationVerifier
         | AgentLane::ExecutionWorker
         | AgentLane::ExecutionReviewer
         | AgentLane::ExecutionReexecutor
-        | AgentLane::ExecutionMerger => Some("on-request"),
-        AgentLane::IdeationSubagent | AgentLane::IdeationVerifierSubagent => None,
-    };
-    let legacy_sandbox = match lane {
-        AgentLane::IdeationPrimary
-        | AgentLane::IdeationVerifier
-        | AgentLane::ExecutionWorker
-        | AgentLane::ExecutionReviewer
-        | AgentLane::ExecutionReexecutor
-        | AgentLane::ExecutionMerger => Some("workspace-write"),
-        AgentLane::IdeationSubagent | AgentLane::IdeationVerifierSubagent => None,
+        | AgentLane::ExecutionMerger => &[
+            (Some("on-request"), Some("workspace-write")),
+            (Some("never"), Some("workspace-write")),
+        ],
+        AgentLane::IdeationSubagent | AgentLane::IdeationVerifierSubagent => &[
+            (None, None),
+            (Some("never"), Some("workspace-write")),
+        ],
     };
 
-    existing.approval_policy.as_deref() == legacy_approval
-        && existing.sandbox_mode.as_deref() == legacy_sandbox
-        && desired.approval_policy.as_deref() == Some("never")
-        && desired.sandbox_mode.as_deref() == Some("workspace-write")
+    legacy_pairs.iter().any(|(approval, sandbox)| {
+        existing.approval_policy.as_deref() == *approval
+            && existing.sandbox_mode.as_deref() == *sandbox
+    })
 }
 
 #[cfg(test)]

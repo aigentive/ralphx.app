@@ -346,7 +346,7 @@ async fn codex_primary_lane_without_model_or_effort_uses_phase1_defaults() {
     assert_eq!(resolved.model, "gpt-5.4");
     assert_eq!(resolved.logical_effort, Some(LogicalEffort::XHigh));
     assert_eq!(resolved.approval_policy.as_deref(), Some("never"));
-    assert_eq!(resolved.sandbox_mode.as_deref(), Some("workspace-write"));
+    assert_eq!(resolved.sandbox_mode.as_deref(), Some("danger-full-access"));
     assert_eq!(resolved.subagent_model_cap.as_deref(), Some("gpt-5.4-mini"));
 }
 
@@ -400,7 +400,7 @@ async fn codex_verifier_lane_without_model_or_effort_uses_phase1_defaults() {
     assert_eq!(resolved.model, "gpt-5.4-mini");
     assert_eq!(resolved.logical_effort, Some(LogicalEffort::Medium));
     assert_eq!(resolved.approval_policy.as_deref(), Some("never"));
-    assert_eq!(resolved.sandbox_mode.as_deref(), Some("workspace-write"));
+    assert_eq!(resolved.sandbox_mode.as_deref(), Some("danger-full-access"));
     assert_eq!(resolved.subagent_model_cap.as_deref(), Some("gpt-5.4-mini"));
 }
 
@@ -535,7 +535,7 @@ async fn execution_worker_harness_override_ignores_mismatched_lane_harness_setti
     assert_eq!(resolved.model, "gpt-5.4");
     assert_eq!(resolved.logical_effort, Some(LogicalEffort::XHigh));
     assert_eq!(resolved.approval_policy.as_deref(), Some("never"));
-    assert_eq!(resolved.sandbox_mode.as_deref(), Some("workspace-write"));
+    assert_eq!(resolved.sandbox_mode.as_deref(), Some("danger-full-access"));
 }
 
 #[tokio::test]
@@ -575,7 +575,7 @@ async fn execution_worker_codex_without_model_uses_generic_codex_defaults() {
     assert_eq!(resolved.model, "gpt-5.4");
     assert_eq!(resolved.logical_effort, Some(LogicalEffort::XHigh));
     assert_eq!(resolved.approval_policy.as_deref(), Some("never"));
-    assert_eq!(resolved.sandbox_mode.as_deref(), Some("workspace-write"));
+    assert_eq!(resolved.sandbox_mode.as_deref(), Some("danger-full-access"));
 }
 
 #[tokio::test]

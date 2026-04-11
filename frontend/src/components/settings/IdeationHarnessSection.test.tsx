@@ -27,8 +27,8 @@ const globalLanes: AgentHarnessLaneView[] = [
       harness: "codex",
       model: "gpt-5.4",
       effort: "xhigh",
-      approvalPolicy: "on-request",
-      sandboxMode: "workspace-write",
+      approvalPolicy: "never",
+      sandboxMode: "danger-full-access",
       fallbackHarness: "claude",
       updatedAt: new Date().toISOString(),
     },
@@ -97,6 +97,17 @@ describe("IdeationHarnessSection", () => {
     expect(screen.getByText("Approval")).toBeInTheDocument();
     expect(screen.getByText("Sandbox")).toBeInTheDocument();
     expect(screen.getByText("Fallback Harness")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Temporarily locked for Codex: RalphX MCP tools currently require Never approval and Danger Full Access.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("approval-ideation_primary")).toHaveAttribute(
+      "data-disabled",
+    );
+    expect(screen.getByTestId("sandbox-ideation_primary")).toHaveAttribute(
+      "data-disabled",
+    );
     expect(screen.getByText("Ideation Agents")).toBeInTheDocument();
     expect(screen.queryByText("Execution Worker")).not.toBeInTheDocument();
   });
@@ -114,8 +125,8 @@ describe("IdeationHarnessSection", () => {
         harness: "codex",
         model: "gpt-5.4.1",
         effort: "xhigh",
-        approvalPolicy: "on-request",
-        sandboxMode: "workspace-write",
+        approvalPolicy: "never",
+        sandboxMode: "danger-full-access",
         fallbackHarness: "claude",
       },
       { onError: expect.any(Function) },
@@ -143,8 +154,8 @@ describe("ExecutionHarnessSection", () => {
                   harness: "codex",
                   model: "gpt-5.4",
                   effort: "xhigh",
-                  approvalPolicy: "on-request",
-                  sandboxMode: "workspace-write",
+                  approvalPolicy: "never",
+                  sandboxMode: "danger-full-access",
                   fallbackHarness: "claude",
                   updatedAt: new Date().toISOString(),
                 },

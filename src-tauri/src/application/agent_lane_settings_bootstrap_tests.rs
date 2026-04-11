@@ -9,7 +9,7 @@ fn codex_defaults(model: &str, effort: LogicalEffort) -> AgentLaneSettings {
     settings.model = Some(model.to_string());
     settings.effort = Some(effort);
     settings.approval_policy = Some("never".to_string());
-    settings.sandbox_mode = Some("workspace-write".to_string());
+    settings.sandbox_mode = Some("danger-full-access".to_string());
     settings.fallback_harness = Some(AgentHarnessKind::Claude);
     settings
 }
@@ -155,6 +155,7 @@ async fn test_load_or_seed_agent_lane_settings_defaults_upgrades_legacy_codex_gl
 
     let mut legacy_primary = codex_defaults("gpt-5.4", LogicalEffort::XHigh);
     legacy_primary.approval_policy = Some("on-request".to_string());
+    legacy_primary.sandbox_mode = Some("workspace-write".to_string());
     let mut legacy_subagent = codex_defaults("gpt-5.4-mini", LogicalEffort::Medium);
     legacy_subagent.approval_policy = None;
     legacy_subagent.sandbox_mode = None;
@@ -189,6 +190,39 @@ async fn test_load_or_seed_agent_lane_settings_defaults_upgrades_legacy_codex_gl
     assert_eq!(
         result.global_defaults.get(&AgentLane::IdeationSubagent),
         desired_defaults.get(&AgentLane::IdeationSubagent)
+    );
+}
+
+#[tokio::test]
+async fn test_load_or_seed_agent_lane_settings_defaults_upgrades_stale_never_workspace_write_codex_rows()
+{
+    let app_state = AppState::new_test();
+    let desired_defaults = HashMap::from([(
+        AgentLane::ExecutionWorker,
+        codex_defaults("gpt-5.4", LogicalEffort::XHigh),
+    )]);
+
+    let mut stale = codex_defaults("gpt-5.4", LogicalEffort::XHigh);
+    stale.sandbox_mode = Some("workspace-write".to_string());
+
+    app_state
+        .agent_lane_settings_repo
+        .upsert_global(AgentLane::ExecutionWorker, &stale)
+        .await
+        .unwrap();
+
+    let result = load_or_seed_agent_lane_settings_defaults(
+        Arc::clone(&app_state.agent_lane_settings_repo),
+        &desired_defaults,
+    )
+    .await
+    .unwrap();
+
+    assert!(result.seeded_global_lanes.is_empty());
+    assert_eq!(result.upgraded_global_lanes, vec![AgentLane::ExecutionWorker]);
+    assert_eq!(
+        result.global_defaults.get(&AgentLane::ExecutionWorker),
+        desired_defaults.get(&AgentLane::ExecutionWorker)
     );
 }
 
