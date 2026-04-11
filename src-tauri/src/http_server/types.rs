@@ -6,10 +6,12 @@ use std::sync::Arc;
 
 use crate::application::{AppState, TeamService, TeamStateTracker};
 use crate::commands::ExecutionState;
+use crate::domain::agents::{AgentHarnessKind, LogicalEffort};
 use crate::domain::entities::{
     Artifact, ArtifactContent, AuditLogEntry, MemoryEntry, StepProgressSummary, TaskProposal,
     TaskStep,
 };
+use crate::http_server::delegation::DelegationService;
 use crate::http_server::handlers::artifacts::EditError;
 
 // ============================================================================
@@ -24,6 +26,7 @@ pub struct HttpServerState {
     pub execution_state: Arc<ExecutionState>,
     pub team_tracker: TeamStateTracker,
     pub team_service: Arc<TeamService>,
+    pub delegation_service: Arc<DelegationService>,
 }
 
 // ============================================================================
@@ -1029,6 +1032,32 @@ pub struct TeamConfigInput {
     pub model_ceiling: Option<String>,
     pub budget_limit: Option<f64>,
     pub composition_mode: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DelegateStartRequest {
+    pub parent_session_id: String,
+    pub child_session_id: Option<String>,
+    pub agent_name: String,
+    pub prompt: String,
+    pub title: Option<String>,
+    #[serde(default = "default_inherit_context")]
+    pub inherit_context: bool,
+    pub harness: Option<AgentHarnessKind>,
+    pub model: Option<String>,
+    pub logical_effort: Option<LogicalEffort>,
+    pub approval_policy: Option<String>,
+    pub sandbox_mode: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DelegateWaitRequest {
+    pub job_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DelegateCancelRequest {
+    pub job_id: String,
 }
 
 fn default_inherit_context() -> bool {

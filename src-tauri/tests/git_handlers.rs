@@ -131,6 +131,7 @@ mod ipr_removal {
             execution_state,
             team_tracker: tracker,
             team_service,
+            delegation_service: Default::default(),
         }
     }
 
@@ -779,6 +780,7 @@ mod source_update_conflict {
             execution_state,
             team_tracker: tracker,
             team_service,
+            delegation_service: Default::default(),
         }
     }
 
@@ -1109,6 +1111,7 @@ mod freshness_routing_integration {
             execution_state,
             team_tracker: tracker,
             team_service,
+            delegation_service: Default::default(),
         }
     }
 
@@ -1575,6 +1578,7 @@ mod webhook_emission {
             execution_state,
             team_tracker: tracker,
             team_service,
+            delegation_service: Default::default(),
         }
     }
 

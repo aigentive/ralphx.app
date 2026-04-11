@@ -34,6 +34,7 @@ async fn setup_sqlite_state() -> HttpServerState {
         execution_state,
         team_tracker: tracker,
         team_service,
+        delegation_service: Default::default(),
     }
 }
 

@@ -14,12 +14,14 @@ use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use crate::application::{AppState, TeamService, TeamStateTracker};
 use crate::commands::ExecutionState;
 use crate::error::AppResult;
+use delegation::DelegationService;
 
 // ============================================================================
 // Submodules
 // ============================================================================
 
 pub mod handlers;
+pub mod delegation;
 pub mod helpers;
 pub mod project_scope;
 pub mod types;
@@ -58,6 +60,7 @@ pub async fn start_http_server(
         execution_state,
         team_tracker,
         team_service,
+        delegation_service: Arc::new(DelegationService::new()),
     };
 
     // Management routes — require admin API key + localhost-only CORS.
@@ -230,6 +233,9 @@ pub async fn start_http_server(
             "/api/ideation/sessions/:id/message",
             post(send_ideation_session_message_handler),
         )
+        .route("/api/coordination/delegate/start", post(start_delegate))
+        .route("/api/coordination/delegate/wait", post(wait_delegate))
+        .route("/api/coordination/delegate/cancel", post(cancel_delegate))
         // Task tools (ralphx-chat-task agent)
         .route("/api/update_task", post(update_task))
         .route("/api/add_task_note", post(add_task_note))

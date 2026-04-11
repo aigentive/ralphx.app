@@ -185,6 +185,7 @@ fn test_state() -> HttpServerState {
         execution_state: Arc::new(ExecutionState::new()),
         team_tracker: tracker,
         team_service,
+        delegation_service: Default::default(),
     }
 }
 

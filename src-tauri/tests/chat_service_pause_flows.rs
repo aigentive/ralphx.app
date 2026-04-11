@@ -16,6 +16,7 @@ async fn setup_test_state() -> HttpServerState {
         team_service: Arc::new(ralphx_lib::application::TeamService::new_without_events(
             Arc::new(ralphx_lib::application::TeamStateTracker::new()),
         )),
+        delegation_service: Default::default(),
     }
 }
 

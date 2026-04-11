@@ -32,6 +32,7 @@ import {
   IDEATION_SPECIALIST_STATE_MACHINE,
   IDEATION_CRITIC,
   IDEATION_ADVOCATE,
+  PLAN_VERIFIER,
   PLAN_CRITIC_COMPLETENESS,
   PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY,
 } from '../agentNames.js';
@@ -951,6 +952,53 @@ describe('acceptance gate tools', () => {
       expect(toolNames).toContain('get_pending_confirmations');
     });
   });
+});
+
+// ===========================================================================
+// RalphX native delegation bridge tools
+// ===========================================================================
+
+describe('delegation bridge tools', () => {
+  const allTools = getAllTools();
+
+  it.each(['delegate_start', 'delegate_wait', 'delegate_cancel'])(
+    '%s should exist in ALL_TOOLS',
+    (toolName) => {
+      expect(allTools.find((tool) => tool.name === toolName)).toBeDefined();
+    }
+  );
+
+  it('delegate_start should require parent_session_id, agent_name, and prompt', () => {
+    const tool = allTools.find((entry) => entry.name === 'delegate_start');
+    expect(tool?.inputSchema.type).toBe('object');
+    expect(tool?.inputSchema.required).toEqual(
+      expect.arrayContaining(['parent_session_id', 'agent_name', 'prompt'])
+    );
+  });
+
+  it.each([ORCHESTRATOR_IDEATION, IDEATION_TEAM_LEAD, PLAN_VERIFIER])(
+    '%s should expose delegation bridge tools',
+    (agent) => {
+      expect(TOOL_ALLOWLIST[agent]).toContain('delegate_start');
+      expect(TOOL_ALLOWLIST[agent]).toContain('delegate_wait');
+      expect(TOOL_ALLOWLIST[agent]).toContain('delegate_cancel');
+    }
+  );
+
+  it('ralphx-ideation-readonly should expose delegation bridge tools', () => {
+    expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).toContain('delegate_start');
+    expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).toContain('delegate_wait');
+    expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).toContain('delegate_cancel');
+  });
+
+  it.each([ORCHESTRATOR_IDEATION, IDEATION_TEAM_LEAD, PLAN_VERIFIER])(
+    '%s should return delegate_start from getFilteredTools',
+    (agent) => {
+      setAgentType(agent);
+      const toolNames = getFilteredTools().map((tool) => tool.name);
+      expect(toolNames).toContain('delegate_start');
+    }
+  );
 });
 
 // ===========================================================================

@@ -32,6 +32,7 @@ async fn setup_test_state() -> HttpServerState {
         execution_state,
         team_tracker: tracker,
         team_service,
+        delegation_service: Default::default(),
     }
 }
 
@@ -58,6 +59,7 @@ fn setup_sqlite_api_key_state() -> (SqliteTestDb, HttpServerState) {
         execution_state,
         team_tracker: tracker,
         team_service,
+        delegation_service: Default::default(),
     };
     (db, state)
 }

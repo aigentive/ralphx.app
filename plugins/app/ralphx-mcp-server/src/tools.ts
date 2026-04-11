@@ -545,6 +545,94 @@ export const ALL_TOOLS: Tool[] = [
     },
   },
   {
+    name: "delegate_start",
+    description:
+      "Start a RalphX-native delegated specialist job. Use this for named specialized agents instead of relying on harness-native subagents. " +
+      "Phase 1 is ideation-family only: pass a parent ideation session, the canonical RalphX agent name, and the delegated prompt.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        parent_session_id: {
+          type: "string",
+          description: "The parent ideation session that owns the delegated work.",
+        },
+        child_session_id: {
+          type: "string",
+          description: "Optional existing child session to reuse for RalphX-side continuity.",
+        },
+        agent_name: {
+          type: "string",
+          description: "Canonical RalphX agent name, for example ralphx-ideation-specialist-backend.",
+        },
+        prompt: {
+          type: "string",
+          description: "Delegated instructions for the specialist agent.",
+        },
+        title: {
+          type: "string",
+          description: "Optional title when a new child session must be created.",
+        },
+        inherit_context: {
+          type: "boolean",
+          description: "Whether a newly created child session should inherit parent context. Default: true.",
+        },
+        harness: {
+          type: "string",
+          enum: ["claude", "codex"],
+          description: "Optional explicit harness override for the delegated specialist.",
+        },
+        model: {
+          type: "string",
+          description: "Optional explicit model override for the delegated specialist.",
+        },
+        logical_effort: {
+          type: "string",
+          enum: ["low", "medium", "high", "xhigh"],
+          description: "Optional provider-neutral effort override.",
+        },
+        approval_policy: {
+          type: "string",
+          description: "Optional explicit approval policy override.",
+        },
+        sandbox_mode: {
+          type: "string",
+          description: "Optional explicit sandbox mode override.",
+        },
+      },
+      required: ["parent_session_id", "agent_name", "prompt"],
+    },
+  },
+  {
+    name: "delegate_wait",
+    description:
+      "Wait for or poll a RalphX-native delegated specialist job. Returns the current job snapshot, including terminal content or error when complete.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        job_id: {
+          type: "string",
+          description: "Delegation job ID returned by delegate_start.",
+        },
+      },
+      required: ["job_id"],
+    },
+  },
+  {
+    name: "delegate_cancel",
+    description:
+      "Cancel a running RalphX-native delegated specialist job.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        job_id: {
+          type: "string",
+          description: "Delegation job ID returned by delegate_start.",
+        },
+      },
+      required: ["job_id"],
+    },
+  },
+  {
     name: "get_session_messages",
     description:
       "Fetch older chat messages for an ideation session. The session bootstrap already includes the NEWEST messages — use this tool only when you need earlier history beyond what was provided. " +
@@ -1748,6 +1836,9 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     // session linking tools
     "create_child_session",
     "get_parent_session_context",
+    "delegate_start",
+    "delegate_wait",
+    "delegate_cancel",
     // session context recovery
     "get_session_messages",
     // team artifact tools (for local Task agent fallback)
@@ -1783,6 +1874,9 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_parent_session_context",
     // session linking tools
     "create_child_session",
+    "delegate_start",
+    "delegate_wait",
+    "delegate_cancel",
     // verification tools
     "get_plan_verification",
     // older history retrieval
@@ -2020,6 +2114,9 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     // Session linking tools
     "create_child_session",
     "get_parent_session_context",
+    "delegate_start",
+    "delegate_wait",
+    "delegate_cancel",
     // Session context recovery
     "get_session_messages",
     // Verification tools
@@ -2190,6 +2287,9 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_session_messages",
     "get_verification_round_artifacts",
     "get_parent_session_context",
+    "delegate_start",
+    "delegate_wait",
+    "delegate_cancel",
     "report_verification_round",
     "complete_plan_verification",
     "get_plan_verification",

@@ -57,6 +57,7 @@ fn setup_sqlite_register_state() -> (ralphx_lib::testing::SqliteTestDb, HttpServ
         execution_state,
         team_tracker: tracker,
         team_service,
+        delegation_service: Default::default(),
     };
     (db, state)
 }

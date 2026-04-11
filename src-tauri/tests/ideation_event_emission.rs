@@ -116,6 +116,7 @@ fn make_http_state(
         execution_state,
         team_tracker: tracker,
         team_service,
+        delegation_service: Default::default(),
     }
 }
 

@@ -14,7 +14,7 @@ import { ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, CHAT_TASK, CHAT_
  */
 export const ALL_TOOLS = [
     // ========================================================================
-    // IDEATION TOOLS (orchestrator-ideation agent)
+    // IDEATION TOOLS (ralphx-ideation agent)
     // ========================================================================
     {
         name: "create_task_proposal",
@@ -152,7 +152,7 @@ export const ALL_TOOLS = [
     },
     {
         name: "update_session_title",
-        description: "Update the title of an ideation session. Used by session-namer agent to set auto-generated titles.",
+        description: "Update the title of an ideation session. Used by ralphx-utility-session-namer agent to set auto-generated titles.",
         inputSchema: {
             type: "object",
             properties: {
@@ -230,7 +230,7 @@ export const ALL_TOOLS = [
         },
     },
     // ========================================================================
-    // ACCEPTANCE GATE TOOLS (orchestrator-ideation and ideation-team-lead only)
+    // ACCEPTANCE GATE TOOLS (ralphx-ideation and ralphx-ideation-team-lead only)
     // ========================================================================
     {
         name: "get_acceptance_status",
@@ -260,7 +260,7 @@ export const ALL_TOOLS = [
         },
     },
     // ========================================================================
-    // VERIFICATION CONFIRMATION STATUS (orchestrator-ideation and ideation-team-lead only)
+    // VERIFICATION CONFIRMATION STATUS (ralphx-ideation and ralphx-ideation-team-lead only)
     // ========================================================================
     {
         name: "get_verification_confirmation_status",
@@ -280,7 +280,7 @@ export const ALL_TOOLS = [
         },
     },
     // ========================================================================
-    // QUESTION TOOLS (orchestrator-ideation agent — inline AskUserQuestion)
+    // QUESTION TOOLS (ralphx-ideation agent — inline AskUserQuestion)
     // ========================================================================
     {
         name: "ask_user_question",
@@ -334,7 +334,7 @@ export const ALL_TOOLS = [
         },
     },
     // ========================================================================
-    // SESSION LINKING TOOLS (orchestrator-ideation agent)
+    // SESSION LINKING TOOLS (ralphx-ideation agent)
     // ========================================================================
     {
         name: "create_child_session",
@@ -356,7 +356,7 @@ export const ALL_TOOLS = [
                 },
                 description: {
                     type: "string",
-                    description: "Optional description of the child session. When provided, an orchestrator-ideation agent is automatically spawned in the background to process this description and generate task proposals.",
+                    description: "Optional description of the child session. When provided, an ralphx-ideation agent is automatically spawned in the background to process this description and generate task proposals.",
                 },
                 inherit_context: {
                     type: "boolean",
@@ -477,6 +477,91 @@ export const ALL_TOOLS = [
                 },
             },
             required: ["session_id"],
+        },
+    },
+    {
+        name: "delegate_start",
+        description: "Start a RalphX-native delegated specialist job. Use this for named specialized agents instead of relying on harness-native subagents. " +
+            "Phase 1 is ideation-family only: pass a parent ideation session, the canonical RalphX agent name, and the delegated prompt.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                parent_session_id: {
+                    type: "string",
+                    description: "The parent ideation session that owns the delegated work.",
+                },
+                child_session_id: {
+                    type: "string",
+                    description: "Optional existing child session to reuse for RalphX-side continuity.",
+                },
+                agent_name: {
+                    type: "string",
+                    description: "Canonical RalphX agent name, for example ralphx-ideation-specialist-backend.",
+                },
+                prompt: {
+                    type: "string",
+                    description: "Delegated instructions for the specialist agent.",
+                },
+                title: {
+                    type: "string",
+                    description: "Optional title when a new child session must be created.",
+                },
+                inherit_context: {
+                    type: "boolean",
+                    description: "Whether a newly created child session should inherit parent context. Default: true.",
+                },
+                harness: {
+                    type: "string",
+                    enum: ["claude", "codex"],
+                    description: "Optional explicit harness override for the delegated specialist.",
+                },
+                model: {
+                    type: "string",
+                    description: "Optional explicit model override for the delegated specialist.",
+                },
+                logical_effort: {
+                    type: "string",
+                    enum: ["low", "medium", "high", "xhigh"],
+                    description: "Optional provider-neutral effort override.",
+                },
+                approval_policy: {
+                    type: "string",
+                    description: "Optional explicit approval policy override.",
+                },
+                sandbox_mode: {
+                    type: "string",
+                    description: "Optional explicit sandbox mode override.",
+                },
+            },
+            required: ["parent_session_id", "agent_name", "prompt"],
+        },
+    },
+    {
+        name: "delegate_wait",
+        description: "Wait for or poll a RalphX-native delegated specialist job. Returns the current job snapshot, including terminal content or error when complete.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                job_id: {
+                    type: "string",
+                    description: "Delegation job ID returned by delegate_start.",
+                },
+            },
+            required: ["job_id"],
+        },
+    },
+    {
+        name: "delegate_cancel",
+        description: "Cancel a running RalphX-native delegated specialist job.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                job_id: {
+                    type: "string",
+                    description: "Delegation job ID returned by delegate_start.",
+                },
+            },
+            required: ["job_id"],
         },
     },
     {
@@ -773,7 +858,7 @@ export const ALL_TOOLS = [
         },
     },
     // ========================================================================
-    // TASK TOOLS (chat-task agent)
+    // TASK TOOLS (ralphx-chat-task agent)
     // ========================================================================
     {
         name: "update_task",
@@ -835,7 +920,7 @@ export const ALL_TOOLS = [
         },
     },
     // ========================================================================
-    // PROJECT TOOLS (chat-project agent)
+    // PROJECT TOOLS (ralphx-chat-project agent)
     // ========================================================================
     {
         name: "suggest_task",
@@ -1194,7 +1279,7 @@ export const ALL_TOOLS = [
         },
     },
     // ========================================================================
-    // PLAN ARTIFACT TOOLS (orchestrator-ideation agent)
+    // PLAN ARTIFACT TOOLS (ralphx-ideation agent)
     // ========================================================================
     ...PLAN_TOOLS,
     // ========================================================================
@@ -1216,7 +1301,7 @@ export const ALL_TOOLS = [
         name: "upsert_memories",
         description: "Batch upsert memory entries to SQLite canonical storage. " +
             "Performs content-hash deduplication to prevent duplicates. " +
-            "WRITE-ONLY tool restricted to memory-maintainer and memory-capture agents.",
+            "WRITE-ONLY tool restricted to ralphx-memory-maintainer and ralphx-memory-capture agents.",
         inputSchema: {
             type: "object",
             properties: {
@@ -1280,7 +1365,7 @@ export const ALL_TOOLS = [
         name: "mark_memory_obsolete",
         description: "Mark a memory entry as obsolete (soft delete). " +
             "The memory remains in DB but is excluded from index generation and searches. " +
-            "WRITE-ONLY tool restricted to memory-maintainer agent.",
+            "WRITE-ONLY tool restricted to ralphx-memory-maintainer agent.",
         inputSchema: {
             type: "object",
             properties: {
@@ -1296,7 +1381,7 @@ export const ALL_TOOLS = [
         name: "refresh_memory_rule_index",
         description: "Regenerate .claude/rules/ index files from DB canonical state. " +
             "Reads memory entries for project, groups by scope_key, and writes index files with summaries + memory IDs. " +
-            "WRITE-ONLY tool restricted to memory-maintainer agent.",
+            "WRITE-ONLY tool restricted to ralphx-memory-maintainer agent.",
         inputSchema: {
             type: "object",
             properties: {
@@ -1317,7 +1402,7 @@ export const ALL_TOOLS = [
         description: "Ingest a .claude/rules/*.md file into canonical memory DB. " +
             "Parses content into chunks, classifies buckets, upserts to memory_entries, " +
             "rewrites file to index format, and enqueues archive jobs. " +
-            "WRITE-ONLY tool restricted to memory-maintainer agent.",
+            "WRITE-ONLY tool restricted to ralphx-memory-maintainer agent.",
         inputSchema: {
             type: "object",
             properties: {
@@ -1337,7 +1422,7 @@ export const ALL_TOOLS = [
         name: "rebuild_archive_snapshots",
         description: "Enqueue full rebuild of archive snapshots from DB canonical state. " +
             "Generates .claude/memory-archive/ snapshots for disaster recovery. " +
-            "WRITE-ONLY tool restricted to memory-maintainer agent.",
+            "WRITE-ONLY tool restricted to ralphx-memory-maintainer agent.",
         inputSchema: {
             type: "object",
             properties: {
@@ -1351,7 +1436,7 @@ export const ALL_TOOLS = [
     },
     {
         name: "get_conversation_transcript",
-        description: "Retrieve conversation messages for a given conversation ID, ordered chronologically. Used by memory-capture for analysis.",
+        description: "Retrieve conversation messages for a given conversation ID, ordered chronologically. Used by ralphx-memory-capture for analysis.",
         inputSchema: {
             type: "object",
             properties: {
@@ -1364,7 +1449,7 @@ export const ALL_TOOLS = [
         },
     },
     // ========================================================================
-    // PROJECT ANALYSIS TOOLS (worker/reviewer/merger + project-analyzer agents)
+    // PROJECT ANALYSIS TOOLS (worker/reviewer/merger + ralphx-project-analyzer agents)
     // ========================================================================
     {
         name: "get_project_analysis",
@@ -1389,7 +1474,7 @@ export const ALL_TOOLS = [
     {
         name: "save_project_analysis",
         description: "Save auto-detected project analysis data. Updates detected_analysis and analyzed_at fields. " +
-            "Never touches custom_analysis (user overrides). Only callable by the project-analyzer agent.",
+            "Never touches custom_analysis (user overrides). Only callable by the ralphx-project-analyzer agent.",
         inputSchema: {
             type: "object",
             properties: {
@@ -1434,7 +1519,7 @@ export const ALL_TOOLS = [
         },
     },
     // ========================================================================
-    // CROSS-PROJECT TOOLS (orchestrator-ideation + ideation-team-lead)
+    // CROSS-PROJECT TOOLS (ralphx-ideation + ralphx-ideation-team-lead)
     // ========================================================================
     {
         name: "list_projects",
@@ -1528,7 +1613,7 @@ export const ALL_TOOLS = [
         },
     },
     // ========================================================================
-    // CHILD SESSION TOOLS (orchestrator-ideation, ideation-team-lead, plan-verifier)
+    // CHILD SESSION TOOLS (ralphx-ideation, ralphx-ideation-team-lead, ralphx-plan-verifier)
     // ========================================================================
     {
         name: "get_child_session_status",
@@ -1617,6 +1702,9 @@ export const TOOL_ALLOWLIST = {
         // session linking tools
         "create_child_session",
         "get_parent_session_context",
+        "delegate_start",
+        "delegate_wait",
+        "delegate_cancel",
         // session context recovery
         "get_session_messages",
         // team artifact tools (for local Task agent fallback)
@@ -1652,6 +1740,9 @@ export const TOOL_ALLOWLIST = {
         "get_parent_session_context",
         // session linking tools
         "create_child_session",
+        "delegate_start",
+        "delegate_wait",
+        "delegate_cancel",
         // verification tools
         "get_plan_verification",
         // older history retrieval
@@ -1889,6 +1980,9 @@ export const TOOL_ALLOWLIST = {
         // Session linking tools
         "create_child_session",
         "get_parent_session_context",
+        "delegate_start",
+        "delegate_wait",
+        "delegate_cancel",
         // Session context recovery
         "get_session_messages",
         // Verification tools
@@ -2059,6 +2153,9 @@ export const TOOL_ALLOWLIST = {
         "get_session_messages",
         "get_verification_round_artifacts",
         "get_parent_session_context",
+        "delegate_start",
+        "delegate_wait",
+        "delegate_cancel",
         "report_verification_round",
         "complete_plan_verification",
         "get_plan_verification",

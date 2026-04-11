@@ -44,6 +44,7 @@ async fn setup_test_state() -> HttpServerState {
         execution_state,
         team_tracker: tracker,
         team_service,
+        delegation_service: Default::default(),
     }
 }
 
@@ -56,6 +57,7 @@ fn setup_test_state_with_app_state(app_state: Arc<AppState>) -> HttpServerState 
         execution_state,
         team_tracker: tracker,
         team_service,
+        delegation_service: Default::default(),
     }
 }
 
@@ -2781,6 +2783,7 @@ async fn setup_sqlite_test_state() -> HttpServerState {
         execution_state,
         team_tracker: tracker,
         team_service,
+        delegation_service: Default::default(),
     }
 }
 

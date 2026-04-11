@@ -620,6 +620,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const { session_id } = args;
             result = await callTauriGet(`parent_session_context/${session_id}`);
         }
+        else if (name === "delegate_start") {
+            result = await callTauri("coordination/delegate/start", args);
+        }
+        else if (name === "delegate_wait") {
+            result = await callTauri("coordination/delegate/wait", args);
+        }
+        else if (name === "delegate_cancel") {
+            result = await callTauri("coordination/delegate/cancel", args);
+        }
         else if (name === "get_project_analysis") {
             // GET /api/projects/:project_id/analysis?task_id=
             const { project_id, task_id } = args;

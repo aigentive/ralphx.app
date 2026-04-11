@@ -31,6 +31,7 @@ fn make_test_state() -> HttpServerState {
         execution_state,
         team_tracker: TeamStateTracker::new(),
         team_service,
+        delegation_service: Default::default(),
     }
 }
 
