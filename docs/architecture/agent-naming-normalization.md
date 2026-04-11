@@ -35,8 +35,8 @@ This removes the current mixed inventory (`orchestrator-ideation`, `chat-task`, 
 
 | Current | Target |
 |---|---|
-| `orchestrator-ideation` | `ralphx-ideation-orchestrator` |
-| `orchestrator-ideation-readonly` | `ralphx-ideation-orchestrator-readonly` |
+| `orchestrator-ideation` | `ralphx-ideation` |
+| `orchestrator-ideation-readonly` | `ralphx-ideation-readonly` |
 | `ideation-team-lead` | `ralphx-ideation-team-lead` |
 | `ideation-advocate` | `ralphx-ideation-advocate` |
 | `ideation-critic` | `ralphx-ideation-critic` |
