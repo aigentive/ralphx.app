@@ -11,6 +11,9 @@ use axum::{
 };
 use ralphx_lib::application::{AppState, InteractiveProcessKey, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::agents::{
+    AgentHarnessKind, AgentLane, AgentLaneSettings, AgentRole, AgenticClient, LogicalEffort,
+};
 use ralphx_lib::domain::entities::{
     ideation::{ChatMessage, IdeationSession, IdeationSessionBuilder, IdeationSessionStatus, SessionOrigin, SessionPurpose, VerificationStatus},
     project::{GitMode, Project},
@@ -23,7 +26,9 @@ use ralphx_lib::error::AppError;
 use ralphx_lib::http_server::handlers::*;
 use ralphx_lib::http_server::project_scope::ProjectScope;
 use ralphx_lib::http_server::types::HttpServerState;
+use ralphx_lib::infrastructure::agents::mock::{MockAgenticClient, MockCallType};
 use std::sync::Arc;
+use std::time::Duration;
 
 // ============================================================================
 // Setup helpers
@@ -31,6 +36,18 @@ use std::sync::Arc;
 
 async fn setup_test_state() -> HttpServerState {
     let app_state = Arc::new(AppState::new_test());
+    let execution_state = Arc::new(ExecutionState::new());
+    let tracker = TeamStateTracker::new();
+    let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
+    HttpServerState {
+        app_state,
+        execution_state,
+        team_tracker: tracker,
+        team_service,
+    }
+}
+
+fn setup_test_state_with_app_state(app_state: Arc<AppState>) -> HttpServerState {
     let execution_state = Arc::new(ExecutionState::new());
     let tracker = TeamStateTracker::new();
     let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
@@ -592,6 +609,99 @@ async fn test_start_ideation_without_title_assigns_default_title() {
     assert_ne!(
         title, "Untitled Plan",
         "External ideation should assign a real default title instead of relying on UI fallback"
+    );
+}
+
+#[tokio::test]
+async fn test_start_ideation_codex_lane_keeps_session_namer_on_default_helper_client() {
+    let default_mock_impl = Arc::new(MockAgenticClient::new());
+    let default_mock: Arc<dyn AgenticClient> = default_mock_impl.clone();
+    let codex_mock_impl = Arc::new(MockAgenticClient::new());
+    let codex_mock: Arc<dyn AgenticClient> = codex_mock_impl.clone();
+    let app_state = Arc::new(
+        AppState::new_test()
+            .with_agent_client(default_mock.clone())
+            .with_harness_agent_client(AgentHarnessKind::Codex, codex_mock),
+    );
+    let state = setup_test_state_with_app_state(app_state.clone());
+
+    let project_id = "proj-fresh-codex-bootstrap";
+    let p = make_project(project_id, "Fresh Codex Bootstrap Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let mut codex_lane = AgentLaneSettings::new(AgentHarnessKind::Codex);
+    codex_lane.model = Some("gpt-5.4".to_string());
+    codex_lane.effort = Some(LogicalEffort::XHigh);
+    codex_lane.fallback_harness = Some(AgentHarnessKind::Claude);
+    state
+        .app_state
+        .agent_lane_settings_repo
+        .upsert_for_project(project_id, AgentLane::IdeationPrimary, &codex_lane)
+        .await
+        .unwrap();
+
+    let result = start_ideation_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        axum::http::HeaderMap::new(),
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: None,
+            prompt: Some("hello from fresh ideation".to_string()),
+            initial_prompt: None,
+            idempotency_key: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert!(response.agent_spawned, "mock clients should allow the ideation send path to spawn");
+
+    let default_calls = {
+        let mut calls = Vec::new();
+        for _ in 0..10 {
+            calls = default_mock_impl.get_spawn_calls().await;
+            if !calls.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        calls
+    };
+    let session_namer_prompt = default_calls
+        .iter()
+        .find_map(|call| match &call.call_type {
+            MockCallType::Spawn { role, prompt }
+                if *role == AgentRole::Custom("session-namer".to_string()) =>
+            {
+                Some(prompt.clone())
+            }
+            _ => None,
+        });
+    assert!(
+        session_namer_prompt.is_some(),
+        "session namer should stay on the default helper client instead of inheriting the Codex ideation lane; default roles: {:?}; codex roles: {:?}",
+        default_calls
+            .iter()
+            .filter_map(|call| match &call.call_type {
+                MockCallType::Spawn { role, .. } => Some(role.to_string()),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        codex_mock_impl
+            .get_spawn_calls()
+            .await
+            .iter()
+            .filter_map(|call| match &call.call_type {
+                MockCallType::Spawn { role, .. } => Some(role.to_string()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        codex_mock_impl.get_spawn_calls().await.is_empty(),
+        "external ideation helper spawns should not be recorded on the Codex helper client"
     );
 }
 

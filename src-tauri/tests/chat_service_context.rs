@@ -1721,6 +1721,28 @@ fn integration_ideation_spawn_first_message_no_session_history_block() {
         prompt.contains("Hello, start a new plan"),
         "current user message must be present"
     );
+    assert!(
+        prompt.contains("<session_bootstrap_mode>fresh</session_bootstrap_mode>"),
+        "fresh ideation spawn must mark bootstrap mode explicitly so prompt logic can skip recovery-only MCP calls"
+    );
+}
+
+#[test]
+fn integration_ideation_resume_prompt_marks_provider_resume_bootstrap_mode() {
+    let sid = IdeationSessionId::new();
+
+    let prompt = build_resume_initial_prompt(
+        ChatContextType::Ideation,
+        sid.as_str(),
+        "continue the same plan",
+        &[],
+        0,
+    );
+
+    assert!(
+        prompt.contains("<session_bootstrap_mode>provider_resume</session_bootstrap_mode>"),
+        "provider resume prompts must be distinguished from fresh ideation and explicit recovery flows"
+    );
 }
 
 #[test]
