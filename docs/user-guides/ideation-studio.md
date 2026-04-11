@@ -282,8 +282,7 @@ Before accepting the session you can:
 - **Delete** proposals you don't want to implement
 - **Add** proposals manually if you want work items the orchestrator missed
 - **Reorder** proposals (affects the suggested execution sequence)
-
-Dependency edges between proposals are auto-suggested by the `dependency-suggester` agent. You can add or remove edges in the dependency graph view.
+- **Review and edit proposal dependencies** in the dependency graph view
 
 ### The CONFIRM Guarantee
 

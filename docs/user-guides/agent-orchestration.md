@@ -87,7 +87,7 @@ The chat UI surfaces that runtime choice directly:
 
 ## Agent Types
 
-RalphX uses 24 specialized agents across execution, review, merge, ideation, QA, and support roles.
+RalphX uses specialized agents across execution, review, merge, ideation, QA, and support roles.
 
 | Agent | Role | Model | Spawned when |
 |-------|------|-------|--------------|
@@ -114,7 +114,6 @@ RalphX uses 24 specialized agents across execution, review, merge, ideation, QA,
 | **chat-task** | Handles chat interactions in the context of a specific task | Sonnet | Task chat opened |
 | **chat-project** | Handles chat interactions at the project level | Sonnet | Project chat opened |
 | **review-chat** | Handles chat about a specific review | Sonnet | Review chat opened |
-| **dependency-suggester** | Suggests task dependencies after proposals are created in an ideation session | Sonnet | After PROPOSE phase completes |
 
 ---
 
