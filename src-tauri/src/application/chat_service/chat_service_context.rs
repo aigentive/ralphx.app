@@ -54,6 +54,12 @@ pub struct ProviderSpawnableCommand {
     pub spawnable: SpawnableCommand,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderResumeMode {
+    Resume,
+    Recovery,
+}
+
 struct BuildHarnessCommandRequest<'a> {
     plugin_dir: &'a Path,
     conversation: &'a ChatConversation,
@@ -412,6 +418,94 @@ impl ResolvedChatHarnessCli {
 
 fn claude_resume_session_id(conversation: &ChatConversation) -> Option<String> {
     conversation.compatible_provider_session_fields().0
+}
+
+fn provider_state_home_dir() -> PathBuf {
+    std::env::var_os("RALPHX_PROVIDER_STATE_HOME_OVERRIDE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn scan_dir_recursive(
+    root: &Path,
+    matcher: &impl Fn(&Path) -> bool,
+) -> bool {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return false;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if scan_dir_recursive(&path, matcher) {
+                return true;
+            }
+            continue;
+        }
+
+        if matcher(&path) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn codex_session_artifact_exists_under(home_dir: &Path, session_id: &str) -> bool {
+    let index_path = home_dir.join(".codex").join("session_index.jsonl");
+    if let Ok(index) = std::fs::read_to_string(&index_path) {
+        if index.lines().any(|line| {
+            serde_json::from_str::<serde_json::Value>(line)
+                .ok()
+                .and_then(|value| value.get("id").and_then(|raw| raw.as_str()).map(str::to_string))
+                .is_some_and(|id| id == session_id)
+        }) {
+            return true;
+        }
+    }
+
+    let sessions_root = home_dir.join(".codex").join("sessions");
+    scan_dir_recursive(&sessions_root, &|path| {
+        let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+        let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or_default();
+        matches!(extension, "json" | "jsonl") && file_name.contains(session_id)
+    })
+}
+
+fn claude_session_artifact_exists_under(home_dir: &Path, session_id: &str) -> bool {
+    let projects_root = home_dir.join(".claude").join("projects");
+    let expected_file_name = format!("{session_id}.jsonl");
+    scan_dir_recursive(&projects_root, &|path| {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name == expected_file_name)
+    })
+}
+
+#[doc(hidden)]
+pub fn provider_resume_mode_for_session_under(
+    harness: AgentHarnessKind,
+    session_id: &str,
+    home_dir: &Path,
+) -> ProviderResumeMode {
+    let exists = match harness {
+        AgentHarnessKind::Claude => claude_session_artifact_exists_under(home_dir, session_id),
+        AgentHarnessKind::Codex => codex_session_artifact_exists_under(home_dir, session_id),
+    };
+
+    if exists {
+        ProviderResumeMode::Resume
+    } else {
+        ProviderResumeMode::Recovery
+    }
+}
+
+fn provider_resume_mode_for_session(
+    harness: AgentHarnessKind,
+    session_id: &str,
+) -> ProviderResumeMode {
+    provider_resume_mode_for_session_under(harness, session_id, &provider_state_home_dir())
 }
 
 fn is_fresh_review_cycle(conversation: &ChatConversation, agent_name: &str) -> bool {
@@ -1164,25 +1258,16 @@ pub fn build_initial_prompt(
 
 /// Build the initial prompt for a resumed session.
 ///
-/// Like `build_initial_prompt`, but for Ideation context injects the `<session_history>`
-/// block programmatically so the agent always has prior conversation context on resume
-/// without needing to call `get_session_messages`. The `<recovery_note>` has been removed
-/// since history is now injected directly.
+/// True provider resume should send only the current turn plus stable context identifiers.
+/// If the provider session is missing, callers must use explicit recovery instead.
 pub fn build_resume_initial_prompt(
     context_type: ChatContextType,
     context_id: &str,
     user_message: &str,
-    session_messages: &[ChatMessage],
-    total_available: usize,
+    _session_messages: &[ChatMessage],
+    _total_available: usize,
 ) -> String {
-    // For resume, delegate to build_initial_prompt which already handles session_history injection.
-    build_initial_prompt(
-        context_type,
-        context_id,
-        user_message,
-        session_messages,
-        total_available,
-    )
+    build_initial_prompt_with_history(context_type, context_id, user_message, "", None)
 }
 
 /// Determine if a file is text-based from mime type or extension
@@ -1466,38 +1551,43 @@ async fn build_command_from_resolved_settings(
 ) -> Result<SpawnableCommand, String> {
     let resolved_model = resolved_spawn_settings.model.as_str();
     let ideation_subagent_model_cap = resolved_spawn_settings.subagent_model_cap.as_deref();
-    let (prompt, resume_session) = if should_resume {
+    let effective_resume_mode = if should_resume {
         let session_id = claude_resume_session_id.ok_or_else(|| {
             "Claude resume requested without an effective Claude provider session".to_string()
         })?;
-        // Re-inject context_id on resume so the agent can detect session mismatches.
-        // For Ideation context, session_history is injected programmatically.
-        let resume_prompt = build_initial_prompt_with_session_artifacts(
-            conversation.context_type,
-            &conversation.context_id,
-            user_message,
-            session_messages,
-            total_available,
-            Arc::clone(&artifact_repo),
-            ideation_subagent_model_cap,
-        )
-        .await?;
-        let prompt_with_attachments = format!("{}{}", resume_prompt, attachment_context);
-        (prompt_with_attachments, Some(session_id.to_string()))
+        provider_resume_mode_for_session(AgentHarnessKind::Claude, session_id)
     } else {
-        let initial_prompt = build_initial_prompt_with_session_artifacts(
-            conversation.context_type,
-            &conversation.context_id,
-            user_message,
-            session_messages,
-            total_available,
-            Arc::clone(&artifact_repo),
-            ideation_subagent_model_cap,
-        )
-        .await?;
-        // Append attachments after the initial prompt
-        let prompt_with_attachments = format!("{}{}", initial_prompt, attachment_context);
-        (prompt_with_attachments, None)
+        ProviderResumeMode::Recovery
+    };
+    let (prompt, resume_session) = match effective_resume_mode {
+        ProviderResumeMode::Resume => {
+            let session_id = claude_resume_session_id.ok_or_else(|| {
+                "Claude resume requested without an effective Claude provider session".to_string()
+            })?;
+            let resume_prompt = build_resume_initial_prompt(
+                conversation.context_type,
+                &conversation.context_id,
+                user_message,
+                session_messages,
+                total_available,
+            );
+            let prompt_with_attachments = format!("{}{}", resume_prompt, attachment_context);
+            (prompt_with_attachments, Some(session_id.to_string()))
+        }
+        ProviderResumeMode::Recovery => {
+            let initial_prompt = build_initial_prompt_with_session_artifacts(
+                conversation.context_type,
+                &conversation.context_id,
+                user_message,
+                session_messages,
+                total_available,
+                Arc::clone(&artifact_repo),
+                ideation_subagent_model_cap,
+            )
+            .await?;
+            let prompt_with_attachments = format!("{}{}", initial_prompt, attachment_context);
+            (prompt_with_attachments, None)
+        }
     };
 
     let mut spawnable = build_spawnable_command(
@@ -1518,7 +1608,61 @@ async fn build_command_from_resolved_settings(
         &conversation.context_id,
         project_id,
         team_mode,
-        claude_resume_session_id,
+        resume_session.as_deref(),
+        ideation_subagent_model_cap,
+    );
+
+    Ok(spawnable)
+}
+
+async fn build_recovery_command_from_resolved_settings(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    agent_name: &str,
+    context_type: ChatContextType,
+    context_id: &str,
+    message: &str,
+    working_directory: &Path,
+    project_id: Option<&str>,
+    team_mode: bool,
+    artifact_repo: Arc<dyn ArtifactRepository>,
+    session_messages: &[ChatMessage],
+    total_available: usize,
+    effort_override: Option<&str>,
+    resolved_spawn_settings: &ResolvedAgentSpawnSettings,
+) -> Result<SpawnableCommand, String> {
+    let resolved_model = resolved_spawn_settings.model.as_str();
+    let ideation_subagent_model_cap = resolved_spawn_settings.subagent_model_cap.as_deref();
+    let prompt = build_initial_prompt_with_session_artifacts(
+        context_type,
+        context_id,
+        message,
+        session_messages,
+        total_available,
+        artifact_repo,
+        ideation_subagent_model_cap,
+    )
+    .await?;
+
+    let mut spawnable = build_spawnable_command(
+        cli_path,
+        plugin_dir,
+        &prompt,
+        Some(agent_name),
+        None,
+        working_directory,
+        effort_override,
+        Some(resolved_model),
+    )?;
+
+    apply_ralphx_env_vars(
+        &mut spawnable,
+        agent_name,
+        context_type,
+        context_id,
+        project_id,
+        team_mode,
+        None,
         ideation_subagent_model_cap,
     );
 
@@ -1646,7 +1790,7 @@ async fn build_launch_plan_from_resolved_cli(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn build_launch_plan_for_harness(
+pub(crate) async fn build_launch_plan_for_harness(
     harness: AgentHarnessKind,
     cli_path: &Path,
     plugin_dir: &Path,
@@ -1963,45 +2107,62 @@ async fn build_resume_command_from_resolved_settings(
     effort_override: Option<&str>,
     resolved_spawn_settings: &ResolvedAgentSpawnSettings,
 ) -> Result<SpawnableCommand, String> {
-    let resolved_model = resolved_spawn_settings.model.as_str();
-    let ideation_subagent_model_cap = resolved_spawn_settings.subagent_model_cap.as_deref();
-    // Re-inject context_id on resume so the agent can detect session mismatches.
-    // For Ideation context, session_history is injected programmatically.
-    let resume_prompt = build_initial_prompt_with_session_artifacts(
-        context_type,
-        context_id,
-        message,
-        session_messages,
-        total_available,
-        artifact_repo,
-        ideation_subagent_model_cap,
-    )
-    .await?;
+    match provider_resume_mode_for_session(AgentHarnessKind::Claude, session_id) {
+        ProviderResumeMode::Resume => {
+            let resolved_model = resolved_spawn_settings.model.as_str();
+            let ideation_subagent_model_cap = resolved_spawn_settings.subagent_model_cap.as_deref();
+            let resume_prompt = build_resume_initial_prompt(
+                context_type,
+                context_id,
+                message,
+                session_messages,
+                total_available,
+            );
 
-    let mut spawnable = build_spawnable_command(
-        cli_path,
-        plugin_dir,
-        &resume_prompt,
-        Some(agent_name),
-        Some(session_id),
-        working_directory,
-        effort_override,
-        Some(resolved_model),
-    )?;
+            let mut spawnable = build_spawnable_command(
+                cli_path,
+                plugin_dir,
+                &resume_prompt,
+                Some(agent_name),
+                Some(session_id),
+                working_directory,
+                effort_override,
+                Some(resolved_model),
+            )?;
 
-    // In resume flow, session_id IS the Claude session ID.
-    apply_ralphx_env_vars(
-        &mut spawnable,
-        agent_name,
-        context_type,
-        context_id,
-        project_id,
-        team_mode,
-        Some(session_id),
-        ideation_subagent_model_cap,
-    );
+            apply_ralphx_env_vars(
+                &mut spawnable,
+                agent_name,
+                context_type,
+                context_id,
+                project_id,
+                team_mode,
+                Some(session_id),
+                ideation_subagent_model_cap,
+            );
 
-    Ok(spawnable)
+            Ok(spawnable)
+        }
+        ProviderResumeMode::Recovery => {
+            build_recovery_command_from_resolved_settings(
+                cli_path,
+                plugin_dir,
+                agent_name,
+                context_type,
+                context_id,
+                message,
+                working_directory,
+                project_id,
+                team_mode,
+                artifact_repo,
+                session_messages,
+                total_available,
+                effort_override,
+                resolved_spawn_settings,
+            )
+            .await
+        }
+    }
 }
 
 pub async fn build_codex_resume_command(
@@ -2031,42 +2192,71 @@ pub async fn build_codex_resume_command(
         resolve_agent_with_team_mode(&context_type, entity_status.as_deref(), codex_team_mode);
     let ideation_subagent_model_cap = resolved_spawn_settings.subagent_model_cap.as_deref();
 
-    let resume_prompt = build_initial_prompt_with_session_artifacts(
-        context_type,
-        context_id,
-        message,
-        session_messages,
-        total_available,
-        artifact_repo,
-        ideation_subagent_model_cap,
-    )
-    .await?;
-
-    let prompt = compose_codex_prompt(&resume_prompt, Some(plugin_dir), Some(agent_name));
     let config_overrides = build_codex_mcp_overrides(plugin_dir, agent_name, is_external_mcp)?;
     let codex_config =
         build_codex_cli_config(working_directory, resolved_spawn_settings, config_overrides);
+    match provider_resume_mode_for_session(AgentHarnessKind::Codex, session_id) {
+        ProviderResumeMode::Resume => {
+            let resume_prompt = build_resume_initial_prompt(
+                context_type,
+                context_id,
+                message,
+                session_messages,
+                total_available,
+            );
+            let prompt = compose_codex_prompt(&resume_prompt, Some(plugin_dir), Some(agent_name));
 
-    let mut spawnable = build_spawnable_codex_resume_command(
-        cli_path,
-        session_id,
-        &prompt,
-        capabilities,
-        &codex_config,
-    )?;
+            let mut spawnable = build_spawnable_codex_resume_command(
+                cli_path,
+                session_id,
+                &prompt,
+                capabilities,
+                &codex_config,
+            )?;
 
-    apply_ralphx_env_vars(
-        &mut spawnable,
-        agent_name,
-        context_type,
-        context_id,
-        project_id,
-        codex_team_mode,
-        Some(session_id),
-        ideation_subagent_model_cap,
-    );
+            apply_ralphx_env_vars(
+                &mut spawnable,
+                agent_name,
+                context_type,
+                context_id,
+                project_id,
+                codex_team_mode,
+                Some(session_id),
+                ideation_subagent_model_cap,
+            );
 
-    Ok(spawnable)
+            Ok(spawnable)
+        }
+        ProviderResumeMode::Recovery => {
+            let recovery_prompt = build_initial_prompt_with_session_artifacts(
+                context_type,
+                context_id,
+                message,
+                session_messages,
+                total_available,
+                artifact_repo,
+                ideation_subagent_model_cap,
+            )
+            .await?;
+
+            let prompt = compose_codex_prompt(&recovery_prompt, Some(plugin_dir), Some(agent_name));
+            let mut spawnable =
+                build_spawnable_codex_exec_command(cli_path, &prompt, capabilities, &codex_config)?;
+
+            apply_ralphx_env_vars(
+                &mut spawnable,
+                agent_name,
+                context_type,
+                context_id,
+                project_id,
+                codex_team_mode,
+                None,
+                ideation_subagent_model_cap,
+            );
+
+            Ok(spawnable)
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

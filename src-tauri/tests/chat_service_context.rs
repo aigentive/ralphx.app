@@ -1,15 +1,132 @@
 use async_trait::async_trait;
 use ralphx_lib::application::chat_service::{
-    build_command, build_initial_prompt, build_resume_command, build_resume_initial_prompt,
+    build_command, build_initial_prompt, build_resume_command,
+    build_resume_command_for_harness, build_resume_initial_prompt,
     format_attachments_for_agent, format_session_history, get_entity_status_for_resume,
-    is_text_file, resolve_working_directory,
+    is_text_file, provider_resume_mode_for_session_under, resolve_working_directory,
+    ProviderResumeMode,
 };
 use ralphx_lib::domain::agents::{AgentHarnessKind, ProviderSessionRef};
 use ralphx_lib::domain::entities::{self, *};
 use ralphx_lib::domain::repositories::{self, *};
 use ralphx_lib::error::AppResult;
 use ralphx_lib::infrastructure::memory::*;
-use std::sync::Arc;
+use std::fs;
+use std::future::Future;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
+use tempfile::TempDir;
+
+fn provider_state_home_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+async fn with_provider_state_home_override<T, Fut>(
+    home: &Path,
+    f: impl FnOnce() -> Fut,
+) -> T
+where
+    Fut: Future<Output = T>,
+{
+    let _guard = provider_state_home_lock().lock().expect("lock poisoned");
+    let previous = std::env::var_os("RALPHX_PROVIDER_STATE_HOME_OVERRIDE");
+    std::env::set_var("RALPHX_PROVIDER_STATE_HOME_OVERRIDE", home);
+    let result = f().await;
+    match previous {
+        Some(value) => std::env::set_var("RALPHX_PROVIDER_STATE_HOME_OVERRIDE", value),
+        None => std::env::remove_var("RALPHX_PROVIDER_STATE_HOME_OVERRIDE"),
+    }
+    result
+}
+
+fn write_file(path: &Path, contents: &str) {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("create parent dirs");
+    }
+    fs::write(path, contents).expect("write test file");
+}
+
+fn make_fake_codex_cli(temp: &TempDir) -> PathBuf {
+    let script_path = temp.path().join("codex");
+    let script = r#"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "codex-cli 0.116.0"
+  exit 0
+fi
+if [ "$1" = "--help" ]; then
+  cat <<'EOF'
+Codex CLI
+
+Commands:
+  exec        Run Codex non-interactively [aliases: e]
+  mcp         Manage external MCP servers for Codex
+  resume      Resume a previous interactive session
+
+Options:
+  -c, --config <key=value>
+  -m, --model <MODEL>
+  -s, --sandbox <SANDBOX_MODE>
+      --search
+      --add-dir <DIR>
+EOF
+  exit 0
+fi
+if [ "$1" = "exec" ] && [ "$2" = "--help" ]; then
+  cat <<'EOF'
+Run Codex non-interactively
+
+Usage: codex exec [OPTIONS] [PROMPT] [COMMAND]
+
+Options:
+  -c, --config <key=value>
+  -m, --model <MODEL>
+  -s, --sandbox <SANDBOX_MODE>
+      --add-dir <DIR>
+      --json
+  -C, --cd <DIR>
+      --skip-git-repo-check
+EOF
+  exit 0
+fi
+exit 0
+"#;
+
+    write_file(&script_path, script);
+    let mut permissions = fs::metadata(&script_path)
+        .expect("metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&script_path, permissions).expect("chmod script");
+    script_path
+}
+
+fn make_codex_home_with_session(session_id: &str) -> TempDir {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let session_path = temp
+        .path()
+        .join(".codex")
+        .join("sessions")
+        .join("2026")
+        .join("04")
+        .join("11")
+        .join(format!("rollout-2026-04-11T03-49-25-{session_id}.jsonl"));
+    write_file(&session_path, "{\"type\":\"thread.started\"}\n");
+    temp
+}
+
+fn make_claude_home_with_session(session_id: &str) -> TempDir {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let transcript_path = temp
+        .path()
+        .join(".claude")
+        .join("projects")
+        .join("project-a")
+        .join(format!("{session_id}.jsonl"));
+    write_file(&transcript_path, "{\"type\":\"assistant\"}\n");
+    temp
+}
 
 #[test]
 fn test_is_text_file_by_mime_type() {
@@ -934,8 +1051,6 @@ async fn test_build_command_with_team_mode_false() {
 
 #[test]
 fn test_build_resume_initial_prompt_ideation_includes_context_id_no_recovery_note() {
-    // After the session_history injection refactor, the <recovery_note> has been removed.
-    // build_resume_initial_prompt now delegates to build_initial_prompt.
     let context_id = "test-session-123";
     let user_message = "hello";
     let result =
@@ -943,6 +1058,7 @@ fn test_build_resume_initial_prompt_ideation_includes_context_id_no_recovery_not
     assert!(result.contains(&format!("<context_id>{}</context_id>", context_id)));
     assert!(!result.contains("<recovery_note>"));
     assert!(!result.contains("get_session_messages"));
+    assert!(!result.contains("<session_history"));
     assert!(result.contains(&format!("<user_message>{}</user_message>", user_message)));
 }
 
@@ -976,6 +1092,52 @@ fn test_build_resume_initial_prompt_task_execution_delegates_to_initial_prompt()
     let initial =
         build_initial_prompt(ChatContextType::TaskExecution, context_id, user_message, &[], 0);
     assert_eq!(resume, initial);
+}
+
+#[test]
+fn provider_resume_mode_for_codex_requires_local_session_artifact() {
+    let missing_home = tempfile::tempdir().expect("tempdir");
+    assert_eq!(
+        provider_resume_mode_for_session_under(
+            AgentHarnessKind::Codex,
+            "019d7821-a3c9-7a92-ac91-25d19653181c",
+            missing_home.path()
+        ),
+        ProviderResumeMode::Recovery
+    );
+
+    let existing_home = make_codex_home_with_session("019d7821-a3c9-7a92-ac91-25d19653181c");
+    assert_eq!(
+        provider_resume_mode_for_session_under(
+            AgentHarnessKind::Codex,
+            "019d7821-a3c9-7a92-ac91-25d19653181c",
+            existing_home.path()
+        ),
+        ProviderResumeMode::Resume
+    );
+}
+
+#[test]
+fn provider_resume_mode_for_claude_requires_local_transcript() {
+    let missing_home = tempfile::tempdir().expect("tempdir");
+    assert_eq!(
+        provider_resume_mode_for_session_under(
+            AgentHarnessKind::Claude,
+            "00000000-0000-4000-8000-000000000000",
+            missing_home.path()
+        ),
+        ProviderResumeMode::Recovery
+    );
+
+    let existing_home = make_claude_home_with_session("00000000-0000-4000-8000-000000000000");
+    assert_eq!(
+        provider_resume_mode_for_session_under(
+            AgentHarnessKind::Claude,
+            "00000000-0000-4000-8000-000000000000",
+            existing_home.path()
+        ),
+        ProviderResumeMode::Resume
+    );
 }
 
 #[tokio::test]
@@ -1042,6 +1204,109 @@ async fn test_build_resume_command_with_team_mode() {
 
     // Test passes if no panics occurred
 }
+
+#[tokio::test]
+async fn codex_resume_command_falls_back_to_exec_when_session_is_missing() {
+    let home = tempfile::tempdir().expect("tempdir");
+    let cli_temp = tempfile::tempdir().expect("tempdir");
+    let cli_path = make_fake_codex_cli(&cli_temp);
+    let plugin_dir = cli_temp.path().join("plugins").join("app");
+    fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+    write_file(
+        &plugin_dir.join("ralphx-mcp-server/build/index.js"),
+        "// fake mcp server",
+    );
+    let working_dir = cli_temp.path().to_path_buf();
+
+    let result = with_provider_state_home_override(home.path(), || async {
+        build_resume_command_for_harness(
+            AgentHarnessKind::Codex,
+            &cli_path,
+            &plugin_dir,
+            ChatContextType::Project,
+            "project-1",
+            "continue",
+            &working_dir,
+            "missing-session",
+            None,
+            false,
+            Arc::new(MemoryChatAttachmentRepository::new()),
+            Arc::new(MemoryArtifactRepository::new()),
+            None,
+            None,
+            None,
+            Arc::new(MockIdeationRepo::empty()),
+            Arc::new(MockTaskRepo),
+            &[],
+            0,
+            None,
+            None,
+            false,
+        )
+        .await
+    })
+    .await
+    .expect("codex recovery command should build");
+
+    let args = result.spawnable.get_args_for_test();
+    assert_eq!(args.first().map(String::as_str), Some("exec"));
+    assert!(
+        !args.iter().any(|arg| arg == "resume"),
+        "missing Codex session should force recovery, not exec resume: {args:?}"
+    );
+}
+
+#[tokio::test]
+async fn codex_resume_command_uses_resume_subcommand_when_session_exists() {
+    let home = make_codex_home_with_session("session-123");
+    let cli_temp = tempfile::tempdir().expect("tempdir");
+    let cli_path = make_fake_codex_cli(&cli_temp);
+    let plugin_dir = cli_temp.path().join("plugins").join("app");
+    fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+    write_file(
+        &plugin_dir.join("ralphx-mcp-server/build/index.js"),
+        "// fake mcp server",
+    );
+    let working_dir = cli_temp.path().to_path_buf();
+
+    let result = with_provider_state_home_override(home.path(), || async {
+        build_resume_command_for_harness(
+            AgentHarnessKind::Codex,
+            &cli_path,
+            &plugin_dir,
+            ChatContextType::Project,
+            "project-1",
+            "continue",
+            &working_dir,
+            "session-123",
+            None,
+            false,
+            Arc::new(MemoryChatAttachmentRepository::new()),
+            Arc::new(MemoryArtifactRepository::new()),
+            None,
+            None,
+            None,
+            Arc::new(MockIdeationRepo::empty()),
+            Arc::new(MockTaskRepo),
+            &[],
+            0,
+            None,
+            None,
+            false,
+        )
+        .await
+    })
+    .await
+    .expect("codex resume command should build");
+
+    let args = result.spawnable.get_args_for_test();
+    assert!(
+        args.windows(3)
+            .any(|window| window == ["exec", "resume", "session-123"]),
+        "existing Codex session should use exec resume: {args:?}"
+    );
+}
+
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Tests for format_session_history
@@ -2130,26 +2395,30 @@ async fn test_build_command_resumes_from_provider_session_ref_without_legacy_ali
         provider_session_id: "provider-only-session".to_string(),
     });
     conversation.claude_session_id = None;
+    let home = make_claude_home_with_session("provider-only-session");
 
-    let result = build_command(
-        std::path::Path::new("/fake/claude"),
-        std::path::Path::new("/fake/plugin"),
-        &conversation,
-        "continue",
-        std::path::Path::new("/tmp"),
-        None,
-        None,
-        false,
-        Arc::new(MemoryChatAttachmentRepository::new()),
-        Arc::new(MemoryArtifactRepository::new()),
-        None,
-        None,
-        None,
-        &[],
-        0,
-        None,
-        None,
-    )
+    let result = with_provider_state_home_override(home.path(), || async {
+        build_command(
+            std::path::Path::new("/fake/claude"),
+            std::path::Path::new("/fake/plugin"),
+            &conversation,
+            "continue",
+            std::path::Path::new("/tmp"),
+            None,
+            None,
+            false,
+            Arc::new(MemoryChatAttachmentRepository::new()),
+            Arc::new(MemoryArtifactRepository::new()),
+            None,
+            None,
+            None,
+            &[],
+            0,
+            None,
+            None,
+        )
+        .await
+    })
     .await;
 
     assert!(result.is_ok(), "build_command failed: {:?}", result.err());

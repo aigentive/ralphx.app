@@ -70,9 +70,11 @@ pub use chat_service_errors::{
     truncate_error_message,
 };
 pub use chat_service_context::{
-    build_command, build_initial_prompt, build_resume_command, build_resume_initial_prompt,
+    build_command, build_initial_prompt, build_resume_command,
+    build_resume_command_for_harness, build_resume_initial_prompt,
     format_attachments_for_agent, format_session_history, get_entity_status_for_resume,
-    is_text_file, resolve_working_directory,
+    is_text_file, provider_resume_mode_for_session_under, resolve_working_directory,
+    ProviderResumeMode,
 };
 pub use chat_service_helpers::{
     context_type_to_process, get_agent_name, get_assistant_role, resolve_agent_with_team_mode,
