@@ -9,12 +9,12 @@
 
 | File | Type | Lines Added | Lines Changed | Description |
 |------|------|-------------|---------------|-------------|
-| `plugins/app/agents/ideation-team-lead.md` | Prompt | ~35 | 0 | Add relaunch protocol section for lead |
-| `plugins/app/agents/worker-team.md` | Prompt | ~35 | 0 | Add relaunch protocol section for lead |
-| `plugins/app/agents/orchestrator-ideation-specialist.md` | Prompt | ~8 | 0 | Add self-report rule |
-| `plugins/app/agents/orchestrator-ideation-critic.md` | Prompt | ~8 | 0 | Add self-report rule |
-| `plugins/app/agents/orchestrator-ideation-advocate.md` | Prompt | ~8 | 0 | Add self-report rule |
-| `plugins/app/agents/coder.md` | Prompt | ~8 | 0 | Add self-report rule |
+| `agents/ideation-team-lead/claude/prompt.md` | Prompt | ~35 | 0 | Add relaunch protocol section for lead |
+| `agents/ralphx-worker-team/claude/prompt.md` | Prompt | ~35 | 0 | Add relaunch protocol section for lead |
+| `agents/ideation-specialist-*/claude/prompt.md` | Prompt | ~8 | 0 | Add self-report rule |
+| `agents/ideation-critic/claude/prompt.md` | Prompt | ~8 | 0 | Add self-report rule |
+| `agents/ideation-advocate/claude/prompt.md` | Prompt | ~8 | 0 | Add self-report rule |
+| `agents/ralphx-coder/claude/prompt.md` | Prompt | ~8 | 0 | Add self-report rule |
 | `src-tauri/src/infrastructure/agents/team_config.rs` | Rust | ~6 | 0 | Add `context_relaunch_threshold` field |
 | `ralphx.yaml` | YAML | ~1 | 0 | Add threshold to defaults |
 | `src-tauri/src/domain/artifacts/mod.rs` | Rust | ~15 (optional) | 0 | Add `TeamHandoff` artifact type |
@@ -22,7 +22,7 @@
 
 ## Prompt Modifications
 
-### Team Lead Prompts (ideation-team-lead.md, worker-team.md)
+### Team Lead Prompts (`agents/ideation-team-lead/claude/prompt.md`, `agents/ralphx-worker-team/claude/prompt.md`)
 
 **Location:** After team coordination section, before workflow phases
 

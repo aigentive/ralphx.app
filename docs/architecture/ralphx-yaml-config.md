@@ -247,7 +247,7 @@ get_preapproved_tools(agent_name) →
 
 ### MCP-Only Agents
 
-`session-namer` and `dependency-suggester` use `mcp_only: true`:
+`session-namer` uses `mcp_only: true`:
 - `--tools ""` → no CLI tools available
 - Only MCP tools via `--allowedTools`
 

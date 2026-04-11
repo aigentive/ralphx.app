@@ -275,4 +275,4 @@ INFO  session_id=... "Reconciliation reset stuck verification"
 | `http_server/handlers/external.rs` | `POST /api/external/apply_proposals`, `POST /api/external/trigger_verification` |
 | `http_server/handlers/session_linking.rs` | `create_verification_child_session()` — creates child with `session_purpose=Verification` |
 | `application/reconciliation/verification_reconciliation.rs` | Startup + periodic stuck-session reset + orphaned child detection |
-| `plugins/app/agents/plan-verifier.md` | Dedicated agent owning the round loop in child session |
+| `agents/plan-verifier/claude/prompt.md` | Dedicated agent owning the round loop in child session |

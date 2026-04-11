@@ -1,6 +1,8 @@
 ---
 paths:
-  - "plugins/app/agents/orchestrator-ideation*.md"
+  - "agents/orchestrator-ideation/**"
+  - "agents/orchestrator-ideation-readonly/**"
+  - "agents/ideation-team-lead/**"
   - "src-tauri/src/infrastructure/agents/**"
   - "src-tauri/src/application/chat_service/**"
   - "plugins/app/ralphx-mcp-server/src/tools.ts"
@@ -10,7 +12,7 @@ paths:
 
 > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
 
-**Required Context:** task-execution-agents.md | agent-mcp-tools.md
+**Required Context:** task-execution-agents.md | agent-mcp-tools.md | agent-authoring.md
 
 ---
 
@@ -110,9 +112,8 @@ See `agent-mcp-tools.md` for full scope matrix.
 
 | Component | Path |
 |-----------|------|
-| Active ideation agent | `plugins/app/agents/orchestrator-ideation.md` |
-| Readonly ideation agent | `plugins/app/agents/orchestrator-ideation-readonly.md` |
+| Active ideation agent | `agents/orchestrator-ideation/claude/prompt.md` |
+| Readonly ideation agent | `agents/orchestrator-ideation-readonly/claude/prompt.md` |
 | MCP tool allowlist | `plugins/app/ralphx-mcp-server/src/tools.ts` |
 | ChatService context routing | `src-tauri/src/application/chat_service/chat_service_context.rs` |
 | Agent resolution table | `task-execution-agents.md:88-95` |
-

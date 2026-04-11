@@ -2,14 +2,14 @@
 paths:
   - "src-tauri/src/infrastructure/agents/**"
   - "src-tauri/src/application/chat_service/**"
-  - "plugins/app/agents/**"
+  - "agents/**"
 ---
 
 # Task Execution Agents
 
 > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
 
-**Required Context:** task-state-machine.md | agent-mcp-tools.md | followup-blocker-dedupe.md | multi-harness.md
+**Required Context:** task-state-machine.md | agent-mcp-tools.md | followup-blocker-dedupe.md | multi-harness.md | agent-authoring.md
 
 | Runtime rule | Detail |
 |---|---|
@@ -169,7 +169,7 @@ paths:
 | Agent spawner (CWD resolution) | `src-tauri/src/infrastructure/agents/spawner.rs` |
 | ChatService contexts | `src-tauri/src/application/chat_service/chat_service_context.rs` |
 | HTTP merge handlers | `src-tauri/src/http_server/handlers/git.rs` |
-| Agent definitions | `plugins/app/agents/*.md` |
+| Canonical agent definitions | `agents/*/agent.yaml` + prompt files |
 | Plan branch commands | `src-tauri/src/commands/plan_branch_commands.rs` |
 | Ideation apply | `src-tauri/src/commands/ideation_commands/ideation_commands_apply.rs` |
 | Git settings UI | `src/components/settings/GitSettingsSection.tsx` |

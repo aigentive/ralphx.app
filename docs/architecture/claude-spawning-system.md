@@ -63,7 +63,7 @@ Two spawn modes:
 
 | Mode | Method | Use Case |
 |------|--------|----------|
-| Fire-and-forget | `spawn_agent()` → `wait_for_completion()` | Background agents (session-namer, dependency-suggester) |
+| Fire-and-forget | `spawn_agent()` → `wait_for_completion()` | Background agents (session-namer, project-analyzer, memory capture/maintenance) |
 | Streaming | `spawn_agent_streaming()` → returns `Child` | Interactive sessions (ExecutionChatService handles stream) |
 
 **Process tracking:** Global `PROCESSES: Mutex<HashMap<String, (Child, Instant)>>` tracks all spawned processes by handle ID for stop/wait operations.
@@ -170,7 +170,7 @@ claude:
 agents:
   - name: orchestrator-ideation
     model: opus
-    system_prompt_file: plugins/app/agents/orchestrator-ideation.md
+    system_prompt_file: agents/orchestrator-ideation/claude/prompt.md
     tools:
       extends: base_tools
       include: [Task]
@@ -345,7 +345,6 @@ Default: `http://127.0.0.1:3847` (overridable via `TAURI_API_URL`)
 | `AGENT_REVIEWER` | `ralphx-reviewer` | `ralphx:ralphx-reviewer` | ChatService (Review) |
 | `AGENT_MERGER` | `ralphx-merger` | `ralphx:ralphx-merger` | ChatService (Merge) |
 | `AGENT_SESSION_NAMER` | `session-namer` | `ralphx:session-namer` | Fire-and-forget (haiku) |
-| `AGENT_DEPENDENCY_SUGGESTER` | `dependency-suggester` | `ralphx:dependency-suggester` | Fire-and-forget (haiku) |
 | `AGENT_PROJECT_ANALYZER` | `project-analyzer` | `ralphx:project-analyzer` | Fire-and-forget (haiku) |
 | `AGENT_QA_PREP` | `ralphx-qa-prep` | `ralphx:ralphx-qa-prep` | State machine (Ready) |
 | `AGENT_QA_REFINER` | `qa-refiner` | `ralphx:qa-refiner` | State machine (QaRefining) |

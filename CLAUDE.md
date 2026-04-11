@@ -157,7 +157,7 @@ Agent limitations mean no single plan can be trusted in full. Plans proposing co
 
 **Adversarial agent rules:** Read actual code (not summaries). Concrete scenarios only ("if X then Y breaks at line Z"). ❌ Style/preference debates. Each gap: scenario + severity + blocks implementation?
 
-Full process details: `plugins/app/agents/ideation-team-lead.md` (Phase 4.5) | `plugins/app/agents/orchestrator-ideation.md` (Phase 3.5)
+Full process details: `agents/ideation-team-lead/claude/prompt.md` (Phase 4.5) | `agents/orchestrator-ideation/claude/prompt.md` (Phase 3.5)
 
 ## Design System
 `specs/DESIGN.md` | Accent: `#ff6b35` (warm orange) ❌ purple/blue | Font: SF Pro ❌ Inter | **INVOKE `/tailwind-v4-shadcn` before UI work**

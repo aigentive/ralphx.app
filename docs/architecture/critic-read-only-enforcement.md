@@ -40,8 +40,8 @@ or codebase. You are a pure analysis agent.
 ```
 
 Files modified:
-- `plugins/app/agents/plan-critic-completeness.md`
-- `plugins/app/agents/plan-critic-implementation-feasibility.md`
+- `agents/plan-critic-completeness/claude/prompt.md`
+- `agents/plan-critic-implementation-feasibility/claude/prompt.md`
 
 ## Defense-in-Depth Status
 

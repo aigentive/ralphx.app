@@ -1,18 +1,18 @@
 ---
 paths:
   - "ralphx.yaml"
-  - "plugins/app/agents/**"
+  - "agents/**"
   - "plugins/app/ralphx-mcp-server/src/**"
   - "src-tauri/src/infrastructure/agents/**"
   - "src-tauri/src/application/chat_service/**"
   - "src-tauri/src/commands/execution_commands.rs"
   - "src-tauri/src/commands/execution_commands/**"
   - "src-tauri/src/domain/entities/chat_conversation.rs"
-  - "src/types/chat-conversation.ts"
-  - "src/lib/chat-context-registry.ts"
-  - "src/stores/chatStore.ts"
-  - "src/hooks/useAgentEvents.ts"
-  - "src/components/Chat/**"
+  - "frontend/src/types/chat-conversation.ts"
+  - "frontend/src/lib/chat-context-registry.ts"
+  - "frontend/src/stores/chatStore.ts"
+  - "frontend/src/hooks/useAgentEvents.ts"
+  - "frontend/src/components/Chat/**"
 ---
 
 # Agent Type Map
@@ -35,6 +35,8 @@ Source of truth: `ChatContextType` (Rust: `domain/entities/chat_conversation.rs`
 **Execution slot** = counted against `max_concurrent` in `uses_execution_slot()` (`chat_service/mod.rs`).
 
 ## Named Agents (ralphx.yaml)
+
+Canonical authoring flow: `.claude/rules/agent-authoring.md`
 
 | Agent Name | Context | Model | Role |
 |---|---|---|---|
@@ -82,13 +84,13 @@ Adding a new specialist to the plan verification pipeline requires these 7 steps
 
 | Step | File | Change |
 |------|------|--------|
-| 1 | `plugins/app/agents/<name>.md` | Create agent prompt with role/scope/refuse boundaries and output format |
+| 1 | `agents/<name>/...` | Create canonical agent config + prompt files with role/scope/refuse boundaries and output format |
 | 2 | `ralphx.yaml` | Register agent: model, tools, mcp_tools, disallowedTools |
 | 3 | `plugins/app/ralphx-mcp-server/src/agentNames.ts` | Add `export const IDEATION_SPECIALIST_<NAME> = "<name>"` constant |
 | 4 | `plugins/app/ralphx-mcp-server/src/tools.ts` | Import constant; add `[IDEATION_SPECIALIST_<NAME>]: [...]` to TOOL_ALLOWLIST |
-| 5 | `plugins/app/agents/plan-verifier.md` frontmatter | Add `Task(ralphx:<name>)` to `tools` list |
+| 5 | `agents/plan-verifier/claude/prompt.md` + `ralphx.yaml` | Keep the Claude prompt contract and runtime grants aligned for `Task(ralphx:<name>)` |
 | 6 | `ralphx.yaml` plan-verifier entry | Add `Task(ralphx:<name>)` to `preapproved_cli_tools` array |
-| 7 | `plugins/app/agents/plan-verifier.md` prompt | Add signal → specialist mapping in dynamic role selection section |
+| 7 | `agents/plan-verifier/claude/prompt.md` | Add signal → specialist mapping in dynamic role selection section |
 
 **Two specialist dispatch modes:**
 | Mode | When | Example |

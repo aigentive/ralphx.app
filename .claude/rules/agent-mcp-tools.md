@@ -1,7 +1,7 @@
 ---
 paths:
   - "src-tauri/src/infrastructure/agents/**"
-  - "plugins/app/agents/**"
+  - "agents/**"
   - "plugins/app/ralphx-mcp-server/src/**"
   - "src-tauri/src/http_server/**"
 ---
@@ -16,7 +16,7 @@ MCP access is controlled by **three distinct layers**. Changing only one layer i
 
 | Layer | File | Controls | Required? |
 |-------|------|----------|-----------|
-| 1 | `plugins/app/agents/*.md` frontmatter `tools` | What the agent prompt contract says it can call | Yes |
+| 1 | Canonical prompt files under `agents/<agent>/...` plus optional `claude/agent.yaml` | What the agent contract says it can call | Yes |
 | 2 | `ralphx.yaml` → `mcp_tools: [...]` per agent | What Rust injects via `--allowed-tools` at runtime | Yes |
 | 3 | `plugins/app/ralphx-mcp-server/src/tools.ts` | Tool handler registration + per-agent MCP allowlist | Yes |
 
@@ -25,7 +25,7 @@ MCP access is controlled by **three distinct layers**. Changing only one layer i
 ## Alignment Rule (NON-NEGOTIABLE)
 
 When adding OR removing an MCP tool from an agent:
-- update the agent `.md` frontmatter
+- update the canonical prompt contract under `agents/<agent>/...`
 - update that agent's `mcp_tools` in `ralphx.yaml`
 - update any per-agent allowlist/grouping in `plugins/app/ralphx-mcp-server/src/tools.ts`
 - rebuild the MCP server if `src/tools.ts` changed
@@ -34,7 +34,7 @@ When adding OR removing an MCP tool from an agent:
 ❌ Adding a tool only in YAML
 ❌ Leaving an agent in a shared broad allowlist after narrowing its prompt contract
 
-**Agent `.md` frontmatter** → MCP tool names in `tools` list depend on spawning path (NOT `allowedTools` — that key is invalid in frontmatter; only `tools` and `disallowedTools` are valid):
+**Claude-generated frontmatter** → MCP tool names in `tools` depend on spawning path (NOT `allowedTools` — that key is invalid in Claude frontmatter; only `tools` and `disallowedTools` are valid):
 
 | Spawning Path | Wildcard in `tools`? | Why |
 |---------------|---------------------|-----|
@@ -49,7 +49,7 @@ When adding OR removing an MCP tool from an agent:
 
 | Step | What | File | Required? |
 |------|------|------|-----------|
-| 1 | Update agent frontmatter `tools` list | `plugins/app/agents/*.md` | Yes |
+| 1 | Update canonical prompt / Claude metadata contract | `agents/<agent>/...` | Yes |
 | 2 | Update agent `mcp_tools` | `ralphx.yaml` | Yes |
 | 3 | Update MCP allowlist/grouping if the agent's effective set changed | `plugins/app/ralphx-mcp-server/src/tools.ts` | Yes |
 | 4 | Rebuild MCP server | `cd plugins/app/ralphx-mcp-server && npm run build` | Yes (after step 3) |
@@ -57,7 +57,7 @@ When adding OR removing an MCP tool from an agent:
 **What you NO LONGER need to do:**
 - ~~Edit `TOOL_ALLOWLIST` in `tools.ts`~~ (bypassed by `--allowed-tools`)
 - ~~Edit Rust `AGENT_CONFIGS` `allowed_mcp_tools`~~ (removed — `ralphx.yaml` is now the single source of truth)
-- ~~Edit agent `.md` frontmatter `allowedTools`~~ (`allowedTools` is NOT a valid frontmatter field — add tool names to `tools` instead)
+- ~~Edit agent `.md` frontmatter `allowedTools`~~ (`allowedTools` is NOT a valid Claude frontmatter field — add tool names to `tools` instead)
 - ~~Add MCP tools to `disallowedTools` to restrict access~~ (unnecessary — frontmatter `tools` is a **strict allowlist**: only explicitly listed tools are accessible; unlisted tools are already blocked)
 
 **Frontmatter `tools` strict allowlist semantics:** Only tools explicitly listed in `tools` are available to the agent. MCP tools NOT in `tools` are inaccessible regardless of what the MCP server exposes. This means `disallowedTools` is unnecessary for MCP tool restriction — if a tool isn't in `tools`, it's already blocked.
