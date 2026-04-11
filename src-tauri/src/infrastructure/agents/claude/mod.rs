@@ -771,6 +771,60 @@ pub fn create_mcp_config(
 pub struct SpawnableCommand {
     cmd: Command,
     stdin_prompt: Option<String>,
+    prompt_arg_debug_redaction: Option<PromptArgDebugRedaction>,
+}
+
+#[derive(Debug, Clone)]
+struct PromptArgDebugRedaction {
+    arg_index: usize,
+    artifact_path: PathBuf,
+}
+
+struct DebugCommandView<'a> {
+    cmd: &'a Command,
+    prompt_arg_debug_redaction: Option<&'a PromptArgDebugRedaction>,
+}
+
+impl std::fmt::Debug for DebugCommandView<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let std_cmd = self.cmd.as_std();
+        let mut args = std_cmd
+            .get_args()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        if let Some(redaction) = self.prompt_arg_debug_redaction {
+            if let Some(arg) = args.get_mut(redaction.arg_index) {
+                *arg = format!(
+                    "<prompt logged at {}>",
+                    redaction.artifact_path.display()
+                );
+            }
+        }
+
+        let envs = std_cmd
+            .get_envs()
+            .filter_map(|(key, value)| {
+                value.map(|val| {
+                    (
+                        key.to_string_lossy().into_owned(),
+                        val.to_string_lossy().into_owned(),
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+
+        f.debug_struct("Command")
+            .field("program", &std_cmd.get_program().to_string_lossy().into_owned())
+            .field(
+                "current_dir",
+                &std_cmd
+                    .get_current_dir()
+                    .map(|path| path.to_string_lossy().into_owned()),
+            )
+            .field("args", &args)
+            .field("envs", &envs)
+            .finish()
+    }
 }
 
 impl std::fmt::Debug for SpawnableCommand {
@@ -784,7 +838,13 @@ impl std::fmt::Debug for SpawnableCommand {
             out.replace('\n', "\\n")
         });
         f.debug_struct("SpawnableCommand")
-            .field("cmd", &self.cmd)
+            .field(
+                "cmd",
+                &DebugCommandView {
+                    cmd: &self.cmd,
+                    prompt_arg_debug_redaction: self.prompt_arg_debug_redaction.as_ref(),
+                },
+            )
             .field("uses_stdin", &self.stdin_prompt.is_some())
             .field("stdin_prompt_len", &prompt_len)
             .field("stdin_prompt_preview", &prompt_preview)
@@ -794,7 +854,23 @@ impl std::fmt::Debug for SpawnableCommand {
 
 impl SpawnableCommand {
     pub(crate) fn new(cmd: Command, stdin_prompt: Option<String>) -> Self {
-        Self { cmd, stdin_prompt }
+        Self {
+            cmd,
+            stdin_prompt,
+            prompt_arg_debug_redaction: None,
+        }
+    }
+
+    pub(crate) fn with_prompt_arg_debug_redaction(
+        mut self,
+        arg_index: usize,
+        artifact_path: PathBuf,
+    ) -> Self {
+        self.prompt_arg_debug_redaction = Some(PromptArgDebugRedaction {
+            arg_index,
+            artifact_path,
+        });
+        self
     }
 
     /// Set an environment variable on the underlying command.

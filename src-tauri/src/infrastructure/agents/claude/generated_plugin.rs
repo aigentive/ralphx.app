@@ -8,11 +8,20 @@ use crate::infrastructure::agents::harness_agent_catalog::{
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 const GENERATED_PLUGIN_DIR_REL_DEBUG: &str = ".artifacts/generated/claude-plugin";
 const GENERATED_PLUGIN_DIR_REL_PROD: &str = "generated/claude-plugin";
 
+fn generated_plugin_materialization_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
 pub(crate) fn materialize_generated_plugin_dir(base_plugin_dir: &Path) -> Result<PathBuf, String> {
+    let _guard = generated_plugin_materialization_lock()
+        .lock()
+        .map_err(|_| "Generated Claude plugin materialization lock poisoned".to_string())?;
     let project_root = resolve_project_root_from_plugin_dir(base_plugin_dir);
     let generated_plugin_dir = generated_plugin_dir_for_base(base_plugin_dir);
 

@@ -128,6 +128,8 @@ fn test_generic_harness_lane_defaults_for_codex_primary() {
     assert_eq!(settings.harness, AgentHarnessKind::Codex);
     assert_eq!(settings.model.as_deref(), Some("gpt-5.4"));
     assert_eq!(settings.effort, Some(LogicalEffort::XHigh));
+    assert_eq!(settings.approval_policy.as_deref(), Some("never"));
+    assert_eq!(settings.sandbox_mode.as_deref(), Some("workspace-write"));
     assert_eq!(settings.fallback_harness, Some(DEFAULT_AGENT_HARNESS));
 }
 

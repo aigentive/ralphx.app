@@ -132,25 +132,29 @@ agent_harness_defaults:
     harness: codex
     model: gpt-5.4
     effort: xhigh
-    approval_policy: on-request
+    approval_policy: never
     sandbox_mode: workspace-write
     fallback_harness: claude
   ideation_verifier:
     harness: codex
     model: gpt-5.4-mini
     effort: medium
-    approval_policy: on-request
+    approval_policy: never
     sandbox_mode: workspace-write
     fallback_harness: claude
   ideation_subagent:
     harness: codex
     model: gpt-5.4-mini
     effort: medium
+    approval_policy: never
+    sandbox_mode: workspace-write
     fallback_harness: claude
   ideation_verifier_subagent:
     harness: codex
     model: gpt-5.4-mini
     effort: medium
+    approval_policy: never
+    sandbox_mode: workspace-write
     fallback_harness: claude
   execution_worker:
     harness: claude

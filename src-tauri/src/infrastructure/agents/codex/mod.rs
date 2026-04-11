@@ -1,8 +1,12 @@
 mod codex_cli_client;
 pub mod stream_processor;
 
+use chrono::Utc;
 use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
+use std::fs;
+use tracing::warn;
+use uuid::Uuid;
 
 use crate::domain::agents::LogicalEffort;
 use crate::infrastructure::agents::claude::SpawnableCommand;
@@ -481,8 +485,15 @@ pub fn build_spawnable_codex_exec_command(
     cmd.args(args);
     cmd.arg("--");
     cmd.arg(prompt);
+    let prompt_arg_index = cmd.as_std().get_args().count().saturating_sub(1);
     configure_spawn(&mut cmd, config.cwd.as_deref());
-    Ok(SpawnableCommand::new(cmd, None))
+    Ok(attach_codex_prompt_debug_artifact(
+        SpawnableCommand::new(cmd, None),
+        prompt,
+        prompt_arg_index,
+        config.cwd.as_deref(),
+        "exec",
+    ))
 }
 
 pub fn build_spawnable_codex_resume_command(
@@ -497,8 +508,67 @@ pub fn build_spawnable_codex_resume_command(
     cmd.args(args);
     cmd.arg("--");
     cmd.arg(prompt);
+    let prompt_arg_index = cmd.as_std().get_args().count().saturating_sub(1);
     configure_spawn(&mut cmd, config.cwd.as_deref());
-    Ok(SpawnableCommand::new(cmd, None))
+    Ok(attach_codex_prompt_debug_artifact(
+        SpawnableCommand::new(cmd, None),
+        prompt,
+        prompt_arg_index,
+        config.cwd.as_deref(),
+        "resume",
+    ))
+}
+
+fn attach_codex_prompt_debug_artifact(
+    spawnable: SpawnableCommand,
+    prompt: &str,
+    prompt_arg_index: usize,
+    cwd: Option<&Path>,
+    mode: &str,
+) -> SpawnableCommand {
+    match write_codex_prompt_debug_artifact(prompt, cwd, mode) {
+        Ok(path) => spawnable.with_prompt_arg_debug_redaction(prompt_arg_index, path),
+        Err(error) => {
+            warn!(%error, "Failed to persist Codex prompt debug artifact");
+            spawnable
+        }
+    }
+}
+
+fn write_codex_prompt_debug_artifact(
+    prompt: &str,
+    cwd: Option<&Path>,
+    mode: &str,
+) -> Result<PathBuf, String> {
+    let root = if let Some(cwd) = cwd {
+        cwd.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|error| format!("Failed to resolve current dir for Codex prompt log: {error}"))?
+    };
+
+    let prompt_dir = root.join(".artifacts/logs/codex-prompts");
+    fs::create_dir_all(&prompt_dir).map_err(|error| {
+        format!(
+            "Failed to create Codex prompt log directory {}: {error}",
+            prompt_dir.display()
+        )
+    })?;
+
+    let filename = format!(
+        "{}-{}-{}.txt",
+        Utc::now().format("%Y%m%dT%H%M%S%.3fZ"),
+        mode,
+        Uuid::new_v4()
+    );
+    let path = prompt_dir.join(filename);
+    fs::write(&path, prompt).map_err(|error| {
+        format!(
+            "Failed to write Codex prompt log artifact {}: {error}",
+            path.display()
+        )
+    })?;
+    Ok(path)
 }
 
 fn run_codex_command(cli_path: &Path, args: &[&str]) -> Result<String, String> {

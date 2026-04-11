@@ -290,18 +290,20 @@ pub fn generic_harness_lane_defaults(
                 AgentLane::IdeationPrimary => {
                     settings.model = Some("gpt-5.4".to_string());
                     settings.effort = Some(LogicalEffort::XHigh);
-                    settings.approval_policy = Some("on-request".to_string());
+                    settings.approval_policy = Some("never".to_string());
                     settings.sandbox_mode = Some("workspace-write".to_string());
                 }
                 AgentLane::IdeationVerifier => {
                     settings.model = Some("gpt-5.4-mini".to_string());
                     settings.effort = Some(LogicalEffort::Medium);
-                    settings.approval_policy = Some("on-request".to_string());
+                    settings.approval_policy = Some("never".to_string());
                     settings.sandbox_mode = Some("workspace-write".to_string());
                 }
                 AgentLane::IdeationSubagent | AgentLane::IdeationVerifierSubagent => {
                     settings.model = Some("gpt-5.4-mini".to_string());
                     settings.effort = Some(LogicalEffort::Medium);
+                    settings.approval_policy = Some("never".to_string());
+                    settings.sandbox_mode = Some("workspace-write".to_string());
                 }
                 AgentLane::ExecutionWorker
                 | AgentLane::ExecutionReviewer
@@ -309,7 +311,7 @@ pub fn generic_harness_lane_defaults(
                 | AgentLane::ExecutionMerger => {
                     settings.model = Some("gpt-5.4".to_string());
                     settings.effort = Some(LogicalEffort::XHigh);
-                    settings.approval_policy = Some("on-request".to_string());
+                    settings.approval_policy = Some("never".to_string());
                     settings.sandbox_mode = Some("workspace-write".to_string());
                 }
             }

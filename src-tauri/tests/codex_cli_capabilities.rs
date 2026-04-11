@@ -184,9 +184,10 @@ fn build_codex_exec_resume_args_maps_config_to_resume_surface() {
 fn build_spawnable_codex_exec_command_uses_prompt_arg_transport() {
     let capabilities =
         parse_codex_cli_capabilities(ROOT_HELP, EXEC_HELP, Some("codex-cli 0.116.0"));
+    let temp_dir = tempfile::tempdir().expect("temp dir");
     let config = CodexExecCliConfig {
         model: Some("gpt-5.4".to_string()),
-        cwd: Some(PathBuf::from("/tmp/work")),
+        cwd: Some(temp_dir.path().to_path_buf()),
         ..Default::default()
     };
 
@@ -198,9 +199,19 @@ fn build_spawnable_codex_exec_command_uses_prompt_arg_transport() {
     )
     .expect("spawnable codex command should build");
 
+    let cwd = temp_dir.path().to_string_lossy().into_owned();
     assert_eq!(
         spawnable.get_args_for_test(),
-        vec!["exec", "--json", "-m", "gpt-5.4", "-C", "/tmp/work", "--", "Plan the refactor"]
+        vec![
+            "exec".to_string(),
+            "--json".to_string(),
+            "-m".to_string(),
+            "gpt-5.4".to_string(),
+            "-C".to_string(),
+            cwd,
+            "--".to_string(),
+            "Plan the refactor".to_string(),
+        ]
     );
 }
 
@@ -208,7 +219,9 @@ fn build_spawnable_codex_exec_command_uses_prompt_arg_transport() {
 fn build_spawnable_codex_resume_command_uses_resume_subcommand_and_prompt_arg() {
     let capabilities =
         parse_codex_cli_capabilities(ROOT_HELP, EXEC_HELP, Some("codex-cli 0.116.0"));
+    let temp_dir = tempfile::tempdir().expect("temp dir");
     let config = CodexExecCliConfig {
+        cwd: Some(temp_dir.path().to_path_buf()),
         json_output: true,
         ..Default::default()
     };
@@ -224,7 +237,72 @@ fn build_spawnable_codex_resume_command_uses_resume_subcommand_and_prompt_arg() 
 
     assert_eq!(
         spawnable.get_args_for_test(),
-        vec!["exec", "resume", "session-123", "--json", "--", "Continue the plan"]
+        vec![
+            "exec".to_string(),
+            "resume".to_string(),
+            "session-123".to_string(),
+            "--json".to_string(),
+            "--".to_string(),
+            "Continue the plan".to_string(),
+        ]
+    );
+
+    let debug = format!("{spawnable:?}");
+    assert!(
+        debug.contains(
+            temp_dir
+                .path()
+                .join(".artifacts/logs/codex-prompts")
+                .to_string_lossy()
+                .as_ref()
+        ),
+        "resume debug output should still point at the prompt artifact path: {debug}"
+    );
+}
+
+#[test]
+fn build_spawnable_codex_exec_command_logs_prompt_to_artifact_and_redacts_debug_output() {
+    let capabilities =
+        parse_codex_cli_capabilities(ROOT_HELP, EXEC_HELP, Some("codex-cli 0.116.0"));
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let config = CodexExecCliConfig {
+        cwd: Some(temp_dir.path().to_path_buf()),
+        ..Default::default()
+    };
+
+    let spawnable = build_spawnable_codex_exec_command(
+        std::path::Path::new("/opt/homebrew/bin/codex"),
+        "Plan the refactor",
+        &capabilities,
+        &config,
+    )
+    .expect("spawnable codex command should build");
+
+    let debug = format!("{spawnable:?}");
+    assert!(
+        !debug.contains("Plan the refactor"),
+        "debug output should redact the full prompt: {debug}"
+    );
+    let artifact_prefix = temp_dir
+        .path()
+        .join(".artifacts/logs/codex-prompts")
+        .to_string_lossy()
+        .into_owned();
+    assert!(
+        debug.contains(&artifact_prefix),
+        "debug output should point at the prompt artifact path: {debug}"
+    );
+
+    let prompt_dir = temp_dir.path().join(".artifacts/logs/codex-prompts");
+    let mut entries = std::fs::read_dir(&prompt_dir)
+        .expect("prompt dir should exist")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("prompt entries should be readable");
+    assert_eq!(entries.len(), 1, "expected exactly one logged prompt file");
+    let prompt_path = entries.pop().expect("prompt entry").path();
+    assert_eq!(
+        std::fs::read_to_string(&prompt_path).expect("read prompt artifact"),
+        "Plan the refactor"
     );
 }
 
