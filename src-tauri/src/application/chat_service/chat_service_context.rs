@@ -2662,6 +2662,25 @@ mod tests {
     }
 
     #[test]
+    fn create_assistant_message_uses_orchestrator_role_for_ideation() {
+        let conversation_id = ChatConversationId::new();
+        let session_id = IdeationSessionId::new();
+
+        let message = create_assistant_message(
+            ChatContextType::Ideation,
+            session_id.as_str(),
+            "assistant reply",
+            conversation_id.clone(),
+            &[],
+            &[],
+        );
+
+        assert_eq!(message.role, MessageRole::Orchestrator);
+        assert_eq!(message.session_id, Some(session_id));
+        assert_eq!(message.conversation_id, Some(conversation_id));
+    }
+
+    #[test]
     fn claude_resume_session_id_respects_harness_compatibility_rules() {
         let mut claude_conversation =
             ChatConversation::new_project(ProjectId::from_string("project-claude".to_string()));

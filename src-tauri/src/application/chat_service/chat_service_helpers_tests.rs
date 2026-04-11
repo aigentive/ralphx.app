@@ -181,3 +181,19 @@ fn test_context_type_to_process_mapping() {
     assert_eq!(context_type_to_process(&ChatContextType::Review), "review");
     assert_eq!(context_type_to_process(&ChatContextType::Merge), "merge");
 }
+
+#[test]
+fn test_get_assistant_role_uses_orchestrator_for_ideation_chat() {
+    assert_eq!(
+        get_assistant_role(&ChatContextType::Ideation),
+        MessageRole::Orchestrator
+    );
+    assert_eq!(
+        get_assistant_role(&ChatContextType::Task),
+        MessageRole::Orchestrator
+    );
+    assert_eq!(
+        get_assistant_role(&ChatContextType::Project),
+        MessageRole::Orchestrator
+    );
+}
