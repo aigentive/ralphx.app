@@ -13,6 +13,7 @@ Landed so far:
 - verification cohort canonicalized for Claude generation: `plan-verifier`, `plan-critic-completeness`, `plan-critic-implementation-feasibility`
 - specialist/debate cohort canonicalized as Claude-only agents: ideation specialists plus `ideation-advocate` / `ideation-critic`
 - worker team lead canonicalized as Claude-only under `agents/ralphx-worker-team/`; canonical-to-legacy prompt filename mapping is now explicit so runtime agent ids no longer need to match legacy markdown stems during migration
+- first cross-harness execution pair canonicalized: `ralphx-reviewer` + `ralphx-merger`
 - resolver-backed canonical prompt loading for migrated agents on the Codex path
 - `ideation-team-lead` intentionally remains Claude-only because Codex team mode is not supported; canonical agents without a Codex prompt no longer silently inherit the legacy Claude prompt
 - Claude runtime now materializes a generated plugin cache dir instead of reading authored prompt files directly from `plugins/app/agents`
@@ -273,13 +274,31 @@ Deliverables:
 ## Phase 3: Core Execution Agents
 
 Migrate:
-- `worker`
-- `coder`
 - `reviewer`
 - `merger`
+- `worker`
+- `coder`
 - `review-chat`
 - `chat-task`
 - `chat-project`
+
+Start with the smaller cross-harness pilot:
+- `ralphx-reviewer`
+- `ralphx-merger`
+
+Requirements for that pair:
+- preserve Claude prompt bodies exactly through canonical `claude/prompt.md`
+- author real `codex/prompt.md` files instead of inheriting Claude wording
+- Codex prompt tests must reject Claude-only syntax such as:
+  - `Task(`
+  - `mcpServers`
+  - `CLAUDE_PLUGIN_ROOT`
+  - Claude-specific subagent failure caveats that are no longer true on Codex
+- runtime must prefer canonical Codex prompts once the pair is migrated
+
+Status:
+- landed
+- next execution-side candidates are `ralphx-worker`, `ralphx-coder`, and `ralphx-review-chat`
 
 ## Phase 4: Specialists And Critics
 
