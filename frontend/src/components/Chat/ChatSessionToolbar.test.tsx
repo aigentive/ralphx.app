@@ -24,8 +24,6 @@ function makeStats(
     providerHarness: "codex",
     upstreamProvider: "openai",
     providerProfile: null,
-    attributionBackfillStatus: null,
-    attributionBackfillSource: null,
     messageUsageTotals: {
       inputTokens: 200,
       outputTokens: 40,

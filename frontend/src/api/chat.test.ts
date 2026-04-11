@@ -219,8 +219,6 @@ describe("chat api", () => {
       provider_harness: "codex",
       upstream_provider: "openai",
       provider_profile: null,
-      attribution_backfill_status: null,
-      attribution_backfill_source: null,
       message_usage_totals: {
         input_tokens: 120,
         output_tokens: 40,

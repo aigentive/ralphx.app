@@ -1,11 +1,10 @@
 use ralphx_lib::commands::conversation_stats_commands::{
-    build_attribution_backfill_summary_response, build_conversation_stats_response,
-    build_scope_stats_response,
+    build_conversation_stats_response, build_scope_stats_response,
 };
 use ralphx_lib::domain::agents::{AgentHarnessKind, LogicalEffort, ProviderSessionRef};
 use ralphx_lib::domain::entities::{
-    AgentRun, AttributionBackfillStatus, ChatContextType, ChatConversation, ChatMessage,
-    ConversationAttributionBackfillSummary, IdeationSessionId, MessageRole, ProjectId, TaskId,
+    AgentRun, ChatContextType, ChatConversation, ChatMessage, IdeationSessionId, MessageRole,
+    ProjectId, TaskId,
 };
 
 #[test]
@@ -17,8 +16,6 @@ fn test_conversation_stats_prefers_message_usage_when_available() {
         provider_session_id: "thread-1".to_string(),
     });
     conversation.set_provider_origin(Some("openai".to_string()), None);
-    conversation.attribution_backfill_status = Some(AttributionBackfillStatus::Completed);
-    conversation.attribution_backfill_source = Some("native_runtime".to_string());
 
     let mut message = ChatMessage::orchestrator_in_session(session_id.clone(), "done");
     message.conversation_id = Some(conversation.id);
@@ -135,25 +132,4 @@ fn test_scope_stats_include_context_breakdown_and_conversation_count() {
     assert_eq!(response.by_context_type.len(), 2);
     assert_eq!(response.by_context_type[0].key, "project");
     assert_eq!(response.by_context_type[1].key, "task_execution");
-}
-
-#[test]
-fn test_attribution_backfill_summary_response_computes_derived_fields() {
-    let response = build_attribution_backfill_summary_response(
-        &ConversationAttributionBackfillSummary {
-            eligible_conversation_count: 12,
-            pending_count: 2,
-            running_count: 1,
-            completed_count: 6,
-            partial_count: 1,
-            session_not_found_count: 1,
-            parse_failed_count: 1,
-        },
-    );
-
-    assert_eq!(response.eligible_conversation_count, 12);
-    assert_eq!(response.remaining_count, 3);
-    assert_eq!(response.attention_count, 3);
-    assert_eq!(response.terminal_count, 9);
-    assert!(!response.is_idle);
 }

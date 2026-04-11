@@ -51,12 +51,6 @@ vi.mock("./GitHubSettingsSection", () => ({
   GitHubSettingsSection: () => <div data-testid="github-section">GitHub</div>,
 }));
 
-vi.mock("./TranscriptImportSection", () => ({
-  TranscriptImportSection: () => (
-    <div data-testid="transcript-import-section">Transcript Import</div>
-  ),
-}));
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -186,13 +180,6 @@ describe("SettingsDialog", () => {
       expect(screen.getByText("Execution Pipeline Agents")).toBeInTheDocument();
     });
 
-    it("initializes to Transcript Import section when modalContext.section is 'transcript-import'", () => {
-      uiState.activeModal = "settings";
-      uiState.modalContext = { section: "transcript-import" };
-      render(<SettingsDialog {...defaultProps} />);
-
-      expect(screen.getByTestId("transcript-import-section")).toBeInTheDocument();
-    });
   });
 
   // --------------------------------------------------------------------------

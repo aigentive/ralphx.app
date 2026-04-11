@@ -127,8 +127,6 @@ export function buildFallbackConversationStats(
     providerHarness: conversation.providerHarness ?? null,
     upstreamProvider: conversation.upstreamProvider ?? null,
     providerProfile: conversation.providerProfile ?? null,
-    attributionBackfillStatus: null,
-    attributionBackfillSource: null,
     messageUsageTotals: effectiveUsageTotals,
     runUsageTotals: {
       inputTokens: 0,

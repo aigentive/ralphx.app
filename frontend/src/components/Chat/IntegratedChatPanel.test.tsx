@@ -339,8 +339,6 @@ describe("IntegratedChatPanel", () => {
         providerHarness: "codex",
         upstreamProvider: "openai",
         providerProfile: null,
-        attributionBackfillStatus: null,
-        attributionBackfillSource: null,
         messageUsageTotals: {
           inputTokens: 120,
           outputTokens: 40,

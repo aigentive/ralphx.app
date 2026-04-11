@@ -162,8 +162,6 @@ const commandHandlers: Record<
       provider_harness: stats.providerHarness,
       upstream_provider: stats.upstreamProvider,
       provider_profile: stats.providerProfile,
-      attribution_backfill_status: stats.attributionBackfillStatus,
-      attribution_backfill_source: stats.attributionBackfillSource,
       message_usage_totals: toSnakeUsage(stats.messageUsageTotals),
       run_usage_totals: toSnakeUsage(stats.runUsageTotals),
       effective_usage_totals: toSnakeUsage(stats.effectiveUsageTotals),

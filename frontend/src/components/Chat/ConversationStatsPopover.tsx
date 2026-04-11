@@ -169,12 +169,6 @@ export function ConversationStatsPopover({
                   <span>{stats.byUpstreamProvider[0].key}</span>
                 </div>
               )}
-              {stats.attributionBackfillStatus && (
-                <div className="flex items-center justify-between text-[11px] text-white/72">
-                  <span>Backfill</span>
-                  <span>{stats.attributionBackfillStatus}</span>
-                </div>
-              )}
             </div>
           </div>
         )}

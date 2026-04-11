@@ -19,8 +19,6 @@ function makeStats(
     providerHarness: "codex",
     upstreamProvider: "openai",
     providerProfile: null,
-    attributionBackfillStatus: null,
-    attributionBackfillSource: null,
     messageUsageTotals: {
       inputTokens: 76286,
       outputTokens: 12148,

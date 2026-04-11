@@ -48,20 +48,6 @@ export interface ScopeUsageStats {
   byEffort: ScopeUsageBucket[];
 }
 
-export interface AttributionBackfillSummary {
-  eligibleConversationCount: number;
-  pendingCount: number;
-  runningCount: number;
-  completedCount: number;
-  partialCount: number;
-  sessionNotFoundCount: number;
-  parseFailedCount: number;
-  remainingCount: number;
-  terminalCount: number;
-  attentionCount: number;
-  isIdle: boolean;
-}
-
 const ScopeUsageTotalsSchema = z.object({
   input_tokens: z.number(),
   output_tokens: z.number(),
@@ -105,20 +91,6 @@ const ScopeUsageStatsSchema = z.object({
   by_upstream_provider: z.array(ScopeUsageBucketSchema),
   by_model: z.array(ScopeUsageBucketSchema),
   by_effort: z.array(ScopeUsageBucketSchema),
-});
-
-const AttributionBackfillSummarySchema = z.object({
-  eligibleConversationCount: z.number(),
-  pendingCount: z.number(),
-  runningCount: z.number(),
-  completedCount: z.number(),
-  partialCount: z.number(),
-  sessionNotFoundCount: z.number(),
-  parseFailedCount: z.number(),
-  remainingCount: z.number(),
-  terminalCount: z.number(),
-  attentionCount: z.number(),
-  isIdle: z.boolean(),
 });
 
 function transformTotals(raw: z.infer<typeof ScopeUsageTotalsSchema>): ScopeUsageTotals {
@@ -218,12 +190,4 @@ export async function getTaskChatUsageStats(taskId: string): Promise<ScopeUsageS
     ScopeUsageStatsSchema,
   );
   return transformScopeUsageStats(raw);
-}
-
-export async function getChatAttributionBackfillSummary(): Promise<AttributionBackfillSummary> {
-  return typedInvoke(
-    "get_chat_attribution_backfill_summary",
-    {},
-    AttributionBackfillSummarySchema,
-  );
 }

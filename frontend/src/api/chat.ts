@@ -356,8 +356,6 @@ export interface ConversationStatsResponse {
   providerHarness: string | null;
   upstreamProvider: string | null;
   providerProfile: string | null;
-  attributionBackfillStatus: string | null;
-  attributionBackfillSource: string | null;
   messageUsageTotals: UsageTotalsResponse;
   runUsageTotals: UsageTotalsResponse;
   effectiveUsageTotals: UsageTotalsResponse;
@@ -405,8 +403,6 @@ const ConversationStatsResponseSchema = z.object({
   provider_harness: z.string().nullable(),
   upstream_provider: z.string().nullable(),
   provider_profile: z.string().nullable(),
-  attribution_backfill_status: z.string().nullable(),
-  attribution_backfill_source: z.string().nullable(),
   message_usage_totals: UsageTotalsResponseSchema,
   run_usage_totals: UsageTotalsResponseSchema,
   effective_usage_totals: UsageTotalsResponseSchema,
@@ -446,8 +442,6 @@ function transformConversationStats(raw: RawConversationStats): ConversationStat
     providerHarness: raw.provider_harness,
     upstreamProvider: raw.upstream_provider,
     providerProfile: raw.provider_profile,
-    attributionBackfillStatus: raw.attribution_backfill_status,
-    attributionBackfillSource: raw.attribution_backfill_source,
     messageUsageTotals: transformUsageTotals(raw.message_usage_totals),
     runUsageTotals: transformUsageTotals(raw.run_usage_totals),
     effectiveUsageTotals: transformUsageTotals(raw.effective_usage_totals),

@@ -55,27 +55,6 @@ pub async fn recover_memory_archive_jobs_on_startup(
     }
 }
 
-pub fn spawn_chat_attribution_backfill(
-    conversation_repo: Arc<dyn crate::domain::repositories::ChatConversationRepository>,
-    chat_message_repo: Arc<dyn crate::domain::repositories::ChatMessageRepository>,
-    agent_run_repo: Arc<dyn crate::domain::repositories::AgentRunRepository>,
-    app_handle: tauri::AppHandle,
-) {
-    tauri::async_runtime::spawn(async move {
-        let service = Arc::new(crate::application::chat_attribution_backfill_service::ChatAttributionBackfillService::new(
-            conversation_repo,
-            chat_message_repo,
-            agent_run_repo,
-            crate::application::chat_attribution_backfill_service::ChatAttributionBackfillService::default_claude_projects_root(),
-        ));
-        crate::application::chat_attribution_backfill_service::run_startup_chat_attribution_backfill_with_events(
-            service,
-            Some(app_handle),
-        )
-        .await;
-    });
-}
-
 pub fn spawn_watchdog(
     task_scheduler: Arc<dyn crate::domain::state_machine::services::TaskScheduler>,
     task_repo: Arc<dyn TaskRepository>,
