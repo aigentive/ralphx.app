@@ -67,6 +67,18 @@
 - switch native delegation bridge storage/runtime env from ideation child sessions to delegated sessions
 - keep MCP contract stable where possible
 
+## Current State
+- Landed:
+  - delegated-session entity + id type
+  - delegated-session repository trait
+  - memory + SQLite delegated-session repositories
+  - SQLite migration creating `delegated_sessions`
+- Still required:
+  - `ChatContextType::Delegation`
+  - delegated-session AppState wiring
+  - conversation/runtime helpers for delegation context
+  - native bridge migration off ideation child sessions
+
 ## Non-Negotiables
 - Do not widen cross-context delegation on top of `IdeationSession`.
 - Do not couple delegated specialist history to ideation proposal/verification state.

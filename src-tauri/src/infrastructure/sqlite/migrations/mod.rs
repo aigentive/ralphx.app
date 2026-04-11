@@ -289,12 +289,15 @@ mod v20260410143000_upstream_provider_metadata_tests;
 mod v20260410153000_chat_conversation_provider_origin;
 #[cfg(test)]
 mod v20260410153000_chat_conversation_provider_origin_tests;
+mod v20260411190000_delegated_sessions;
+#[cfg(test)]
+mod v20260411190000_delegated_sessions_tests;
 mod v20260410124500_chat_message_usage;
 #[cfg(test)]
 mod v20260410124500_chat_message_usage_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i64 = 20260410153000;
+pub const SCHEMA_VERSION: i64 = 20260411190000;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -833,6 +836,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 20260410153000,
         name: "chat_conversation_provider_origin",
         migrate: v20260410153000_chat_conversation_provider_origin::migrate,
+    },
+    Migration {
+        version: 20260411190000,
+        name: "delegated_sessions",
+        migrate: v20260411190000_delegated_sessions::migrate,
     },
 ];
 

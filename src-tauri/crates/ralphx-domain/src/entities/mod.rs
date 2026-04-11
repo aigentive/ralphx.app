@@ -7,6 +7,7 @@ pub mod artifact;
 pub mod artifact_flow;
 pub mod chat_attachment;
 pub mod chat_conversation;
+pub mod delegated_session;
 pub mod execution_plan;
 pub mod ideation;
 pub mod memory_archive;
@@ -61,6 +62,7 @@ pub use chat_conversation::{
     AttributionBackfillStatus, ChatContextType, ChatConversation, ChatConversationId,
     ConversationAttributionBackfillState, ConversationAttributionBackfillSummary,
 };
+pub use delegated_session::{DelegatedSession, DelegatedSessionId};
 pub use execution_plan::{ExecutionPlan, ExecutionPlanStatus, ParseExecutionPlanStatusError};
 pub use ideation::{
     build_child_session, matching_blocker_followup_session, AcceptanceStatus, BusinessValueFactor,

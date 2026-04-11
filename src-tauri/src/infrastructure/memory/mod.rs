@@ -14,6 +14,7 @@ pub mod memory_artifact_repo;
 pub mod memory_chat_attachment_repo;
 pub mod memory_chat_conversation_repo;
 pub mod memory_chat_message_repo;
+pub mod memory_delegated_session_repo;
 pub mod memory_execution_plan_repo;
 pub mod memory_external_events_repo;
 pub mod memory_execution_settings_repo;
@@ -60,6 +61,7 @@ pub use memory_artifact_repo::MemoryArtifactRepository;
 pub use memory_chat_attachment_repo::MemoryChatAttachmentRepository;
 pub use memory_chat_conversation_repo::MemoryChatConversationRepository;
 pub use memory_chat_message_repo::MemoryChatMessageRepository;
+pub use memory_delegated_session_repo::MemoryDelegatedSessionRepository;
 pub use memory_execution_plan_repo::MemoryExecutionPlanRepository;
 pub use memory_external_events_repo::MemoryExternalEventsRepository;
 pub use memory_execution_settings_repo::{
