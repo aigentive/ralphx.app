@@ -12,6 +12,7 @@ Landed so far:
 - phase 1 pilot skeleton under `agents/` for `orchestrator-ideation`, `ideation-team-lead`, and `session-namer`
 - resolver-backed canonical prompt loading for migrated agents on the Codex path
 - `ideation-team-lead` intentionally remains Claude-only because Codex team mode is not supported; canonical agents without a Codex prompt no longer silently inherit the legacy Claude prompt
+- Claude runtime now materializes a generated plugin cache dir instead of reading authored prompt files directly from `plugins/app/agents`
 
 Tracker reference:
 - [AGENTS.md](/Users/lazabogdan/Code/ralphx/AGENTS.md)
@@ -170,9 +171,31 @@ Claude still requires plugin-discoverable agent assets.
 Therefore:
 - canonical config remains source of truth
 - Claude plugin markdown/frontmatter becomes generated output
-- generated assets feed the existing Claude plugin/runtime path
+- generated assets feed the existing Claude plugin/runtime path through an injected generated plugin cache dir, not the authored repo plugin tree
 
 This keeps Claude compatible with its plugin agent discovery and subagent spawning model.
+
+### Claude Generated Plugin Cache
+
+Claude still expects a plugin root containing:
+
+- `agents/`
+- `.mcp.json`
+- `ralphx-mcp-server/`
+- other plugin runtime assets
+
+So the generated output is not just prompt files. RalphX should materialize a managed Claude plugin cache dir that:
+
+- reuses the base plugin runtime assets (`.mcp.json`, MCP server, hooks, skills, plugin manifest, etc.)
+- overlays generated `agents/*.md` files for canonical agents
+- leaves non-canonical agents as legacy fallback links during migration
+
+Recommended locations:
+
+- development: repo-local `.artifacts/generated/claude-plugin/`
+- production: app-support `generated/claude-plugin/`
+
+Do not rely on ephemeral `/tmp` as the long-lived generated plugin root.
 
 ### Codex Path
 
@@ -194,7 +217,7 @@ Generate Claude assets from canonical config:
 - tool lists
 - `mcpServers` declarations where needed
 
-These outputs may remain in `plugins/app/agents/` for compatibility, but they should be generated artifacts.
+These outputs should be written into the generated Claude plugin cache dir. `plugins/app/agents/` remains migration fallback only and must stop being treated as authored source.
 
 ### Required Output For Codex
 

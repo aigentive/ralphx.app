@@ -275,14 +275,17 @@ pub(crate) fn resolve_default_harness_plugin_dir(working_directory: &Path) -> Pa
     resolve_plugin_dir(working_directory)
 }
 
+pub(crate) fn resolve_base_harness_plugin_dir(working_directory: &Path) -> PathBuf {
+    crate::infrastructure::agents::claude::resolve_base_plugin_dir(working_directory)
+}
+
 pub(crate) fn resolve_harness_plugin_dir(
     harness: AgentHarnessKind,
     working_directory: &Path,
 ) -> PathBuf {
     match harness {
-        AgentHarnessKind::Claude | AgentHarnessKind::Codex => {
-            resolve_default_harness_plugin_dir(working_directory)
-        }
+        AgentHarnessKind::Claude => resolve_default_harness_plugin_dir(working_directory),
+        AgentHarnessKind::Codex => resolve_base_harness_plugin_dir(working_directory),
     }
 }
 
