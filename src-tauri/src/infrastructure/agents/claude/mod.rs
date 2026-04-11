@@ -238,7 +238,29 @@ pub fn build_base_cli_command(
     effort_override: Option<&str>,
     model_override: Option<&str>,
 ) -> Result<Command, String> {
-    ensure_claude_spawn_allowed()?;
+    build_base_cli_command_inner(
+        cli_path,
+        plugin_dir,
+        agent_type,
+        is_external_mcp,
+        effort_override,
+        model_override,
+        true,
+    )
+}
+
+fn build_base_cli_command_inner(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    agent_type: Option<&str>,
+    is_external_mcp: bool,
+    effort_override: Option<&str>,
+    model_override: Option<&str>,
+    enforce_spawn_guard: bool,
+) -> Result<Command, String> {
+    if enforce_spawn_guard {
+        ensure_claude_spawn_allowed()?;
+    }
     sanitize_claude_user_state();
     let mut cmd = Command::new(cli_path);
 
@@ -808,6 +830,12 @@ impl SpawnableCommand {
             .collect()
     }
 
+    /// Returns the stored stdin prompt for test assertions.
+    #[doc(hidden)]
+    pub fn get_stdin_prompt_for_test(&self) -> Option<&str> {
+        self.stdin_prompt.as_deref()
+    }
+
     /// Spawn in interactive mode: writes the stored prompt to stdin, then returns
     /// the stdin handle open for future multi-turn messages.
     ///
@@ -1080,6 +1108,32 @@ pub fn build_spawnable_interactive_command(
         model_override,
     )?;
     // interactive=true: no -p flag; prompt stored in stdin_prompt for spawn_interactive()
+    let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session, true);
+    configure_spawn(&mut cmd, working_directory, true);
+    Ok(SpawnableCommand::new(cmd, stdin_prompt))
+}
+
+#[cfg(test)]
+pub fn build_spawnable_interactive_command_for_test(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    prompt: &str,
+    agent: Option<&str>,
+    resume_session: Option<&str>,
+    working_directory: &Path,
+    is_external_mcp: bool,
+    effort_override: Option<&str>,
+    model_override: Option<&str>,
+) -> Result<SpawnableCommand, String> {
+    let mut cmd = build_base_cli_command_inner(
+        cli_path,
+        plugin_dir,
+        agent,
+        is_external_mcp,
+        effort_override,
+        model_override,
+        false,
+    )?;
     let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session, true);
     configure_spawn(&mut cmd, working_directory, true);
     Ok(SpawnableCommand::new(cmd, stdin_prompt))

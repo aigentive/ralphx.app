@@ -22,8 +22,8 @@ use crate::domain::repositories::{
 };
 use crate::infrastructure::agents::claude::agent_names;
 use crate::infrastructure::agents::claude::{
-    build_spawnable_command, build_spawnable_interactive_command, mcp_agent_type, ContentBlockItem,
-    SpawnableCommand, ToolCall,
+    build_spawnable_command, build_spawnable_interactive_command, mcp_agent_type,
+    ContentBlockItem, SpawnableCommand, ToolCall,
 };
 use crate::infrastructure::agents::{
     build_codex_mcp_overrides, build_spawnable_codex_exec_command,
@@ -1019,6 +1019,7 @@ async fn build_initial_prompt_with_session_artifacts(
     total_available: usize,
     artifact_repo: Arc<dyn ArtifactRepository>,
     ideation_subagent_model_cap: Option<&str>,
+    ideation_bootstrap_mode: IdeationBootstrapMode,
 ) -> Result<String, String> {
     let history = if context_type == ChatContextType::Ideation {
         format_session_history_with_artifacts(session_messages, total_available, artifact_repo)
@@ -1033,7 +1034,7 @@ async fn build_initial_prompt_with_session_artifacts(
         user_message,
         &history,
         ideation_subagent_model_cap,
-        IdeationBootstrapMode::Recovery,
+        ideation_bootstrap_mode,
     ))
 }
 
@@ -1629,6 +1630,11 @@ async fn build_command_from_resolved_settings(
                 total_available,
                 Arc::clone(&artifact_repo),
                 ideation_subagent_model_cap,
+                if session_messages.is_empty() {
+                    IdeationBootstrapMode::Fresh
+                } else {
+                    IdeationBootstrapMode::Continuation
+                },
             )
             .await?;
             let prompt_with_attachments = format!("{}{}", initial_prompt, attachment_context);
@@ -1687,6 +1693,7 @@ async fn build_recovery_command_from_resolved_settings(
         total_available,
         artifact_repo,
         ideation_subagent_model_cap,
+        IdeationBootstrapMode::Recovery,
     )
     .await?;
 
@@ -1760,6 +1767,11 @@ pub async fn build_codex_command(
         total_available,
         artifact_repo,
         ideation_subagent_model_cap.as_deref(),
+        if session_messages.is_empty() {
+            IdeationBootstrapMode::Fresh
+        } else {
+            IdeationBootstrapMode::Continuation
+        },
     )
     .await?;
     let prompt = compose_codex_prompt(
@@ -1992,6 +2004,11 @@ pub async fn build_interactive_command(
         total_available,
         artifact_repo,
         ideation_subagent_model_cap.as_deref(),
+        if session_messages.is_empty() {
+            IdeationBootstrapMode::Fresh
+        } else {
+            IdeationBootstrapMode::Continuation
+        },
     )
     .await?;
     let prompt = format!("{}{}", initial_prompt, attachment_context);
@@ -2282,6 +2299,7 @@ pub async fn build_codex_resume_command(
                 total_available,
                 artifact_repo,
                 ideation_subagent_model_cap,
+                IdeationBootstrapMode::Recovery,
             )
             .await?;
 
@@ -2523,8 +2541,208 @@ mod tests {
     use super::*;
     use crate::application::harness_runtime_registry::standard_chat_harness_cli_resolvers;
     use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
-    use crate::infrastructure::memory::MemoryArtifactRepository;
+    use crate::infrastructure::memory::{
+        MemoryArtifactRepository, MemoryChatAttachmentRepository,
+        MemoryIdeationSessionRepository, MemoryTaskRepository,
+    };
+    use crate::infrastructure::agents::claude::build_spawnable_interactive_command_for_test;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use tempfile::TempDir;
     use tokio::process::Command;
+
+    fn write_test_file(path: &Path, contents: &str) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create parent dirs");
+        }
+        fs::write(path, contents).expect("write test file");
+    }
+
+    fn make_fake_codex_cli(temp: &TempDir) -> PathBuf {
+        let script_path = temp.path().join("codex");
+        let script = r#"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "codex-cli 0.116.0"
+  exit 0
+fi
+if [ "$1" = "--help" ]; then
+  cat <<'EOF'
+Codex CLI
+
+Commands:
+  exec        Run Codex non-interactively [aliases: e]
+  mcp         Manage external MCP servers for Codex
+  resume      Resume a previous interactive session
+
+Options:
+  -c, --config <key=value>
+  -m, --model <MODEL>
+  -s, --sandbox <SANDBOX_MODE>
+      --search
+      --add-dir <DIR>
+EOF
+  exit 0
+fi
+if [ "$1" = "exec" ] && [ "$2" = "--help" ]; then
+  cat <<'EOF'
+Run Codex non-interactively
+
+Usage: codex exec [OPTIONS] [PROMPT] [COMMAND]
+
+Options:
+  -c, --config <key=value>
+  -m, --model <MODEL>
+  -s, --sandbox <SANDBOX_MODE>
+      --add-dir <DIR>
+      --json
+  -C, --cd <DIR>
+      --skip-git-repo-check
+EOF
+  exit 0
+fi
+exit 0
+"#;
+
+        write_test_file(&script_path, script);
+        let mut permissions = fs::metadata(&script_path)
+            .expect("metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&script_path, permissions).expect("chmod script");
+        script_path
+    }
+
+    fn make_fake_claude_cli(temp: &TempDir) -> PathBuf {
+        let script_path = temp.path().join("claude");
+        write_test_file(&script_path, "#!/bin/sh\nexit 0\n");
+        let mut permissions = fs::metadata(&script_path)
+            .expect("metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&script_path, permissions).expect("chmod script");
+        script_path
+    }
+
+    fn repo_plugin_dir() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("repo root")
+            .join("plugins")
+            .join("app")
+    }
+
+    async fn build_fresh_ideation_launch_prompt(
+        harness: AgentHarnessKind,
+        cli_path: &Path,
+        plugin_dir: &Path,
+        working_directory: &Path,
+    ) -> String {
+        let session_id = IdeationSessionId::new();
+        let conversation = ChatConversation::new_ideation(session_id.clone());
+        let resolved_spawn_settings =
+            crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
+                agent_names::AGENT_ORCHESTRATOR_IDEATION,
+                None,
+                ChatContextType::Ideation,
+                None,
+                Some(harness),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await;
+
+        let launch_plan = build_launch_plan_for_harness(
+            harness,
+            cli_path,
+            plugin_dir,
+            &conversation,
+            "hello from fresh ideation",
+            ChatContextType::Ideation,
+            session_id.as_str(),
+            working_directory,
+            None,
+            None,
+            false,
+            Arc::new(MemoryChatAttachmentRepository::new()),
+            Arc::new(MemoryArtifactRepository::new()),
+            Arc::new(MemoryIdeationSessionRepository::new()),
+            Arc::new(MemoryTaskRepository::new()),
+            &[],
+            0,
+            false,
+            None,
+            &resolved_spawn_settings,
+        )
+        .await
+        .expect("fresh ideation launch plan should build");
+
+        match launch_plan {
+            ResolvedChatHarnessLaunch::Interactive { spawnable, .. } => spawnable
+                .get_stdin_prompt_for_test()
+                .expect("interactive prompt should be stored on stdin")
+                .to_string(),
+            ResolvedChatHarnessLaunch::Background { spawnable, .. } => spawnable
+                .get_args_for_test()
+                .last()
+                .expect("background prompt should be present as the trailing CLI arg")
+                .to_string(),
+        }
+    }
+
+    async fn build_fresh_claude_interactive_prompt_for_test(
+        cli_path: &Path,
+        plugin_dir: &Path,
+        working_directory: &Path,
+    ) -> String {
+        let session_id = IdeationSessionId::new();
+        let resolved_spawn_settings =
+            crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
+                agent_names::AGENT_ORCHESTRATOR_IDEATION,
+                None,
+                ChatContextType::Ideation,
+                None,
+                Some(AgentHarnessKind::Claude),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await;
+
+        let initial_prompt = build_initial_prompt_with_session_artifacts(
+            ChatContextType::Ideation,
+            session_id.as_str(),
+            "hello from fresh ideation",
+            &[],
+            0,
+            Arc::new(MemoryArtifactRepository::new()),
+            Some(resolved_spawn_settings.model.as_str()),
+            IdeationBootstrapMode::Fresh,
+        )
+        .await
+        .expect("fresh ideation prompt should build");
+
+        let agent_name = resolve_agent_with_team_mode(&ChatContextType::Ideation, None, false);
+        let spawnable = build_spawnable_interactive_command_for_test(
+            cli_path,
+            plugin_dir,
+            &initial_prompt,
+            Some(agent_name),
+            None,
+            working_directory,
+            false,
+            resolved_spawn_settings.claude_effort.as_deref(),
+            Some(resolved_spawn_settings.model.as_str()),
+        )
+        .expect("fresh Claude interactive command should build");
+
+        spawnable
+            .get_stdin_prompt_for_test()
+            .expect("interactive prompt should be stored on stdin")
+            .to_string()
+    }
 
     #[test]
     fn format_session_history_truncates_multibyte_content_safely() {
@@ -2595,6 +2813,7 @@ mod tests {
             1,
             artifact_repo,
             Some("sonnet"),
+            IdeationBootstrapMode::Recovery,
         )
         .await
         .expect("prompt build should succeed");
@@ -2658,6 +2877,61 @@ mod tests {
         assert!(
             prompt.contains("<session_bootstrap_mode>provider_resume</session_bootstrap_mode>"),
             "True provider resume prompts must be distinguished from fresh ideation and recovery reconstruction"
+        );
+    }
+
+    #[tokio::test]
+    async fn fresh_codex_ideation_launch_plan_keeps_bootstrap_in_fresh_mode() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let cli_path = make_fake_codex_cli(&temp);
+        let plugin_dir = repo_plugin_dir();
+        let prompt =
+            build_fresh_ideation_launch_prompt(
+                AgentHarnessKind::Codex,
+                &cli_path,
+                &plugin_dir,
+                temp.path(),
+            )
+                .await;
+
+        assert!(
+            prompt.contains("<session_bootstrap_mode>fresh</session_bootstrap_mode>"),
+            "fresh Codex ideation launch plans must mark the final prompt as fresh"
+        );
+        assert!(
+            !prompt.contains("<session_history count="),
+            "fresh Codex ideation launch plans must not inject synthetic session history"
+        );
+        assert!(
+            prompt.contains("recovery/session-state")
+                && prompt.contains("confirm emptiness"),
+            "fresh Codex ideation launch plans must preserve the no-recovery bootstrap instruction"
+        );
+    }
+
+    #[tokio::test]
+    async fn fresh_claude_ideation_launch_plan_keeps_bootstrap_in_fresh_mode() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let cli_path = make_fake_claude_cli(&temp);
+        let plugin_dir = repo_plugin_dir();
+        let prompt = build_fresh_claude_interactive_prompt_for_test(
+            &cli_path,
+            &plugin_dir,
+            temp.path(),
+        )
+        .await;
+
+        assert!(
+            prompt.contains("<session_bootstrap_mode>fresh</session_bootstrap_mode>"),
+            "fresh Claude ideation launch plans must mark the final prompt as fresh"
+        );
+        assert!(
+            !prompt.contains("<session_history count="),
+            "fresh Claude ideation launch plans must not inject synthetic session history"
+        );
+        assert!(
+            prompt.contains("<user_message>hello from fresh ideation</user_message>"),
+            "fresh Claude ideation launch plans must carry only the new user message in stdin bootstrap"
         );
     }
 
