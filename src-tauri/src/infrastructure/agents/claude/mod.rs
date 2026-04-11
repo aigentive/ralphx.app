@@ -51,6 +51,7 @@ pub use model_resolver::{
     resolve_ideation_model, resolve_ideation_subagent_model_with_source, resolve_model_with_source,
     resolve_verifier_subagent_model_with_source, ResolvedModel,
 };
+#[allow(unused_imports)]
 pub(crate) use generated_plugin::materialize_generated_plugin_dir;
 
 

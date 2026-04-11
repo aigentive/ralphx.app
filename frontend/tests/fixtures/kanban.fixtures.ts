@@ -17,16 +17,22 @@ export async function setupAllStatusColumns(page: Page) {
   await setupApp(page);
 
   // Inject tasks for all 5 workflow columns
-  await page.evaluate(() => {
-    const mockStore = (window as any).__mockStore;
-    const queryClient = (window as any).__queryClient;
+  await page.evaluate(async () => {
+    const mockStore = window.__mockStore;
+    const queryClient = window.__queryClient;
+    const planStore = window.__planStore;
+    const { useProjectStore } = await import("/src/stores/projectStore");
+    const { planApi } = await import("/src/api/plan");
 
     if (!mockStore) {
       throw new Error("Mock store not available");
     }
 
-    // Get the default project ID from existing data
-    const projectId = Array.from(mockStore.projects.keys())[0];
+    const projectId = "project-mock-1";
+    const planId = "plan-visual-all-status-columns";
+
+    useProjectStore.getState().selectProject(projectId);
+    await planApi.setActivePlan(projectId, planId, "kanban_inline");
 
     // Statuses matching the 5 default workflow columns
     const statusesPerColumn = [
@@ -61,18 +67,22 @@ export async function setupAllStatusColumns(page: Page) {
           completedAt: status === "approved" ? now : null,
           archivedAt: null,
           blockedReason: null,
+          planArtifactId: planId,
         };
         mockStore.tasks.set(taskId, task);
       }
     });
 
-    // Invalidate cache to trigger refetch
+    if (planStore?.getState && typeof planStore.getState === "function") {
+      await planStore.getState().loadActivePlan(projectId);
+    }
+
     if (queryClient) {
-      queryClient.invalidateQueries();
+      await queryClient.invalidateQueries();
+      await queryClient.refetchQueries();
     }
   });
 
-  // Wait for queries to refetch and render
-  await page.waitForTimeout(500);
+  await page.click('[data-testid="nav-kanban"]');
   await page.waitForSelector('[data-testid="task-board"]', { timeout: 10000 });
 }

@@ -50,10 +50,10 @@ test.describe("Activity View", () => {
   });
 
   test("navigation shows activity tab as active", async () => {
-    // Verify the activity nav button is highlighted/active
+    // Verify the activity nav button is marked as the active route without
+    // pinning the test to an exact accent RGB value.
     await expect(activity.navActivity).toBeVisible();
-    // The active state shows the orange accent color
-    await expect(activity.navActivity).toHaveCSS("color", "rgb(255, 107, 53)");
+    await expect(activity.navActivity).toHaveAttribute("aria-current", "page");
   });
 
   test("empty state is shown when no messages exist", async () => {

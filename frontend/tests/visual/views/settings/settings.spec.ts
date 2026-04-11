@@ -67,6 +67,7 @@ test.describe("Settings Dialog", () => {
   });
 
   test("matches snapshot - review section disabled", async ({ page }) => {
+    await settingsPage.openViaStore("review");
     // Disable AI review to see sub-settings disabled state
     await settingsPage.aiReviewEnabledToggle.click();
     await settingsPage.waitForAnimations();
@@ -77,6 +78,7 @@ test.describe("Settings Dialog", () => {
   });
 
   test("matches snapshot - supervisor section disabled", async ({ page }) => {
+    await settingsPage.openViaStore("supervisor");
     // Disable supervisor to see sub-settings disabled state
     await settingsPage.supervisorEnabledToggle.click();
     await settingsPage.waitForAnimations();

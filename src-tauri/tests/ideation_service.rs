@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use ralphx_lib::application::{
     CreateProposalOptions, IdeationService, UpdateProposalOptions,
 };
+use ralphx_lib::domain::agents::ProviderSessionRef;
 use ralphx_lib::domain::entities::{self, *};
 use ralphx_lib::domain::repositories::{self, *};
 use ralphx_lib::error::{AppError, AppResult};
@@ -773,6 +774,41 @@ impl ChatMessageRepository for MockMessageRepository {
             .collect();
         messages.sort_by_key(|m| m.created_at);
         Ok(messages)
+    }
+
+    async fn update_provider_session_ref(
+        &self,
+        id: &ChatMessageId,
+        session_ref: &ProviderSessionRef,
+    ) -> AppResult<()> {
+        let mut messages = self.messages.lock().unwrap();
+        let message = messages
+            .get_mut(&id.to_string())
+            .ok_or_else(|| AppError::NotFound(format!("Message {} not found", id)))?;
+        message.update_provider_session_ref(session_ref);
+        Ok(())
+    }
+
+    async fn update_usage(&self, id: &ChatMessageId, usage: &AgentRunUsage) -> AppResult<()> {
+        let mut messages = self.messages.lock().unwrap();
+        let message = messages
+            .get_mut(&id.to_string())
+            .ok_or_else(|| AppError::NotFound(format!("Message {} not found", id)))?;
+        message.apply_usage(usage);
+        Ok(())
+    }
+
+    async fn update_attribution(
+        &self,
+        id: &ChatMessageId,
+        attribution: &ChatMessageAttribution,
+    ) -> AppResult<()> {
+        let mut messages = self.messages.lock().unwrap();
+        let message = messages
+            .get_mut(&id.to_string())
+            .ok_or_else(|| AppError::NotFound(format!("Message {} not found", id)))?;
+        message.apply_attribution(attribution);
+        Ok(())
     }
 
     async fn delete_by_session(&self, session_id: &IdeationSessionId) -> AppResult<()> {

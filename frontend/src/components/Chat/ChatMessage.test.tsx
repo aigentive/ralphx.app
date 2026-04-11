@@ -376,10 +376,11 @@ describe("ChatMessage", () => {
     });
 
     it("renders multiple tool call indicators", () => {
-      render(<ChatMessage message={messageWithToolCalls} />);
+      const { container } = render(<ChatMessage message={messageWithToolCalls} />);
 
       const toolCallIndicators = screen.getAllByTestId("tool-call-indicator");
-      expect(toolCallIndicators).toHaveLength(2);
+      expect(toolCallIndicators).toHaveLength(1);
+      expect(container.querySelector('[data-testid="proposal-widget-created"]')).toBeInTheDocument();
     });
 
     it("renders tool calls as part of message content", () => {

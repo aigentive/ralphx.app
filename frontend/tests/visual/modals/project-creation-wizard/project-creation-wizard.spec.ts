@@ -6,9 +6,9 @@ import { openProjectCreationWizard } from "../../../helpers/project-creation-wiz
 /**
  * Visual regression tests for ProjectCreationWizard modal.
  *
- * The ProjectCreationWizard allows users to create new projects with two Git modes:
- * - Local: Work directly in the current branch
- * - Worktree: Create an isolated worktree for RalphX
+ * The ProjectCreationWizard is now worktree-first.
+ * Base branch and derived worktree path are visible by default; advanced
+ * settings reveal the optional parent directory override.
  */
 
 test.describe("ProjectCreationWizard", () => {
@@ -19,7 +19,7 @@ test.describe("ProjectCreationWizard", () => {
     await setupApp(page);
   });
 
-  test("renders modal with default state (local mode)", async ({ page }) => {
+  test("renders modal with default worktree state", async ({ page }) => {
     await openProjectCreationWizard(page);
 
     // Wait for modal to appear
@@ -36,13 +36,11 @@ test.describe("ProjectCreationWizard", () => {
     await expect(wizardPage.workingDirectoryInput).toBeVisible();
     await expect(wizardPage.browseFolderButton).toBeVisible();
 
-    // Verify git mode radios
-    await expect(wizardPage.gitModeLocalRadio).toBeVisible();
-    await expect(wizardPage.gitModeWorktreeRadio).toBeVisible();
-
-    // Local mode is selected by default - worktree fields should not be visible
-    const worktreeFieldsVisible = await wizardPage.areWorktreeFieldsVisible();
-    expect(worktreeFieldsVisible).toBe(false);
+    // Worktree configuration is the default contract now
+    await expect(wizardPage.baseBranchSelect).toBeVisible();
+    await expect(wizardPage.worktreePathInput).toBeVisible();
+    await expect(wizardPage.advancedSettingsTrigger).toBeVisible();
+    await expect(wizardPage.worktreeParentInput).not.toBeVisible();
 
     // Verify buttons
     await expect(wizardPage.createButton).toBeVisible();
@@ -68,27 +66,18 @@ test.describe("ProjectCreationWizard", () => {
     expect(workingDir).toContain("/Users/test/projects/test-project");
   });
 
-  test("switches to worktree mode and shows additional fields", async ({ page }) => {
+  test("reveals advanced worktree settings on demand", async ({ page }) => {
     await openProjectCreationWizard(page);
     await wizardPage.waitForModal();
 
-    // Initially in local mode
-    let worktreeFieldsVisible = await wizardPage.areWorktreeFieldsVisible();
-    expect(worktreeFieldsVisible).toBe(false);
+    await expect(wizardPage.worktreeParentInput).not.toBeVisible();
 
-    // Switch to worktree mode
-    await wizardPage.selectWorktreeMode();
+    await wizardPage.openAdvancedSettings();
 
-    // Wait for fields to appear
-    await wizardPage.baseBranchSelect.waitFor({ state: "visible" });
-
-    // Verify worktree fields are now visible
-    await expect(wizardPage.baseBranchSelect).toBeVisible();
-    await expect(wizardPage.worktreeBranchInput).toBeVisible();
-    await expect(wizardPage.worktreePathInput).toBeVisible();
+    await expect(wizardPage.worktreeParentInput).toBeVisible();
   });
 
-  test("matches snapshot - local mode default", async ({ page }) => {
+  test("matches snapshot - default", async ({ page }) => {
     await openProjectCreationWizard(page);
     await wizardPage.waitForModal();
 
@@ -96,24 +85,21 @@ test.describe("ProjectCreationWizard", () => {
     await wizardPage.waitForAnimations();
 
     // Take snapshot
-    await expect(wizardPage.modal).toHaveScreenshot("project-creation-wizard-local-mode.png");
+    await expect(wizardPage.modal).toHaveScreenshot("project-creation-wizard-default.png");
   });
 
-  test("matches snapshot - worktree mode", async ({ page }) => {
+  test("matches snapshot - advanced settings open", async ({ page }) => {
     await openProjectCreationWizard(page);
     await wizardPage.waitForModal();
 
-    // Switch to worktree mode
-    await wizardPage.selectWorktreeMode();
-
-    // Wait for worktree fields to appear
-    await wizardPage.baseBranchSelect.waitFor({ state: "visible" });
+    await wizardPage.openAdvancedSettings();
+    await expect(wizardPage.worktreeParentInput).toBeVisible();
 
     // Wait for any animations
     await wizardPage.waitForAnimations();
 
     // Take snapshot
-    await expect(wizardPage.modal).toHaveScreenshot("project-creation-wizard-worktree-mode.png");
+    await expect(wizardPage.modal).toHaveScreenshot("project-creation-wizard-advanced.png");
   });
 
   test("matches snapshot - with filled form", async ({ page }) => {
@@ -127,13 +113,10 @@ test.describe("ProjectCreationWizard", () => {
     // Wait for directory to be filled
     await page.waitForTimeout(200);
 
-    // Switch to worktree mode
-    await wizardPage.selectWorktreeMode();
-    await wizardPage.baseBranchSelect.waitFor({ state: "visible" });
-
-    // Fill worktree fields
+    // Worktree settings are visible by default; advanced settings carry the custom parent path
     await wizardPage.selectBaseBranch("main");
-    await wizardPage.fillWorktreeBranch("ralphx/my-feature");
+    await wizardPage.openAdvancedSettings();
+    await wizardPage.worktreeParentInput.fill("/Users/test/projects/.ralphx");
 
     // Wait for any animations
     await wizardPage.waitForAnimations();

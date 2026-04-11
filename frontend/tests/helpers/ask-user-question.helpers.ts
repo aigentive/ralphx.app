@@ -1,34 +1,66 @@
 import { Page } from "@playwright/test";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 
+interface UiStoreHandle {
+  getState(): {
+    setActiveQuestion(sessionId: string, question: AskUserQuestionPayload): void;
+  };
+}
+
 /**
- * Trigger an AskUserQuestion modal in web mode by directly manipulating uiStore
- *
- * In web mode, the modal's visibility is controlled by uiStore.activeQuestion.
- * This helper directly sets the activeQuestion state to bypass the event subscription
- * timing issue.
- *
- * RATIONALE: The event-based approach has a race condition where the event is emitted
- * before useAskUserQuestion's useEffect subscribes. Direct store manipulation is more
- * reliable for testing.
+ * Select the mock ideation session used by web-mode chat tests.
+ * The question banner is scoped to the current session id.
  */
-export async function triggerAskUserQuestionModal(
+export async function selectIdeationSession(page: Page, sessionId = "session-mock-1"): Promise<void> {
+  await page.evaluate(async (id) => {
+    const { useIdeationStore } = await import("/src/stores/ideationStore");
+    const session = {
+      id,
+      projectId: "project-mock-1",
+      title: "Demo Ideation Session",
+      titleSource: null,
+      status: "active",
+      planArtifactId: null,
+      seedTaskId: null,
+      parentSessionId: null,
+      teamMode: null,
+      teamConfig: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      archivedAt: null,
+      convertedAt: null,
+      verificationStatus: "unverified",
+      verificationInProgress: false,
+      gapScore: null,
+      sessionPurpose: "general",
+      acceptanceStatus: null,
+    };
+    useIdeationStore.getState().selectSession(session);
+  }, sessionId);
+}
+
+/**
+ * Trigger an ask-user-question banner in web mode by directly manipulating uiStore.
+ *
+ * In web mode, visibility is controlled by uiStore.activeQuestions[sessionId].
+ */
+export async function triggerAskUserQuestionBanner(
   page: Page,
-  question: AskUserQuestionPayload
+  question: AskUserQuestionPayload,
+  sessionId = question.sessionId ?? "session-mock-1"
 ): Promise<void> {
-  // Directly set activeQuestion in uiStore
-  await page.evaluate((payload) => {
-    // Access zustand store directly from window (exposed by devtools)
-    // In production, this would be triggered by event → hook → store
-    const uiStore = (window as any).__uiStore;
+  await page.evaluate(({ payload, targetSessionId }) => {
+    const uiStore = (window as Window & { __uiStore?: UiStoreHandle }).__uiStore;
     if (uiStore && typeof uiStore.getState === "function") {
-      uiStore.getState().setActiveQuestion(payload);
+      uiStore.getState().setActiveQuestion(targetSessionId, {
+        ...payload,
+        sessionId: targetSessionId,
+      });
     } else {
       throw new Error("uiStore not available. Make sure app is running in web mode.");
     }
-  }, question);
+  }, { payload: question, targetSessionId: sessionId });
 
-  // Wait for React to process the state change
   await page.waitForTimeout(200);
 }
 
@@ -37,7 +69,9 @@ export async function triggerAskUserQuestionModal(
  */
 export function createSingleSelectQuestion(): AskUserQuestionPayload {
   return {
+    requestId: "req-single-select",
     taskId: "test-task-123",
+    sessionId: "session-mock-1",
     header: "Authentication Method",
     question: "Which authentication method should we use?",
     options: [
@@ -54,7 +88,9 @@ export function createSingleSelectQuestion(): AskUserQuestionPayload {
  */
 export function createMultiSelectQuestion(): AskUserQuestionPayload {
   return {
+    requestId: "req-multi-select",
     taskId: "test-task-456",
+    sessionId: "session-mock-1",
     header: "Features to Enable",
     question: "Which features do you want to enable?",
     options: [

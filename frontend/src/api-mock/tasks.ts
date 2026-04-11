@@ -45,6 +45,7 @@ export const mockTasksApi = {
     limit?: number;
     includeArchived?: boolean;
     ideationSessionId?: string | null;
+    executionPlanId?: string | null;
   }): Promise<TaskListResponse> => {
     const store = getStore();
     let tasks = Array.from(store.tasks.values()).filter(
@@ -54,6 +55,9 @@ export const mockTasksApi = {
     // Filter by ideationSessionId (matches planArtifactId) if provided
     if (params.ideationSessionId !== undefined) {
       tasks = tasks.filter((t) => t.planArtifactId === params.ideationSessionId);
+    } else if (params.executionPlanId !== undefined && params.executionPlanId !== null) {
+      // In web-mode mocks, execution-plan-scoped tasks reuse planArtifactId as the stable filter key.
+      tasks = tasks.filter((t) => t.planArtifactId === params.executionPlanId);
     }
 
     // Filter by statuses if provided
@@ -83,7 +87,8 @@ export const mockTasksApi = {
     projectId: string,
     query: string,
     _includeArchived?: boolean,
-    ideationSessionId?: string | null
+    ideationSessionId?: string | null,
+    executionPlanId?: string | null
   ): Promise<Task[]> => {
     const store = getStore();
     const lowerQuery = query.toLowerCase();
@@ -97,6 +102,8 @@ export const mockTasksApi = {
     // Filter by ideationSessionId (matches planArtifactId) if provided
     if (ideationSessionId !== undefined) {
       tasks = tasks.filter((t) => t.planArtifactId === ideationSessionId);
+    } else if (executionPlanId !== undefined && executionPlanId !== null) {
+      tasks = tasks.filter((t) => t.planArtifactId === executionPlanId);
     }
 
     return tasks;
@@ -193,7 +200,11 @@ export const mockTasksApi = {
     return { ...task, internalStatus: "stopped" as InternalStatus };
   },
 
-  getArchivedCount: async (projectId: string, ideationSessionId?: string | null): Promise<number> => {
+  getArchivedCount: async (
+    projectId: string,
+    ideationSessionId?: string | null,
+    executionPlanId?: string | null
+  ): Promise<number> => {
     const store = getStore();
     let tasks = Array.from(store.tasks.values()).filter(
       (t) => t.projectId === projectId && t.archivedAt !== null
@@ -202,6 +213,8 @@ export const mockTasksApi = {
     // Filter by ideationSessionId (matches planArtifactId) if provided
     if (ideationSessionId !== undefined) {
       tasks = tasks.filter((t) => t.planArtifactId === ideationSessionId);
+    } else if (executionPlanId !== undefined && executionPlanId !== null) {
+      tasks = tasks.filter((t) => t.planArtifactId === executionPlanId);
     }
 
     return tasks.length;

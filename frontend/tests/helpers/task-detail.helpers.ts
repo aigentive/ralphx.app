@@ -2,44 +2,80 @@ import { Page } from "@playwright/test";
 import type { Task } from "@/types/task";
 
 /**
- * Trigger TaskDetailModal in web mode by directly manipulating uiStore
+ * Trigger the task detail overlay in web mode by seeding a task into the
+ * mock store and selecting it through the real uiStore path.
  *
- * In web mode, the modal's visibility is controlled by uiStore.activeModal === "task-detail"
- * and uiStore.modalContext.task. This helper directly opens the modal to bypass the need
- * for a natural UI trigger (which doesn't exist yet).
- *
- * RATIONALE: TaskDetailModal was designed to be opened programmatically via openModal(),
- * but no UI trigger (button, context menu) exists to open it. Direct store manipulation
- * allows visual testing without implementing a production UI trigger first.
+ * The current product surface is TaskDetailOverlay, which is rendered when
+ * `selectedTaskId` is set for the active kanban project.
  */
 export async function openTaskDetailModal(
   page: Page,
   task: Task
 ): Promise<void> {
-  // Open task-detail modal via uiStore
   await page.evaluate((taskData) => {
-    const uiStore = (window as any).__uiStore;
-    if (uiStore && typeof uiStore.getState === "function") {
-      uiStore.getState().openModal("task-detail", { task: taskData });
-    } else {
+    const uiStore = window.__uiStore as
+      | {
+          getState(): {
+            setCurrentView(view: string): void;
+            setSelectedTaskId(taskId: string | null): void;
+          };
+        }
+      | undefined;
+    const mockStore = window.__mockStore as
+      | {
+          projects: Map<string, { id: string }>;
+          tasks: Map<string, Task>;
+        }
+      | undefined;
+
+    if (!uiStore || typeof uiStore.getState !== "function") {
       throw new Error("uiStore not available. Make sure app is running in web mode.");
     }
+    if (!mockStore) {
+      throw new Error("Mock store not available. Make sure app is running in web mode.");
+    }
+
+    const activeProjectId = mockStore.projects.values().next().value?.id;
+    if (!activeProjectId) {
+      throw new Error("No active mock project available");
+    }
+
+    const normalizedTask: Task = {
+      ...taskData,
+      projectId: activeProjectId,
+    };
+
+    mockStore.tasks.set(normalizedTask.id, normalizedTask);
+
+    const state = uiStore.getState();
+    state.setCurrentView("kanban");
+    state.setSelectedTaskId(normalizedTask.id);
   }, task);
 
-  // Wait for React to process the state change
-  await page.waitForTimeout(200);
+  await page.waitForSelector('[data-testid="task-detail-overlay"]', {
+    timeout: 5000,
+  });
 }
 
 /**
- * Close TaskDetailModal
+ * Close the task detail overlay.
  */
 export async function closeTaskDetailModal(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const uiStore = (window as any).__uiStore;
+    const uiStore = window.__uiStore as
+      | {
+          getState(): {
+            setSelectedTaskId(taskId: string | null): void;
+          };
+        }
+      | undefined;
     if (uiStore && typeof uiStore.getState === "function") {
-      uiStore.getState().closeModal();
+      uiStore.getState().setSelectedTaskId(null);
     }
   });
 
-  await page.waitForTimeout(200);
+  await page.waitForSelector('[data-testid="task-detail-overlay"]', {
+    state: "hidden",
+    timeout: 5000,
+  });
 }

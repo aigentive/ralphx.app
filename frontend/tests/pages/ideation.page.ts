@@ -37,9 +37,9 @@ export class IdeationPage extends BasePage {
     this.mainContent = page.locator('[data-testid="ideation-main-content"]');
 
     // Session browser
-    this.sessionBrowser = page.locator('[data-testid="session-browser"]');
+    this.sessionBrowser = page.locator('[data-testid="plan-browser"]');
     this.sessionItem = (sessionId) =>
-      page.locator(`[data-testid="session-item-${sessionId}"]`);
+      page.locator(`[data-testid="plan-item-${sessionId}"]`);
 
     // Panels
     this.proposalsPanel = page.locator('[data-testid="proposals-panel"]');

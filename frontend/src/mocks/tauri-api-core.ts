@@ -67,6 +67,9 @@ const commandHandlers: Record<
   clear_active_plan: async (args) => mockPlanApi.clearActivePlan(args.projectId as string),
   list_plan_selector_candidates: async (args) =>
     mockPlanApi.listCandidates(args.projectId as string, args.query as string | undefined),
+  get_active_execution_plan: async (args) =>
+    // In web-mode mocks, execution-plan filtering reuses the active plan id as the stable filter key.
+    mockPlanApi.getActivePlan(args.projectId as string),
 
   // Task commands
   list_tasks: async (args) => {
@@ -77,12 +80,20 @@ const commandHandlers: Record<
       offset?: number;
       limit?: number;
       includeArchived?: boolean;
+      ideationSessionId?: string | null;
+      executionPlanId?: string | null;
     } = { projectId: args.projectId as string };
 
     if (args.statuses !== undefined) params.statuses = args.statuses as string[];
     if (args.offset !== undefined) params.offset = args.offset as number;
     if (args.limit !== undefined) params.limit = args.limit as number;
     if (args.includeArchived !== undefined) params.includeArchived = args.includeArchived as boolean;
+    if (args.ideationSessionId !== undefined) {
+      params.ideationSessionId = args.ideationSessionId as string | null;
+    }
+    if (args.executionPlanId !== undefined) {
+      params.executionPlanId = args.executionPlanId as string | null;
+    }
 
     const response = await mockTasksApi.list(params);
     // Transform to snake_case as backend would return
@@ -313,7 +324,7 @@ const commandHandlers: Record<
     mockTaskGraphApi.getDependencyGraph(
       args.projectId as string,
       args.includeArchived as boolean | undefined,
-      args.ideationSessionId as string | null | undefined ?? null
+      args.executionPlanId as string | null | undefined ?? args.ideationSessionId as string | null | undefined ?? null
     ),
   get_task_timeline_events: async (args) =>
     mockTaskGraphApi.getTimelineEvents(

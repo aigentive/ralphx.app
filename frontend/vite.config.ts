@@ -107,8 +107,17 @@ export default defineConfig(async ({ mode }) => {
           }
         : undefined,
       watch: {
-        // 3. tell Vite to ignore watching `src-tauri`, `logs`, and all markdown files
-        ignored: ["**/src-tauri/**", "**/.artifacts/**", "**/logs/**", "**/*.md"],
+        // 3. tell Vite to ignore backend trees, generated artifacts, and test outputs
+        // that can churn heavily during local validation without affecting app source.
+        ignored: [
+          "**/src-tauri/**",
+          "**/.artifacts/**",
+          "**/logs/**",
+          "**/*.md",
+          "**/test-results/**",
+          "**/playwright-report/**",
+          "**/tests/visual/snapshots/**",
+        ],
       },
     },
 

@@ -10,8 +10,10 @@
 
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { render, screen, act } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useChatStore } from "@/stores/chatStore";
+import { createTestQueryClient } from "@/test/store-utils";
 import { StatusActivityBadge } from "./StatusActivityBadge";
 
 // ============================================================================
@@ -41,18 +43,21 @@ const STORE_KEY = "task_execution:task-abc";
 
 /** Renders StatusActivityBadge in a generating state with the given modelDisplay. */
 function renderBadge(modelDisplay?: { id: string; label: string }) {
+  const queryClient = createTestQueryClient();
   return render(
-    <TooltipProvider delayDuration={0}>
-      <StatusActivityBadge
-        isAgentActive={true}
-        agentType="worker"
-        contextType="task_execution"
-        contextId="task-abc"
-        agentStatus="generating"
-        storeKey={STORE_KEY}
-        modelDisplay={modelDisplay}
-      />
-    </TooltipProvider>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider delayDuration={0}>
+        <StatusActivityBadge
+          isAgentActive={true}
+          agentType="worker"
+          contextType="task_execution"
+          contextId="task-abc"
+          agentStatus="generating"
+          storeKey={STORE_KEY}
+          modelDisplay={modelDisplay}
+        />
+      </TooltipProvider>
+    </QueryClientProvider>
   );
 }
 

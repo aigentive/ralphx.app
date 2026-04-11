@@ -47,9 +47,9 @@ test.describe("Ideation View", () => {
   });
 
   test("navigation shows ideation tab as active", async () => {
-    // Verify the ideation nav button is highlighted/active
+    // Verify the ideation nav button is marked as the active route without
+    // pinning the test to an exact accent RGB value.
     await expect(ideation.navIdeation).toBeVisible();
-    // The active state shows the orange accent color
-    await expect(ideation.navIdeation).toHaveCSS("color", "rgb(255, 107, 53)");
+    await expect(ideation.navIdeation).toHaveAttribute("aria-current", "page");
   });
 });

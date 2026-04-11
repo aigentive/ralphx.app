@@ -17,10 +17,22 @@ declare global {
     __queryClient?: QueryClient;
     __eventBus?: EventBus;
     __uiStore?: unknown;
+    __planStore?: {
+      getState(): {
+        loadActivePlan(projectId: string): Promise<void>;
+        activePlanByProject: Record<string, string | null>;
+        activeExecutionPlanIdByProject: Record<string, string | null>;
+      };
+    };
     __chatStore?: {
       getState(): {
         setActiveConversation(storeKey: string, conversationId: string | null): void;
         activeConversationIds?: Record<string, string | null | undefined>;
+      };
+    };
+    __proposalStore?: {
+      getState(): {
+        setProposals(proposals: Record<string, unknown>[]): void;
       };
     };
     __ideationStore?: {

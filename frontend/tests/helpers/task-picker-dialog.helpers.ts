@@ -16,8 +16,9 @@ export async function openTaskPickerDialog(page: Page): Promise<void> {
   // Wait for app to load
   await page.waitForLoadState("networkidle");
 
-  // Click the Ideation navigation button
-  const ideationNav = page.getByRole("button", { name: "Ideation" });
+  // Click the main Ideation navigation button. The header also exposes an
+  // ideation-count trigger, so role/name selection is ambiguous here.
+  const ideationNav = page.getByTestId("nav-ideation");
   await ideationNav.click();
 
   // Wait for ideation view to appear - look for the "Seed from Draft Task" button

@@ -16,14 +16,11 @@ export class ProjectCreationWizardPage extends BasePage {
   readonly workingDirectoryInput: Locator;
   readonly browseFolderButton: Locator;
 
-  // Git mode selection
-  readonly gitModeLocalRadio: Locator;
-  readonly gitModeWorktreeRadio: Locator;
-
-  // Worktree-specific fields (only visible when worktree mode selected)
+  // Worktree-first fields
   readonly baseBranchSelect: Locator;
-  readonly worktreeBranchInput: Locator;
   readonly worktreePathInput: Locator;
+  readonly advancedSettingsTrigger: Locator;
+  readonly worktreeParentInput: Locator;
 
   // Action buttons
   readonly createButton: Locator;
@@ -43,14 +40,11 @@ export class ProjectCreationWizardPage extends BasePage {
     this.workingDirectoryInput = this.modal.locator('[data-testid="folder-input"]');
     this.browseFolderButton = this.modal.locator('[data-testid="browse-button"]');
 
-    // Git mode radios
-    this.gitModeLocalRadio = this.modal.locator('[data-testid="git-mode-local"]');
-    this.gitModeWorktreeRadio = this.modal.locator('[data-testid="git-mode-worktree"]');
-
     // Worktree fields
     this.baseBranchSelect = this.modal.locator('[data-testid="base-branch-select"]');
-    this.worktreeBranchInput = this.modal.locator('[data-testid="worktree-branch-input"]');
     this.worktreePathInput = this.modal.locator('[data-testid="worktree-path-display"]');
+    this.advancedSettingsTrigger = this.modal.locator('[data-testid="advanced-settings-trigger"]');
+    this.worktreeParentInput = this.modal.locator('[data-testid="worktree-parent-input"]');
 
     // Buttons
     this.createButton = this.modal.locator('[data-testid="create-button"]');
@@ -82,21 +76,14 @@ export class ProjectCreationWizardPage extends BasePage {
   }
 
   /**
-   * Select Local git mode
+   * Expand advanced settings
    */
-  async selectLocalMode() {
-    await this.gitModeLocalRadio.click();
+  async openAdvancedSettings() {
+    await this.advancedSettingsTrigger.click();
   }
 
   /**
-   * Select Worktree git mode
-   */
-  async selectWorktreeMode() {
-    await this.gitModeWorktreeRadio.click();
-  }
-
-  /**
-   * Select a base branch (only available in worktree mode)
+   * Select a base branch
    */
   async selectBaseBranch(branch: string) {
     // Click the select trigger
@@ -106,13 +93,6 @@ export class ProjectCreationWizardPage extends BasePage {
     const option = this.page.locator(`[role="option"]`).filter({ hasText: branch });
     await option.waitFor({ state: "visible", timeout: 5000 });
     await option.click();
-  }
-
-  /**
-   * Fill in the worktree branch name (only available in worktree mode)
-   */
-  async fillWorktreeBranch(branch: string) {
-    await this.worktreeBranchInput.fill(branch);
   }
 
   /**
@@ -137,9 +117,9 @@ export class ProjectCreationWizardPage extends BasePage {
   }
 
   /**
-   * Check if worktree fields are visible
+   * Check if base branch and worktree path are visible
    */
   async areWorktreeFieldsVisible(): Promise<boolean> {
-    return this.baseBranchSelect.isVisible();
+    return (await this.baseBranchSelect.isVisible()) && (await this.worktreePathInput.isVisible());
   }
 }
