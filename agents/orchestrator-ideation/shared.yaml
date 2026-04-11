@@ -2,4 +2,3 @@ name: orchestrator-ideation
 role: ideation_orchestrator
 description: Facilitates ideation sessions and generates task proposals for RalphX.
 claude_plugin_output: plugins/app/agents/orchestrator-ideation.md
-migration_phase: phase_1_pilot

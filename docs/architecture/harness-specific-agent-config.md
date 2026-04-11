@@ -10,7 +10,8 @@ In progress.
 
 Landed so far:
 - phase 1 pilot skeleton under `agents/` for `orchestrator-ideation`, `ideation-team-lead`, and `session-namer`
-- resolver-backed canonical prompt loading for those pilot agents on the Codex path, with legacy Claude plugin prompt fallback retained
+- resolver-backed canonical prompt loading for migrated agents on the Codex path
+- `ideation-team-lead` intentionally remains Claude-only because Codex team mode is not supported; canonical agents without a Codex prompt no longer silently inherit the legacy Claude prompt
 
 Tracker reference:
 - [AGENTS.md](/Users/lazabogdan/Code/ralphx/AGENTS.md)
@@ -56,8 +57,9 @@ Codex currently wraps those same prompts via `compose_codex_prompt(...)`, which 
 2. Claude plugin assets must become generated outputs, not the universal source.
 3. Prompt bodies must be harness-specific where semantics differ.
 4. Shared policy must stay shared to avoid duplicated grants and drift.
-5. Harness-specific runtime bootstrap details must not leak into the wrong harness.
-6. Migration must be incremental and agent-by-agent, not a big-bang rewrite.
+5. Shared prompt text is allowed only through an explicit harness-neutral prompt layer, never by silently reusing another harness prompt.
+6. Harness-specific runtime bootstrap details must not leak into the wrong harness.
+7. Migration must be incremental and agent-by-agent, not a big-bang rewrite.
 
 ## Target Architecture
 
@@ -69,6 +71,8 @@ Recommended initial structure:
 agents/
   <agent-name>/
     shared.yaml
+    shared/
+      prompt.md
     claude/
       prompt.md
     codex/
@@ -86,6 +90,12 @@ agents/
 
 Do not start with duplicated per-harness YAML unless concrete requirements force it.
 
+The important distinction is:
+- `shared/prompt.md` means “this text is intentionally harness-neutral and safe for every enabled harness”
+- `claude/prompt.md` or `codex/prompt.md` means “this harness needs its own prompt body”
+
+Missing harness-specific prompt must never mean “fall back to some other harness prompt”.
+
 ## Shared Versus Harness-Specific Data
 
 ### Shared
@@ -100,7 +110,14 @@ Belongs in `shared.yaml`:
 - shared model/effort policy defaults where truly harness-neutral
 - settings profile hooks
 - whether the agent is helper-only, orchestrator, team lead, specialist, critic, worker, reviewer, merger, etc.
-- migration metadata and generation flags
+- generation flags needed to produce harness artifacts
+
+Belongs in `shared/prompt.md` only when truly harness-neutral:
+
+- role framing that is identical across harnesses
+- workflow guidance that does not mention harness-specific delegation/runtime/tool semantics
+- user-facing quality bar and output structure
+- repo-specific constraints that are equally valid on every supported harness
 
 ### Harness-Specific
 
@@ -114,6 +131,21 @@ Belongs in harness-specific prompt/config:
 - Codex-native delegation or subagent instructions
 - harness-specific bootstrap framing
 - harness-specific tool-calling notes
+
+## Prompt Resolution Rules
+
+Resolution must be explicit and deterministic:
+
+1. Load `shared.yaml`
+2. If `<agent>/<harness>/prompt.md` exists, use it
+3. Else if `shared/prompt.md` exists and `shared.yaml` declares that harness safe for shared-prompt usage, use it
+4. Else if the agent is canonical but has no prompt for that harness, treat it as unsupported on that harness
+5. Only non-canonical legacy agents may fall back to the old Claude plugin prompt source during migration
+
+Non-negotiable:
+- never use `claude/prompt.md` as an implicit fallback for Codex
+- never use `codex/prompt.md` as an implicit fallback for Claude
+- unsupported harness roles should fail closed or stay unavailable, not silently inherit the wrong semantics
 
 ## Runtime Model
 
@@ -189,8 +221,9 @@ Before behavior changes:
 
 Implement:
 - `agents/<agent>/shared.yaml`
-- `agents/<agent>/claude/prompt.md`
-- `agents/<agent>/codex/prompt.md`
+- optional `agents/<agent>/shared/prompt.md`
+- optional `agents/<agent>/claude/prompt.md`
+- optional `agents/<agent>/codex/prompt.md`
 - resolver that can load one agent from the new structure
 
 No runtime cutover yet.
@@ -210,6 +243,7 @@ Deliverables:
 - Codex uses Codex-native prompt files for these agents
 - Claude plugin assets for these agents are generated from canonical config
 - no Claude-only instructions remain in the Codex versions
+- `ideation-team-lead` stays Claude-only until Codex team mode exists
 
 ## Phase 3: Core Execution Agents
 

@@ -11,7 +11,8 @@ use crate::infrastructure::agents::claude::{
     get_agent_config, load_agent_system_prompt, mcp_agent_type, node_utils, validate_mcp_tool_name,
 };
 use crate::infrastructure::agents::harness_agent_catalog::{
-    load_harness_agent_prompt, resolve_project_root_from_plugin_dir, AgentPromptHarness,
+    has_canonical_agent_definition, load_harness_agent_prompt, resolve_project_root_from_plugin_dir,
+    AgentPromptHarness,
 };
 pub use codex_cli_client::CodexCliClient;
 
@@ -184,7 +185,13 @@ pub fn compose_codex_prompt(
 
     let project_root = resolve_project_root_from_plugin_dir(plugin_dir);
     let system_prompt = load_harness_agent_prompt(&project_root, agent_name, AgentPromptHarness::Codex)
-        .or_else(|| load_agent_system_prompt(plugin_dir, agent_name));
+        .or_else(|| {
+            if has_canonical_agent_definition(&project_root, agent_name) {
+                None
+            } else {
+                load_agent_system_prompt(plugin_dir, agent_name)
+            }
+        });
     let Some(system_prompt) = system_prompt else {
         return prompt.to_string();
     };

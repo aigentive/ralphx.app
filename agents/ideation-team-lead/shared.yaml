@@ -2,4 +2,3 @@ name: ideation-team-lead
 role: ideation_team_lead
 description: Coordinates ideation teams and synthesizes teammate findings into a master plan.
 claude_plugin_output: plugins/app/agents/ideation-team-lead.md
-migration_phase: phase_1_pilot

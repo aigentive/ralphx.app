@@ -10,6 +10,8 @@ const PILOT_AGENTS: &[(&str, &str)] = &[
     ("session-namer", "session_namer"),
 ];
 
+const CODEX_PILOT_AGENTS: &[&str] = &["orchestrator-ideation", "session-namer"];
+
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
@@ -48,18 +50,46 @@ fn pilot_agent_definitions_load_from_canonical_tree() {
 fn pilot_agent_prompt_paths_exist_for_both_harnesses() {
     let root = project_root();
 
-    for (agent_name, _) in PILOT_AGENTS {
+    for agent_name in CODEX_PILOT_AGENTS {
+        let claude_path =
+            resolve_harness_agent_prompt_path(&root, agent_name, AgentPromptHarness::Claude);
         assert!(
-            resolve_harness_agent_prompt_path(&root, agent_name, AgentPromptHarness::Claude)
-                .is_some(),
+            claude_path.is_some(),
             "expected claude prompt path for {agent_name}"
         );
+        let codex_path =
+            resolve_harness_agent_prompt_path(&root, agent_name, AgentPromptHarness::Codex);
         assert!(
-            resolve_harness_agent_prompt_path(&root, agent_name, AgentPromptHarness::Codex)
-                .is_some(),
+            codex_path.is_some(),
             "expected codex prompt path for {agent_name}"
         );
+
+        if agent_name == &"session-namer" {
+            assert!(
+                claude_path
+                    .as_ref()
+                    .is_some_and(|path| path.ends_with("agents/session-namer/shared/prompt.md")),
+                "expected session-namer claude prompt to resolve through shared/prompt.md"
+            );
+            assert!(
+                codex_path
+                    .as_ref()
+                    .is_some_and(|path| path.ends_with("agents/session-namer/shared/prompt.md")),
+                "expected session-namer codex prompt to resolve through shared/prompt.md"
+            );
+        }
     }
+
+    assert!(
+        resolve_harness_agent_prompt_path(&root, "ideation-team-lead", AgentPromptHarness::Claude)
+            .is_some(),
+        "expected claude prompt path for ideation-team-lead"
+    );
+    assert!(
+        resolve_harness_agent_prompt_path(&root, "ideation-team-lead", AgentPromptHarness::Codex)
+            .is_none(),
+        "ideation-team-lead should not have a codex prompt while Codex team mode is unsupported"
+    );
 }
 
 #[test]
@@ -83,7 +113,7 @@ fn canonical_claude_prompts_match_legacy_prompt_bodies_for_pilot_agents() {
 fn codex_pilot_prompts_are_frontmatter_free() {
     let root = project_root();
 
-    for (agent_name, _) in PILOT_AGENTS {
+    for agent_name in CODEX_PILOT_AGENTS {
         let prompt = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Codex)
             .unwrap_or_else(|| panic!("missing codex prompt for {agent_name}"));
         assert!(
@@ -95,4 +125,54 @@ fn codex_pilot_prompts_are_frontmatter_free() {
             "codex prompt for {agent_name} must not carry Claude mcpServers frontmatter"
         );
     }
+}
+
+#[test]
+fn codex_pilot_prompts_avoid_claude_only_team_and_task_syntax() {
+    let root = project_root();
+    let banned_terms = [
+        "Task(",
+        "TeamCreate",
+        "TaskCreate",
+        "TaskUpdate",
+        "TaskGet",
+        "TaskList",
+        "TaskOutput",
+        "TaskStop",
+        "SendMessage",
+        "mcpServers",
+        "CLAUDE_PLUGIN_ROOT",
+        "--append-system-prompt",
+    ];
+
+    for agent_name in ["orchestrator-ideation", "session-namer"] {
+        let prompt = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Codex)
+            .unwrap_or_else(|| panic!("missing codex prompt for {agent_name}"));
+        for banned in banned_terms {
+            assert!(
+                !prompt.contains(banned),
+                "codex prompt for {agent_name} must not contain Claude-only syntax `{banned}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn codex_ideation_pilot_prompts_declare_codex_native_delegation_contract() {
+    let root = project_root();
+
+    let orchestrator = load_harness_agent_prompt(
+        &root,
+        "orchestrator-ideation",
+        AgentPromptHarness::Codex,
+    )
+    .expect("missing codex orchestrator prompt");
+    assert!(
+        orchestrator.contains("Codex-native delegation"),
+        "orchestrator codex prompt should describe Codex-native delegation semantics"
+    );
+    assert!(
+        load_harness_agent_prompt(&root, "ideation-team-lead", AgentPromptHarness::Codex).is_none(),
+        "ideation-team-lead should not have a codex prompt while team mode is unsupported"
+    );
 }

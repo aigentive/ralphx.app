@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 const CANONICAL_AGENTS_DIR: &str = "agents";
 const PROMPT_FILE_NAME: &str = "prompt.md";
 const SHARED_FILE_NAME: &str = "shared.yaml";
+const SHARED_PROMPT_DIR_NAME: &str = "shared";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct CanonicalAgentDefinition {
@@ -14,7 +15,7 @@ pub struct CanonicalAgentDefinition {
     #[serde(default)]
     pub claude_plugin_output: Option<String>,
     #[serde(default)]
-    pub migration_phase: Option<String>,
+    pub shared_prompt_harnesses: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,6 +26,13 @@ pub enum AgentPromptHarness {
 
 impl AgentPromptHarness {
     fn as_dir(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+        }
+    }
+
+    fn as_str(self) -> &'static str {
         match self {
             Self::Claude => "claude",
             Self::Codex => "codex",
@@ -71,17 +79,34 @@ pub fn load_canonical_agent_definition(
     }
 }
 
+pub fn has_canonical_agent_definition(project_root: &Path, agent_name: &str) -> bool {
+    canonical_agent_root(project_root, agent_name)
+        .join(SHARED_FILE_NAME)
+        .exists()
+}
+
 pub fn resolve_harness_agent_prompt_path(
     project_root: &Path,
     agent_name: &str,
     harness: AgentPromptHarness,
 ) -> Option<PathBuf> {
-    load_canonical_agent_definition(project_root, agent_name)?;
-    let prompt_path = canonical_agent_root(project_root, agent_name)
+    let definition = load_canonical_agent_definition(project_root, agent_name)?;
+    let agent_root = canonical_agent_root(project_root, agent_name);
+    let prompt_path = agent_root
         .join(harness.as_dir())
         .join(PROMPT_FILE_NAME);
     if prompt_path.exists() {
-        Some(prompt_path)
+        return Some(prompt_path);
+    }
+
+    let shared_prompt_path = agent_root.join(SHARED_PROMPT_DIR_NAME).join(PROMPT_FILE_NAME);
+    if shared_prompt_path.exists()
+        && definition
+            .shared_prompt_harnesses
+            .iter()
+            .any(|supported| supported == harness.as_str())
+    {
+        Some(shared_prompt_path)
     } else {
         None
     }
