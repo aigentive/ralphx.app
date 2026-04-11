@@ -2,7 +2,6 @@ use super::{
     load_canonical_agent_definition, load_harness_agent_prompt, resolve_harness_agent_prompt_path,
     try_load_canonical_claude_metadata, AgentPromptHarness,
 };
-use serde_yaml::Value;
 use std::path::PathBuf;
 
 const PILOT_AGENTS: &[(&str, &str, &str)] = &[
@@ -130,78 +129,6 @@ fn canonical_agent_names(root: &std::path::Path) -> Vec<String> {
         .collect::<Vec<_>>();
     names.sort();
     names
-}
-
-fn strip_frontmatter(markdown: &str) -> String {
-    if let Some(after_first) = markdown.strip_prefix("---") {
-        if let Some(end_idx) = after_first.find("\n---") {
-            let body = &after_first[end_idx + "\n---".len()..];
-            return body.trim().to_string();
-        }
-    }
-
-    markdown.trim().to_string()
-}
-
-fn legacy_frontmatter(root: &std::path::Path, legacy_file_stem: &str) -> Value {
-    let markdown = std::fs::read_to_string(
-        root.join("plugins/app/agents")
-            .join(format!("{legacy_file_stem}.md")),
-    )
-    .unwrap_or_else(|_| panic!("missing legacy prompt for {legacy_file_stem}"));
-
-    let frontmatter = markdown
-        .strip_prefix("---\n")
-        .and_then(|rest| rest.split_once("\n---\n"))
-        .map(|(frontmatter, _)| frontmatter)
-        .unwrap_or_else(|| panic!("missing frontmatter for {legacy_file_stem}"));
-
-    serde_yaml::from_str(frontmatter)
-        .unwrap_or_else(|_| panic!("invalid legacy frontmatter for {legacy_file_stem}"))
-}
-
-fn legacy_description(root: &std::path::Path, legacy_file_stem: &str) -> String {
-    legacy_frontmatter(root, legacy_file_stem)["description"]
-        .as_str()
-        .unwrap_or_else(|| panic!("missing legacy description for {legacy_file_stem}"))
-        .to_string()
-}
-
-fn legacy_disallowed_tools(root: &std::path::Path, legacy_file_stem: &str) -> Vec<String> {
-    match &legacy_frontmatter(root, legacy_file_stem)["disallowedTools"] {
-        Value::Null => Vec::new(),
-        Value::String(value) => value
-            .split(',')
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToString::to_string)
-            .collect(),
-        Value::Sequence(items) => items
-            .iter()
-            .filter_map(Value::as_str)
-            .map(ToString::to_string)
-            .collect(),
-        other => panic!("unsupported disallowedTools legacy shape for {legacy_file_stem}: {other:?}"),
-    }
-}
-
-fn legacy_skills(root: &std::path::Path, legacy_file_stem: &str) -> Vec<String> {
-    legacy_frontmatter(root, legacy_file_stem)["skills"]
-        .as_sequence()
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(Value::as_str)
-                .map(ToString::to_string)
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn legacy_max_turns(root: &std::path::Path, legacy_file_stem: &str) -> Option<u32> {
-    legacy_frontmatter(root, legacy_file_stem)["maxTurns"]
-        .as_u64()
-        .map(|value| value as u32)
 }
 
 fn live_runtime_agents() -> Vec<(&'static str, &'static str, &'static str)> {
@@ -458,143 +385,13 @@ fn pilot_agent_prompt_paths_exist_for_both_harnesses() {
 }
 
 #[test]
-fn canonical_claude_prompts_match_legacy_prompt_bodies_for_pilot_agents() {
+fn live_runtime_agents_resolve_through_canonical_claude_prompts() {
     let root = project_root();
 
-    for (agent_name, _, legacy_file_stem) in PILOT_AGENTS {
-        let canonical = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Claude)
-            .unwrap_or_else(|| panic!("missing canonical claude prompt for {agent_name}"));
-        let legacy_raw = std::fs::read_to_string(
-            root.join("plugins/app/agents")
-                .join(format!("{legacy_file_stem}.md")),
-        )
-        .unwrap_or_else(|_| panic!("missing legacy prompt for {agent_name}"));
-
-        assert_eq!(canonical, strip_frontmatter(&legacy_raw));
-    }
-
-    for (agent_name, _, legacy_file_stem) in CLAUDE_ONLY_CANONICAL_AGENTS {
-        let canonical = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Claude)
-            .unwrap_or_else(|| panic!("missing canonical claude prompt for {agent_name}"));
-        let legacy_raw = std::fs::read_to_string(
-            root.join("plugins/app/agents")
-                .join(format!("{legacy_file_stem}.md")),
-        )
-        .unwrap_or_else(|_| panic!("missing legacy prompt for {agent_name}"));
-
-        assert_eq!(canonical, strip_frontmatter(&legacy_raw));
-    }
-
-    for (agent_name, _, legacy_file_stem) in CROSS_HARNESS_EXECUTION_AGENTS {
-        let canonical = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Claude)
-            .unwrap_or_else(|| panic!("missing canonical claude prompt for {agent_name}"));
-        let legacy_raw = std::fs::read_to_string(
-            root.join("plugins/app/agents")
-                .join(format!("{legacy_file_stem}.md")),
-        )
-        .unwrap_or_else(|_| panic!("missing legacy prompt for {agent_name}"));
-
-        assert_eq!(canonical, strip_frontmatter(&legacy_raw));
-    }
-
-    for (agent_name, _, legacy_file_stem) in CROSS_HARNESS_WORKFLOW_AGENTS {
-        let canonical = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Claude)
-            .unwrap_or_else(|| panic!("missing canonical claude prompt for {agent_name}"));
-        let legacy_raw = std::fs::read_to_string(
-            root.join("plugins/app/agents")
-                .join(format!("{legacy_file_stem}.md")),
-        )
-        .unwrap_or_else(|_| panic!("missing legacy prompt for {agent_name}"));
-
-        assert_eq!(canonical, strip_frontmatter(&legacy_raw));
-    }
-
-    for (agent_name, _, legacy_file_stem) in CROSS_HARNESS_CHAT_AGENTS {
-        let canonical = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Claude)
-            .unwrap_or_else(|| panic!("missing canonical claude prompt for {agent_name}"));
-        let legacy_raw = std::fs::read_to_string(
-            root.join("plugins/app/agents")
-                .join(format!("{legacy_file_stem}.md")),
-        )
-        .unwrap_or_else(|_| panic!("missing legacy prompt for {agent_name}"));
-
-        assert_eq!(canonical, strip_frontmatter(&legacy_raw));
-    }
-
-    for (agent_name, _, legacy_file_stem) in CROSS_HARNESS_SUPPORT_AGENTS {
-        let canonical = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Claude)
-            .unwrap_or_else(|| panic!("missing canonical claude prompt for {agent_name}"));
-        let legacy_raw = std::fs::read_to_string(
-            root.join("plugins/app/agents")
-                .join(format!("{legacy_file_stem}.md")),
-        )
-        .unwrap_or_else(|_| panic!("missing legacy prompt for {agent_name}"));
-
-        assert_eq!(canonical, strip_frontmatter(&legacy_raw));
-    }
-
-    for (agent_name, _, legacy_file_stem) in CROSS_HARNESS_GENERAL_AGENTS {
-        let canonical = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Claude)
-            .unwrap_or_else(|| panic!("missing canonical claude prompt for {agent_name}"));
-        let legacy_raw = std::fs::read_to_string(
-            root.join("plugins/app/agents")
-                .join(format!("{legacy_file_stem}.md")),
-        )
-        .unwrap_or_else(|_| panic!("missing legacy prompt for {agent_name}"));
-
-        assert_eq!(canonical, strip_frontmatter(&legacy_raw));
-    }
-
-    for (agent_name, _, legacy_file_stem) in CROSS_HARNESS_READONLY_IDEATION_AGENTS {
-        let canonical = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Claude)
-            .unwrap_or_else(|| panic!("missing canonical claude prompt for {agent_name}"));
-        let legacy_raw = std::fs::read_to_string(
-            root.join("plugins/app/agents")
-                .join(format!("{legacy_file_stem}.md")),
-        )
-        .unwrap_or_else(|_| panic!("missing legacy prompt for {agent_name}"));
-
-        assert_eq!(canonical, strip_frontmatter(&legacy_raw));
-    }
-}
-
-#[test]
-fn canonical_agent_descriptions_match_legacy_frontmatter_for_live_runtime_agents() {
-    let root = project_root();
-
-    for (agent_name, _, legacy_file_stem) in live_runtime_agents() {
-        let definition = load_canonical_agent_definition(&root, agent_name)
-            .unwrap_or_else(|| panic!("missing canonical definition for {agent_name}"));
-        assert_eq!(
-            definition.description.as_deref(),
-            Some(legacy_description(&root, legacy_file_stem).as_str()),
-            "canonical description drifted from legacy frontmatter for {agent_name}"
-        );
-    }
-}
-
-#[test]
-fn canonical_claude_metadata_matches_legacy_frontmatter_for_live_runtime_agents() {
-    let root = project_root();
-
-    for (agent_name, _, legacy_file_stem) in live_runtime_agents() {
-        let metadata = try_load_canonical_claude_metadata(&root, agent_name)
-            .unwrap_or_else(|_| panic!("failed to load canonical claude metadata for {agent_name}"));
-
-        assert_eq!(
-            metadata.disallowed_tools,
-            legacy_disallowed_tools(&root, legacy_file_stem),
-            "canonical Claude disallowed tools drifted from legacy frontmatter for {agent_name}"
-        );
-        assert_eq!(
-            metadata.skills,
-            legacy_skills(&root, legacy_file_stem),
-            "canonical Claude skills drifted from legacy frontmatter for {agent_name}"
-        );
-        assert_eq!(
-            metadata.max_turns,
-            legacy_max_turns(&root, legacy_file_stem),
-            "canonical Claude maxTurns drifted from legacy frontmatter for {agent_name}"
+    for (agent_name, _, _) in live_runtime_agents() {
+        assert!(
+            load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Claude).is_some(),
+            "missing canonical Claude prompt for {agent_name}"
         );
     }
 }

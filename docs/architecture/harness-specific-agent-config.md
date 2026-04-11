@@ -372,10 +372,16 @@ This is where harness-specific delegation semantics matter most.
 
 ## Phase 5: Remove Legacy Source-Of-Truth Status
 
-After all production agents are migrated:
-- stop treating `plugins/app/agents/*.md` as authored source
-- keep them only as generated Claude assets if still required
-- update docs/rules accordingly
+Landed:
+- `plugins/app/agents/*.md` is no longer treated as authored source
+- the deprecated markdown files under `plugins/app/agents/` have been deleted
+- `ralphx.yaml` now points live runtime agents at canonical prompt paths under `agents/`
+- canonical-tree and generated-artifact tests no longer depend on reading legacy prompt markdown
+
+Remaining:
+- make canonical `agents/` resolution mandatory for all live runtime agents in every runtime path
+- remove any remaining live-agent prompt fallback assumptions from the generated Claude plugin/runtime path
+- rewrite docs/comments that still describe plugin markdown as source-of-truth
 
 ## Agent Cohorts To Migrate
 
@@ -428,6 +434,7 @@ After all production agents are migrated:
 - harness-specific prompt file loads
 - harness-specific override resolution works
 - unknown/missing harness prompt fails clearly
+- all live runtime agent ids resolve through canonical `agents/` first with no silent fallback to plugin-authored prompt files
 
 ### Claude Generation Tests
 
@@ -435,6 +442,9 @@ After all production agents are migrated:
 - generated tool grants match canonical MCP policy
 - `mcpServers` generation is correct
 - existing Claude runtime can still discover and spawn generated agents
+- generated Claude prompt body and authored Claude metadata stay semantically aligned with the legacy source where that legacy frontmatter was the authored truth
+- generated Claude `tools` and `mcpServers` stay aligned with runtime config (`ralphx.yaml`) even when legacy plugin frontmatter had drifted stale
+- explicit Claude-only compatibility aliases (for example `worker-team`) stay encoded in `claude/agent.yaml`, not in ad hoc generator special cases
 
 ### Codex Prompt Tests
 

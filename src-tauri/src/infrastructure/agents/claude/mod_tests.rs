@@ -8,6 +8,10 @@
 /// - create_mcp_config(): --agent-type still present alongside --allowed-tools
 /// - create_mcp_config(): no --allowed-tools arg when agent has no mcp_tools config
 use super::*;
+use crate::infrastructure::agents::harness_agent_catalog::{
+    load_canonical_agent_definition, load_harness_agent_prompt, try_load_canonical_claude_metadata,
+    AgentPromptHarness,
+};
 use serde_yaml::Value;
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -102,24 +106,6 @@ fn expected_frontmatter_tools(agent_name: &str) -> BTreeSet<String> {
     }));
     tools.extend(agent_config.preapproved_cli_tools.iter().cloned());
     tools
-}
-
-fn legacy_agent_file_stem(agent_name: &str) -> String {
-    match agent_name {
-        "ralphx-coder" => "coder".to_string(),
-        "ralphx-merger" => "merger".to_string(),
-        "ralphx-review-chat" => "review-chat".to_string(),
-        "ralphx-review-history" => "review-history".to_string(),
-        "ralphx-reviewer" => "reviewer".to_string(),
-        "ralphx-worker" => "worker".to_string(),
-        "ralphx-worker-team" => "worker-team".to_string(),
-        "ralphx-deep-researcher" => "deep-researcher".to_string(),
-        "ralphx-orchestrator" => "orchestrator".to_string(),
-        "ralphx-supervisor" => "supervisor".to_string(),
-        "ralphx-qa-executor" => "qa-executor".to_string(),
-        "ralphx-qa-prep" => "qa-prep".to_string(),
-        other => other.to_string(),
-    }
 }
 
 // ─── validate_mcp_tool_name ──────────────────────────────────────────────────
@@ -638,13 +624,12 @@ description: Monitors task execution and intervenes when problems occur
 }
 
 #[test]
-fn test_materialize_generated_plugin_dir_matches_legacy_frontmatter_semantics_for_live_agents() {
+fn test_materialize_generated_plugin_dir_matches_canonical_and_runtime_semantics_for_live_agents() {
     let root = repo_project_root();
     let plugin_dir = root.join("plugins/app");
     let generated_dir =
         materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
     let agents_root = root.join("agents");
-    let legacy_agents_root = root.join("plugins/app/agents");
 
     for entry in std::fs::read_dir(&agents_root).expect("canonical agents dir should exist") {
         let entry = entry.expect("canonical agent entry");
@@ -653,35 +638,40 @@ fn test_materialize_generated_plugin_dir_matches_legacy_frontmatter_semantics_fo
         }
 
         let agent_name = entry.file_name().to_string_lossy().to_string();
-        let legacy_file_stem = legacy_agent_file_stem(&agent_name);
-        let legacy_path = legacy_agents_root.join(format!("{legacy_file_stem}.md"));
-        if !legacy_path.exists() {
-            continue;
-        }
-
         let generated_path = generated_dir.join("agents").join(format!("{agent_name}.md"));
-        let legacy_markdown =
-            std::fs::read_to_string(&legacy_path).expect("read legacy agent markdown");
         let generated_markdown =
             std::fs::read_to_string(&generated_path).expect("read generated agent markdown");
-
-        let (legacy_frontmatter, legacy_body) = split_frontmatter(&legacy_markdown);
+        let definition = load_canonical_agent_definition(&root, &agent_name)
+            .unwrap_or_else(|| panic!("missing canonical definition for {agent_name}"));
+        let claude_metadata = try_load_canonical_claude_metadata(&root, &agent_name)
+            .unwrap_or_else(|_| panic!("failed to load canonical Claude metadata for {agent_name}"));
+        let canonical_body =
+            load_harness_agent_prompt(&root, &agent_name, AgentPromptHarness::Claude)
+                .unwrap_or_else(|| panic!("missing canonical Claude prompt for {agent_name}"));
         let (generated_frontmatter, generated_body) = split_frontmatter(&generated_markdown);
 
         assert_eq!(
-            legacy_frontmatter["name"].as_str(),
+            Some(
+                claude_metadata
+                    .frontmatter_name
+                    .as_deref()
+                    .unwrap_or(&definition.name),
+            ),
             generated_frontmatter["name"].as_str(),
-            "generated Claude name drifted for {agent_name}"
+            "generated Claude name drifted from canonical metadata for {agent_name}"
         );
         assert_eq!(
-            legacy_frontmatter["description"].as_str(),
+            definition.description.as_deref(),
             generated_frontmatter["description"].as_str(),
-            "generated Claude description drifted for {agent_name}"
+            "generated Claude description drifted from canonical definition for {agent_name}"
         );
         assert_eq!(
-            legacy_frontmatter["model"].as_str(),
+            get_agent_config(&agent_name)
+                .unwrap_or_else(|| panic!("missing runtime config for {agent_name}"))
+                .model
+                .as_deref(),
             generated_frontmatter["model"].as_str(),
-            "generated Claude model drifted for {agent_name}"
+            "generated Claude model drifted from runtime config for {agent_name}"
         );
         assert_eq!(
             expected_frontmatter_tools(&agent_name),
@@ -697,9 +687,9 @@ fn test_materialize_generated_plugin_dir_matches_legacy_frontmatter_semantics_fo
             "generated Claude mcpServers presence drifted from runtime config for {agent_name}"
         );
         assert_eq!(
-            legacy_body,
+            canonical_body,
             generated_body,
-            "generated Claude prompt body drifted for {agent_name}"
+            "generated Claude prompt body drifted from canonical source for {agent_name}"
         );
     }
 }

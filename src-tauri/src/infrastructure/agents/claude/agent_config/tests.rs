@@ -12,8 +12,10 @@ use crate::infrastructure::agents::claude::agent_names::{
     SHORT_PROJECT_ANALYZER, SHORT_QA_EXECUTOR, SHORT_QA_PREP, SHORT_REVIEWER, SHORT_REVIEW_CHAT,
     SHORT_REVIEW_HISTORY, SHORT_SESSION_NAMER, SHORT_SUPERVISOR, SHORT_WORKER, SHORT_WORKER_TEAM,
 };
+use crate::infrastructure::agents::harness_agent_catalog::{
+    has_canonical_agent_definition, load_harness_agent_prompt, AgentPromptHarness,
+};
 use std::collections::HashSet;
-use std::fs;
 
 #[test]
 fn test_yaml_loaded_has_unique_names() {
@@ -116,16 +118,23 @@ fn test_all_agent_names_are_known() {
 }
 
 #[test]
-fn test_all_system_prompt_files_exist() {
+fn test_all_live_runtime_agents_have_canonical_claude_prompts() {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
 
     for agent in agent_configs() {
-        let prompt_path = project_root.join(&agent.system_prompt_file);
+        if agent.name == SHORT_IDEATION_TEAM_MEMBER {
+            continue;
+        }
         assert!(
-            prompt_path.exists(),
-            "Missing system_prompt_file for {}: {}",
-            agent.name,
-            prompt_path.display()
+            has_canonical_agent_definition(&project_root, &agent.name),
+            "Missing canonical agent definition for {}",
+            agent.name
+        );
+        assert!(
+            load_harness_agent_prompt(&project_root, &agent.name, AgentPromptHarness::Claude)
+                .is_some(),
+            "Missing canonical Claude prompt for {}",
+            agent.name
         );
     }
 }
@@ -133,9 +142,9 @@ fn test_all_system_prompt_files_exist() {
 #[test]
 fn test_plan_verifier_prompt_includes_resumable_task_and_retry_context_rules() {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
-    let prompt_path = project_root.join("plugins/app/agents/plan-verifier.md");
-    let prompt = fs::read_to_string(&prompt_path)
-        .unwrap_or_else(|_| panic!("failed to read {}", prompt_path.display()));
+    let prompt =
+        load_harness_agent_prompt(&project_root, "plan-verifier", AgentPromptHarness::Claude)
+            .expect("failed to load canonical plan-verifier prompt");
 
     assert!(
         prompt.contains("Task `agentId` is resumable, not complete"),
@@ -154,9 +163,9 @@ fn test_plan_verifier_prompt_includes_resumable_task_and_retry_context_rules() {
 #[test]
 fn test_plan_verifier_prompt_uses_verification_round_artifact_helper() {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
-    let prompt_path = project_root.join("plugins/app/agents/plan-verifier.md");
-    let prompt = fs::read_to_string(&prompt_path)
-        .unwrap_or_else(|_| panic!("failed to read {}", prompt_path.display()));
+    let prompt =
+        load_harness_agent_prompt(&project_root, "plan-verifier", AgentPromptHarness::Claude)
+            .expect("failed to load canonical plan-verifier prompt");
 
     assert!(
         prompt.contains("mcp__ralphx__get_verification_round_artifacts"),
