@@ -9,13 +9,13 @@ Replace the current Claude-shaped agent prompt/config source of truth with a can
 In progress.
 
 Landed so far:
-- phase 1 pilot skeleton under `agents/` for `orchestrator-ideation`, `ideation-team-lead`, and `session-namer`
-- verification cohort canonicalized for Claude generation: `plan-verifier`, `plan-critic-completeness`, `plan-critic-implementation-feasibility`
-- specialist/debate cohort canonicalized as Claude-only agents: ideation specialists plus `ideation-advocate` / `ideation-critic`
-- worker team lead canonicalized as Claude-only under `agents/ralphx-worker-team/`; canonical-to-legacy prompt filename mapping is now explicit so runtime agent ids no longer need to match legacy markdown stems during migration
-- first cross-harness execution pair canonicalized: `ralphx-reviewer` + `ralphx-merger`
+- phase 1 pilot skeleton under `agents/` for `ralphx-ideation`, `ralphx-ideation-team-lead`, and `ralphx-utility-session-namer`
+- verification cohort canonicalized for Claude generation: `ralphx-plan-verifier`, `ralphx-plan-critic-completeness`, `ralphx-plan-critic-implementation-feasibility`
+- specialist/debate cohort canonicalized as Claude-only agents: ideation specialists plus `ralphx-ideation-advocate` / `ralphx-ideation-critic`
+- worker team lead canonicalized as Claude-only under `agents/ralphx-execution-team-lead/`; canonical-to-legacy prompt filename mapping is now explicit so runtime agent ids no longer need to match legacy markdown stems during migration
+- first cross-harness execution pair canonicalized: `ralphx-execution-reviewer` + `ralphx-execution-merger`
 - resolver-backed canonical prompt loading for migrated agents on the Codex path
-- `ideation-team-lead` intentionally remains Claude-only because Codex team mode is not supported; canonical agents without a Codex prompt no longer silently inherit the legacy Claude prompt
+- `ralphx-ideation-team-lead` intentionally remains Claude-only because Codex team mode is not supported; canonical agents without a Codex prompt no longer silently inherit the legacy Claude prompt
 - Claude runtime now materializes a generated plugin cache dir instead of reading authored prompt files directly from `plugins/app/agents`
 
 Tracker reference:
@@ -257,9 +257,9 @@ No runtime cutover yet.
 ## Phase 2: Ideation Pilot
 
 Migrate only:
-- `orchestrator-ideation`
-- `ideation-team-lead`
-- `session-namer`
+- `ralphx-ideation`
+- `ralphx-ideation-team-lead`
+- `ralphx-utility-session-namer`
 
 Reason:
 - they are the highest-value agents for current Codex/Claude divergence
@@ -269,7 +269,7 @@ Deliverables:
 - Codex uses Codex-native prompt files for these agents
 - Claude plugin assets for these agents are generated from canonical config
 - no Claude-only instructions remain in the Codex versions
-- `ideation-team-lead` stays Claude-only until Codex team mode exists
+- `ralphx-ideation-team-lead` stays Claude-only until Codex team mode exists
 
 ## Phase 3: Core Execution Agents
 
@@ -279,12 +279,12 @@ Migrate:
 - `worker`
 - `coder`
 - `review-chat`
-- `chat-task`
-- `chat-project`
+- `ralphx-chat-task`
+- `ralphx-chat-project`
 
 Start with the smaller cross-harness pilot:
-- `ralphx-reviewer`
-- `ralphx-merger`
+- `ralphx-execution-reviewer`
+- `ralphx-execution-merger`
 
 Requirements for that pair:
 - preserve Claude prompt bodies exactly through canonical `claude/prompt.md`
@@ -298,23 +298,23 @@ Requirements for that pair:
 
 Status:
 - landed
-- the next execution/user-facing cohort (`ralphx-worker`, `ralphx-coder`, `ralphx-review-chat`) is also landed
+- the next execution/user-facing cohort (`ralphx-execution-worker`, `ralphx-execution-coder`, `ralphx-review-chat`) is also landed
 
 Requirements that were enforced for the execution/user-facing cohort:
 - preserve existing Claude prompt bodies exactly through canonical `claude/prompt.md`
 - author real Codex prompt bodies for:
-  - `ralphx-worker`
-  - `ralphx-coder`
+  - `ralphx-execution-worker`
+  - `ralphx-execution-coder`
   - `ralphx-review-chat`
 - Codex prompt tests must reject Claude-only syntax and team/task registry assumptions
 - worker/coder Codex prompts should preserve the execution/re-execution/state/validation contract without assuming Claude `Task(...)` helpers
 
 Status:
-- the low-divergence chat assistant cohort (`chat-task`, `chat-project`) is landed as shared-prompt canonical agents
+- the low-divergence chat assistant cohort (`ralphx-chat-task`, `ralphx-chat-project`) is landed as shared-prompt canonical agents
 
 Shared-prompt agents:
-- `chat-task`
-- `chat-project`
+- `ralphx-chat-task`
+- `ralphx-chat-project`
 
 Requirements for the chat assistant cohort:
 - preserve existing Claude prompt bodies exactly through canonical `shared/prompt.md`
@@ -327,9 +327,9 @@ Next support/specialist candidates:
 
 Shared-prompt support cohort:
 - `ralphx-review-history`
-- `project-analyzer`
-- `memory-capture`
-- `memory-maintainer`
+- `ralphx-project-analyzer`
+- `ralphx-memory-capture`
+- `ralphx-memory-maintainer`
 
 Requirements for the support cohort:
 - preserve existing Claude prompt bodies exactly through canonical `shared/prompt.md`
@@ -337,9 +337,9 @@ Requirements for the support cohort:
 - Codex prompt tests must still reject Claude-only syntax
 
 Shared-prompt general cohort:
-- `ralphx-deep-researcher`
-- `ralphx-orchestrator`
-- `ralphx-supervisor`
+- `ralphx-research-deep-researcher`
+- `ralphx-execution-orchestrator`
+- `ralphx-execution-supervisor`
 - `ralphx-qa-prep`
 - `ralphx-qa-executor`
 
@@ -350,10 +350,10 @@ Requirements for the general cohort:
 
 Status:
 - landed
-- the only remaining live legacy runtime prompt is `orchestrator-ideation-readonly`
+- the only remaining live legacy runtime prompt is `ralphx-ideation-readonly`
 
 Final live runtime prompt:
-- `orchestrator-ideation-readonly`
+- `ralphx-ideation-readonly`
 
 Requirements for the readonly ideation agent:
 - preserve the existing Claude prompt body exactly through canonical `claude/prompt.md`
@@ -387,44 +387,44 @@ Remaining:
 
 ### Pilot
 
-- `orchestrator-ideation`
-- `ideation-team-lead`
-- `session-namer`
+- `ralphx-ideation`
+- `ralphx-ideation-team-lead`
+- `ralphx-utility-session-namer`
 
 ### Core User-Facing
 
-- `chat-task`
-- `chat-project`
+- `ralphx-chat-task`
+- `ralphx-chat-project`
 - `review-chat`
 - `review-history`
 
 ### Execution Pipeline
 
-- `ralphx-worker`
-- `ralphx-coder`
-- `ralphx-reviewer`
-- `ralphx-merger`
-- `ralphx-worker-team`
+- `ralphx-execution-worker`
+- `ralphx-execution-coder`
+- `ralphx-execution-reviewer`
+- `ralphx-execution-merger`
+- `ralphx-execution-team-lead`
 
 ### Verification / Debate
 
-- `plan-verifier`
-- `plan-critic-completeness`
-- `plan-critic-implementation-feasibility`
-- `ideation-advocate`
-- `ideation-critic`
+- `ralphx-plan-verifier`
+- `ralphx-plan-critic-completeness`
+- `ralphx-plan-critic-implementation-feasibility`
+- `ralphx-ideation-advocate`
+- `ralphx-ideation-critic`
 
 ### Specialists
 
-- `ideation-specialist-backend`
-- `ideation-specialist-frontend`
-- `ideation-specialist-infra`
-- `ideation-specialist-ux`
-- `ideation-specialist-code-quality`
-- `ideation-specialist-prompt-quality`
-- `ideation-specialist-intent`
-- `ideation-specialist-pipeline-safety`
-- `ideation-specialist-state-machine`
+- `ralphx-ideation-specialist-backend`
+- `ralphx-ideation-specialist-frontend`
+- `ralphx-ideation-specialist-infra`
+- `ralphx-ideation-specialist-ux`
+- `ralphx-ideation-specialist-code-quality`
+- `ralphx-ideation-specialist-prompt-quality`
+- `ralphx-ideation-specialist-intent`
+- `ralphx-ideation-specialist-pipeline-safety`
+- `ralphx-ideation-specialist-state-machine`
 
 ## Required Tests
 
@@ -508,8 +508,8 @@ Implement only:
 - tests for those 3 agents
 
 Pilot agents:
-- `orchestrator-ideation`
-- `ideation-team-lead`
-- `session-namer`
+- `ralphx-ideation`
+- `ralphx-ideation-team-lead`
+- `ralphx-utility-session-namer`
 
 That is the smallest slice that fixes the current Codex/Claude prompt coupling without forcing a repo-wide migration in one round.

@@ -83,7 +83,7 @@ async fn lane_row_with_claude_harness_overrides_legacy_model_and_effort() {
         .expect("subagent lane upsert should succeed");
 
     let resolved = resolve_agent_spawn_settings(
-        "orchestrator-ideation",
+        "ralphx-ideation",
         Some("proj-1"),
         ChatContextType::Ideation,
         None,
@@ -141,7 +141,7 @@ async fn missing_lane_row_falls_back_to_legacy_ideation_settings() {
         .expect("legacy project effort seed should succeed");
 
     let resolved = resolve_agent_spawn_settings(
-        "orchestrator-ideation",
+        "ralphx-ideation",
         Some("proj-2"),
         ChatContextType::Ideation,
         None,
@@ -159,6 +159,55 @@ async fn missing_lane_row_falls_back_to_legacy_ideation_settings() {
     assert_eq!(resolved.logical_effort, Some(LogicalEffort::High));
     assert_eq!(resolved.claude_effort.as_deref(), Some("high"));
     assert_eq!(resolved.subagent_model_cap.as_deref(), Some("haiku"));
+}
+
+#[tokio::test]
+async fn legacy_ideation_agent_aliases_still_resolve_legacy_buckets() {
+    let lane_repo: Arc<dyn AgentLaneSettingsRepository> =
+        Arc::new(MemoryAgentLaneSettingsRepository::new());
+    let model_repo: Arc<dyn IdeationModelSettingsRepository> =
+        Arc::new(MemoryIdeationModelSettingsRepository::new());
+    let effort_repo: Arc<dyn IdeationEffortSettingsRepository> =
+        Arc::new(MemoryIdeationEffortSettingsRepository::new());
+
+    model_repo
+        .upsert_global("opus", "haiku", "sonnet", "haiku")
+        .await
+        .expect("legacy model seed should succeed");
+    effort_repo
+        .upsert(None, "high", "medium")
+        .await
+        .expect("legacy effort seed should succeed");
+
+    let primary = resolve_agent_spawn_settings(
+        "orchestrator-ideation",
+        None,
+        ChatContextType::Ideation,
+        None,
+        None,
+        None,
+        Some(&lane_repo),
+        Some(&model_repo),
+        Some(&effort_repo),
+    )
+    .await;
+    assert_eq!(primary.model, "opus");
+    assert_eq!(primary.logical_effort, Some(LogicalEffort::High));
+
+    let verifier = resolve_agent_spawn_settings(
+        "plan-verifier",
+        None,
+        ChatContextType::Ideation,
+        None,
+        None,
+        None,
+        Some(&lane_repo),
+        Some(&model_repo),
+        Some(&effort_repo),
+    )
+    .await;
+    assert_eq!(verifier.model, "haiku");
+    assert_eq!(verifier.logical_effort, Some(LogicalEffort::Medium));
 }
 
 #[tokio::test]
@@ -194,7 +243,7 @@ async fn claude_lane_without_model_or_effort_still_falls_back_to_legacy_settings
         .expect("claude lane upsert should succeed");
 
     let resolved = resolve_agent_spawn_settings(
-        "orchestrator-ideation",
+        "ralphx-ideation",
         None,
         ChatContextType::Ideation,
         None,
@@ -257,7 +306,7 @@ async fn codex_lane_selection_uses_codex_lane_settings() {
         .expect("codex subagent lane upsert should succeed");
 
     let resolved = resolve_agent_spawn_settings(
-        "orchestrator-ideation",
+        "ralphx-ideation",
         None,
         ChatContextType::Ideation,
         None,
@@ -330,7 +379,7 @@ async fn codex_primary_lane_without_model_or_effort_uses_phase1_defaults() {
         .expect("codex lane upsert should succeed");
 
     let resolved = resolve_agent_spawn_settings(
-        "orchestrator-ideation",
+        "ralphx-ideation",
         None,
         ChatContextType::Ideation,
         None,
@@ -384,7 +433,7 @@ async fn codex_verifier_lane_without_model_or_effort_uses_phase1_defaults() {
         .expect("verifier codex lane upsert should succeed");
 
     let resolved = resolve_agent_spawn_settings(
-        "plan-verifier",
+        "ralphx-plan-verifier",
         None,
         ChatContextType::Ideation,
         None,
@@ -437,7 +486,7 @@ async fn verifier_and_primary_subagent_caps_use_lane_rows_when_claude_is_selecte
         .expect("verifier subagent lane upsert should succeed");
 
     let verifier = resolve_agent_spawn_settings(
-        "plan-verifier",
+        "ralphx-plan-verifier",
         None,
         ChatContextType::Ideation,
         None,

@@ -610,7 +610,7 @@ RalphX currently has no single “agent harness settings” model. Different are
 
 Current state:
 
-- YAML agent config via `ralphx.yaml` agent entries such as `orchestrator-ideation`
+- YAML agent config via `ralphx.yaml` agent entries such as `ralphx-ideation`
 - DB project/global row in `ideation_model_settings.primary_model`
 - DB project/global row in `ideation_effort_settings.primary_effort`
 - last run capture in `ideation_sessions.last_effective_model`
@@ -631,7 +631,7 @@ Required Codex parity:
 
 Current state:
 
-- YAML agent config for `plan-verifier`
+- YAML agent config for `ralphx-plan-verifier`
 - DB row in `ideation_model_settings.verifier_model`
 - DB row in `ideation_effort_settings.verifier_effort`
 - UI in the same ideation settings section

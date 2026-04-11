@@ -79,9 +79,9 @@ pub(super) fn map_app_err(e: AppError) -> HttpError {
 /// inside the synchronous spawn_blocking closure of db.run().
 /// Accepts TOCTOU trade-off (single-user context, self-healing on process exit).
 ///
-/// SIMPLIFICATION: plan-verifier agents are autonomous (no stdin pipes) and do NOT
+/// SIMPLIFICATION: ralphx-plan-verifier agents are autonomous (no stdin pipes) and do NOT
 /// register in InteractiveProcessRegistry. Therefore is_generating = is_running.
-/// This was verified during implementation: plan-verifier agents spawn via
+/// This was verified during implementation: ralphx-plan-verifier agents spawn via
 /// ChatService::send_message() which registers only in RunningAgentRegistry.
 ///
 /// TRUST MODEL: caller_session_id is cooperative/protocol-based only. :3847 is

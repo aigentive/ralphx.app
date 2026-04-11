@@ -1,6 +1,8 @@
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
+use crate::infrastructure::agents::claude::canonical_short_agent_name;
+
 const CANONICAL_AGENTS_DIR: &str = "agents";
 const PROMPT_FILE_NAME: &str = "prompt.md";
 const AGENT_FILE_NAME: &str = "agent.yaml";
@@ -44,9 +46,7 @@ impl AgentPromptHarness {
 }
 
 fn canonical_agent_name(agent_name: &str) -> &str {
-    agent_name
-        .strip_prefix("ralphx:")
-        .unwrap_or(agent_name)
+    canonical_short_agent_name(agent_name)
 }
 
 fn canonical_agent_root(project_root: &Path, agent_name: &str) -> PathBuf {

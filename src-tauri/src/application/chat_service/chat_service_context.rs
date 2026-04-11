@@ -2063,7 +2063,7 @@ pub async fn get_entity_status_for_resume(
                 None
             }
         }
-        // Ideation context: check purpose first (Verification sessions → plan-verifier agent)
+        // Ideation context: check purpose first (Verification sessions → ralphx-plan-verifier agent)
         // then fall back to status for accepted/readonly routing
         ChatContextType::Ideation => {
             let session_id = IdeationSessionId::from_string(context_id);

@@ -1,4 +1,4 @@
-// Ideation tool handlers for MCP orchestrator-ideation agent
+// Ideation tool handlers for MCP ralphx-ideation agent
 
 use axum::{http::StatusCode, Json};
 

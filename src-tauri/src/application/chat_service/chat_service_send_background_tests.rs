@@ -349,7 +349,7 @@ async fn verification_child_session_not_auto_archived_at_callsite() {
     let repo = Arc::new(MemoryIdeationSessionRepository::new());
     let project_id = ProjectId::new();
 
-    // Create a verification child session (simulates a plan-verifier child agent)
+    // Create a verification child session (simulates a ralphx-plan-verifier child agent)
     let session = IdeationSession::builder()
         .project_id(project_id)
         .session_purpose(SessionPurpose::Verification)

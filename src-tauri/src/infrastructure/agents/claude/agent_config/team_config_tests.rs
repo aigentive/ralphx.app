@@ -37,19 +37,19 @@ fn test_model_within_cap_case_insensitive() {
 #[test]
 fn test_process_slot_deserialize_with_variants() {
     let yaml = r#"
-default: ralphx-worker
-team: ralphx-worker-team
+default: ralphx-execution-worker
+team: ralphx-execution-team-lead
 "#;
     let slot: ProcessSlot = serde_yaml::from_str(yaml).unwrap();
-    assert_eq!(slot.default, "ralphx-worker");
-    assert_eq!(slot.variants.get("team").unwrap(), "ralphx-worker-team");
+    assert_eq!(slot.default, "ralphx-execution-worker");
+    assert_eq!(slot.variants.get("team").unwrap(), "ralphx-execution-team-lead");
 }
 
 #[test]
 fn test_process_slot_deserialize_default_only() {
-    let yaml = "default: ralphx-merger\n";
+    let yaml = "default: ralphx-execution-merger\n";
     let slot: ProcessSlot = serde_yaml::from_str(yaml).unwrap();
-    assert_eq!(slot.default, "ralphx-merger");
+    assert_eq!(slot.default, "ralphx-execution-merger");
     assert!(slot.variants.is_empty());
 }
 
@@ -59,24 +59,24 @@ fn test_process_slot_deserialize_default_only() {
 fn test_process_mapping_deserialize_full() {
     let yaml = r#"
 ideation:
-  default: orchestrator-ideation
-  readonly: orchestrator-ideation-readonly
-  team: ideation-team-lead
+  default: ralphx-ideation
+  readonly: ralphx-ideation-readonly
+  team: ralphx-ideation-team-lead
 execution:
-  default: ralphx-worker
-  team: ralphx-worker-team
+  default: ralphx-execution-worker
+  team: ralphx-execution-team-lead
 merge:
-  default: ralphx-merger
+  default: ralphx-execution-merger
 "#;
     let mapping: ProcessMapping = serde_yaml::from_str(yaml).unwrap();
     assert_eq!(mapping.slots.len(), 3);
-    assert_eq!(mapping.slots["ideation"].default, "orchestrator-ideation");
+    assert_eq!(mapping.slots["ideation"].default, "ralphx-ideation");
     assert_eq!(
         mapping.slots["ideation"].variants.get("team").unwrap(),
-        "ideation-team-lead"
+        "ralphx-ideation-team-lead"
     );
-    assert_eq!(mapping.slots["execution"].default, "ralphx-worker");
-    assert_eq!(mapping.slots["merge"].default, "ralphx-merger");
+    assert_eq!(mapping.slots["execution"].default, "ralphx-execution-worker");
+    assert_eq!(mapping.slots["merge"].default, "ralphx-execution-merger");
 }
 
 #[test]
@@ -108,7 +108,7 @@ allowed_tools: [Read, Write, Edit]
 allowed_mcp_tools: [get_task_context]
 model_cap: opus
 mode: constrained
-presets: [ralphx-coder, ralphx-reviewer]
+presets: [ralphx-execution-coder, ralphx-execution-reviewer]
 timeout_minutes: 45
 budget_limit: 10.50
 "#;
@@ -118,7 +118,7 @@ budget_limit: 10.50
     assert_eq!(tc.allowed_mcp_tools, vec!["get_task_context"]);
     assert_eq!(tc.model_cap, "opus");
     assert_eq!(tc.mode, TeamMode::Constrained);
-    assert_eq!(tc.presets, vec!["ralphx-coder", "ralphx-reviewer"]);
+    assert_eq!(tc.presets, vec!["ralphx-execution-coder", "ralphx-execution-reviewer"]);
     assert_eq!(tc.timeout_minutes, 45);
     assert_eq!(tc.budget_limit, Some(10.50));
 }
@@ -152,7 +152,7 @@ execution:
 review:
   max_teammates: 2
   mode: constrained
-  presets: [ralphx-reviewer]
+  presets: [ralphx-execution-reviewer]
 "#;
     let config: TeamConstraintsConfig = serde_yaml::from_str(yaml).unwrap();
     assert!(config.defaults.is_some());
@@ -255,21 +255,21 @@ fn test_merge_constraints_empty_specific_tools_inherits_defaults() {
 fn test_resolve_process_agent_default_variant() {
     let mapping = build_test_mapping();
     let agent = resolve_process_agent(&mapping, "execution", "default");
-    assert_eq!(agent, Some("ralphx-worker".to_string()));
+    assert_eq!(agent, Some("ralphx-execution-worker".to_string()));
 }
 
 #[test]
 fn test_resolve_process_agent_team_variant() {
     let mapping = build_test_mapping();
     let agent = resolve_process_agent(&mapping, "execution", "team");
-    assert_eq!(agent, Some("ralphx-worker-team".to_string()));
+    assert_eq!(agent, Some("ralphx-execution-team-lead".to_string()));
 }
 
 #[test]
 fn test_resolve_process_agent_unknown_variant_falls_back_to_default() {
     let mapping = build_test_mapping();
     let agent = resolve_process_agent(&mapping, "execution", "nonexistent");
-    assert_eq!(agent, Some("ralphx-worker".to_string()));
+    assert_eq!(agent, Some("ralphx-execution-worker".to_string()));
 }
 
 #[test]
@@ -443,12 +443,12 @@ fn test_validate_team_plan_constrained_valid_preset() {
     let constraints = TeamConstraints {
         max_teammates: 3,
         mode: TeamMode::Constrained,
-        presets: vec!["ralphx-coder".to_string(), "ralphx-reviewer".to_string()],
+        presets: vec!["ralphx-execution-coder".to_string(), "ralphx-execution-reviewer".to_string()],
         ..TeamConstraints::default()
     };
     let teammates = vec![TeammateSpawnRequest {
         role: "coder".to_string(),
-        preset: Some("ralphx-coder".to_string()),
+        preset: Some("ralphx-execution-coder".to_string()),
         ..default_spawn_request()
     }];
     let plan = validate_team_plan(&constraints, "execution", &teammates).unwrap();
@@ -460,7 +460,7 @@ fn test_validate_team_plan_constrained_no_preset_fails() {
     let constraints = TeamConstraints {
         max_teammates: 3,
         mode: TeamMode::Constrained,
-        presets: vec!["ralphx-coder".to_string()],
+        presets: vec!["ralphx-execution-coder".to_string()],
         ..TeamConstraints::default()
     };
     let teammates = vec![TeammateSpawnRequest {
@@ -482,7 +482,7 @@ fn test_validate_team_plan_constrained_unknown_preset_fails() {
     let constraints = TeamConstraints {
         max_teammates: 3,
         mode: TeamMode::Constrained,
-        presets: vec!["ralphx-coder".to_string()],
+        presets: vec!["ralphx-execution-coder".to_string()],
         ..TeamConstraints::default()
     };
     let teammates = vec![TeammateSpawnRequest {
@@ -495,7 +495,7 @@ fn test_validate_team_plan_constrained_unknown_preset_fails() {
         err,
         TeamConstraintError::AgentNotInPresets {
             agent: "unknown-agent".to_string(),
-            allowed: vec!["ralphx-coder".to_string()],
+            allowed: vec!["ralphx-execution-coder".to_string()],
         }
     );
 }
@@ -721,25 +721,25 @@ fn test_validate_child_team_config_intersects_allowed_mcp_tools() {
 #[test]
 fn test_validate_child_team_config_intersects_presets() {
     let resolved = TeamConstraints {
-        presets: vec!["ralphx-coder".to_string(), "ralphx-reviewer".to_string()],
+        presets: vec!["ralphx-execution-coder".to_string(), "ralphx-execution-reviewer".to_string()],
         ..TeamConstraints::default()
     };
     let ceiling = TeamConstraints {
-        presets: vec!["ralphx-coder".to_string()],
+        presets: vec!["ralphx-execution-coder".to_string()],
         ..TeamConstraints::default()
     };
     let capped = validate_child_team_config(&resolved, &ceiling);
-    assert_eq!(capped.presets, vec!["ralphx-coder"]);
+    assert_eq!(capped.presets, vec!["ralphx-execution-coder"]);
 }
 
 #[test]
 fn test_validate_child_team_config_presets_no_intersection() {
     let resolved = TeamConstraints {
-        presets: vec!["ralphx-reviewer".to_string()],
+        presets: vec!["ralphx-execution-reviewer".to_string()],
         ..TeamConstraints::default()
     };
     let ceiling = TeamConstraints {
-        presets: vec!["ralphx-coder".to_string()],
+        presets: vec!["ralphx-execution-coder".to_string()],
         ..TeamConstraints::default()
     };
     let capped = validate_child_team_config(&resolved, &ceiling);
@@ -842,7 +842,7 @@ fn test_validate_child_team_config_all_fields_capped() {
         allowed_mcp_tools: vec!["get_task_context".to_string(), "start_step".to_string()],
         model_cap: "opus".to_string(),
         mode: TeamMode::Dynamic,
-        presets: vec!["ralphx-coder".to_string(), "ralphx-reviewer".to_string()],
+        presets: vec!["ralphx-execution-coder".to_string(), "ralphx-execution-reviewer".to_string()],
         timeout_minutes: 60,
         budget_limit: Some(100.0),
         auto_approve: Some(true),
@@ -853,7 +853,7 @@ fn test_validate_child_team_config_all_fields_capped() {
         allowed_mcp_tools: vec!["get_task_context".to_string()],
         model_cap: "sonnet".to_string(),
         mode: TeamMode::Constrained,
-        presets: vec!["ralphx-coder".to_string()],
+        presets: vec!["ralphx-execution-coder".to_string()],
         timeout_minutes: 30,
         budget_limit: Some(25.0),
         auto_approve: Some(false),
@@ -866,7 +866,7 @@ fn test_validate_child_team_config_all_fields_capped() {
     assert_eq!(capped.model_cap, "sonnet");
     // mode is NOT capped - it's inherited from resolved
     assert_eq!(capped.mode, TeamMode::Dynamic);
-    assert_eq!(capped.presets, vec!["ralphx-coder"]);
+    assert_eq!(capped.presets, vec!["ralphx-execution-coder"]);
     assert_eq!(capped.timeout_minutes, 30);
     assert_eq!(capped.budget_limit, Some(25.0));
     // auto_approve is inherited from ceiling (parent controls)
@@ -900,14 +900,14 @@ fn test_full_yaml_roundtrip() {
     let yaml = r#"
 process_mapping:
   ideation:
-    default: orchestrator-ideation
-    readonly: orchestrator-ideation-readonly
-    team: ideation-team-lead
+    default: ralphx-ideation
+    readonly: ralphx-ideation-readonly
+    team: ralphx-ideation-team-lead
   execution:
-    default: ralphx-worker
-    team: ralphx-worker-team
+    default: ralphx-execution-worker
+    team: ralphx-execution-team-lead
   merge:
-    default: ralphx-merger
+    default: ralphx-execution-merger
 
 team_constraints:
   _defaults:
@@ -921,12 +921,12 @@ team_constraints:
     allowed_mcp_tools: [get_task_context, start_step]
     model_cap: sonnet
     mode: dynamic
-    presets: [ralphx-coder]
+    presets: [ralphx-execution-coder]
     timeout_minutes: 30
   review:
     max_teammates: 2
     mode: constrained
-    presets: [ralphx-reviewer]
+    presets: [ralphx-execution-reviewer]
 "#;
 
     #[derive(Debug, Deserialize)]
@@ -942,11 +942,11 @@ team_constraints:
     // Process mapping
     assert_eq!(config.process_mapping.slots.len(), 3);
     let ideation = &config.process_mapping.slots["ideation"];
-    assert_eq!(ideation.default, "orchestrator-ideation");
-    assert_eq!(ideation.variants.get("team").unwrap(), "ideation-team-lead");
+    assert_eq!(ideation.default, "ralphx-ideation");
+    assert_eq!(ideation.variants.get("team").unwrap(), "ralphx-ideation-team-lead");
     assert_eq!(
         ideation.variants.get("readonly").unwrap(),
-        "orchestrator-ideation-readonly"
+        "ralphx-ideation-readonly"
     );
 
     // Team constraints
@@ -975,11 +975,11 @@ team_constraints:
     // Process agent resolution
     assert_eq!(
         resolve_process_agent(&config.process_mapping, "execution", "team"),
-        Some("ralphx-worker-team".to_string())
+        Some("ralphx-execution-team-lead".to_string())
     );
     assert_eq!(
         resolve_process_agent(&config.process_mapping, "execution", "default"),
-        Some("ralphx-worker".to_string())
+        Some("ralphx-execution-worker".to_string())
     );
 }
 
@@ -1104,10 +1104,10 @@ fn build_test_mapping() -> ProcessMapping {
     slots.insert(
         "execution".to_string(),
         ProcessSlot {
-            default: "ralphx-worker".to_string(),
+            default: "ralphx-execution-worker".to_string(),
             variants: {
                 let mut v = HashMap::new();
-                v.insert("team".to_string(), "ralphx-worker-team".to_string());
+                v.insert("team".to_string(), "ralphx-execution-team-lead".to_string());
                 v
             },
         },
@@ -1115,13 +1115,13 @@ fn build_test_mapping() -> ProcessMapping {
     slots.insert(
         "ideation".to_string(),
         ProcessSlot {
-            default: "orchestrator-ideation".to_string(),
+            default: "ralphx-ideation".to_string(),
             variants: {
                 let mut v = HashMap::new();
-                v.insert("team".to_string(), "ideation-team-lead".to_string());
+                v.insert("team".to_string(), "ralphx-ideation-team-lead".to_string());
                 v.insert(
                     "readonly".to_string(),
-                    "orchestrator-ideation-readonly".to_string(),
+                    "ralphx-ideation-readonly".to_string(),
                 );
                 v
             },

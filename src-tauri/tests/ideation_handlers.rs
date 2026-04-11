@@ -1704,7 +1704,7 @@ async fn test_max_rounds_exit_behavior() {
 
 /// Re-verify: Verified → Reviewing returns 200.
 ///
-/// A plan-verifier agent must be able to restart verification on a session
+/// A ralphx-plan-verifier agent must be able to restart verification on a session
 /// that was previously verified. The Verified → Reviewing transition must
 /// be allowed and return 200 with status="reviewing".
 #[tokio::test]
@@ -2211,7 +2211,7 @@ async fn test_verified_to_skipped_still_allowed() {
 
 /// Full re-verify flow: reach Verified, re-verify, new gaps replace old gaps.
 ///
-/// End-to-end test simulating the plan-verifier agent's second run:
+/// End-to-end test simulating the ralphx-plan-verifier agent's second run:
 /// 1. Session is at Verified with stale gaps from prior run.
 /// 2. Re-verify transition clears metadata and increments generation.
 /// 3. First round of new verification (needs_revision with new gaps) succeeds.

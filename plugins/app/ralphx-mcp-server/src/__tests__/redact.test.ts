@@ -168,7 +168,7 @@ describe("safeTrace — file logging", () => {
   it("writes redacted trace records to the configured trace dir", () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralphx-mcp-trace-"));
     process.env.RALPHX_MCP_TRACE_DIR = tempDir;
-    process.env.RALPHX_AGENT_TYPE = "orchestrator-ideation";
+    process.env.RALPHX_AGENT_TYPE = "ralphx-ideation";
     process.env.RALPHX_CONTEXT_TYPE = "ideation";
     process.env.RALPHX_CONTEXT_ID = "session-123";
 

@@ -4,15 +4,15 @@
 
 ## Problem
 
-User reported critics (`plan-critic-completeness`, `plan-critic-implementation-feasibility`) making code changes during auto-verification, crashing the app. Critics have `disallowedTools: [Write, Edit, NotebookEdit, Bash]` in their YAML definitions, but this wasn't enforced.
+User reported critics (`ralphx-plan-critic-completeness`, `ralphx-plan-critic-implementation-feasibility`) making code changes during auto-verification, crashing the app. Critics have `disallowedTools: [Write, Edit, NotebookEdit, Bash]` in their YAML definitions, but this wasn't enforced.
 
 ## Root Cause
 
 ### Spawn chain
 ```
 ClaudeChatService.send_message()
-  → spawns orchestrator-ideation (main Claude process)
-    → orchestrator calls Task(ralphx:plan-critic-completeness)
+  → spawns ralphx-ideation (main Claude process)
+    → orchestrator calls Task(ralphx:ralphx-plan-critic-completeness)
       → critic runs as subagent
 ```
 
@@ -26,7 +26,7 @@ ClaudeChatService.send_message()
 
 ### Failure path
 
-If the `orchestrator-ideation` subprocess was spawned without `--plugin-dir ./plugins/app`, the `ralphx:plan-critic-completeness` agent type cannot be resolved. The critic falls back to a general-purpose agent inheriting the orchestrator's full toolset (which has no Write/Edit restrictions at the process level if `bypassPermissions` is set).
+If the `ralphx-ideation` subprocess was spawned without `--plugin-dir ./plugins/app`, the `ralphx:ralphx-plan-critic-completeness` agent type cannot be resolved. The critic falls back to a general-purpose agent inheriting the orchestrator's full toolset (which has no Write/Edit restrictions at the process level if `bypassPermissions` is set).
 
 ## Fix Applied
 
@@ -40,8 +40,8 @@ or codebase. You are a pure analysis agent.
 ```
 
 Files modified:
-- `agents/plan-critic-completeness/claude/prompt.md`
-- `agents/plan-critic-implementation-feasibility/claude/prompt.md`
+- `agents/ralphx-plan-critic-completeness/claude/prompt.md`
+- `agents/ralphx-plan-critic-implementation-feasibility/claude/prompt.md`
 
 ## Defense-in-Depth Status
 

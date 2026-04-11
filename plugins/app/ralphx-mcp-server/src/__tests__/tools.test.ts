@@ -178,7 +178,7 @@ describe('getFilteredTools', () => {
     delete process.env.RALPHX_ALLOWED_MCP_TOOLS;
   });
 
-  it('should return correct tool set for ideation-team-lead', () => {
+  it('should return correct tool set for ralphx-ideation-team-lead', () => {
     setAgentType(IDEATION_TEAM_LEAD);
     const tools = getFilteredTools();
     const toolNames = tools.map((t) => t.name);
@@ -247,8 +247,8 @@ describe('getFilteredTools', () => {
     expect(tools.length).toBe(TOOL_ALLOWLIST[WORKER_TEAM_MEMBER].length);
   });
 
-  it('should scope plan-verifier to the narrower verification helpers', () => {
-    setAgentType('plan-verifier');
+  it('should scope ralphx-plan-verifier to the narrower verification helpers', () => {
+    setAgentType('ralphx-plan-verifier');
     const tools = getFilteredTools();
     const toolNames = tools.map((t) => t.name);
 
@@ -622,7 +622,7 @@ describe('New team tool definitions', () => {
 });
 
 describe('Tool allowlist for new agent types', () => {
-  it('ideation-team-lead should have all team coordination tools', () => {
+  it('ralphx-ideation-team-lead should have all team coordination tools', () => {
     const allowlist = TOOL_ALLOWLIST[IDEATION_TEAM_LEAD];
     expect(allowlist).toContain('request_team_plan');
     expect(allowlist).toContain('request_teammate_spawn');
@@ -797,25 +797,25 @@ describe('delete_task_proposal tool', () => {
     expect(tool?.inputSchema.required).toContain('proposal_id');
   });
 
-  it('should be in TOOL_ALLOWLIST for orchestrator-ideation', () => {
+  it('should be in TOOL_ALLOWLIST for ralphx-ideation', () => {
     expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION]).toContain('delete_task_proposal');
   });
 
-  it('should be in TOOL_ALLOWLIST for ideation-team-lead', () => {
+  it('should be in TOOL_ALLOWLIST for ralphx-ideation-team-lead', () => {
     expect(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]).toContain('delete_task_proposal');
   });
 
-  it('should NOT be in TOOL_ALLOWLIST for orchestrator-ideation-readonly', () => {
+  it('should NOT be in TOOL_ALLOWLIST for ralphx-ideation-readonly', () => {
     expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).not.toContain('delete_task_proposal');
   });
 
-  it('should be returned by getFilteredTools for orchestrator-ideation', () => {
+  it('should be returned by getFilteredTools for ralphx-ideation', () => {
     setAgentType(ORCHESTRATOR_IDEATION);
     const toolNames = getFilteredTools().map((t) => t.name);
     expect(toolNames).toContain('delete_task_proposal');
   });
 
-  it('should be returned by getFilteredTools for ideation-team-lead', () => {
+  it('should be returned by getFilteredTools for ralphx-ideation-team-lead', () => {
     setAgentType(IDEATION_TEAM_LEAD);
     const toolNames = getFilteredTools().map((t) => t.name);
     expect(toolNames).toContain('delete_task_proposal');
@@ -843,25 +843,25 @@ describe('revert_and_skip tool', () => {
     expect(tool?.inputSchema.required).toContain('plan_version_to_restore');
   });
 
-  it('should be in TOOL_ALLOWLIST for orchestrator-ideation', () => {
+  it('should be in TOOL_ALLOWLIST for ralphx-ideation', () => {
     expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION]).toContain('revert_and_skip');
   });
 
-  it('should be in TOOL_ALLOWLIST for ideation-team-lead', () => {
+  it('should be in TOOL_ALLOWLIST for ralphx-ideation-team-lead', () => {
     expect(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]).toContain('revert_and_skip');
   });
 
-  it('should NOT be in TOOL_ALLOWLIST for orchestrator-ideation-readonly', () => {
+  it('should NOT be in TOOL_ALLOWLIST for ralphx-ideation-readonly', () => {
     expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).not.toContain('revert_and_skip');
   });
 
-  it('should be returned by getFilteredTools for orchestrator-ideation', () => {
+  it('should be returned by getFilteredTools for ralphx-ideation', () => {
     setAgentType(ORCHESTRATOR_IDEATION);
     const toolNames = getFilteredTools().map((t) => t.name);
     expect(toolNames).toContain('revert_and_skip');
   });
 
-  it('should be returned by getFilteredTools for ideation-team-lead', () => {
+  it('should be returned by getFilteredTools for ralphx-ideation-team-lead', () => {
     setAgentType(IDEATION_TEAM_LEAD);
     const toolNames = getFilteredTools().map((t) => t.name);
     expect(toolNames).toContain('revert_and_skip');
@@ -889,25 +889,25 @@ describe('acceptance gate tools', () => {
       expect(tool?.inputSchema.required).toContain('session_id');
     });
 
-    it('should be in TOOL_ALLOWLIST for orchestrator-ideation', () => {
+    it('should be in TOOL_ALLOWLIST for ralphx-ideation', () => {
       expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION]).toContain('get_acceptance_status');
     });
 
-    it('should be in TOOL_ALLOWLIST for ideation-team-lead', () => {
+    it('should be in TOOL_ALLOWLIST for ralphx-ideation-team-lead', () => {
       expect(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]).toContain('get_acceptance_status');
     });
 
-    it('should NOT be in TOOL_ALLOWLIST for orchestrator-ideation-readonly', () => {
+    it('should NOT be in TOOL_ALLOWLIST for ralphx-ideation-readonly', () => {
       expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).not.toContain('get_acceptance_status');
     });
 
-    it('should be returned by getFilteredTools for orchestrator-ideation', () => {
+    it('should be returned by getFilteredTools for ralphx-ideation', () => {
       setAgentType(ORCHESTRATOR_IDEATION);
       const toolNames = getFilteredTools().map((t) => t.name);
       expect(toolNames).toContain('get_acceptance_status');
     });
 
-    it('should be returned by getFilteredTools for ideation-team-lead', () => {
+    it('should be returned by getFilteredTools for ralphx-ideation-team-lead', () => {
       setAgentType(IDEATION_TEAM_LEAD);
       const toolNames = getFilteredTools().map((t) => t.name);
       expect(toolNames).toContain('get_acceptance_status');
@@ -927,25 +927,25 @@ describe('acceptance gate tools', () => {
       expect(tool?.inputSchema.required).toEqual([]);
     });
 
-    it('should be in TOOL_ALLOWLIST for orchestrator-ideation', () => {
+    it('should be in TOOL_ALLOWLIST for ralphx-ideation', () => {
       expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION]).toContain('get_pending_confirmations');
     });
 
-    it('should be in TOOL_ALLOWLIST for ideation-team-lead', () => {
+    it('should be in TOOL_ALLOWLIST for ralphx-ideation-team-lead', () => {
       expect(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]).toContain('get_pending_confirmations');
     });
 
-    it('should NOT be in TOOL_ALLOWLIST for orchestrator-ideation-readonly', () => {
+    it('should NOT be in TOOL_ALLOWLIST for ralphx-ideation-readonly', () => {
       expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).not.toContain('get_pending_confirmations');
     });
 
-    it('should be returned by getFilteredTools for orchestrator-ideation', () => {
+    it('should be returned by getFilteredTools for ralphx-ideation', () => {
       setAgentType(ORCHESTRATOR_IDEATION);
       const toolNames = getFilteredTools().map((t) => t.name);
       expect(toolNames).toContain('get_pending_confirmations');
     });
 
-    it('should be returned by getFilteredTools for ideation-team-lead', () => {
+    it('should be returned by getFilteredTools for ralphx-ideation-team-lead', () => {
       setAgentType(IDEATION_TEAM_LEAD);
       const toolNames = getFilteredTools().map((t) => t.name);
       expect(toolNames).toContain('get_pending_confirmations');

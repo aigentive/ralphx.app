@@ -34,7 +34,7 @@ fn test_resolve_agent_ideation_accepted_returns_readonly() {
 
 #[test]
 fn test_resolve_agent_ideation_verification_returns_plan_verifier() {
-    // Verification sessions route to plan-verifier (prevents infinite cascade)
+    // Verification sessions route to ralphx-plan-verifier (prevents infinite cascade)
     let agent = resolve_agent(&ChatContextType::Ideation, Some("verification"));
     assert_eq!(agent, AGENT_PLAN_VERIFIER);
 }

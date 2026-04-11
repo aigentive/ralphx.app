@@ -34,8 +34,8 @@ fn default_timeout() -> u32 {
 ///
 /// ```yaml
 /// execution:
-///   default: ralphx-worker
-///   team: ralphx-worker-team
+///   default: ralphx-execution-worker
+///   team: ralphx-execution-team-lead
 /// ```
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct ProcessSlot {
@@ -49,11 +49,11 @@ pub struct ProcessSlot {
 /// ```yaml
 /// process_mapping:
 ///   ideation:
-///     default: orchestrator-ideation
-///     team: ideation-team-lead
+///     default: ralphx-ideation
+///     team: ralphx-ideation-team-lead
 ///   execution:
-///     default: ralphx-worker
-///     team: ralphx-worker-team
+///     default: ralphx-execution-worker
+///     team: ralphx-execution-team-lead
 /// ```
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct ProcessMapping {

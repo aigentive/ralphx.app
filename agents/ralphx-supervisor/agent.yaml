@@ -1,3 +1,0 @@
-name: ralphx-supervisor
-role: supervisor
-description: "Monitors task execution and intervenes when problems occur"

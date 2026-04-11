@@ -194,10 +194,10 @@ Each stage of the pipeline uses a specialized agent:
 
 | Agent | Stage | Role |
 |-------|-------|------|
-| orchestrator-ideation | Ideation | Researches codebase, produces implementation plan |
-| ralphx-worker | Execution | Decomposes task into sub-scopes, delegates to coders |
-| ralphx-coder | Execution | Implements a single file-scoped sub-task |
-| ralphx-reviewer | Review | Analyzes code quality; recommends approve or changes |
+| ralphx-ideation | Ideation | Researches codebase, produces implementation plan |
+| ralphx-execution-worker | Execution | Decomposes task into sub-scopes, delegates to coders |
+| ralphx-execution-coder | Execution | Implements a single file-scoped sub-task |
+| ralphx-execution-reviewer | Review | Analyzes code quality; recommends approve or changes |
 | merger | Merge | Resolves git conflicts if programmatic merge fails |
 
 Agents run via the configured harness for each lane. Claude is still the default runtime for the broadest feature coverage, while Codex can be selected for supported lanes. See [Agent Harnesses](agent-harnesses.md).

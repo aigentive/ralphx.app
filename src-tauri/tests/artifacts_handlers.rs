@@ -2275,7 +2275,7 @@ async fn test_edit_plan_artifact_batch_updates_linked_proposals() {
 // ============================================================
 //
 // 6A: lock blocks external writes during generating; caller_session_id bypasses
-// 6B: SKIPPED — plan-verifier agents are autonomous (no stdin pipes) and do NOT
+// 6B: SKIPPED — ralphx-plan-verifier agents are autonomous (no stdin pipes) and do NOT
 //     register in InteractiveProcessRegistry. is_generating = is_running.
 //     waiting_for_input cannot be distinguished from idle for verification agents.
 // 6C: no verification children → Ok(())

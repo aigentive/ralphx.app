@@ -35,12 +35,12 @@ import type { PermissionRequest, PermissionExpiredEvent } from "@/types/permissi
  */
 
 const AGENT_BADGE_CONFIG: Record<string, { label: string; colorVar: string }> = {
-  "ralphx-worker": { label: "Worker", colorVar: "--status-info" },
-  "ralphx-coder": { label: "Coder", colorVar: "--status-info" },
-  "ralphx-worker-team": { label: "Worker", colorVar: "--status-info" },
-  "ralphx-merger": { label: "Merger", colorVar: "--status-warning" },
-  "orchestrator-ideation": { label: "Ideation", colorVar: "--accent-primary" },
-  "ideation-team-lead": { label: "Ideation", colorVar: "--accent-primary" },
+  "ralphx-execution-worker": { label: "Worker", colorVar: "--status-info" },
+  "ralphx-execution-coder": { label: "Coder", colorVar: "--status-info" },
+  "ralphx-execution-team-lead": { label: "Worker", colorVar: "--status-info" },
+  "ralphx-execution-merger": { label: "Merger", colorVar: "--status-warning" },
+  "ralphx-ideation": { label: "Ideation", colorVar: "--accent-primary" },
+  "ralphx-ideation-team-lead": { label: "Ideation", colorVar: "--accent-primary" },
 };
 
 const CONTEXT_LABEL_MAP: Record<string, string> = {

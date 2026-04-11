@@ -1008,14 +1008,14 @@ pub fn claude_runtime_config() -> &'static ClaudeRuntimeConfig {
 }
 
 pub fn get_agent_config(agent_name: &str) -> Option<&'static AgentConfig> {
-    let lookup_name = agent_name.strip_prefix("ralphx:").unwrap_or(agent_name);
+    let lookup_name = super::canonical_short_agent_name(agent_name);
     agent_configs().iter().find(|c| c.name == lookup_name)
 }
 
 pub fn get_effective_settings(agent_name: Option<&str>) -> Option<&'static serde_json::Value> {
     let loaded = LOADED_CONFIG_CELL.get_or_init(load_config);
     if let Some(name) = agent_name {
-        let lookup_name = name.strip_prefix("ralphx:").unwrap_or(name);
+        let lookup_name = super::canonical_short_agent_name(name);
         if let Some(agent) = loaded.agents.iter().find(|c| c.name == lookup_name) {
             return agent.settings.as_ref();
         }
@@ -1026,7 +1026,7 @@ pub fn get_effective_settings(agent_name: Option<&str>) -> Option<&'static serde
 pub fn get_effective_settings_profile(agent_name: Option<&str>) -> Option<&'static str> {
     let loaded = LOADED_CONFIG_CELL.get_or_init(load_config);
     if let Some(name) = agent_name {
-        let lookup_name = name.strip_prefix("ralphx:").unwrap_or(name);
+        let lookup_name = super::canonical_short_agent_name(name);
         if let Some(agent) = loaded.agents.iter().find(|c| c.name == lookup_name) {
             return agent.settings_profile.as_deref();
         }
@@ -1156,8 +1156,8 @@ pub fn get_preapproved_tools(agent_name: &str) -> Option<String> {
 
         if !c.mcp_only {
             // Memory skills only for dedicated memory agents
-            let lookup_name = agent_name.strip_prefix("ralphx:").unwrap_or(agent_name);
-            if lookup_name == "memory-maintainer" || lookup_name == "memory-capture" {
+            let lookup_name = super::canonical_short_agent_name(agent_name);
+            if lookup_name == "ralphx-memory-maintainer" || lookup_name == "ralphx-memory-capture" {
                 for t in MEMORY_SKILLS {
                     tools.push((*t).to_string());
                 }

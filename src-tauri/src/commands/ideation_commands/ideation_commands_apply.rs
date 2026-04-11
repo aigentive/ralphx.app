@@ -909,7 +909,7 @@ pub async fn apply_proposals_core(
 ///
 /// Delegates to [`apply_proposals_core`] and adds Tauri-specific side effects:
 /// queue-change events, task scheduler trigger for newly Ready tasks, and
-/// session-namer re-trigger at acceptance.
+/// ralphx-utility-session-namer re-trigger at acceptance.
 /// External HTTP callers use [`crate::http_server::handlers::external_apply_proposals`]
 /// instead, which skips the scheduler (external agents poll `get_pipeline_overview`).
 #[tauri::command]
@@ -950,7 +950,7 @@ pub async fn apply_proposals_to_kanban(
         stop_verification_children(&result.session_id, &state).await.ok();
     }
 
-    // Re-trigger session-namer if title was not manually set by user.
+    // Re-trigger ralphx-utility-session-namer if title was not manually set by user.
     // At acceptance, proposals are finalized — namer generates a commit-ready title
     // reflecting the actual work (not just the initial user message).
     // Skip if user has set a custom title (title_source == "user").

@@ -53,7 +53,7 @@ impl Default for RecoveryQueueConfig {
 pub enum RecoveryKind {
     /// PDM-171: orphaned ideation session agent.
     IdeationAgent,
-    /// PDM-172: orphaned verification (plan-verifier) agent in a child session.
+    /// PDM-172: orphaned verification (ralphx-plan-verifier) agent in a child session.
     VerificationAgent,
 }
 
@@ -241,7 +241,7 @@ impl RecoveryQueueProcessor {
     /// Flow:
     /// 1. Remove stale IPR entry (Gate 1 — prevents stdin-to-dead-pipe write)
     /// 2. Build recovery prompt with `<recovery_note>` tag
-    /// 3. Call `chat_service.send_message()` to re-spawn the plan-verifier agent
+    /// 3. Call `chat_service.send_message()` to re-spawn the ralphx-plan-verifier agent
     /// 4. On success: emit `agent:session_recovered` for frontend notification
     /// 5. On failure: reset parent to Unverified, archive child, emit `agent:error`
     async fn process_verification_recovery(&self, item: &RecoveryItem) {
@@ -275,7 +275,7 @@ impl RecoveryQueueProcessor {
         );
 
         // Step 2: Build recovery prompt with <recovery_note> tag.
-        // Includes current round and generation so plan-verifier's Phase 0 RECOVER can resume.
+        // Includes current round and generation so ralphx-plan-verifier's Phase 0 RECOVER can resume.
         let current_round = item.metadata.current_round.unwrap_or(0);
         let generation = item.metadata.verification_generation.unwrap_or(0);
         let recovery_prompt = build_verification_recovery_prompt(current_round, generation);
@@ -288,7 +288,7 @@ impl RecoveryQueueProcessor {
             item.metadata.plan_artifact_id.as_deref(),
         );
 
-        // Step 4: Spawn the plan-verifier agent via send_message().
+        // Step 4: Spawn the ralphx-plan-verifier agent via send_message().
         // Note: agent:run_started is emitted automatically by chat_service.send_message() spawn flow.
         let send_result = self
             .chat_service
@@ -410,7 +410,7 @@ impl RecoveryQueueProcessor {
 
 /// Build the recovery prompt for a verification agent re-spawn.
 ///
-/// Injects a `<recovery_note>` tag so the plan-verifier agent's Phase 0 RECOVER
+/// Injects a `<recovery_note>` tag so the ralphx-plan-verifier agent's Phase 0 RECOVER
 /// logic can detect the restart and resume from the current round rather than
 /// starting from round 1.
 pub(crate) fn build_verification_recovery_prompt(current_round: u32, generation: u32) -> String {

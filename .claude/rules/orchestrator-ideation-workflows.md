@@ -1,8 +1,8 @@
 ---
 paths:
-  - "agents/orchestrator-ideation/**"
-  - "agents/orchestrator-ideation-readonly/**"
-  - "agents/ideation-team-lead/**"
+  - "agents/ralphx-ideation/**"
+  - "agents/ralphx-ideation-readonly/**"
+  - "agents/ralphx-ideation-team-lead/**"
   - "src-tauri/src/infrastructure/agents/**"
   - "src-tauri/src/application/chat_service/**"
   - "plugins/app/ralphx-mcp-server/src/tools.ts"
@@ -18,7 +18,7 @@ paths:
 
 ## Overview
 
-The `orchestrator-ideation` agent (active + readonly variant) manages ideation sessions: capturing user requirements, exploring solutions, and generating task proposals + plans. Sessions can be **active** (mutable) or **accepted** (finalized), and accepted sessions spawn **child sessions** for follow-up work.
+The `ralphx-ideation` agent (active + readonly variant) manages ideation sessions: capturing user requirements, exploring solutions, and generating task proposals + plans. Sessions can be **active** (mutable) or **accepted** (finalized), and accepted sessions spawn **child sessions** for follow-up work.
 
 ---
 
@@ -48,7 +48,7 @@ The `orchestrator-ideation` agent (active + readonly variant) manages ideation s
 | **State** | Mutable | Finalized (immutable) |
 | **User behavior** | "Follow up", "iterate", "update plan" | Read-only reference |
 | **Mutations** | Allowed in-session | Delegated to child sessions |
-| **Read-only agent** | N/A | `orchestrator-ideation-readonly` views proposal history |
+| **Read-only agent** | N/A | `ralphx-ideation-readonly` views proposal history |
 
 ---
 
@@ -74,7 +74,7 @@ Recognize user intent from phrase patterns and route appropriately:
 - `initial_prompt` is **required** for auto-spawn — without it, no agent is triggered on the child session
 
 **Behavior:**
-- Backend auto-spawns background `orchestrator-ideation` agent on child (triggered by `initial_prompt`)
+- Backend auto-spawns background `ralphx-ideation` agent on child (triggered by `initial_prompt`)
 - Child loads parent plan + proposals as baseline context
 - Child processes user's original request (from `initial_prompt`) through workflow phases (Phase 0 → Phase 1 → ...)
 - Child can mutate independently without affecting parent
@@ -112,8 +112,8 @@ See `agent-mcp-tools.md` for full scope matrix.
 
 | Component | Path |
 |-----------|------|
-| Active ideation agent | `agents/orchestrator-ideation/claude/prompt.md` |
-| Readonly ideation agent | `agents/orchestrator-ideation-readonly/claude/prompt.md` |
+| Active ideation agent | `agents/ralphx-ideation/claude/prompt.md` |
+| Readonly ideation agent | `agents/ralphx-ideation-readonly/claude/prompt.md` |
 | MCP tool allowlist | `plugins/app/ralphx-mcp-server/src/tools.ts` |
 | ChatService context routing | `src-tauri/src/application/chat_service/chat_service_context.rs` |
 | Agent resolution table | `task-execution-agents.md:88-95` |

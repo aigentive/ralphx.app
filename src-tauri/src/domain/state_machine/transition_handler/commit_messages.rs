@@ -58,7 +58,7 @@ pub(super) fn derive_commit_type(tasks: &[Task]) -> &'static str {
 /// `$derived_type: $session_title\n\nPlan branch: {branch}\nTasks ({n}):\n- ...`
 ///
 /// Fallback chain for subject:
-/// 1. `session.title` (live fetch) — set by session-namer or user rename
+/// 1. `session.title` (live fetch) — set by ralphx-utility-session-namer or user rename
 /// 2. First sibling task title — if session title is NULL
 /// 3. `"Merge plan into {target_branch}"` — no session title, no tasks
 ///

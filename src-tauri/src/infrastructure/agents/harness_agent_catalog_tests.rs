@@ -6,108 +6,108 @@ use std::path::PathBuf;
 
 const PILOT_AGENTS: &[(&str, &str, &str)] = &[
     (
-        "orchestrator-ideation",
+        "ralphx-ideation",
         "ideation_orchestrator",
-        "orchestrator-ideation",
+        "ralphx-ideation",
     ),
-    ("ideation-team-lead", "ideation_team_lead", "ideation-team-lead"),
-    ("session-namer", "session_namer", "session-namer"),
+    ("ralphx-ideation-team-lead", "ideation_team_lead", "ralphx-ideation-team-lead"),
+    ("ralphx-utility-session-namer", "session_namer", "ralphx-utility-session-namer"),
 ];
 
-const CODEX_PILOT_AGENTS: &[&str] = &["orchestrator-ideation", "session-namer"];
+const CODEX_PILOT_AGENTS: &[&str] = &["ralphx-ideation", "ralphx-utility-session-namer"];
 const CLAUDE_ONLY_CANONICAL_AGENTS: &[(&str, &str, &str)] = &[
-    ("plan-verifier", "plan_verifier", "plan-verifier"),
+    ("ralphx-plan-verifier", "plan_verifier", "ralphx-plan-verifier"),
     (
-        "plan-critic-completeness",
+        "ralphx-plan-critic-completeness",
         "plan_critic_completeness",
-        "plan-critic-completeness",
+        "ralphx-plan-critic-completeness",
     ),
     (
-        "plan-critic-implementation-feasibility",
+        "ralphx-plan-critic-implementation-feasibility",
         "plan_critic_implementation_feasibility",
-        "plan-critic-implementation-feasibility",
+        "ralphx-plan-critic-implementation-feasibility",
     ),
     (
-        "ideation-specialist-backend",
+        "ralphx-ideation-specialist-backend",
         "ideation_specialist_backend",
-        "ideation-specialist-backend",
+        "ralphx-ideation-specialist-backend",
     ),
     (
-        "ideation-specialist-frontend",
+        "ralphx-ideation-specialist-frontend",
         "ideation_specialist_frontend",
-        "ideation-specialist-frontend",
+        "ralphx-ideation-specialist-frontend",
     ),
     (
-        "ideation-specialist-infra",
+        "ralphx-ideation-specialist-infra",
         "ideation_specialist_infra",
-        "ideation-specialist-infra",
+        "ralphx-ideation-specialist-infra",
     ),
-    ("ideation-specialist-ux", "ideation_specialist_ux", "ideation-specialist-ux"),
+    ("ralphx-ideation-specialist-ux", "ideation_specialist_ux", "ralphx-ideation-specialist-ux"),
     (
-        "ideation-specialist-code-quality",
+        "ralphx-ideation-specialist-code-quality",
         "ideation_specialist_code_quality",
-        "ideation-specialist-code-quality",
+        "ralphx-ideation-specialist-code-quality",
     ),
     (
-        "ideation-specialist-prompt-quality",
+        "ralphx-ideation-specialist-prompt-quality",
         "ideation_specialist_prompt_quality",
-        "ideation-specialist-prompt-quality",
+        "ralphx-ideation-specialist-prompt-quality",
     ),
     (
-        "ideation-specialist-intent",
+        "ralphx-ideation-specialist-intent",
         "ideation_specialist_intent",
-        "ideation-specialist-intent",
+        "ralphx-ideation-specialist-intent",
     ),
     (
-        "ideation-specialist-state-machine",
+        "ralphx-ideation-specialist-state-machine",
         "ideation_specialist_state_machine",
-        "ideation-specialist-state-machine",
+        "ralphx-ideation-specialist-state-machine",
     ),
     (
-        "ideation-specialist-pipeline-safety",
+        "ralphx-ideation-specialist-pipeline-safety",
         "ideation_specialist_pipeline_safety",
-        "ideation-specialist-pipeline-safety",
+        "ralphx-ideation-specialist-pipeline-safety",
     ),
-    ("ideation-advocate", "ideation_advocate", "ideation-advocate"),
-    ("ideation-critic", "ideation_critic", "ideation-critic"),
-    ("ralphx-worker-team", "worker_team_lead", "worker-team"),
+    ("ralphx-ideation-advocate", "ideation_advocate", "ralphx-ideation-advocate"),
+    ("ralphx-ideation-critic", "ideation_critic", "ralphx-ideation-critic"),
+    ("ralphx-execution-team-lead", "worker_team_lead", "worker-team"),
 ];
 
 const CROSS_HARNESS_EXECUTION_AGENTS: &[(&str, &str, &str)] = &[
-    ("ralphx-reviewer", "reviewer", "reviewer"),
-    ("ralphx-merger", "merger", "merger"),
+    ("ralphx-execution-reviewer", "reviewer", "reviewer"),
+    ("ralphx-execution-merger", "merger", "merger"),
 ];
 
 const CROSS_HARNESS_WORKFLOW_AGENTS: &[(&str, &str, &str)] = &[
-    ("ralphx-worker", "worker", "worker"),
-    ("ralphx-coder", "worker", "coder"),
+    ("ralphx-execution-worker", "worker", "worker"),
+    ("ralphx-execution-coder", "worker", "coder"),
     ("ralphx-review-chat", "review_chat", "review-chat"),
 ];
 
 const CROSS_HARNESS_CHAT_AGENTS: &[(&str, &str, &str)] = &[
-    ("chat-task", "task_chat", "chat-task"),
-    ("chat-project", "project_chat", "chat-project"),
+    ("ralphx-chat-task", "task_chat", "ralphx-chat-task"),
+    ("ralphx-chat-project", "project_chat", "ralphx-chat-project"),
 ];
 
 const CROSS_HARNESS_SUPPORT_AGENTS: &[(&str, &str, &str)] = &[
     ("ralphx-review-history", "review_history", "review-history"),
-    ("project-analyzer", "project_analyzer", "project-analyzer"),
-    ("memory-capture", "memory_capture", "memory-capture"),
-    ("memory-maintainer", "memory_maintainer", "memory-maintainer"),
+    ("ralphx-project-analyzer", "project_analyzer", "ralphx-project-analyzer"),
+    ("ralphx-memory-capture", "memory_capture", "ralphx-memory-capture"),
+    ("ralphx-memory-maintainer", "memory_maintainer", "ralphx-memory-maintainer"),
 ];
 
 const CROSS_HARNESS_GENERAL_AGENTS: &[(&str, &str, &str)] = &[
-    ("ralphx-deep-researcher", "researcher", "deep-researcher"),
-    ("ralphx-orchestrator", "orchestrator", "orchestrator"),
-    ("ralphx-supervisor", "supervisor", "supervisor"),
+    ("ralphx-research-deep-researcher", "researcher", "deep-researcher"),
+    ("ralphx-execution-orchestrator", "orchestrator", "orchestrator"),
+    ("ralphx-execution-supervisor", "supervisor", "supervisor"),
     ("ralphx-qa-prep", "qa_prep", "qa-prep"),
     ("ralphx-qa-executor", "qa_executor", "qa-executor"),
 ];
 
 const CROSS_HARNESS_READONLY_IDEATION_AGENTS: &[(&str, &str, &str)] = &[(
-    "orchestrator-ideation-readonly",
+    "ralphx-ideation-readonly",
     "ideation_orchestrator_readonly",
-    "orchestrator-ideation-readonly",
+    "ralphx-ideation-readonly",
 )];
 
 fn project_root() -> PathBuf {
@@ -223,31 +223,31 @@ fn pilot_agent_prompt_paths_exist_for_both_harnesses() {
             "expected codex prompt path for {agent_name}"
         );
 
-        if agent_name == &"session-namer" {
+        if agent_name == &"ralphx-utility-session-namer" {
             assert!(
                 claude_path
                     .as_ref()
-                    .is_some_and(|path| path.ends_with("agents/session-namer/shared/prompt.md")),
-                "expected session-namer claude prompt to resolve through shared/prompt.md"
+                    .is_some_and(|path| path.ends_with("agents/ralphx-utility-session-namer/shared/prompt.md")),
+                "expected ralphx-utility-session-namer claude prompt to resolve through shared/prompt.md"
             );
             assert!(
                 codex_path
                     .as_ref()
-                    .is_some_and(|path| path.ends_with("agents/session-namer/shared/prompt.md")),
-                "expected session-namer codex prompt to resolve through shared/prompt.md"
+                    .is_some_and(|path| path.ends_with("agents/ralphx-utility-session-namer/shared/prompt.md")),
+                "expected ralphx-utility-session-namer codex prompt to resolve through shared/prompt.md"
             );
         }
     }
 
     assert!(
-        resolve_harness_agent_prompt_path(&root, "ideation-team-lead", AgentPromptHarness::Claude)
+        resolve_harness_agent_prompt_path(&root, "ralphx-ideation-team-lead", AgentPromptHarness::Claude)
             .is_some(),
-        "expected claude prompt path for ideation-team-lead"
+        "expected claude prompt path for ralphx-ideation-team-lead"
     );
     assert!(
-        resolve_harness_agent_prompt_path(&root, "ideation-team-lead", AgentPromptHarness::Codex)
+        resolve_harness_agent_prompt_path(&root, "ralphx-ideation-team-lead", AgentPromptHarness::Codex)
             .is_none(),
-        "ideation-team-lead should not have a codex prompt while Codex team mode is unsupported"
+        "ralphx-ideation-team-lead should not have a codex prompt while Codex team mode is unsupported"
     );
 
     for (agent_name, _, _) in CLAUDE_ONLY_CANONICAL_AGENTS {
@@ -385,6 +385,28 @@ fn pilot_agent_prompt_paths_exist_for_both_harnesses() {
 }
 
 #[test]
+fn legacy_agent_aliases_resolve_into_canonical_catalog_entries() {
+    let root = project_root();
+    let cases = [
+        ("orchestrator-ideation", "ralphx-ideation"),
+        ("plan-verifier", "ralphx-plan-verifier"),
+        ("ralphx-worker", "ralphx-execution-worker"),
+        ("session-namer", "ralphx-utility-session-namer"),
+    ];
+
+    for (legacy_name, canonical_name) in cases {
+        let definition = load_canonical_agent_definition(&root, legacy_name)
+            .unwrap_or_else(|| panic!("expected canonical definition for legacy alias {legacy_name}"));
+        assert_eq!(definition.name, canonical_name);
+        assert!(
+            resolve_harness_agent_prompt_path(&root, legacy_name, AgentPromptHarness::Claude)
+                .is_some(),
+            "expected Claude prompt for legacy alias {legacy_name}"
+        );
+    }
+}
+
+#[test]
 fn live_runtime_agents_resolve_through_canonical_claude_prompts() {
     let root = project_root();
 
@@ -432,7 +454,7 @@ fn codex_pilot_prompts_avoid_claude_only_team_and_task_syntax() {
         "--append-system-prompt",
     ];
 
-    for agent_name in ["orchestrator-ideation", "session-namer"] {
+    for agent_name in ["ralphx-ideation", "ralphx-utility-session-namer"] {
         let prompt = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Codex)
             .unwrap_or_else(|| panic!("missing codex prompt for {agent_name}"));
         for banned in banned_terms {
@@ -450,7 +472,7 @@ fn codex_ideation_pilot_prompts_declare_codex_native_delegation_contract() {
 
     let orchestrator = load_harness_agent_prompt(
         &root,
-        "orchestrator-ideation",
+        "ralphx-ideation",
         AgentPromptHarness::Codex,
     )
     .expect("missing codex orchestrator prompt");
@@ -459,8 +481,8 @@ fn codex_ideation_pilot_prompts_declare_codex_native_delegation_contract() {
         "orchestrator codex prompt should describe Codex-native delegation semantics"
     );
     assert!(
-        load_harness_agent_prompt(&root, "ideation-team-lead", AgentPromptHarness::Codex).is_none(),
-        "ideation-team-lead should not have a codex prompt while team mode is unsupported"
+        load_harness_agent_prompt(&root, "ralphx-ideation-team-lead", AgentPromptHarness::Codex).is_none(),
+        "ralphx-ideation-team-lead should not have a codex prompt while team mode is unsupported"
     );
 }
 

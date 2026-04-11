@@ -12,7 +12,7 @@
 #   Rust agent name constants and MCP allowlists.
 # - system_prompt_file:
 #   Full project-root-relative path to an agent markdown file (e.g.
-#   `agents/ralphx-worker/claude/prompt.md`) used to build
+#   `agents/ralphx-execution-worker/claude/prompt.md`) used to build
 #   `--append-system-prompt` content.
 # - model:
 #   Optional Claude model alias passed as `--model` for this agent
@@ -67,7 +67,7 @@
 #   Can be overridden at runtime by env: `RALPHX_CLAUDE_SETTINGS_PROFILE`.
 #   Per-agent override via env:
 #   `RALPHX_CLAUDE_SETTINGS_PROFILE_<AGENT_NAME>` where non-alnum chars become `_`
-#   and name is uppercased (e.g. orchestrator-ideation → ORCHESTRATOR_IDEATION).
+#   and name is uppercased (e.g. ralphx-ideation → ORCHESTRATOR_IDEATION).
 # - settings_profile_defaults:
 #   Optional settings merged into every selected profile.
 # - settings_profiles:
@@ -335,17 +335,17 @@ ideation:
     # Specialist agents available in the verification pipeline.
     # Shown as checkboxes in the VerificationConfirmDialog.
     specialists:
-      - name: "ideation-specialist-code-quality"
+      - name: "ralphx-ideation-specialist-code-quality"
         display_name: "Code Quality"
         description: "Analyzes code paths for complexity, DRY violations, and extract opportunities"
         dispatch_mode: "pre_round"
         enabled_by_default: true
-      - name: "ideation-specialist-ux"
+      - name: "ralphx-ideation-specialist-ux"
         display_name: "UX/UI Analysis"
         description: "Verifies UI flows, screen inventory, and wireframe patterns"
         dispatch_mode: "per_round"
         enabled_by_default: true
-      - name: "ideation-specialist-prompt-quality"
+      - name: "ralphx-ideation-specialist-prompt-quality"
         display_name: "Prompt Quality"
         description: "Reviews agent prompts for token efficiency, scoping, and anti-bloat"
         dispatch_mode: "per_round"
@@ -390,18 +390,18 @@ tool_sets:
 #   Env override: RALPHX_PROCESS_VARIANT_<PROCESS>=<variant>
 process_mapping:
   ideation:
-    default: orchestrator-ideation
-    readonly: orchestrator-ideation-readonly
-    team: ideation-team-lead
+    default: ralphx-ideation
+    readonly: ralphx-ideation-readonly
+    team: ralphx-ideation-team-lead
   execution:
-    default: ralphx-worker
-    team: ralphx-worker-team
+    default: ralphx-execution-worker
+    team: ralphx-execution-team-lead
   review:
-    default: ralphx-reviewer
+    default: ralphx-execution-reviewer
     chat: ralphx-review-chat
     history: ralphx-review-history
   merge:
-    default: ralphx-merger
+    default: ralphx-execution-merger
   qa_prep:
     default: ralphx-qa-prep
   qa_refine:
@@ -409,9 +409,9 @@ process_mapping:
   qa_test:
     default: ralphx-qa-executor
   chat_task:
-    default: chat-task
+    default: ralphx-chat-task
   chat_project:
-    default: chat-project
+    default: ralphx-chat-project
 
 # team_constraints:
 #   Per-process guardrails for dynamic team composition.
@@ -459,7 +459,7 @@ team_constraints:
       ]
     model_cap: sonnet
     mode: dynamic
-    presets: [ralphx-coder]
+    presets: [ralphx-execution-coder]
     timeout_minutes: 30
     budget_limit: null
 
@@ -468,7 +468,7 @@ team_constraints:
     allowed_tools: [Read, Grep, Glob, Bash]
     model_cap: sonnet
     mode: constrained
-    presets: [ralphx-reviewer]
+    presets: [ralphx-execution-reviewer]
 
 claude:
   mcp_server_name: ralphx
@@ -532,8 +532,8 @@ claude:
         ANTHROPIC_DEFAULT_OPUS_MODEL: z-ai/glm-5
 
 agents:
-  - name: orchestrator-ideation
-    system_prompt_file: agents/orchestrator-ideation/claude/prompt.md
+  - name: ralphx-ideation
+    system_prompt_file: agents/ralphx-ideation/claude/prompt.md
     model: opus
     effort: max
     tools: { extends: base_tools, include: [Task] }
@@ -581,10 +581,10 @@ agents:
         finalize_proposals,
         migrate_proposals,
       ]
-    preapproved_cli_tools: [Task(Explore), Task(Plan), "Task(ralphx:ideation-specialist-ux)", "Task(ralphx:ideation-specialist-intent)"]
+    preapproved_cli_tools: [Task(Explore), Task(Plan), "Task(ralphx:ralphx-ideation-specialist-ux)", "Task(ralphx:ralphx-ideation-specialist-intent)"]
 
-  - name: orchestrator-ideation-readonly
-    system_prompt_file: agents/orchestrator-ideation-readonly/claude/prompt.md
+  - name: ralphx-ideation-readonly
+    system_prompt_file: agents/ralphx-ideation-readonly/claude/prompt.md
     model: opus
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
@@ -604,16 +604,16 @@ agents:
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
-  - name: session-namer
-    system_prompt_file: agents/session-namer/shared/prompt.md
+  - name: ralphx-utility-session-namer
+    system_prompt_file: agents/ralphx-utility-session-namer/shared/prompt.md
     model: sonnet
     tools:
       mcp_only: true
     mcp_tools: [update_session_title]
     preapproved_cli_tools: []
 
-  - name: chat-task
-    system_prompt_file: agents/chat-task/shared/prompt.md
+  - name: ralphx-chat-task
+    system_prompt_file: agents/ralphx-chat-task/shared/prompt.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
@@ -627,8 +627,8 @@ agents:
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
-  - name: chat-project
-    system_prompt_file: agents/chat-project/shared/prompt.md
+  - name: ralphx-chat-project
+    system_prompt_file: agents/ralphx-chat-project/shared/prompt.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
@@ -685,8 +685,8 @@ agents:
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
-  - name: ralphx-worker
-    system_prompt_file: agents/ralphx-worker/claude/prompt.md
+  - name: ralphx-execution-worker
+    system_prompt_file: agents/ralphx-execution-worker/claude/prompt.md
     model: sonnet
     permission_mode: acceptEdits
     tools: { extends: base_tools, include: [Write, Edit, Task, LSP] }
@@ -736,8 +736,8 @@ agents:
         Task(Plan),
       ]
 
-  - name: ralphx-coder
-    system_prompt_file: agents/ralphx-coder/claude/prompt.md
+  - name: ralphx-execution-coder
+    system_prompt_file: agents/ralphx-execution-coder/claude/prompt.md
     model: sonnet
     permission_mode: acceptEdits
     tools: { extends: base_tools, include: [Write, Edit, Task, LSP] }
@@ -783,8 +783,8 @@ agents:
         Task(Plan),
       ]
 
-  - name: ralphx-reviewer
-    system_prompt_file: agents/ralphx-reviewer/claude/prompt.md
+  - name: ralphx-execution-reviewer
+    system_prompt_file: agents/ralphx-execution-reviewer/claude/prompt.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
@@ -825,8 +825,8 @@ agents:
     mcp_tools: []
     preapproved_cli_tools: [Write, Edit, Bash, Task(Explore), Task(Plan)]
 
-  - name: ralphx-orchestrator
-    system_prompt_file: agents/ralphx-orchestrator/shared/prompt.md
+  - name: ralphx-execution-orchestrator
+    system_prompt_file: agents/ralphx-execution-orchestrator/shared/prompt.md
     model: opus
     tools: { extends: base_tools, include: [Write, Edit, Task] }
     mcp_tools: [
@@ -837,15 +837,15 @@ agents:
       ]
     preapproved_cli_tools: [Write, Edit, Bash, Task]
 
-  - name: ralphx-supervisor
-    system_prompt_file: agents/ralphx-supervisor/shared/prompt.md
+  - name: ralphx-execution-supervisor
+    system_prompt_file: agents/ralphx-execution-supervisor/shared/prompt.md
     model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: []
     preapproved_cli_tools: [Bash, Task(Explore), Task(Plan)]
 
-  - name: ralphx-deep-researcher
-    system_prompt_file: agents/ralphx-deep-researcher/shared/prompt.md
+  - name: ralphx-research-deep-researcher
+    system_prompt_file: agents/ralphx-research-deep-researcher/shared/prompt.md
     model: opus
     tools: { extends: base_tools, include: [Write, Task] }
     mcp_tools: [
@@ -857,15 +857,15 @@ agents:
     preapproved_cli_tools:
       [Write, WebFetch, WebSearch, Task(Explore), Task(Plan)]
 
-  - name: project-analyzer
-    system_prompt_file: agents/project-analyzer/shared/prompt.md
+  - name: ralphx-project-analyzer
+    system_prompt_file: agents/ralphx-project-analyzer/shared/prompt.md
     model: sonnet
     tools: { extends: base_tools }
     mcp_tools: [save_project_analysis, get_project_analysis]
     preapproved_cli_tools: [Read, Glob, Bash, Grep]
 
-  - name: ralphx-merger
-    system_prompt_file: agents/ralphx-merger/claude/prompt.md
+  - name: ralphx-execution-merger
+    system_prompt_file: agents/ralphx-execution-merger/claude/prompt.md
     model: opus
     permission_mode: acceptEdits
     tools: { extends: base_tools, include: [Edit, Task] }
@@ -884,8 +884,8 @@ agents:
       ]
     preapproved_cli_tools: [Read, Edit, Bash, Task(Explore), Task(Plan)]
 
-  - name: memory-maintainer
-    system_prompt_file: agents/memory-maintainer/shared/prompt.md
+  - name: ralphx-memory-maintainer
+    system_prompt_file: agents/ralphx-memory-maintainer/shared/prompt.md
     model: sonnet
     permission_mode: acceptEdits
     tools: { extends: base_tools, include: [Write, Edit] }
@@ -905,8 +905,8 @@ agents:
     preapproved_cli_tools:
       [Read, Grep, Glob, WebFetch, WebSearch, Bash, Write, Edit]
 
-  - name: memory-capture
-    system_prompt_file: agents/memory-capture/shared/prompt.md
+  - name: ralphx-memory-capture
+    system_prompt_file: agents/ralphx-memory-capture/shared/prompt.md
     model: sonnet
     permission_mode: acceptEdits
     tools: { extends: base_tools, include: [Write, Edit] }
@@ -925,15 +925,15 @@ agents:
 
   # --- Plan critic agents (read-only, MCP tools for plan verification) ---
 
-  - name: plan-critic-completeness
-    system_prompt_file: agents/plan-critic-completeness/claude/prompt.md
+  - name: ralphx-plan-critic-completeness
+    system_prompt_file: agents/ralphx-plan-critic-completeness/claude/prompt.md
     model: opus
     tools: { extends: critic_tools }
     mcp_tools: [get_session_plan, get_artifact, create_team_artifact]
     preapproved_cli_tools: []
 
-  - name: plan-critic-implementation-feasibility
-    system_prompt_file: agents/plan-critic-implementation-feasibility/claude/prompt.md
+  - name: ralphx-plan-critic-implementation-feasibility
+    system_prompt_file: agents/ralphx-plan-critic-implementation-feasibility/claude/prompt.md
     model: opus
     tools: { extends: critic_tools }
     mcp_tools: [get_session_plan, get_artifact, create_team_artifact]
@@ -941,8 +941,8 @@ agents:
 
   # --- Plan verifier agent (owns the verification round loop) ---
 
-  - name: plan-verifier
-    system_prompt_file: agents/plan-verifier/claude/prompt.md
+  - name: ralphx-plan-verifier
+    system_prompt_file: agents/ralphx-plan-verifier/claude/prompt.md
     model: opus
     tools: { extends: base_tools, include: [Task] }
     mcp_tools:
@@ -964,19 +964,19 @@ agents:
         get_memory, # workaround for #25200
         get_memories_for_paths, # workaround for #25200
       ]
-    preapproved_cli_tools: [Read, Grep, Glob, Bash, "Task(ralphx:plan-critic-completeness)", "Task(ralphx:plan-critic-implementation-feasibility)", "Task(ralphx:ideation-specialist-ux)", "Task(ralphx:ideation-specialist-code-quality)", "Task(ralphx:ideation-specialist-prompt-quality)", "Task(ralphx:ideation-specialist-intent)", "Task(ralphx:ideation-specialist-pipeline-safety)", "Task(ralphx:ideation-specialist-state-machine)"]
+    preapproved_cli_tools: [Read, Grep, Glob, Bash, "Task(ralphx:ralphx-plan-critic-completeness)", "Task(ralphx:ralphx-plan-critic-implementation-feasibility)", "Task(ralphx:ralphx-ideation-specialist-ux)", "Task(ralphx:ralphx-ideation-specialist-code-quality)", "Task(ralphx:ralphx-ideation-specialist-prompt-quality)", "Task(ralphx:ralphx-ideation-specialist-intent)", "Task(ralphx:ralphx-ideation-specialist-pipeline-safety)", "Task(ralphx:ralphx-ideation-specialist-state-machine)"]
 
   # --- Team lead variants (extends base agents) ---
 
-  - name: ideation-team-lead
-    extends: orchestrator-ideation
-    system_prompt_file: agents/ideation-team-lead/claude/prompt.md
+  - name: ralphx-ideation-team-lead
+    extends: ralphx-ideation
+    system_prompt_file: agents/ralphx-ideation-team-lead/claude/prompt.md
     tools:
       {
         extends: base_tools,
         include: [Task, TaskStop, TeamCreate, TeamDelete, SendMessage],
       }
-    # inherits: model (opus), preapproved_cli_tools from orchestrator-ideation
+    # inherits: model (opus), preapproved_cli_tools from ralphx-ideation
     # mcp_tools override: parent tools + team coordination tools
     mcp_tools: [
         # Team coordination tools (new)
@@ -986,7 +986,7 @@ agents:
         get_team_artifacts,
         get_team_session_state,
         save_team_session_state,
-        # Inherited from orchestrator-ideation
+        # Inherited from ralphx-ideation
         create_task_proposal,
         update_task_proposal,
         archive_task_proposal,
@@ -1033,9 +1033,9 @@ agents:
   - name: ideation-team-member
     effort: max
 
-  - name: ralphx-worker-team
-    extends: ralphx-worker
-    system_prompt_file: agents/ralphx-worker-team/claude/prompt.md
+  - name: ralphx-execution-team-lead
+    extends: ralphx-execution-worker
+    system_prompt_file: agents/ralphx-execution-team-lead/claude/prompt.md
     model: sonnet
     permission_mode: acceptEdits
     tools:
@@ -1053,12 +1053,12 @@ agents:
             SendMessage,
           ],
       }
-    # inherits: mcp_tools, preapproved_cli_tools from ralphx-worker
+    # inherits: mcp_tools, preapproved_cli_tools from ralphx-execution-worker
 
   # --- Group B ideation agents (research specialists, advocate, critic) ---
 
-  - name: ideation-specialist-backend
-    system_prompt_file: agents/ideation-specialist-backend/claude/prompt.md
+  - name: ralphx-ideation-specialist-backend
+    system_prompt_file: agents/ralphx-ideation-specialist-backend/claude/prompt.md
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
@@ -1078,8 +1078,8 @@ agents:
       ]
     preapproved_cli_tools: []
 
-  - name: ideation-specialist-frontend
-    system_prompt_file: agents/ideation-specialist-frontend/claude/prompt.md
+  - name: ralphx-ideation-specialist-frontend
+    system_prompt_file: agents/ralphx-ideation-specialist-frontend/claude/prompt.md
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
@@ -1099,8 +1099,8 @@ agents:
       ]
     preapproved_cli_tools: []
 
-  - name: ideation-specialist-infra
-    system_prompt_file: agents/ideation-specialist-infra/claude/prompt.md
+  - name: ralphx-ideation-specialist-infra
+    system_prompt_file: agents/ralphx-ideation-specialist-infra/claude/prompt.md
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
@@ -1120,8 +1120,8 @@ agents:
       ]
     preapproved_cli_tools: []
 
-  - name: ideation-specialist-ux
-    system_prompt_file: agents/ideation-specialist-ux/claude/prompt.md
+  - name: ralphx-ideation-specialist-ux
+    system_prompt_file: agents/ralphx-ideation-specialist-ux/claude/prompt.md
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
@@ -1141,8 +1141,8 @@ agents:
       ]
     preapproved_cli_tools: []
 
-  - name: ideation-specialist-code-quality
-    system_prompt_file: agents/ideation-specialist-code-quality/claude/prompt.md
+  - name: ralphx-ideation-specialist-code-quality
+    system_prompt_file: agents/ralphx-ideation-specialist-code-quality/claude/prompt.md
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
@@ -1153,8 +1153,8 @@ agents:
       ]
     preapproved_cli_tools: []
 
-  - name: ideation-specialist-prompt-quality
-    system_prompt_file: agents/ideation-specialist-prompt-quality/claude/prompt.md
+  - name: ralphx-ideation-specialist-prompt-quality
+    system_prompt_file: agents/ralphx-ideation-specialist-prompt-quality/claude/prompt.md
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
@@ -1165,8 +1165,8 @@ agents:
       ]
     preapproved_cli_tools: []
 
-  - name: ideation-specialist-intent
-    system_prompt_file: agents/ideation-specialist-intent/claude/prompt.md
+  - name: ralphx-ideation-specialist-intent
+    system_prompt_file: agents/ralphx-ideation-specialist-intent/claude/prompt.md
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
@@ -1181,8 +1181,8 @@ agents:
       ]
     preapproved_cli_tools: []
 
-  - name: ideation-specialist-state-machine
-    system_prompt_file: agents/ideation-specialist-state-machine/claude/prompt.md
+  - name: ralphx-ideation-specialist-state-machine
+    system_prompt_file: agents/ralphx-ideation-specialist-state-machine/claude/prompt.md
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
@@ -1193,29 +1193,8 @@ agents:
       ]
     preapproved_cli_tools: []
 
-  - name: ideation-advocate
-    system_prompt_file: agents/ideation-advocate/claude/prompt.md
-    model: opus
-    tools: { extends: base_tools }
-    mcp_tools: [
-        # Team artifact tools
-        create_team_artifact,
-        get_team_artifacts,
-        # Plan read tools
-        get_session_plan,
-        get_artifact,
-        list_session_proposals,
-        get_proposal,
-        get_parent_session_context,
-        # Memory read tools
-        search_memories,
-        get_memory,
-        get_memories_for_paths,
-      ]
-    preapproved_cli_tools: []
-
-  - name: ideation-critic
-    system_prompt_file: agents/ideation-critic/claude/prompt.md
+  - name: ralphx-ideation-advocate
+    system_prompt_file: agents/ralphx-ideation-advocate/claude/prompt.md
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [
@@ -1235,8 +1214,29 @@ agents:
       ]
     preapproved_cli_tools: []
 
-  - name: ideation-specialist-pipeline-safety
-    system_prompt_file: agents/ideation-specialist-pipeline-safety/claude/prompt.md
+  - name: ralphx-ideation-critic
+    system_prompt_file: agents/ralphx-ideation-critic/claude/prompt.md
+    model: opus
+    tools: { extends: base_tools }
+    mcp_tools: [
+        # Team artifact tools
+        create_team_artifact,
+        get_team_artifacts,
+        # Plan read tools
+        get_session_plan,
+        get_artifact,
+        list_session_proposals,
+        get_proposal,
+        get_parent_session_context,
+        # Memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+      ]
+    preapproved_cli_tools: []
+
+  - name: ralphx-ideation-specialist-pipeline-safety
+    system_prompt_file: agents/ralphx-ideation-specialist-pipeline-safety/claude/prompt.md
     model: opus
     tools: { extends: base_tools }
     mcp_tools: [

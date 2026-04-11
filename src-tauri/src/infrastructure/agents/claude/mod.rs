@@ -139,13 +139,56 @@ pub fn apply_common_spawn_env(cmd: &mut Command) {
     cmd.env("DEBUG", "true");
 }
 
+/// Normalize legacy short agent ids to the current canonical ids.
+pub fn canonical_short_agent_name(name: &str) -> &str {
+    let short_name = name.strip_prefix("ralphx:").unwrap_or(name);
+    match short_name {
+        "orchestrator-ideation" => "ralphx-ideation",
+        "orchestrator-ideation-readonly" => "ralphx-ideation-readonly",
+        "ideation-team-lead" => "ralphx-ideation-team-lead",
+        "ideation-advocate" => "ralphx-ideation-advocate",
+        "ideation-critic" => "ralphx-ideation-critic",
+        "ideation-specialist-backend" => "ralphx-ideation-specialist-backend",
+        "ideation-specialist-code-quality" => "ralphx-ideation-specialist-code-quality",
+        "ideation-specialist-frontend" => "ralphx-ideation-specialist-frontend",
+        "ideation-specialist-infra" => "ralphx-ideation-specialist-infra",
+        "ideation-specialist-intent" => "ralphx-ideation-specialist-intent",
+        "ideation-specialist-pipeline-safety" => "ralphx-ideation-specialist-pipeline-safety",
+        "ideation-specialist-prompt-quality" => "ralphx-ideation-specialist-prompt-quality",
+        "ideation-specialist-state-machine" => "ralphx-ideation-specialist-state-machine",
+        "ideation-specialist-ux" => "ralphx-ideation-specialist-ux",
+        "plan-verifier" => "ralphx-plan-verifier",
+        "plan-critic-completeness" => "ralphx-plan-critic-completeness",
+        "plan-critic-implementation-feasibility" => {
+            "ralphx-plan-critic-implementation-feasibility"
+        }
+        "chat-task" => "ralphx-chat-task",
+        "chat-project" => "ralphx-chat-project",
+        "ralphx-worker-team" => "ralphx-execution-team-lead",
+        "ralphx-worker" => "ralphx-execution-worker",
+        "ralphx-coder" => "ralphx-execution-coder",
+        "ralphx-reviewer" => "ralphx-execution-reviewer",
+        "ralphx-merger" => "ralphx-execution-merger",
+        "ralphx-orchestrator" => "ralphx-execution-orchestrator",
+        "ralphx-supervisor" => "ralphx-execution-supervisor",
+        "ralphx-deep-researcher" => "ralphx-research-deep-researcher",
+        "project-analyzer" => "ralphx-project-analyzer",
+        "memory-capture" => "ralphx-memory-capture",
+        "memory-maintainer" => "ralphx-memory-maintainer",
+        "session-namer" => "ralphx-utility-session-namer",
+        _ => short_name,
+    }
+}
+
 /// Qualify a short agent name with the `ralphx:` plugin prefix.
 /// If the name already contains `:`, it's assumed to be fully qualified.
 pub fn qualify_agent_name(name: &str) -> String {
-    if name.contains(':') {
+    if let Some(short_name) = name.strip_prefix("ralphx:") {
+        format!("ralphx:{}", canonical_short_agent_name(short_name))
+    } else if name.contains(':') {
         name.to_string()
     } else {
-        format!("ralphx:{}", name)
+        format!("ralphx:{}", canonical_short_agent_name(name))
     }
 }
 
@@ -153,7 +196,7 @@ pub fn qualify_agent_name(name: &str) -> String {
 /// Used when passing agent type to the MCP server or looking up agent configs
 /// (both use short/unprefixed names).
 pub fn mcp_agent_type(name: &str) -> &str {
-    name.strip_prefix("ralphx:").unwrap_or(name)
+    canonical_short_agent_name(name)
 }
 
 /// Build base CLI arguments for Claude Code
@@ -1591,8 +1634,8 @@ mod tests {
         )
         .unwrap();
         std::fs::write(
-            plugin_dir.join("agents/session-namer.md"),
-            "---\nname: session-namer\n---\nLegacy Session Namer Prompt",
+            plugin_dir.join("agents/ralphx-utility-session-namer.md"),
+            "---\nname: ralphx-utility-session-namer\n---\nLegacy Session Namer Prompt",
         )
         .unwrap();
         std::fs::write(
@@ -1601,14 +1644,14 @@ mod tests {
         )
         .unwrap();
 
-        std::fs::create_dir_all(repo_root.join("agents/session-namer/shared")).unwrap();
+        std::fs::create_dir_all(repo_root.join("agents/ralphx-utility-session-namer/shared")).unwrap();
         std::fs::write(
-            repo_root.join("agents/session-namer/agent.yaml"),
-            "name: session-namer\nrole: session_namer\n",
+            repo_root.join("agents/ralphx-utility-session-namer/agent.yaml"),
+            "name: ralphx-utility-session-namer\nrole: session_namer\n",
         )
         .unwrap();
         std::fs::write(
-            repo_root.join("agents/session-namer/shared/prompt.md"),
+            repo_root.join("agents/ralphx-utility-session-namer/shared/prompt.md"),
             "Canonical Session Namer Prompt",
         )
         .unwrap();
@@ -1616,7 +1659,7 @@ mod tests {
         let generated_dir =
             materialize_generated_plugin_dir(&plugin_dir).expect("generated plugin dir");
         let generated_session_namer = std::fs::read_to_string(
-            generated_dir.join("agents/session-namer.md"),
+            generated_dir.join("agents/ralphx-utility-session-namer.md"),
         )
         .expect("generated session namer");
         assert!(
@@ -1624,7 +1667,7 @@ mod tests {
             "generated session namer should use canonical prompt body"
         );
         assert!(
-            generated_session_namer.contains("name: session-namer"),
+            generated_session_namer.contains("name: ralphx-utility-session-namer"),
             "generated session namer should preserve legacy frontmatter"
         );
 

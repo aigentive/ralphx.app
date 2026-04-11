@@ -24,7 +24,7 @@ pub struct AllRuntimeConfig {
 /// A specialist agent entry in the verification pipeline.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct SpecialistEntry {
-    /// Unique agent name (matches ralphx.yaml agent name, e.g. "ideation-specialist-code-quality").
+    /// Unique agent name (matches ralphx.yaml agent name, e.g. "ralphx-ideation-specialist-code-quality").
     pub name: String,
     /// Human-readable display name shown in the UI.
     pub display_name: String,

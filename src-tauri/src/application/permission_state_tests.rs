@@ -77,19 +77,19 @@ async fn test_pending_permission_info_with_identity() {
         tool_name: "Edit".to_string(),
         tool_input: serde_json::json!({"path": "/foo/bar.rs"}),
         context: Some("Editing a file".to_string()),
-        agent_type: Some("ralphx-worker".to_string()),
+        agent_type: Some("ralphx-execution-worker".to_string()),
         task_id: Some("task-abc".to_string()),
         context_type: Some("task_execution".to_string()),
         context_id: Some("task-abc".to_string()),
     };
     let json = serde_json::to_string(&info).unwrap();
-    assert!(json.contains("\"agent_type\":\"ralphx-worker\""));
+    assert!(json.contains("\"agent_type\":\"ralphx-execution-worker\""));
     assert!(json.contains("\"task_id\":\"task-abc\""));
     assert!(json.contains("\"context_type\":\"task_execution\""));
     assert!(json.contains("\"context_id\":\"task-abc\""));
 
     let deserialized: PendingPermissionInfo = serde_json::from_str(&json).unwrap();
-    assert_eq!(deserialized.agent_type, Some("ralphx-worker".to_string()));
+    assert_eq!(deserialized.agent_type, Some("ralphx-execution-worker".to_string()));
     assert_eq!(deserialized.task_id, Some("task-abc".to_string()));
     assert_eq!(deserialized.context_type, Some("task_execution".to_string()));
     assert_eq!(deserialized.context_id, Some("task-abc".to_string()));
@@ -103,14 +103,14 @@ async fn test_pending_permission_info_partial_identity() {
         tool_name: "Bash".to_string(),
         tool_input: serde_json::json!({}),
         context: None,
-        agent_type: Some("ralphx-reviewer".to_string()),
+        agent_type: Some("ralphx-execution-reviewer".to_string()),
         task_id: None,
         context_type: None,
         context_id: None,
     };
     let json = serde_json::to_string(&info).unwrap();
     let deserialized: PendingPermissionInfo = serde_json::from_str(&json).unwrap();
-    assert_eq!(deserialized.agent_type, Some("ralphx-reviewer".to_string()));
+    assert_eq!(deserialized.agent_type, Some("ralphx-execution-reviewer".to_string()));
     assert!(deserialized.task_id.is_none());
     assert!(deserialized.context_type.is_none());
     assert!(deserialized.context_id.is_none());
@@ -173,7 +173,7 @@ async fn test_register_with_identity() {
         tool_name: "Write".to_string(),
         tool_input: serde_json::json!({"path": "/tmp/test.txt", "content": "hello"}),
         context: Some("Writing test file".to_string()),
-        agent_type: Some("ralphx-worker".to_string()),
+        agent_type: Some("ralphx-execution-worker".to_string()),
         task_id: Some("task-xyz".to_string()),
         context_type: Some("task_execution".to_string()),
         context_id: Some("task-xyz".to_string()),
@@ -185,7 +185,7 @@ async fn test_register_with_identity() {
     let pending = state.pending.lock().await;
     assert!(pending.contains_key(&request_id));
     let request = pending.get(&request_id).unwrap();
-    assert_eq!(request.info.agent_type, Some("ralphx-worker".to_string()));
+    assert_eq!(request.info.agent_type, Some("ralphx-execution-worker".to_string()));
     assert_eq!(request.info.task_id, Some("task-xyz".to_string()));
     assert_eq!(request.info.context_type, Some("task_execution".to_string()));
     assert_eq!(request.info.context_id, Some("task-xyz".to_string()));

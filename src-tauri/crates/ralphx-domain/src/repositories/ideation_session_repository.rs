@@ -66,7 +66,7 @@ pub trait IdeationSessionRepository: Send + Sync {
         status: IdeationSessionStatus,
     ) -> AppResult<()>;
 
-    /// Update session title and source ("auto" for session-namer, "user" for manual rename)
+    /// Update session title and source ("auto" for ralphx-utility-session-namer, "user" for manual rename)
     async fn update_title(
         &self,
         id: &IdeationSessionId,

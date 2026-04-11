@@ -1750,7 +1750,7 @@ pub struct RevertAndSkipRequest {
 #[derive(Debug, Deserialize)]
 pub struct ConfirmVerificationRequest {
     pub session_id: String,
-    /// Agent names to exclude from this verification run (e.g. ["ideation-specialist-ux"]).
+    /// Agent names to exclude from this verification run (e.g. ["ralphx-ideation-specialist-ux"]).
     /// Empty list = all specialists enabled.
     #[serde(default)]
     pub disabled_specialists: Vec<String>,

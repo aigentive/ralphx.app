@@ -2127,7 +2127,7 @@ async fn test_full_recovery_flow_sends_recovery_prompt_with_correct_round() {
     );
     assert!(
         messages[0].contains("<recovery_note>"),
-        "recovery prompt must contain <recovery_note> tag for plan-verifier Phase 0 RECOVER; \
+        "recovery prompt must contain <recovery_note> tag for ralphx-plan-verifier Phase 0 RECOVER; \
          got: {:?}",
         messages[0]
     );

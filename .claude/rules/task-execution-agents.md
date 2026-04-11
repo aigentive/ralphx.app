@@ -18,7 +18,7 @@ paths:
 
 ---
 
-## Worker (`ralphx-worker`)
+## Worker (`ralphx-execution-worker`)
 
 | Aspect | Detail |
 |--------|--------|
@@ -62,14 +62,14 @@ paths:
    **Typical execution sequence:** `Read → Write/Edit → Bash (typecheck + test) → Grep (verify no dead refs) → commit`
 
 5. Decompose task into sub-scopes, build dependency graph, schedule waves
-6. Delegate to `ralphx-coder` instances (max 3 concurrent, no overlapping write files)
+6. Delegate to `ralphx-execution-coder` instances (max 3 concurrent, no overlapping write files)
 7. Apply wave gates (validate each wave before starting next)
 8. `start_step()` → work → `complete_step()` (per step)
 9. For re-execution: `mark_issue_in_progress()` / `mark_issue_addressed()` per issue
 
 **Key MCP tools:** `start_step`, `complete_step`, `skip_step`, `fail_step`, `add_step`, `get_task_context`, `get_review_notes`, `get_task_issues`, `mark_issue_in_progress`, `mark_issue_addressed` (+ `Task` tool for coder delegation)
 
-## Reviewer (`ralphx-reviewer`)
+## Reviewer (`ralphx-execution-reviewer`)
 
 | Aspect | Detail |
 |--------|--------|
@@ -95,7 +95,7 @@ paths:
 
 `approved` never means direct `reviewing → approved`. When `require_human_review=false`, backend approval continues from `review_passed → approved`. `approved_no_changes` is the separate no-code / skip-merge path.
 
-## Merger (`ralphx-merger`)
+## Merger (`ralphx-execution-merger`)
 
 | Aspect | Detail |
 |--------|--------|
@@ -125,27 +125,27 @@ paths:
 
 | Context Type | Default Agent | Status Override | Session |
 |-------------|---------------|-----------------|---------|
-| `TaskExecution` | `ralphx-worker` | — | Never resumed (fresh spawn) |
-| `Review` | `ralphx-reviewer` | `review_passed` → `ralphx-review-chat`, `approved` → `ralphx-review-history` | Never resumed (fresh) |
-| `Merge` | `ralphx-merger` | — | May resume |
-| `Ideation` | `orchestrator-ideation` | `accepted` → `orchestrator-ideation-readonly` | Resumes |
-| `Task` | `chat-task` | — | Resumes |
-| `Project` | `chat-project` | — | Resumes |
+| `TaskExecution` | `ralphx-execution-worker` | — | Never resumed (fresh spawn) |
+| `Review` | `ralphx-execution-reviewer` | `review_passed` → `ralphx-review-chat`, `approved` → `ralphx-review-history` | Never resumed (fresh) |
+| `Merge` | `ralphx-execution-merger` | — | May resume |
+| `Ideation` | `ralphx-ideation` | `accepted` → `ralphx-ideation-readonly` | Resumes |
+| `Task` | `ralphx-chat-task` | — | Resumes |
+| `Project` | `ralphx-chat-project` | — | Resumes |
 
 ## Support Agents
 
 | Agent | Model | Role |
 |-------|-------|------|
-| `orchestrator-ideation` | opus | Facilitates ideation sessions, creates task proposals + plans |
-| `session-namer` | haiku | Generates 2-word session titles |
-| `chat-task` | sonnet | Task-specific Q&A |
-| `chat-project` | sonnet | Project-level questions |
+| `ralphx-ideation` | opus | Facilitates ideation sessions, creates task proposals + plans |
+| `ralphx-utility-session-namer` | haiku | Generates 2-word session titles |
+| `ralphx-chat-task` | sonnet | Task-specific Q&A |
+| `ralphx-chat-project` | sonnet | Project-level questions |
 | `ralphx-review-chat` | sonnet | Discuss review findings (when status = `review_passed`) |
 | `ralphx-qa-prep` | sonnet | Generate acceptance criteria + test steps (background, on `ready`) |
 | `ralphx-qa-executor` | sonnet | Browser-based QA via agent-browser |
-| `ralphx-orchestrator` | opus | Complex multi-step coordination |
-| `ralphx-supervisor` | haiku | Monitor agents for loops/stalls |
-| `ralphx-deep-researcher` | opus | Thorough research |
+| `ralphx-execution-orchestrator` | opus | Complex multi-step coordination |
+| `ralphx-execution-supervisor` | haiku | Monitor agents for loops/stalls |
+| `ralphx-research-deep-researcher` | opus | Thorough research |
 
 ---
 

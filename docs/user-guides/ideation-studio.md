@@ -340,8 +340,8 @@ Once tasks are created from the accepted plan, they flow automatically through R
 Pending
    │
    v
-Executing  ←── Worker agent (ralphx-worker) orchestrates implementation
-   │             └── Delegates to coder agents (ralphx-coder) in parallel waves
+Executing  ←── Worker agent (ralphx-execution-worker) orchestrates implementation
+   │             └── Delegates to coder agents (ralphx-execution-coder) in parallel waves
    v
 QA          ←── QA prep agent generates acceptance criteria;
    │              QA executor runs browser tests
@@ -355,7 +355,7 @@ Review      ←── Reviewer agent runs automated code review
 
 ### Review Cycle
 
-When a task reaches **Review**, the `ralphx-reviewer` agent performs a structured code review and produces a list of findings. You see the review in the task detail view.
+When a task reaches **Review**, the `ralphx-execution-reviewer` agent performs a structured code review and produces a list of findings. You see the review in the task detail view.
 
 | Review outcome | What happens |
 |----------------|--------------|
@@ -374,7 +374,7 @@ Once a task is **Approved**, it enters the merge pipeline automatically. The pip
 4. **Validation** — Runs your project's test/lint/typecheck commands (default mode: Block — reverts on failure)
 5. **Finalization** — Commits the merge, deletes the task branch and worktree
 
-If a conflict arises, a **merger agent** (`ralphx-merger`) is spawned to resolve it. If validation fails in AutoFix mode, a **fixer agent** is spawned to repair the code.
+If a conflict arises, a **merger agent** (`ralphx-execution-merger`) is spawned to resolve it. If validation fails in AutoFix mode, a **fixer agent** is spawned to repair the code.
 
 > For complete details on the merge pipeline — states, strategies, recovery, and UI — see the **[Merge Pipeline User Guide](./merge.md)**.
 

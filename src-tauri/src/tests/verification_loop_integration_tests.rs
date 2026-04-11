@@ -631,7 +631,7 @@ fn test_verification_gap_source_field_serializes_and_excludes_from_fingerprint()
 // These tests cover the full child-session model introduced in Phase 2:
 //   7.  Auto-verify creates a verification child session with correct properties
 //   8.  Child updates parent state via update_plan_verification
-//   9.  Child is archived when plan-verifier agent completes
+//   9.  Child is archived when ralphx-plan-verifier agent completes
 //   10. Orphaned verification child reconciled (parent reset, child archived)
 //   11. Spawn failure resets parent in_progress
 //   12. Child session description format contains required fields (parallel tests)
@@ -643,7 +643,7 @@ fn test_verification_gap_source_field_serializes_and_excludes_from_fingerprint()
 // After create_verification_child_session is called, a verification child session is created:
 //   - session_purpose = Verification
 //   - parent_session_id = parent's ID
-//   - status = Active (ready to receive plan-verifier agent)
+//   - status = Active (ready to receive ralphx-plan-verifier agent)
 //
 // get_verification_children(parent_id) must return the child.
 // Archived children must be excluded from get_verification_children.
@@ -709,7 +709,7 @@ async fn test_auto_verify_creates_verification_child_session() {
 // ──────────────────────────────────────────────────────────────────────────────
 // Test 8: Verification child updates parent state
 //
-// The plan-verifier agent calls update_plan_verification(parent_id) to update
+// The ralphx-plan-verifier agent calls update_plan_verification(parent_id) to update
 // the parent session's verification state. This simulates the agent running
 // critic rounds and reporting results to the parent session.
 //
@@ -730,13 +730,13 @@ async fn test_verification_child_updates_parent_state() {
     let parent_id = parent.id.clone();
     repo.create(parent).await.unwrap();
 
-    // Create verification child (plan-verifier agent session)
+    // Create verification child (ralphx-plan-verifier agent session)
     let mut child = make_session(&project_id);
     child.session_purpose = SessionPurpose::Verification;
     child.parent_session_id = Some(parent_id.clone());
     repo.create(child).await.unwrap();
 
-    // Round 1: plan-verifier calls update_plan_verification(parent_id) — gaps found
+    // Round 1: ralphx-plan-verifier calls update_plan_verification(parent_id) — gaps found
     let round1_meta = metadata_with_gaps(1, 2, 1, 4);
     repo.update_verification_state(
         &parent_id,
@@ -763,7 +763,7 @@ async fn test_verification_child_updates_parent_state() {
         "gate must block while verification is in progress"
     );
 
-    // Round 2: plan-verifier calls update_plan_verification(parent_id) — zero_blocking
+    // Round 2: ralphx-plan-verifier calls update_plan_verification(parent_id) — zero_blocking
     let round2_meta = metadata_converged("zero_blocking", 2);
     repo.update_verification_state(
         &parent_id,
@@ -795,8 +795,8 @@ async fn test_verification_child_updates_parent_state() {
 // ──────────────────────────────────────────────────────────────────────────────
 // Test 9: Verification child archived on completion
 //
-// When the plan-verifier agent finishes:
-//   Step 1: plan-verifier calls update_plan_verification(parent_id, in_progress=false)
+// When the ralphx-plan-verifier agent finishes:
+//   Step 1: ralphx-plan-verifier calls update_plan_verification(parent_id, in_progress=false)
 //   Step 2: backend auto-archives the child on agent:run_completed
 //
 // After both steps:
@@ -818,7 +818,7 @@ async fn test_verification_child_archived_on_completion() {
     let parent_id = parent.id.clone();
     repo.create(parent).await.unwrap();
 
-    // Child: active verification session (plan-verifier agent running)
+    // Child: active verification session (ralphx-plan-verifier agent running)
     let mut child = make_session(&project_id);
     child.session_purpose = SessionPurpose::Verification;
     child.parent_session_id = Some(parent_id.clone());
@@ -829,7 +829,7 @@ async fn test_verification_child_archived_on_completion() {
     let active_children = repo.get_verification_children(&parent_id).await.unwrap();
     assert_eq!(active_children.len(), 1, "child must be visible before completion");
 
-    // Step 1: plan-verifier calls update_plan_verification(parent_id, in_progress=false)
+    // Step 1: ralphx-plan-verifier calls update_plan_verification(parent_id, in_progress=false)
     let final_meta = metadata_converged("zero_blocking", 2);
     repo.update_verification_state(
         &parent_id,
@@ -853,7 +853,7 @@ async fn test_verification_child_archived_on_completion() {
     assert_eq!(
         parent_after.verification_status,
         VerificationStatus::Verified,
-        "parent must be Verified after plan-verifier completes"
+        "parent must be Verified after ralphx-plan-verifier completes"
     );
     assert!(
         !parent_after.verification_in_progress,
@@ -865,7 +865,7 @@ async fn test_verification_child_archived_on_completion() {
     assert_eq!(
         child_after.status,
         crate::domain::entities::IdeationSessionStatus::Archived,
-        "verification child must be archived after plan-verifier exits"
+        "verification child must be archived after ralphx-plan-verifier exits"
     );
 
     // get_verification_children must return empty (archived child excluded)
@@ -879,7 +879,7 @@ async fn test_verification_child_archived_on_completion() {
 // ──────────────────────────────────────────────────────────────────────────────
 // Test 10: Orphaned verification child reconciled
 //
-// If the plan-verifier agent crashes mid-loop, the child session remains Active
+// If the ralphx-plan-verifier agent crashes mid-loop, the child session remains Active
 // while the parent is stuck with verification_in_progress=true. The reconciler
 // detects the stale parent (> 10-min auto-verify threshold) and:
 //   1. Resets parent: status=Unverified, in_progress=false
@@ -1033,7 +1033,7 @@ async fn test_spawn_failure_resets_parent() {
 // Tests 12a/12b: Child session description format (parallel tests)
 //
 // The description passed to create_verification_child_session must contain:
-//   - "parent_session_id: {parent_id}" — so plan-verifier can identify parent
+//   - "parent_session_id: {parent_id}" — so ralphx-plan-verifier can identify parent
 //   - "generation: {N}"               — zombie protection generation counter
 //   - "max_rounds: {N}"               — hard cap for the verification loop
 //
@@ -1088,7 +1088,7 @@ fn test_child_session_description_format_gen1_max4() {
 // ──────────────────────────────────────────────────────────────────────────────
 // Test 6: Escalation lifecycle
 //
-// Simulates plan-verifier escalating to parent orchestrator:
+// Simulates ralphx-plan-verifier escalating to parent orchestrator:
 //   1. Verifier sets NeedsRevision + convergence_reason=escalated_to_parent + in_progress=false
 //   2. Proposal gate must block (NeedsRevision blocks acceptance)
 //   3. Reconciliation must NOT reset (in_progress=false → reconciler skips it)

@@ -1,4 +1,0 @@
----
-name: ralphx-worker-team
-role: worker_team_lead
-description: "Coordinates coder teams for wave-based task execution with validation gates"

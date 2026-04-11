@@ -6,20 +6,20 @@
 use crate::domain::ideation::{EffortBucket, EffortLevel};
 use crate::domain::repositories::IdeationEffortSettingsRepository;
 
-use super::resolve_effort;
+use super::{canonical_short_agent_name, resolve_effort};
 
 /// Map an agent name to its ideation effort bucket.
 ///
 /// Returns `Some(bucket)` for the known ideation agents, or `None` for all others
 /// (non-ideation agents fall through to the standard YAML-based resolution).
 pub fn effort_bucket_for_agent(agent_name: &str) -> Option<EffortBucket> {
-    let normalized = agent_name.strip_prefix("ralphx:").unwrap_or(agent_name);
+    let normalized = canonical_short_agent_name(agent_name);
     match normalized {
-        "orchestrator-ideation"
-        | "ideation-team-lead"
+        "ralphx-ideation"
+        | "ralphx-ideation-team-lead"
         | "ideation-team-member"
-        | "orchestrator-ideation-readonly" => Some(EffortBucket::Primary),
-        "plan-verifier" => Some(EffortBucket::Verifier),
+        | "ralphx-ideation-readonly" => Some(EffortBucket::Primary),
+        "ralphx-plan-verifier" => Some(EffortBucket::Verifier),
         _ => None,
     }
 }

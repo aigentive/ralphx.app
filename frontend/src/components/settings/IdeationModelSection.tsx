@@ -212,7 +212,7 @@ function GlobalModelSubsection() {
         <ModelRow
           id="global-primary-model"
           label="Primary Ideation Model"
-          description="Model for orchestrator-ideation and team-lead agents"
+          description="Model for ralphx-ideation and team-lead agents"
           value={settings.primaryModel}
           disabled={false}
           onChange={handlePrimaryChange}
@@ -223,7 +223,7 @@ function GlobalModelSubsection() {
         <ModelRow
           id="global-verifier-model"
           label="Verification Model"
-          description="Model for plan-verifier agent"
+          description="Model for ralphx-plan-verifier agent"
           value={settings.verifierModel}
           disabled={false}
           onChange={handleVerifierChange}
@@ -245,7 +245,7 @@ function GlobalModelSubsection() {
         <ModelRow
           id="ideation-subagent-model"
           label="Ideation Subagent Model"
-          description="Model used by subagents spawned by orchestrator-ideation and team-lead"
+          description="Model used by subagents spawned by ralphx-ideation and team-lead"
           value={settings.ideationSubagentModel ?? "inherit"}
           disabled={false}
           onChange={handleIdeationSubagentChange}
@@ -345,7 +345,7 @@ function ProjectModelSubsection({
         <ModelRow
           id="project-verifier-model"
           label="Verification Model"
-          description="Override for this project's plan-verifier agent"
+          description="Override for this project's ralphx-plan-verifier agent"
           value={settings.verifierModel}
           disabled={isDisabled}
           onChange={handleVerifierChange}

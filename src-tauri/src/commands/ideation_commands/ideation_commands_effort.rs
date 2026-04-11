@@ -15,8 +15,8 @@ use crate::domain::ideation::EffortLevel;
 use crate::infrastructure::agents::claude::resolve_effort_with_source as resolve_claude_effort_with_source;
 
 // Representative agents for each bucket — used to resolve YAML effort values.
-const PRIMARY_REPR_AGENT: &str = "orchestrator-ideation";
-const VERIFIER_REPR_AGENT: &str = "plan-verifier";
+const PRIMARY_REPR_AGENT: &str = "ralphx-ideation";
+const VERIFIER_REPR_AGENT: &str = "ralphx-plan-verifier";
 
 // ============================================================================
 // Response type

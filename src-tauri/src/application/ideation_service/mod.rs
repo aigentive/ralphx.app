@@ -141,7 +141,7 @@ where
             .await
     }
 
-    /// Update session title and source ("auto" for session-namer, "user" for manual rename)
+    /// Update session title and source ("auto" for ralphx-utility-session-namer, "user" for manual rename)
     pub async fn update_session_title(
         &self,
         session_id: &IdeationSessionId,

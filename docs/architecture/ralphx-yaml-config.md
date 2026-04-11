@@ -21,8 +21,8 @@ claude:             # Global Claude CLI runtime settings
     z_ai: { extends: default, env: { ... } }
 
 agents:             # All agent definitions (20 currently)
-  - name: ralphx-worker
-    system_prompt_file: agents/ralphx-worker/claude/prompt.md
+  - name: ralphx-execution-worker
+    system_prompt_file: agents/ralphx-execution-worker/claude/prompt.md
     model: sonnet
     tools: { extends: base_tools, include: [Write, Edit, Task] }
     mcp_tools: [start_step, complete_step, ...]
@@ -191,8 +191,8 @@ This ensures `.env` protection applies to all profiles regardless of selection.
 | Profile field | `RALPHX_<KEY>` | `RALPHX_ANTHROPIC_BASE_URL=...` | Overrides `env.<KEY>` in selected profile |
 
 **Agent name normalization:** Non-alphanumeric chars → `_`, uppercased.
-- `orchestrator-ideation` → `ORCHESTRATOR_IDEATION`
-- `ralphx-worker` → `RALPHX_WORKER`
+- `ralphx-ideation` → `ORCHESTRATOR_IDEATION`
+- `ralphx-execution-worker` → `RALPHX_WORKER`
 
 ### Profile Field Override Example
 
@@ -227,7 +227,7 @@ get_allowed_tools(agent_name) →
 resolved_cli_tools = tool_sets[extends] ∪ include (deduplicated)
 ```
 
-**Example:** `ralphx-worker` with `extends: base_tools, include: [Write, Edit, Task]`
+**Example:** `ralphx-execution-worker` with `extends: base_tools, include: [Write, Edit, Task]`
 → `Read,Grep,Glob,Bash,WebFetch,WebSearch,Skill,Write,Edit,Task`
 
 ### Preapproved Tools (--allowedTools flag)
@@ -240,14 +240,14 @@ get_preapproved_tools(agent_name) →
   + Memory skills:   Skill(ralphx:rule-manager) etc. (memory agents only)
 ```
 
-**Example:** `ralphx-worker` generates ~35 preapproved tools:
+**Example:** `ralphx-execution-worker` generates ~35 preapproved tools:
 - `mcp__ralphx__start_step`, `mcp__ralphx__complete_step`, ...
 - `Read`, `Write`, `Edit`, `Bash`, `Task`, ...
 - `Task(Explore)`, `Task(Plan)`
 
 ### MCP-Only Agents
 
-`session-namer` uses `mcp_only: true`:
+`ralphx-utility-session-namer` uses `mcp_only: true`:
 - `--tools ""` → no CLI tools available
 - Only MCP tools via `--allowedTools`
 
@@ -294,7 +294,7 @@ Each spawn generates a temporary MCP config at `/tmp/ralphx-mcp-<pid>-<uuid>.jso
       "command": "node",
       "args": ["<mcp-server-path>/dist/index.js"],
       "env": {
-        "RALPHX_AGENT_TYPE": "ralphx-worker",
+        "RALPHX_AGENT_TYPE": "ralphx-execution-worker",
         "RALPHX_MCP_URL": "http://localhost:3847"
       }
     }

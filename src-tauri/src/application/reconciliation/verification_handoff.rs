@@ -16,7 +16,7 @@ use crate::domain::entities::{
 use crate::domain::repositories::{ChatConversationRepository, ChatMessageRepository};
 use crate::domain::services::MessageQueue;
 
-/// Dedup guard: skip synthesis when plan-verifier already delivered a structured
+/// Dedup guard: skip synthesis when ralphx-plan-verifier already delivered a structured
 /// `<escalation type="verification">` message via the same parent session.
 pub(crate) const ESCALATED_TO_PARENT: &str = "escalated_to_parent";
 

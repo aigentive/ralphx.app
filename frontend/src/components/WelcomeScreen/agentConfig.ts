@@ -7,7 +7,7 @@
  * Agents are organized into three orbital tiers:
  * - Inner (4 agents): Core workflow - orchestrator, worker, reviewer, qa
  * - Middle (4 agents): Support - supervisor, researcher, ideation, qa-prep
- * - Outer (5 agents): Utilities - chat agents, session-namer, dependency
+ * - Outer (5 agents): Utilities - chat agents, ralphx-utility-session-namer, dependency
  *
  * Anti-AI-Slop: Warm colors only, no purple/blue
  */

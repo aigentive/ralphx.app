@@ -231,7 +231,7 @@ export const ideationApi = {
     },
 
     /**
-     * Spawn a session-namer agent to auto-generate a title from the first message
+     * Spawn a ralphx-utility-session-namer agent to auto-generate a title from the first message
      * Runs in background and returns immediately (fire-and-forget)
      * @param sessionId The session ID
      * @param firstMessage The user's first message in the session

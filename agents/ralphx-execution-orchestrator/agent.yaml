@@ -1,0 +1,3 @@
+name: ralphx-execution-orchestrator
+role: orchestrator
+description: "Plans and coordinates complex multi-step tasks"

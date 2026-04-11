@@ -96,7 +96,7 @@ const FinalizePendingConfirmationEventSchema = z.object({
  *
  * Listens to 'ideation:session_title_updated' events and updates the
  * ideation store accordingly. This enables real-time session title updates
- * when the session-namer agent generates a title.
+ * when the ralphx-utility-session-namer agent generates a title.
  *
  * @example
  * ```tsx
@@ -122,7 +122,7 @@ export function useIdeationEvents() {
     logger.debug("[IdeationEvents] Setting up event listeners");
     const unsubscribes: Unsubscribe[] = [];
 
-    // Listen for session title updates (from session-namer agent)
+    // Listen for session title updates (from ralphx-utility-session-namer agent)
     unsubscribes.push(
       bus.subscribe<unknown>("ideation:session_title_updated", (payload) => {
         logger.debug("[IdeationEvents] Received session_title_updated:", payload);

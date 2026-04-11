@@ -507,7 +507,7 @@ pub async fn get_git_branches(working_directory: String) -> Result<Vec<String>, 
     Ok(sorted)
 }
 
-/// Spawn the project-analyzer agent to auto-detect build systems and validation commands.
+/// Spawn the ralphx-project-analyzer agent to auto-detect build systems and validation commands.
 ///
 /// This is a fire-and-forget operation that spawns a background agent.
 /// The agent scans the project directory for build files (package.json, Cargo.toml, etc.)
@@ -598,7 +598,7 @@ pub async fn spawn_project_analyzer(
 
 /// Re-analyze a project's build systems and validation commands.
 ///
-/// Triggers the project-analyzer agent for manual re-analysis from Settings UI.
+/// Triggers the ralphx-project-analyzer agent for manual re-analysis from Settings UI.
 #[tauri::command]
 pub async fn reanalyze_project(id: String, state: State<'_, AppState>) -> Result<(), String> {
     let project_id = ProjectId::from_string(id.clone());

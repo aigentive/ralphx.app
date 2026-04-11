@@ -8,10 +8,10 @@ paths:
   - "src-tauri/src/http_server/**"
   - "frontend/src/hooks/useAgentEvents.ts"
   - "frontend/src/components/Chat/**"
-  - "agents/plan-verifier/**"
+  - "agents/ralphx-plan-verifier/**"
   - "agents/plan-critic-*/**"
-  - "agents/ideation-team-lead/**"
-  - "agents/orchestrator-ideation/**"
+  - "agents/ralphx-ideation-team-lead/**"
+  - "agents/ralphx-ideation/**"
   - "agents/ideation-specialist-*/**"
 ---
 

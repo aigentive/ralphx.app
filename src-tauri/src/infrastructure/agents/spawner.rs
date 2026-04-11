@@ -165,13 +165,16 @@ impl AgenticClientSpawner {
     /// Map agent type string to AgentRole
     fn role_from_string(agent_type: &str) -> AgentRole {
         match agent_type {
-            "worker" => AgentRole::Worker,
-            "coder" | "ralphx-coder" => AgentRole::Worker,
+            "worker" | "ralphx-worker" | "ralphx-execution-worker" => AgentRole::Worker,
+            "coder" | "ralphx-coder" | "ralphx-execution-coder" => AgentRole::Worker,
             "qa-prep" => AgentRole::QaPrep,
             "qa-refiner" => AgentRole::QaRefiner,
             "qa-tester" => AgentRole::QaTester,
-            "reviewer" => AgentRole::Reviewer,
-            "supervisor" => AgentRole::Supervisor,
+            "reviewer" | "ralphx-reviewer" | "ralphx-execution-reviewer" => AgentRole::Reviewer,
+            "merger" | "ralphx-merger" | "ralphx-execution-merger" => AgentRole::Reviewer,
+            "supervisor" | "ralphx-supervisor" | "ralphx-execution-supervisor" => {
+                AgentRole::Supervisor
+            }
             other => AgentRole::Custom(other.to_string()),
         }
     }
@@ -339,9 +342,9 @@ impl AgenticClientSpawner {
 
     fn process_name(agent_type: &str) -> Option<&'static str> {
         match agent_type {
-            "worker" | "coder" | "ralphx-worker" | "ralphx-coder" => Some("execution"),
-            "reviewer" | "ralphx-reviewer" => Some("review"),
-            "merger" | "ralphx-merger" => Some("merge"),
+            "worker" | "coder" | "ralphx-execution-worker" | "ralphx-execution-coder" => Some("execution"),
+            "reviewer" | "ralphx-execution-reviewer" => Some("review"),
+            "merger" | "ralphx-execution-merger" => Some("merge"),
             "qa-prep" => Some("qa_prep"),
             "qa-refiner" => Some("qa_refine"),
             "qa-tester" => Some("qa_test"),
@@ -351,12 +354,12 @@ impl AgenticClientSpawner {
 
     fn context_type_for_agent(agent_type: &str) -> Option<ChatContextType> {
         match agent_type {
-            "worker" | "coder" | "ralphx-worker" | "ralphx-coder" | "qa-prep" => {
+            "worker" | "coder" | "ralphx-execution-worker" | "ralphx-execution-coder" | "qa-prep" => {
                 Some(ChatContextType::TaskExecution)
             }
             "qa-refiner" | "qa-tester" => Some(ChatContextType::TaskExecution),
-            "reviewer" | "ralphx-reviewer" => Some(ChatContextType::Review),
-            "merger" | "ralphx-merger" => Some(ChatContextType::Merge),
+            "reviewer" | "ralphx-execution-reviewer" => Some(ChatContextType::Review),
+            "merger" | "ralphx-execution-merger" => Some(ChatContextType::Merge),
             _ => None,
         }
     }

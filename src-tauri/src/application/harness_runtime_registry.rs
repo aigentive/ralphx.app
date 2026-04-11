@@ -758,11 +758,11 @@ mod tests {
         );
 
         assert_eq!(bootstrap.agent_name, agent_name);
-        assert_eq!(bootstrap.agent_role, "session-namer");
+        assert_eq!(bootstrap.agent_role, "ralphx-utility-session-namer");
         assert_eq!(bootstrap.working_directory, working_directory);
         assert_eq!(
             bootstrap.env.get("RALPHX_AGENT_TYPE"),
-            Some(&"session-namer".to_string())
+            Some(&"ralphx-utility-session-namer".to_string())
         );
         assert_eq!(
             bootstrap.plugin_dir,
@@ -781,7 +781,7 @@ mod tests {
         );
 
         assert_eq!(bootstrap.agent_name, agent_name);
-        assert_eq!(bootstrap.agent_role, "session-namer");
+        assert_eq!(bootstrap.agent_role, "ralphx-utility-session-namer");
         assert_eq!(bootstrap.working_directory, working_directory);
         assert_eq!(
             bootstrap.plugin_dir,

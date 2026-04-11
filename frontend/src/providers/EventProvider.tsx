@@ -107,7 +107,7 @@ interface EventProviderProps {
  * - Supervisor alerts
  * - Review events (placeholder for Phase 9)
  * - File change events (placeholder)
- * - Ideation events (session title updates from session-namer agent)
+ * - Ideation events (session title updates from ralphx-utility-session-namer agent)
  *
  * @example
  * ```tsx

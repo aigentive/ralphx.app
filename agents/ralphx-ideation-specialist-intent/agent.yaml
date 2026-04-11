@@ -1,0 +1,4 @@
+---
+name: ralphx-ideation-specialist-intent
+role: ideation_specialist_intent
+description: "Verify plan intent alignment \u2014 compare the plan's stated goal against original user messages to catch misinterpretations early (substitution, narrowing, broadening, assumption injection)"

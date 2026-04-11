@@ -316,7 +316,7 @@ The Project Analysis section manages the commands RalphX uses to set up and vali
 
 ### Auto-Detection
 
-When you create a project (or click **Re-analyze**), a `project-analyzer` agent scans your repository and detects:
+When you create a project (or click **Re-analyze**), a `ralphx-project-analyzer` agent scans your repository and detects:
 - Build systems (npm, cargo, make, etc.)
 - Install commands (e.g., `npm install`, `pip install`)
 - Validation commands (e.g., `npm run typecheck`, `cargo test --lib`)

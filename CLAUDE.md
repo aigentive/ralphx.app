@@ -105,9 +105,9 @@ Plugin: `claude --plugin-dir ./plugins/app --agent worker -p "Execute"` | Tool c
 
 | Agent | MCP Tools |
 |-------|-----------|
-| orchestrator-ideation | *_task_proposal, *_plan_artifact |
-| chat-task | update_task, add_task_note, get_task_details |
-| chat-project | suggest_task, list_tasks |
+| ralphx-ideation | *_task_proposal, *_plan_artifact |
+| ralphx-chat-task | update_task, add_task_note, get_task_details |
+| ralphx-chat-project | suggest_task, list_tasks |
 | worker | get_task_context, get_artifact*, *_step, execution_complete |
 | coder | get_task_context, get_artifact*, *_step (❌ no execution_complete) |
 | reviewer | complete_review, get_task_context |
@@ -141,7 +141,7 @@ Plugin: `claude --plugin-dir ./plugins/app --agent worker -p "Execute"` | Tool c
 
 ## Adversarial Plan Convergence (NON-NEGOTIABLE)
 
-> Applies to: team leads, ideation team leads (`ideation-team-lead`), solo ideation orchestrators (`orchestrator-ideation`), and any agent planning non-trivial changes.
+> Applies to: team leads, ideation team leads (`ralphx-ideation-team-lead`), solo ideation orchestrators (`ralphx-ideation`), and any agent planning non-trivial changes.
 
 Agent limitations mean no single plan can be trusted in full. Plans proposing code changes MUST pass adversarial debate as part of the VERIFY phase before implementation begins.
 
@@ -157,7 +157,7 @@ Agent limitations mean no single plan can be trusted in full. Plans proposing co
 
 **Adversarial agent rules:** Read actual code (not summaries). Concrete scenarios only ("if X then Y breaks at line Z"). ❌ Style/preference debates. Each gap: scenario + severity + blocks implementation?
 
-Full process details: `agents/ideation-team-lead/claude/prompt.md` (Phase 4.5) | `agents/orchestrator-ideation/claude/prompt.md` (Phase 3.5)
+Full process details: `agents/ralphx-ideation-team-lead/claude/prompt.md` (Phase 4.5) | `agents/ralphx-ideation/claude/prompt.md` (Phase 3.5)
 
 ## Design System
 `specs/DESIGN.md` | Accent: `#ff6b35` (warm orange) ❌ purple/blue | Font: SF Pro ❌ Inter | **INVOKE `/tailwind-v4-shadcn` before UI work**

@@ -151,7 +151,7 @@ export const projectsApi = {
 
   /**
    * Re-analyze project build systems and validation commands
-   * Triggers the project-analyzer agent
+   * Triggers the ralphx-project-analyzer agent
    * @param projectId The project ID
    */
   reanalyzeProject: (projectId: string) =>

@@ -44,10 +44,10 @@ fn test_model_level_serde() {
 #[test]
 fn test_model_bucket_for_agent_primary() {
     let primary_agents = [
-        "orchestrator-ideation",
-        "ideation-team-lead",
+        "ralphx-ideation",
+        "ralphx-ideation-team-lead",
         "ideation-team-member",
-        "orchestrator-ideation-readonly",
+        "ralphx-ideation-readonly",
     ];
     for agent in primary_agents {
         assert_eq!(
@@ -62,11 +62,11 @@ fn test_model_bucket_for_agent_primary() {
 #[test]
 fn test_model_bucket_for_agent_verifier() {
     assert_eq!(
-        model_bucket_for_agent("plan-verifier"),
+        model_bucket_for_agent("ralphx-plan-verifier"),
         Some(ModelBucket::Verifier)
     );
     assert_eq!(
-        model_bucket_for_agent("ralphx:plan-verifier"),
+        model_bucket_for_agent("ralphx:ralphx-plan-verifier"),
         Some(ModelBucket::Verifier)
     );
 }
@@ -74,19 +74,43 @@ fn test_model_bucket_for_agent_verifier() {
 #[test]
 fn test_model_bucket_for_agent_primary_fully_qualified() {
     assert_eq!(
-        model_bucket_for_agent("ralphx:orchestrator-ideation"),
+        model_bucket_for_agent("ralphx:ralphx-ideation"),
         Some(ModelBucket::Primary)
     );
     assert_eq!(
-        model_bucket_for_agent("ralphx:ideation-team-lead"),
+        model_bucket_for_agent("ralphx:ralphx-ideation-team-lead"),
         Some(ModelBucket::Primary)
     );
 }
 
 #[test]
+fn test_model_bucket_for_agent_legacy_primary_aliases() {
+    for agent in [
+        "orchestrator-ideation",
+        "ideation-team-lead",
+        "orchestrator-ideation-readonly",
+    ] {
+        assert_eq!(
+            model_bucket_for_agent(agent),
+            Some(ModelBucket::Primary),
+            "legacy agent '{}' should map to Primary",
+            agent
+        );
+    }
+}
+
+#[test]
+fn test_model_bucket_for_agent_legacy_verifier_alias() {
+    assert_eq!(
+        model_bucket_for_agent("plan-verifier"),
+        Some(ModelBucket::Verifier)
+    );
+}
+
+#[test]
 fn test_model_bucket_for_agent_none() {
-    assert_eq!(model_bucket_for_agent("ralphx-worker"), None);
-    assert_eq!(model_bucket_for_agent("ralphx-coder"), None);
+    assert_eq!(model_bucket_for_agent("ralphx-execution-worker"), None);
+    assert_eq!(model_bucket_for_agent("ralphx-execution-coder"), None);
     assert_eq!(model_bucket_for_agent(""), None);
     assert_eq!(model_bucket_for_agent("unknown-agent"), None);
 }
@@ -170,14 +194,14 @@ fn test_verifier_subagent_bucket_not_in_agent_map() {
     // VerifierSubagent is a cap-resolution bucket, not an agent bucket.
     // No agent name should map to it via model_bucket_for_agent().
     let agents = [
-        "orchestrator-ideation",
-        "ideation-team-lead",
+        "ralphx-ideation",
+        "ralphx-ideation-team-lead",
         "ideation-team-member",
-        "orchestrator-ideation-readonly",
-        "plan-verifier",
-        "ralphx:plan-verifier",
-        "ralphx-worker",
-        "ralphx-coder",
+        "ralphx-ideation-readonly",
+        "ralphx-plan-verifier",
+        "ralphx:ralphx-plan-verifier",
+        "ralphx-execution-worker",
+        "ralphx-execution-coder",
         "",
     ];
     for agent in agents {

@@ -1,4 +1,0 @@
----
-name: ideation-specialist-prompt-quality
-role: ideation_specialist_prompt_quality
-description: "Review agent prompt files for context engineering quality \u2014 token waste, misscoped information, tool-prompt misalignment, anti-bloat, XML tag hygiene, and structural problems"

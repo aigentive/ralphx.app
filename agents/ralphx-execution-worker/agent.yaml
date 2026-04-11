@@ -1,0 +1,3 @@
+name: ralphx-execution-worker
+role: worker
+description: "Executes implementation tasks autonomously"

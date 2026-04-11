@@ -366,7 +366,7 @@ describe("PermissionDialog", () => {
     render(<PermissionDialog />);
     await act(async () => { await Promise.resolve(); });
 
-    emitEvent("permission:request", makeRequest({ agent_type: "ralphx-worker" }));
+    emitEvent("permission:request", makeRequest({ agent_type: "ralphx-execution-worker" }));
 
     await waitFor(() => { expect(screen.getByText("Worker")).toBeInTheDocument(); });
   });

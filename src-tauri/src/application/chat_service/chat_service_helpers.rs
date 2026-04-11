@@ -23,7 +23,7 @@ use crate::infrastructure::agents::claude::agent_names::{
 ///
 /// ## Examples
 ///
-/// - Review context + "reviewing" status → `ralphx-reviewer` (AI performs review)
+/// - Review context + "reviewing" status → `ralphx-execution-reviewer` (AI performs review)
 /// - Review context + "review_passed" status → `ralphx-review-chat` (user discusses with AI)
 /// - Ideation context + team_mode=true → team-lead variant (if configured)
 ///
@@ -57,7 +57,7 @@ pub fn resolve_agent_with_team_mode(
             // Review: approved tasks use read-only history agent for retrospective discussion
             (ChatContextType::Review, "approved") => return AGENT_REVIEW_HISTORY,
 
-            // Ideation: verification child sessions route to the dedicated plan-verifier agent
+            // Ideation: verification child sessions route to the dedicated ralphx-plan-verifier agent
             (ChatContextType::Ideation, "verification") => return AGENT_PLAN_VERIFIER,
 
             // Ideation: accepted plans use read-only agent (no mutation tools)

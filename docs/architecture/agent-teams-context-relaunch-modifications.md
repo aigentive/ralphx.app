@@ -9,12 +9,12 @@
 
 | File | Type | Lines Added | Lines Changed | Description |
 |------|------|-------------|---------------|-------------|
-| `agents/ideation-team-lead/claude/prompt.md` | Prompt | ~35 | 0 | Add relaunch protocol section for lead |
-| `agents/ralphx-worker-team/claude/prompt.md` | Prompt | ~35 | 0 | Add relaunch protocol section for lead |
+| `agents/ralphx-ideation-team-lead/claude/prompt.md` | Prompt | ~35 | 0 | Add relaunch protocol section for lead |
+| `agents/ralphx-execution-team-lead/claude/prompt.md` | Prompt | ~35 | 0 | Add relaunch protocol section for lead |
 | `agents/ideation-specialist-*/claude/prompt.md` | Prompt | ~8 | 0 | Add self-report rule |
-| `agents/ideation-critic/claude/prompt.md` | Prompt | ~8 | 0 | Add self-report rule |
-| `agents/ideation-advocate/claude/prompt.md` | Prompt | ~8 | 0 | Add self-report rule |
-| `agents/ralphx-coder/claude/prompt.md` | Prompt | ~8 | 0 | Add self-report rule |
+| `agents/ralphx-ideation-critic/claude/prompt.md` | Prompt | ~8 | 0 | Add self-report rule |
+| `agents/ralphx-ideation-advocate/claude/prompt.md` | Prompt | ~8 | 0 | Add self-report rule |
+| `agents/ralphx-execution-coder/claude/prompt.md` | Prompt | ~8 | 0 | Add self-report rule |
 | `src-tauri/src/infrastructure/agents/team_config.rs` | Rust | ~6 | 0 | Add `context_relaunch_threshold` field |
 | `ralphx.yaml` | YAML | ~1 | 0 | Add threshold to defaults |
 | `src-tauri/src/domain/artifacts/mod.rs` | Rust | ~15 (optional) | 0 | Add `TeamHandoff` artifact type |
@@ -22,7 +22,7 @@
 
 ## Prompt Modifications
 
-### Team Lead Prompts (`agents/ideation-team-lead/claude/prompt.md`, `agents/ralphx-worker-team/claude/prompt.md`)
+### Team Lead Prompts (`agents/ralphx-ideation-team-lead/claude/prompt.md`, `agents/ralphx-execution-team-lead/claude/prompt.md`)
 
 **Location:** After team coordination section, before workflow phases
 
@@ -102,9 +102,9 @@ Before relaunching, verify:
 ### Specialist/Advocate/Critic Prompts
 
 **Files:**
-- `orchestrator-ideation-specialist.md`
-- `orchestrator-ideation-critic.md`
-- `orchestrator-ideation-advocate.md`
+- `ralphx-ideation-specialist.md`
+- `ralphx-ideation-critic.md`
+- `ralphx-ideation-advocate.md`
 - `coder.md`
 
 **Location:** In `<rules>` section, after core responsibilities, before workflow
@@ -238,7 +238,7 @@ teammate_status.relaunch_count += 1;
 | Phase | Task | Files Modified | Dependency |
 |-------|------|----------------|------------|
 | 1 | Add `context_relaunch_threshold` config field | `team_config.rs`, `ralphx.yaml` | None |
-| 2 | Update team lead prompts | `ideation-team-lead.md`, `worker-team.md` | Phase 1 |
+| 2 | Update team lead prompts | `ralphx-ideation-team-lead.md`, `worker-team.md` | Phase 1 |
 | 3 | Update specialist prompts | 4 specialist prompt files | Phase 1 |
 | 4 | Add `relaunch_count` tracking | `team_state_tracker.rs` | Phase 1 |
 | 5 | (Optional) Add `TeamHandoff` artifact type | `artifacts/mod.rs` | Phase 1 |

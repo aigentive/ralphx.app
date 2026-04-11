@@ -474,8 +474,8 @@ fn team_plan_request_converts_to_spawn_requests() {
 #[test]
 fn resolve_mcp_agent_type_returns_preset_when_some() {
     assert_eq!(
-        resolve_mcp_agent_type("ideation", Some("ideation-specialist-backend")),
-        "ideation-specialist-backend"
+        resolve_mcp_agent_type("ideation", Some("ralphx-ideation-specialist-backend")),
+        "ralphx-ideation-specialist-backend"
     );
 }
 
@@ -499,19 +499,19 @@ fn resolve_mcp_agent_type_worker_process_no_preset() {
 fn resolve_mcp_agent_type_preset_overrides_worker_process() {
     // Even if process is worker-*, preset takes priority
     assert_eq!(
-        resolve_mcp_agent_type("worker-parallel", Some("ideation-specialist-frontend")),
-        "ideation-specialist-frontend"
+        resolve_mcp_agent_type("worker-parallel", Some("ralphx-ideation-specialist-frontend")),
+        "ralphx-ideation-specialist-frontend"
     );
 }
 
 #[test]
 fn resolve_mcp_agent_type_specialist_preset_variants() {
     for preset in &[
-        "ideation-specialist-backend",
-        "ideation-specialist-frontend",
-        "ideation-specialist-infra",
-        "ideation-critic",
-        "ideation-advocate",
+        "ralphx-ideation-specialist-backend",
+        "ralphx-ideation-specialist-frontend",
+        "ralphx-ideation-specialist-infra",
+        "ralphx-ideation-critic",
+        "ralphx-ideation-advocate",
     ] {
         assert_eq!(
             resolve_mcp_agent_type("ideation", Some(preset)),
@@ -538,9 +538,9 @@ fn resolve_effort_for_ideation_team_member_returns_default() {
 #[test]
 fn resolve_effort_for_specialist_returns_non_empty() {
     use ralphx_lib::infrastructure::agents::claude::resolve_effort;
-    // ideation-specialist-backend has a YAML entry with opus model
-    let effort = resolve_effort(Some("ideation-specialist-backend"));
-    assert!(!effort.is_empty(), "Expected non-empty effort for ideation-specialist-backend");
+    // ralphx-ideation-specialist-backend has a YAML entry with opus model
+    let effort = resolve_effort(Some("ralphx-ideation-specialist-backend"));
+    assert!(!effort.is_empty(), "Expected non-empty effort for ralphx-ideation-specialist-backend");
 }
 
 #[tokio::test]

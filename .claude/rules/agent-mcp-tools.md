@@ -41,7 +41,7 @@ When adding OR removing an MCP tool from an agent:
 | **Backend-spawned** (Rust `create_mcp_config()`) | ✅ `"mcp__ralphx__*"` works | Backend handles tool injection via `--allowed-tools` CLI arg — different code path |
 | **Task-spawned Claude subagent** (Claude Code `Task()` tool) | ❌ `"mcp__ralphx__*"` fails silently | Wildcard not expanded against MCP server; treated as literal string matching nothing — MUST use explicit names |
 
-**Rule:** Task-spawned Claude agents MUST list explicit MCP tool names (e.g., `"mcp__ralphx__get_session_plan"`). Pattern reference: `plan-critic-completeness.md` frontmatter.
+**Rule:** Task-spawned Claude agents MUST list explicit MCP tool names (e.g., `"mcp__ralphx__get_session_plan"`). Pattern reference: `ralphx-plan-critic-completeness.md` frontmatter.
 
 ## How to Add or Remove an MCP Tool — Checklist
 
@@ -131,26 +131,26 @@ After adding a tool, verify MCP server stderr shows:
 
 | Agent | Spawning Path | Wildcard in `tools`? |
 |-------|--------------|---------------------|
-| `orchestrator-ideation` | Backend-spawned (Rust `ClaudeCodeClient`) | ✅ OK |
-| `orchestrator-ideation-readonly` | Backend-spawned | ✅ OK |
-| `ideation-team-lead` | Backend-spawned | ✅ OK |
-| `ralphx-worker` | Backend-spawned | ✅ OK |
-| `ralphx-coder` | Backend-spawned | ✅ OK |
-| `ralphx-worker-team` | Backend-spawned (team mode) | ✅ OK |
-| `ralphx-reviewer` | Backend-spawned | ✅ OK |
-| `ralphx-merger` | Backend-spawned | ✅ OK |
-| `chat-task` | Backend-spawned | ✅ OK |
-| `chat-project` | Backend-spawned | ✅ OK |
+| `ralphx-ideation` | Backend-spawned (Rust `ClaudeCodeClient`) | ✅ OK |
+| `ralphx-ideation-readonly` | Backend-spawned | ✅ OK |
+| `ralphx-ideation-team-lead` | Backend-spawned | ✅ OK |
+| `ralphx-execution-worker` | Backend-spawned | ✅ OK |
+| `ralphx-execution-coder` | Backend-spawned | ✅ OK |
+| `ralphx-execution-team-lead` | Backend-spawned (team mode) | ✅ OK |
+| `ralphx-execution-reviewer` | Backend-spawned | ✅ OK |
+| `ralphx-execution-merger` | Backend-spawned | ✅ OK |
+| `ralphx-chat-task` | Backend-spawned | ✅ OK |
+| `ralphx-chat-project` | Backend-spawned | ✅ OK |
 | `ralphx-review-chat` | Backend-spawned | ✅ OK |
-| `plan-verifier` | Backend-spawned | ✅ OK |
-| `ideation-specialist-backend` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
-| `ideation-specialist-frontend` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
-| `ideation-specialist-infra` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
-| `ideation-specialist-ux` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
-| `ideation-advocate` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
-| `ideation-critic` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
-| `plan-critic-completeness` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
-| `plan-critic-implementation-feasibility` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
+| `ralphx-plan-verifier` | Backend-spawned | ✅ OK |
+| `ralphx-ideation-specialist-backend` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
+| `ralphx-ideation-specialist-frontend` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
+| `ralphx-ideation-specialist-infra` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
+| `ralphx-ideation-specialist-ux` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
+| `ralphx-ideation-advocate` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
+| `ralphx-ideation-critic` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
+| `ralphx-plan-critic-completeness` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
+| `ralphx-plan-critic-implementation-feasibility` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
 
 **Warning:** If any backend-spawned agent above is ever reconfigured to be Task-spawned, update its frontmatter to use explicit tool names — the wildcard will silently stop working.
 
@@ -160,46 +160,46 @@ After adding a tool, verify MCP server stderr shows:
 
 | Agent | Tools in `ralphx.yaml` `mcp_tools` |
 |-------|--------------------------------------|
-| `orchestrator-ideation` | `create_task_proposal`, `update_task_proposal`, `delete_task_proposal`, `list_session_proposals`, `get_proposal`, `analyze_session_dependencies`, `create_plan_artifact`, `update_plan_artifact`, `edit_plan_artifact`, `get_artifact`, `link_proposals_to_plan`, `get_session_plan`, `ask_user_question`, `create_child_session`, `get_parent_session_context`, `get_session_messages`, `update_plan_verification`, `get_plan_verification`, `revert_and_skip`, `search_memories`, `get_memory`, `get_memories_for_paths`, `list_projects`, `create_cross_project_session`, `cross_project_guide`, `get_child_session_status`, `send_ideation_session_message` |
-| `orchestrator-ideation-readonly` | `list_session_proposals`, `get_proposal`, `get_artifact`, `get_session_plan`, `get_parent_session_context`, `create_child_session`, `get_plan_verification`, `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ideation-team-lead` | Extends `orchestrator-ideation` but **overrides** `mcp_tools` (full-replace). Effective list: `request_team_plan`, `request_teammate_spawn`, `create_team_artifact`, `get_team_artifacts`, `get_team_session_state`, `save_team_session_state`, `create_task_proposal`, `update_task_proposal`, `delete_task_proposal`, `list_session_proposals`, `get_proposal`, `analyze_session_dependencies`, `create_plan_artifact`, `update_plan_artifact`, `edit_plan_artifact`, `get_artifact`, `link_proposals_to_plan`, `get_session_plan`, `ask_user_question`, `create_child_session`, `get_parent_session_context`, `get_session_messages`, `update_plan_verification`, `get_plan_verification`, `revert_and_skip`, `search_memories`, `get_memory`, `get_memories_for_paths`, `list_projects`, `create_cross_project_session`, `cross_project_guide`, `get_child_session_status`, `send_ideation_session_message` |
-| `session-namer` | `update_session_title` |
-| `chat-task` | `update_task`, `add_task_note`, `get_task_details`, `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `chat-project` | `suggest_task`, `list_tasks`, `search_memories`, `get_memory`, `get_memories_for_paths`, `get_conversation_transcript` |
+| `ralphx-ideation` | `create_task_proposal`, `update_task_proposal`, `delete_task_proposal`, `list_session_proposals`, `get_proposal`, `analyze_session_dependencies`, `create_plan_artifact`, `update_plan_artifact`, `edit_plan_artifact`, `get_artifact`, `link_proposals_to_plan`, `get_session_plan`, `ask_user_question`, `create_child_session`, `get_parent_session_context`, `get_session_messages`, `update_plan_verification`, `get_plan_verification`, `revert_and_skip`, `search_memories`, `get_memory`, `get_memories_for_paths`, `list_projects`, `create_cross_project_session`, `cross_project_guide`, `get_child_session_status`, `send_ideation_session_message` |
+| `ralphx-ideation-readonly` | `list_session_proposals`, `get_proposal`, `get_artifact`, `get_session_plan`, `get_parent_session_context`, `create_child_session`, `get_plan_verification`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-ideation-team-lead` | Extends `ralphx-ideation` but **overrides** `mcp_tools` (full-replace). Effective list: `request_team_plan`, `request_teammate_spawn`, `create_team_artifact`, `get_team_artifacts`, `get_team_session_state`, `save_team_session_state`, `create_task_proposal`, `update_task_proposal`, `delete_task_proposal`, `list_session_proposals`, `get_proposal`, `analyze_session_dependencies`, `create_plan_artifact`, `update_plan_artifact`, `edit_plan_artifact`, `get_artifact`, `link_proposals_to_plan`, `get_session_plan`, `ask_user_question`, `create_child_session`, `get_parent_session_context`, `get_session_messages`, `update_plan_verification`, `get_plan_verification`, `revert_and_skip`, `search_memories`, `get_memory`, `get_memories_for_paths`, `list_projects`, `create_cross_project_session`, `cross_project_guide`, `get_child_session_status`, `send_ideation_session_message` |
+| `ralphx-utility-session-namer` | `update_session_title` |
+| `ralphx-chat-task` | `update_task`, `add_task_note`, `get_task_details`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-chat-project` | `suggest_task`, `list_tasks`, `search_memories`, `get_memory`, `get_memories_for_paths`, `get_conversation_transcript` |
 | `ralphx-review-chat` | `approve_task`, `request_task_changes`, `get_review_notes`, `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`, `get_task_steps`, `search_memories`, `get_memory`, `get_memories_for_paths` |
 | `ralphx-review-history` | `get_review_notes`, `get_task_context`, `get_task_issues`, `get_task_steps`, `get_step_progress`, `get_issue_progress`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`, `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ralphx-worker` | `start_step`, `complete_step`, `skip_step`, `fail_step`, `add_step`, `get_step_progress`, `get_step_context`, `get_sub_steps`, `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`, `get_review_notes`, `get_task_steps`, `get_task_issues`, `mark_issue_in_progress`, `mark_issue_addressed`, `get_project_analysis`, `create_followup_session`, `execution_complete`, `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ralphx-coder` | `start_step`, `complete_step`, `skip_step`, `fail_step`, `add_step`, `get_step_progress`, `get_step_context`, `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`, `get_review_notes`, `get_task_steps`, `get_task_issues`, `mark_issue_in_progress`, `mark_issue_addressed`, `get_project_analysis`, `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ralphx-worker-team` | Extends `ralphx-worker`, does NOT override `mcp_tools` → **inherits** full list from `ralphx-worker` (see above) |
-| `ralphx-reviewer` | `complete_review`, `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`, `get_review_notes`, `get_task_steps`, `get_task_issues`, `get_step_progress`, `get_issue_progress`, `get_project_analysis`, `create_followup_session`, `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ralphx-merger` | `report_conflict`, `report_incomplete`, `complete_merge`, `get_merge_target`, `get_task_context`, `get_project_analysis`, `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ralphx-orchestrator` | `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ralphx-deep-researcher` | `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ralphx-supervisor` | `[]` (empty — no MCP tools) |
+| `ralphx-execution-worker` | `start_step`, `complete_step`, `skip_step`, `fail_step`, `add_step`, `get_step_progress`, `get_step_context`, `get_sub_steps`, `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`, `get_review_notes`, `get_task_steps`, `get_task_issues`, `mark_issue_in_progress`, `mark_issue_addressed`, `get_project_analysis`, `create_followup_session`, `execution_complete`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-execution-coder` | `start_step`, `complete_step`, `skip_step`, `fail_step`, `add_step`, `get_step_progress`, `get_step_context`, `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`, `get_review_notes`, `get_task_steps`, `get_task_issues`, `mark_issue_in_progress`, `mark_issue_addressed`, `get_project_analysis`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-execution-team-lead` | Extends `ralphx-execution-worker`, does NOT override `mcp_tools` → **inherits** full list from `ralphx-execution-worker` (see above) |
+| `ralphx-execution-reviewer` | `complete_review`, `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`, `get_review_notes`, `get_task_steps`, `get_task_issues`, `get_step_progress`, `get_issue_progress`, `get_project_analysis`, `create_followup_session`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-execution-merger` | `report_conflict`, `report_incomplete`, `complete_merge`, `get_merge_target`, `get_task_context`, `get_project_analysis`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-execution-orchestrator` | `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-research-deep-researcher` | `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-execution-supervisor` | `[]` (empty — no MCP tools) |
 | `ralphx-qa-prep` | `[]` (empty — no MCP tools) |
 | `ralphx-qa-executor` | `[]` (empty — no MCP tools) |
-| `project-analyzer` | `save_project_analysis`, `get_project_analysis` |
-| `memory-maintainer` | `search_memories`, `get_memory`, `get_memories_for_paths`, `get_conversation_transcript`, `upsert_memories`, `mark_memory_obsolete`, `refresh_memory_rule_index`, `ingest_rule_file`, `rebuild_archive_snapshots` |
-| `memory-capture` | `search_memories`, `get_memory`, `get_memories_for_paths`, `get_conversation_transcript`, `upsert_memories`, `mark_memory_obsolete` |
-| `plan-critic-completeness` | `get_session_plan`, `get_artifact` |
-| `plan-critic-implementation-feasibility` | `get_session_plan`, `get_artifact` |
-| `plan-verifier` | `get_session_plan`, `get_session_messages`, `get_team_artifacts`, `get_artifact`, `get_parent_session_context`, `update_plan_verification`, `get_plan_verification`, `update_plan_artifact`, `edit_plan_artifact`, `send_ideation_session_message`, `create_team_artifact`, `list_session_proposals`, `get_proposal`, `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ideation-specialist-backend` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ideation-specialist-frontend` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ideation-specialist-infra` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ideation-specialist-ux` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ideation-advocate` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ideation-critic` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-project-analyzer` | `save_project_analysis`, `get_project_analysis` |
+| `ralphx-memory-maintainer` | `search_memories`, `get_memory`, `get_memories_for_paths`, `get_conversation_transcript`, `upsert_memories`, `mark_memory_obsolete`, `refresh_memory_rule_index`, `ingest_rule_file`, `rebuild_archive_snapshots` |
+| `ralphx-memory-capture` | `search_memories`, `get_memory`, `get_memories_for_paths`, `get_conversation_transcript`, `upsert_memories`, `mark_memory_obsolete` |
+| `ralphx-plan-critic-completeness` | `get_session_plan`, `get_artifact` |
+| `ralphx-plan-critic-implementation-feasibility` | `get_session_plan`, `get_artifact` |
+| `ralphx-plan-verifier` | `get_session_plan`, `get_session_messages`, `get_team_artifacts`, `get_artifact`, `get_parent_session_context`, `update_plan_verification`, `get_plan_verification`, `update_plan_artifact`, `edit_plan_artifact`, `send_ideation_session_message`, `create_team_artifact`, `list_session_proposals`, `get_proposal`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-ideation-specialist-backend` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-ideation-specialist-frontend` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-ideation-specialist-infra` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-ideation-specialist-ux` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-ideation-advocate` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-ideation-critic` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
 
-**Key differences between `ralphx-worker` and `ralphx-coder`:** Worker has `get_sub_steps` and `execution_complete`; coder does not.
+**Key differences between `ralphx-execution-worker` and `ralphx-execution-coder`:** Worker has `get_sub_steps` and `execution_complete`; coder does not.
 
-**Note:** `edit_plan_artifact` is explicitly included in `orchestrator-ideation`, `ideation-team-lead`, and `plan-verifier`. `orchestrator-ideation-readonly` intentionally does NOT have it.
+**Note:** `edit_plan_artifact` is explicitly included in `ralphx-ideation`, `ralphx-ideation-team-lead`, and `ralphx-plan-verifier`. `ralphx-ideation-readonly` intentionally does NOT have it.
 
-## Example: Adding `get_merge_target` to `ralphx-merger`
+## Example: Adding `get_merge_target` to `ralphx-execution-merger`
 
 ```yaml
 # ralphx.yaml — agent's mcp_tools list
-- name: ralphx-merger
+- name: ralphx-execution-merger
   mcp_tools:
     - report_conflict
     - report_incomplete

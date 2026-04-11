@@ -26,7 +26,7 @@ fn sample_info_with_identity() -> PendingPermissionInfo {
         tool_name: "Write".to_string(),
         tool_input: serde_json::json!({"path": "/tmp/test.txt"}),
         context: Some("Writing a file".to_string()),
-        agent_type: Some("ralphx-worker".to_string()),
+        agent_type: Some("ralphx-execution-worker".to_string()),
         task_id: Some("task-abc123".to_string()),
         context_type: Some("task_execution".to_string()),
         context_id: Some("task-abc123".to_string()),
@@ -209,7 +209,7 @@ async fn test_create_and_get_pending_with_identity() {
     let p = &pending[0];
     assert_eq!(p.request_id, "perm-identity");
     assert_eq!(p.tool_name, "Write");
-    assert_eq!(p.agent_type, Some("ralphx-worker".to_string()));
+    assert_eq!(p.agent_type, Some("ralphx-execution-worker".to_string()));
     assert_eq!(p.task_id, Some("task-abc123".to_string()));
     assert_eq!(p.context_type, Some("task_execution".to_string()));
     assert_eq!(p.context_id, Some("task-abc123".to_string()));
@@ -223,7 +223,7 @@ async fn test_get_by_request_id_with_identity() {
     let found = repo.get_by_request_id("perm-identity").await.unwrap();
     assert!(found.is_some());
     let p = found.unwrap();
-    assert_eq!(p.agent_type, Some("ralphx-worker".to_string()));
+    assert_eq!(p.agent_type, Some("ralphx-execution-worker".to_string()));
     assert_eq!(p.task_id, Some("task-abc123".to_string()));
     assert_eq!(p.context_type, Some("task_execution".to_string()));
     assert_eq!(p.context_id, Some("task-abc123".to_string()));
@@ -250,7 +250,7 @@ async fn test_partial_identity_fields_round_trip() {
         tool_name: "Glob".to_string(),
         tool_input: serde_json::json!({"pattern": "*.rs"}),
         context: None,
-        agent_type: Some("ralphx-reviewer".to_string()),
+        agent_type: Some("ralphx-execution-reviewer".to_string()),
         task_id: None,
         context_type: None,
         context_id: Some("task-review-99".to_string()),
@@ -258,7 +258,7 @@ async fn test_partial_identity_fields_round_trip() {
     repo.create_pending(&info).await.unwrap();
 
     let found = repo.get_by_request_id("perm-partial").await.unwrap().unwrap();
-    assert_eq!(found.agent_type, Some("ralphx-reviewer".to_string()));
+    assert_eq!(found.agent_type, Some("ralphx-execution-reviewer".to_string()));
     assert!(found.task_id.is_none());
     assert!(found.context_type.is_none());
     assert_eq!(found.context_id, Some("task-review-99".to_string()));

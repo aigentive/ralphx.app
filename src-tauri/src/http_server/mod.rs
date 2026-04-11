@@ -125,25 +125,25 @@ pub async fn start_http_server(
         .route("/api/auth/validate-key", get(validate_api_key))
         // Legacy validate_key endpoint (kept for backward compat)
         .route("/api/validate_key", get(validate_key))
-        // Ideation tools (orchestrator-ideation agent)
+        // Ideation tools (ralphx-ideation agent)
         .route("/api/create_task_proposal", post(create_task_proposal))
         .route("/api/finalize_proposals", post(finalize_proposals))
         .route("/api/update_task_proposal", post(update_task_proposal))
         .route("/api/archive_task_proposal", post(archive_task_proposal))
-        // Proposal query tools (orchestrator-ideation agent)
+        // Proposal query tools (ralphx-ideation agent)
         .route(
             "/api/list_session_proposals/:session_id",
             get(list_session_proposals),
         )
         .route("/api/proposal/:proposal_id", get(get_proposal))
-        // Dependency analysis tools (orchestrator-ideation agent)
+        // Dependency analysis tools (ralphx-ideation agent)
         .route(
             "/api/analyze_dependencies/:session_id",
             get(analyze_session_dependencies),
         )
-        // Session tools (session-namer agent)
+        // Session tools (ralphx-utility-session-namer agent)
         .route("/api/update_session_title", post(update_session_title))
-        // Session linking tools (orchestrator-ideation agent)
+        // Session linking tools (ralphx-ideation agent)
         .route("/api/create_child_session", post(create_child_session))
         .route(
             "/api/parent_session_context/:session_id",
@@ -151,7 +151,7 @@ pub async fn start_http_server(
         )
         // Session messages (context recovery for ideation agents)
         .route("/api/get_session_messages", post(get_session_messages))
-        // Plan artifact tools (orchestrator-ideation agent)
+        // Plan artifact tools (ralphx-ideation agent)
         // NOTE: All ideation mutation routes MUST call assert_session_mutable() after fetching the session.
         .route("/api/create_plan_artifact", post(create_plan_artifact))
         .route("/api/update_plan_artifact", post(update_plan_artifact))
@@ -162,7 +162,7 @@ pub async fn start_http_server(
         )
         .route("/api/link_proposals_to_plan", post(link_proposals_to_plan))
         .route("/api/get_session_plan/:session_id", get(get_session_plan))
-        // Plan verification tools (orchestrator-ideation + worker agents)
+        // Plan verification tools (ralphx-ideation + worker agents)
         .route(
             "/api/ideation/sessions/:id/verification",
             post(update_plan_verification),
@@ -221,7 +221,7 @@ pub async fn start_http_server(
             "/api/verification/pending-confirmations",
             get(get_pending_verification_confirmations),
         )
-        // Child session tools (orchestrator-ideation + ideation-team-lead + plan-verifier agents)
+        // Child session tools (ralphx-ideation + ralphx-ideation-team-lead + ralphx-plan-verifier agents)
         .route(
             "/api/ideation/sessions/:id/child-status",
             get(get_child_session_status_handler),
@@ -230,11 +230,11 @@ pub async fn start_http_server(
             "/api/ideation/sessions/:id/message",
             post(send_ideation_session_message_handler),
         )
-        // Task tools (chat-task agent)
+        // Task tools (ralphx-chat-task agent)
         .route("/api/update_task", post(update_task))
         .route("/api/add_task_note", post(add_task_note))
         .route("/api/get_task_details", post(get_task_details))
-        // Project tools (chat-project agent)
+        // Project tools (ralphx-chat-project agent)
         .route("/api/list_tasks", post(list_tasks))
         .route("/api/suggest_task", post(suggest_task))
         // Review tools (reviewer agent)
@@ -291,7 +291,7 @@ pub async fn start_http_server(
         .route("/api/git/tasks/:id/commits", get(get_task_commits))
         .route("/api/git/tasks/:id/diff-stats", get(get_task_diff_stats))
         .route("/api/git/tasks/:id/merge-target", get(get_merge_target))
-        // Project analysis endpoints (project-analyzer + worker/reviewer/merger agents)
+        // Project analysis endpoints (ralphx-project-analyzer + worker/reviewer/merger agents)
         .route("/api/projects/:id/analysis", get(get_project_analysis))
         .route("/api/projects/:id/analysis", post(save_project_analysis))
         // Execution complete endpoint (worker agent exit signal)

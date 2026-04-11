@@ -1,4 +1,0 @@
----
-name: plan-critic-completeness
-role: plan_critic_completeness
-description: "Layer 1 completeness critic for automated plan verification. Reviews plans for architecture, security, testing, and scope gaps, then emits a structured best-effort artifact."

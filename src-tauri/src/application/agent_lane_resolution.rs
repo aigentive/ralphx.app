@@ -9,8 +9,8 @@ use crate::domain::repositories::{
     AgentLaneSettingsRepository, IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
 };
 use crate::infrastructure::agents::claude::{
-    effort_bucket_for_agent, resolve_effort, resolve_ideation_effort, resolve_ideation_model,
-    resolve_ideation_subagent_model_with_source, resolve_model,
+    canonical_short_agent_name, effort_bucket_for_agent, resolve_effort,
+    resolve_ideation_effort, resolve_ideation_model, resolve_ideation_subagent_model_with_source, resolve_model,
     resolve_verifier_subagent_model_with_source,
 };
 
@@ -188,13 +188,13 @@ pub(crate) async fn resolve_agent_spawn_settings(
 }
 
 fn ideation_lane_for_agent(agent_name: &str) -> Option<AgentLane> {
-    let normalized = agent_name.strip_prefix("ralphx:").unwrap_or(agent_name);
+    let normalized = canonical_short_agent_name(agent_name);
     match normalized {
-        "orchestrator-ideation"
-        | "ideation-team-lead"
+        "ralphx-ideation"
+        | "ralphx-ideation-team-lead"
         | "ideation-team-member"
-        | "orchestrator-ideation-readonly" => Some(AgentLane::IdeationPrimary),
-        "plan-verifier" => Some(AgentLane::IdeationVerifier),
+        | "ralphx-ideation-readonly" => Some(AgentLane::IdeationPrimary),
+        "ralphx-plan-verifier" => Some(AgentLane::IdeationVerifier),
         _ => None,
     }
 }

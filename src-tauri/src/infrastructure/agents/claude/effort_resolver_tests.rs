@@ -9,10 +9,10 @@ use super::{effort_bucket_for_agent, resolve_ideation_effort};
 #[test]
 fn test_effort_bucket_mapping_primary_agents() {
     for name in &[
-        "orchestrator-ideation",
-        "ideation-team-lead",
+        "ralphx-ideation",
+        "ralphx-ideation-team-lead",
         "ideation-team-member",
-        "orchestrator-ideation-readonly",
+        "ralphx-ideation-readonly",
     ] {
         assert_eq!(
             effort_bucket_for_agent(name),
@@ -26,11 +26,11 @@ fn test_effort_bucket_mapping_primary_agents() {
 #[test]
 fn test_effort_bucket_mapping_verifier() {
     assert_eq!(
-        effort_bucket_for_agent("plan-verifier"),
+        effort_bucket_for_agent("ralphx-plan-verifier"),
         Some(EffortBucket::Verifier)
     );
     assert_eq!(
-        effort_bucket_for_agent("ralphx:plan-verifier"),
+        effort_bucket_for_agent("ralphx:ralphx-plan-verifier"),
         Some(EffortBucket::Verifier)
     );
 }
@@ -38,18 +38,39 @@ fn test_effort_bucket_mapping_verifier() {
 #[test]
 fn test_effort_bucket_mapping_primary_agents_fully_qualified() {
     assert_eq!(
-        effort_bucket_for_agent("ralphx:orchestrator-ideation"),
+        effort_bucket_for_agent("ralphx:ralphx-ideation"),
         Some(EffortBucket::Primary)
     );
     assert_eq!(
-        effort_bucket_for_agent("ralphx:ideation-team-lead"),
+        effort_bucket_for_agent("ralphx:ralphx-ideation-team-lead"),
         Some(EffortBucket::Primary)
     );
 }
 
 #[test]
+fn test_effort_bucket_mapping_legacy_aliases() {
+    for name in &[
+        "orchestrator-ideation",
+        "ideation-team-lead",
+        "orchestrator-ideation-readonly",
+    ] {
+        assert_eq!(
+            effort_bucket_for_agent(name),
+            Some(EffortBucket::Primary),
+            "expected Primary for legacy agent '{}'",
+            name
+        );
+    }
+
+    assert_eq!(
+        effort_bucket_for_agent("plan-verifier"),
+        Some(EffortBucket::Verifier)
+    );
+}
+
+#[test]
 fn test_effort_bucket_mapping_non_ideation() {
-    assert_eq!(effort_bucket_for_agent("ralphx-worker"), None);
+    assert_eq!(effort_bucket_for_agent("ralphx-execution-worker"), None);
 }
 
 // --- resolve_ideation_effort ---
@@ -59,8 +80,8 @@ async fn test_resolve_effort_non_ideation_agent() {
     let repo = MemoryIdeationEffortSettingsRepository::new();
     // Non-ideation agent bypasses DB; result comes from YAML. Just verify it
     // doesn't panic and returns a non-empty string.
-    let result = resolve_ideation_effort("ralphx-worker", None, &repo).await;
-    assert!(!result.is_empty(), "expected non-empty effort for ralphx-worker");
+    let result = resolve_ideation_effort("ralphx-execution-worker", None, &repo).await;
+    assert!(!result.is_empty(), "expected non-empty effort for ralphx-execution-worker");
 }
 
 #[tokio::test]
@@ -70,7 +91,7 @@ async fn test_resolve_effort_project_override() {
     repo.upsert(Some("proj-abc"), "high", "low").await.unwrap();
 
     let result =
-        resolve_ideation_effort("orchestrator-ideation", Some("proj-abc"), &repo).await;
+        resolve_ideation_effort("ralphx-ideation", Some("proj-abc"), &repo).await;
     assert_eq!(result, "high");
 }
 
@@ -80,7 +101,7 @@ async fn test_resolve_effort_global_override() {
     // Seed global row with medium verifier effort
     repo.upsert(None, "low", "medium").await.unwrap();
 
-    let result = resolve_ideation_effort("plan-verifier", None, &repo).await;
+    let result = resolve_ideation_effort("ralphx-plan-verifier", None, &repo).await;
     assert_eq!(result, "medium");
 }
 
@@ -89,7 +110,7 @@ async fn test_resolve_effort_fully_qualified_verifier_uses_verifier_bucket() {
     let repo = MemoryIdeationEffortSettingsRepository::new();
     repo.upsert(None, "low", "medium").await.unwrap();
 
-    let result = resolve_ideation_effort("ralphx:plan-verifier", None, &repo).await;
+    let result = resolve_ideation_effort("ralphx:ralphx-plan-verifier", None, &repo).await;
     assert_eq!(result, "medium");
 }
 
@@ -98,7 +119,7 @@ async fn test_resolve_effort_fully_qualified_primary_uses_primary_bucket() {
     let repo = MemoryIdeationEffortSettingsRepository::new();
     repo.upsert(None, "high", "low").await.unwrap();
 
-    let result = resolve_ideation_effort("ralphx:orchestrator-ideation", None, &repo).await;
+    let result = resolve_ideation_effort("ralphx:ralphx-ideation", None, &repo).await;
     assert_eq!(result, "high");
 }
 
@@ -112,7 +133,7 @@ async fn test_resolve_effort_inherit_falls_through_to_yaml() {
     repo.upsert(None, "inherit", "inherit").await.unwrap();
 
     let result =
-        resolve_ideation_effort("orchestrator-ideation", Some("proj-x"), &repo).await;
+        resolve_ideation_effort("ralphx-ideation", Some("proj-x"), &repo).await;
     assert!(!result.is_empty(), "expected non-empty effort from YAML fallback");
     assert_ne!(result, "inherit", "inherit should not be returned as the final value");
 }
@@ -127,6 +148,6 @@ async fn test_resolve_effort_project_inherit_falls_to_global() {
     repo.upsert(None, "high", "inherit").await.unwrap();
 
     let result =
-        resolve_ideation_effort("orchestrator-ideation", Some("proj-y"), &repo).await;
+        resolve_ideation_effort("ralphx-ideation", Some("proj-y"), &repo).await;
     assert_eq!(result, "high");
 }

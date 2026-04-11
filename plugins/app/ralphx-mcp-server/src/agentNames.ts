@@ -4,44 +4,44 @@
  * generated Claude frontmatter names where those must stay aligned.
  */
 
-export const ORCHESTRATOR_IDEATION = "orchestrator-ideation";
-export const ORCHESTRATOR_IDEATION_READONLY = "orchestrator-ideation-readonly";
-export const CHAT_TASK = "chat-task";
-export const CHAT_PROJECT = "chat-project";
-export const REVIEWER = "ralphx-reviewer";
+export const ORCHESTRATOR_IDEATION = "ralphx-ideation";
+export const ORCHESTRATOR_IDEATION_READONLY = "ralphx-ideation-readonly";
+export const CHAT_TASK = "ralphx-chat-task";
+export const CHAT_PROJECT = "ralphx-chat-project";
+export const REVIEWER = "ralphx-execution-reviewer";
 export const REVIEW_CHAT = "ralphx-review-chat";
 export const REVIEW_HISTORY = "ralphx-review-history";
-export const WORKER = "ralphx-worker";
-export const CODER = "ralphx-coder";
-export const SESSION_NAMER = "session-namer";
-export const MERGER = "ralphx-merger";
-export const PROJECT_ANALYZER = "project-analyzer";
+export const WORKER = "ralphx-execution-worker";
+export const CODER = "ralphx-execution-coder";
+export const SESSION_NAMER = "ralphx-utility-session-namer";
+export const MERGER = "ralphx-execution-merger";
+export const PROJECT_ANALYZER = "ralphx-project-analyzer";
 export const SUPERVISOR = "supervisor";
 export const QA_PREP = "qa-prep";
 export const QA_TESTER = "qa-tester";
-export const ORCHESTRATOR = "ralphx-orchestrator";
-export const DEEP_RESEARCHER = "ralphx-deep-researcher";
-export const MEMORY_MAINTAINER = "memory-maintainer";
-export const MEMORY_CAPTURE = "memory-capture";
-export const PLAN_CRITIC_COMPLETENESS = "plan-critic-completeness";
+export const ORCHESTRATOR = "ralphx-execution-orchestrator";
+export const DEEP_RESEARCHER = "ralphx-research-deep-researcher";
+export const MEMORY_MAINTAINER = "ralphx-memory-maintainer";
+export const MEMORY_CAPTURE = "ralphx-memory-capture";
+export const PLAN_CRITIC_COMPLETENESS = "ralphx-plan-critic-completeness";
 export const PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY =
-  "plan-critic-implementation-feasibility";
-export const PLAN_VERIFIER = "plan-verifier";
-export const IDEATION_TEAM_LEAD = "ideation-team-lead";
+  "ralphx-plan-critic-implementation-feasibility";
+export const PLAN_VERIFIER = "ralphx-plan-verifier";
+export const IDEATION_TEAM_LEAD = "ralphx-ideation-team-lead";
 export const IDEATION_TEAM_MEMBER = "ideation-team-member";
-export const IDEATION_SPECIALIST_BACKEND = "ideation-specialist-backend";
-export const IDEATION_SPECIALIST_FRONTEND = "ideation-specialist-frontend";
-export const IDEATION_SPECIALIST_INFRA = "ideation-specialist-infra";
-export const IDEATION_SPECIALIST_UX = "ideation-specialist-ux";
-export const IDEATION_SPECIALIST_CODE_QUALITY = "ideation-specialist-code-quality";
+export const IDEATION_SPECIALIST_BACKEND = "ralphx-ideation-specialist-backend";
+export const IDEATION_SPECIALIST_FRONTEND = "ralphx-ideation-specialist-frontend";
+export const IDEATION_SPECIALIST_INFRA = "ralphx-ideation-specialist-infra";
+export const IDEATION_SPECIALIST_UX = "ralphx-ideation-specialist-ux";
+export const IDEATION_SPECIALIST_CODE_QUALITY = "ralphx-ideation-specialist-code-quality";
 export const IDEATION_SPECIALIST_PROMPT_QUALITY =
-  "ideation-specialist-prompt-quality";
-export const IDEATION_SPECIALIST_INTENT = "ideation-specialist-intent";
+  "ralphx-ideation-specialist-prompt-quality";
+export const IDEATION_SPECIALIST_INTENT = "ralphx-ideation-specialist-intent";
 export const IDEATION_SPECIALIST_PIPELINE_SAFETY =
-  "ideation-specialist-pipeline-safety";
+  "ralphx-ideation-specialist-pipeline-safety";
 export const IDEATION_SPECIALIST_STATE_MACHINE =
-  "ideation-specialist-state-machine";
-export const IDEATION_CRITIC = "ideation-critic";
-export const IDEATION_ADVOCATE = "ideation-advocate";
-export const WORKER_TEAM_LEAD = "ralphx-worker-team";
+  "ralphx-ideation-specialist-state-machine";
+export const IDEATION_CRITIC = "ralphx-ideation-critic";
+export const IDEATION_ADVOCATE = "ralphx-ideation-advocate";
+export const WORKER_TEAM_LEAD = "ralphx-execution-team-lead";
 export const WORKER_TEAM_MEMBER = "worker-team-member";

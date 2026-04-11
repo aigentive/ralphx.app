@@ -44,7 +44,7 @@ fn test_build_base_cli_command_with_model_override_passes_model_arg() {
     let result = build_base_cli_command(
         Path::new("/fake/claude"),
         Path::new("/fake/plugin"),
-        Some("orchestrator-ideation"),
+        Some("ralphx-ideation"),
         false,
         None,           // effort_override
         Some("opus"),   // model_override
@@ -73,7 +73,7 @@ fn test_build_base_cli_command_with_sonnet_model_override() {
     let result = build_base_cli_command(
         Path::new("/fake/claude"),
         Path::new("/fake/plugin"),
-        Some("orchestrator-ideation"),
+        Some("ralphx-ideation"),
         false,
         None,
         Some("sonnet"),
@@ -119,21 +119,21 @@ fn test_build_base_cli_command_no_model_override_no_yaml_uses_default() {
 async fn test_verifier_vs_non_verifier_subagent_independence() {
     // Scenario: primary_model=sonnet, verifier_model=sonnet, verifier_subagent_model=haiku
     //
-    // plan-verifier:         agent model    = sonnet (Verifier bucket)
+    // ralphx-plan-verifier:         agent model    = sonnet (Verifier bucket)
     //                        subagent cap   = haiku  (VerifierSubagent bucket — independent)
-    // orchestrator-ideation: agent model    = sonnet (Primary bucket)
+    // ralphx-ideation: agent model    = sonnet (Primary bucket)
     //                        subagent cap   = sonnet (its own model, NOT haiku)
     let repo = MemoryIdeationModelSettingsRepository::new();
     repo.upsert_for_project("proj-1", "sonnet", "sonnet", "haiku", "inherit")
         .await
         .unwrap();
 
-    // plan-verifier agent model (from Verifier bucket) → sonnet
-    let verifier_model = resolve_ideation_model("plan-verifier", Some("proj-1"), &repo).await;
+    // ralphx-plan-verifier agent model (from Verifier bucket) → sonnet
+    let verifier_model = resolve_ideation_model("ralphx-plan-verifier", Some("proj-1"), &repo).await;
     assert_eq!(verifier_model.model, "sonnet");
     assert_eq!(verifier_model.source, "user");
 
-    // plan-verifier subagent cap (from verifier_subagent_model field) → haiku, not sonnet
+    // ralphx-plan-verifier subagent cap (from verifier_subagent_model field) → haiku, not sonnet
     let project_row = repo.get_for_project("proj-1").await.unwrap().unwrap();
     let (cap_model, cap_source) =
         resolve_verifier_subagent_model_with_source(Some(&project_row.verifier_subagent_model), None);
@@ -145,9 +145,9 @@ async fn test_verifier_vs_non_verifier_subagent_independence() {
         "verifier subagent cap (haiku) must differ from verifier agent model (sonnet)"
     );
 
-    // orchestrator-ideation agent model (from Primary bucket) → sonnet
+    // ralphx-ideation agent model (from Primary bucket) → sonnet
     let orchestrator_model =
-        resolve_ideation_model("orchestrator-ideation", Some("proj-1"), &repo).await;
+        resolve_ideation_model("ralphx-ideation", Some("proj-1"), &repo).await;
     assert_eq!(orchestrator_model.model, "sonnet");
     assert_eq!(orchestrator_model.source, "user");
     // orchestrator subagent cap = its own agent model (sonnet)
@@ -169,7 +169,7 @@ async fn test_ideation_context_db_override_flows_to_cli_arg() {
         .await
         .unwrap();
 
-    let resolved = resolve_ideation_model("orchestrator-ideation", Some("proj-abc"), &repo).await;
+    let resolved = resolve_ideation_model("ralphx-ideation", Some("proj-abc"), &repo).await;
     assert_eq!(resolved.model, "opus");
     assert_eq!(resolved.source, "user");
 
@@ -177,7 +177,7 @@ async fn test_ideation_context_db_override_flows_to_cli_arg() {
     let result = build_base_cli_command(
         Path::new("/fake/claude"),
         Path::new("/fake/plugin"),
-        Some("orchestrator-ideation"),
+        Some("ralphx-ideation"),
         false,
         None,
         Some(resolved.model.as_str()),
@@ -195,7 +195,7 @@ async fn test_ideation_context_no_db_override_falls_through_to_yaml() {
     let repo = MemoryIdeationModelSettingsRepository::new();
     // No rows → falls through to YAML/default
 
-    let resolved = resolve_ideation_model("orchestrator-ideation", None, &repo).await;
+    let resolved = resolve_ideation_model("ralphx-ideation", None, &repo).await;
     // Should come from YAML or hardcoded default — NOT from DB
     assert!(
         resolved.source == "yaml" || resolved.source == "yaml_default",
@@ -208,15 +208,15 @@ async fn test_ideation_context_no_db_override_falls_through_to_yaml() {
 
 #[tokio::test]
 async fn test_non_ideation_agent_bypasses_db_model_resolution() {
-    // Scenario: non-ideation agent (ralphx-worker) → model_bucket_for_agent returns None
+    // Scenario: non-ideation agent (ralphx-execution-worker) → model_bucket_for_agent returns None
     // → resolve_ideation_model falls through to YAML; DB overrides are NOT consulted
     use ralphx_lib::domain::ideation::model_settings::model_bucket_for_agent;
 
-    // Confirm ralphx-worker has no bucket → bypasses DB
-    let bucket = model_bucket_for_agent("ralphx-worker");
+    // Confirm ralphx-execution-worker has no bucket → bypasses DB
+    let bucket = model_bucket_for_agent("ralphx-execution-worker");
     assert!(
         bucket.is_none(),
-        "ralphx-worker should not have an ideation model bucket"
+        "ralphx-execution-worker should not have an ideation model bucket"
     );
 
     // With a DB override for a project — the worker still ignores it
@@ -225,7 +225,7 @@ async fn test_non_ideation_agent_bypasses_db_model_resolution() {
         .await
         .unwrap();
 
-    let resolved = resolve_ideation_model("ralphx-worker", Some("proj-x"), &repo).await;
+    let resolved = resolve_ideation_model("ralphx-execution-worker", Some("proj-x"), &repo).await;
     // Worker bypasses DB → comes from YAML/default, NOT from DB "opus" override
     assert_ne!(
         resolved.source, "user",
@@ -247,7 +247,7 @@ async fn test_non_ideation_agent_bypasses_db_model_resolution() {
 
 #[tokio::test]
 async fn test_verifier_subagent_unaffected_by_ideation_subagent() {
-    // PO#5: plan-verifier must use verifier_subagent_model ("opus"),
+    // PO#5: ralphx-plan-verifier must use verifier_subagent_model ("opus"),
     // NOT ideation_subagent_model ("haiku"), for CLAUDE_CODE_SUBAGENT_MODEL.
     // Tested on BOTH build_command AND build_resume_command.
     // This test MUST FAIL when the dispatch is reversed.
@@ -260,14 +260,14 @@ async fn test_verifier_subagent_unaffected_by_ideation_subagent() {
     let session_id = IdeationSessionId::new();
     let conv = ChatConversation::new_ideation(session_id.clone());
 
-    // --- build_command: entity_status="verification" → plan-verifier ---
+    // --- build_command: entity_status="verification" → ralphx-plan-verifier ---
     let build_result = build_command(
         Path::new("/fake/claude"),
         Path::new("/fake/plugin"),
         &conv,
         "verify plan",
         Path::new("/tmp"),
-        Some("verification"), // → plan-verifier agent
+        Some("verification"), // → ralphx-plan-verifier agent
         Some("proj-1"),
         false,
         Arc::new(MemoryChatAttachmentRepository::new()),
@@ -291,17 +291,17 @@ async fn test_verifier_subagent_unaffected_by_ideation_subagent() {
     assert_eq!(
         build_subagent.as_deref(),
         Some("opus"),
-        "build_command plan-verifier: CLAUDE_CODE_SUBAGENT_MODEL must be verifier_subagent_model (opus), not ideation_subagent_model (haiku)"
+        "build_command ralphx-plan-verifier: CLAUDE_CODE_SUBAGENT_MODEL must be verifier_subagent_model (opus), not ideation_subagent_model (haiku)"
     );
     assert_ne!(
         build_subagent.as_deref(),
         Some("haiku"),
-        "ideation_subagent_model (haiku) must NOT bleed into plan-verifier CLAUDE_CODE_SUBAGENT_MODEL"
+        "ideation_subagent_model (haiku) must NOT bleed into ralphx-plan-verifier CLAUDE_CODE_SUBAGENT_MODEL"
     );
 
     // --- build_resume_command: same assertion ---
     // Seed a verification IdeationSession so get_entity_status_for_resume returns "verification",
-    // which routes to plan-verifier (and thus uses verifier_subagent_model, not ideation_subagent_model).
+    // which routes to ralphx-plan-verifier (and thus uses verifier_subagent_model, not ideation_subagent_model).
     let verification_session = IdeationSessionBuilder::new()
         .id(session_id.clone())
         .project_id(ProjectId("proj-1".to_string()))
@@ -346,12 +346,12 @@ async fn test_verifier_subagent_unaffected_by_ideation_subagent() {
     assert_eq!(
         resume_subagent.as_deref(),
         Some("opus"),
-        "build_resume_command plan-verifier: CLAUDE_CODE_SUBAGENT_MODEL must be verifier_subagent_model (opus), not ideation_subagent_model (haiku)"
+        "build_resume_command ralphx-plan-verifier: CLAUDE_CODE_SUBAGENT_MODEL must be verifier_subagent_model (opus), not ideation_subagent_model (haiku)"
     );
     assert_ne!(
         resume_subagent.as_deref(),
         Some("haiku"),
-        "ideation_subagent_model (haiku) must NOT bleed into plan-verifier in resume command"
+        "ideation_subagent_model (haiku) must NOT bleed into ralphx-plan-verifier in resume command"
     );
 }
 

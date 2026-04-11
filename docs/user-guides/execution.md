@@ -168,9 +168,9 @@ With the worktree ready, RalphX runs install commands before spawning the agent:
 The worker agent is spawned via the ChatService with `ChatContextType::TaskExecution`:
 
 1. **Prompt** — The worker receives `"Execute task: {task_id}"`. If there's a `restart_note` in the task metadata (set by the user), it's appended to the prompt and then cleared (one-shot).
-2. **Agent behavior** — The worker reads the system card (`system-card-worker-execution-pattern.md`) and the task's implementation plan, decomposes work into sub-scopes, and delegates to parallel `ralphx-coder` sub-agents. Each coder has exclusive file ownership within its scope.
+2. **Agent behavior** — The worker reads the system card (`system-card-worker-execution-pattern.md`) and the task's implementation plan, decomposes work into sub-scopes, and delegates to parallel `ralphx-execution-coder` sub-agents. Each coder has exclusive file ownership within its scope.
 3. **Step tracking** — The worker creates and updates task steps via MCP tools (`start_step`, `complete_step`). These are visible in the task detail view as a progress timeline.
-4. **Supervisor monitoring** — A `ralphx-supervisor` agent runs alongside the worker and monitors for infinite loops, stuck agents (no git diff after ~2.5 minutes), repeated errors, or excessive token use. It can inject guidance or escalate.
+4. **Supervisor monitoring** — A `ralphx-execution-supervisor` agent runs alongside the worker and monitors for infinite loops, stuck agents (no git diff after ~2.5 minutes), repeated errors, or excessive token use. It can inject guidance or escalate.
 5. **Completion** — When the agent stream ends:
    - If the agent produced output → task transitions to **PendingReview** (or **QaRefining** if QA is enabled)
    - If the agent produced no output → task transitions to **Failed**
@@ -204,7 +204,7 @@ The QA tester agent (`ralphx-qa-executor`) executes browser-based tests:
 An auto-transition state — the reviewer is spawned almost immediately.
 
 1. **Review record created** — A review record is created in the database.
-2. **Reviewer spawned** — The `ralphx-reviewer` agent is launched via ChatService with `ChatContextType::Review`.
+2. **Reviewer spawned** — The `ralphx-execution-reviewer` agent is launched via ChatService with `ChatContextType::Review`.
 3. Pre-execution setup also runs here (same as Phase 3) so the reviewer can run validation commands during review.
 
 #### Reviewing
@@ -248,13 +248,13 @@ Once a task is **Approved**, control passes entirely to the [Merge Pipeline](mer
 
 | Agent | When spawned | What it does |
 |-------|-------------|-------------|
-| **ralphx-worker** | On `Executing` entry | Orchestrates implementation: reads task, decomposes into sub-scopes, delegates to coders |
-| **ralphx-coder** | Dispatched by worker | Executes a single file-scoped sub-task with strict ownership boundaries |
-| **ralphx-supervisor** | Runs alongside worker | Detects loops, stalls, and excessive token use; injects guidance or escalates |
+| **ralphx-execution-worker** | On `Executing` entry | Orchestrates implementation: reads task, decomposes into sub-scopes, delegates to coders |
+| **ralphx-execution-coder** | Dispatched by worker | Executes a single file-scoped sub-task with strict ownership boundaries |
+| **ralphx-execution-supervisor** | Runs alongside worker | Detects loops, stalls, and excessive token use; injects guidance or escalates |
 | **qa-prep** | Background when task enters Ready | Generates acceptance criteria and test steps from task spec |
 | **qa-refiner** | On `QaRefining` entry | Adapts test criteria to the actual implementation |
 | **qa-tester** | On `QaTesting` entry | Executes browser-based acceptance tests |
-| **ralphx-reviewer** | On `Reviewing` entry | Automated code review; must call `complete_review` |
+| **ralphx-execution-reviewer** | On `Reviewing` entry | Automated code review; must call `complete_review` |
 
 ### Worker → Coder Pattern
 
@@ -277,7 +277,7 @@ Worker
 
 ### Supervisor Detection Patterns
 
-The `ralphx-supervisor` (Haiku model) monitors the worker for:
+The `ralphx-execution-supervisor` (Haiku model) monitors the worker for:
 
 | Pattern | Threshold | Response |
 |---------|-----------|----------|

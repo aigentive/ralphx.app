@@ -1,12 +1,12 @@
 /**
  * MCP tool definitions for plan artifact management
- * Used by orchestrator-ideation agent to create and manage implementation plans
+ * Used by ralphx-ideation agent to create and manage implementation plans
  */
 
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 /**
- * Plan artifact tools for orchestrator-ideation agent
+ * Plan artifact tools for ralphx-ideation agent
  * All tools are proxies that forward to Tauri backend via HTTP
  */
 export const PLAN_TOOLS: Tool[] = [

@@ -1,0 +1,3 @@
+name: ralphx-project-analyzer
+role: project_analyzer
+description: "Scans project directory structure to detect build systems and generate path-scoped validation commands"

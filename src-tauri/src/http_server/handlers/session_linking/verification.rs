@@ -103,7 +103,7 @@ pub(crate) async fn create_verification_child_session(
         }
         Err(e) => {
             error!(
-                "Failed to spawn plan-verifier on verification child session {}: {}",
+                "Failed to spawn ralphx-plan-verifier on verification child session {}: {}",
                 child_session_str, e
             );
             // Archive the child row so it does not linger as an orphan

@@ -1,6 +1,6 @@
 // Memory pipeline orchestration
 //
-// Triggers background memory-maintainer and memory-capture agents
+// Triggers background ralphx-memory-maintainer and ralphx-memory-capture agents
 // after agent run completion based on context type and project settings.
 
 use crate::domain::entities::{
@@ -88,7 +88,7 @@ pub fn resolve_pipelines(
 
     // Recursion guard: Skip if current agent is a memory agent
     if let Some(name) = agent_name {
-        if name == "memory-maintainer" || name == "memory-capture" {
+        if name == "ralphx-memory-maintainer" || name == "ralphx-memory-capture" {
             tracing::debug!(
                 agent_name = name,
                 "resolve_pipelines: recursion guard triggered, skipping"
@@ -199,7 +199,7 @@ pub async fn trigger_memory_pipelines(
                 tracing::error!(
                     error = %e,
                     conversation_id = conv_id.as_str(),
-                    "trigger_memory_pipelines: failed to spawn memory-maintainer"
+                    "trigger_memory_pipelines: failed to spawn ralphx-memory-maintainer"
                 );
                 // Log spawn failure to memory_events table
                 if let Some(repo) = event_repo {
@@ -208,7 +208,7 @@ pub async fn trigger_memory_pipelines(
                         "spawn_failed",
                         MemoryActorType::System,
                         serde_json::json!({
-                            "agent": "memory-maintainer",
+                            "agent": "ralphx-memory-maintainer",
                             "conversation_id": conv_id.as_str(),
                             "context_type": ctx.to_string(),
                             "context_id": &ctx_id,
@@ -243,7 +243,7 @@ pub async fn trigger_memory_pipelines(
                 tracing::error!(
                     error = %e,
                     conversation_id = conv_id.as_str(),
-                    "trigger_memory_pipelines: failed to spawn memory-capture"
+                    "trigger_memory_pipelines: failed to spawn ralphx-memory-capture"
                 );
                 // Log spawn failure to memory_events table
                 if let Some(repo) = event_repo {
@@ -252,7 +252,7 @@ pub async fn trigger_memory_pipelines(
                         "spawn_failed",
                         MemoryActorType::System,
                         serde_json::json!({
-                            "agent": "memory-capture",
+                            "agent": "ralphx-memory-capture",
                             "conversation_id": conv_id.as_str(),
                             "context_type": ctx.to_string(),
                             "context_id": &ctx_id,
@@ -281,9 +281,9 @@ pub async fn trigger_memory_pipelines(
     // Tasks will log their own errors
 }
 
-/// Spawn memory-maintainer agent
+/// Spawn ralphx-memory-maintainer agent
 ///
-/// Spawns the memory-maintainer agent with appropriate context and environment variables.
+/// Spawns the ralphx-memory-maintainer agent with appropriate context and environment variables.
 async fn spawn_memory_maintainer(
     conversation_id: &ChatConversationId,
     context_type: ChatContextType,
@@ -317,7 +317,7 @@ async fn spawn_memory_maintainer(
         cli_path,
         plugin_dir,
         &prompt,
-        Some("ralphx:memory-maintainer"),
+        Some("ralphx:ralphx-memory-maintainer"),
         None,
         working_directory,
         None, // effort_override: memory pipelines use default
@@ -333,14 +333,14 @@ async fn spawn_memory_maintainer(
     let _child = cmd
         .spawn()
         .await
-        .map_err(|e| format!("Failed to spawn memory-maintainer: {}", e))?;
+        .map_err(|e| format!("Failed to spawn ralphx-memory-maintainer: {}", e))?;
 
     Ok(())
 }
 
-/// Spawn memory-capture agent
+/// Spawn ralphx-memory-capture agent
 ///
-/// Spawns the memory-capture agent with appropriate context and environment variables.
+/// Spawns the ralphx-memory-capture agent with appropriate context and environment variables.
 async fn spawn_memory_capture(
     conversation_id: &ChatConversationId,
     context_type: ChatContextType,
@@ -371,7 +371,7 @@ async fn spawn_memory_capture(
         cli_path,
         plugin_dir,
         &prompt,
-        Some("ralphx:memory-capture"),
+        Some("ralphx:ralphx-memory-capture"),
         None,
         working_directory,
         None, // effort_override: memory pipelines use default
@@ -387,7 +387,7 @@ async fn spawn_memory_capture(
     let _child = cmd
         .spawn()
         .await
-        .map_err(|e| format!("Failed to spawn memory-capture: {}", e))?;
+        .map_err(|e| format!("Failed to spawn ralphx-memory-capture: {}", e))?;
 
     Ok(())
 }

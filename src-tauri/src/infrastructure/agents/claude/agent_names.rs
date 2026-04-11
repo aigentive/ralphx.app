@@ -13,84 +13,84 @@ pub const PLUGIN_PREFIX: &str = "ralphx:";
 // Used by AGENT_CONFIGS in agent_config/ and MCP TOOL_ALLOWLIST in tools.ts.
 // These match the canonical agent ids in `agents/*/agent.yaml`.
 
-pub const SHORT_ORCHESTRATOR_IDEATION: &str = "orchestrator-ideation";
-pub const SHORT_ORCHESTRATOR_IDEATION_READONLY: &str = "orchestrator-ideation-readonly";
-pub const SHORT_SESSION_NAMER: &str = "session-namer";
-pub const SHORT_CHAT_TASK: &str = "chat-task";
-pub const SHORT_CHAT_PROJECT: &str = "chat-project";
+pub const SHORT_ORCHESTRATOR_IDEATION: &str = "ralphx-ideation";
+pub const SHORT_ORCHESTRATOR_IDEATION_READONLY: &str = "ralphx-ideation-readonly";
+pub const SHORT_SESSION_NAMER: &str = "ralphx-utility-session-namer";
+pub const SHORT_CHAT_TASK: &str = "ralphx-chat-task";
+pub const SHORT_CHAT_PROJECT: &str = "ralphx-chat-project";
 pub const SHORT_REVIEW_CHAT: &str = "ralphx-review-chat";
 pub const SHORT_REVIEW_HISTORY: &str = "ralphx-review-history";
-pub const SHORT_WORKER: &str = "ralphx-worker";
-pub const SHORT_CODER: &str = "ralphx-coder";
-pub const SHORT_REVIEWER: &str = "ralphx-reviewer";
+pub const SHORT_WORKER: &str = "ralphx-execution-worker";
+pub const SHORT_CODER: &str = "ralphx-execution-coder";
+pub const SHORT_REVIEWER: &str = "ralphx-execution-reviewer";
 pub const SHORT_QA_PREP: &str = "ralphx-qa-prep";
 pub const SHORT_QA_EXECUTOR: &str = "ralphx-qa-executor";
-pub const SHORT_ORCHESTRATOR: &str = "ralphx-orchestrator";
-pub const SHORT_SUPERVISOR: &str = "ralphx-supervisor";
-pub const SHORT_DEEP_RESEARCHER: &str = "ralphx-deep-researcher";
-pub const SHORT_PROJECT_ANALYZER: &str = "project-analyzer";
-pub const SHORT_MERGER: &str = "ralphx-merger";
-pub const SHORT_MEMORY_MAINTAINER: &str = "memory-maintainer";
-pub const SHORT_MEMORY_CAPTURE: &str = "memory-capture";
+pub const SHORT_ORCHESTRATOR: &str = "ralphx-execution-orchestrator";
+pub const SHORT_SUPERVISOR: &str = "ralphx-execution-supervisor";
+pub const SHORT_DEEP_RESEARCHER: &str = "ralphx-research-deep-researcher";
+pub const SHORT_PROJECT_ANALYZER: &str = "ralphx-project-analyzer";
+pub const SHORT_MERGER: &str = "ralphx-execution-merger";
+pub const SHORT_MEMORY_MAINTAINER: &str = "ralphx-memory-maintainer";
+pub const SHORT_MEMORY_CAPTURE: &str = "ralphx-memory-capture";
 
 // ── Plan verification critic agents ─────────────────────────────────────
-pub const SHORT_PLAN_CRITIC_COMPLETENESS: &str = "plan-critic-completeness";
+pub const SHORT_PLAN_CRITIC_COMPLETENESS: &str = "ralphx-plan-critic-completeness";
 pub const SHORT_PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY: &str =
-    "plan-critic-implementation-feasibility";
-pub const SHORT_PLAN_VERIFIER: &str = "plan-verifier";
+    "ralphx-plan-critic-implementation-feasibility";
+pub const SHORT_PLAN_VERIFIER: &str = "ralphx-plan-verifier";
 
 // ── Team lead variants (extends base agents) ────────────────────────────
-pub const SHORT_IDEATION_TEAM_LEAD: &str = "ideation-team-lead";
-pub const SHORT_WORKER_TEAM: &str = "ralphx-worker-team";
+pub const SHORT_IDEATION_TEAM_LEAD: &str = "ralphx-ideation-team-lead";
+pub const SHORT_WORKER_TEAM: &str = "ralphx-execution-team-lead";
 pub const SHORT_IDEATION_TEAM_MEMBER: &str = "ideation-team-member";
 
-// ── Ideation specialist agents (spawned by ideation-team-lead) ───────────
-pub const SHORT_IDEATION_SPECIALIST_BACKEND: &str = "ideation-specialist-backend";
-pub const SHORT_IDEATION_SPECIALIST_FRONTEND: &str = "ideation-specialist-frontend";
-pub const SHORT_IDEATION_SPECIALIST_INFRA: &str = "ideation-specialist-infra";
-pub const SHORT_IDEATION_SPECIALIST_UX: &str = "ideation-specialist-ux";
-pub const SHORT_IDEATION_SPECIALIST_CODE_QUALITY: &str = "ideation-specialist-code-quality";
-pub const SHORT_IDEATION_ADVOCATE: &str = "ideation-advocate";
-pub const SHORT_IDEATION_CRITIC: &str = "ideation-critic";
-pub const SHORT_IDEATION_SPECIALIST_PIPELINE_SAFETY: &str = "ideation-specialist-pipeline-safety";
-pub const SHORT_IDEATION_SPECIALIST_STATE_MACHINE: &str = "ideation-specialist-state-machine";
+// ── Ideation specialist agents (spawned by ralphx-ideation-team-lead) ───────────
+pub const SHORT_IDEATION_SPECIALIST_BACKEND: &str = "ralphx-ideation-specialist-backend";
+pub const SHORT_IDEATION_SPECIALIST_FRONTEND: &str = "ralphx-ideation-specialist-frontend";
+pub const SHORT_IDEATION_SPECIALIST_INFRA: &str = "ralphx-ideation-specialist-infra";
+pub const SHORT_IDEATION_SPECIALIST_UX: &str = "ralphx-ideation-specialist-ux";
+pub const SHORT_IDEATION_SPECIALIST_CODE_QUALITY: &str = "ralphx-ideation-specialist-code-quality";
+pub const SHORT_IDEATION_ADVOCATE: &str = "ralphx-ideation-advocate";
+pub const SHORT_IDEATION_CRITIC: &str = "ralphx-ideation-critic";
+pub const SHORT_IDEATION_SPECIALIST_PIPELINE_SAFETY: &str = "ralphx-ideation-specialist-pipeline-safety";
+pub const SHORT_IDEATION_SPECIALIST_STATE_MACHINE: &str = "ralphx-ideation-specialist-state-machine";
 
 // ── ChatService team agents (team_mode=true → resolve_agent_with_team_mode) ──
 
 /// Ideation team lead (ChatContextType::Ideation + team_mode)
-pub const AGENT_IDEATION_TEAM_LEAD: &str = "ralphx:ideation-team-lead";
+pub const AGENT_IDEATION_TEAM_LEAD: &str = "ralphx:ralphx-ideation-team-lead";
 
 /// Worker team lead (ChatContextType::TaskExecution + team_mode)
-pub const AGENT_WORKER_TEAM: &str = "ralphx:ralphx-worker-team";
+pub const AGENT_WORKER_TEAM: &str = "ralphx:ralphx-execution-team-lead";
 
 // ── ChatService agents (resolve_agent → build_command → --agent flag) ─────
 
 /// Ideation orchestrator (default for ChatContextType::Ideation)
-pub const AGENT_ORCHESTRATOR_IDEATION: &str = "ralphx:orchestrator-ideation";
+pub const AGENT_ORCHESTRATOR_IDEATION: &str = "ralphx:ralphx-ideation";
 
 /// Ideation orchestrator in read-only mode (session status = "accepted")
-pub const AGENT_ORCHESTRATOR_IDEATION_READONLY: &str = "ralphx:orchestrator-ideation-readonly";
+pub const AGENT_ORCHESTRATOR_IDEATION_READONLY: &str = "ralphx:ralphx-ideation-readonly";
 
 /// Plan verifier agent (ChatContextType::Ideation when session_purpose = Verification)
-pub const AGENT_PLAN_VERIFIER: &str = "ralphx:plan-verifier";
+pub const AGENT_PLAN_VERIFIER: &str = "ralphx:ralphx-plan-verifier";
 
 /// Task-scoped chat (ChatContextType::Task)
-pub const AGENT_CHAT_TASK: &str = "ralphx:chat-task";
+pub const AGENT_CHAT_TASK: &str = "ralphx:ralphx-chat-task";
 
 /// Project-scoped chat (ChatContextType::Project)
-pub const AGENT_CHAT_PROJECT: &str = "ralphx:chat-project";
+pub const AGENT_CHAT_PROJECT: &str = "ralphx:ralphx-chat-project";
 
 /// Worker execution agent (ChatContextType::TaskExecution)
-pub const AGENT_WORKER: &str = "ralphx:ralphx-worker";
+pub const AGENT_WORKER: &str = "ralphx:ralphx-execution-worker";
 
 /// Delegated coding execution agent (invoked by worker orchestration)
-pub const AGENT_CODER: &str = "ralphx:ralphx-coder";
+pub const AGENT_CODER: &str = "ralphx:ralphx-execution-coder";
 
 /// Reviewer agent (ChatContextType::Review, fresh review cycle)
-pub const AGENT_REVIEWER: &str = "ralphx:ralphx-reviewer";
+pub const AGENT_REVIEWER: &str = "ralphx:ralphx-execution-reviewer";
 
 /// Merger agent (ChatContextType::Merge)
-pub const AGENT_MERGER: &str = "ralphx:ralphx-merger";
+pub const AGENT_MERGER: &str = "ralphx:ralphx-execution-merger";
 
 /// Review-chat agent (ChatContextType::Review when status = "review_passed")
 pub const AGENT_REVIEW_CHAT: &str = "ralphx:ralphx-review-chat";
@@ -101,10 +101,10 @@ pub const AGENT_REVIEW_HISTORY: &str = "ralphx:ralphx-review-history";
 // ── Fire-and-forget agents (spawn_agent path) ────────────────────────────
 
 /// Session naming agent (haiku, background)
-pub const AGENT_SESSION_NAMER: &str = "ralphx:session-namer";
+pub const AGENT_SESSION_NAMER: &str = "ralphx:ralphx-utility-session-namer";
 
 /// Project analysis agent (background)
-pub const AGENT_PROJECT_ANALYZER: &str = "ralphx:project-analyzer";
+pub const AGENT_PROJECT_ANALYZER: &str = "ralphx:ralphx-project-analyzer";
 
 // ── QA agents (spawner path from state machine) ──────────────────────────
 
@@ -131,10 +131,10 @@ pub fn spawner_agent_name(agent_type: &str) -> &'static str {
         "qa-refiner" => AGENT_QA_REFINER,
         "qa-tester" => AGENT_QA_TESTER,
         // Test/fallback: worker, reviewer, merger via spawner tests and mocks
-        "worker" | "ralphx-worker" => AGENT_WORKER,
-        "coder" | "ralphx-coder" => AGENT_CODER,
-        "reviewer" | "ralphx-reviewer" => AGENT_REVIEWER,
-        "merger" | "ralphx-merger" => AGENT_MERGER,
+        "worker" | "ralphx-execution-worker" => AGENT_WORKER,
+        "coder" | "ralphx-execution-coder" => AGENT_CODER,
+        "reviewer" | "ralphx-execution-reviewer" => AGENT_REVIEWER,
+        "merger" | "ralphx-execution-merger" => AGENT_MERGER,
         // Fallback: qualify using prefix
         other => {
             tracing::warn!(

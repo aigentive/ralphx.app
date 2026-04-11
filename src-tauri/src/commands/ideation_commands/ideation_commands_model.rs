@@ -19,9 +19,9 @@ use crate::infrastructure::agents::claude::{
 };
 
 // Representative agents for each bucket — used to resolve YAML model values.
-const PRIMARY_REPR_AGENT: &str = "orchestrator-ideation";
-const VERIFIER_REPR_AGENT: &str = "plan-verifier";
-// Same as plan-verifier, separate const for future flexibility.
+const PRIMARY_REPR_AGENT: &str = "ralphx-ideation";
+const VERIFIER_REPR_AGENT: &str = "ralphx-plan-verifier";
+// Same as ralphx-plan-verifier, separate const for future flexibility.
 const VERIFIER_SUBAGENT_REPR_AGENT: &str = VERIFIER_REPR_AGENT;
 
 // ============================================================================
@@ -413,7 +413,7 @@ mod tests {
     fn model_bucket_for_primary_agent() {
         use crate::domain::ideation::model_settings::model_bucket_for_agent;
         assert_eq!(
-            model_bucket_for_agent("orchestrator-ideation"),
+            model_bucket_for_agent("ralphx-ideation"),
             Some(ModelBucket::Primary)
         );
     }
@@ -422,7 +422,7 @@ mod tests {
     fn model_bucket_for_verifier_agent() {
         use crate::domain::ideation::model_settings::model_bucket_for_agent;
         assert_eq!(
-            model_bucket_for_agent("plan-verifier"),
+            model_bucket_for_agent("ralphx-plan-verifier"),
             Some(ModelBucket::Verifier)
         );
     }
@@ -430,7 +430,7 @@ mod tests {
     #[test]
     fn model_bucket_for_non_ideation_agent() {
         use crate::domain::ideation::model_settings::model_bucket_for_agent;
-        assert_eq!(model_bucket_for_agent("ralphx-worker"), None);
+        assert_eq!(model_bucket_for_agent("ralphx-execution-worker"), None);
     }
 
     #[test]

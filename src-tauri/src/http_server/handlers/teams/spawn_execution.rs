@@ -85,7 +85,7 @@ pub(super) async fn execute_team_spawn(
         // Derive MCP agent type from process: worker-* processes use worker-team-member,
         // all others use ideation-team-member (the default in TeammateSpawnConfig::new).
         // Prefer the preset field when available — it carries the specific agent name from
-        // the team lead's spawn request (e.g. "ideation-specialist-backend").
+        // the team lead's spawn request (e.g. "ralphx-ideation-specialist-backend").
         let mcp_type = if plan.process.starts_with("worker") {
             pending.preset.as_deref().unwrap_or("worker-team-member")
         } else {

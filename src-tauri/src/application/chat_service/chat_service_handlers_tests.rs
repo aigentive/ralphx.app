@@ -927,7 +927,7 @@ async fn test_recovery_retry_background_context_preserves_execution_side_runtime
         Some("run-chain-1".to_string()),
         Some("retry this review"),
         retry_conv,
-        Some("ralphx:ralphx-reviewer"),
+        Some("ralphx:ralphx-execution-reviewer"),
         false,
         &Some(Arc::clone(&state.review_repo)),
         &Some(Arc::clone(&state.task_step_repo)),

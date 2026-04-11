@@ -42,13 +42,13 @@ impl FromStr for SessionOrigin {
     }
 }
 
-/// Purpose of an ideation session — distinguishes general ideation from plan-verifier child sessions
+/// Purpose of an ideation session — distinguishes general ideation from ralphx-plan-verifier child sessions
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionPurpose {
     /// Standard ideation session (default)
     General,
-    /// Child session spawned by the plan-verifier agent
+    /// Child session spawned by the ralphx-plan-verifier agent
     Verification,
 }
 

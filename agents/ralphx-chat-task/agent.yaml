@@ -1,0 +1,3 @@
+name: ralphx-chat-task
+role: task_chat
+description: "Context-aware assistant for task-related chat. Use when user is chatting about a specific task."

@@ -63,7 +63,7 @@ Two spawn modes:
 
 | Mode | Method | Use Case |
 |------|--------|----------|
-| Fire-and-forget | `spawn_agent()` → `wait_for_completion()` | Background agents (session-namer, project-analyzer, memory capture/maintenance) |
+| Fire-and-forget | `spawn_agent()` → `wait_for_completion()` | Background agents (ralphx-utility-session-namer, ralphx-project-analyzer, memory capture/maintenance) |
 | Streaming | `spawn_agent_streaming()` → returns `Child` | Interactive sessions (ExecutionChatService handles stream) |
 
 **Process tracking:** Global `PROCESSES: Mutex<HashMap<String, (Child, Instant)>>` tracks all spawned processes by handle ID for stop/wait operations.
@@ -168,9 +168,9 @@ claude:
         ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
 
 agents:
-  - name: orchestrator-ideation
+  - name: ralphx-ideation
     model: opus
-    system_prompt_file: agents/orchestrator-ideation/claude/prompt.md
+    system_prompt_file: agents/ralphx-ideation/claude/prompt.md
     tools:
       extends: base_tools
       include: [Task]
@@ -205,7 +205,7 @@ tools.mcp_only: true → empty CLI tools (agent uses only MCP)
 MCP tools → prefixed as mcp__ralphx__<name>
 CLI tools → passed as-is
 preapproved_cli_tools → appended (e.g., Task(Explore), Task(Plan))
-Memory skills → only for memory-maintainer and memory-capture agents
+Memory skills → only for ralphx-memory-maintainer and ralphx-memory-capture agents
 ```
 
 ### Settings Profiles
@@ -248,7 +248,7 @@ Each agent spawn creates a temporary MCP config file that:
     "ralphx": {
       "type": "stdio",
       "command": "node",
-      "args": ["/path/to/ralphx-mcp-server/build/index.js", "--agent-type", "ralphx-worker"]
+      "args": ["/path/to/ralphx-mcp-server/build/index.js", "--agent-type", "ralphx-execution-worker"]
     }
   }
 }
@@ -319,19 +319,19 @@ Default: `http://127.0.0.1:3847` (overridable via `TAURI_API_URL`)
 
 | Category | Routes | Agent(s) |
 |----------|--------|----------|
-| Ideation | `create/update/delete_task_proposal`, `list_session_proposals`, `analyze_dependencies` | orchestrator-ideation |
-| Plans | `create/update_plan_artifact`, `get_session_plan`, `link_proposals_to_plan` | orchestrator-ideation |
-| Tasks | `update_task`, `add_task_note`, `get_task_details` | chat-task |
-| Projects | `list_tasks`, `suggest_task` | chat-project |
+| Ideation | `create/update/delete_task_proposal`, `list_session_proposals`, `analyze_dependencies` | ralphx-ideation |
+| Plans | `create/update_plan_artifact`, `get_session_plan`, `link_proposals_to_plan` | ralphx-ideation |
+| Tasks | `update_task`, `add_task_note`, `get_task_details` | ralphx-chat-task |
+| Projects | `list_tasks`, `suggest_task` | ralphx-chat-project |
 | Reviews | `complete_review`, `get_review_notes`, `approve_task`, `request_task_changes` | reviewer, review-chat |
 | Issues | `task_issues/:id`, `mark_issue_*`, `issue_progress/:id` | worker, reviewer |
 | Context | `task_context/:id`, `artifact/:id`, `artifact/:id/version/:v`, `artifacts/search` | worker, coder, reviewer |
 | Steps | `task_steps/:id`, `start/complete/skip/fail/add_step`, `step_progress`, `step_context`, `sub_steps` | worker |
 | Permission | `permission/request`, `permission/await/:id`, `permission/resolve` | All agents (via MCP) |
-| Question | `question/request`, `question/await/:id`, `question/resolve` | orchestrator-ideation |
+| Question | `question/request`, `question/await/:id`, `question/resolve` | ralphx-ideation |
 | Git/Merge | `git/tasks/:id/complete-merge`, `report-conflict`, `report-incomplete`, `merge-target` | merger |
-| Memory | `search/get/upsert_memories`, `mark_memory_obsolete`, `ingest_rule_file` | memory-maintainer, memory-capture |
-| Analysis | `projects/:id/analysis` | project-analyzer |
+| Memory | `search/get/upsert_memories`, `mark_memory_obsolete`, `ingest_rule_file` | ralphx-memory-maintainer, ralphx-memory-capture |
+| Analysis | `projects/:id/analysis` | ralphx-project-analyzer |
 
 ## Agent Name System
 
@@ -339,13 +339,13 @@ Default: `http://127.0.0.1:3847` (overridable via `TAURI_API_URL`)
 
 | Constant | Short Name | FQ Name | Usage |
 |----------|------------|---------|-------|
-| `AGENT_ORCHESTRATOR_IDEATION` | `orchestrator-ideation` | `ralphx:orchestrator-ideation` | ChatService (Ideation context) |
-| `AGENT_WORKER` | `ralphx-worker` | `ralphx:ralphx-worker` | ChatService (TaskExecution) |
-| `AGENT_CODER` | `ralphx-coder` | `ralphx:ralphx-coder` | Delegated by worker |
-| `AGENT_REVIEWER` | `ralphx-reviewer` | `ralphx:ralphx-reviewer` | ChatService (Review) |
-| `AGENT_MERGER` | `ralphx-merger` | `ralphx:ralphx-merger` | ChatService (Merge) |
-| `AGENT_SESSION_NAMER` | `session-namer` | `ralphx:session-namer` | Fire-and-forget (haiku) |
-| `AGENT_PROJECT_ANALYZER` | `project-analyzer` | `ralphx:project-analyzer` | Fire-and-forget (haiku) |
+| `AGENT_ORCHESTRATOR_IDEATION` | `ralphx-ideation` | `ralphx:ralphx-ideation` | ChatService (Ideation context) |
+| `AGENT_WORKER` | `ralphx-execution-worker` | `ralphx:ralphx-execution-worker` | ChatService (TaskExecution) |
+| `AGENT_CODER` | `ralphx-execution-coder` | `ralphx:ralphx-execution-coder` | Delegated by worker |
+| `AGENT_REVIEWER` | `ralphx-execution-reviewer` | `ralphx:ralphx-execution-reviewer` | ChatService (Review) |
+| `AGENT_MERGER` | `ralphx-execution-merger` | `ralphx:ralphx-execution-merger` | ChatService (Merge) |
+| `AGENT_SESSION_NAMER` | `ralphx-utility-session-namer` | `ralphx:ralphx-utility-session-namer` | Fire-and-forget (haiku) |
+| `AGENT_PROJECT_ANALYZER` | `ralphx-project-analyzer` | `ralphx:ralphx-project-analyzer` | Fire-and-forget (haiku) |
 | `AGENT_QA_PREP` | `ralphx-qa-prep` | `ralphx:ralphx-qa-prep` | State machine (Ready) |
 | `AGENT_QA_REFINER` | `qa-refiner` | `ralphx:qa-refiner` | State machine (QaRefining) |
 | `AGENT_QA_TESTER` | `qa-tester` | `ralphx:qa-tester` | State machine (QaTesting) |

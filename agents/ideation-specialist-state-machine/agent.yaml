@@ -1,4 +1,0 @@
----
-name: ideation-specialist-state-machine
-role: ideation_specialist_state_machine
-description: "Evaluate plans modifying task state transitions for safety \u2014 on_enter handlers, concurrent access guards, reconciler coverage, auto-transition single-fire, and rollback paths"

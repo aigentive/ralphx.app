@@ -314,7 +314,7 @@ fn compose_codex_prompt_injects_agent_prompt_body_when_available() {
     std::fs::create_dir_all(&agents_dir).expect("agents dir");
     std::fs::write(
         agents_dir.join("worker.md"),
-        "---\nname: ralphx-worker\n---\nYou are the worker agent.\n",
+        "---\nname: ralphx-execution-worker\n---\nYou are the worker agent.\n",
     )
     .expect("agent file");
 

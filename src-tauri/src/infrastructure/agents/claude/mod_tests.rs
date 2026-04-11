@@ -186,8 +186,8 @@ fn test_format_allowed_tools_arg_value_absent_mcp_tools_returns_none() {
 #[test]
 fn test_create_mcp_config_injects_allowed_tools_for_agent_with_mcp_tools() {
     let (_dir, plugin_dir) = make_temp_plugin_dir();
-    // orchestrator-ideation has a non-empty mcp_tools list in ralphx.yaml
-    let config_path = create_mcp_config(&plugin_dir, "orchestrator-ideation", false)
+    // ralphx-ideation has a non-empty mcp_tools list in ralphx.yaml
+    let config_path = create_mcp_config(&plugin_dir, "ralphx-ideation", false)
         .expect("should create config file");
     let args = get_json_args(&config_path);
 
@@ -210,7 +210,7 @@ fn test_create_mcp_config_injects_allowed_tools_for_agent_with_mcp_tools() {
 #[test]
 fn test_create_mcp_config_injects_agent_type_alongside_allowed_tools() {
     let (_dir, plugin_dir) = make_temp_plugin_dir();
-    let config_path = create_mcp_config(&plugin_dir, "orchestrator-ideation", false)
+    let config_path = create_mcp_config(&plugin_dir, "ralphx-ideation", false)
         .expect("should create config file");
     let args = get_json_args(&config_path);
 
@@ -248,20 +248,20 @@ fn test_create_mcp_config_no_allowed_tools_arg_for_unknown_agent() {
 #[test]
 fn test_create_mcp_config_allowed_tools_value_matches_agent_mcp_tools() {
     let (_dir, plugin_dir) = make_temp_plugin_dir();
-    // session-namer has a small mcp_tools list: [update_session_title]
-    let config_path = create_mcp_config(&plugin_dir, "session-namer", false)
+    // ralphx-utility-session-namer has a small mcp_tools list: [update_session_title]
+    let config_path = create_mcp_config(&plugin_dir, "ralphx-utility-session-namer", false)
         .expect("should create config file");
     let args = get_json_args(&config_path);
 
     let allowed_arg = args
         .iter()
         .find(|a| a.starts_with("--allowed-tools="))
-        .expect("--allowed-tools should be present for session-namer");
+        .expect("--allowed-tools should be present for ralphx-utility-session-namer");
     let value = allowed_arg.strip_prefix("--allowed-tools=").unwrap();
-    // session-namer has mcp_tools: [update_session_title]
+    // ralphx-utility-session-namer has mcp_tools: [update_session_title]
     assert_eq!(
         value, "update_session_title",
-        "session-namer should have exactly update_session_title"
+        "ralphx-utility-session-namer should have exactly update_session_title"
     );
 }
 
@@ -389,9 +389,9 @@ fn test_filter_interactive_tools_empty_input() {
 #[test]
 fn test_create_mcp_config_external_mcp_filters_ask_user_question() {
     let (dir, plugin_dir) = make_temp_plugin_dir();
-    // orchestrator-ideation has ask_user_question in its mcp_tools
+    // ralphx-ideation has ask_user_question in its mcp_tools
     let config_path =
-        create_mcp_config(&plugin_dir, "orchestrator-ideation", true).expect("should succeed");
+        create_mcp_config(&plugin_dir, "ralphx-ideation", true).expect("should succeed");
     let content = std::fs::read_to_string(&config_path).expect("should read config");
     let json: serde_json::Value = serde_json::from_str(&content).expect("valid JSON");
     let args: Vec<String> = json["mcpServers"]
@@ -413,9 +413,9 @@ fn test_create_mcp_config_external_mcp_filters_ask_user_question() {
 #[test]
 fn test_create_mcp_config_non_external_mcp_keeps_ask_user_question() {
     let (dir, plugin_dir) = make_temp_plugin_dir();
-    // orchestrator-ideation has ask_user_question in its mcp_tools — should be present when not external
+    // ralphx-ideation has ask_user_question in its mcp_tools — should be present when not external
     let config_path =
-        create_mcp_config(&plugin_dir, "orchestrator-ideation", false).expect("should succeed");
+        create_mcp_config(&plugin_dir, "ralphx-ideation", false).expect("should succeed");
     let content = std::fs::read_to_string(&config_path).expect("should read config");
     let json: serde_json::Value = serde_json::from_str(&content).expect("valid JSON");
     let args: Vec<String> = json["mcpServers"]
@@ -437,11 +437,11 @@ fn test_create_mcp_config_non_external_mcp_keeps_ask_user_question() {
 #[test]
 fn test_materialize_generated_plugin_dir_renders_canonical_claude_frontmatter_without_legacy_agent_file() {
     let (_dir, root, plugin_dir) = make_temp_project_plugin_dir();
-    let agent_root = root.join("agents/orchestrator-ideation");
+    let agent_root = root.join("agents/ralphx-ideation");
     std::fs::create_dir_all(agent_root.join("claude")).expect("create canonical claude dir");
     std::fs::write(
         agent_root.join("agent.yaml"),
-        r#"name: orchestrator-ideation
+        r#"name: ralphx-ideation
 role: ideation_orchestrator
 description: Facilitates ideation sessions and generates task proposals for RalphX.
 "#,
@@ -469,12 +469,12 @@ skills:
     let generated_dir =
         materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
     let generated_prompt = std::fs::read_to_string(
-        generated_dir.join("agents/orchestrator-ideation.md"),
+        generated_dir.join("agents/ralphx-ideation.md"),
     )
     .expect("read generated agent prompt");
 
     assert!(
-        generated_prompt.contains("name: orchestrator-ideation"),
+        generated_prompt.contains("name: ralphx-ideation"),
         "expected generated frontmatter name, got: {generated_prompt}"
     );
     assert!(
@@ -487,7 +487,7 @@ skills:
     );
     assert!(
         generated_prompt.contains("Task(Explore)")
-            && generated_prompt.contains("Task(ralphx:ideation-specialist-ux)"),
+            && generated_prompt.contains("Task(ralphx:ralphx-ideation-specialist-ux)"),
         "expected derived preapproved task variants in generated frontmatter, got: {generated_prompt}"
     );
     assert!(
@@ -511,11 +511,11 @@ skills:
 #[test]
 fn test_materialize_generated_plugin_dir_supports_shared_prompt_without_legacy_frontmatter() {
     let (_dir, root, plugin_dir) = make_temp_project_plugin_dir();
-    let agent_root = root.join("agents/session-namer");
+    let agent_root = root.join("agents/ralphx-utility-session-namer");
     std::fs::create_dir_all(agent_root.join("shared")).expect("create shared prompt dir");
     std::fs::write(
         agent_root.join("agent.yaml"),
-        r#"name: session-namer
+        r#"name: ralphx-utility-session-namer
 role: session_namer
 description: Generates concise ideation session titles from user or plan context.
 "#,
@@ -530,7 +530,7 @@ description: Generates concise ideation session titles from user or plan context
     let generated_dir =
         materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
     let generated_prompt =
-        std::fs::read_to_string(generated_dir.join("agents/session-namer.md"))
+        std::fs::read_to_string(generated_dir.join("agents/ralphx-utility-session-namer.md"))
             .expect("read generated session namer prompt");
 
     assert!(
@@ -539,7 +539,7 @@ description: Generates concise ideation session titles from user or plan context
     );
     assert!(
         generated_prompt.contains("mcp__ralphx__update_session_title"),
-        "expected session-namer MCP tool in generated frontmatter, got: {generated_prompt}"
+        "expected ralphx-utility-session-namer MCP tool in generated frontmatter, got: {generated_prompt}"
     );
     assert!(
         generated_prompt.contains("Shared session naming prompt"),
@@ -550,11 +550,11 @@ description: Generates concise ideation session titles from user or plan context
 #[test]
 fn test_materialize_generated_plugin_dir_renders_canonical_claude_max_turns() {
     let (_dir, root, plugin_dir) = make_temp_project_plugin_dir();
-    let agent_root = root.join("agents/plan-verifier");
+    let agent_root = root.join("agents/ralphx-plan-verifier");
     std::fs::create_dir_all(agent_root.join("claude")).expect("create canonical claude dir");
     std::fs::write(
         agent_root.join("agent.yaml"),
-        r#"name: plan-verifier
+        r#"name: ralphx-plan-verifier
 role: plan_verifier
 description: Dedicated plan verification agent that runs the adversarial round loop for ideation plans.
 "#,
@@ -579,7 +579,7 @@ max_turns: 80
     let generated_dir =
         materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
     let generated_prompt =
-        std::fs::read_to_string(generated_dir.join("agents/plan-verifier.md"))
+        std::fs::read_to_string(generated_dir.join("agents/ralphx-plan-verifier.md"))
             .expect("read generated plan verifier prompt");
 
     assert!(
@@ -595,11 +595,11 @@ max_turns: 80
 #[test]
 fn test_materialize_generated_plugin_dir_omits_mcp_servers_for_agents_without_mcp_tools() {
     let (_dir, root, plugin_dir) = make_temp_project_plugin_dir();
-    let agent_root = root.join("agents/ralphx-supervisor");
+    let agent_root = root.join("agents/ralphx-execution-supervisor");
     std::fs::create_dir_all(agent_root.join("shared")).expect("create shared prompt dir");
     std::fs::write(
         agent_root.join("agent.yaml"),
-        r#"name: ralphx-supervisor
+        r#"name: ralphx-execution-supervisor
 role: supervisor
 description: Monitors task execution and intervenes when problems occur
 "#,
@@ -614,7 +614,7 @@ description: Monitors task execution and intervenes when problems occur
     let generated_dir =
         materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
     let generated_prompt =
-        std::fs::read_to_string(generated_dir.join("agents/ralphx-supervisor.md"))
+        std::fs::read_to_string(generated_dir.join("agents/ralphx-execution-supervisor.md"))
             .expect("read generated supervisor prompt");
 
     assert!(

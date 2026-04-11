@@ -2091,12 +2091,12 @@ async fn resolve_working_directory_review_rejects_merge_worktree_path() {
 // --- Verifier subagent cap injection tests ---
 //
 // These tests verify that build_command correctly resolves CLAUDE_CODE_SUBAGENT_MODEL
-// from the verifier_subagent_model DB field for plan-verifier, and that non-verifier
+// from the verifier_subagent_model DB field for ralphx-plan-verifier, and that non-verifier
 // agents use their own resolved model as the subagent cap instead.
 
 #[tokio::test]
 async fn test_plan_verifier_sets_subagent_cap_env_var() {
-    // When build_command is called with entity_status="verification" (plan-verifier),
+    // When build_command is called with entity_status="verification" (ralphx-plan-verifier),
     // and the DB has verifier_subagent_model=haiku, then CLAUDE_CODE_SUBAGENT_MODEL=haiku
     // must appear in the spawned command's environment variables.
     let repo = MemoryIdeationModelSettingsRepository::new();
@@ -2142,14 +2142,14 @@ async fn test_plan_verifier_sets_subagent_cap_env_var() {
     assert_eq!(
         subagent_model.as_deref(),
         Some("haiku"),
-        "CLAUDE_CODE_SUBAGENT_MODEL should be haiku for plan-verifier with DB override"
+        "CLAUDE_CODE_SUBAGENT_MODEL should be haiku for ralphx-plan-verifier with DB override"
     );
 }
 
 #[tokio::test]
 async fn test_plan_verifier_subagent_cap_uses_haiku_default_when_no_db_rows() {
     // When the DB has no rows, the hardcoded "haiku" default must still appear
-    // in CLAUDE_CODE_SUBAGENT_MODEL for plan-verifier.
+    // in CLAUDE_CODE_SUBAGENT_MODEL for ralphx-plan-verifier.
     let repo = MemoryIdeationModelSettingsRepository::new();
     // No rows seeded → falls back to "haiku"
 
@@ -2197,7 +2197,7 @@ async fn test_plan_verifier_subagent_cap_uses_haiku_default_when_no_db_rows() {
 
 #[tokio::test]
 async fn test_non_verifier_ideation_agent_subagent_cap_is_agent_own_model() {
-    // For non-verifier ideation agents (orchestrator-ideation), the subagent cap
+    // For non-verifier ideation agents (ralphx-ideation), the subagent cap
     // must come from the ideation_subagent_model DB field — NOT from the agent's own
     // resolved model and NOT from verifier_subagent_model.
     let repo = MemoryIdeationModelSettingsRepository::new();
@@ -2212,14 +2212,14 @@ async fn test_non_verifier_ideation_agent_subagent_cap_is_agent_own_model() {
     let attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
     let settings_repo: Arc<dyn IdeationModelSettingsRepository> = Arc::new(repo);
 
-    // No entity_status → orchestrator-ideation (default ideation agent)
+    // No entity_status → ralphx-ideation (default ideation agent)
     let result = build_command(
         std::path::Path::new("/fake/claude"),
         std::path::Path::new("/fake/plugin"),
         &conv,
         "continue",
         std::path::Path::new("/tmp"),
-        None, // no entity_status → orchestrator-ideation
+        None, // no entity_status → ralphx-ideation
         Some("proj-1"),
         false,
         attachment_repo,
@@ -2242,11 +2242,11 @@ async fn test_non_verifier_ideation_agent_subagent_cap_is_agent_own_model() {
         .find(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL")
         .map(|(_, v)| v.to_string_lossy().into_owned());
 
-    // The subagent cap for orchestrator-ideation comes from ideation_subagent_model DB field ("sonnet")
+    // The subagent cap for ralphx-ideation comes from ideation_subagent_model DB field ("sonnet")
     assert_eq!(
         subagent_model.as_deref(),
         Some("sonnet"),
-        "orchestrator-ideation subagent cap should come from ideation_subagent_model DB field"
+        "ralphx-ideation subagent cap should come from ideation_subagent_model DB field"
     );
     assert_ne!(
         subagent_model.as_deref(),
@@ -2257,7 +2257,7 @@ async fn test_non_verifier_ideation_agent_subagent_cap_is_agent_own_model() {
 
 #[tokio::test]
 async fn test_orchestrator_ideation_uses_ideation_subagent_cap() {
-    // PO#4: build_command for orchestrator-ideation must set CLAUDE_CODE_SUBAGENT_MODEL
+    // PO#4: build_command for ralphx-ideation must set CLAUDE_CODE_SUBAGENT_MODEL
     // to the ideation_subagent_model DB field value ("sonnet"), NOT to resolved_model_override
     // ("opus", which is the agent's primary model). This verifies the dispatch uses the
     // correct dedicated field.
@@ -2273,14 +2273,14 @@ async fn test_orchestrator_ideation_uses_ideation_subagent_cap() {
     let attachment_repo = Arc::new(MemoryChatAttachmentRepository::new());
     let settings_repo: Arc<dyn IdeationModelSettingsRepository> = Arc::new(repo);
 
-    // entity_status=None → orchestrator-ideation (non-verifier ideation agent)
+    // entity_status=None → ralphx-ideation (non-verifier ideation agent)
     let result = build_command(
         std::path::Path::new("/fake/claude"),
         std::path::Path::new("/fake/plugin"),
         &conv,
         "continue",
         std::path::Path::new("/tmp"),
-        None,          // no entity_status → orchestrator-ideation
+        None,          // no entity_status → ralphx-ideation
         Some("proj-1"),
         false,
         attachment_repo,
@@ -2313,14 +2313,14 @@ async fn test_orchestrator_ideation_uses_ideation_subagent_cap() {
     assert_ne!(
         subagent_model.as_deref(),
         Some("opus"),
-        "resolved_model_override (opus) must NOT be used as CLAUDE_CODE_SUBAGENT_MODEL for orchestrator-ideation"
+        "resolved_model_override (opus) must NOT be used as CLAUDE_CODE_SUBAGENT_MODEL for ralphx-ideation"
     );
 }
 
 #[tokio::test]
 async fn test_both_build_and_resume_use_ideation_subagent_cap() {
     // Both build_command AND build_resume_command must inject
-    // CLAUDE_CODE_SUBAGENT_MODEL = ideation_subagent_model DB field for orchestrator-ideation.
+    // CLAUDE_CODE_SUBAGENT_MODEL = ideation_subagent_model DB field for ralphx-ideation.
     // This test MUST FAIL if either function uses old behavior (resolved_model_override or agent's own model).
     {
         let seeded = MemoryIdeationModelSettingsRepository::new();

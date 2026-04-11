@@ -28,7 +28,7 @@ fn test_yaml_loaded_has_unique_names() {
 
 #[test]
 fn test_get_allowed_tools_worker_agent() {
-    let tools = get_allowed_tools("ralphx-worker").unwrap();
+    let tools = get_allowed_tools("ralphx-execution-worker").unwrap();
     assert!(tools.contains("Read"));
     assert!(tools.contains("Write"));
     assert!(tools.contains("Edit"));
@@ -37,12 +37,12 @@ fn test_get_allowed_tools_worker_agent() {
 
 #[test]
 fn test_get_allowed_tools_mcp_only_agent() {
-    assert_eq!(get_allowed_tools("session-namer"), Some(String::new()));
+    assert_eq!(get_allowed_tools("ralphx-utility-session-namer"), Some(String::new()));
 }
 
 #[test]
 fn test_get_preapproved_tools_worker_contains_expected() {
-    let tools = get_preapproved_tools("ralphx-worker").unwrap();
+    let tools = get_preapproved_tools("ralphx-execution-worker").unwrap();
     assert!(tools.contains("mcp__ralphx__get_task_context"));
     assert!(tools.contains("mcp__ralphx__get_project_analysis"));
     assert!(tools.contains("Write"));
@@ -53,7 +53,7 @@ fn test_get_preapproved_tools_worker_contains_expected() {
 
 #[test]
 fn test_default_base_tool_set_present_in_worker() {
-    let tools = get_allowed_tools("ralphx-worker").unwrap();
+    let tools = get_allowed_tools("ralphx-execution-worker").unwrap();
     for t in DEFAULT_BASE_CLI_TOOLS {
         assert!(tools.contains(t), "worker missing base tool {}", t);
     }
@@ -90,7 +90,7 @@ fn test_all_agent_names_are_known() {
         SHORT_IDEATION_TEAM_LEAD,
         SHORT_WORKER_TEAM,
         SHORT_IDEATION_TEAM_MEMBER,
-        // Ideation specialist agents (spawned by ideation-team-lead)
+        // Ideation specialist agents (spawned by ralphx-ideation-team-lead)
         SHORT_IDEATION_SPECIALIST_BACKEND,
         SHORT_IDEATION_SPECIALIST_FRONTEND,
         SHORT_IDEATION_SPECIALIST_INFRA,
@@ -99,13 +99,13 @@ fn test_all_agent_names_are_known() {
         SHORT_IDEATION_ADVOCATE,
         SHORT_IDEATION_CRITIC,
         // Prompt quality specialist added in recent commits
-        "ideation-specialist-prompt-quality",
+        "ralphx-ideation-specialist-prompt-quality",
         // Intent alignment specialist added in recent commits
-        "ideation-specialist-intent",
+        "ralphx-ideation-specialist-intent",
         // Pipeline safety specialist added in synthetic-data hardening session
-        "ideation-specialist-pipeline-safety",
+        "ralphx-ideation-specialist-pipeline-safety",
         // State machine safety specialist added in synthetic-data hardening session
-        "ideation-specialist-state-machine",
+        "ralphx-ideation-specialist-state-machine",
     ]);
 
     for agent in agent_configs() {
@@ -165,20 +165,20 @@ fn test_live_runtime_agents_no_longer_reference_deprecated_plugin_prompt_paths()
 fn test_plan_verifier_prompt_includes_resumable_task_and_retry_context_rules() {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
     let prompt =
-        load_harness_agent_prompt(&project_root, "plan-verifier", AgentPromptHarness::Claude)
-            .expect("failed to load canonical plan-verifier prompt");
+        load_harness_agent_prompt(&project_root, "ralphx-plan-verifier", AgentPromptHarness::Claude)
+            .expect("failed to load canonical ralphx-plan-verifier prompt");
 
     assert!(
         prompt.contains("Task `agentId` is resumable, not complete"),
-        "plan-verifier prompt must explicitly treat Task agentId results as resumable"
+        "ralphx-plan-verifier prompt must explicitly treat Task agentId results as resumable"
     );
     assert!(
         prompt.contains("Do NOT send minimalist nudges like \"finish your analysis\" without `SESSION_ID` and schema"),
-        "plan-verifier prompt must forbid context-dropping retry nudges"
+        "ralphx-plan-verifier prompt must forbid context-dropping retry nudges"
     );
     assert!(
         prompt.contains("required JSON object keys: `status`, `critic`, `round`, `coverage`, `summary`, `gaps`"),
-        "plan-verifier prompt must restate the critic artifact schema in rescue guidance"
+        "ralphx-plan-verifier prompt must restate the critic artifact schema in rescue guidance"
     );
 }
 
@@ -186,24 +186,24 @@ fn test_plan_verifier_prompt_includes_resumable_task_and_retry_context_rules() {
 fn test_plan_verifier_prompt_uses_verification_round_artifact_helper() {
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
     let prompt =
-        load_harness_agent_prompt(&project_root, "plan-verifier", AgentPromptHarness::Claude)
-            .expect("failed to load canonical plan-verifier prompt");
+        load_harness_agent_prompt(&project_root, "ralphx-plan-verifier", AgentPromptHarness::Claude)
+            .expect("failed to load canonical ralphx-plan-verifier prompt");
 
     assert!(
         prompt.contains("mcp__ralphx__get_verification_round_artifacts"),
-        "plan-verifier prompt must use the verifier-oriented artifact collection helper"
+        "ralphx-plan-verifier prompt must use the verifier-oriented artifact collection helper"
     );
     assert!(
         prompt.contains("created_after"),
-        "plan-verifier prompt must pass created_after to the artifact collection helper"
+        "ralphx-plan-verifier prompt must pass created_after to the artifact collection helper"
     );
     assert!(
         !prompt.contains("mcp__ralphx__get_team_artifacts(session_id: <parent_session_id>)"),
-        "plan-verifier prompt should not drift back to manual get_team_artifacts collection"
+        "ralphx-plan-verifier prompt should not drift back to manual get_team_artifacts collection"
     );
     assert!(
         !prompt.contains("mcp__ralphx__get_artifact(artifact_id: <id>)"),
-        "plan-verifier prompt should not drift back to separate get_artifact fetches for round artifacts"
+        "ralphx-plan-verifier prompt should not drift back to separate get_artifact fetches for round artifacts"
     );
 }
 
@@ -216,7 +216,7 @@ claude:
   dangerously_skip_permissions: false
   permission_prompt_tool: permission_request
 agents:
-  - name: ralphx-worker
+  - name: ralphx-execution-worker
 tools:
   extends: base_tools
   include: [Write]
@@ -248,7 +248,7 @@ claude:
       env:
         ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
 agents:
-  - name: ralphx-worker
+  - name: ralphx-execution-worker
     tools:
       extends: base_tools
       include: [Write]
@@ -286,7 +286,7 @@ claude:
         ANTHROPIC_API_KEY: ""
         API_TIMEOUT_MS: "3000000"
 agents:
-  - name: ralphx-worker
+  - name: ralphx-execution-worker
     tools:
       extends: base_tools
       include: [Write]
@@ -566,7 +566,7 @@ claude:
       env:
         ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
 agents:
-  - name: ralphx-worker
+  - name: ralphx-execution-worker
     settings_profile: default
     tools:
       extends: base_tools
@@ -574,7 +574,7 @@ agents:
     mcp_tools: [get_task_context]
     preapproved_cli_tools: []
     system_prompt_file: plugins/app/agents/worker.md
-  - name: ralphx-coder
+  - name: ralphx-execution-coder
     tools:
       extends: base_tools
       include: [Write]
@@ -592,7 +592,7 @@ agents:
     let worker = parsed
         .agents
         .iter()
-        .find(|a| a.name == "ralphx-worker")
+        .find(|a| a.name == "ralphx-execution-worker")
         .expect("worker should exist");
     assert_eq!(
         worker.settings,
@@ -605,7 +605,7 @@ agents:
     let coder = parsed
         .agents
         .iter()
-        .find(|a| a.name == "ralphx-coder")
+        .find(|a| a.name == "ralphx-execution-coder")
         .expect("coder should exist");
     assert!(
         coder.settings.is_some(),
@@ -627,7 +627,7 @@ z_ai:
   env:
     ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
 agents:
-  - name: ralphx-worker
+  - name: ralphx-execution-worker
 settings_profile: missing_profile
 tools:
   extends: base_tools
@@ -640,7 +640,7 @@ system_prompt_file: plugins/app/agents/worker.md
     let worker = parsed
         .agents
         .iter()
-        .find(|a| a.name == "ralphx-worker")
+        .find(|a| a.name == "ralphx-execution-worker")
         .expect("worker should exist");
     assert_eq!(
         worker.settings, parsed.claude.settings,
@@ -669,7 +669,7 @@ fn test_runtime_settings_profile_override_ignores_blank_value() {
 #[test]
 fn test_runtime_settings_profile_override_for_agent_uses_normalized_key() {
     let selection = runtime_settings_profile_override_for_agent_with(
-        "orchestrator-ideation",
+        "ralphx-ideation",
         &|name| match name {
             "RALPHX_CLAUDE_SETTINGS_PROFILE_ORCHESTRATOR_IDEATION" => Some("default".to_string()),
             _ => None,
@@ -681,7 +681,7 @@ fn test_runtime_settings_profile_override_for_agent_uses_normalized_key() {
 #[test]
 fn test_normalize_agent_name_for_env_replaces_symbols() {
     assert_eq!(
-        normalize_agent_name_for_env("ralphx:session-namer"),
+        normalize_agent_name_for_env("ralphx:ralphx-utility-session-namer"),
         "RALPHX_SESSION_NAMER"
     );
 }
@@ -710,7 +710,7 @@ claude:
       env:
         ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
 agents:
-  - name: ralphx-worker
+  - name: ralphx-execution-worker
     tools:
       extends: base_tools
       include: [Write]
@@ -748,7 +748,7 @@ claude:
       env:
         ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
 agents:
-  - name: ralphx-worker
+  - name: ralphx-execution-worker
     tools:
       extends: base_tools
       include: [Write]
@@ -779,7 +779,7 @@ claude:
   dangerously_skip_permissions: false
   permission_prompt_tool: mcp__external__permission_prompt
 agents:
-  - name: ralphx-worker
+  - name: ralphx-execution-worker
 tools:
   extends: base_tools
   include: [Write]
@@ -803,7 +803,7 @@ claude:
   dangerously_skip_permissions: false
   permission_prompt_tool: permission_request
 agents:
-  - name: ralphx-worker
+  - name: ralphx-execution-worker
 tools:
   extends: base_tools
   include: [Write]
@@ -821,14 +821,14 @@ system_prompt_file: plugins/app/agents/worker.md
 
 #[test]
 fn test_memory_maintainer_has_memory_skills() {
-    let tools = get_preapproved_tools("ralphx:memory-maintainer").unwrap();
+    let tools = get_preapproved_tools("ralphx:ralphx-memory-maintainer").unwrap();
     assert!(tools.contains("Skill(ralphx:rule-manager)"));
     assert!(tools.contains("Skill(ralphx:knowledge-capture)"));
 }
 
 #[test]
 fn test_memory_capture_has_memory_skills() {
-    let tools = get_preapproved_tools("ralphx:memory-capture").unwrap();
+    let tools = get_preapproved_tools("ralphx:ralphx-memory-capture").unwrap();
     assert!(tools.contains("Skill(ralphx:rule-manager)"));
     assert!(tools.contains("Skill(ralphx:knowledge-capture)"));
 }
@@ -836,9 +836,9 @@ fn test_memory_capture_has_memory_skills() {
 #[test]
 fn test_non_memory_agents_lack_memory_skills() {
     let agents_to_test = vec![
-        "ralphx-worker",
-        "ralphx-reviewer",
-        "ralphx-orchestrator",
+        "ralphx-execution-worker",
+        "ralphx-execution-reviewer",
+        "ralphx-execution-orchestrator",
         "ralphx-chat-task",
         "ralphx-chat-project",
     ];
@@ -870,9 +870,9 @@ fn test_non_memory_agents_lack_memory_write_mcp_tools() {
     ];
 
     let agents_to_test = vec![
-        "ralphx-worker",
-        "ralphx-reviewer",
-        "ralphx-orchestrator",
+        "ralphx-execution-worker",
+        "ralphx-execution-reviewer",
+        "ralphx-execution-orchestrator",
         "ralphx-chat-task",
         "ralphx-chat-project",
     ];
@@ -894,7 +894,7 @@ fn test_non_memory_agents_lack_memory_write_mcp_tools() {
 #[test]
 fn test_memory_agents_have_write_mcp_tools() {
     // Memory maintainer should have write tools
-    if let Some(config) = get_agent_config("memory-maintainer") {
+    if let Some(config) = get_agent_config("ralphx-memory-maintainer") {
         assert!(config
             .allowed_mcp_tools
             .contains(&"upsert_memories".to_string()));
@@ -913,7 +913,7 @@ fn test_memory_agents_have_write_mcp_tools() {
     }
 
     // Memory capture should have upsert_memories
-    if let Some(config) = get_agent_config("memory-capture") {
+    if let Some(config) = get_agent_config("ralphx-memory-capture") {
         assert!(config
             .allowed_mcp_tools
             .contains(&"upsert_memories".to_string()));
@@ -925,7 +925,7 @@ fn test_memory_agents_have_write_mcp_tools() {
 fn test_read_only_agents_have_read_memory_tools() {
     let read_memory_tools = vec!["search_memories", "get_memory", "get_memories_for_paths"];
 
-    let agents_to_test = vec!["ralphx-worker", "ralphx-reviewer", "ralphx-orchestrator"];
+    let agents_to_test = vec!["ralphx-execution-worker", "ralphx-execution-reviewer", "ralphx-execution-orchestrator"];
 
     for agent_name in agents_to_test {
         if let Some(config) = get_agent_config(agent_name) {
@@ -945,44 +945,44 @@ fn test_read_only_agents_have_read_memory_tools() {
 #[test]
 fn test_memory_maintainer_has_cli_write_tools() {
     // Memory maintainer must have Write and Edit to update rule files and archives
-    if let Some(config) = get_agent_config("memory-maintainer") {
+    if let Some(config) = get_agent_config("ralphx-memory-maintainer") {
         assert!(
             config.preapproved_cli_tools.contains(&"Write".to_string()),
-            "memory-maintainer must have Write tool"
+            "ralphx-memory-maintainer must have Write tool"
         );
         assert!(
             config.preapproved_cli_tools.contains(&"Edit".to_string()),
-            "memory-maintainer must have Edit tool"
+            "ralphx-memory-maintainer must have Edit tool"
         );
         assert!(
             config.preapproved_cli_tools.contains(&"Bash".to_string()),
-            "memory-maintainer must have Bash tool for file operations"
+            "ralphx-memory-maintainer must have Bash tool for file operations"
         );
     }
 
     // Verify it's not MCP-only
-    if let Some(config) = get_agent_config("memory-maintainer") {
-        assert!(!config.mcp_only, "memory-maintainer should have CLI tools");
+    if let Some(config) = get_agent_config("ralphx-memory-maintainer") {
+        assert!(!config.mcp_only, "ralphx-memory-maintainer should have CLI tools");
     }
 }
 
 #[test]
 fn test_memory_capture_has_read_cli_tools() {
     // Memory capture needs read tools to analyze conversations and extract memory
-    if let Some(config) = get_agent_config("memory-capture") {
+    if let Some(config) = get_agent_config("ralphx-memory-capture") {
         assert!(
             config.preapproved_cli_tools.contains(&"Read".to_string()),
-            "memory-capture must have Read tool"
+            "ralphx-memory-capture must have Read tool"
         );
         assert!(
             config.preapproved_cli_tools.contains(&"Grep".to_string()),
-            "memory-capture must have Grep tool"
+            "ralphx-memory-capture must have Grep tool"
         );
     }
 
     // Verify it's not MCP-only
-    if let Some(config) = get_agent_config("memory-capture") {
-        assert!(!config.mcp_only, "memory-capture should have CLI tools");
+    if let Some(config) = get_agent_config("ralphx-memory-capture") {
+        assert!(!config.mcp_only, "ralphx-memory-capture should have CLI tools");
     }
 }
 
@@ -990,8 +990,8 @@ fn test_memory_capture_has_read_cli_tools() {
 
 #[test]
 fn test_readonly_agent_has_get_plan_verification_not_update() {
-    let config = get_agent_config("orchestrator-ideation-readonly")
-        .expect("orchestrator-ideation-readonly should exist");
+    let config = get_agent_config("ralphx-ideation-readonly")
+        .expect("ralphx-ideation-readonly should exist");
     assert!(
         config
             .allowed_mcp_tools
@@ -1008,7 +1008,7 @@ fn test_readonly_agent_has_get_plan_verification_not_update() {
 
 #[test]
 fn test_plan_verifier_mcp_tools_match_current_prompt_contract() {
-    let config = get_agent_config("plan-verifier").expect("plan-verifier should exist");
+    let config = get_agent_config("ralphx-plan-verifier").expect("ralphx-plan-verifier should exist");
 
     for tool in [
         "get_session_plan",
@@ -1022,8 +1022,8 @@ fn test_plan_verifier_mcp_tools_match_current_prompt_contract() {
         "edit_plan_artifact",
         "send_ideation_session_message",
         // Workaround for Claude Code bug #25200: Task-spawned subagents inherit the parent's
-        // MCP connection, so specialists spawned by plan-verifier cannot access their own
-        // mcp_tools. These 6 tools are temporarily added to plan-verifier's allowlist so
+        // MCP connection, so specialists spawned by ralphx-plan-verifier cannot access their own
+        // mcp_tools. These 6 tools are temporarily added to ralphx-plan-verifier's allowlist so
         // specialists can access them via the inherited connection.
         // Remove when #25200 is fixed: https://github.com/anthropics/claude-code/issues/25200
         "create_team_artifact",
@@ -1035,7 +1035,7 @@ fn test_plan_verifier_mcp_tools_match_current_prompt_contract() {
     ] {
         assert!(
             config.allowed_mcp_tools.contains(&tool.to_string()),
-            "plan-verifier missing expected MCP tool {tool}"
+            "ralphx-plan-verifier missing expected MCP tool {tool}"
         );
     }
 
@@ -1043,28 +1043,28 @@ fn test_plan_verifier_mcp_tools_match_current_prompt_contract() {
         !config
             .allowed_mcp_tools
             .contains(&"get_team_artifacts".to_string()),
-        "plan-verifier should not include stale generic team artifact listing tool"
+        "ralphx-plan-verifier should not include stale generic team artifact listing tool"
     );
 
     assert!(
         !config
             .allowed_mcp_tools
             .contains(&"get_artifact".to_string()),
-        "plan-verifier should not include stale generic artifact fetch tool"
+        "ralphx-plan-verifier should not include stale generic artifact fetch tool"
     );
 
     assert!(
         !config
             .allowed_mcp_tools
             .contains(&"update_plan_verification".to_string()),
-        "plan-verifier should not include stale generic verification update tool"
+        "ralphx-plan-verifier should not include stale generic verification update tool"
     );
 
     assert!(
         !config
             .allowed_mcp_tools
             .contains(&"get_child_session_status".to_string()),
-        "plan-verifier should not include stale MCP tool get_child_session_status"
+        "ralphx-plan-verifier should not include stale MCP tool get_child_session_status"
     );
 }
 
@@ -1072,7 +1072,7 @@ fn test_plan_verifier_mcp_tools_match_current_prompt_contract() {
 fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
     let audited_agents = [
         (
-            "ideation-specialist-code-quality",
+            "ralphx-ideation-specialist-code-quality",
             vec![
                 "create_team_artifact",
                 "get_team_artifacts",
@@ -1089,7 +1089,7 @@ fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
             ],
         ),
         (
-            "ideation-specialist-prompt-quality",
+            "ralphx-ideation-specialist-prompt-quality",
             vec![
                 "create_team_artifact",
                 "get_team_artifacts",
@@ -1106,7 +1106,7 @@ fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
             ],
         ),
         (
-            "ideation-specialist-pipeline-safety",
+            "ralphx-ideation-specialist-pipeline-safety",
             vec![
                 "create_team_artifact",
                 "get_team_artifacts",
@@ -1123,7 +1123,7 @@ fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
             ],
         ),
         (
-            "ideation-specialist-state-machine",
+            "ralphx-ideation-specialist-state-machine",
             vec![
                 "create_team_artifact",
                 "get_team_artifacts",
@@ -1140,7 +1140,7 @@ fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
             ],
         ),
         (
-            "ideation-specialist-intent",
+            "ralphx-ideation-specialist-intent",
             vec![
                 "create_team_artifact",
                 "get_team_artifacts",
@@ -1179,8 +1179,8 @@ fn test_enrichment_specialist_mcp_tools_match_prompt_contract() {
 #[test]
 fn test_plan_critic_mcp_tools_match_prompt_contract() {
     for agent_name in [
-        "plan-critic-completeness",
-        "plan-critic-implementation-feasibility",
+        "ralphx-plan-critic-completeness",
+        "ralphx-plan-critic-implementation-feasibility",
     ] {
         let config = get_agent_config(agent_name).expect("plan critic should exist");
 
@@ -1405,12 +1405,12 @@ claude:
   permission_prompt_tool: permission_request
 process_mapping:
   execution:
-    default: ralphx-worker
-    team: ralphx-worker-team
+    default: ralphx-execution-worker
+    team: ralphx-execution-team-lead
   ideation:
-    default: orchestrator-ideation
+    default: ralphx-ideation
 agents:
-  - name: ralphx-worker
+  - name: ralphx-execution-worker
     system_prompt_file: plugins/app/agents/worker.md
     tools: { extends: base_tools, include: [Write] }
     mcp_tools: [get_task_context]
@@ -1420,14 +1420,14 @@ agents:
     assert_eq!(parsed.process_mapping.slots.len(), 2);
     assert_eq!(
         parsed.process_mapping.slots["execution"].default,
-        "ralphx-worker"
+        "ralphx-execution-worker"
     );
     assert_eq!(
         parsed.process_mapping.slots["execution"]
             .variants
             .get("team")
             .unwrap(),
-        "ralphx-worker-team"
+        "ralphx-execution-team-lead"
     );
 }
 
@@ -1448,7 +1448,7 @@ team_constraints:
     mode: dynamic
     timeout_minutes: 30
 agents:
-  - name: ralphx-worker
+  - name: ralphx-execution-worker
     system_prompt_file: plugins/app/agents/worker.md
     tools: { extends: base_tools, include: [Write] }
     mcp_tools: [get_task_context]
@@ -1471,7 +1471,7 @@ claude:
   dangerously_skip_permissions: false
   permission_prompt_tool: permission_request
 agents:
-  - name: ralphx-worker
+  - name: ralphx-execution-worker
 system_prompt_file: plugins/app/agents/worker.md
 tools: { extends: base_tools, include: [Write] }
 mcp_tools: [get_task_context]
@@ -1581,8 +1581,8 @@ agents:
 #[test]
 fn test_resolve_effort_returns_per_agent_effort_for_known_agent() {
     use crate::infrastructure::agents::claude::resolve_effort;
-    // orchestrator-ideation has effort: max in ralphx.yaml
-    let effort = resolve_effort(Some("orchestrator-ideation"));
+    // ralphx-ideation has effort: max in ralphx.yaml
+    let effort = resolve_effort(Some("ralphx-ideation"));
     assert_eq!(effort, "max");
 }
 
@@ -1716,41 +1716,41 @@ agents:
 
 #[test]
 fn test_permission_mode_worker_is_accept_edits() {
-    let config = get_agent_config("ralphx-worker").expect("ralphx-worker should exist");
+    let config = get_agent_config("ralphx-execution-worker").expect("ralphx-execution-worker should exist");
     assert_eq!(
         config.permission_mode.as_deref(),
         Some("acceptEdits"),
-        "ralphx-worker should have acceptEdits permission mode"
+        "ralphx-execution-worker should have acceptEdits permission mode"
     );
 }
 
 #[test]
 fn test_permission_mode_coder_is_accept_edits() {
-    let config = get_agent_config("ralphx-coder").expect("ralphx-coder should exist");
+    let config = get_agent_config("ralphx-execution-coder").expect("ralphx-execution-coder should exist");
     assert_eq!(
         config.permission_mode.as_deref(),
         Some("acceptEdits"),
-        "ralphx-coder should have acceptEdits permission mode"
+        "ralphx-execution-coder should have acceptEdits permission mode"
     );
 }
 
 #[test]
 fn test_permission_mode_merger_is_accept_edits() {
-    let config = get_agent_config("ralphx-merger").expect("ralphx-merger should exist");
+    let config = get_agent_config("ralphx-execution-merger").expect("ralphx-execution-merger should exist");
     assert_eq!(
         config.permission_mode.as_deref(),
         Some("acceptEdits"),
-        "ralphx-merger should have acceptEdits permission mode"
+        "ralphx-execution-merger should have acceptEdits permission mode"
     );
 }
 
 #[test]
 fn test_permission_mode_worker_team_inherits_accept_edits() {
-    let config = get_agent_config("ralphx-worker-team").expect("ralphx-worker-team should exist");
+    let config = get_agent_config("ralphx-execution-team-lead").expect("ralphx-execution-team-lead should exist");
     assert_eq!(
         config.permission_mode.as_deref(),
         Some("acceptEdits"),
-        "ralphx-worker-team should have acceptEdits (inherited or explicit)"
+        "ralphx-execution-team-lead should have acceptEdits (inherited or explicit)"
     );
 }
 
@@ -1767,39 +1767,55 @@ fn test_permission_mode_qa_executor_is_accept_edits() {
 #[test]
 fn test_permission_mode_memory_maintainer_is_accept_edits() {
     let config =
-        get_agent_config("memory-maintainer").expect("memory-maintainer should exist");
+        get_agent_config("ralphx-memory-maintainer").expect("ralphx-memory-maintainer should exist");
     assert_eq!(
         config.permission_mode.as_deref(),
         Some("acceptEdits"),
-        "memory-maintainer should have acceptEdits permission mode"
+        "ralphx-memory-maintainer should have acceptEdits permission mode"
     );
 }
 
 #[test]
 fn test_permission_mode_memory_capture_is_accept_edits() {
-    let config = get_agent_config("memory-capture").expect("memory-capture should exist");
+    let config = get_agent_config("ralphx-memory-capture").expect("ralphx-memory-capture should exist");
     assert_eq!(
         config.permission_mode.as_deref(),
         Some("acceptEdits"),
-        "memory-capture should have acceptEdits permission mode"
+        "ralphx-memory-capture should have acceptEdits permission mode"
     );
 }
 
 #[test]
 fn test_permission_mode_chat_agent_is_none() {
     // Non-worker agents should NOT have a permission_mode override (inherits global "default")
-    let config = get_agent_config("chat-task").expect("chat-task should exist");
+    let config = get_agent_config("ralphx-chat-task").expect("ralphx-chat-task should exist");
     assert_eq!(
         config.permission_mode,
         None,
-        "chat-task should not have a per-agent permission_mode override"
+        "ralphx-chat-task should not have a per-agent permission_mode override"
     );
+}
+
+#[test]
+fn test_get_agent_config_accepts_legacy_agent_aliases() {
+    let cases = [
+        ("orchestrator-ideation", "ralphx-ideation"),
+        ("plan-verifier", "ralphx-plan-verifier"),
+        ("ralphx-worker", "ralphx-execution-worker"),
+        ("session-namer", "ralphx-utility-session-namer"),
+    ];
+
+    for (legacy_name, canonical_name) in cases {
+        let config = get_agent_config(legacy_name)
+            .unwrap_or_else(|| panic!("legacy alias {legacy_name} should resolve"));
+        assert_eq!(config.name, canonical_name);
+    }
 }
 
 #[test]
 fn test_preapproved_tools_always_contains_permission_request() {
     // Every known agent should have permission_request in their preapproved tools
-    for agent_name in &["ralphx-worker", "ralphx-coder", "ralphx-merger", "session-namer", "chat-task"] {
+    for agent_name in &["ralphx-execution-worker", "ralphx-execution-coder", "ralphx-execution-merger", "ralphx-utility-session-namer", "ralphx-chat-task"] {
         let tools = get_preapproved_tools(agent_name)
             .unwrap_or_default();
         assert!(

@@ -673,7 +673,7 @@ async fn test_start_ideation_codex_lane_keeps_session_namer_on_default_helper_cl
         .iter()
         .find_map(|call| match &call.call_type {
             MockCallType::Spawn { role, prompt }
-                if *role == AgentRole::Custom("session-namer".to_string()) =>
+                if *role == AgentRole::Custom("ralphx-utility-session-namer".to_string()) =>
             {
                 Some(prompt.clone())
             }

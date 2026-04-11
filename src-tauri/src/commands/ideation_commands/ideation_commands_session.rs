@@ -492,7 +492,7 @@ pub async fn reopen_ideation_session(
 /// Update the title of an ideation session
 ///
 /// Sets or clears the session title and emits a real-time event for UI updates.
-/// This is used by the session-namer agent for auto-generated titles and
+/// This is used by the ralphx-utility-session-namer agent for auto-generated titles and
 /// by the frontend for manual renames.
 #[tauri::command]
 pub async fn update_ideation_session_title(
@@ -530,7 +530,7 @@ pub async fn update_ideation_session_title(
     Ok(IdeationSessionResponse::from(session))
 }
 
-/// Spawn the session-namer agent to auto-generate a title for the session
+/// Spawn the ralphx-utility-session-namer agent to auto-generate a title for the session
 ///
 /// This is a fire-and-forget operation that spawns a background agent.
 /// The agent will call the update_session_title MCP tool when complete,

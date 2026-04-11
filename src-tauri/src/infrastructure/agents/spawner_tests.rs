@@ -982,7 +982,7 @@ async fn test_spawn_uses_codex_client_when_execution_lane_resolves_to_codex() {
     assert_eq!(codex_client.spawn_count().await, 1);
     let config = codex_client.last_spawn().await.expect("codex spawn config");
     assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
-    assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-worker"));
+    assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-execution-worker"));
     assert_eq!(config.model.as_deref(), Some("gpt-5.4"));
 }
 
@@ -1045,7 +1045,7 @@ async fn test_spawn_uses_reexecutor_lane_for_reexecuting_task() {
     assert_eq!(codex_client.spawn_count().await, 1);
     let config = codex_client.last_spawn().await.expect("codex spawn config");
     assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
-    assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-worker"));
+    assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-execution-worker"));
     assert_eq!(config.model.as_deref(), Some("gpt-5.4-mini"));
     assert_eq!(
         config.logical_effort,
@@ -1108,7 +1108,7 @@ async fn test_spawn_uses_reviewer_lane_when_review_task_resolves_to_codex() {
     assert_eq!(codex_client.spawn_count().await, 1);
     let config = codex_client.last_spawn().await.expect("codex review spawn config");
     assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
-    assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-reviewer"));
+    assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-execution-reviewer"));
     assert_eq!(config.model.as_deref(), Some("gpt-5.4"));
     assert_eq!(
         config.plugin_dir,
@@ -1174,7 +1174,7 @@ async fn test_spawn_uses_merger_lane_when_merge_task_resolves_to_codex() {
     assert_eq!(codex_client.spawn_count().await, 1);
     let config = codex_client.last_spawn().await.expect("codex merge spawn config");
     assert_eq!(config.harness, Some(AgentHarnessKind::Codex));
-    assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-merger"));
+    assert_eq!(config.agent.as_deref(), Some("ralphx:ralphx-execution-merger"));
     assert_eq!(config.model.as_deref(), Some("gpt-5.4"));
     assert_eq!(
         config.plugin_dir,

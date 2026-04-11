@@ -66,7 +66,7 @@ pub struct IdeationSession {
     pub team_mode: Option<String>,
     /// Serialized JSON team configuration
     pub team_config_json: Option<String>,
-    /// Title source: "auto" (session-namer) | "user" (manual rename). None treated as "auto".
+    /// Title source: "auto" (ralphx-utility-session-namer) | "user" (manual rename). None treated as "auto".
     pub title_source: Option<String>,
     /// Verification status of this session's plan
     #[serde(default)]
@@ -94,7 +94,7 @@ pub struct IdeationSession {
     pub spawn_reason: Option<String>,
     /// Stable dedupe key for a specific blocker carried by this follow-up session.
     pub blocker_fingerprint: Option<String>,
-    /// Purpose of this session: General (default) or Verification (plan-verifier child)
+    /// Purpose of this session: General (default) or Verification (ralphx-plan-verifier child)
     #[serde(default)]
     pub session_purpose: SessionPurpose,
     /// Whether cross_project_guide has been called on this session's plan.

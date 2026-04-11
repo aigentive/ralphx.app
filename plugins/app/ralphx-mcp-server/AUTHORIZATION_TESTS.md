@@ -2,14 +2,14 @@
 
 ## Overview
 
-This document specifies authorization test cases for memory write tools. These tools are RESTRICTED to memory agents only (`memory-maintainer` and `memory-capture`). All other agents (worker, reviewer, orchestrator, etc.) MUST be denied access.
+This document specifies authorization test cases for memory write tools. These tools are RESTRICTED to memory agents only (`ralphx-memory-maintainer` and `ralphx-memory-capture`). All other agents (worker, reviewer, orchestrator, etc.) MUST be denied access.
 
 ## Test Cases
 
-### Test 1: memory-maintainer has access to all write tools
+### Test 1: ralphx-memory-maintainer has access to all write tools
 
 **Setup:**
-- Set `RALPHX_AGENT_TYPE=memory-maintainer`
+- Set `RALPHX_AGENT_TYPE=ralphx-memory-maintainer`
 - Start MCP server
 
 **Test:**
@@ -21,10 +21,10 @@ This document specifies authorization test cases for memory write tools. These t
   - `ingest_rule_file`
   - `rebuild_archive_snapshots`
 
-### Test 2: memory-capture has access to upsert_memories only
+### Test 2: ralphx-memory-capture has access to upsert_memories only
 
 **Setup:**
-- Set `RALPHX_AGENT_TYPE=memory-capture`
+- Set `RALPHX_AGENT_TYPE=ralphx-memory-capture`
 - Start MCP server
 
 **Test:**
@@ -38,7 +38,7 @@ This document specifies authorization test cases for memory write tools. These t
 ### Test 3: worker agent is denied all memory write tools
 
 **Setup:**
-- Set `RALPHX_AGENT_TYPE=ralphx-worker`
+- Set `RALPHX_AGENT_TYPE=ralphx-execution-worker`
 - Start MCP server
 
 **Test:**
@@ -48,13 +48,13 @@ This document specifies authorization test cases for memory write tools. These t
 - Attempt to call `upsert_memories` tool
 - **Expected:** Error response with message like:
   ```
-  Tool "upsert_memories" is not available for agent type "ralphx-worker"
+  Tool "upsert_memories" is not available for agent type "ralphx-execution-worker"
   ```
 
 ### Test 4: reviewer agent is denied all memory write tools
 
 **Setup:**
-- Set `RALPHX_AGENT_TYPE=ralphx-reviewer`
+- Set `RALPHX_AGENT_TYPE=ralphx-execution-reviewer`
 - Start MCP server
 
 **Test:**
@@ -64,13 +64,13 @@ This document specifies authorization test cases for memory write tools. These t
 - Attempt to call `mark_memory_obsolete` tool
 - **Expected:** Error response with message like:
   ```
-  Tool "mark_memory_obsolete" is not available for agent type "ralphx-reviewer"
+  Tool "mark_memory_obsolete" is not available for agent type "ralphx-execution-reviewer"
   ```
 
-### Test 5: orchestrator-ideation agent is denied all memory write tools
+### Test 5: ralphx-ideation agent is denied all memory write tools
 
 **Setup:**
-- Set `RALPHX_AGENT_TYPE=orchestrator-ideation`
+- Set `RALPHX_AGENT_TYPE=ralphx-ideation`
 - Start MCP server
 
 **Test:**
@@ -80,13 +80,13 @@ This document specifies authorization test cases for memory write tools. These t
 - Attempt to call `refresh_memory_rule_index` tool
 - **Expected:** Error response with message like:
   ```
-  Tool "refresh_memory_rule_index" is not available for agent type "orchestrator-ideation"
+  Tool "refresh_memory_rule_index" is not available for agent type "ralphx-ideation"
   ```
 
 ### Test 6: Project scope validation enforced
 
 **Setup:**
-- Set `RALPHX_AGENT_TYPE=memory-maintainer`
+- Set `RALPHX_AGENT_TYPE=ralphx-memory-maintainer`
 - Set `RALPHX_PROJECT_ID=project-123`
 - Start MCP server
 
@@ -106,10 +106,10 @@ This document specifies authorization test cases for memory write tools. These t
 
 To manually test authorization:
 
-1. **Test memory-maintainer access:**
+1. **Test ralphx-memory-maintainer access:**
    ```bash
    cd plugins/app/ralphx-mcp-server
-   RALPHX_AGENT_TYPE=memory-maintainer node src/index.js --agent-type=memory-maintainer
+   RALPHX_AGENT_TYPE=ralphx-memory-maintainer node src/index.js --agent-type=ralphx-memory-maintainer
    # Send list_tools request via stdio
    # Verify all 5 write tools are present
    ```
@@ -117,7 +117,7 @@ To manually test authorization:
 2. **Test worker denial:**
    ```bash
    cd plugins/app/ralphx-mcp-server
-   RALPHX_AGENT_TYPE=ralphx-worker node src/index.js --agent-type=ralphx-worker
+   RALPHX_AGENT_TYPE=ralphx-execution-worker node src/index.js --agent-type=ralphx-execution-worker
    # Send list_tools request via stdio
    # Verify NO memory write tools are present
    # Attempt to call upsert_memories
@@ -127,7 +127,7 @@ To manually test authorization:
 3. **Test project scope validation:**
    ```bash
    cd plugins/app/ralphx-mcp-server
-   RALPHX_AGENT_TYPE=memory-maintainer RALPHX_PROJECT_ID=project-123 node src/index.js --agent-type=memory-maintainer
+   RALPHX_AGENT_TYPE=ralphx-memory-maintainer RALPHX_PROJECT_ID=project-123 node src/index.js --agent-type=ralphx-memory-maintainer
    # Call upsert_memories with project_id: "project-456"
    # Verify project scope violation error
    ```
