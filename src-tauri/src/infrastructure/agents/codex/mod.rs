@@ -10,6 +10,9 @@ use crate::infrastructure::agents::claude::{
     claude_runtime_config, filter_interactive_tools, format_allowed_tools_arg_value,
     get_agent_config, load_agent_system_prompt, mcp_agent_type, node_utils, validate_mcp_tool_name,
 };
+use crate::infrastructure::agents::harness_agent_catalog::{
+    load_harness_agent_prompt, resolve_project_root_from_plugin_dir, AgentPromptHarness,
+};
 pub use codex_cli_client::CodexCliClient;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -178,7 +181,11 @@ pub fn compose_codex_prompt(
     let Some(agent_name) = agent_name else {
         return prompt.to_string();
     };
-    let Some(system_prompt) = load_agent_system_prompt(plugin_dir, agent_name) else {
+
+    let project_root = resolve_project_root_from_plugin_dir(plugin_dir);
+    let system_prompt = load_harness_agent_prompt(&project_root, agent_name, AgentPromptHarness::Codex)
+        .or_else(|| load_agent_system_prompt(plugin_dir, agent_name));
+    let Some(system_prompt) = system_prompt else {
         return prompt.to_string();
     };
 
@@ -270,6 +277,10 @@ pub fn find_codex_cli() -> Option<PathBuf> {
 
     None
 }
+
+#[cfg(test)]
+#[path = "mod_tests.rs"]
+mod tests;
 
 pub fn parse_codex_version(output: &str) -> Option<String> {
     let mut parts = output.split_whitespace();

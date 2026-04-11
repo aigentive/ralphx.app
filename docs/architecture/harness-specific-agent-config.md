@@ -6,7 +6,11 @@ Replace the current Claude-shaped agent prompt/config source of truth with a can
 
 ## Status
 
-Planned.
+In progress.
+
+Landed so far:
+- phase 1 pilot skeleton under `agents/` for `orchestrator-ideation`, `ideation-team-lead`, and `session-namer`
+- resolver-backed canonical prompt loading for those pilot agents on the Codex path, with legacy Claude plugin prompt fallback retained
 
 Tracker reference:
 - [AGENTS.md](/Users/lazabogdan/Code/ralphx/AGENTS.md)

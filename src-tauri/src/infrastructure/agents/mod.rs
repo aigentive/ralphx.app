@@ -3,6 +3,7 @@
 
 pub mod claude;
 pub mod codex;
+pub mod harness_agent_catalog;
 pub mod mock;
 pub mod spawner;
 
