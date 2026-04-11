@@ -1,10 +1,15 @@
 use super::{
-    codex_tool_call_content_block, format_agent_exit_stderr, process_exit_details,
-    provider_session_ref_for_harness, stream_mode_for_harness, upsert_codex_tool_call_snapshot,
-    ProcessExitDetails,
+    codex_tool_call_content_block, flush_content_before_error, format_agent_exit_stderr,
+    persist_assistant_message_snapshot, process_exit_details, provider_session_ref_for_harness,
+    stream_mode_for_harness, upsert_codex_tool_call_snapshot, ProcessExitDetails,
 };
+use crate::application::chat_service::chat_service_context::create_assistant_message;
+use crate::application::AppState;
 use crate::domain::agents::{AgentHarnessKind, HarnessStreamMode};
-use crate::infrastructure::agents::claude::{ContentBlockItem, ToolCall};
+use crate::domain::entities::{ChatContextType, ChatConversationId, ChatMessageId, IdeationSessionId};
+use crate::infrastructure::agents::claude::{
+    AssistantContent, AssistantMessage, ContentBlockItem, StreamMessage, StreamProcessor, ToolCall,
+};
 use std::os::unix::process::ExitStatusExt;
 
 #[test]
@@ -174,4 +179,277 @@ fn upsert_codex_tool_call_snapshot_appends_new_tool_ids_in_order() {
     assert_eq!(tool_calls[0].id.as_deref(), Some("item_1"));
     assert_eq!(tool_calls[1].id.as_deref(), Some("item_2"));
     assert_eq!(content_blocks.len(), 2);
+}
+
+#[tokio::test]
+async fn persist_assistant_message_snapshot_keeps_codex_tool_lifecycle_deduped_and_ordered() {
+    let state = AppState::new_test();
+    let conversation_id = ChatConversationId::new();
+    let context_id = IdeationSessionId::new();
+    let assistant_message = create_assistant_message(
+        ChatContextType::Ideation,
+        context_id.as_str(),
+        "",
+        conversation_id.clone(),
+        &[],
+        &[],
+    );
+    let assistant_message_id = assistant_message.id.as_str().to_string();
+    state
+        .chat_message_repo
+        .create(assistant_message)
+        .await
+        .expect("insert assistant message");
+
+    let repo = Some(state.chat_message_repo.clone());
+    let assistant_message_id_opt = Some(assistant_message_id.clone());
+
+    let mut response_text = "First text block".to_string();
+    let mut tool_calls = Vec::new();
+    let mut content_blocks = vec![ContentBlockItem::Text {
+        text: response_text.clone(),
+    }];
+
+    persist_assistant_message_snapshot(
+        &repo,
+        &assistant_message_id_opt,
+        &response_text,
+        &tool_calls,
+        &content_blocks,
+    )
+    .await;
+
+    upsert_codex_tool_call_snapshot(
+        &mut tool_calls,
+        &mut content_blocks,
+        ToolCall {
+            id: Some("item_1".to_string()),
+            name: "ralphx::get_task_context".to_string(),
+            arguments: serde_json::json!({ "task_id": "task-1" }),
+            result: None,
+            diff_context: None,
+            stats: None,
+        },
+    );
+
+    persist_assistant_message_snapshot(
+        &repo,
+        &assistant_message_id_opt,
+        &response_text,
+        &tool_calls,
+        &content_blocks,
+    )
+    .await;
+
+    upsert_codex_tool_call_snapshot(
+        &mut tool_calls,
+        &mut content_blocks,
+        ToolCall {
+            id: Some("item_1".to_string()),
+            name: "ralphx::get_task_context".to_string(),
+            arguments: serde_json::json!({ "task_id": "task-1" }),
+            result: Some(serde_json::json!({ "title": "Task" })),
+            diff_context: None,
+            stats: None,
+        },
+    );
+
+    response_text.push_str("\n\nSecond text block");
+    content_blocks.push(ContentBlockItem::Text {
+        text: "Second text block".to_string(),
+    });
+
+    flush_content_before_error(
+        &repo,
+        &assistant_message_id_opt,
+        &response_text,
+        &tool_calls,
+        &content_blocks,
+    )
+    .await;
+
+    let stored = state
+        .chat_message_repo
+        .get_by_id(&ChatMessageId::from_string(assistant_message_id))
+        .await
+        .expect("reload message")
+        .expect("assistant message should exist");
+
+    assert_eq!(stored.content, "First text block\n\nSecond text block");
+
+    let stored_tool_calls: Vec<ToolCall> = serde_json::from_str(
+        stored
+            .tool_calls
+            .as_deref()
+            .expect("tool_calls should be persisted"),
+    )
+    .expect("tool_calls JSON should parse");
+    assert_eq!(stored_tool_calls.len(), 1);
+    assert_eq!(stored_tool_calls[0].id.as_deref(), Some("item_1"));
+    assert_eq!(
+        stored_tool_calls[0].result,
+        Some(serde_json::json!({ "title": "Task" }))
+    );
+
+    let stored_blocks: Vec<ContentBlockItem> = serde_json::from_str(
+        stored
+            .content_blocks
+            .as_deref()
+            .expect("content_blocks should be persisted"),
+    )
+    .expect("content_blocks JSON should parse");
+    assert_eq!(stored_blocks.len(), 3);
+    match &stored_blocks[0] {
+        ContentBlockItem::Text { text } => assert_eq!(text, "First text block"),
+        other => panic!("expected first block to be text, got {other:?}"),
+    }
+    match &stored_blocks[1] {
+        ContentBlockItem::ToolUse { id, result, .. } => {
+            assert_eq!(id.as_deref(), Some("item_1"));
+            assert_eq!(result, &Some(serde_json::json!({ "title": "Task" })));
+        }
+        other => panic!("expected second block to be tool_use, got {other:?}"),
+    }
+    match &stored_blocks[2] {
+        ContentBlockItem::Text { text } => assert_eq!(text, "Second text block"),
+        other => panic!("expected third block to be text, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn persist_assistant_message_snapshot_keeps_claude_tool_result_ordered_and_in_place() {
+    let state = AppState::new_test();
+    let conversation_id = ChatConversationId::new();
+    let context_id = IdeationSessionId::new();
+    let assistant_message = create_assistant_message(
+        ChatContextType::Ideation,
+        context_id.as_str(),
+        "",
+        conversation_id.clone(),
+        &[],
+        &[],
+    );
+    let assistant_message_id = assistant_message.id.as_str().to_string();
+    state
+        .chat_message_repo
+        .create(assistant_message)
+        .await
+        .expect("insert assistant message");
+
+    let repo = Some(state.chat_message_repo.clone());
+    let assistant_message_id_opt = Some(assistant_message_id.clone());
+    let mut processor = StreamProcessor::new();
+
+    processor.process_message(StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "First text block".to_string(),
+            }],
+            stop_reason: None,
+            usage: None,
+        },
+        session_id: None,
+    });
+    persist_assistant_message_snapshot(
+        &repo,
+        &assistant_message_id_opt,
+        &processor.response_text,
+        &processor.tool_calls,
+        &processor.content_blocks,
+    )
+    .await;
+
+    processor.process_message(StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::ToolUse {
+                id: "toolu_1".to_string(),
+                name: "bash".to_string(),
+                input: serde_json::json!({ "command": "pwd" }),
+            }],
+            stop_reason: None,
+            usage: None,
+        },
+        session_id: None,
+    });
+    persist_assistant_message_snapshot(
+        &repo,
+        &assistant_message_id_opt,
+        &processor.response_text,
+        &processor.tool_calls,
+        &processor.content_blocks,
+    )
+    .await;
+
+    let parsed_tool_result = StreamProcessor::parse_line(
+        r#"{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_1","type":"tool_result","content":"/Users/test/project","is_error":false}]}}"#,
+    )
+    .expect("tool_result line should parse");
+    processor.process_parsed_line(parsed_tool_result);
+
+    processor.process_message(StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "Second text block".to_string(),
+            }],
+            stop_reason: None,
+            usage: None,
+        },
+        session_id: None,
+    });
+
+    flush_content_before_error(
+        &repo,
+        &assistant_message_id_opt,
+        &processor.response_text,
+        &processor.tool_calls,
+        &processor.content_blocks,
+    )
+    .await;
+
+    let stored = state
+        .chat_message_repo
+        .get_by_id(&ChatMessageId::from_string(assistant_message_id))
+        .await
+        .expect("reload message")
+        .expect("assistant message should exist");
+
+    assert_eq!(stored.content, "First text blockSecond text block");
+
+    let stored_tool_calls: Vec<ToolCall> = serde_json::from_str(
+        stored
+            .tool_calls
+            .as_deref()
+            .expect("tool_calls should be persisted"),
+    )
+    .expect("tool_calls JSON should parse");
+    assert_eq!(stored_tool_calls.len(), 1);
+    assert_eq!(stored_tool_calls[0].id.as_deref(), Some("toolu_1"));
+    assert_eq!(
+        stored_tool_calls[0].result,
+        Some(serde_json::json!("/Users/test/project"))
+    );
+
+    let stored_blocks: Vec<ContentBlockItem> = serde_json::from_str(
+        stored
+            .content_blocks
+            .as_deref()
+            .expect("content_blocks should be persisted"),
+    )
+    .expect("content_blocks JSON should parse");
+    assert_eq!(stored_blocks.len(), 3);
+    match &stored_blocks[0] {
+        ContentBlockItem::Text { text } => assert_eq!(text, "First text block"),
+        other => panic!("expected first block to be text, got {other:?}"),
+    }
+    match &stored_blocks[1] {
+        ContentBlockItem::ToolUse { id, result, .. } => {
+            assert_eq!(id.as_deref(), Some("toolu_1"));
+            assert_eq!(result, &Some(serde_json::json!("/Users/test/project")));
+        }
+        other => panic!("expected second block to be tool_use, got {other:?}"),
+    }
+    match &stored_blocks[2] {
+        ContentBlockItem::Text { text } => assert_eq!(text, "Second text block"),
+        other => panic!("expected third block to be text, got {other:?}"),
+    }
 }
