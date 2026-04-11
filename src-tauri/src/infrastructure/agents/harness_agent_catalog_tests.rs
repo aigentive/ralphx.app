@@ -4,43 +4,73 @@ use super::{
 };
 use std::path::PathBuf;
 
-const PILOT_AGENTS: &[(&str, &str)] = &[
-    ("orchestrator-ideation", "ideation_orchestrator"),
-    ("ideation-team-lead", "ideation_team_lead"),
-    ("session-namer", "session_namer"),
+const PILOT_AGENTS: &[(&str, &str, &str)] = &[
+    (
+        "orchestrator-ideation",
+        "ideation_orchestrator",
+        "orchestrator-ideation",
+    ),
+    ("ideation-team-lead", "ideation_team_lead", "ideation-team-lead"),
+    ("session-namer", "session_namer", "session-namer"),
 ];
 
 const CODEX_PILOT_AGENTS: &[&str] = &["orchestrator-ideation", "session-namer"];
-const CLAUDE_ONLY_CANONICAL_AGENTS: &[(&str, &str)] = &[
-    ("plan-verifier", "plan_verifier"),
-    ("plan-critic-completeness", "plan_critic_completeness"),
+const CLAUDE_ONLY_CANONICAL_AGENTS: &[(&str, &str, &str)] = &[
+    ("plan-verifier", "plan_verifier", "plan-verifier"),
+    (
+        "plan-critic-completeness",
+        "plan_critic_completeness",
+        "plan-critic-completeness",
+    ),
     (
         "plan-critic-implementation-feasibility",
         "plan_critic_implementation_feasibility",
+        "plan-critic-implementation-feasibility",
     ),
-    ("ideation-specialist-backend", "ideation_specialist_backend"),
-    ("ideation-specialist-frontend", "ideation_specialist_frontend"),
-    ("ideation-specialist-infra", "ideation_specialist_infra"),
-    ("ideation-specialist-ux", "ideation_specialist_ux"),
+    (
+        "ideation-specialist-backend",
+        "ideation_specialist_backend",
+        "ideation-specialist-backend",
+    ),
+    (
+        "ideation-specialist-frontend",
+        "ideation_specialist_frontend",
+        "ideation-specialist-frontend",
+    ),
+    (
+        "ideation-specialist-infra",
+        "ideation_specialist_infra",
+        "ideation-specialist-infra",
+    ),
+    ("ideation-specialist-ux", "ideation_specialist_ux", "ideation-specialist-ux"),
     (
         "ideation-specialist-code-quality",
         "ideation_specialist_code_quality",
+        "ideation-specialist-code-quality",
     ),
     (
         "ideation-specialist-prompt-quality",
         "ideation_specialist_prompt_quality",
+        "ideation-specialist-prompt-quality",
     ),
-    ("ideation-specialist-intent", "ideation_specialist_intent"),
+    (
+        "ideation-specialist-intent",
+        "ideation_specialist_intent",
+        "ideation-specialist-intent",
+    ),
     (
         "ideation-specialist-state-machine",
         "ideation_specialist_state_machine",
+        "ideation-specialist-state-machine",
     ),
     (
         "ideation-specialist-pipeline-safety",
         "ideation_specialist_pipeline_safety",
+        "ideation-specialist-pipeline-safety",
     ),
-    ("ideation-advocate", "ideation_advocate"),
-    ("ideation-critic", "ideation_critic"),
+    ("ideation-advocate", "ideation_advocate", "ideation-advocate"),
+    ("ideation-critic", "ideation_critic", "ideation-critic"),
+    ("ralphx-worker-team", "worker_team_lead", "worker-team"),
 ];
 
 fn project_root() -> PathBuf {
@@ -62,14 +92,14 @@ fn strip_frontmatter(markdown: &str) -> String {
 fn pilot_agent_definitions_load_from_canonical_tree() {
     let root = project_root();
 
-    for (agent_name, role) in PILOT_AGENTS {
+    for (agent_name, role, _) in PILOT_AGENTS {
         let definition = load_canonical_agent_definition(&root, agent_name)
             .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
         assert_eq!(definition.name, *agent_name);
         assert_eq!(definition.role, *role);
     }
 
-    for (agent_name, role) in CLAUDE_ONLY_CANONICAL_AGENTS {
+    for (agent_name, role, _) in CLAUDE_ONLY_CANONICAL_AGENTS {
         let definition = load_canonical_agent_definition(&root, agent_name)
             .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
         assert_eq!(definition.name, *agent_name);
@@ -122,7 +152,7 @@ fn pilot_agent_prompt_paths_exist_for_both_harnesses() {
         "ideation-team-lead should not have a codex prompt while Codex team mode is unsupported"
     );
 
-    for (agent_name, _) in CLAUDE_ONLY_CANONICAL_AGENTS {
+    for (agent_name, _, _) in CLAUDE_ONLY_CANONICAL_AGENTS {
         assert!(
             resolve_harness_agent_prompt_path(&root, agent_name, AgentPromptHarness::Claude)
                 .is_some(),
@@ -140,24 +170,24 @@ fn pilot_agent_prompt_paths_exist_for_both_harnesses() {
 fn canonical_claude_prompts_match_legacy_prompt_bodies_for_pilot_agents() {
     let root = project_root();
 
-    for (agent_name, _) in PILOT_AGENTS {
+    for (agent_name, _, legacy_file_stem) in PILOT_AGENTS {
         let canonical = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Claude)
             .unwrap_or_else(|| panic!("missing canonical claude prompt for {agent_name}"));
         let legacy_raw = std::fs::read_to_string(
             root.join("plugins/app/agents")
-                .join(format!("{agent_name}.md")),
+                .join(format!("{legacy_file_stem}.md")),
         )
         .unwrap_or_else(|_| panic!("missing legacy prompt for {agent_name}"));
 
         assert_eq!(canonical, strip_frontmatter(&legacy_raw));
     }
 
-    for (agent_name, _) in CLAUDE_ONLY_CANONICAL_AGENTS {
+    for (agent_name, _, legacy_file_stem) in CLAUDE_ONLY_CANONICAL_AGENTS {
         let canonical = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Claude)
             .unwrap_or_else(|| panic!("missing canonical claude prompt for {agent_name}"));
         let legacy_raw = std::fs::read_to_string(
             root.join("plugins/app/agents")
-                .join(format!("{agent_name}.md")),
+                .join(format!("{legacy_file_stem}.md")),
         )
         .unwrap_or_else(|_| panic!("missing legacy prompt for {agent_name}"));
 
