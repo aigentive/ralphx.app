@@ -22,6 +22,8 @@ pub struct CanonicalClaudeAgentMetadata {
     pub disallowed_tools: Vec<String>,
     #[serde(default)]
     pub skills: Vec<String>,
+    #[serde(default)]
+    pub max_turns: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

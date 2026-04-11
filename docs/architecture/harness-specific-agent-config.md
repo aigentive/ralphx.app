@@ -10,6 +10,7 @@ In progress.
 
 Landed so far:
 - phase 1 pilot skeleton under `agents/` for `orchestrator-ideation`, `ideation-team-lead`, and `session-namer`
+- verification cohort canonicalized for Claude generation: `plan-verifier`, `plan-critic-completeness`, `plan-critic-implementation-feasibility`
 - resolver-backed canonical prompt loading for migrated agents on the Codex path
 - `ideation-team-lead` intentionally remains Claude-only because Codex team mode is not supported; canonical agents without a Codex prompt no longer silently inherit the legacy Claude prompt
 - Claude runtime now materializes a generated plugin cache dir instead of reading authored prompt files directly from `plugins/app/agents`
@@ -112,7 +113,7 @@ Belongs in `shared.yaml`:
 - settings profile hooks
 - whether the agent is helper-only, orchestrator, team lead, specialist, critic, worker, reviewer, merger, etc.
 - generation flags needed to produce harness artifacts
-- rare harness-specific metadata blocks only when they are truly canonical and non-derivable; current example: Claude-only `disallowed_tools` / `skills`
+- rare harness-specific metadata blocks only when they are truly canonical and non-derivable; current examples: Claude-only `disallowed_tools`, `skills`, and `max_turns`
 
 Belongs in `shared/prompt.md` only when truly harness-neutral:
 

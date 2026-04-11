@@ -249,6 +249,10 @@ fn build_claude_frontmatter(
         lines.push(format!("model: {}", yaml_scalar(model)?));
     }
 
+    if let Some(max_turns) = definition.claude.max_turns {
+        lines.push(format!("maxTurns: {max_turns}"));
+    }
+
     if !definition.claude.skills.is_empty() {
         lines.push("skills:".to_string());
         for skill in &definition.claude.skills {

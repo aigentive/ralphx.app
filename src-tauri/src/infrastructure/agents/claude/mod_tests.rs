@@ -487,3 +487,44 @@ description: Generates concise ideation session titles from user or plan context
         "expected shared canonical prompt body to be preserved, got: {generated_prompt}"
     );
 }
+
+#[test]
+fn test_materialize_generated_plugin_dir_renders_canonical_claude_max_turns() {
+    let (_dir, root, plugin_dir) = make_temp_project_plugin_dir();
+    let agent_root = root.join("agents/plan-verifier");
+    std::fs::create_dir_all(agent_root.join("claude")).expect("create canonical claude dir");
+    std::fs::write(
+        agent_root.join("shared.yaml"),
+        r#"name: plan-verifier
+role: plan_verifier
+description: Dedicated plan verification agent that runs the adversarial round loop for ideation plans.
+claude:
+  disallowed_tools:
+    - Write
+    - Edit
+    - NotebookEdit
+  max_turns: 80
+"#,
+    )
+    .expect("write shared definition");
+    std::fs::write(
+        agent_root.join("claude/prompt.md"),
+        "Canonical plan verifier prompt",
+    )
+    .expect("write claude prompt");
+
+    let generated_dir =
+        materialize_generated_plugin_dir(&plugin_dir).expect("materialize generated plugin dir");
+    let generated_prompt =
+        std::fs::read_to_string(generated_dir.join("agents/plan-verifier.md"))
+            .expect("read generated plan verifier prompt");
+
+    assert!(
+        generated_prompt.contains("maxTurns: 80"),
+        "expected canonical claude maxTurns in generated frontmatter, got: {generated_prompt}"
+    );
+    assert!(
+        generated_prompt.contains("Canonical plan verifier prompt"),
+        "expected canonical prompt body to be preserved, got: {generated_prompt}"
+    );
+}

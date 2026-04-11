@@ -11,6 +11,14 @@ const PILOT_AGENTS: &[(&str, &str)] = &[
 ];
 
 const CODEX_PILOT_AGENTS: &[&str] = &["orchestrator-ideation", "session-namer"];
+const CLAUDE_ONLY_CANONICAL_AGENTS: &[(&str, &str)] = &[
+    ("plan-verifier", "plan_verifier"),
+    ("plan-critic-completeness", "plan_critic_completeness"),
+    (
+        "plan-critic-implementation-feasibility",
+        "plan_critic_implementation_feasibility",
+    ),
+];
 
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
@@ -32,6 +40,13 @@ fn pilot_agent_definitions_load_from_canonical_tree() {
     let root = project_root();
 
     for (agent_name, role) in PILOT_AGENTS {
+        let definition = load_canonical_agent_definition(&root, agent_name)
+            .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
+        assert_eq!(definition.name, *agent_name);
+        assert_eq!(definition.role, *role);
+    }
+
+    for (agent_name, role) in CLAUDE_ONLY_CANONICAL_AGENTS {
         let definition = load_canonical_agent_definition(&root, agent_name)
             .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
         assert_eq!(definition.name, *agent_name);
@@ -83,6 +98,19 @@ fn pilot_agent_prompt_paths_exist_for_both_harnesses() {
             .is_none(),
         "ideation-team-lead should not have a codex prompt while Codex team mode is unsupported"
     );
+
+    for (agent_name, _) in CLAUDE_ONLY_CANONICAL_AGENTS {
+        assert!(
+            resolve_harness_agent_prompt_path(&root, agent_name, AgentPromptHarness::Claude)
+                .is_some(),
+            "expected claude prompt path for {agent_name}"
+        );
+        assert!(
+            resolve_harness_agent_prompt_path(&root, agent_name, AgentPromptHarness::Codex)
+                .is_none(),
+            "{agent_name} should remain claude-only until a codex prompt exists"
+        );
+    }
 }
 
 #[test]
@@ -90,6 +118,18 @@ fn canonical_claude_prompts_match_legacy_prompt_bodies_for_pilot_agents() {
     let root = project_root();
 
     for (agent_name, _) in PILOT_AGENTS {
+        let canonical = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Claude)
+            .unwrap_or_else(|| panic!("missing canonical claude prompt for {agent_name}"));
+        let legacy_raw = std::fs::read_to_string(
+            root.join("plugins/app/agents")
+                .join(format!("{agent_name}.md")),
+        )
+        .unwrap_or_else(|_| panic!("missing legacy prompt for {agent_name}"));
+
+        assert_eq!(canonical, strip_frontmatter(&legacy_raw));
+    }
+
+    for (agent_name, _) in CLAUDE_ONLY_CANONICAL_AGENTS {
         let canonical = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Claude)
             .unwrap_or_else(|| panic!("missing canonical claude prompt for {agent_name}"));
         let legacy_raw = std::fs::read_to_string(

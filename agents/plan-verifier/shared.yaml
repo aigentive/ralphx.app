@@ -1,0 +1,9 @@
+name: plan-verifier
+role: plan_verifier
+description: Dedicated plan verification agent that runs the adversarial round loop for ideation plans.
+claude:
+  disallowed_tools:
+    - Write
+    - Edit
+    - NotebookEdit
+  max_turns: 80
