@@ -230,15 +230,7 @@ fn build_claude_frontmatter(
 
     let mut lines = vec![
         "---".to_string(),
-        format!(
-            "name: {}",
-            yaml_scalar(
-                claude_metadata
-                    .frontmatter_name
-                    .as_deref()
-                    .unwrap_or(&definition.name),
-            )?
-        ),
+        format!("name: {}", yaml_scalar(&definition.name)?),
     ];
 
     if let Some(description) = definition.description.as_deref() {

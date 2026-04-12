@@ -3,6 +3,10 @@ role: reviewer
 description: "Reviews code changes for quality and correctness"
 harnesses:
   claude:
+    preapproved_cli_tools:
+      - Bash
+      - Task(Explore)
+      - Task(Plan)
     skills:
       - code-review-checklist
 delegation:

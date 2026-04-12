@@ -27,7 +27,11 @@ const CODEX_DELEGATION_GUIDE_AGENTS: &[&str] = &[
     "ralphx-execution-merger",
 ];
 const CLAUDE_ONLY_CANONICAL_AGENTS: &[(&str, &str, &str)] = &[
-    ("ralphx-execution-team-lead", "worker_team_lead", "worker-team"),
+    (
+        "ralphx-execution-team-lead",
+        "worker_team_lead",
+        "ralphx-execution-team-lead",
+    ),
 ];
 
 const CROSS_HARNESS_VERIFICATION_AGENTS: &[(&str, &str, &str)] = &[

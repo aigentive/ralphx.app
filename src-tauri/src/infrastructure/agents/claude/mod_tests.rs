@@ -9,8 +9,7 @@
 /// - create_mcp_config(): no --allowed-tools arg when agent has no mcp_tools config
 use super::*;
 use crate::infrastructure::agents::harness_agent_catalog::{
-    load_canonical_agent_definition, load_harness_agent_prompt, try_load_canonical_claude_metadata,
-    AgentPromptHarness,
+    load_canonical_agent_definition, load_harness_agent_prompt, AgentPromptHarness,
 };
 use serde_yaml::Value;
 use std::collections::BTreeSet;
@@ -672,22 +671,15 @@ fn test_materialize_generated_plugin_dir_matches_canonical_and_runtime_semantics
             std::fs::read_to_string(&generated_path).expect("read generated agent markdown");
         let definition = load_canonical_agent_definition(&root, &agent_name)
             .unwrap_or_else(|| panic!("missing canonical definition for {agent_name}"));
-        let claude_metadata = try_load_canonical_claude_metadata(&root, &agent_name)
-            .unwrap_or_else(|_| panic!("failed to load canonical Claude metadata for {agent_name}"));
         let canonical_body =
             load_harness_agent_prompt(&root, &agent_name, AgentPromptHarness::Claude)
                 .unwrap_or_else(|| panic!("missing canonical Claude prompt for {agent_name}"));
         let (generated_frontmatter, generated_body) = split_frontmatter(&generated_markdown);
 
         assert_eq!(
-            Some(
-                claude_metadata
-                    .frontmatter_name
-                    .as_deref()
-                    .unwrap_or(&definition.name),
-            ),
+            Some(definition.name.as_str()),
             generated_frontmatter["name"].as_str(),
-            "generated Claude name drifted from canonical metadata for {agent_name}"
+            "generated Claude name drifted from canonical definition for {agent_name}"
         );
         assert_eq!(
             definition.description.as_deref(),

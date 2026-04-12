@@ -1226,6 +1226,33 @@ agents:
     );
 }
 
+#[test]
+fn test_canonical_claude_metadata_overrides_runtime_yaml_preapproved_cli_tools_when_present() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: ralphx-qa-prep
+    system_prompt_file: plugins/app/agents/qa-prep.md
+    tools: { extends: base_tools, include: [Task] }
+    preapproved_cli_tools: [wrong_tool]
+"#;
+    let parsed = parse_config_no_env_overrides(yaml).expect("config should parse");
+    let qa_prep = parsed
+        .agents
+        .iter()
+        .find(|a| a.name == "ralphx-qa-prep")
+        .expect("qa-prep should exist");
+
+    assert_eq!(
+        qa_prep.preapproved_cli_tools,
+        vec!["Task(Explore)", "Task(Plan)"]
+    );
+}
+
 // ── Agent extends inheritance tests ─────────────────────────────
 
 #[test]

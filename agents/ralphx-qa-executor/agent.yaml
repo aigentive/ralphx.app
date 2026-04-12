@@ -5,5 +5,11 @@ harnesses:
   claude:
     disallowed_tools:
       - NotebookEdit
+    preapproved_cli_tools:
+      - Write
+      - Edit
+      - Bash
+      - Task(Explore)
+      - Task(Plan)
     skills:
       - qa-evaluation

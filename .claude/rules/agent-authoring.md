@@ -58,8 +58,7 @@ paths:
 |---|---|
 | Prefer shared prompts only when semantics are actually neutral | If Codex or Claude needs harness-specific delegation/tooling language, split the prompt |
 | Unsupported harnesses stay explicit | No prompt file for that harness means unsupported; do not silently inherit another harness prompt |
-| Claude-only metadata stays out of root `agent.yaml` | Put it in `claude/agent.yaml` |
-| Compatibility aliases stay explicit | Use `frontmatter_name` in `claude/agent.yaml` instead of generator special cases |
+| Canonical Claude metadata lives in root `agent.yaml` | Prefer `harnesses.claude.*` in root `agents/<agent>/agent.yaml`; `claude/agent.yaml` is legacy fallback only |
 
 ## MCP / Tool Checklist
 

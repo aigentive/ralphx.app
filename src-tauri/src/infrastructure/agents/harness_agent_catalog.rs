@@ -57,9 +57,9 @@ pub struct CanonicalAgentHarnesses {
 #[serde(deny_unknown_fields)]
 pub struct CanonicalClaudeAgentMetadata {
     #[serde(default)]
-    pub frontmatter_name: Option<String>,
-    #[serde(default)]
     pub disallowed_tools: Vec<String>,
+    #[serde(default)]
+    pub preapproved_cli_tools: Vec<String>,
     #[serde(default)]
     pub skills: Vec<String>,
     #[serde(default)]
@@ -68,18 +68,18 @@ pub struct CanonicalClaudeAgentMetadata {
 
 impl CanonicalClaudeAgentMetadata {
     fn is_empty(&self) -> bool {
-        self.frontmatter_name.is_none()
-            && self.disallowed_tools.is_empty()
+        self.disallowed_tools.is_empty()
+            && self.preapproved_cli_tools.is_empty()
             && self.skills.is_empty()
             && self.max_turns.is_none()
     }
 
     fn overlay_onto(self, mut base: Self) -> Self {
-        if self.frontmatter_name.is_some() {
-            base.frontmatter_name = self.frontmatter_name;
-        }
         if !self.disallowed_tools.is_empty() {
             base.disallowed_tools = self.disallowed_tools;
+        }
+        if !self.preapproved_cli_tools.is_empty() {
+            base.preapproved_cli_tools = self.preapproved_cli_tools;
         }
         if !self.skills.is_empty() {
             base.skills = self.skills;

@@ -7,6 +7,9 @@ harnesses:
       - Write
       - Edit
       - NotebookEdit
+    preapproved_cli_tools:
+      - Task(Explore)
+      - Task(Plan)
 delegation:
   allowed_targets:
     - ralphx-ideation-specialist-backend

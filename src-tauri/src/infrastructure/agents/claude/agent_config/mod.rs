@@ -10,6 +10,7 @@ use crate::domain::agents::{
 use crate::domain::execution::{ExecutionSettings, GlobalExecutionSettings};
 use crate::infrastructure::agents::harness_agent_catalog::{
     load_canonical_agent_definition, resolve_project_root_from_plugin_dir,
+    try_load_canonical_claude_metadata,
 };
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -400,6 +401,27 @@ fn resolve_allowed_mcp_tools(project_root: &Path, raw: &AgentConfigRaw) -> Vec<S
     definition.capabilities.mcp_tools
 }
 
+fn resolve_preapproved_cli_tools(project_root: &Path, raw: &AgentConfigRaw) -> Vec<String> {
+    let Ok(metadata) = try_load_canonical_claude_metadata(project_root, &raw.name) else {
+        return raw.preapproved_cli_tools.clone();
+    };
+
+    if metadata.preapproved_cli_tools.is_empty() {
+        return raw.preapproved_cli_tools.clone();
+    }
+
+    if !raw.preapproved_cli_tools.is_empty() && raw.preapproved_cli_tools != metadata.preapproved_cli_tools {
+        tracing::warn!(
+            agent = %raw.name,
+            runtime_preapproved_cli_tools = ?raw.preapproved_cli_tools,
+            canonical_preapproved_cli_tools = ?metadata.preapproved_cli_tools,
+            "Canonical Claude metadata overrides divergent runtime preapproved_cli_tools"
+        );
+    }
+
+    metadata.preapproved_cli_tools
+}
+
 // ── Agent config inheritance (extends) ──────────────────────────────────
 
 /// Check if a tools spec has any explicit user-provided values.
@@ -548,12 +570,14 @@ fn parse_config_with_lookup(
             resolved_settings.clone()
         };
         let allowed_mcp_tools = resolve_allowed_mcp_tools(&canonical_project_root, raw);
+        let preapproved_cli_tools =
+            resolve_preapproved_cli_tools(&canonical_project_root, raw);
         resolved.push(AgentConfig {
             name: raw.name.clone(),
             mcp_only: raw.tools.mcp_only,
             resolved_cli_tools: cli_tools,
             allowed_mcp_tools,
-            preapproved_cli_tools: raw.preapproved_cli_tools.clone(),
+            preapproved_cli_tools,
             system_prompt_file: system_prompt,
             model: raw.model.clone(),
             settings_profile: agent_profile_selection.clone(),

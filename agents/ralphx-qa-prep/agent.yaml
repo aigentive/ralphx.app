@@ -14,6 +14,9 @@ harnesses:
       - Edit
       - Bash
       - NotebookEdit
+    preapproved_cli_tools:
+      - Task(Explore)
+      - Task(Plan)
     skills:
       - acceptance-criteria-writing
       - qa-step-generation
