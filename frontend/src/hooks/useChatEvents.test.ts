@@ -977,6 +977,7 @@ describe("useChatEvents", () => {
       });
 
       expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
+      expect(props.setStreamingContentBlocks).toHaveBeenCalledTimes(1);
 
       const nextMap = executeUpdater<Map<string, StreamingTask>>(
         props.setStreamingTasks,
@@ -990,6 +991,12 @@ describe("useChatEvents", () => {
       expect(task!.model).toBe("sonnet");
       expect(task!.status).toBe("running");
       expect(task!.childToolCalls).toEqual([]);
+
+      const blocks = executeUpdater<StreamingContentBlock[]>(
+        props.setStreamingContentBlocks,
+        [],
+      );
+      expect(blocks).toEqual([{ type: "task", toolUseId: "toolu_task_001" }]);
     });
 
     it("should enrich delegated streaming tasks from backend-native agent:task_started payloads", () => {
@@ -1201,7 +1208,7 @@ describe("useChatEvents", () => {
       expect(completedHandlers).toHaveLength(0);
     });
 
-    it("should create a delegated streaming task from delegate_start tool calls", () => {
+    it("should create only the delegated task marker from delegate_start tool calls", () => {
       const props = makeProps();
       renderAndClear(props);
 
@@ -1222,21 +1229,8 @@ describe("useChatEvents", () => {
       });
 
       expect(props.setStreamingToolCalls).not.toHaveBeenCalled();
-      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
+      expect(props.setStreamingTasks).not.toHaveBeenCalled();
       expect(props.setStreamingContentBlocks).toHaveBeenCalledTimes(1);
-
-      const nextTasks = executeUpdater<Map<string, StreamingTask>>(
-        props.setStreamingTasks,
-        new Map(),
-      );
-      const delegated = nextTasks.get("toolu_delegate_001");
-      expect(delegated).toBeDefined();
-      expect(delegated!.toolName).toBe("delegate_start");
-      expect(delegated!.description).toBe("ralphx-execution-reviewer");
-      expect(delegated!.delegatedJobId).toBe("job-123");
-      expect(delegated!.providerHarness).toBe("codex");
-      expect(delegated!.logicalModel).toBe("gpt-5.4");
-      expect(delegated!.status).toBe("running");
 
       const blocks = executeUpdater<StreamingContentBlock[]>(
         props.setStreamingContentBlocks,
@@ -1245,7 +1239,7 @@ describe("useChatEvents", () => {
       expect(blocks).toEqual([{ type: "task", toolUseId: "toolu_delegate_001" }]);
     });
 
-    it("should fold delegate_wait updates into the existing delegated streaming task", () => {
+    it("should ignore delegate_wait tool calls for delegated task state", () => {
       const props = makeProps();
       renderAndClear(props);
 
@@ -1283,36 +1277,8 @@ describe("useChatEvents", () => {
       });
 
       expect(props.setStreamingToolCalls).not.toHaveBeenCalled();
-      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
-
-      const prevMap = new Map<string, StreamingTask>([
-        ["toolu_delegate_001", {
-          toolUseId: "toolu_delegate_001",
-          toolName: "delegate_start",
-          description: "ralphx-execution-reviewer",
-          subagentType: "delegated",
-          model: "gpt-5.4",
-          status: "running",
-          startedAt: Date.now() - 5000,
-          delegatedJobId: "job-123",
-          childToolCalls: [],
-        }],
-      ]);
-      const nextMap = executeUpdater<Map<string, StreamingTask>>(
-        props.setStreamingTasks,
-        prevMap,
-      );
-      const delegated = nextMap.get("toolu_delegate_001");
-      expect(delegated).toBeDefined();
-      expect(delegated!.status).toBe("completed");
-      expect(delegated!.textOutput).toBe("Delegated review finished");
-      expect(delegated!.providerHarness).toBe("codex");
-      expect(delegated!.upstreamProvider).toBe("openai");
-      expect(delegated!.providerProfile).toBe("openai");
-      expect(delegated!.effectiveModelId).toBe("gpt-5.4");
-      expect(delegated!.logicalEffort).toBe("high");
-      expect(delegated!.totalTokens).toBe(140);
-      expect(delegated!.estimatedUsd).toBe(0.12);
+      expect(props.setStreamingTasks).not.toHaveBeenCalled();
+      expect(props.setStreamingContentBlocks).not.toHaveBeenCalled();
     });
   });
 
