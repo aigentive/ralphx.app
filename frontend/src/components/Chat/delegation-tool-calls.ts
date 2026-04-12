@@ -106,6 +106,19 @@ function getLastMessageText(messages: unknown): string | undefined {
   return undefined;
 }
 
+function getContentText(content: unknown): string | undefined {
+  if (typeof content === "string" && content.length > 0) {
+    return content;
+  }
+  if (!Array.isArray(content)) return undefined;
+  for (let index = content.length - 1; index >= 0; index -= 1) {
+    const entry = asRecord(content[index]);
+    const text = getFirstString(entry, "text");
+    if (text) return text;
+  }
+  return undefined;
+}
+
 function deriveDurationMs(startedAt?: string, completedAt?: string): number | undefined {
   if (!startedAt || !completedAt) return undefined;
   const started = Date.parse(startedAt);
@@ -178,6 +191,7 @@ export function extractDelegationMetadata(
 
   const textOutput =
     getFirstString(resultRecord, "content")
+    ?? getContentText(resultRecord?.content)
     ?? getLastMessageText(delegatedStatus?.recent_messages ?? delegatedStatus?.recentMessages);
 
   const jobId =

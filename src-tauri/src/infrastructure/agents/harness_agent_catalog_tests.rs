@@ -1,6 +1,6 @@
 use super::{
     load_canonical_agent_definition, load_harness_agent_prompt, resolve_harness_agent_prompt_path,
-    try_load_canonical_claude_metadata, AgentPromptHarness,
+    resolve_project_root_from_plugin_dir, try_load_canonical_claude_metadata, AgentPromptHarness,
 };
 use std::path::PathBuf;
 
@@ -586,6 +586,18 @@ fn canonical_delegation_policy_appendix_is_injected_only_for_delegating_agents()
     assert!(
         !session_namer.contains("## RalphX Delegation Policy (AUTO-GENERATED)"),
         "non-delegating codex prompt should not include the generated delegation appendix"
+    );
+}
+
+#[test]
+fn resolve_project_root_from_generated_plugin_dir_finds_repo_agents_tree() {
+    let root = project_root();
+    let generated_plugin_dir = root.join(".artifacts/generated/claude-plugin");
+
+    assert_eq!(
+        resolve_project_root_from_plugin_dir(&generated_plugin_dir),
+        root,
+        "generated plugin dir should resolve back to the repo root so canonical agent definitions load in live Codex/Claude runs"
     );
 }
 

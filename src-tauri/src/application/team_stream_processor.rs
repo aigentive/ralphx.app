@@ -445,6 +445,7 @@ pub fn start_teammate_stream<R: Runtime>(
                                             "context_type": context_type,
                                             "context_id": context_id,
                                             "conversation_id": conversation_id_str,
+                                            "append_to_previous": true,
                                         }),
                                     );
                                     if let Err(ref e) = emit_result {
@@ -481,6 +482,7 @@ pub fn start_teammate_stream<R: Runtime>(
                                             "context_type": context_type,
                                             "context_id": context_id,
                                             "conversation_id": conversation_id_str,
+                                            "append_to_previous": true,
                                         }),
                                     );
                                 }

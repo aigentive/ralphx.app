@@ -162,4 +162,22 @@ describe("delegation-tool-calls", () => {
     expect(metadata.status).toBe("completed");
     expect(metadata.textOutput).toBe("Delegated review finished");
   });
+
+  it("extracts error text from object-shaped MCP results with content arrays", () => {
+    const metadata = extractDelegationMetadata(
+      { agent_name: "ralphx-ideation-specialist-backend" },
+      {
+        content: [
+          {
+            type: "text",
+            text: "ERROR: Unknown canonical caller agent 'ralphx-ideation'",
+          },
+        ],
+      },
+    );
+
+    expect(metadata.textOutput).toBe(
+      "ERROR: Unknown canonical caller agent 'ralphx-ideation'",
+    );
+  });
 });

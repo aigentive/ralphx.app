@@ -435,7 +435,7 @@ describe("useChatEvents", () => {
   // 3. Streaming text (via content blocks)
   // --------------------------------------------------------------------------
   describe("streaming text", () => {
-    it("should append text chunks via setStreamingContentBlocks when supportsStreamingText", () => {
+    it("should append text chunks when the backend marks them as continuations", () => {
       const props = makeProps();
       renderAndClear(props);
 
@@ -444,6 +444,7 @@ describe("useChatEvents", () => {
           text: "Hello ",
           conversation_id: CONV_ID,
           context_id: CTX_ID,
+          append_to_previous: true,
         });
       });
 
@@ -456,6 +457,29 @@ describe("useChatEvents", () => {
       );
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({ type: "text", text: "Previous: Hello " });
+    });
+
+    it("should start a new text block when the backend marks a chunk as a new block", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:chunk", {
+          text: "Second block",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+          append_to_previous: false,
+        });
+      });
+
+      const result = executeUpdater<StreamingContentBlock[]>(
+        props.setStreamingContentBlocks,
+        [{ type: "text", text: "First block" }],
+      );
+      expect(result).toEqual([
+        { type: "text", text: "First block" },
+        { type: "text", text: "Second block" },
+      ]);
     });
   });
 
@@ -1208,7 +1232,7 @@ describe("useChatEvents", () => {
       expect(completedHandlers).toHaveLength(0);
     });
 
-    it("should create only the delegated task marker from delegate_start tool calls", () => {
+    it("should create a delegated placeholder task immediately on delegate_start tool calls", () => {
       const props = makeProps();
       renderAndClear(props);
 
@@ -1229,7 +1253,7 @@ describe("useChatEvents", () => {
       });
 
       expect(props.setStreamingToolCalls).not.toHaveBeenCalled();
-      expect(props.setStreamingTasks).not.toHaveBeenCalled();
+      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
       expect(props.setStreamingContentBlocks).toHaveBeenCalledTimes(1);
 
       const blocks = executeUpdater<StreamingContentBlock[]>(
@@ -1237,6 +1261,65 @@ describe("useChatEvents", () => {
         [],
       );
       expect(blocks).toEqual([{ type: "task", toolUseId: "toolu_delegate_001" }]);
+
+      const tasks = executeUpdater<Map<string, StreamingTask>>(
+        props.setStreamingTasks,
+        new Map(),
+      );
+      expect(tasks.get("toolu_delegate_001")).toMatchObject({
+        toolUseId: "toolu_delegate_001",
+        toolName: "delegate_start",
+        description: "Review the patch",
+        subagentType: "delegated",
+        logicalModel: "gpt-5.4",
+      });
+    });
+
+    it("should mark delegated placeholder tasks as failed when delegate_start returns an error result", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "delegate_start",
+          tool_id: "toolu_delegate_fail_001",
+          arguments: {
+            agent_name: "ralphx-ideation-specialist-backend",
+            prompt: "Investigate merge validation defaults",
+          },
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "result:toolu_delegate_fail_001",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+          arguments: {},
+          result: {
+            content: [
+              {
+                type: "text",
+                text: "ERROR: Unknown canonical caller agent 'ralphx-ideation'",
+              },
+            ],
+          },
+        });
+      });
+
+      let tasks = new Map<string, StreamingTask>();
+      for (const call of props.setStreamingTasks.mock.calls) {
+        const updater = call[0];
+        tasks = typeof updater === "function" ? updater(tasks) : updater;
+      }
+
+      expect(tasks.get("toolu_delegate_fail_001")).toMatchObject({
+        toolUseId: "toolu_delegate_fail_001",
+        status: "failed",
+        textOutput: "ERROR: Unknown canonical caller agent 'ralphx-ideation'",
+      });
     });
 
     it("should ignore delegate_wait tool calls for delegated task state", () => {

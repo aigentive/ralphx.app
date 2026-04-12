@@ -29,6 +29,7 @@ import type { StreamingTask, StreamingContentBlock } from "@/types/streaming-tas
 import type { Unsubscribe } from "@/lib/event-bus";
 import { useChatStore } from "@/stores/chatStore";
 import {
+  extractDelegationMetadata,
   isDelegationControlToolCall,
   isDelegationStartToolCall,
 } from "@/components/Chat/delegation-tool-calls";
@@ -194,8 +195,56 @@ export function useChatEvents({
 
           // 3. Update matching entry in streamingTasks.childToolCalls
           setStreamingTasks((prev) => {
-            let changed = false;
             const next = new Map(prev);
+            let changed = false;
+
+            const parentTask = prev.get(toolUseId);
+            if (parentTask && parentTask.toolName.toLowerCase() === "delegate_start") {
+              const delegation = extractDelegationMetadata(undefined, result);
+              const inferredFailure =
+                delegation.status == null
+                && delegation.textOutput?.trim().startsWith("ERROR:");
+              const nextStatus =
+                normalizeDelegatedTaskStatus(delegation.status)
+                ?? (inferredFailure ? "failed" : parentTask.status);
+              const updatedTask: StreamingTask = {
+                ...parentTask,
+                status: nextStatus,
+                ...(delegation.agentName
+                  ? { subagentType: "delegated", model: delegation.effectiveModelId ?? delegation.logicalModel ?? parentTask.model }
+                  : {}),
+                ...(delegation.providerHarness ? { providerHarness: delegation.providerHarness } : {}),
+                ...(delegation.providerSessionId ? { providerSessionId: delegation.providerSessionId } : {}),
+                ...(delegation.upstreamProvider ? { upstreamProvider: delegation.upstreamProvider } : {}),
+                ...(delegation.providerProfile ? { providerProfile: delegation.providerProfile } : {}),
+                ...(delegation.jobId ? { delegatedJobId: delegation.jobId } : {}),
+                ...(delegation.delegatedSessionId ? { delegatedSessionId: delegation.delegatedSessionId } : {}),
+                ...(delegation.delegatedConversationId ? { delegatedConversationId: delegation.delegatedConversationId } : {}),
+                ...(delegation.delegatedAgentRunId ? { delegatedAgentRunId: delegation.delegatedAgentRunId } : {}),
+                ...(delegation.logicalModel ? { logicalModel: delegation.logicalModel } : {}),
+                ...(delegation.effectiveModelId ? { effectiveModelId: delegation.effectiveModelId } : {}),
+                ...(delegation.logicalEffort ? { logicalEffort: delegation.logicalEffort } : {}),
+                ...(delegation.effectiveEffort ? { effectiveEffort: delegation.effectiveEffort } : {}),
+                ...(delegation.approvalPolicy ? { approvalPolicy: delegation.approvalPolicy } : {}),
+                ...(delegation.sandboxMode ? { sandboxMode: delegation.sandboxMode } : {}),
+                ...(delegation.inputTokens != null ? { inputTokens: delegation.inputTokens } : {}),
+                ...(delegation.outputTokens != null ? { outputTokens: delegation.outputTokens } : {}),
+                ...(delegation.cacheCreationTokens != null
+                  ? { cacheCreationTokens: delegation.cacheCreationTokens }
+                  : {}),
+                ...(delegation.cacheReadTokens != null ? { cacheReadTokens: delegation.cacheReadTokens } : {}),
+                ...(delegation.totalTokens != null ? { totalTokens: delegation.totalTokens } : {}),
+                ...(delegation.estimatedUsd != null ? { estimatedUsd: delegation.estimatedUsd } : {}),
+                ...(delegation.durationMs != null ? { totalDurationMs: delegation.durationMs } : {}),
+                ...(delegation.textOutput ? { textOutput: delegation.textOutput } : {}),
+                ...((nextStatus === "completed" || nextStatus === "failed" || nextStatus === "cancelled")
+                  ? { completedAt: Date.now() }
+                  : {}),
+              };
+              next.set(toolUseId, updatedTask);
+              changed = true;
+            }
+
             for (const [taskId, task] of prev) {
               const childIdx = task.childToolCalls.findIndex((tc) => tc.id === toolUseId);
               if (childIdx >= 0) {
@@ -245,6 +294,42 @@ export function useChatEvents({
             );
             if (alreadyHasMarker) return prev;
             return [...prev, { type: "task", toolUseId: id }];
+          });
+          setStreamingTasks((prev) => {
+            if (prev.has(id)) return prev;
+            const delegation = extractDelegationMetadata(args, result);
+            const description =
+              delegation.title
+              ?? delegation.prompt
+              ?? (typeof args === "object" && args != null && "prompt" in args && typeof (args as { prompt?: unknown }).prompt === "string"
+                ? (args as { prompt: string }).prompt
+                : "");
+            const next = new Map(prev);
+            next.set(id, {
+              toolUseId: id,
+              toolName: tool_name,
+              description,
+              subagentType: "delegated",
+              model: delegation.effectiveModelId ?? delegation.logicalModel ?? "unknown",
+              status: "running",
+              startedAt: Date.now(),
+              childToolCalls: [],
+              ...(delegation.jobId ? { delegatedJobId: delegation.jobId } : {}),
+              ...(delegation.delegatedSessionId ? { delegatedSessionId: delegation.delegatedSessionId } : {}),
+              ...(delegation.delegatedConversationId ? { delegatedConversationId: delegation.delegatedConversationId } : {}),
+              ...(delegation.delegatedAgentRunId ? { delegatedAgentRunId: delegation.delegatedAgentRunId } : {}),
+              ...(delegation.providerHarness ? { providerHarness: delegation.providerHarness } : {}),
+              ...(delegation.providerSessionId ? { providerSessionId: delegation.providerSessionId } : {}),
+              ...(delegation.upstreamProvider ? { upstreamProvider: delegation.upstreamProvider } : {}),
+              ...(delegation.providerProfile ? { providerProfile: delegation.providerProfile } : {}),
+              ...(delegation.logicalModel ? { logicalModel: delegation.logicalModel } : {}),
+              ...(delegation.effectiveModelId ? { effectiveModelId: delegation.effectiveModelId } : {}),
+              ...(delegation.logicalEffort ? { logicalEffort: delegation.logicalEffort } : {}),
+              ...(delegation.effectiveEffort ? { effectiveEffort: delegation.effectiveEffort } : {}),
+              ...(delegation.approvalPolicy ? { approvalPolicy: delegation.approvalPolicy } : {}),
+              ...(delegation.sandboxMode ? { sandboxMode: delegation.sandboxMode } : {}),
+            });
+            return next;
           });
           return;
         }
@@ -638,13 +723,23 @@ export function useChatEvents({
     // match when activeConversationId is the teammate's conversation.
     if (supportsStreamingText) {
       unsubscribes.push(
-        bus.subscribe<{ text: string; conversation_id: string; context_id?: string; context_type?: string; seq?: number }>(
+        bus.subscribe<{
+          text: string;
+          conversation_id: string;
+          context_id?: string;
+          context_type?: string;
+          seq?: number;
+          append_to_previous?: boolean;
+        }>(
           "agent:chunk", (payload) => {
             if (!isRelevant(payload)) return;
             setStreamingContentBlocks((prev) => {
               const lastBlock = prev[prev.length - 1];
-              // If last block is text, append to it; otherwise create new text block
-              if (lastBlock?.type === "text") {
+              const shouldAppend = payload.append_to_previous ?? true;
+              // If last block is text and the backend says this chunk extends it, append.
+              // Codex agent_message events are already logical text blocks, so they set
+              // append_to_previous=false to preserve live block boundaries.
+              if (shouldAppend && lastBlock?.type === "text") {
                 const updated = [...prev];
                 // Preserve existing seq when appending to block (don't use latest chunk's seq)
                 const appendBlock = { type: "text" as const, text: lastBlock.text + payload.text };

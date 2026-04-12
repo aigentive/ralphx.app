@@ -70,7 +70,33 @@ fn canonical_agent_root(project_root: &Path, agent_name: &str) -> PathBuf {
         .join(canonical_agent_name(agent_name))
 }
 
+fn has_canonical_agents_tree(root: &Path) -> bool {
+    let agents_dir = root.join(CANONICAL_AGENTS_DIR);
+    let Ok(entries) = std::fs::read_dir(&agents_dir) else {
+        return false;
+    };
+
+    entries.filter_map(Result::ok).any(|entry| {
+        entry
+            .file_type()
+            .ok()
+            .is_some_and(|file_type| file_type.is_dir())
+            && entry.path().join(AGENT_FILE_NAME).is_file()
+    })
+}
+
+fn find_project_root_with_canonical_agents(start: &Path) -> Option<PathBuf> {
+    start
+        .ancestors()
+        .find(|candidate| has_canonical_agents_tree(candidate))
+        .map(Path::to_path_buf)
+}
+
 pub fn resolve_project_root_from_plugin_dir(plugin_dir: &Path) -> PathBuf {
+    if let Some(project_root) = find_project_root_with_canonical_agents(plugin_dir) {
+        return project_root;
+    }
+
     let parent = plugin_dir.parent().unwrap_or(plugin_dir);
     if plugin_dir.ends_with(Path::new("plugins/app")) {
         parent

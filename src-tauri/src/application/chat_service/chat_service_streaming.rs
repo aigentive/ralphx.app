@@ -1040,6 +1040,7 @@ pub async fn process_stream_background<R: Runtime>(
                                     context_type: context_type_str.clone(),
                                     context_id: context_id_str.clone(),
                                     seq: stream_seq,
+                                    append_to_previous: true,
                                 },
                             );
                             stream_seq += 1;
@@ -2561,6 +2562,7 @@ async fn process_codex_stream_background<R: Runtime>(
                             context_type: context_type_str.clone(),
                             context_id: context_id_str.clone(),
                             seq: stream_seq,
+                            append_to_previous: false,
                         },
                     );
                     stream_seq += 1;

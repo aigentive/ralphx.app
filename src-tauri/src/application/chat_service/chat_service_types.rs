@@ -177,6 +177,8 @@ pub struct AgentChunkPayload {
     pub context_type: String,
     pub context_id: String,
     pub seq: u64,
+    #[serde(default)]
+    pub append_to_previous: bool,
 }
 
 /// Payload for agent:usage_updated event
