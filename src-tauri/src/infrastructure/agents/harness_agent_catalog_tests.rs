@@ -506,6 +506,7 @@ fn codex_pilot_prompts_avoid_claude_only_team_and_task_syntax() {
         "TaskStop",
         "SendMessage",
         "mcpServers",
+        "mcp__ralphx__",
         "CLAUDE_PLUGIN_ROOT",
         "--append-system-prompt",
     ];
@@ -616,6 +617,7 @@ fn codex_execution_prompts_avoid_claude_only_team_and_task_syntax() {
         "TeamDelete",
         "SendMessage",
         "mcpServers",
+        "mcp__ralphx__",
         "CLAUDE_PLUGIN_ROOT",
         "--append-system-prompt",
     ];

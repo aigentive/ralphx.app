@@ -555,7 +555,8 @@ export const ALL_TOOLS: Tool[] = [
       properties: {
         parent_session_id: {
           type: "string",
-          description: "The parent ideation session that owns the delegated work.",
+          description:
+            "Optional explicit parent ideation session that owns the delegated work. When omitted, RalphX infers it from the current ideation or verification-child session context supplied by the MCP transport.",
         },
         parent_turn_id: {
           type: "string",
@@ -622,7 +623,7 @@ export const ALL_TOOLS: Tool[] = [
           description: "Optional explicit sandbox mode override.",
         },
       },
-      required: ["parent_session_id", "agent_name", "prompt"],
+      required: ["agent_name", "prompt"],
     },
   },
   {

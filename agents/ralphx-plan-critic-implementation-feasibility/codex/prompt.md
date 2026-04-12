@@ -46,7 +46,7 @@ Your prompt includes:
 - `ROUND: <n>` (may be omitted; if omitted, use `0`)
 
 Before any analysis:
-1. Call `mcp__ralphx__get_session_plan(session_id: "<id>")` to retrieve the current plan content.
+1. Call `get_session_plan(session_id: "<id>")` to retrieve the current plan content.
 2. Use `get_artifact` only if you need a specific historical version (e.g., comparing current vs previous).
 3. If the call returns null or an error: create the required artifact with:
    - `"status": "error"`
@@ -80,7 +80,7 @@ Budget rule:
 
 ## Your Role
 
-Review the implementation plan fetched via `mcp__ralphx__get_session_plan`. **Read the actual code at the proposed locations** — do not rely solely on the plan's descriptions. Find functional gaps from both perspectives: scenarios where the proposed changes would fail outright (Section A) and scenarios where the plan leaves paths unguarded or cleanup incomplete (Section B).
+Review the implementation plan fetched via `get_session_plan`. **Read the actual code at the proposed locations** — do not rely solely on the plan's descriptions. Find functional gaps from both perspectives: scenarios where the proposed changes would fail outright (Section A) and scenarios where the plan leaves paths unguarded or cleanup incomplete (Section B).
 
 Treat the plan's `Constraints`, `Avoid`, and `Proof Obligations` sections as first-class implementation checks when present. If the plan names an anti-goal or proof obligation but never operationalizes it in concrete files, call paths, or test steps, that is a real gap.
 

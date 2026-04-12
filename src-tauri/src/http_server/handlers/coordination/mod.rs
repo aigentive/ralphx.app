@@ -14,7 +14,7 @@ use crate::application::harness_runtime_registry::resolve_harness_plugin_dir;
 use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::{
     AgentRun, ChatContextType, ChatConversation, DelegatedSession, DelegatedSessionId,
-    IdeationSessionId,
+    IdeationSessionId, SessionPurpose,
 };
 use crate::http_server::delegation::DelegationJobSnapshot;
 use crate::http_server::types::{
@@ -91,6 +91,7 @@ fn resolve_delegation_policy(
 async fn resolve_delegated_session_id(
     state: &HttpServerState,
     req: &DelegateStartRequest,
+    parent_session_id: &str,
 ) -> Result<String, JsonError> {
     let requested_id = req
         .delegated_session_id
@@ -112,7 +113,7 @@ async fn resolve_delegated_session_id(
             })?
             .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Delegated session not found"))?;
         if delegated.parent_context_type != "ideation"
-            || delegated.parent_context_id != req.parent_session_id
+            || delegated.parent_context_id != parent_session_id
         {
             return Err(json_error(
                 StatusCode::BAD_REQUEST,
@@ -123,11 +124,11 @@ async fn resolve_delegated_session_id(
     }
 
     let (project_id, _) =
-        load_parent_project_working_directory(state, &req.parent_session_id).await?;
+        load_parent_project_working_directory(state, parent_session_id).await?;
     let mut session = DelegatedSession::new(
         crate::domain::entities::ProjectId::from_string(project_id),
         "ideation",
-        req.parent_session_id.clone(),
+        parent_session_id.to_string(),
         req.agent_name.clone(),
         req.harness.unwrap_or(AgentHarnessKind::Codex),
     );
@@ -183,6 +184,75 @@ async fn load_parent_project_working_directory(
         parent.project_id.as_str().to_string(),
         PathBuf::from(project.working_directory),
     ))
+}
+
+async fn resolve_parent_session_id(
+    state: &HttpServerState,
+    req: &DelegateStartRequest,
+) -> Result<String, JsonError> {
+    if req.caller_context_type.as_deref() == Some("ideation") {
+        let caller_context_id = req.caller_context_id.as_ref().ok_or_else(|| {
+            json_error(
+                StatusCode::BAD_REQUEST,
+                "delegate_start ideation callers require caller_context_id from the MCP transport",
+            )
+        })?;
+        let caller_session_id = IdeationSessionId::from_string(caller_context_id.clone());
+        let caller_session = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&caller_session_id)
+            .await
+            .map_err(|error| {
+                json_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to load caller ideation session: {error}"),
+                )
+            })?
+            .ok_or_else(|| {
+                json_error(
+                    StatusCode::NOT_FOUND,
+                    "Caller ideation session not found for delegate_start",
+                )
+            })?;
+
+        let derived_parent_session_id = if caller_session.session_purpose == SessionPurpose::Verification
+        {
+            caller_session
+                .parent_session_id
+                .as_ref()
+                .map(|id| id.as_str().to_string())
+                .ok_or_else(|| {
+                    json_error(
+                        StatusCode::BAD_REQUEST,
+                        "Verification child session has no parent_session_id for delegate_start",
+                    )
+                })?
+        } else {
+            caller_session.id.as_str().to_string()
+        };
+
+        if let Some(explicit_parent_session_id) = req.parent_session_id.as_ref() {
+            if explicit_parent_session_id != &derived_parent_session_id {
+                return Err(json_error(
+                    StatusCode::BAD_REQUEST,
+                    format!(
+                        "delegate_start parent_session_id '{}' does not match caller context parent '{}'",
+                        explicit_parent_session_id, derived_parent_session_id
+                    ),
+                ));
+            }
+        }
+
+        return Ok(derived_parent_session_id);
+    }
+
+    req.parent_session_id.clone().ok_or_else(|| {
+        json_error(
+            StatusCode::BAD_REQUEST,
+            "delegate_start requires parent_session_id unless the MCP transport supplies an ideation caller context",
+        )
+    })
 }
 
 fn build_delegated_prompt(
@@ -456,6 +526,7 @@ fn delegated_run_summary(run: AgentRun) -> DelegatedRunSummary {
 async fn resolve_parent_conversation_id(
     state: &HttpServerState,
     req: &DelegateStartRequest,
+    parent_session_id: &str,
 ) -> Result<Option<String>, JsonError> {
     if let Some(parent_conversation_id) = req.parent_conversation_id.as_ref() {
         return Ok(Some(parent_conversation_id.clone()));
@@ -464,7 +535,7 @@ async fn resolve_parent_conversation_id(
     Ok(state
         .app_state
         .chat_conversation_repo
-        .get_active_for_context(ChatContextType::Ideation, &req.parent_session_id)
+        .get_active_for_context(ChatContextType::Ideation, parent_session_id)
         .await
         .map_err(|error| {
             json_error(
@@ -683,9 +754,10 @@ pub(crate) async fn start_delegate_impl(
             "delegate_start requires caller_agent_name from the MCP transport",
         )
     })?;
-    let parent_conversation_id = resolve_parent_conversation_id(state, &req).await?;
+    let parent_session_id = resolve_parent_session_id(state, &req).await?;
+    let parent_conversation_id = resolve_parent_conversation_id(state, &req, &parent_session_id).await?;
     let (project_id, working_directory) =
-        load_parent_project_working_directory(state, &req.parent_session_id).await?;
+        load_parent_project_working_directory(state, &parent_session_id).await?;
 
     let resolved_spawn = resolve_agent_spawn_settings(
         &req.agent_name,
@@ -712,7 +784,7 @@ pub(crate) async fn start_delegate_impl(
     let project_root = resolve_project_root_from_plugin_dir(&plugin_dir);
     let (_caller_definition, definition) =
         resolve_delegation_policy(&project_root, caller_agent_name, &req.agent_name)?;
-    let delegated_session_id = resolve_delegated_session_id(state, &req).await?;
+    let delegated_session_id = resolve_delegated_session_id(state, &req, &parent_session_id).await?;
     let logical_effort = req
         .logical_effort
         .clone()
@@ -759,7 +831,7 @@ pub(crate) async fn start_delegate_impl(
             &delegated_session_id,
             &build_delegated_prompt(
                 &definition.name,
-                &req.parent_session_id,
+                &parent_session_id,
                 req.parent_turn_id.as_deref(),
                 req.parent_message_id.as_deref(),
                 parent_conversation_id.as_deref(),
@@ -792,7 +864,7 @@ pub(crate) async fn start_delegate_impl(
         .register_running(
             job_id.clone(),
             "ideation".to_string(),
-            req.parent_session_id.clone(),
+            parent_session_id.clone(),
             req.parent_turn_id.clone(),
             req.parent_message_id.clone(),
             parent_conversation_id.clone(),

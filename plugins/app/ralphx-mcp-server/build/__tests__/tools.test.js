@@ -782,15 +782,17 @@ describe('delegation bridge tools', () => {
     it.each(['delegate_start', 'delegate_wait', 'delegate_cancel'])('%s should exist in ALL_TOOLS', (toolName) => {
         expect(allTools.find((tool) => tool.name === toolName)).toBeDefined();
     });
-    it('delegate_start should require parent_session_id, agent_name, and prompt', () => {
+    it('delegate_start should expose optional parent_session_id plus required agent_name and prompt', () => {
         const tool = allTools.find((entry) => entry.name === 'delegate_start');
         expect(tool?.inputSchema.type).toBe('object');
+        expect(tool?.inputSchema.properties).toHaveProperty('parent_session_id');
         expect(tool?.inputSchema.properties).toHaveProperty('parent_turn_id');
         expect(tool?.inputSchema.properties).toHaveProperty('parent_message_id');
         expect(tool?.inputSchema.properties).toHaveProperty('parent_conversation_id');
         expect(tool?.inputSchema.properties).toHaveProperty('parent_tool_use_id');
         expect(tool?.inputSchema.properties).toHaveProperty('delegated_session_id');
-        expect(tool?.inputSchema.required).toEqual(expect.arrayContaining(['parent_session_id', 'agent_name', 'prompt']));
+        expect(tool?.inputSchema.required).toEqual(expect.arrayContaining(['agent_name', 'prompt']));
+        expect(tool?.inputSchema.required).not.toContain('parent_session_id');
     });
     it('delegate_wait should support delegated-status hydration options', () => {
         const tool = allTools.find((entry) => entry.name === 'delegate_wait');

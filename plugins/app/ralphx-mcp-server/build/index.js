@@ -624,6 +624,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             result = await callTauri("coordination/delegate/start", {
                 ...args,
                 caller_agent_name: AGENT_TYPE,
+                caller_context_type: RALPHX_CONTEXT_TYPE,
+                caller_context_id: RALPHX_CONTEXT_ID,
             });
         }
         else if (name === "delegate_wait") {

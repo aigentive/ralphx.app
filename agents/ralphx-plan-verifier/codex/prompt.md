@@ -33,7 +33,7 @@ Do not collapse these delegated prompts into vague summaries. Preserve `SESSION_
 2. Extract both values before calling any tool.
    - `OWN_SESSION_ID` MUST come from the bootstrap `<session_id>` tag (fallback: `<context_id>` if `<session_id>` is absent).
    - Do NOT reuse `parent_session_id` as `OWN_SESSION_ID`. They are different IDs in a healthy verification run.
-3. Call `mcp__ralphx__get_parent_session_context(session_id: <OWN_SESSION_ID>)` to validate.
+3. Call `get_parent_session_context(session_id: <OWN_SESSION_ID>)` to validate.
    - Extract `parent_session_id` from the response's `parent.id` field (or equivalent parent identifier field).
    - If the prompt value and the API value MISMATCH → output error: "parent_session_id mismatch — aborting verification" and EXIT.
    - If `get_parent_session_context` fails or returns no parent → output error: "Cannot determine parent session — aborting verification" and EXIT.
@@ -56,7 +56,7 @@ Look for a line matching `DISABLED_SPECIALISTS: <value>` in the initial prompt (
 
 ### C. Zombie check
 
-Call `mcp__ralphx__get_plan_verification(session_id: <parent_session_id>)`.
+Call `get_plan_verification(session_id: <parent_session_id>)`.
 - If `in_progress: false` → another process reset verification while we were starting. Output: "Verification was reset before we could start (in_progress=false). Exiting." and EXIT.
 - If `verification_generation != <extracted generation>` → generation mismatch (zombie). Output: "Generation mismatch: expected {extracted_gen}, got {verification_generation}. Stale agent detected. Exiting." and EXIT.
 - Store current `current_round` from the response (default: 0 if null).
@@ -67,7 +67,7 @@ Store the bootstrap child-session value as `OWN_SESSION_ID`. You will use this a
 
 ### E. Fetch plan
 
-Call `mcp__ralphx__get_session_plan(session_id: <YOUR_OWN_SESSION_ID>)` to read the plan content inherited from the parent. Also store the `artifact_id` from the returned plan — you will need it for artifact write calls.
+Call `get_session_plan(session_id: <YOUR_OWN_SESSION_ID>)` to read the plan content inherited from the parent. Also store the `artifact_id` from the returned plan — you will need it for artifact write calls.
 - If this returns null or an error → output error: "Cannot fetch plan — aborting verification" and EXIT.
 
 ---
@@ -128,7 +128,7 @@ Wait for the initial delegated-agent results to return, then inspect them before
 
 ### 0.5c — Artifact Collection
 
-1. Call `mcp__ralphx__get_verification_round_artifacts(session_id: <parent_session_id>, prefixes: ["CodeQuality", "IntentAlignment"], created_after: <enrichment_dispatch_time minus 5 seconds>)`.
+1. Call `get_verification_round_artifacts(session_id: <parent_session_id>, prefixes: ["CodeQuality", "IntentAlignment"], created_after: <enrichment_dispatch_time minus 5 seconds>)`.
 2. Use the returned `artifacts_by_prefix` entries directly — the helper already filters by `created_after`, sorts by `created_at` descending per prefix, and attaches full artifact `content`.
 3. **Intent specialist result handling:**
    - If the intent specialist delegate returned text containing `"Intent aligned"` → log "Intent aligned — no misalignment artifact created." Skip intent integration in Step 0.5d.
@@ -144,7 +144,7 @@ Wait for the initial delegated-agent results to return, then inspect them before
    - Search for `## Constraints` header → insert `## Code Quality Improvements` section immediately BEFORE it.
    - If `## Constraints` not found, search for `## Architecture` header → insert immediately AFTER the Architecture section's content (before the next `##` header).
    - If neither found → insert after `## Overview` section content.
-2. Use `mcp__ralphx__edit_plan_artifact` with:
+2. Use `edit_plan_artifact` with:
    - `old_text`: the target `##` header line (e.g., `## Constraints`)
    - `new_text`: the new section FOLLOWED BY the original header. Example:
      ```
@@ -152,12 +152,12 @@ Wait for the initial delegated-agent results to return, then inspect them before
      new_text: "## Code Quality Improvements\n\n{structured content}\n\n## Constraints"
      ```
    **CRITICAL:** The original anchor header MUST be preserved in `new_text` — `edit_plan_artifact` replaces `old_text` entirely. Omitting the original header deletes it.
-3. If `edit_plan_artifact` fails (anchor not found for any fallback): use `mcp__ralphx__update_plan_artifact` with the full plan content, appending `## Code Quality Improvements` at the end.
+3. If `edit_plan_artifact` fails (anchor not found for any fallback): use `update_plan_artifact` with the full plan content, appending `## Code Quality Improvements` at the end.
 4. Content: structured list of improvement opportunities from the artifact, grouped by priority (High → Medium → Low).
 
 **Intent alignment integration** (CONDITIONAL — only if `IntentAlignment:` artifact was collected, i.e., misalignment was detected):
 1. Determine insertion point: place `## Intent Alignment Warning` BEFORE `## Architecture` if that section exists; otherwise place it after `## Overview`. If neither exists, insert at the beginning of the plan body (after `## Goal` if present, otherwise as the first section).
-2. Use `mcp__ralphx__edit_plan_artifact` with:
+2. Use `edit_plan_artifact` with:
    - `old_text`: the target anchor header (e.g., `## Architecture`)
    - `new_text`: the warning section FOLLOWED BY the original header. Example:
      ```
@@ -165,7 +165,7 @@ Wait for the initial delegated-agent results to return, then inspect them before
      new_text: "## Intent Alignment Warning\n\n{structured misalignment table from artifact}\n\n## Architecture"
      ```
    **CRITICAL:** Preserve the original anchor header in `new_text`.
-3. If `edit_plan_artifact` fails: use `mcp__ralphx__update_plan_artifact` appending `## Intent Alignment Warning` at the end.
+3. If `edit_plan_artifact` fails: use `update_plan_artifact` appending `## Intent Alignment Warning` at the end.
 4. Content: the misalignment table from the artifact (user quote, plan goal, per-axis status, misalignment details).
 5. ❌ Do NOT inject `## Intent Alignment Warning` when intent is aligned — only inject when a misalignment artifact exists.
 
@@ -303,7 +303,7 @@ Collect artifacts produced during this round via two-stage wait-then-rescue flow
 - critic artifacts (`Completeness:`, `Feasibility:`)
 - specialist artifacts (`UX:`, `PromptQuality:`, `PipelineSafety:`, `StateMachine:`)
 
-1. Call `mcp__ralphx__get_verification_round_artifacts(session_id: <parent_session_id>, prefixes: ["Completeness: ", "Feasibility: ", "UX: ", "PromptQuality: ", "PipelineSafety: ", "StateMachine: "], created_after: <round_start_time minus 5 seconds>)`.
+1. Call `get_verification_round_artifacts(session_id: <parent_session_id>, prefixes: ["Completeness: ", "Feasibility: ", "UX: ", "PromptQuality: ", "PipelineSafety: ", "StateMachine: "], created_after: <round_start_time minus 5 seconds>)`.
 2. Use the returned `artifacts_by_prefix` entries directly — the helper already filters by `created_after`, sorts by `created_at` descending per prefix, and attaches full artifact `content`.
 3. If a required critic artifact is missing after the first poll, apply the bounded two-stage flow:
    - **Stage 1 — wait (first empty poll):** If that critic's delegated result included `agentId` or resumable text, do NOT dispatch a rescue yet. Immediately make a **second sequential** `get_verification_round_artifacts` call.
@@ -368,7 +368,7 @@ Deduplicate gaps across usable critic results:
 
 ### E. Report verification round
 
-Call `mcp__ralphx__report_verification_round` with:
+Call `report_verification_round` with:
 ```json
 {
   "session_id": "<parent_session_id>",
@@ -390,8 +390,8 @@ Check the response for a generation conflict error (HTTP 409). If generation mis
 
 If any gap has severity "critical" or "high":
 1. Analyze each critical/high gap and determine the minimal plan revision needed.
-2. For small revisions (<30% of plan): use `mcp__ralphx__edit_plan_artifact(artifact_id: <plan_artifact_id>, caller_session_id: <OWN_SESSION_ID>, ...)` with targeted edits.
-3. For large revisions (≥30% of plan): use `mcp__ralphx__update_plan_artifact(artifact_id: <plan_artifact_id>, caller_session_id: <OWN_SESSION_ID>, ...)` with the full revised content.
+2. For small revisions (<30% of plan): use `edit_plan_artifact(artifact_id: <plan_artifact_id>, caller_session_id: <OWN_SESSION_ID>, ...)` with targeted edits.
+3. For large revisions (≥30% of plan): use `update_plan_artifact(artifact_id: <plan_artifact_id>, caller_session_id: <OWN_SESSION_ID>, ...)` with the full revised content.
 4. Make plan revisions address the highest-penalty gaps first — do not add unrelated content.
 5. If the current plan is missing `Constraints`, `Avoid`, or `Proof Obligations`, add or repair those sections before the next round.
 
@@ -443,7 +443,7 @@ If no StateMachine artifact collected: log "State machine safety specialist retu
 
 ### G. Check convergence
 
-Call `mcp__ralphx__get_plan_verification(session_id: <parent_session_id>)`.
+Call `get_plan_verification(session_id: <parent_session_id>)`.
 
 Check for convergence conditions:
 1. **Verified**: All blocking gaps from this round are cleared AND both required critics returned usable artifacts (`complete`, `partial`, or `error`) → `status: "verified"`, `convergence_reason: "zero_blocking"`
@@ -479,7 +479,7 @@ Escalate when ANY of these conditions is true:
 
 ### Escalation Procedure
 
-1. **Update verification state to terminal** — call `mcp__ralphx__complete_plan_verification` with:
+1. **Update verification state to terminal** — call `complete_plan_verification` with:
    ```json
    {
      "session_id": "<parent_session_id>",
@@ -491,7 +491,7 @@ Escalate when ANY of these conditions is true:
    ```
    ⚠️ This MUST be called **before** sending the message. Sets terminal state so reconciler won't reset the session.
 
-2. **Send escalation message to parent** — call `mcp__ralphx__send_ideation_session_message` with:
+2. **Send escalation message to parent** — call `send_ideation_session_message` with:
    ```
    session_id: <parent_session_id>
    message: <escalation XML — see template below>
@@ -524,7 +524,7 @@ Fill in all fields accurately. The `what_parent_should_explore` field is the mos
 
 ## Final Cleanup (MANDATORY)
 
-After the round loop exits (convergence, hard cap, escalation, or error), call `mcp__ralphx__complete_plan_verification` with:
+After the round loop exits (convergence, hard cap, escalation, or error), call `complete_plan_verification` with:
 
 ```json
 {

@@ -7,7 +7,9 @@ use axum::{extract::State, Json};
 use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::agents::AgentHarnessKind;
-use ralphx_lib::domain::entities::{ChatConversation, DelegatedSessionId, IdeationSession, Project};
+use ralphx_lib::domain::entities::{
+    ChatConversation, DelegatedSessionId, IdeationSession, Project, SessionPurpose,
+};
 use ralphx_lib::http_server::delegation::{DelegationHistoryEntry, DelegationJobSnapshot};
 use ralphx_lib::http_server::handlers::{
     build_delegated_task_completed_payload, build_delegated_task_started_payload,
@@ -168,7 +170,9 @@ async fn test_delegate_start_creates_delegated_session_and_completes_with_mock_c
         State(state.clone()),
         Json(DelegateStartRequest {
             caller_agent_name: Some("ralphx-ideation".to_string()),
-            parent_session_id: parent.id.as_str().to_string(),
+            caller_context_type: Some("ideation".to_string()),
+            caller_context_id: Some(parent.id.as_str().to_string()),
+            parent_session_id: Some(parent.id.as_str().to_string()),
             parent_turn_id: Some("turn-42".to_string()),
             parent_message_id: Some("msg-99".to_string()),
             parent_conversation_id: None,
@@ -310,7 +314,9 @@ async fn test_delegate_start_uses_verifier_subagent_lane_model_when_model_is_omi
         State(state.clone()),
         Json(DelegateStartRequest {
             caller_agent_name: Some("ralphx-plan-verifier".to_string()),
-            parent_session_id: parent.id.as_str().to_string(),
+            caller_context_type: Some("ideation".to_string()),
+            caller_context_id: Some(parent.id.as_str().to_string()),
+            parent_session_id: Some(parent.id.as_str().to_string()),
             parent_turn_id: Some("turn-verifier".to_string()),
             parent_message_id: Some("msg-verifier".to_string()),
             parent_conversation_id: None,
@@ -374,7 +380,9 @@ async fn test_delegate_start_rejects_unknown_agent_name() {
         State(state),
         Json(DelegateStartRequest {
             caller_agent_name: Some("ralphx-ideation".to_string()),
-            parent_session_id: parent.id.as_str().to_string(),
+            caller_context_type: Some("ideation".to_string()),
+            caller_context_id: Some(parent.id.as_str().to_string()),
+            parent_session_id: Some(parent.id.as_str().to_string()),
             parent_turn_id: Some("turn-bad".to_string()),
             parent_message_id: Some("msg-bad".to_string()),
             parent_conversation_id: None,
@@ -413,7 +421,9 @@ async fn test_delegate_start_rejects_missing_caller_agent_name() {
         State(state),
         Json(DelegateStartRequest {
             caller_agent_name: None,
-            parent_session_id: parent.id.as_str().to_string(),
+            caller_context_type: Some("ideation".to_string()),
+            caller_context_id: Some(parent.id.as_str().to_string()),
+            parent_session_id: Some(parent.id.as_str().to_string()),
             parent_turn_id: None,
             parent_message_id: None,
             parent_conversation_id: None,
@@ -452,7 +462,9 @@ async fn test_delegate_start_rejects_disallowed_target_for_caller() {
         State(state),
         Json(DelegateStartRequest {
             caller_agent_name: Some("ralphx-execution-worker".to_string()),
-            parent_session_id: parent.id.as_str().to_string(),
+            caller_context_type: Some("ideation".to_string()),
+            caller_context_id: Some(parent.id.as_str().to_string()),
+            parent_session_id: Some(parent.id.as_str().to_string()),
             parent_turn_id: None,
             parent_message_id: None,
             parent_conversation_id: None,
@@ -479,6 +491,118 @@ async fn test_delegate_start_rejects_disallowed_target_for_caller() {
             .as_str()
             .unwrap_or_default()
             .contains("may not delegate")
+    );
+}
+
+#[tokio::test]
+async fn test_delegate_start_infers_parent_session_from_verification_child_context() {
+    let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
+    let _codex_cli_guard = EnvVarGuard::set(
+        "CODEX_CLI_PATH",
+        fake_codex_path.to_str().expect("fake codex path utf8"),
+    );
+    let app_state = Arc::new(AppState::new_sqlite_test());
+    let state = build_state(app_state);
+    let parent = create_parent_session(&state).await;
+
+    let mut verification_child = IdeationSession::builder()
+        .project_id(parent.project_id.clone())
+        .title("Verification Child")
+        .cross_project_checked(true)
+        .build();
+    verification_child.parent_session_id = Some(parent.id.clone());
+    verification_child.session_purpose = SessionPurpose::Verification;
+    let verification_child = state
+        .app_state
+        .ideation_session_repo
+        .create(verification_child)
+        .await
+        .unwrap();
+
+    let start = start_delegate(
+        State(state.clone()),
+        Json(DelegateStartRequest {
+            caller_agent_name: Some("ralphx-plan-verifier".to_string()),
+            caller_context_type: Some("ideation".to_string()),
+            caller_context_id: Some(verification_child.id.as_str().to_string()),
+            parent_session_id: None,
+            parent_turn_id: Some("turn-verifier".to_string()),
+            parent_message_id: Some("msg-verifier".to_string()),
+            parent_conversation_id: None,
+            parent_tool_use_id: Some("toolu-verifier-1".to_string()),
+            delegated_session_id: None,
+            child_session_id: None,
+            agent_name: "ralphx-plan-critic-completeness".to_string(),
+            prompt: "Review the plan for completeness and summarize any gaps.".to_string(),
+            title: Some("Delegated Completeness Critic".to_string()),
+            inherit_context: true,
+            harness: Some(AgentHarnessKind::Codex),
+            model: None,
+            logical_effort: None,
+            approval_policy: None,
+            sandbox_mode: None,
+        }),
+    )
+    .await
+    .unwrap()
+    .0;
+
+    assert_eq!(start.parent_context_id, parent.id.as_str());
+}
+
+#[tokio::test]
+async fn test_delegate_start_rejects_parent_session_mismatch_against_verification_child_context() {
+    let state = build_state(Arc::new(AppState::new_sqlite_test()));
+    let parent = create_parent_session(&state).await;
+    let other_parent = create_parent_session(&state).await;
+
+    let mut verification_child = IdeationSession::builder()
+        .project_id(parent.project_id.clone())
+        .title("Verification Child")
+        .cross_project_checked(true)
+        .build();
+    verification_child.parent_session_id = Some(parent.id.clone());
+    verification_child.session_purpose = SessionPurpose::Verification;
+    let verification_child = state
+        .app_state
+        .ideation_session_repo
+        .create(verification_child)
+        .await
+        .unwrap();
+
+    let error = start_delegate(
+        State(state),
+        Json(DelegateStartRequest {
+            caller_agent_name: Some("ralphx-plan-verifier".to_string()),
+            caller_context_type: Some("ideation".to_string()),
+            caller_context_id: Some(verification_child.id.as_str().to_string()),
+            parent_session_id: Some(other_parent.id.as_str().to_string()),
+            parent_turn_id: None,
+            parent_message_id: None,
+            parent_conversation_id: None,
+            parent_tool_use_id: None,
+            delegated_session_id: None,
+            child_session_id: None,
+            agent_name: "ralphx-plan-critic-completeness".to_string(),
+            prompt: "noop".to_string(),
+            title: None,
+            inherit_context: true,
+            harness: Some(AgentHarnessKind::Codex),
+            model: None,
+            logical_effort: None,
+            approval_policy: None,
+            sandbox_mode: None,
+        }),
+    )
+    .await
+    .unwrap_err();
+
+    assert_eq!(error.0, axum::http::StatusCode::BAD_REQUEST);
+    assert!(
+        error.1 .0["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("does not match caller context parent")
     );
 }
 

@@ -44,7 +44,7 @@ Your prompt includes:
 - `ROUND: <n>` (may be omitted; if omitted, use `0`)
 
 Before any analysis:
-1. Call `mcp__ralphx__get_session_plan(session_id: "<id>")` to retrieve the current plan content.
+1. Call `get_session_plan(session_id: "<id>")` to retrieve the current plan content.
 2. Use `get_artifact` only if you need a specific historical version (e.g., comparing current vs previous).
 3. If the call returns null or an error: create the required artifact with:
    - `"status": "error"`
@@ -78,7 +78,7 @@ Budget rule:
 
 ## Your Role
 
-Review the plan fetched via `mcp__ralphx__get_session_plan` for gaps, risks, and missing details. Focus on **completeness** — are all the pieces there? Are the connections specified? Could the plan be executed and produce a correct, complete result?
+Review the plan fetched via `get_session_plan` for gaps, risks, and missing details. Focus on **completeness** — are all the pieces there? Are the connections specified? Could the plan be executed and produce a correct, complete result?
 
 Treat the plan's `Constraints`, `Avoid`, and `Proof Obligations` sections as first-class completeness checks when present. Missing, vague, or self-contradictory entries in those sections are high-signal gaps because they usually predict rework later.
 
