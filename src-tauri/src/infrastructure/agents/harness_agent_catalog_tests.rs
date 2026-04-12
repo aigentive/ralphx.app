@@ -279,6 +279,40 @@ const CANONICAL_CLAUDE_MODEL_OWNED_AGENTS: &[(&str, &str)] = &[
 
 const CANONICAL_CLAUDE_EFFORT_OWNED_AGENTS: &[(&str, &str)] = &[("ralphx-ideation", "max")];
 
+const CANONICAL_CLAUDE_TOOL_SPEC_OWNED_AGENTS: &[(&str, &str, &[&str], bool)] = &[
+    ("ralphx-ideation", "base_tools", &["Task"], false),
+    ("ralphx-ideation-readonly", "base_tools", &["Task"], false),
+    ("ralphx-execution-worker", "base_tools", &["Write", "Edit", "Task", "LSP"], false),
+    ("ralphx-execution-coder", "base_tools", &["Write", "Edit", "Task", "LSP"], false),
+    ("ralphx-execution-reviewer", "base_tools", &["Task"], false),
+    ("ralphx-qa-prep", "base_tools", &["Task"], false),
+    ("ralphx-qa-executor", "base_tools", &["Write", "Edit", "Task"], false),
+    ("ralphx-execution-merger", "base_tools", &["Edit", "Task"], false),
+    (
+        "ralphx-execution-team-lead",
+        "base_tools",
+        &["Write", "Edit", "Task", "LSP", "TaskStop", "TeamCreate", "TeamDelete", "SendMessage"],
+        false,
+    ),
+    ("ralphx-plan-verifier", "base_tools", &["Task"], false),
+    ("ralphx-plan-critic-completeness", "critic_tools", &[], false),
+    ("ralphx-plan-critic-implementation-feasibility", "critic_tools", &[], false),
+    ("ralphx-research-deep-researcher", "base_tools", &["Write", "Task"], false),
+    ("ralphx-memory-maintainer", "base_tools", &["Write", "Edit"], false),
+    ("ralphx-memory-capture", "base_tools", &["Write", "Edit"], false),
+    ("ralphx-ideation-specialist-backend", "base_tools", &[], false),
+    ("ralphx-ideation-specialist-frontend", "base_tools", &[], false),
+    ("ralphx-ideation-specialist-infra", "base_tools", &[], false),
+    ("ralphx-ideation-specialist-ux", "base_tools", &[], false),
+    ("ralphx-ideation-specialist-code-quality", "base_tools", &[], false),
+    ("ralphx-ideation-specialist-prompt-quality", "base_tools", &[], false),
+    ("ralphx-ideation-specialist-intent", "base_tools", &[], false),
+    ("ralphx-ideation-specialist-state-machine", "base_tools", &[], false),
+    ("ralphx-ideation-specialist-pipeline-safety", "base_tools", &[], false),
+    ("ralphx-ideation-advocate", "base_tools", &[], false),
+    ("ralphx-ideation-critic", "base_tools", &[], false),
+];
+
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
@@ -508,6 +542,37 @@ fn canonical_claude_effort_matches_loader_for_owned_agents() {
                 .as_deref(),
             Some(*expected_effort),
             "runtime config should prefer canonical effort for {agent_name}"
+        );
+    }
+}
+
+#[test]
+fn canonical_claude_tool_spec_matches_loader_for_owned_agents() {
+    let root = project_root();
+
+    for (agent_name, expected_extends, expected_include, expected_mcp_only) in
+        CANONICAL_CLAUDE_TOOL_SPEC_OWNED_AGENTS
+    {
+        let definition = load_canonical_agent_definition(&root, agent_name)
+            .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
+        let metadata = try_load_canonical_claude_metadata(&root, agent_name)
+            .unwrap_or_else(|_| panic!("failed to load canonical Claude metadata for {agent_name}"));
+        let spec = definition
+            .harnesses
+            .claude
+            .tools
+            .as_ref()
+            .unwrap_or_else(|| panic!("expected canonical Claude tools for {agent_name}"));
+
+        assert_eq!(spec.extends.as_deref(), Some(*expected_extends));
+        assert_eq!(spec.include, expected_include.iter().map(|v| (*v).to_string()).collect::<Vec<_>>());
+        assert_eq!(spec.mcp_only, *expected_mcp_only);
+        assert_eq!(metadata.tools.as_ref(), Some(spec));
+        assert_eq!(
+            get_agent_config(agent_name)
+                .unwrap_or_else(|| panic!("missing runtime config for {agent_name}"))
+                .mcp_only,
+            *expected_mcp_only
         );
     }
 }

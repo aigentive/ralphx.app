@@ -5,3 +5,8 @@ harnesses:
   claude:
     model: sonnet
     permission_mode: acceptEdits
+    tools:
+      extends: base_tools
+      include:
+        - Write
+        - Edit

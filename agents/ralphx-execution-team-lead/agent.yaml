@@ -6,6 +6,17 @@ harnesses:
   claude:
     model: sonnet
     permission_mode: acceptEdits
+    tools:
+      extends: base_tools
+      include:
+        - Write
+        - Edit
+        - Task
+        - LSP
+        - TaskStop
+        - TeamCreate
+        - TeamDelete
+        - SendMessage
     disallowed_tools:
       - Write
       - Edit

@@ -10,6 +10,10 @@ capabilities:
 harnesses:
   claude:
     model: sonnet
+    tools:
+      extends: base_tools
+      include:
+        - Task
     disallowed_tools:
       - Write
       - Edit

@@ -4,5 +4,10 @@ description: "Conducts thorough research and analysis"
 harnesses:
   claude:
     model: opus
+    tools:
+      extends: base_tools
+      include:
+        - Write
+        - Task
     skills:
       - research-methodology

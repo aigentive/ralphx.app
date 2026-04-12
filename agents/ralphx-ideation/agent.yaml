@@ -6,6 +6,10 @@ harnesses:
   claude:
     model: opus
     effort: max
+    tools:
+      extends: base_tools
+      include:
+        - Task
     disallowed_tools:
       - Write
       - Edit

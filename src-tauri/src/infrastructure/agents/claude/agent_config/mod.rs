@@ -10,6 +10,7 @@ use crate::domain::agents::{
 use crate::domain::execution::{ExecutionSettings, GlobalExecutionSettings};
 use crate::infrastructure::agents::harness_agent_catalog::{
     load_canonical_agent_definition, resolve_project_root_from_plugin_dir,
+    CanonicalClaudeToolSpec,
     try_load_canonical_claude_metadata,
 };
 use serde::Deserialize;
@@ -161,7 +162,7 @@ fn default_agent_harness_defaults_raw() -> AgentHarnessDefaultsConfigRaw {
         .collect()
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
 struct AgentToolsSpec {
     #[serde(default)]
     mcp_only: bool,
@@ -347,29 +348,63 @@ pub fn resolve_file_logging_early() -> bool {
     true
 }
 
-fn resolve_tools(raw: &AgentConfigRaw, tool_sets: &HashMap<String, Vec<String>>) -> Vec<String> {
-    if raw.tools.mcp_only {
+fn resolve_tools_from_spec(
+    agent_name: &str,
+    tools: &AgentToolsSpec,
+    tool_sets: &HashMap<String, Vec<String>>,
+) -> Vec<String> {
+    if tools.mcp_only {
         return Vec::new();
     }
 
     let mut out = Vec::<String>::new();
 
-    let extends = raw.tools.extends.as_deref().unwrap_or("base_tools");
+    let extends = tools.extends.as_deref().unwrap_or("base_tools");
 
     if let Some(base) = tool_sets.get(extends) {
         out.extend(base.iter().cloned());
     } else if extends == "base_tools" {
         out.extend(DEFAULT_BASE_CLI_TOOLS.iter().map(|t| (*t).to_string()));
     } else {
-        tracing::warn!(agent = %raw.name, tool_set = %extends, "Unknown tools.extends set; using include only");
+        tracing::warn!(agent = %agent_name, tool_set = %extends, "Unknown tools.extends set; using include only");
     }
 
-    out.extend(raw.tools.include.iter().cloned());
+    out.extend(tools.include.iter().cloned());
 
     // Stable de-dup while preserving first-seen order
     let mut seen = HashSet::new();
     out.retain(|t| seen.insert(t.clone()));
     out
+}
+
+fn runtime_tools_spec_from_canonical(spec: &CanonicalClaudeToolSpec) -> AgentToolsSpec {
+    AgentToolsSpec {
+        mcp_only: spec.mcp_only,
+        extends: spec.extends.clone(),
+        include: spec.include.clone(),
+    }
+}
+
+fn resolve_tool_spec(project_root: &Path, raw: &AgentConfigRaw) -> AgentToolsSpec {
+    let Ok(metadata) = try_load_canonical_claude_metadata(project_root, &raw.name) else {
+        return raw.tools.clone();
+    };
+
+    let Some(spec) = metadata.tools else {
+        return raw.tools.clone();
+    };
+
+    let canonical_spec = runtime_tools_spec_from_canonical(&spec);
+    if raw.tools != canonical_spec {
+        tracing::warn!(
+            agent = %raw.name,
+            runtime_tools = ?raw.tools,
+            canonical_tools = ?canonical_spec,
+            "Canonical Claude metadata overrides divergent runtime tools spec"
+        );
+    }
+
+    canonical_spec
 }
 
 fn canonical_agent_project_root() -> PathBuf {
@@ -619,7 +654,8 @@ fn parse_config_with_lookup(
             }
         };
 
-        let cli_tools = resolve_tools(raw, &parsed.tool_sets);
+        let tool_spec = resolve_tool_spec(&canonical_project_root, raw);
+        let cli_tools = resolve_tools_from_spec(raw.name.as_str(), &tool_spec, &parsed.tool_sets);
         let agent_profile_selection =
             runtime_settings_profile_override_for_agent_with(&raw.name, lookup)
                 .or_else(|| raw.settings_profile.clone());
@@ -645,7 +681,7 @@ fn parse_config_with_lookup(
         let permission_mode = resolve_permission_mode(&canonical_project_root, raw);
         resolved.push(AgentConfig {
             name: raw.name.clone(),
-            mcp_only: raw.tools.mcp_only,
+            mcp_only: tool_spec.mcp_only,
             resolved_cli_tools: cli_tools,
             allowed_mcp_tools,
             preapproved_cli_tools,

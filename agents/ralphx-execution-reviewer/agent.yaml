@@ -4,6 +4,10 @@ description: "Reviews code changes for quality and correctness"
 harnesses:
   claude:
     model: sonnet
+    tools:
+      extends: base_tools
+      include:
+        - Task
     preapproved_cli_tools:
       - Bash
       - Task(Explore)

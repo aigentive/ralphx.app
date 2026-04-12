@@ -14,6 +14,8 @@ capabilities:
 harnesses:
   claude:
     model: opus
+    tools:
+      extends: critic_tools
     disallowed_tools:
       - Write
       - Edit

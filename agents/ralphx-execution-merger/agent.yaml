@@ -5,6 +5,11 @@ harnesses:
   claude:
     model: opus
     permission_mode: acceptEdits
+    tools:
+      extends: base_tools
+      include:
+        - Edit
+        - Task
 delegation:
   allowed_targets:
     - ralphx-research-deep-researcher

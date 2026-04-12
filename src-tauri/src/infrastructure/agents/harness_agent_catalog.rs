@@ -61,6 +61,8 @@ pub struct CanonicalClaudeAgentMetadata {
     #[serde(default)]
     pub effort: Option<String>,
     #[serde(default)]
+    pub tools: Option<CanonicalClaudeToolSpec>,
+    #[serde(default)]
     pub disallowed_tools: Vec<String>,
     #[serde(default)]
     pub preapproved_cli_tools: Vec<String>,
@@ -72,10 +74,22 @@ pub struct CanonicalClaudeAgentMetadata {
     pub max_turns: Option<u32>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct CanonicalClaudeToolSpec {
+    #[serde(default)]
+    pub mcp_only: bool,
+    #[serde(default)]
+    pub extends: Option<String>,
+    #[serde(default)]
+    pub include: Vec<String>,
+}
+
 impl CanonicalClaudeAgentMetadata {
     fn is_empty(&self) -> bool {
         self.model.is_none()
             && self.effort.is_none()
+            && self.tools.is_none()
             && self.disallowed_tools.is_empty()
             && self.preapproved_cli_tools.is_empty()
             && self.permission_mode.is_none()
@@ -89,6 +103,9 @@ impl CanonicalClaudeAgentMetadata {
         }
         if self.effort.is_some() {
             base.effort = self.effort;
+        }
+        if self.tools.is_some() {
+            base.tools = self.tools;
         }
         if !self.disallowed_tools.is_empty() {
             base.disallowed_tools = self.disallowed_tools;

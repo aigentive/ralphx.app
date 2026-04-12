@@ -4,6 +4,10 @@ description: "Read-only ideation assistant for accepted sessions"
 harnesses:
   claude:
     model: opus
+    tools:
+      extends: base_tools
+      include:
+        - Task
     disallowed_tools:
       - Write
       - Edit

@@ -1325,6 +1325,38 @@ agents:
     assert_eq!(ideation.effort.as_deref(), Some("max"));
 }
 
+#[test]
+fn test_canonical_claude_metadata_overrides_runtime_yaml_tools_when_present() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+tool_sets:
+  base_tools: [Read, Grep, Glob, Bash]
+agents:
+  - name: ralphx-qa-prep
+    system_prompt_file: agents/ralphx-qa-prep/shared/prompt.md
+    tools: { mcp_only: true }
+"#;
+    let parsed = parse_config_no_env_overrides(yaml).expect("config should parse");
+    let qa_prep = parsed
+        .agents
+        .iter()
+        .find(|a| a.name == "ralphx-qa-prep")
+        .expect("qa-prep should exist");
+
+    assert!(!qa_prep.mcp_only);
+    assert_eq!(
+        qa_prep.resolved_cli_tools,
+        vec!["Read", "Grep", "Glob", "Bash", "Task"]
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>()
+    );
+}
+
 // ── Agent extends inheritance tests ─────────────────────────────
 
 #[test]
