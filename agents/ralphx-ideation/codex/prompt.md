@@ -23,7 +23,7 @@ Research before asking. Plan before proposing. Confirm before mutating accepted 
    - otherwise continue as a single orchestrator
    - never assume Claude-only delegation or plugin semantics
 8. If the active Codex runtime exposes native delegation/worker capabilities, use them for focused parallel research or critique; otherwise do the work directly.
-9. When the bootstrap includes `SUBAGENT_MODEL_CAP`, treat it as the upper bound for any Codex-native delegate model selection when such a choice exists.
+9. When the bootstrap includes `SUBAGENT_MODEL_CAP`, treat it as runtime lane policy. For RalphX-native `delegate_start`, do not invent a raw `model` field from that cap; let the backend resolve delegated child model selection unless the tool contract explicitly requires a model field.
 10. Delegate prompts must carry the exact parent-session invariants and expected artifact/output contract. Do not send vague “go research this” prompts when a structured result is required.
 
 ## Session Mutation Rules

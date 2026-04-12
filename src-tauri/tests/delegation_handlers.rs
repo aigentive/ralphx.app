@@ -277,6 +277,7 @@ async fn test_delegate_start_creates_delegated_session_and_completes_with_mock_c
     assert_eq!(latest_run.status, "completed");
     assert_eq!(latest_run.harness.as_deref(), Some("codex"));
     assert_eq!(latest_run.upstream_provider.as_deref(), Some("openai"));
+    assert_eq!(latest_run.logical_model.as_deref(), Some("gpt-5.4-mini"));
     assert!(delegated_status.recent_messages.is_none());
 
     let delegated_after = state
@@ -292,6 +293,76 @@ async fn test_delegate_start_creates_delegated_session_and_completes_with_mock_c
     assert_eq!(latest_run.input_tokens, Some(11));
     assert_eq!(latest_run.cache_read_tokens, Some(2));
     assert_eq!(latest_run.output_tokens, Some(7));
+}
+
+#[tokio::test]
+async fn test_delegate_start_uses_verifier_subagent_lane_model_when_model_is_omitted() {
+    let (_fake_codex_dir, fake_codex_path) = install_fake_codex_cli();
+    let _codex_cli_guard = EnvVarGuard::set(
+        "CODEX_CLI_PATH",
+        fake_codex_path.to_str().expect("fake codex path utf8"),
+    );
+    let app_state = Arc::new(AppState::new_sqlite_test());
+    let state = build_state(app_state);
+    let parent = create_parent_session(&state).await;
+
+    let start = start_delegate(
+        State(state.clone()),
+        Json(DelegateStartRequest {
+            caller_agent_name: Some("ralphx-plan-verifier".to_string()),
+            parent_session_id: parent.id.as_str().to_string(),
+            parent_turn_id: Some("turn-verifier".to_string()),
+            parent_message_id: Some("msg-verifier".to_string()),
+            parent_conversation_id: None,
+            parent_tool_use_id: Some("toolu-verifier-1".to_string()),
+            delegated_session_id: None,
+            child_session_id: None,
+            agent_name: "ralphx-plan-critic-completeness".to_string(),
+            prompt: "Review the plan for completeness and summarize any gaps.".to_string(),
+            title: Some("Delegated Completeness Critic".to_string()),
+            inherit_context: true,
+            harness: Some(AgentHarnessKind::Codex),
+            model: None,
+            logical_effort: None,
+            approval_policy: None,
+            sandbox_mode: None,
+        }),
+    )
+    .await
+    .unwrap()
+    .0;
+
+    let waited = {
+        let mut snapshot = None;
+        for _ in 0..20 {
+            let candidate = wait_delegate(
+                State(state.clone()),
+                Json(DelegateWaitRequest {
+                    job_id: start.job_id.clone(),
+                    include_delegated_status: Some(true),
+                    include_child_status: None,
+                    include_messages: Some(false),
+                    message_limit: None,
+                }),
+            )
+            .await
+            .unwrap()
+            .0;
+            if candidate.status != "running" {
+                snapshot = Some(candidate);
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        snapshot.expect("delegation job should settle")
+    };
+
+    let latest_run = waited
+        .delegated_status
+        .and_then(|status| status.latest_run)
+        .expect("latest delegated run");
+    assert_eq!(latest_run.harness.as_deref(), Some("codex"));
+    assert_eq!(latest_run.logical_model.as_deref(), Some("gpt-5.4-mini"));
 }
 
 #[tokio::test]

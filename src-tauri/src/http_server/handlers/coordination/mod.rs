@@ -475,6 +475,32 @@ async fn resolve_parent_conversation_id(
         .map(|conversation| conversation.id.as_str()))
 }
 
+async fn resolve_delegate_model_override(
+    state: &HttpServerState,
+    caller_agent_name: &str,
+    project_id: &str,
+    harness: AgentHarnessKind,
+    requested_model: Option<&str>,
+) -> Option<String> {
+    if let Some(model) = requested_model {
+        return Some(model.to_string());
+    }
+
+    resolve_agent_spawn_settings(
+        caller_agent_name,
+        Some(project_id),
+        ChatContextType::Ideation,
+        None,
+        Some(harness),
+        None,
+        Some(&state.app_state.agent_lane_settings_repo),
+        Some(&state.app_state.ideation_model_settings_repo),
+        Some(&state.app_state.ideation_effort_settings_repo),
+    )
+    .await
+    .subagent_model_cap
+}
+
 async fn ensure_delegated_conversation(
     state: &HttpServerState,
     delegated_session_id: &str,
@@ -667,13 +693,21 @@ pub(crate) async fn start_delegate_impl(
         ChatContextType::Ideation,
         None,
         req.harness,
-        req.model.as_deref(),
+        None,
         Some(&state.app_state.agent_lane_settings_repo),
         Some(&state.app_state.ideation_model_settings_repo),
         Some(&state.app_state.ideation_effort_settings_repo),
     )
     .await;
     let harness = resolved_spawn.effective_harness;
+    let delegated_model = resolve_delegate_model_override(
+        state,
+        caller_agent_name,
+        project_id.as_str(),
+        harness,
+        req.model.as_deref(),
+    )
+    .await;
     let plugin_dir = resolve_harness_plugin_dir(harness, &working_directory);
     let project_root = resolve_project_root_from_plugin_dir(&plugin_dir);
     let (_caller_definition, definition) =
@@ -736,7 +770,7 @@ pub(crate) async fn start_delegate_impl(
             SendMessageOptions {
                 harness_override: Some(harness),
                 agent_name_override: Some(definition.name.clone()),
-                model_override: req.model.clone(),
+                model_override: delegated_model.clone(),
                 logical_effort_override: logical_effort.clone(),
                 approval_policy_override: approval_policy.clone(),
                 sandbox_mode_override: sandbox_mode.clone(),
@@ -774,7 +808,7 @@ pub(crate) async fn start_delegate_impl(
     let logical_effort_label = logical_effort.as_ref().map(|value| value.to_string());
     if let Some(payload) = build_delegated_task_started_payload(
         &snapshot,
-        req.model.as_deref(),
+        delegated_model.as_deref(),
         logical_effort_label.as_deref(),
         approval_policy.as_deref(),
         sandbox_mode.as_deref(),

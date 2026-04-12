@@ -914,6 +914,7 @@ fn build_initial_prompt_with_history(
     user_message: &str,
     history: &str,
     ideation_subagent_model_cap: Option<&str>,
+    ideation_harness: Option<AgentHarnessKind>,
     ideation_bootstrap_mode: IdeationBootstrapMode,
 ) -> String {
     match context_type {
@@ -925,14 +926,24 @@ fn build_initial_prompt_with_history(
             };
             let subagent_policy_block = ideation_subagent_model_cap
                 .map(|model_cap| {
-                    format!(
-                        "<ideation_subagent_policy>\n\
-                         SUBAGENT_MODEL_CAP: {}\n\
-                         When using Task(...) to spawn Claude subagents, always pass model: \"{}\".\n\
-                         Task(...) does not support effort; do not pass effort.\n\
-                         </ideation_subagent_policy>\n",
-                        model_cap, model_cap
-                    )
+                    match ideation_harness.unwrap_or(AgentHarnessKind::Claude) {
+                        AgentHarnessKind::Claude => format!(
+                            "<ideation_subagent_policy>\n\
+                             SUBAGENT_MODEL_CAP: {}\n\
+                             When using Task(...) to spawn Claude subagents, always pass model: \"{}\".\n\
+                             Task(...) does not support effort; do not pass effort.\n\
+                             </ideation_subagent_policy>\n",
+                            model_cap, model_cap
+                        ),
+                        AgentHarnessKind::Codex => format!(
+                            "<ideation_subagent_policy>\n\
+                             SUBAGENT_MODEL_CAP: {}\n\
+                             For RalphX-native delegation on Codex, let the runtime resolve delegated child model selection from this cap.\n\
+                             Do not invent a raw `model` field on `delegate_start` unless a tool contract explicitly requires it.\n\
+                             </ideation_subagent_policy>\n",
+                            model_cap
+                        ),
+                    }
                 })
                 .unwrap_or_default();
             format!(
@@ -1045,6 +1056,7 @@ async fn build_initial_prompt_with_session_artifacts(
     total_available: usize,
     artifact_repo: Arc<dyn ArtifactRepository>,
     ideation_subagent_model_cap: Option<&str>,
+    ideation_harness: Option<AgentHarnessKind>,
     ideation_bootstrap_mode: IdeationBootstrapMode,
 ) -> Result<String, String> {
     let history = if context_type == ChatContextType::Ideation {
@@ -1060,6 +1072,7 @@ async fn build_initial_prompt_with_session_artifacts(
         user_message,
         &history,
         ideation_subagent_model_cap,
+        ideation_harness,
         ideation_bootstrap_mode,
     ))
 }
@@ -1340,6 +1353,7 @@ pub fn build_initial_prompt(
         user_message,
         &history,
         None,
+        None,
         bootstrap_mode,
     )
 }
@@ -1360,6 +1374,7 @@ pub fn build_resume_initial_prompt(
         context_id,
         user_message,
         "",
+        None,
         None,
         IdeationBootstrapMode::ProviderResume,
     )
@@ -1678,6 +1693,7 @@ async fn build_command_from_resolved_settings(
                 total_available,
                 Arc::clone(&artifact_repo),
                 ideation_subagent_model_cap,
+                Some(AgentHarnessKind::Claude),
                 if session_messages.is_empty() {
                     IdeationBootstrapMode::Fresh
                 } else {
@@ -1741,6 +1757,7 @@ async fn build_recovery_command_from_resolved_settings(
         total_available,
         artifact_repo,
         ideation_subagent_model_cap,
+        Some(AgentHarnessKind::Claude),
         IdeationBootstrapMode::Recovery,
     )
     .await?;
@@ -1817,6 +1834,7 @@ pub async fn build_codex_command(
         total_available,
         artifact_repo,
         ideation_subagent_model_cap.as_deref(),
+        Some(AgentHarnessKind::Codex),
         if session_messages.is_empty() {
             IdeationBootstrapMode::Fresh
         } else {
@@ -2060,6 +2078,7 @@ pub async fn build_interactive_command(
         total_available,
         artifact_repo,
         ideation_subagent_model_cap.as_deref(),
+        Some(AgentHarnessKind::Claude),
         if session_messages.is_empty() {
             IdeationBootstrapMode::Fresh
         } else {
@@ -2378,6 +2397,7 @@ pub async fn build_codex_resume_command(
                 total_available,
                 artifact_repo,
                 ideation_subagent_model_cap,
+                Some(AgentHarnessKind::Codex),
                 IdeationBootstrapMode::Recovery,
             )
             .await?;
@@ -2858,6 +2878,7 @@ exit 0
             0,
             Arc::new(MemoryArtifactRepository::new()),
             Some(resolved_spawn_settings.model.as_str()),
+            Some(AgentHarnessKind::Claude),
             IdeationBootstrapMode::Fresh,
         )
         .await
@@ -2952,6 +2973,7 @@ exit 0
             1,
             artifact_repo,
             Some("sonnet"),
+            Some(AgentHarnessKind::Claude),
             IdeationBootstrapMode::Recovery,
         )
         .await
@@ -2974,12 +2996,46 @@ exit 0
             "Ideation prompt should include the subagent model cap for Task spawns"
         );
         assert!(
+            prompt.contains("When using Task(...) to spawn Claude subagents"),
+            "Claude ideation prompts should keep Claude-specific subagent guidance"
+        );
+        assert!(
             prompt.contains(&format!("<session_id>{}</session_id>", session_id.as_str())),
             "Ideation prompt should expose an explicit session_id alias"
         );
         assert!(
             prompt.contains("<session_bootstrap_mode>recovery</session_bootstrap_mode>"),
             "Recovery prompts must tell ideation agents they are reconstructing from stored history"
+        );
+    }
+
+    #[tokio::test]
+    async fn build_initial_prompt_with_session_artifacts_uses_codex_delegation_guidance_for_codex_ideation() {
+        let prompt = build_initial_prompt_with_session_artifacts(
+            ChatContextType::Ideation,
+            "session-codex",
+            "continue",
+            &[],
+            0,
+            Arc::new(MemoryArtifactRepository::new()),
+            Some("gpt-5.4-mini"),
+            Some(AgentHarnessKind::Codex),
+            IdeationBootstrapMode::Recovery,
+        )
+        .await
+        .expect("prompt build should succeed");
+
+        assert!(
+            prompt.contains("SUBAGENT_MODEL_CAP: gpt-5.4-mini"),
+            "Codex ideation prompts should still expose the subagent model cap"
+        );
+        assert!(
+            prompt.contains("let the runtime resolve delegated child model selection from this cap"),
+            "Codex ideation prompts should describe runtime-owned delegate model resolution"
+        );
+        assert!(
+            !prompt.contains("When using Task(...) to spawn Claude subagents"),
+            "Codex ideation prompts must not leak Claude-only Task guidance"
         );
     }
 
