@@ -16,6 +16,7 @@ harnesses:
     model: opus
     tools:
       extends: critic_tools
+    preapproved_cli_tools: []
     disallowed_tools:
       - Write
       - Edit

@@ -23,6 +23,7 @@ harnesses:
     model: opus
     tools:
       extends: base_tools
+    preapproved_cli_tools: []
     disallowed_tools:
       - Write
       - Edit
