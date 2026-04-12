@@ -378,6 +378,7 @@ impl MessageQueue {
     pub fn count_for_context(&self, context_type: &str, context_id: &str) -> usize {
         let ctx_type = match context_type {
             "ideation" => ChatContextType::Ideation,
+            "delegation" => ChatContextType::Delegation,
             "task_execution" => ChatContextType::TaskExecution,
             "task" => ChatContextType::Task,
             "project" => ChatContextType::Project,

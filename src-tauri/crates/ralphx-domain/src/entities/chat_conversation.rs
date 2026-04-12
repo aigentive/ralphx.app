@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::agents::{AgentHarnessKind, ProviderSessionRef};
 
-use super::{IdeationSessionId, ProjectId, TaskId};
+use super::{DelegatedSessionId, IdeationSessionId, ProjectId, TaskId};
 
 /// Unique identifier for a chat conversation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -73,6 +73,8 @@ impl std::str::FromStr for ChatConversationId {
 pub enum ChatContextType {
     /// Ideation session context
     Ideation,
+    /// Delegated specialist session context
+    Delegation,
     /// Task-specific context
     Task,
     /// Project-level context
@@ -90,6 +92,7 @@ impl fmt::Display for ChatContextType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ChatContextType::Ideation => write!(f, "ideation"),
+            ChatContextType::Delegation => write!(f, "delegation"),
             ChatContextType::Task => write!(f, "task"),
             ChatContextType::Project => write!(f, "project"),
             ChatContextType::TaskExecution => write!(f, "task_execution"),
@@ -105,6 +108,7 @@ impl std::str::FromStr for ChatContextType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "ideation" => Ok(ChatContextType::Ideation),
+            "delegation" => Ok(ChatContextType::Delegation),
             "task" => Ok(ChatContextType::Task),
             "project" => Ok(ChatContextType::Project),
             "task_execution" => Ok(ChatContextType::TaskExecution),
@@ -276,6 +280,33 @@ impl ChatConversation {
             id: ChatConversationId::new(),
             context_type: ChatContextType::Task,
             context_id: task_id.as_str().to_string(),
+            claude_session_id: None,
+            provider_session_id: None,
+            provider_harness: None,
+            upstream_provider: None,
+            provider_profile: None,
+            title: None,
+            message_count: 0,
+            last_message_at: None,
+            created_at: now,
+            updated_at: now,
+            parent_conversation_id: None,
+            attribution_backfill_status: None,
+            attribution_backfill_source: None,
+            attribution_backfill_source_path: None,
+            attribution_backfill_last_attempted_at: None,
+            attribution_backfill_completed_at: None,
+            attribution_backfill_error_summary: None,
+        }
+    }
+
+    /// Create a new conversation for a delegated specialist session
+    pub fn new_delegation(session_id: DelegatedSessionId) -> Self {
+        let now = Utc::now();
+        Self {
+            id: ChatConversationId::new(),
+            context_type: ChatContextType::Delegation,
+            context_id: session_id.as_str().to_string(),
             claude_session_id: None,
             provider_session_id: None,
             provider_harness: None,

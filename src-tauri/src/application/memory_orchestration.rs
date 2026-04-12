@@ -26,6 +26,7 @@ impl MemoryCategory {
     pub fn from_context_type(context_type: ChatContextType) -> Self {
         match context_type {
             ChatContextType::Ideation => MemoryCategory::Planning,
+            ChatContextType::Delegation => MemoryCategory::Execution,
             ChatContextType::Task | ChatContextType::TaskExecution => MemoryCategory::Execution,
             ChatContextType::Review => MemoryCategory::Review,
             ChatContextType::Merge => MemoryCategory::Merge,

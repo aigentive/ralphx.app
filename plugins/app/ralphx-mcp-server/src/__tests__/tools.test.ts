@@ -973,13 +973,17 @@ describe('delegation bridge tools', () => {
     expect(tool?.inputSchema.type).toBe('object');
     expect(tool?.inputSchema.properties).toHaveProperty('parent_turn_id');
     expect(tool?.inputSchema.properties).toHaveProperty('parent_message_id');
+    expect(tool?.inputSchema.properties).toHaveProperty('parent_conversation_id');
+    expect(tool?.inputSchema.properties).toHaveProperty('parent_tool_use_id');
+    expect(tool?.inputSchema.properties).toHaveProperty('delegated_session_id');
     expect(tool?.inputSchema.required).toEqual(
       expect.arrayContaining(['parent_session_id', 'agent_name', 'prompt'])
     );
   });
 
-  it('delegate_wait should support child-status hydration options', () => {
+  it('delegate_wait should support delegated-status hydration options', () => {
     const tool = allTools.find((entry) => entry.name === 'delegate_wait');
+    expect(tool?.inputSchema.properties).toHaveProperty('include_delegated_status');
     expect(tool?.inputSchema.properties).toHaveProperty('include_child_status');
     expect(tool?.inputSchema.properties).toHaveProperty('include_messages');
     expect(tool?.inputSchema.properties).toHaveProperty('message_limit');

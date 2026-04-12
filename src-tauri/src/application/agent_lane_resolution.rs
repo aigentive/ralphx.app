@@ -46,9 +46,10 @@ pub(crate) async fn resolve_agent_spawn_settings(
     let subagent_lane = subagent_lane_for_context(agent_name, context_type);
 
     if primary_lane.is_none() {
+        let effective_harness = harness_override.unwrap_or(DEFAULT_AGENT_HARNESS);
         return ResolvedAgentSpawnSettings {
             configured_harness: None,
-            effective_harness: DEFAULT_AGENT_HARNESS,
+            effective_harness,
             configured_model: None,
             configured_logical_effort: None,
             configured_approval_policy: None,
@@ -213,7 +214,10 @@ fn execution_lane_for_context(
         }
         ChatContextType::Review => Some(AgentLane::ExecutionReviewer),
         ChatContextType::Merge => Some(AgentLane::ExecutionMerger),
-        ChatContextType::Ideation | ChatContextType::Task | ChatContextType::Project => None,
+        ChatContextType::Ideation
+        | ChatContextType::Delegation
+        | ChatContextType::Task
+        | ChatContextType::Project => None,
     }
 }
 

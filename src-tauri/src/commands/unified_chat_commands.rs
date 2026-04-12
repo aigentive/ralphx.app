@@ -601,13 +601,18 @@ pub async fn create_agent_conversation(
     input: CreateAgentConversationInput,
     state: State<'_, AppState>,
 ) -> Result<AgentConversationResponse, String> {
-    use crate::domain::entities::{ChatConversation, IdeationSessionId, ProjectId, TaskId};
+    use crate::domain::entities::{
+        ChatConversation, DelegatedSessionId, IdeationSessionId, ProjectId, TaskId,
+    };
 
     let context_type = parse_context_type(&input.context_type)?;
 
     let conversation = match context_type {
         ChatContextType::Ideation => {
             ChatConversation::new_ideation(IdeationSessionId::from_string(&input.context_id))
+        }
+        ChatContextType::Delegation => {
+            ChatConversation::new_delegation(DelegatedSessionId::from_string(&input.context_id))
         }
         ChatContextType::Task => {
             ChatConversation::new_task(TaskId::from_string(input.context_id.clone()))

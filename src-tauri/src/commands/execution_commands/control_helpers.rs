@@ -96,6 +96,19 @@ pub(super) async fn queue_key_matches_project(
             };
             Ok(session.project_id == *project_id)
         }
+        ChatContextType::Delegation => {
+            let session_id =
+                crate::domain::entities::DelegatedSessionId::from_string(key.context_id.clone());
+            let Some(session) = app_state
+                .delegated_session_repo
+                .get_by_id(&session_id)
+                .await
+                .map_err(|e| e.to_string())?
+            else {
+                return Ok(false);
+            };
+            Ok(session.project_id == *project_id)
+        }
         ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge => {
             let task_id = TaskId::from_string(key.context_id.clone());
             let Some(task) = app_state

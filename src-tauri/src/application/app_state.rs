@@ -26,9 +26,10 @@ use crate::domain::qa::QASettings;
 use crate::domain::repositories::{
     ActivePlanRepository, ActivityEventRepository, AgentLaneSettingsRepository,
     AgentProfileRepository, AgentRunRepository, ApiKeyRepository, AppStateRepository,
-    ArtifactBucketRepository, ArtifactFlowRepository, ArtifactRepository, ChatAttachmentRepository,
-    ChatConversationRepository, ChatMessageRepository, ExecutionPlanRepository,
-    ExecutionSettingsRepository, ExternalEventsRepository, GlobalExecutionSettingsRepository,
+    ArtifactBucketRepository, ArtifactFlowRepository, ArtifactRepository,
+    ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
+    DelegatedSessionRepository, ExecutionPlanRepository, ExecutionSettingsRepository,
+    ExternalEventsRepository, GlobalExecutionSettingsRepository,
     IdeationEffortSettingsRepository, IdeationModelSettingsRepository, IdeationSessionRepository,
     IdeationSettingsRepository, MemoryArchiveRepository, MemoryEntryRepository,
     MemoryEventRepository, MethodologyRepository, PlanBranchRepository,
@@ -48,8 +49,9 @@ use crate::infrastructure::memory::{
     MemoryAgentRunRepository, MemoryApiKeyRepository, MemoryAppStateRepository,
     MemoryArtifactBucketRepository, MemoryArtifactFlowRepository, MemoryArtifactRepository,
     MemoryChatAttachmentRepository, MemoryChatConversationRepository, MemoryChatMessageRepository,
-    MemoryExecutionPlanRepository, MemoryExecutionSettingsRepository,
-    MemoryExternalEventsRepository, MemoryGlobalExecutionSettingsRepository,
+    MemoryDelegatedSessionRepository, MemoryExecutionPlanRepository,
+    MemoryExecutionSettingsRepository, MemoryExternalEventsRepository,
+    MemoryGlobalExecutionSettingsRepository,
     MemoryIdeationEffortSettingsRepository, MemoryIdeationModelSettingsRepository,
     MemoryIdeationSessionRepository, MemoryIdeationSettingsRepository, MemoryMethodologyRepository,
     MemoryPermissionRepository, MemoryPlanBranchRepository, MemoryPlanSelectionStatsRepository,
@@ -67,10 +69,11 @@ use crate::infrastructure::sqlite::{
     SqliteAgentProfileRepository, SqliteAgentRunRepository, SqliteApiKeyRepository,
     SqliteAppStateRepository, SqliteArtifactBucketRepository, SqliteArtifactFlowRepository,
     SqliteArtifactRepository, SqliteChatAttachmentRepository, SqliteChatConversationRepository,
-    SqliteChatMessageRepository, SqliteExecutionPlanRepository, SqliteExecutionSettingsRepository,
-    SqliteExternalEventsRepository, SqliteGlobalExecutionSettingsRepository,
-    SqliteIdeationEffortSettingsRepository, SqliteIdeationModelSettingsRepository,
-    SqliteIdeationSessionRepository, SqliteIdeationSettingsRepository,
+    SqliteChatMessageRepository, SqliteDelegatedSessionRepository, SqliteExecutionPlanRepository,
+    SqliteExecutionSettingsRepository, SqliteExternalEventsRepository,
+    SqliteGlobalExecutionSettingsRepository, SqliteIdeationEffortSettingsRepository,
+    SqliteIdeationModelSettingsRepository, SqliteIdeationSessionRepository,
+    SqliteIdeationSettingsRepository,
     SqliteMemoryArchiveRepository, SqliteMemoryEntryRepository, SqliteMemoryEventRepository,
     SqliteMethodologyRepository, SqlitePermissionRepository, SqlitePlanBranchRepository,
     SqlitePlanSelectionStatsRepository, SqliteProcessRepository, SqliteProjectRepository,
@@ -126,6 +129,8 @@ pub struct AppState {
     pub ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     /// Ideation settings repository
     pub ideation_settings_repo: Arc<dyn IdeationSettingsRepository>,
+    /// Delegated specialist session repository
+    pub delegated_session_repo: Arc<dyn DelegatedSessionRepository>,
     /// Ideation effort settings repository (global and per-project effort overrides)
     pub ideation_effort_settings_repo: Arc<dyn IdeationEffortSettingsRepository>,
     /// Ideation model settings repository (global and per-project model overrides)
@@ -443,6 +448,9 @@ impl AppState {
             ideation_session_repo: Arc::new(SqliteIdeationSessionRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
+            delegated_session_repo: Arc::new(SqliteDelegatedSessionRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
             ideation_settings_repo: Arc::new(SqliteIdeationSettingsRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
@@ -622,6 +630,9 @@ impl AppState {
             ideation_session_repo: Arc::new(SqliteIdeationSessionRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
+            delegated_session_repo: Arc::new(SqliteDelegatedSessionRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
             ideation_settings_repo: Arc::new(MemoryIdeationSettingsRepository::new()),
             ideation_effort_settings_repo: Arc::new(MemoryIdeationEffortSettingsRepository::new()),
             ideation_model_settings_repo: Arc::new(MemoryIdeationModelSettingsRepository::new()),
@@ -721,6 +732,9 @@ impl AppState {
             execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
             ideation_session_repo: Arc::new(SqliteIdeationSessionRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
+            delegated_session_repo: Arc::new(SqliteDelegatedSessionRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
             ideation_settings_repo: Arc::new(MemoryIdeationSettingsRepository::new()),
@@ -834,6 +848,9 @@ impl AppState {
             ideation_session_repo: Arc::new(SqliteIdeationSessionRepository::from_shared(
                 Arc::clone(&shared_conn),
             )),
+            delegated_session_repo: Arc::new(SqliteDelegatedSessionRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
             ideation_settings_repo: Arc::new(MemoryIdeationSettingsRepository::new()),
             ideation_effort_settings_repo: Arc::new(MemoryIdeationEffortSettingsRepository::new()),
             ideation_model_settings_repo: Arc::new(MemoryIdeationModelSettingsRepository::new()),
@@ -937,6 +954,7 @@ impl AppState {
             execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
             global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
             ideation_session_repo: Arc::new(MemoryIdeationSessionRepository::new()),
+            delegated_session_repo: Arc::new(MemoryDelegatedSessionRepository::new()),
             ideation_settings_repo: Arc::new(MemoryIdeationSettingsRepository::new()),
             ideation_effort_settings_repo: Arc::new(MemoryIdeationEffortSettingsRepository::new()),
             ideation_model_settings_repo: Arc::new(MemoryIdeationModelSettingsRepository::new()),

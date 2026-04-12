@@ -35,7 +35,7 @@ use crate::application::harness_runtime_registry::{
     default_harness_runtime_available, resolve_default_chat_service_bootstrap,
 };
 use crate::application::question_state::QuestionState;
-use crate::domain::agents::{AgentHarnessKind, DEFAULT_AGENT_HARNESS};
+use crate::domain::agents::{AgentHarnessKind, LogicalEffort, DEFAULT_AGENT_HARNESS};
 use crate::domain::entities::{
     AgentRun, ChatContextType, ChatConversation, ChatConversationId, ChatMessageId,
     IdeationSessionId, InternalStatus, ProjectId, TaskId,
@@ -44,10 +44,11 @@ use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::repositories::{
     ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository,
     ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
-    ChatMessageRepository, ExecutionSettingsRepository, IdeationEffortSettingsRepository,
-    IdeationModelSettingsRepository, IdeationSessionRepository, MemoryEventRepository,
-    PlanBranchRepository, ProjectRepository, ReviewRepository, StateHistoryMetadata,
-    TaskDependencyRepository, TaskProposalRepository, TaskRepository, TaskStepRepository,
+    ChatMessageRepository, DelegatedSessionRepository, ExecutionSettingsRepository,
+    IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
+    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
+    ReviewRepository, StateHistoryMetadata, TaskDependencyRepository, TaskProposalRepository,
+    TaskRepository, TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, QueuedMessage, RunningAgentKey, RunningAgentRegistry};
 use async_trait::async_trait;
@@ -286,6 +287,33 @@ fn conversation_spawn_harness_override(
         })
 }
 
+fn apply_send_message_overrides(
+    resolved: &mut crate::application::agent_lane_resolution::ResolvedAgentSpawnSettings,
+    options: &SendMessageOptions,
+) {
+    if let Some(model_override) = options.model_override.as_ref() {
+        resolved.configured_model = Some(model_override.clone());
+        resolved.model = model_override.clone();
+    }
+
+    if let Some(logical_effort_override) = options.logical_effort_override {
+        resolved.configured_logical_effort = Some(logical_effort_override);
+        resolved.logical_effort = Some(logical_effort_override);
+        resolved.claude_effort =
+            Some(logical_effort_override.to_legacy_claude_effort().to_string());
+    }
+
+    if let Some(approval_policy_override) = options.approval_policy_override.as_ref() {
+        resolved.configured_approval_policy = Some(approval_policy_override.clone());
+        resolved.approval_policy = Some(approval_policy_override.clone());
+    }
+
+    if let Some(sandbox_mode_override) = options.sandbox_mode_override.as_ref() {
+        resolved.configured_sandbox_mode = Some(sandbox_mode_override.clone());
+        resolved.sandbox_mode = Some(sandbox_mode_override.clone());
+    }
+}
+
 // ============================================================================
 // ChatService trait
 // ============================================================================
@@ -300,6 +328,16 @@ pub struct SendMessageOptions {
     /// Optional provider harness override for relaunch/recovery flows that must preserve an
     /// existing provider session's runtime instead of re-resolving only from current lane config.
     pub harness_override: Option<AgentHarnessKind>,
+    /// Optional explicit canonical agent override for this send.
+    pub agent_name_override: Option<String>,
+    /// Optional explicit model override for this send.
+    pub model_override: Option<String>,
+    /// Optional explicit logical-effort override for this send.
+    pub logical_effort_override: Option<LogicalEffort>,
+    /// Optional explicit approval-policy override for this send.
+    pub approval_policy_override: Option<String>,
+    /// Optional explicit sandbox-mode override for this send.
+    pub sandbox_mode_override: Option<String>,
     /// When true, the agent was spawned from an external MCP request (e.g. ReefBot).
     /// Filters interactive-only tools (e.g. `ask_user_question`) from the allowed tool list
     /// to prevent deadlocks where the agent waits for human input that will never arrive.
@@ -444,6 +482,7 @@ pub struct AppChatService<R: Runtime = tauri::Wry> {
     project_repo: Arc<dyn ProjectRepository>,
     task_repo: Arc<dyn TaskRepository>,
     task_dependency_repo: Arc<dyn TaskDependencyRepository>,
+    delegated_session_repo: Arc<dyn DelegatedSessionRepository>,
     execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
     agent_lane_settings_repo: Option<Arc<dyn AgentLaneSettingsRepository>>,
     ideation_effort_settings_repo: Option<Arc<dyn IdeationEffortSettingsRepository>>,
@@ -492,6 +531,7 @@ impl<R: Runtime> AppChatService<R> {
         task_repo: Arc<dyn TaskRepository>,
         task_dependency_repo: Arc<dyn TaskDependencyRepository>,
         ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+        delegated_session_repo: Arc<dyn DelegatedSessionRepository>,
         activity_event_repo: Arc<dyn ActivityEventRepository>,
         message_queue: Arc<MessageQueue>,
         running_agent_registry: Arc<dyn RunningAgentRegistry>,
@@ -511,6 +551,7 @@ impl<R: Runtime> AppChatService<R> {
             project_repo,
             task_repo,
             task_dependency_repo,
+            delegated_session_repo,
             execution_settings_repo: None,
             agent_lane_settings_repo: None,
             ideation_effort_settings_repo: None,
@@ -901,6 +942,7 @@ impl<R: Runtime> AppChatService<R> {
             Arc::clone(&self.project_repo),
             Arc::clone(&self.task_repo),
             Arc::clone(&self.ideation_session_repo),
+            Arc::clone(&self.delegated_session_repo),
             &self.default_working_directory,
         )
         .await
@@ -947,6 +989,7 @@ impl<R: Runtime> AppChatService<R> {
         &self,
         conversation: &ChatConversation,
         message: &str,
+        agent_name_override: Option<&str>,
         context_type: ChatContextType,
         context_id: &str,
         working_directory: &Path,
@@ -965,6 +1008,7 @@ impl<R: Runtime> AppChatService<R> {
             &self.plugin_dir,
             conversation,
             message,
+            agent_name_override,
             context_type,
             context_id,
             working_directory,
@@ -974,6 +1018,7 @@ impl<R: Runtime> AppChatService<R> {
             Arc::clone(&self.chat_attachment_repo),
             Arc::clone(&self.artifact_repo),
             Arc::clone(&self.ideation_session_repo),
+            Arc::clone(&self.delegated_session_repo),
             Arc::clone(&self.task_repo),
             session_messages,
             session_total,
@@ -1059,6 +1104,14 @@ impl<R: Runtime> AppChatService<R> {
                     } else {
                         Some(session.status.to_string())
                     }
+                } else {
+                    None
+                }
+            }
+            ChatContextType::Delegation => {
+                let session_id = crate::domain::entities::DelegatedSessionId::from_string(context_id);
+                if let Ok(Some(session)) = self.delegated_session_repo.get_by_id(&session_id).await {
+                    Some(session.status)
                 } else {
                     None
                 }
@@ -1317,11 +1370,15 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
         };
         let entity_status = self.get_entity_status(context_type, context_id).await;
         let team_mode_val = self.team_mode.load(Ordering::Relaxed);
-        let agent_name = chat_service_helpers::resolve_agent_with_team_mode(
+        let resolved_context_agent = chat_service_helpers::resolve_agent_with_team_mode(
             &context_type,
             entity_status.as_deref(),
             team_mode_val,
         );
+        let agent_name = options
+            .agent_name_override
+            .as_deref()
+            .unwrap_or(resolved_context_agent);
         let spawn_harness_override =
             options
                 .harness_override
@@ -1775,6 +1832,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             context_id,
             Arc::clone(&self.task_repo),
             Arc::clone(&self.ideation_session_repo),
+            Arc::clone(&self.delegated_session_repo),
         )
         .await;
 
@@ -1815,19 +1873,20 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
         }
 
         // 7a. Build and spawn command
-        let resolved_spawn_settings =
+        let mut resolved_spawn_settings =
             crate::application::agent_lane_resolution::resolve_agent_spawn_settings(
                 agent_name,
                 project_id.as_deref(),
                 context_type,
                 entity_status.as_deref(),
                 spawn_harness_override,
-                None,
+                options.model_override.as_deref(),
                 self.agent_lane_settings_repo.as_ref(),
                 self.ideation_model_settings_repo.as_ref(),
                 self.ideation_effort_settings_repo.as_ref(),
             )
             .await;
+        apply_send_message_overrides(&mut resolved_spawn_settings, &options);
         let runtime_team_mode = chat_service_helpers::effective_team_mode_for_harness(
             team_mode_val,
             resolved_spawn_settings.effective_harness,
@@ -1847,12 +1906,17 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             .as_ref()
             .map(|session_ref| session_ref.provider_session_id.clone());
         let is_new_conversation = stored_session_id.is_none();
-        let resolved_agent_name = chat_service_helpers::resolve_agent_with_team_mode(
-            &context_type,
-            entity_status.as_deref(),
-            runtime_team_mode,
-        )
-        .to_string();
+        let resolved_agent_name = options
+            .agent_name_override
+            .clone()
+            .unwrap_or_else(|| {
+                chat_service_helpers::resolve_agent_with_team_mode(
+                    &context_type,
+                    entity_status.as_deref(),
+                    runtime_team_mode,
+                )
+                .to_string()
+            });
         let (upstream_provider, provider_profile) =
             chat_service_helpers::provider_origin_for_harness(
                 resolved_spawn_settings.effective_harness,
@@ -1953,6 +2017,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
             .spawn_process_for_harness(
                 &conversation,
                 message,
+                Some(resolved_agent_name.as_str()),
                 context_type,
                 context_id,
                 &working_directory,
@@ -2070,6 +2135,7 @@ impl<R: Runtime + 'static> ChatService for AppChatService<R> {
                 task_dependency_repo: Arc::clone(&self.task_dependency_repo),
                 project_repo: Arc::clone(&self.project_repo),
                 ideation_session_repo: Arc::clone(&self.ideation_session_repo),
+                delegated_session_repo: Arc::clone(&self.delegated_session_repo),
                 execution_settings_repo: self.execution_settings_repo.clone(),
                 agent_lane_settings_repo: self.agent_lane_settings_repo.clone(),
                 ideation_effort_settings_repo: self.ideation_effort_settings_repo.clone(),

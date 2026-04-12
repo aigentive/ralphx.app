@@ -139,13 +139,21 @@ pub(super) async fn attempt_session_recovery<R: Runtime>(
         let app_state = handle.state::<AppState>();
         Arc::clone(&app_state.task_repo)
     });
-    let entity_status = if let (Some(ideation_repo), Some(task_repo)) =
-        (ideation_session_repo.as_ref(), task_repo.as_ref())
+    let delegated_session_repo = app_handle.map(|handle| {
+        let app_state = handle.state::<AppState>();
+        Arc::clone(&app_state.delegated_session_repo)
+    });
+    let entity_status = if let (Some(ideation_repo), Some(delegated_repo), Some(task_repo)) = (
+        ideation_session_repo.as_ref(),
+        delegated_session_repo.as_ref(),
+        task_repo.as_ref(),
+    )
     {
         chat_service_context::get_entity_status_for_resume(
             conversation.context_type,
             conversation.context_id.as_str(),
             Arc::clone(ideation_repo),
+            Arc::clone(delegated_repo),
             Arc::clone(task_repo),
         )
         .await

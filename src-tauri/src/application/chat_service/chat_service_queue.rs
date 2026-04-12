@@ -328,6 +328,10 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 let app_state = handle.state::<AppState>();
                 Arc::clone(&app_state.ideation_effort_settings_repo)
             });
+            let delegated_session_repo = app_handle.as_ref().map(|handle| {
+                let app_state = handle.state::<AppState>();
+                Arc::clone(&app_state.delegated_session_repo)
+            });
 
             // Build and spawn resume command
             let provider_spawnable = match chat_service_context::build_resume_command_for_harness(
@@ -347,6 +351,11 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 ideation_effort_settings_repo,
                 ideation_model_settings_repo,
                 Arc::clone(ideation_session_repo),
+                Arc::clone(
+                    delegated_session_repo
+                        .as_ref()
+                        .expect("delegated session repo available"),
+                ),
                 Arc::clone(task_repo),
                 &[],
                 0,

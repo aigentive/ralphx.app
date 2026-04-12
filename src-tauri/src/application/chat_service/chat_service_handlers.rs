@@ -284,6 +284,7 @@ fn build_recovery_retry_background_context<R: Runtime>(
     task_dependency_repo: &Arc<dyn TaskDependencyRepository>,
     project_repo: &Arc<dyn ProjectRepository>,
     ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
+    delegated_session_repo: &Arc<dyn crate::domain::repositories::DelegatedSessionRepository>,
     execution_settings_repo: &Option<Arc<dyn ExecutionSettingsRepository>>,
     agent_lane_settings_repo: &Option<
         Arc<dyn crate::domain::repositories::AgentLaneSettingsRepository>,
@@ -338,6 +339,7 @@ fn build_recovery_retry_background_context<R: Runtime>(
             task_dependency_repo: Arc::clone(task_dependency_repo),
             project_repo: Arc::clone(project_repo),
             ideation_session_repo: Arc::clone(ideation_session_repo),
+            delegated_session_repo: Arc::clone(delegated_session_repo),
             execution_settings_repo: execution_settings_repo.clone(),
             agent_lane_settings_repo: agent_lane_settings_repo.clone(),
             ideation_effort_settings_repo: ideation_effort_settings_repo.clone(),
@@ -1460,6 +1462,10 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             let app_state = handle.state::<AppState>();
                             Arc::clone(&app_state.ideation_model_settings_repo)
                         });
+                        let delegated_session_repo = app_handle.as_ref().map(|handle| {
+                            let app_state = handle.state::<AppState>();
+                            Arc::clone(&app_state.delegated_session_repo)
+                        });
 
                         let retry_spawnable =
                             chat_service_context::build_resume_command_for_harness(
@@ -1479,6 +1485,11 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                 ideation_effort_settings_repo.clone(),
                                 ideation_model_settings_repo.clone(),
                                 Arc::clone(ideation_session_repo),
+                                Arc::clone(
+                                    delegated_session_repo
+                                        .as_ref()
+                                        .expect("delegated session repo available"),
+                                ),
                                 Arc::clone(task_repo),
                                 &[],
                                 0,
@@ -1512,6 +1523,9 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                         task_dependency_repo,
                                         project_repo,
                                         ideation_session_repo,
+                                        delegated_session_repo
+                                            .as_ref()
+                                            .expect("delegated session repo available"),
                                         execution_settings_repo,
                                         &agent_lane_settings_repo,
                                         &ideation_effort_settings_repo,

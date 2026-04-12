@@ -11,12 +11,14 @@ use crate::commands::ExecutionState;
 use crate::domain::repositories::{
     ActivityEventRepository, AgentLaneSettingsRepository, AgentRunRepository, ArtifactRepository,
     ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
-    ExecutionSettingsRepository, IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
+    DelegatedSessionRepository, ExecutionSettingsRepository,
+    IdeationEffortSettingsRepository, IdeationModelSettingsRepository,
     IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
     ReviewRepository, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
     TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
+use crate::infrastructure::memory::MemoryDelegatedSessionRepository;
 
 #[derive(Clone)]
 pub(crate) struct RuntimeFactoryDeps {
@@ -134,6 +136,7 @@ pub(crate) struct ChatRuntimeFactoryDeps {
     pub task_repo: Arc<dyn TaskRepository>,
     pub task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     pub ideation_session_repo: Arc<dyn IdeationSessionRepository>,
+    pub delegated_session_repo: Option<Arc<dyn DelegatedSessionRepository>>,
     pub activity_event_repo: Arc<dyn ActivityEventRepository>,
     pub message_queue: Arc<MessageQueue>,
     pub running_agent_registry: Arc<dyn RunningAgentRegistry>,
@@ -177,6 +180,7 @@ impl ChatRuntimeFactoryDeps {
             task_repo,
             task_dependency_repo,
             ideation_session_repo,
+            delegated_session_repo: None,
             activity_event_repo,
             message_queue,
             running_agent_registry,
@@ -259,6 +263,14 @@ impl ChatRuntimeFactoryDeps {
         self
     }
 
+    pub(crate) fn with_delegated_session_repo(
+        mut self,
+        repo: Arc<dyn DelegatedSessionRepository>,
+    ) -> Self {
+        self.delegated_session_repo = Some(repo);
+        self
+    }
+
     pub(crate) fn with_runtime_support(
         mut self,
         execution_settings_repo: Option<Arc<dyn ExecutionSettingsRepository>>,
@@ -333,6 +345,7 @@ impl ChatRuntimeFactoryDeps {
             Arc::clone(&state.running_agent_registry),
             Arc::clone(&state.memory_event_repo),
         )
+        .with_delegated_session_repo(Arc::clone(&state.delegated_session_repo))
         .with_runtime_support(
             Some(Arc::clone(&state.execution_settings_repo)),
             Some(Arc::clone(&state.agent_lane_settings_repo)),
@@ -367,6 +380,10 @@ pub(crate) fn build_chat_service_from_deps<R: Runtime>(
         Arc::clone(&deps.task_repo),
         Arc::clone(&deps.task_dependency_repo),
         Arc::clone(&deps.ideation_session_repo),
+        deps.delegated_session_repo
+            .as_ref()
+            .map(Arc::clone)
+            .unwrap_or_else(|| Arc::new(MemoryDelegatedSessionRepository::new())),
         Arc::clone(&deps.activity_event_repo),
         Arc::clone(&deps.message_queue),
         Arc::clone(&deps.running_agent_registry),

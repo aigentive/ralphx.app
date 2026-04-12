@@ -52,6 +52,9 @@ pub async fn get_or_create_conversation(
         ChatContextType::Ideation => {
             ChatConversation::new_ideation(IdeationSessionId::from_string(context_id))
         }
+        ChatContextType::Delegation => ChatConversation::new_delegation(
+            crate::domain::entities::DelegatedSessionId::from_string(context_id),
+        ),
         ChatContextType::Task => {
             ChatConversation::new_task(TaskId::from_string(context_id.to_string()))
         }

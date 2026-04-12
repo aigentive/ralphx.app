@@ -167,6 +167,7 @@ pub(super) async fn resolve_teammate_project_id(
         context_id,
         state.app_state.task_repo.clone(),
         state.app_state.ideation_session_repo.clone(),
+        state.app_state.delegated_session_repo.clone(),
     )
     .await
 }

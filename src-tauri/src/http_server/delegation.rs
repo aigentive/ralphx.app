@@ -3,8 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::domain::agents::{AgentHandle, AgentHarnessKind};
-use crate::http_server::types::ChildSessionStatusResponse;
+use crate::http_server::types::DelegatedSessionStatusResponse;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DelegationHistoryEntry {
@@ -16,10 +15,15 @@ pub struct DelegationHistoryEntry {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DelegationJobSnapshot {
     pub job_id: String,
-    pub parent_session_id: String,
+    pub parent_context_type: String,
+    pub parent_context_id: String,
     pub parent_turn_id: Option<String>,
     pub parent_message_id: Option<String>,
-    pub child_session_id: String,
+    pub parent_conversation_id: Option<String>,
+    pub parent_tool_use_id: Option<String>,
+    pub delegated_session_id: String,
+    pub delegated_conversation_id: Option<String>,
+    pub delegated_agent_run_id: Option<String>,
     pub agent_name: String,
     pub harness: String,
     pub status: String,
@@ -28,14 +32,12 @@ pub struct DelegationJobSnapshot {
     pub started_at: String,
     pub completed_at: Option<String>,
     pub history: Vec<DelegationHistoryEntry>,
-    pub child_status: Option<ChildSessionStatusResponse>,
+    pub delegated_status: Option<DelegatedSessionStatusResponse>,
 }
 
 #[derive(Debug, Clone)]
 struct DelegationJobRecord {
     snapshot: DelegationJobSnapshot,
-    harness: AgentHarnessKind,
-    handle: Option<AgentHandle>,
 }
 
 #[derive(Clone, Default)]
@@ -51,23 +53,32 @@ impl DelegationService {
     pub async fn register_running(
         &self,
         job_id: String,
-        parent_session_id: String,
+        parent_context_type: String,
+        parent_context_id: String,
         parent_turn_id: Option<String>,
         parent_message_id: Option<String>,
-        child_session_id: String,
+        parent_conversation_id: Option<String>,
+        parent_tool_use_id: Option<String>,
+        delegated_session_id: String,
+        delegated_conversation_id: Option<String>,
+        delegated_agent_run_id: Option<String>,
         agent_name: String,
-        harness: AgentHarnessKind,
-        handle: AgentHandle,
+        harness: impl Into<String>,
     ) -> DelegationJobSnapshot {
         let started_at = Utc::now().to_rfc3339();
         let snapshot = DelegationJobSnapshot {
             job_id: job_id.clone(),
-            parent_session_id,
+            parent_context_type,
+            parent_context_id,
             parent_turn_id,
             parent_message_id,
-            child_session_id,
+            parent_conversation_id,
+            parent_tool_use_id,
+            delegated_session_id,
+            delegated_conversation_id,
+            delegated_agent_run_id,
             agent_name,
-            harness: harness.to_string(),
+            harness: harness.into(),
             status: "running".to_string(),
             content: None,
             error: None,
@@ -78,15 +89,13 @@ impl DelegationService {
                 timestamp: started_at,
                 detail: None,
             }],
-            child_status: None,
+            delegated_status: None,
         };
 
         self.jobs.write().await.insert(
             job_id,
             DelegationJobRecord {
                 snapshot: snapshot.clone(),
-                harness,
-                handle: Some(handle),
             },
         );
 
@@ -119,7 +128,6 @@ impl DelegationService {
             timestamp: completed_at,
             detail: None,
         });
-        record.handle = None;
     }
 
     pub async fn mark_failed(&self, job_id: &str, error: String) {
@@ -139,16 +147,14 @@ impl DelegationService {
             timestamp: completed_at,
             detail: Some(error),
         });
-        record.handle = None;
     }
 
-    pub async fn cancel(
-        &self,
-        job_id: &str,
-    ) -> Option<(AgentHarnessKind, AgentHandle, DelegationJobSnapshot)> {
+    pub async fn cancel(&self, job_id: &str) -> Option<DelegationJobSnapshot> {
         let mut jobs = self.jobs.write().await;
         let record = jobs.get_mut(job_id)?;
-        let handle = record.handle.take()?;
+        if record.snapshot.status != "running" {
+            return None;
+        }
         record.snapshot.status = "cancelled".to_string();
         let completed_at = Utc::now().to_rfc3339();
         record.snapshot.completed_at = Some(completed_at.clone());
@@ -157,6 +163,6 @@ impl DelegationService {
             timestamp: completed_at,
             detail: None,
         });
-        Some((record.harness, handle, record.snapshot.clone()))
+        Some(record.snapshot.clone())
     }
 }

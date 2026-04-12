@@ -482,7 +482,7 @@ export const ALL_TOOLS = [
     {
         name: "delegate_start",
         description: "Start a RalphX-native delegated specialist job. Use this for named specialized agents instead of relying on harness-native subagents. " +
-            "Phase 1 is ideation-family only: pass a parent ideation session, the canonical RalphX agent name, and the delegated prompt.",
+            "Current parent-context support is ideation-family only, but the delegated runtime itself is backed by dedicated delegated sessions, not ideation child sessions.",
         inputSchema: {
             type: "object",
             properties: {
@@ -498,9 +498,21 @@ export const ALL_TOOLS = [
                     type: "string",
                     description: "Optional parent message id that triggered this delegated specialist run.",
                 },
+                parent_conversation_id: {
+                    type: "string",
+                    description: "Optional parent conversation id for linking the delegated conversation back to the invoker chat.",
+                },
+                parent_tool_use_id: {
+                    type: "string",
+                    description: "Optional parent tool_use id for future collapsed subagent/task widget parity in the invoker chat.",
+                },
+                delegated_session_id: {
+                    type: "string",
+                    description: "Optional existing delegated session to reuse for RalphX-side continuity.",
+                },
                 child_session_id: {
                     type: "string",
-                    description: "Optional existing child session to reuse for RalphX-side continuity.",
+                    description: "Deprecated alias for delegated_session_id.",
                 },
                 agent_name: {
                     type: "string",
@@ -512,11 +524,11 @@ export const ALL_TOOLS = [
                 },
                 title: {
                     type: "string",
-                    description: "Optional title when a new child session must be created.",
+                    description: "Optional title when a new delegated session must be created.",
                 },
                 inherit_context: {
                     type: "boolean",
-                    description: "Whether a newly created child session should inherit parent context. Default: true.",
+                    description: "Whether a newly created delegated session should inherit parent context metadata. Default: true.",
                 },
                 harness: {
                     type: "string",
@@ -546,7 +558,7 @@ export const ALL_TOOLS = [
     },
     {
         name: "delegate_wait",
-        description: "Wait for or poll a RalphX-native delegated specialist job. Returns the current job snapshot, including terminal content or error when complete, and can optionally include live child-session status/messages.",
+        description: "Wait for or poll a RalphX-native delegated specialist job. Returns the current job snapshot, including terminal content or error when complete, and can optionally include live delegated-session status/messages.",
         inputSchema: {
             type: "object",
             properties: {
@@ -554,13 +566,17 @@ export const ALL_TOOLS = [
                     type: "string",
                     description: "Delegation job ID returned by delegate_start.",
                 },
+                include_delegated_status: {
+                    type: "boolean",
+                    description: "Whether to hydrate live delegated-session status into the returned snapshot. Default: true.",
+                },
                 include_child_status: {
                     type: "boolean",
-                    description: "Whether to hydrate live child-session status into the returned snapshot. Default: true.",
+                    description: "Deprecated alias for include_delegated_status.",
                 },
                 include_messages: {
                     type: "boolean",
-                    description: "Whether child_status should include recent child-session messages. Default: false.",
+                    description: "Whether delegated_status should include recent delegated-session messages. Default: false.",
                 },
                 message_limit: {
                     type: "number",

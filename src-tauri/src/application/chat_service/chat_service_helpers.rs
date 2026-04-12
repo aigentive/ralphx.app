@@ -84,6 +84,7 @@ pub fn resolve_agent_with_team_mode(
     // Default rules (context-only, backward compatible)
     match context_type {
         ChatContextType::Ideation => AGENT_ORCHESTRATOR_IDEATION,
+        ChatContextType::Delegation => AGENT_CHAT_PROJECT,
         ChatContextType::Task => AGENT_CHAT_TASK,
         ChatContextType::Project => AGENT_CHAT_PROJECT,
         ChatContextType::TaskExecution => AGENT_WORKER,
@@ -192,6 +193,7 @@ pub fn harness_supports_merge_completion_watcher(harness: AgentHarnessKind) -> b
 pub fn context_type_to_process(context_type: &ChatContextType) -> &'static str {
     match context_type {
         ChatContextType::Ideation => "ideation",
+        ChatContextType::Delegation => "delegation",
         ChatContextType::Task => "task",
         ChatContextType::Project => "project",
         ChatContextType::TaskExecution => "execution",

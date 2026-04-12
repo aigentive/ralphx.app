@@ -1114,6 +1114,7 @@ impl<R: Runtime> StartupJobRunner<R> {
                     harness_override: None,
                     is_external_mcp: false,
                     caller_context: SendCallerContext::UserInitiated,
+                    ..Default::default()
                 },
             )
             .await
