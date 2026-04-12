@@ -3,14 +3,15 @@ import type { ChatMessageResponse } from "@/api/chat";
 import { ToolCallIndicator } from "./ToolCallIndicator";
 import { TextBubble } from "./TextBubble";
 import {
-  mergeDelegationContentBlocks,
-  mergeDelegationToolCalls,
+  normalizeDelegationTranscriptPayload,
 } from "./delegation-tool-calls";
 
 function DelegatedTranscriptMessage({ message }: { message: ChatMessageResponse }) {
   const isUser = message.role === "user";
-  const contentBlocks = mergeDelegationContentBlocks(message.contentBlocks ?? []);
-  const toolCalls = mergeDelegationToolCalls(message.toolCalls ?? []);
+  const { contentBlocks, toolCalls } = normalizeDelegationTranscriptPayload({
+    contentBlocks: message.contentBlocks,
+    toolCalls: message.toolCalls,
+  });
 
   return (
     <div className="space-y-2">

@@ -36,6 +36,29 @@ export interface DelegationMetadata {
   textOutput?: string;
 }
 
+type DelegationMergeable = {
+  name?: string;
+  arguments?: unknown;
+  result?: unknown;
+  error?: string;
+};
+
+interface NormalizeDelegationTranscriptPayloadArgs<
+  TContentBlock extends DelegationMergeable,
+  TToolCall extends ToolCall,
+> {
+  contentBlocks?: TContentBlock[] | null | undefined;
+  toolCalls?: TToolCall[] | null | undefined;
+}
+
+interface NormalizedDelegationTranscriptPayload<
+  TContentBlock extends DelegationMergeable,
+  TToolCall extends ToolCall,
+> {
+  contentBlocks: TContentBlock[];
+  toolCalls: TToolCall[];
+}
+
 function asRecord(value: unknown): UnknownRecord | null {
   return value != null && typeof value === "object" && !Array.isArray(value)
     ? (value as UnknownRecord)
@@ -243,20 +266,20 @@ export function extractDelegationMetadata(
   };
 }
 
-export function mergeDelegationToolCalls(toolCalls: ToolCall[]): ToolCall[] {
-  const merged: ToolCall[] = [];
+function mergeDelegationEntries<T extends DelegationMergeable>(entries: T[]): T[] {
+  const merged: T[] = [];
   const startIndexByJobId = new Map<string, number>();
 
-  for (const toolCall of toolCalls) {
-    if (!isDelegationToolCall(toolCall.name)) {
-      merged.push(toolCall);
+  for (const entry of entries) {
+    if (!entry.name || !isDelegationToolCall(entry.name)) {
+      merged.push(entry);
       continue;
     }
 
-    const metadata = extractDelegationMetadata(toolCall.arguments, toolCall.result);
+    const metadata = extractDelegationMetadata(entry.arguments, entry.result);
 
-    if (isDelegationStartToolCall(toolCall.name)) {
-      merged.push(toolCall);
+    if (isDelegationStartToolCall(entry.name)) {
+      merged.push(entry);
       if (metadata.jobId) {
         startIndexByJobId.set(metadata.jobId, merged.length - 1);
       }
@@ -266,13 +289,13 @@ export function mergeDelegationToolCalls(toolCalls: ToolCall[]): ToolCall[] {
     if (metadata.jobId) {
       const startIndex = startIndexByJobId.get(metadata.jobId);
       if (startIndex != null) {
-        const startToolCall = merged[startIndex];
-        if (startToolCall) {
+        const startEntry = merged[startIndex];
+        if (startEntry) {
           merged[startIndex] = {
-            ...startToolCall,
-            result: toolCall.result ?? startToolCall.result,
-            ...(toolCall.error || startToolCall.error
-              ? { error: toolCall.error ?? startToolCall.error }
+            ...startEntry,
+            result: entry.result ?? startEntry.result,
+            ...(entry.error || startEntry.error
+              ? { error: entry.error ?? startEntry.error }
               : {}),
           };
           continue;
@@ -280,53 +303,31 @@ export function mergeDelegationToolCalls(toolCalls: ToolCall[]): ToolCall[] {
       }
     }
 
-    merged.push(toolCall);
+    merged.push(entry);
   }
 
   return merged;
 }
 
+export function mergeDelegationToolCalls<T extends ToolCall>(toolCalls: T[]): T[] {
+  return mergeDelegationEntries(toolCalls);
+}
+
 export function mergeDelegationContentBlocks<
   T extends { type: string; name?: string; arguments?: unknown; result?: unknown; error?: string },
 >(blocks: T[]): T[] {
-  const merged: T[] = [];
-  const startIndexByJobId = new Map<string, number>();
+  return mergeDelegationEntries(blocks);
+}
 
-  for (const block of blocks) {
-    if (block.type !== "tool_use" || !block.name || !isDelegationToolCall(block.name)) {
-      merged.push(block);
-      continue;
-    }
-
-    const metadata = extractDelegationMetadata(block.arguments, block.result);
-
-    if (isDelegationStartToolCall(block.name)) {
-      merged.push(block);
-      if (metadata.jobId) {
-        startIndexByJobId.set(metadata.jobId, merged.length - 1);
-      }
-      continue;
-    }
-
-    if (metadata.jobId) {
-      const startIndex = startIndexByJobId.get(metadata.jobId);
-      if (startIndex != null) {
-        const startBlock = merged[startIndex];
-        if (startBlock) {
-          merged[startIndex] = {
-            ...startBlock,
-            result: block.result ?? startBlock.result,
-            ...(block.error || startBlock.error
-              ? { error: block.error ?? startBlock.error }
-              : {}),
-          };
-          continue;
-        }
-      }
-    }
-
-    merged.push(block);
-  }
-
-  return merged;
+export function normalizeDelegationTranscriptPayload<
+  TContentBlock extends { type: string; name?: string; arguments?: unknown; result?: unknown; error?: string },
+  TToolCall extends ToolCall,
+>({
+  contentBlocks,
+  toolCalls,
+}: NormalizeDelegationTranscriptPayloadArgs<TContentBlock, TToolCall>): NormalizedDelegationTranscriptPayload<TContentBlock, TToolCall> {
+  return {
+    contentBlocks: mergeDelegationContentBlocks(contentBlocks ?? []),
+    toolCalls: mergeDelegationToolCalls(toolCalls ?? []),
+  };
 }

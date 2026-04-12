@@ -24,8 +24,7 @@ import {
   getProviderHarnessBadgeStyle,
 } from "./provider-harness";
 import {
-  mergeDelegationContentBlocks,
-  mergeDelegationToolCalls,
+  normalizeDelegationTranscriptPayload,
 } from "./delegation-tool-calls";
 
 // ============================================================================
@@ -136,13 +135,12 @@ export const MessageItem = React.memo(function MessageItem({
     (providerHarnessLabel !== null || modelEffortLabel !== null);
 
   // Use pre-parsed data directly (parsing now happens at API layer)
-  const parsedContentBlocks = useMemo(
-    () => mergeDelegationContentBlocks(contentBlocks ?? []),
-    [contentBlocks],
-  );
-  const parsedToolCalls = useMemo(
-    () => mergeDelegationToolCalls(toolCalls ?? []),
-    [toolCalls],
+  const { contentBlocks: parsedContentBlocks, toolCalls: parsedToolCalls } = useMemo(
+    () => normalizeDelegationTranscriptPayload({
+      contentBlocks,
+      toolCalls,
+    }),
+    [contentBlocks, toolCalls],
   );
   const hasContentBlocks = parsedContentBlocks.length > 0;
 

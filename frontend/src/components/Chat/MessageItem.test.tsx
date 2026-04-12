@@ -6,6 +6,7 @@
 
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MessageItem } from "./MessageItem";
 import {
   makeContentText,
@@ -335,6 +336,73 @@ describe("MessageItem - Child tool call suppression for Task/Agent spawns", () =
     expect(container.querySelector('[data-testid="task-tool-call-card"]')).toBeInTheDocument();
     // Independent tool renders as generic indicator
     expect(container.querySelector('[data-testid="tool-call-indicator"]')).toBeInTheDocument();
+  });
+});
+
+describe("MessageItem - persisted delegation replay", () => {
+  it("renders one delegated task card from delegate_start plus delegate_wait content blocks", async () => {
+    const user = userEvent.setup();
+    const createdAt = new Date().toISOString();
+    const contentBlocks = [
+      makeContentToolUse("delegate_start", {
+        id: "toolu-delegate-start",
+        arguments: {
+          agent_name: "ralphx-execution-reviewer",
+          prompt: "Review the patch",
+          harness: "codex",
+          model: "gpt-5.4",
+        },
+        result: [{
+          type: "text",
+          text: JSON.stringify({
+            job_id: "job-123",
+            status: "running",
+          }),
+        }],
+      }),
+      makeContentToolUse("delegate_wait", {
+        id: "toolu-delegate-wait",
+        arguments: {
+          job_id: "job-123",
+        },
+        result: [{
+          type: "text",
+          text: JSON.stringify({
+            job_id: "job-123",
+            status: "completed",
+            content: "Delegated review finished",
+            delegated_status: {
+              latest_run: {
+                harness: "codex",
+                effective_model_id: "gpt-5.4",
+                logical_effort: "high",
+                input_tokens: 120,
+                output_tokens: 45,
+              },
+            },
+          }),
+        }],
+      }),
+    ];
+
+    const { container } = render(
+      <MessageItem
+        role="assistant"
+        content=""
+        createdAt={createdAt}
+        contentBlocks={contentBlocks}
+      />,
+    );
+
+    const taskCards = container.querySelectorAll('[data-testid="task-tool-call-card"]');
+    expect(taskCards).toHaveLength(1);
+    expect(screen.getByText("ralphx-execution-reviewer")).toBeInTheDocument();
+    expect(screen.getByText("Codex")).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: /delegated task: ralphx-execution-reviewer/i }),
+    );
+    expect(screen.getByText("Delegated review finished")).toBeInTheDocument();
   });
 });
 
