@@ -3,6 +3,7 @@ role: qa_executor
 description: "Executes QA tests via agent-browser and evaluates results"
 harnesses:
   claude:
+    model: sonnet
     permission_mode: acceptEdits
     disallowed_tools:
       - NotebookEdit

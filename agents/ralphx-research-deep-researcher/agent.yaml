@@ -3,5 +3,6 @@ role: researcher
 description: "Conducts thorough research and analysis"
 harnesses:
   claude:
+    model: opus
     skills:
       - research-methodology

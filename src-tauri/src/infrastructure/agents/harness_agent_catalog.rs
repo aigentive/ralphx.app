@@ -57,6 +57,8 @@ pub struct CanonicalAgentHarnesses {
 #[serde(deny_unknown_fields)]
 pub struct CanonicalClaudeAgentMetadata {
     #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
     pub disallowed_tools: Vec<String>,
     #[serde(default)]
     pub preapproved_cli_tools: Vec<String>,
@@ -70,7 +72,8 @@ pub struct CanonicalClaudeAgentMetadata {
 
 impl CanonicalClaudeAgentMetadata {
     fn is_empty(&self) -> bool {
-        self.disallowed_tools.is_empty()
+        self.model.is_none()
+            && self.disallowed_tools.is_empty()
             && self.preapproved_cli_tools.is_empty()
             && self.permission_mode.is_none()
             && self.skills.is_empty()
@@ -78,6 +81,9 @@ impl CanonicalClaudeAgentMetadata {
     }
 
     fn overlay_onto(self, mut base: Self) -> Self {
+        if self.model.is_some() {
+            base.model = self.model;
+        }
         if !self.disallowed_tools.is_empty() {
             base.disallowed_tools = self.disallowed_tools;
         }

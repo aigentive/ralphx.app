@@ -3,4 +3,5 @@ role: memory_maintainer
 description: "Background agent for memory ingestion, deduplication, and rule index management"
 harnesses:
   claude:
+    model: sonnet
     permission_mode: acceptEdits

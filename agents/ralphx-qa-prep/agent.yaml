@@ -9,6 +9,7 @@ capabilities:
     - fs_glob
 harnesses:
   claude:
+    model: sonnet
     disallowed_tools:
       - Write
       - Edit

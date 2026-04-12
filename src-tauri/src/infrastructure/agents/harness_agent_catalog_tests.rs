@@ -247,6 +247,36 @@ const CANONICAL_CLAUDE_PERMISSION_MODE_OWNED_AGENTS: &[(&str, &str)] = &[
     ("ralphx-memory-capture", "acceptEdits"),
 ];
 
+const CANONICAL_CLAUDE_MODEL_OWNED_AGENTS: &[(&str, &str)] = &[
+    ("ralphx-execution-worker", "sonnet"),
+    ("ralphx-execution-coder", "sonnet"),
+    ("ralphx-execution-reviewer", "sonnet"),
+    ("ralphx-execution-merger", "opus"),
+    ("ralphx-execution-team-lead", "sonnet"),
+    ("ralphx-ideation", "opus"),
+    ("ralphx-ideation-readonly", "opus"),
+    ("ralphx-ideation-team-lead", "opus"),
+    ("ralphx-plan-verifier", "opus"),
+    ("ralphx-plan-critic-completeness", "opus"),
+    ("ralphx-plan-critic-implementation-feasibility", "opus"),
+    ("ralphx-qa-prep", "sonnet"),
+    ("ralphx-qa-executor", "sonnet"),
+    ("ralphx-research-deep-researcher", "opus"),
+    ("ralphx-ideation-specialist-backend", "opus"),
+    ("ralphx-ideation-specialist-frontend", "opus"),
+    ("ralphx-ideation-specialist-infra", "opus"),
+    ("ralphx-ideation-specialist-ux", "opus"),
+    ("ralphx-ideation-specialist-code-quality", "opus"),
+    ("ralphx-ideation-specialist-prompt-quality", "opus"),
+    ("ralphx-ideation-specialist-intent", "opus"),
+    ("ralphx-ideation-specialist-state-machine", "opus"),
+    ("ralphx-ideation-specialist-pipeline-safety", "opus"),
+    ("ralphx-ideation-advocate", "opus"),
+    ("ralphx-ideation-critic", "opus"),
+    ("ralphx-memory-maintainer", "sonnet"),
+    ("ralphx-memory-capture", "sonnet"),
+];
+
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
@@ -414,6 +444,37 @@ fn canonical_claude_permission_mode_matches_loader_for_owned_agents() {
                 .as_deref(),
             Some(*expected_permission_mode),
             "runtime config should prefer canonical permission_mode for {agent_name}"
+        );
+    }
+}
+
+#[test]
+fn canonical_claude_model_matches_loader_for_owned_agents() {
+    let root = project_root();
+
+    for (agent_name, expected_model) in CANONICAL_CLAUDE_MODEL_OWNED_AGENTS {
+        let definition = load_canonical_agent_definition(&root, agent_name)
+            .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
+        let metadata = try_load_canonical_claude_metadata(&root, agent_name)
+            .unwrap_or_else(|_| panic!("failed to load canonical Claude metadata for {agent_name}"));
+
+        assert_eq!(
+            definition.harnesses.claude.model.as_deref(),
+            Some(*expected_model),
+            "root harnesses.claude.model should stay aligned for {agent_name}"
+        );
+        assert_eq!(
+            metadata.model.as_deref(),
+            Some(*expected_model),
+            "Claude metadata loader should preserve canonical model for {agent_name}"
+        );
+        assert_eq!(
+            get_agent_config(agent_name)
+                .unwrap_or_else(|| panic!("missing runtime config for {agent_name}"))
+                .model
+                .as_deref(),
+            Some(*expected_model),
+            "runtime config should prefer canonical model for {agent_name}"
         );
     }
 }

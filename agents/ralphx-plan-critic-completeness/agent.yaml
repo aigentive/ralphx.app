@@ -13,6 +13,7 @@ capabilities:
     - create_team_artifact
 harnesses:
   claude:
+    model: opus
     disallowed_tools:
       - Write
       - Edit

@@ -3,4 +3,5 @@ role: worker
 description: "Executes implementation tasks autonomously"
 harnesses:
   claude:
+    model: sonnet
     permission_mode: acceptEdits

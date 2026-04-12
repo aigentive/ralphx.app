@@ -3,6 +3,7 @@ role: merger
 description: "Resolves merge conflicts that programmatic rebase+merge couldn't handle"
 harnesses:
   claude:
+    model: opus
     permission_mode: acceptEdits
 delegation:
   allowed_targets:

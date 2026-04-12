@@ -18,6 +18,7 @@ capabilities:
     - get_session_messages
 harnesses:
   claude:
+    model: opus
     disallowed_tools:
       - Write
       - Edit

@@ -1277,6 +1277,30 @@ agents:
     assert_eq!(qa_executor.permission_mode.as_deref(), Some("acceptEdits"));
 }
 
+#[test]
+fn test_canonical_claude_metadata_overrides_runtime_yaml_model_when_present() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: ralphx-qa-prep
+    system_prompt_file: agents/ralphx-qa-prep/shared/prompt.md
+    tools: { extends: base_tools, include: [Task] }
+    model: opus
+"#;
+    let parsed = parse_config_no_env_overrides(yaml).expect("config should parse");
+    let qa_prep = parsed
+        .agents
+        .iter()
+        .find(|a| a.name == "ralphx-qa-prep")
+        .expect("qa-prep should exist");
+
+    assert_eq!(qa_prep.model.as_deref(), Some("sonnet"));
+}
+
 // ── Agent extends inheritance tests ─────────────────────────────
 
 #[test]

@@ -29,6 +29,7 @@ capabilities:
     - get_memories_for_paths
 harnesses:
   claude:
+    model: opus
     disallowed_tools:
       - Write
       - Edit

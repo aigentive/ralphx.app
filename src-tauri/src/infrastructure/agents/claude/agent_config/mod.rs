@@ -422,6 +422,27 @@ fn resolve_preapproved_cli_tools(project_root: &Path, raw: &AgentConfigRaw) -> V
     metadata.preapproved_cli_tools
 }
 
+fn resolve_model(project_root: &Path, raw: &AgentConfigRaw) -> Option<String> {
+    let Ok(metadata) = try_load_canonical_claude_metadata(project_root, &raw.name) else {
+        return raw.model.clone();
+    };
+
+    let Some(model) = metadata.model else {
+        return raw.model.clone();
+    };
+
+    if raw.model.as_deref().is_some() && raw.model.as_deref() != Some(model.as_str()) {
+        tracing::warn!(
+            agent = %raw.name,
+            runtime_model = ?raw.model,
+            canonical_model = %model,
+            "Canonical Claude metadata overrides divergent runtime model"
+        );
+    }
+
+    Some(model)
+}
+
 fn resolve_permission_mode(project_root: &Path, raw: &AgentConfigRaw) -> Option<String> {
     let Ok(metadata) = try_load_canonical_claude_metadata(project_root, &raw.name) else {
         return raw.permission_mode.clone();
@@ -593,6 +614,7 @@ fn parse_config_with_lookup(
         let allowed_mcp_tools = resolve_allowed_mcp_tools(&canonical_project_root, raw);
         let preapproved_cli_tools =
             resolve_preapproved_cli_tools(&canonical_project_root, raw);
+        let model = resolve_model(&canonical_project_root, raw);
         let permission_mode = resolve_permission_mode(&canonical_project_root, raw);
         resolved.push(AgentConfig {
             name: raw.name.clone(),
@@ -601,7 +623,7 @@ fn parse_config_with_lookup(
             allowed_mcp_tools,
             preapproved_cli_tools,
             system_prompt_file: system_prompt,
-            model: raw.model.clone(),
+            model,
             settings_profile: agent_profile_selection.clone(),
             settings: agent_settings,
             effort: raw.effort.clone().filter(|v| validate_effort(v, &raw.name)),

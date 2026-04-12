@@ -3,4 +3,5 @@ role: memory_capture
 description: "Background agent for extracting high-value knowledge from conversations"
 harnesses:
   claude:
+    model: sonnet
     permission_mode: acceptEdits
