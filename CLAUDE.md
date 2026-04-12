@@ -15,7 +15,7 @@ These are the **owner's directives**. They override default agent judgment on me
 
 ## Project: RalphX
 Native Mac GUI for autonomous AI dev: Kanban, multi-agent orchestration, ideation chat.
-Code quality: `.claude/rules/code-quality-standards.md` | State machine: `.claude/rules/task-state-machine.md` | Git/merge: `.claude/rules/task-git-branching.md` | Agents: `.claude/rules/task-execution-agents.md` | Follow-up blocker dedupe: `.claude/rules/followup-blocker-dedupe.md` | Agent type map: `.claude/rules/agent-type-map.md` | Task detail views: `.claude/rules/task-detail-views.md` | Rust API safety: `.claude/rules/rust-stable-apis.md` | Rust test execution: `.claude/rules/rust-test-execution.md`
+Code quality: `.claude/rules/code-quality-standards.md` | State machine: `.claude/rules/task-state-machine.md` | Git/merge: `.claude/rules/task-git-branching.md` | Agents: `.claude/rules/task-execution-agents.md` | Delegation topology: `.claude/rules/delegation-topology.md` | Follow-up blocker dedupe: `.claude/rules/followup-blocker-dedupe.md` | Agent type map: `.claude/rules/agent-type-map.md` | Task detail views: `.claude/rules/task-detail-views.md` | Rust API safety: `.claude/rules/rust-stable-apis.md` | Rust test execution: `.claude/rules/rust-test-execution.md`
 
 ## Structure
 ```

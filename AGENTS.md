@@ -9,6 +9,7 @@ Primary project docs:
 - `CLAUDE.md`
 - `src-tauri/CLAUDE.md`
 - `.claude/rules/*.md`
+- `.claude/rules/delegation-topology.md` for canonical non-team delegation allowlists, auto-injected delegation guidance, and MCP visibility/enforcement rules
 - `.claude/rules/multi-harness.md` for provider-neutral runtime/config/event rules and documentation sync requirements
 - `.claude/rules/agent-mcp-tools.md` for multi-layer agent MCP/tool alignment across prompt frontmatter, `ralphx.yaml`, and MCP allowlists
 - `.claude/rules/rust-test-execution.md` for selective Rust test commands, the standard Rust test stack, shared SQLite fixtures/builders, and the no-broad-`fmt` rule
