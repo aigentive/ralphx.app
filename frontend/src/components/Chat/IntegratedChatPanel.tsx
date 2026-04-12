@@ -500,6 +500,7 @@ export function IntegratedChatPanel({
     isGenerating: agentStatus === "generating",
     isConversationInCurrentContext,
     agentRunStatus: agentRunQuery.data?.status ?? undefined,
+    setStreamingTasks,
     setAgentRunning,
     selectedTaskId: selectedTaskId ?? undefined,
     ideationSessionId,

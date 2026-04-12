@@ -2680,7 +2680,7 @@ mod tests {
     use crate::domain::agents::{AgentHarnessKind, ProviderSessionRef};
     use crate::infrastructure::memory::{
         MemoryArtifactRepository, MemoryChatAttachmentRepository,
-        MemoryIdeationSessionRepository, MemoryTaskRepository,
+        MemoryDelegatedSessionRepository, MemoryIdeationSessionRepository, MemoryTaskRepository,
     };
     use crate::infrastructure::agents::claude::build_spawnable_interactive_command_for_test;
     use std::fs;
@@ -2806,6 +2806,7 @@ exit 0
             Arc::new(MemoryChatAttachmentRepository::new()),
             Arc::new(MemoryArtifactRepository::new()),
             Arc::new(MemoryIdeationSessionRepository::new()),
+            Arc::new(MemoryDelegatedSessionRepository::new()),
             Arc::new(MemoryTaskRepository::new()),
             &[],
             0,

@@ -446,6 +446,26 @@ describe("getConversationActiveState", () => {
           total_tokens: 5000,
           total_tool_uses: 12,
           duration_ms: 45000,
+          delegated_job_id: "job-123",
+          delegated_session_id: "delegated-session-123",
+          delegated_conversation_id: "conv-child-123",
+          delegated_agent_run_id: "run-child-123",
+          provider_harness: "codex",
+          provider_session_id: "provider-session-123",
+          upstream_provider: "openai",
+          provider_profile: "prod",
+          logical_model: "gpt-5.4",
+          effective_model_id: "gpt-5.4-2026-04-01",
+          logical_effort: "high",
+          effective_effort: "high",
+          approval_policy: "never",
+          sandbox_mode: "danger-full-access",
+          input_tokens: 1100,
+          output_tokens: 2200,
+          cache_creation_tokens: 330,
+          cache_read_tokens: 440,
+          estimated_usd: 1.23,
+          text_output: "done",
         },
       ],
       partial_text: "",
@@ -468,6 +488,12 @@ describe("getConversationActiveState", () => {
     expect(task.total_tokens).toBe(5000);
     expect(task.total_tool_uses).toBe(12);
     expect(task.duration_ms).toBe(45000);
+    expect(task.delegated_job_id).toBe("job-123");
+    expect(task.provider_harness).toBe("codex");
+    expect(task.logical_model).toBe("gpt-5.4");
+    expect(task.input_tokens).toBe(1100);
+    expect(task.estimated_usd).toBe(1.23);
+    expect(task.text_output).toBe("done");
   });
 
   it("handles response with no stats fields (old format)", async () => {

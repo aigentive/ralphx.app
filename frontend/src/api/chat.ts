@@ -160,13 +160,34 @@ export interface ActiveStreamingTaskResponse {
   subagent_type?: string;
   model?: string;
   status: string;
+  agent_id?: string;
   teammate_name?: string;
+  delegated_job_id?: string;
+  delegated_session_id?: string;
+  delegated_conversation_id?: string;
+  delegated_agent_run_id?: string;
+  provider_harness?: string;
+  provider_session_id?: string;
+  upstream_provider?: string;
+  provider_profile?: string;
+  logical_model?: string;
+  effective_model_id?: string;
+  logical_effort?: string;
+  effective_effort?: string;
+  approval_policy?: string;
+  sandbox_mode?: string;
   /** Total tokens used (from TaskCompleted stats) */
   total_tokens?: number;
   /** Total tool uses count (from TaskCompleted stats) */
   total_tool_uses?: number;
   /** Duration in milliseconds (from TaskCompleted stats) */
   duration_ms?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_creation_tokens?: number;
+  cache_read_tokens?: number;
+  estimated_usd?: number;
+  text_output?: string;
 }
 
 /**

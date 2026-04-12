@@ -50,9 +50,54 @@ pub struct CachedStreamingTask {
     pub model: Option<String>,
     /// Current status: "running" or "completed"
     pub status: String,
+    /// Agent ID if available
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
     /// Teammate name if this is a team member task
     #[serde(skip_serializing_if = "Option::is_none")]
     pub teammate_name: Option<String>,
+    /// RalphX native delegation job id
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_job_id: Option<String>,
+    /// Delegated session id backing the child runtime
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_session_id: Option<String>,
+    /// Delegated conversation id for child transcript expansion
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_conversation_id: Option<String>,
+    /// Delegated agent run id for latest child run attribution
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_agent_run_id: Option<String>,
+    /// Delegated harness/provider
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_harness: Option<String>,
+    /// Delegated provider session continuity id
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_session_id: Option<String>,
+    /// Upstream provider captured by the delegated run
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream_provider: Option<String>,
+    /// Provider profile captured by the delegated run
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_profile: Option<String>,
+    /// Logical model requested
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_model: Option<String>,
+    /// Effective model used by the harness
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_model_id: Option<String>,
+    /// Logical effort requested
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_effort: Option<String>,
+    /// Effective effort used by the harness
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_effort: Option<String>,
+    /// Approval policy used by the delegated run
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approval_policy: Option<String>,
+    /// Sandbox mode used by the delegated run
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sandbox_mode: Option<String>,
     /// Total tokens used (from TaskCompleted stats)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_tokens: Option<u64>,
@@ -62,6 +107,24 @@ pub struct CachedStreamingTask {
     /// Duration in milliseconds (from TaskCompleted stats)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
+    /// Input tokens used by the latest run
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    /// Output tokens used by the latest run
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    /// Cache creation tokens used by the latest run
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_creation_tokens: Option<u64>,
+    /// Cache read tokens used by the latest run
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<u64>,
+    /// Estimated USD cost for the latest run
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_usd: Option<f64>,
+    /// Final delegated output when available
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_output: Option<String>,
 }
 
 /// Complete streaming state for a single conversation.
@@ -160,13 +223,27 @@ impl StreamingStateCache {
                 ConversationStreamingState::new()
             });
 
-        tracing::debug!(
-            conversation_id,
-            tool_use_id = %task.tool_use_id,
-            subagent_type = ?task.subagent_type,
-            "StreamingStateCache: added streaming task"
-        );
-        state.streaming_tasks.push(task);
+        if let Some(existing) = state
+            .streaming_tasks
+            .iter_mut()
+            .find(|existing| existing.tool_use_id == task.tool_use_id)
+        {
+            tracing::debug!(
+                conversation_id,
+                tool_use_id = %existing.tool_use_id,
+                subagent_type = ?task.subagent_type,
+                "StreamingStateCache: updated existing streaming task"
+            );
+            *existing = task;
+        } else {
+            tracing::debug!(
+                conversation_id,
+                tool_use_id = %task.tool_use_id,
+                subagent_type = ?task.subagent_type,
+                "StreamingStateCache: added streaming task"
+            );
+            state.streaming_tasks.push(task);
+        }
         state.updated_at = Utc::now();
     }
 

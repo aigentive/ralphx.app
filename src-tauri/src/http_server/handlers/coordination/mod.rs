@@ -7,7 +7,8 @@ use tauri::Emitter;
 
 use crate::application::agent_lane_resolution::resolve_agent_spawn_settings;
 use crate::application::chat_service::{
-    events, AgentTaskCompletedPayload, AgentTaskStartedPayload, ChatService, SendMessageOptions,
+    events, AgentTaskCompletedPayload, AgentTaskStartedPayload, CachedStreamingTask, ChatService,
+    SendMessageOptions,
 };
 use crate::application::harness_runtime_registry::resolve_harness_plugin_dir;
 use crate::domain::agents::AgentHarnessKind;
@@ -199,6 +200,91 @@ fn delegated_duration_ms(latest_run: &DelegatedRunSummary) -> Option<u64> {
         None
     } else {
         u64::try_from(duration).ok()
+    }
+}
+
+fn cached_streaming_task_from_started_payload(payload: &AgentTaskStartedPayload) -> CachedStreamingTask {
+    CachedStreamingTask {
+        tool_use_id: payload.tool_use_id.clone(),
+        description: payload.description.clone(),
+        subagent_type: payload.subagent_type.clone(),
+        model: payload
+            .model
+            .clone()
+            .or_else(|| payload.effective_model_id.clone())
+            .or_else(|| payload.logical_model.clone()),
+        status: "running".to_string(),
+        agent_id: payload.delegated_agent_run_id.clone(),
+        teammate_name: payload.teammate_name.clone(),
+        delegated_job_id: payload.delegated_job_id.clone(),
+        delegated_session_id: payload.delegated_session_id.clone(),
+        delegated_conversation_id: payload.delegated_conversation_id.clone(),
+        delegated_agent_run_id: payload.delegated_agent_run_id.clone(),
+        provider_harness: payload.provider_harness.clone(),
+        provider_session_id: payload.provider_session_id.clone(),
+        upstream_provider: payload.upstream_provider.clone(),
+        provider_profile: payload.provider_profile.clone(),
+        logical_model: payload.logical_model.clone(),
+        effective_model_id: payload.effective_model_id.clone(),
+        logical_effort: payload.logical_effort.clone(),
+        effective_effort: payload.effective_effort.clone(),
+        approval_policy: payload.approval_policy.clone(),
+        sandbox_mode: payload.sandbox_mode.clone(),
+        total_tokens: None,
+        total_tool_uses: None,
+        duration_ms: None,
+        input_tokens: None,
+        output_tokens: None,
+        cache_creation_tokens: None,
+        cache_read_tokens: None,
+        estimated_usd: None,
+        text_output: None,
+    }
+}
+
+fn cached_streaming_task_from_completed_payload(
+    payload: &AgentTaskCompletedPayload,
+) -> CachedStreamingTask {
+    CachedStreamingTask {
+        tool_use_id: payload.tool_use_id.clone(),
+        description: None,
+        subagent_type: Some("delegated".to_string()),
+        model: payload
+            .effective_model_id
+            .clone()
+            .or_else(|| payload.logical_model.clone()),
+        status: payload
+            .status
+            .clone()
+            .unwrap_or_else(|| "completed".to_string()),
+        agent_id: payload
+            .agent_id
+            .clone()
+            .or_else(|| payload.delegated_agent_run_id.clone()),
+        teammate_name: payload.teammate_name.clone(),
+        delegated_job_id: payload.delegated_job_id.clone(),
+        delegated_session_id: payload.delegated_session_id.clone(),
+        delegated_conversation_id: payload.delegated_conversation_id.clone(),
+        delegated_agent_run_id: payload.delegated_agent_run_id.clone(),
+        provider_harness: payload.provider_harness.clone(),
+        provider_session_id: payload.provider_session_id.clone(),
+        upstream_provider: payload.upstream_provider.clone(),
+        provider_profile: payload.provider_profile.clone(),
+        logical_model: payload.logical_model.clone(),
+        effective_model_id: payload.effective_model_id.clone(),
+        logical_effort: payload.logical_effort.clone(),
+        effective_effort: payload.effective_effort.clone(),
+        approval_policy: payload.approval_policy.clone(),
+        sandbox_mode: payload.sandbox_mode.clone(),
+        total_tokens: payload.total_tokens,
+        total_tool_uses: payload.total_tool_use_count,
+        duration_ms: payload.total_duration_ms,
+        input_tokens: payload.input_tokens,
+        output_tokens: payload.output_tokens,
+        cache_creation_tokens: payload.cache_creation_tokens,
+        cache_read_tokens: payload.cache_read_tokens,
+        estimated_usd: payload.estimated_usd,
+        text_output: payload.text_output.clone(),
     }
 }
 
@@ -635,16 +721,24 @@ pub(crate) async fn start_delegate_impl(
         )
         .await;
 
-    if let Some(app_handle) = state.app_state.app_handle.as_ref() {
-        let logical_effort_label = logical_effort.as_ref().map(|value| value.to_string());
-        if let Some(payload) = build_delegated_task_started_payload(
-            &snapshot,
-            req.model.as_deref(),
-            logical_effort_label.as_deref(),
-            approval_policy.as_deref(),
-            sandbox_mode.as_deref(),
-            delegated_event_seq(),
-        ) {
+    let logical_effort_label = logical_effort.as_ref().map(|value| value.to_string());
+    if let Some(payload) = build_delegated_task_started_payload(
+        &snapshot,
+        req.model.as_deref(),
+        logical_effort_label.as_deref(),
+        approval_policy.as_deref(),
+        sandbox_mode.as_deref(),
+        delegated_event_seq(),
+    ) {
+        state
+            .app_state
+            .streaming_state_cache
+            .add_task(
+                &payload.conversation_id,
+                cached_streaming_task_from_started_payload(&payload),
+            )
+            .await;
+        if let Some(app_handle) = state.app_state.app_handle.as_ref() {
             let _ = app_handle.emit(events::AGENT_TASK_STARTED, payload);
         }
     }
@@ -654,6 +748,7 @@ pub(crate) async fn start_delegate_impl(
     let chat_message_repo = state.app_state.chat_message_repo.clone();
     let agent_run_repo = state.app_state.agent_run_repo.clone();
     let app_handle = state.app_state.app_handle.clone();
+    let streaming_state_cache = state.app_state.streaming_state_cache.clone();
     let snapshot_for_events = snapshot.clone();
     let agent_run_id = send_result.agent_run_id.clone();
     let conversation_id = delegated_conversation.id;
@@ -668,15 +763,21 @@ pub(crate) async fn start_delegate_impl(
                 Ok(Some(run)) => run,
                 Ok(None) => continue,
                 Err(error) => {
-                    if let Some(handle) = app_handle.as_ref() {
-                        if let Some(payload) = build_delegated_task_completed_payload(
-                            &snapshot_for_events,
-                            None,
-                            "failed",
-                            None,
-                            Some(&error.to_string()),
-                            delegated_event_seq(),
-                        ) {
+                    if let Some(payload) = build_delegated_task_completed_payload(
+                        &snapshot_for_events,
+                        None,
+                        "failed",
+                        None,
+                        Some(&error.to_string()),
+                        delegated_event_seq(),
+                    ) {
+                        streaming_state_cache
+                            .add_task(
+                                &payload.conversation_id,
+                                cached_streaming_task_from_completed_payload(&payload),
+                            )
+                            .await;
+                        if let Some(handle) = app_handle.as_ref() {
                             let _ = handle.emit(events::AGENT_TASK_COMPLETED, payload);
                         }
                     }
@@ -726,15 +827,21 @@ pub(crate) async fn start_delegate_impl(
                         }
                         tokio::time::sleep(Duration::from_millis(25)).await;
                     }
-                    if let Some(handle) = app_handle.as_ref() {
-                        if let Some(payload) = build_delegated_task_completed_payload(
-                            &snapshot_for_events,
-                            Some(&latest_run),
-                            "completed",
-                            Some(&content),
-                            None,
-                            delegated_event_seq(),
-                        ) {
+                    if let Some(payload) = build_delegated_task_completed_payload(
+                        &snapshot_for_events,
+                        Some(&latest_run),
+                        "completed",
+                        Some(&content),
+                        None,
+                        delegated_event_seq(),
+                    ) {
+                        streaming_state_cache
+                            .add_task(
+                                &payload.conversation_id,
+                                cached_streaming_task_from_completed_payload(&payload),
+                            )
+                            .await;
+                        if let Some(handle) = app_handle.as_ref() {
                             let _ = handle.emit(events::AGENT_TASK_COMPLETED, payload);
                         }
                     }
@@ -752,15 +859,21 @@ pub(crate) async fn start_delegate_impl(
                     let detail = run
                         .error_message
                         .unwrap_or_else(|| "Delegated run failed".to_string());
-                    if let Some(handle) = app_handle.as_ref() {
-                        if let Some(payload) = build_delegated_task_completed_payload(
-                            &snapshot_for_events,
-                            Some(&latest_run),
-                            "failed",
-                            None,
-                            Some(&detail),
-                            delegated_event_seq(),
-                        ) {
+                    if let Some(payload) = build_delegated_task_completed_payload(
+                        &snapshot_for_events,
+                        Some(&latest_run),
+                        "failed",
+                        None,
+                        Some(&detail),
+                        delegated_event_seq(),
+                    ) {
+                        streaming_state_cache
+                            .add_task(
+                                &payload.conversation_id,
+                                cached_streaming_task_from_completed_payload(&payload),
+                            )
+                            .await;
+                        if let Some(handle) = app_handle.as_ref() {
                             let _ = handle.emit(events::AGENT_TASK_COMPLETED, payload);
                         }
                     }
@@ -775,15 +888,21 @@ pub(crate) async fn start_delegate_impl(
                         .await;
                 }
                 crate::domain::entities::AgentRunStatus::Cancelled => {
-                    if let Some(handle) = app_handle.as_ref() {
-                        if let Some(payload) = build_delegated_task_completed_payload(
-                            &snapshot_for_events,
-                            Some(&latest_run),
-                            "cancelled",
-                            None,
-                            None,
-                            delegated_event_seq(),
-                        ) {
+                    if let Some(payload) = build_delegated_task_completed_payload(
+                        &snapshot_for_events,
+                        Some(&latest_run),
+                        "cancelled",
+                        None,
+                        None,
+                        delegated_event_seq(),
+                    ) {
+                        streaming_state_cache
+                            .add_task(
+                                &payload.conversation_id,
+                                cached_streaming_task_from_completed_payload(&payload),
+                            )
+                            .await;
+                        if let Some(handle) = app_handle.as_ref() {
                             let _ = handle.emit(events::AGENT_TASK_COMPLETED, payload);
                         }
                     }

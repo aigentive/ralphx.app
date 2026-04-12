@@ -1495,9 +1495,40 @@ pub struct ActiveStreamingTask {
     pub model: Option<String>,
     /// Current status: "running" or "completed"
     pub status: String,
+    /// Agent ID if available
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
     /// Teammate name if this is a team member task
     #[serde(skip_serializing_if = "Option::is_none")]
     pub teammate_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_job_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_conversation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_agent_run_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_harness: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_profile: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_model_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approval_policy: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sandbox_mode: Option<String>,
     /// Total tokens used by this task (from TaskCompleted stats)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_tokens: Option<u64>,
@@ -1507,6 +1538,18 @@ pub struct ActiveStreamingTask {
     /// Duration in milliseconds (from TaskCompleted stats)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_creation_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_usd: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_output: Option<String>,
 }
 
 impl From<crate::application::chat_service::CachedStreamingTask> for ActiveStreamingTask {
@@ -1517,10 +1560,31 @@ impl From<crate::application::chat_service::CachedStreamingTask> for ActiveStrea
             subagent_type: cached.subagent_type,
             model: cached.model,
             status: cached.status,
+            agent_id: cached.agent_id,
             teammate_name: cached.teammate_name,
+            delegated_job_id: cached.delegated_job_id,
+            delegated_session_id: cached.delegated_session_id,
+            delegated_conversation_id: cached.delegated_conversation_id,
+            delegated_agent_run_id: cached.delegated_agent_run_id,
+            provider_harness: cached.provider_harness,
+            provider_session_id: cached.provider_session_id,
+            upstream_provider: cached.upstream_provider,
+            provider_profile: cached.provider_profile,
+            logical_model: cached.logical_model,
+            effective_model_id: cached.effective_model_id,
+            logical_effort: cached.logical_effort,
+            effective_effort: cached.effective_effort,
+            approval_policy: cached.approval_policy,
+            sandbox_mode: cached.sandbox_mode,
             total_tokens: cached.total_tokens,
             total_tool_uses: cached.total_tool_uses,
             duration_ms: cached.duration_ms,
+            input_tokens: cached.input_tokens,
+            output_tokens: cached.output_tokens,
+            cache_creation_tokens: cached.cache_creation_tokens,
+            cache_read_tokens: cached.cache_read_tokens,
+            estimated_usd: cached.estimated_usd,
+            text_output: cached.text_output,
         }
     }
 }
