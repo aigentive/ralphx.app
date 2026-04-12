@@ -18,6 +18,8 @@ When this prompt says to dispatch critics or specialists, use the RalphX delegat
 - `delegate_wait` to collect bounded delegated-job snapshots before deciding whether one final rescue step is needed
 - `delegate_cancel` only when a delegated job is stale, invalidated, or superseded by a newer verification pass
 
+Assume the MCP tool surface named in this prompt is available. Do NOT claim the tool transport is missing, do NOT narrate shell-local fallbacks like reading SQLite or artifact files directly, and do NOT substitute local filesystem/database inspection for the named verification MCP tools unless a tool call actually failed and the prompt explicitly authorizes a fallback.
+
 Do not collapse these delegated prompts into vague summaries. Preserve `SESSION_ID`, `ROUND`, artifact title prefixes, JSON schema requirements, and the requirement to publish artifacts on the PARENT ideation session.
 
 ## Step 0 — Setup (MANDATORY before anything else)
@@ -614,6 +616,7 @@ If the message provides feedback on a specific gap — dismissing it, downgradin
 | **Parallel dispatch (critics + specialists)** | ALL delegated critic/specialist launches MUST happen in one parallel wave when available — never one at a time. Do not rely on Claude-only Task options such as `run_in_background`. |
 | **Delegate `agentId` is resumable, not complete** | If a delegated-agent result includes `agentId`, treat it as still resumable/in-progress. Poll artifacts and use bounded rescue prompts before concluding the critic/specialist failed. |
 | **Wait discipline** | Use `delegate_wait` as a bounded snapshot step, not an endless blocking loop. One initial wait, one immediate follow-up artifact poll, then at most one rescue dispatch before deciding. |
+| **MCP-first discipline** | Never say tools are unavailable "in this shell" or improvise local SQLite/file inspection when the named RalphX MCP tools exist. Use the verifier MCP surface first and treat shell-local fallback as disallowed unless the prompt explicitly authorizes it after a real tool failure. |
 | **Specialist failure is non-blocking** | If a specialist delegate errors or returns empty → log and continue with critic results. Convergence is driven by critic gaps only. |
 | **Artifact session_id** | Specialists create artifacts on `parent_session_id` (NOT their own session) — artifacts must appear in parent ideation session's Team Artifacts tab |
 | **No self-modification** | You are read-only for the filesystem. ❌ Write, Edit, NotebookEdit |

@@ -450,6 +450,40 @@ describe("MessageItem - persisted delegation replay", () => {
     expect(container.querySelectorAll('[data-testid="tool-call-indicator"]')).toHaveLength(0);
     expect(screen.getByText("ralphx-plan-critic-completeness")).toBeInTheDocument();
   });
+
+  it("renders a delegated task card for a standalone namespaced delegate_wait block", () => {
+    const createdAt = new Date().toISOString();
+    const contentBlocks = [
+      makeContentToolUse("ralphx::delegate_wait", {
+        id: "toolu-delegate-wait-only",
+        arguments: {
+          job_id: "job-789",
+        },
+        result: [{
+          type: "text",
+          text: JSON.stringify({
+            job_id: "job-789",
+            status: "completed",
+            agent_name: "ralphx-plan-critic-completeness",
+            content: "Critic artifact published",
+          }),
+        }],
+      }),
+    ];
+
+    const { container } = render(
+      <MessageItem
+        role="assistant"
+        content=""
+        createdAt={createdAt}
+        contentBlocks={contentBlocks}
+      />,
+    );
+
+    expect(container.querySelectorAll('[data-testid="task-tool-call-card"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-testid="tool-call-indicator"]')).toHaveLength(0);
+    expect(screen.getByText("ralphx-plan-critic-completeness")).toBeInTheDocument();
+  });
 });
 
 describe("MessageItem - Empty content guard (legacy rendering path)", () => {

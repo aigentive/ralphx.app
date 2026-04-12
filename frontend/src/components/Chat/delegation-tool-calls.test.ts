@@ -97,6 +97,31 @@ describe("delegation-tool-calls", () => {
     ).toBe("Critic artifact published");
   });
 
+  it("promotes standalone namespaced delegate_wait into the delegated task-card contract", () => {
+    const waitToolCall = makeToolCall("ralphx::delegate_wait", {
+      id: "toolu-delegate-wait-only",
+      arguments: {
+        job_id: "job-789",
+      },
+      result: makeDelegationResult({
+        job_id: "job-789",
+        status: "completed",
+        content: "Critic artifact published",
+        agent_name: "ralphx-plan-critic-completeness",
+      }),
+    });
+
+    const mergedToolCalls = mergeDelegationToolCalls([waitToolCall]);
+    expect(mergedToolCalls).toHaveLength(1);
+    expect(mergedToolCalls[0]?.name).toBe("ralphx::delegate_start");
+    expect(
+      extractDelegationMetadata(
+        mergedToolCalls[0]?.arguments,
+        mergedToolCalls[0]?.result,
+      ).agentName,
+    ).toBe("ralphx-plan-critic-completeness");
+  });
+
   it("normalizes persisted delegation transcript payloads with one shared contract", () => {
     const startBlock = makeContentToolUse("delegate_start", {
       id: "toolu-delegate-start",

@@ -142,6 +142,21 @@ function normalizeStatus(status: string | undefined): string | undefined {
   }
 }
 
+function toDelegationStartName(name: string): string {
+  const canonical = canonicalizeToolName(name);
+  if (canonical === DELEGATION_START_TOOL_NAME) {
+    return name;
+  }
+  if (canonical === DELEGATION_WAIT_TOOL_NAME || canonical === DELEGATION_CANCEL_TOOL_NAME) {
+    const namespaceSeparator = name.lastIndexOf("::");
+    if (namespaceSeparator >= 0) {
+      return `${name.slice(0, namespaceSeparator + 2)}${DELEGATION_START_TOOL_NAME}`;
+    }
+    return DELEGATION_START_TOOL_NAME;
+  }
+  return name;
+}
+
 export function isDelegationStartToolCall(name: string): boolean {
   return canonicalizeToolName(name) === DELEGATION_START_TOOL_NAME;
 }
@@ -318,7 +333,14 @@ function mergeDelegationEntries<T extends DelegationMergeable>(entries: T[]): T[
       }
     }
 
-    merged.push(entry);
+    const syntheticStartEntry = {
+      ...entry,
+      name: toDelegationStartName(entry.name),
+    } as T;
+    merged.push(syntheticStartEntry);
+    if (metadata.jobId) {
+      startIndexByJobId.set(metadata.jobId, merged.length - 1);
+    }
   }
 
   return merged;
