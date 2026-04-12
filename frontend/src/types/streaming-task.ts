@@ -56,6 +56,12 @@ export interface StreamingTask {
   agentId?: string;
   /** RalphX native delegation job id */
   delegatedJobId?: string;
+  /** Delegated session id backing the child runtime */
+  delegatedSessionId?: string;
+  /** Delegated conversation id for child transcript expansion */
+  delegatedConversationId?: string;
+  /** Delegated agent run id for latest child run attribution */
+  delegatedAgentRunId?: string;
   /** Delegated harness/provider */
   providerHarness?: string;
   /** Delegated provider session continuity id */

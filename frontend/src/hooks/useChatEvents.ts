@@ -258,6 +258,35 @@ export function useChatEvents({
       });
     };
 
+    const isDelegatedTaskEventPayload = (payload: {
+      tool_name?: string;
+      subagent_type?: string;
+      delegated_job_id?: string;
+      delegated_session_id?: string;
+      delegated_conversation_id?: string;
+      delegated_agent_run_id?: string;
+    }) =>
+      payload.tool_name?.toLowerCase() === "delegate_start"
+      || payload.subagent_type === "delegated"
+      || payload.delegated_job_id != null
+      || payload.delegated_session_id != null
+      || payload.delegated_conversation_id != null
+      || payload.delegated_agent_run_id != null;
+
+    const normalizeDelegatedTaskStatus = (
+      status: string | undefined,
+    ): StreamingTask["status"] | undefined => {
+      switch (status) {
+        case "running":
+        case "completed":
+        case "failed":
+        case "cancelled":
+          return status;
+        default:
+          return undefined;
+      }
+    };
+
     // ── agent:tool_call ──────────────────────────────────────────────
     // Handles tool call accumulation for streaming display.
     // Routes child tool calls to parent task when supportsSubagentTasks is enabled.
@@ -502,6 +531,20 @@ export function useChatEvents({
           description?: string;
           subagent_type?: string;
           model?: string;
+          delegated_job_id?: string;
+          delegated_session_id?: string;
+          delegated_conversation_id?: string;
+          delegated_agent_run_id?: string;
+          provider_harness?: string;
+          provider_session_id?: string;
+          upstream_provider?: string;
+          provider_profile?: string;
+          logical_model?: string;
+          effective_model_id?: string;
+          logical_effort?: string;
+          effective_effort?: string;
+          approval_policy?: string;
+          sandbox_mode?: string;
           conversation_id: string;
           context_id?: string;
           context_type?: string;
@@ -509,19 +552,89 @@ export function useChatEvents({
         }>("agent:task_started", (payload) => {
           if (!isRelevant(payload)) return;
           setStreamingTasks((prev) => {
+            const existing = prev.get(payload.tool_use_id);
             const next = new Map(prev);
+            const isDelegated = isDelegatedTaskEventPayload(payload);
             const newTask: StreamingTask = {
               toolUseId: payload.tool_use_id,
-              toolName: payload.tool_name ?? "Task",
-              description: payload.description ?? "",
-              subagentType: payload.subagent_type ?? "unknown",
-              model: payload.model ?? "unknown",
-              status: "running",
-              startedAt: Date.now(),
-              childToolCalls: [],
+              toolName: payload.tool_name ?? existing?.toolName ?? "Task",
+              description: payload.description ?? existing?.description ?? "",
+              subagentType:
+                payload.subagent_type
+                ?? existing?.subagentType
+                ?? (isDelegated ? "delegated" : "unknown"),
+              model:
+                payload.model
+                ?? payload.effective_model_id
+                ?? payload.logical_model
+                ?? existing?.model
+                ?? "unknown",
+              status: normalizeDelegatedTaskStatus(existing?.status) ?? "running",
+              startedAt: existing?.startedAt ?? Date.now(),
+              childToolCalls: existing?.childToolCalls ?? [],
+              ...(payload.delegated_job_id || existing?.delegatedJobId
+                ? { delegatedJobId: payload.delegated_job_id ?? existing?.delegatedJobId! }
+                : {}),
+              ...(payload.delegated_session_id || existing?.delegatedSessionId
+                ? { delegatedSessionId: payload.delegated_session_id ?? existing?.delegatedSessionId! }
+                : {}),
+              ...(payload.delegated_conversation_id || existing?.delegatedConversationId
+                ? {
+                    delegatedConversationId:
+                      payload.delegated_conversation_id ?? existing?.delegatedConversationId!,
+                  }
+                : {}),
+              ...(payload.delegated_agent_run_id || existing?.delegatedAgentRunId
+                ? { delegatedAgentRunId: payload.delegated_agent_run_id ?? existing?.delegatedAgentRunId! }
+                : {}),
+              ...(payload.provider_harness || existing?.providerHarness
+                ? { providerHarness: payload.provider_harness ?? existing?.providerHarness! }
+                : {}),
+              ...(payload.provider_session_id || existing?.providerSessionId
+                ? { providerSessionId: payload.provider_session_id ?? existing?.providerSessionId! }
+                : {}),
+              ...(payload.upstream_provider || existing?.upstreamProvider
+                ? { upstreamProvider: payload.upstream_provider ?? existing?.upstreamProvider! }
+                : {}),
+              ...(payload.provider_profile || existing?.providerProfile
+                ? { providerProfile: payload.provider_profile ?? existing?.providerProfile! }
+                : {}),
+              ...(payload.logical_model || existing?.logicalModel
+                ? { logicalModel: payload.logical_model ?? existing?.logicalModel! }
+                : {}),
+              ...(payload.effective_model_id || existing?.effectiveModelId
+                ? { effectiveModelId: payload.effective_model_id ?? existing?.effectiveModelId! }
+                : {}),
+              ...(payload.logical_effort || existing?.logicalEffort
+                ? { logicalEffort: payload.logical_effort ?? existing?.logicalEffort! }
+                : {}),
+              ...(payload.effective_effort || existing?.effectiveEffort
+                ? { effectiveEffort: payload.effective_effort ?? existing?.effectiveEffort! }
+                : {}),
+              ...(payload.approval_policy || existing?.approvalPolicy
+                ? { approvalPolicy: payload.approval_policy ?? existing?.approvalPolicy! }
+                : {}),
+              ...(payload.sandbox_mode || existing?.sandboxMode
+                ? { sandboxMode: payload.sandbox_mode ?? existing?.sandboxMode! }
+                : {}),
+              ...(existing?.completedAt != null ? { completedAt: existing.completedAt } : {}),
+              ...(existing?.totalDurationMs != null ? { totalDurationMs: existing.totalDurationMs } : {}),
+              ...(existing?.totalTokens != null ? { totalTokens: existing.totalTokens } : {}),
+              ...(existing?.totalToolUseCount != null ? { totalToolUseCount: existing.totalToolUseCount } : {}),
+              ...(existing?.agentId ? { agentId: existing.agentId } : {}),
+              ...(existing?.inputTokens != null ? { inputTokens: existing.inputTokens } : {}),
+              ...(existing?.outputTokens != null ? { outputTokens: existing.outputTokens } : {}),
+              ...(existing?.cacheCreationTokens != null
+                ? { cacheCreationTokens: existing.cacheCreationTokens }
+                : {}),
+              ...(existing?.cacheReadTokens != null ? { cacheReadTokens: existing.cacheReadTokens } : {}),
+              ...(existing?.estimatedUsd != null ? { estimatedUsd: existing.estimatedUsd } : {}),
+              ...(existing?.textOutput ? { textOutput: existing.textOutput } : {}),
             };
             if (payload.seq != null) {
               newTask.seq = payload.seq;
+            } else if (existing?.seq != null) {
+              newTask.seq = existing.seq;
             }
             next.set(payload.tool_use_id, newTask);
             return next;
@@ -536,9 +649,31 @@ export function useChatEvents({
         bus.subscribe<{
           tool_use_id: string;
           agent_id?: string;
+          status?: string;
+          delegated_job_id?: string;
+          delegated_session_id?: string;
+          delegated_conversation_id?: string;
+          delegated_agent_run_id?: string;
+          provider_harness?: string;
+          provider_session_id?: string;
+          upstream_provider?: string;
+          provider_profile?: string;
+          logical_model?: string;
+          effective_model_id?: string;
+          logical_effort?: string;
+          effective_effort?: string;
+          approval_policy?: string;
+          sandbox_mode?: string;
           total_duration_ms?: number;
           total_tokens?: number;
           total_tool_use_count?: number;
+          input_tokens?: number;
+          output_tokens?: number;
+          cache_creation_tokens?: number;
+          cache_read_tokens?: number;
+          estimated_usd?: number;
+          text_output?: string;
+          error?: string;
           conversation_id: string;
           context_id?: string;
           context_type?: string;
@@ -547,11 +682,24 @@ export function useChatEvents({
           if (!isRelevant(payload)) return;
           setStreamingTasks((prev) => {
             const task = prev.get(payload.tool_use_id);
-            if (!task) return prev;
+            const isDelegated = isDelegatedTaskEventPayload(payload);
+            if (!task && !isDelegated) return prev;
             const next = new Map(prev);
             const updated: StreamingTask = {
-              ...task,
-              status: "completed",
+              ...(task ?? {
+                toolUseId: payload.tool_use_id,
+                toolName: payload.delegated_job_id ? "delegate_start" : "Task",
+                description: "",
+                subagentType: isDelegated ? "delegated" : "unknown",
+                model:
+                  payload.effective_model_id
+                  ?? payload.logical_model
+                  ?? "unknown",
+                startedAt: Date.now(),
+                childToolCalls: [],
+                status: "running",
+              }),
+              status: normalizeDelegatedTaskStatus(payload.status) ?? "completed",
               completedAt: Date.now(),
             };
             if (payload.agent_id != null) {
@@ -565,6 +713,66 @@ export function useChatEvents({
             }
             if (payload.total_tool_use_count != null) {
               updated.totalToolUseCount = payload.total_tool_use_count;
+            }
+            if (payload.delegated_job_id != null) {
+              updated.delegatedJobId = payload.delegated_job_id;
+            }
+            if (payload.delegated_session_id != null) {
+              updated.delegatedSessionId = payload.delegated_session_id;
+            }
+            if (payload.delegated_conversation_id != null) {
+              updated.delegatedConversationId = payload.delegated_conversation_id;
+            }
+            if (payload.delegated_agent_run_id != null) {
+              updated.delegatedAgentRunId = payload.delegated_agent_run_id;
+            }
+            if (payload.provider_harness != null) {
+              updated.providerHarness = payload.provider_harness;
+            }
+            if (payload.provider_session_id != null) {
+              updated.providerSessionId = payload.provider_session_id;
+            }
+            if (payload.upstream_provider != null) {
+              updated.upstreamProvider = payload.upstream_provider;
+            }
+            if (payload.provider_profile != null) {
+              updated.providerProfile = payload.provider_profile;
+            }
+            if (payload.logical_model != null) {
+              updated.logicalModel = payload.logical_model;
+            }
+            if (payload.effective_model_id != null) {
+              updated.effectiveModelId = payload.effective_model_id;
+            }
+            if (payload.logical_effort != null) {
+              updated.logicalEffort = payload.logical_effort;
+            }
+            if (payload.effective_effort != null) {
+              updated.effectiveEffort = payload.effective_effort;
+            }
+            if (payload.approval_policy != null) {
+              updated.approvalPolicy = payload.approval_policy;
+            }
+            if (payload.sandbox_mode != null) {
+              updated.sandboxMode = payload.sandbox_mode;
+            }
+            if (payload.input_tokens != null) {
+              updated.inputTokens = payload.input_tokens;
+            }
+            if (payload.output_tokens != null) {
+              updated.outputTokens = payload.output_tokens;
+            }
+            if (payload.cache_creation_tokens != null) {
+              updated.cacheCreationTokens = payload.cache_creation_tokens;
+            }
+            if (payload.cache_read_tokens != null) {
+              updated.cacheReadTokens = payload.cache_read_tokens;
+            }
+            if (payload.estimated_usd != null) {
+              updated.estimatedUsd = payload.estimated_usd;
+            }
+            if (payload.text_output != null) {
+              updated.textOutput = payload.text_output;
             }
             if (payload.seq != null) {
               updated.seq = payload.seq;

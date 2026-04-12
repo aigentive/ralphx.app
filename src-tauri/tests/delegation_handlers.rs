@@ -8,9 +8,14 @@ use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
 use ralphx_lib::commands::ExecutionState;
 use ralphx_lib::domain::agents::AgentHarnessKind;
 use ralphx_lib::domain::entities::{ChatConversation, DelegatedSessionId, IdeationSession, Project};
-use ralphx_lib::http_server::handlers::{cancel_delegate, start_delegate, wait_delegate};
+use ralphx_lib::http_server::delegation::{DelegationHistoryEntry, DelegationJobSnapshot};
+use ralphx_lib::http_server::handlers::{
+    build_delegated_task_completed_payload, build_delegated_task_started_payload,
+    cancel_delegate, start_delegate, wait_delegate,
+};
 use ralphx_lib::http_server::types::{
-    DelegateCancelRequest, DelegateStartRequest, DelegateWaitRequest, HttpServerState,
+    DelegateCancelRequest, DelegateStartRequest, DelegateWaitRequest, DelegatedRunSummary,
+    HttpServerState,
 };
 use tempfile::TempDir;
 
@@ -340,4 +345,171 @@ async fn test_delegate_cancel_rejects_unknown_job() {
     .unwrap_err();
 
     assert_eq!(error.0, axum::http::StatusCode::NOT_FOUND);
+}
+
+#[test]
+fn test_build_delegated_task_started_payload_uses_parent_lineage_and_delegated_metadata() {
+    let snapshot = DelegationJobSnapshot {
+        job_id: "job-123".to_string(),
+        parent_context_type: "ideation".to_string(),
+        parent_context_id: "parent-session-1".to_string(),
+        parent_turn_id: Some("turn-1".to_string()),
+        parent_message_id: Some("msg-1".to_string()),
+        parent_conversation_id: Some("parent-conv-1".to_string()),
+        parent_tool_use_id: Some("toolu-parent-1".to_string()),
+        delegated_session_id: "delegated-session-1".to_string(),
+        delegated_conversation_id: Some("delegated-conv-1".to_string()),
+        delegated_agent_run_id: Some("run-1".to_string()),
+        agent_name: "ralphx-execution-reviewer".to_string(),
+        harness: "codex".to_string(),
+        status: "running".to_string(),
+        content: None,
+        error: None,
+        started_at: "2026-04-12T10:00:00Z".to_string(),
+        completed_at: None,
+        history: vec![DelegationHistoryEntry {
+            status: "running".to_string(),
+            timestamp: "2026-04-12T10:00:00Z".to_string(),
+            detail: None,
+        }],
+        delegated_status: None,
+    };
+
+    let payload = build_delegated_task_started_payload(
+        &snapshot,
+        Some("gpt-5.4"),
+        Some("high"),
+        Some("never"),
+        Some("danger-full-access"),
+        42,
+    )
+    .expect("parent linkage should produce a payload");
+
+    assert_eq!(payload.tool_use_id, "toolu-parent-1");
+    assert_eq!(payload.tool_name, "delegate_start");
+    assert_eq!(payload.description.as_deref(), Some("ralphx-execution-reviewer"));
+    assert_eq!(payload.subagent_type.as_deref(), Some("delegated"));
+    assert_eq!(payload.delegated_job_id.as_deref(), Some("job-123"));
+    assert_eq!(
+        payload.delegated_session_id.as_deref(),
+        Some("delegated-session-1")
+    );
+    assert_eq!(
+        payload.delegated_conversation_id.as_deref(),
+        Some("delegated-conv-1")
+    );
+    assert_eq!(payload.delegated_agent_run_id.as_deref(), Some("run-1"));
+    assert_eq!(payload.provider_harness.as_deref(), Some("codex"));
+    assert_eq!(payload.logical_model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(payload.logical_effort.as_deref(), Some("high"));
+    assert_eq!(payload.approval_policy.as_deref(), Some("never"));
+    assert_eq!(payload.sandbox_mode.as_deref(), Some("danger-full-access"));
+    assert_eq!(payload.conversation_id, "parent-conv-1");
+    assert_eq!(payload.context_type, "ideation");
+    assert_eq!(payload.context_id, "parent-session-1");
+    assert_eq!(payload.seq, 42);
+}
+
+#[test]
+fn test_build_delegated_task_completed_payload_uses_latest_run_attribution() {
+    let snapshot = DelegationJobSnapshot {
+        job_id: "job-456".to_string(),
+        parent_context_type: "ideation".to_string(),
+        parent_context_id: "parent-session-2".to_string(),
+        parent_turn_id: Some("turn-2".to_string()),
+        parent_message_id: Some("msg-2".to_string()),
+        parent_conversation_id: Some("parent-conv-2".to_string()),
+        parent_tool_use_id: Some("toolu-parent-2".to_string()),
+        delegated_session_id: "delegated-session-2".to_string(),
+        delegated_conversation_id: Some("delegated-conv-2".to_string()),
+        delegated_agent_run_id: Some("run-2".to_string()),
+        agent_name: "ralphx-execution-reviewer".to_string(),
+        harness: "codex".to_string(),
+        status: "running".to_string(),
+        content: None,
+        error: None,
+        started_at: "2026-04-12T10:00:00Z".to_string(),
+        completed_at: None,
+        history: vec![DelegationHistoryEntry {
+            status: "running".to_string(),
+            timestamp: "2026-04-12T10:00:00Z".to_string(),
+            detail: None,
+        }],
+        delegated_status: None,
+    };
+    let latest_run = DelegatedRunSummary {
+        agent_run_id: "run-2".to_string(),
+        status: "failed".to_string(),
+        started_at: "2026-04-12T10:00:00Z".to_string(),
+        completed_at: Some("2026-04-12T10:00:05Z".to_string()),
+        error_message: Some("Delegated reviewer failed validation".to_string()),
+        harness: Some("codex".to_string()),
+        provider_session_id: Some("provider-thread-1".to_string()),
+        upstream_provider: Some("openai".to_string()),
+        provider_profile: Some("openai".to_string()),
+        logical_model: Some("gpt-5.4".to_string()),
+        effective_model_id: Some("gpt-5.4".to_string()),
+        logical_effort: Some("high".to_string()),
+        effective_effort: Some("high".to_string()),
+        approval_policy: Some("never".to_string()),
+        sandbox_mode: Some("danger-full-access".to_string()),
+        input_tokens: Some(100),
+        output_tokens: Some(40),
+        cache_creation_tokens: Some(6),
+        cache_read_tokens: Some(2),
+        estimated_usd: Some(0.12),
+    };
+
+    let payload = build_delegated_task_completed_payload(
+        &snapshot,
+        Some(&latest_run),
+        "failed",
+        Some("Delegated reviewer found a blocking issue"),
+        Some("Delegated reviewer failed validation"),
+        99,
+    )
+    .expect("parent linkage should produce a payload");
+
+    assert_eq!(payload.tool_use_id, "toolu-parent-2");
+    assert_eq!(payload.agent_id.as_deref(), Some("run-2"));
+    assert_eq!(payload.status.as_deref(), Some("failed"));
+    assert_eq!(payload.total_duration_ms, Some(5000));
+    assert_eq!(payload.total_tokens, Some(148));
+    assert_eq!(payload.delegated_job_id.as_deref(), Some("job-456"));
+    assert_eq!(
+        payload.delegated_session_id.as_deref(),
+        Some("delegated-session-2")
+    );
+    assert_eq!(
+        payload.delegated_conversation_id.as_deref(),
+        Some("delegated-conv-2")
+    );
+    assert_eq!(payload.delegated_agent_run_id.as_deref(), Some("run-2"));
+    assert_eq!(payload.provider_harness.as_deref(), Some("codex"));
+    assert_eq!(payload.provider_session_id.as_deref(), Some("provider-thread-1"));
+    assert_eq!(payload.upstream_provider.as_deref(), Some("openai"));
+    assert_eq!(payload.provider_profile.as_deref(), Some("openai"));
+    assert_eq!(payload.logical_model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(payload.effective_model_id.as_deref(), Some("gpt-5.4"));
+    assert_eq!(payload.logical_effort.as_deref(), Some("high"));
+    assert_eq!(payload.effective_effort.as_deref(), Some("high"));
+    assert_eq!(payload.approval_policy.as_deref(), Some("never"));
+    assert_eq!(payload.sandbox_mode.as_deref(), Some("danger-full-access"));
+    assert_eq!(payload.input_tokens, Some(100));
+    assert_eq!(payload.output_tokens, Some(40));
+    assert_eq!(payload.cache_creation_tokens, Some(6));
+    assert_eq!(payload.cache_read_tokens, Some(2));
+    assert_eq!(payload.estimated_usd, Some(0.12));
+    assert_eq!(
+        payload.text_output.as_deref(),
+        Some("Delegated reviewer found a blocking issue")
+    );
+    assert_eq!(
+        payload.error.as_deref(),
+        Some("Delegated reviewer failed validation")
+    );
+    assert_eq!(payload.conversation_id, "parent-conv-2");
+    assert_eq!(payload.context_type, "ideation");
+    assert_eq!(payload.context_id, "parent-session-2");
+    assert_eq!(payload.seq, 99);
 }

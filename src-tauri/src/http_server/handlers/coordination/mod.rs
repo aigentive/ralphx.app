@@ -3,9 +3,12 @@ use chrono::Utc;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use tauri::Emitter;
 
 use crate::application::agent_lane_resolution::resolve_agent_spawn_settings;
-use crate::application::chat_service::{ChatService, SendMessageOptions};
+use crate::application::chat_service::{
+    events, AgentTaskCompletedPayload, AgentTaskStartedPayload, ChatService, SendMessageOptions,
+};
 use crate::application::harness_runtime_registry::resolve_harness_plugin_dir;
 use crate::domain::agents::AgentHarnessKind;
 use crate::domain::entities::{
@@ -163,6 +166,131 @@ fn build_delegated_prompt(
         "You are running as delegated RalphX specialist `{agent_name}`.\n{}\nOperate through the RalphX MCP tools available to your role and treat the delegated session as your working context.\n\nDelegated task:\n{prompt}",
         metadata_lines.join("\n"),
     )
+}
+
+fn delegated_event_seq() -> u64 {
+    u64::try_from(Utc::now().timestamp_millis()).unwrap_or_default()
+}
+
+fn delegated_total_tokens(latest_run: &DelegatedRunSummary) -> Option<u64> {
+    let total =
+        latest_run.input_tokens.unwrap_or(0)
+        + latest_run.output_tokens.unwrap_or(0)
+        + latest_run.cache_creation_tokens.unwrap_or(0)
+        + latest_run.cache_read_tokens.unwrap_or(0);
+    if total == 0
+        && latest_run.input_tokens.is_none()
+        && latest_run.output_tokens.is_none()
+        && latest_run.cache_creation_tokens.is_none()
+        && latest_run.cache_read_tokens.is_none()
+    {
+        None
+    } else {
+        Some(total)
+    }
+}
+
+fn delegated_duration_ms(latest_run: &DelegatedRunSummary) -> Option<u64> {
+    let completed_at = latest_run.completed_at.as_ref()?;
+    let started = chrono::DateTime::parse_from_rfc3339(&latest_run.started_at).ok()?;
+    let completed = chrono::DateTime::parse_from_rfc3339(completed_at).ok()?;
+    let duration = completed.signed_duration_since(started).num_milliseconds();
+    if duration < 0 {
+        None
+    } else {
+        u64::try_from(duration).ok()
+    }
+}
+
+#[doc(hidden)]
+pub fn build_delegated_task_started_payload(
+    snapshot: &DelegationJobSnapshot,
+    logical_model: Option<&str>,
+    logical_effort: Option<&str>,
+    approval_policy: Option<&str>,
+    sandbox_mode: Option<&str>,
+    seq: u64,
+) -> Option<AgentTaskStartedPayload> {
+    let parent_tool_use_id = snapshot.parent_tool_use_id.as_ref()?;
+    let parent_conversation_id = snapshot.parent_conversation_id.as_ref()?;
+    Some(AgentTaskStartedPayload {
+        tool_use_id: parent_tool_use_id.clone(),
+        tool_name: "delegate_start".to_string(),
+        description: Some(snapshot.agent_name.clone()),
+        subagent_type: Some("delegated".to_string()),
+        model: logical_model.map(str::to_string),
+        teammate_name: None,
+        delegated_job_id: Some(snapshot.job_id.clone()),
+        delegated_session_id: Some(snapshot.delegated_session_id.clone()),
+        delegated_conversation_id: snapshot.delegated_conversation_id.clone(),
+        delegated_agent_run_id: snapshot.delegated_agent_run_id.clone(),
+        provider_harness: Some(snapshot.harness.clone()),
+        provider_session_id: None,
+        upstream_provider: None,
+        provider_profile: None,
+        logical_model: logical_model.map(str::to_string),
+        effective_model_id: None,
+        logical_effort: logical_effort.map(str::to_string),
+        effective_effort: None,
+        approval_policy: approval_policy.map(str::to_string),
+        sandbox_mode: sandbox_mode.map(str::to_string),
+        conversation_id: parent_conversation_id.clone(),
+        context_type: snapshot.parent_context_type.clone(),
+        context_id: snapshot.parent_context_id.clone(),
+        seq,
+    })
+}
+
+#[doc(hidden)]
+pub fn build_delegated_task_completed_payload(
+    snapshot: &DelegationJobSnapshot,
+    latest_run: Option<&DelegatedRunSummary>,
+    status: &str,
+    text_output: Option<&str>,
+    error: Option<&str>,
+    seq: u64,
+) -> Option<AgentTaskCompletedPayload> {
+    let parent_tool_use_id = snapshot.parent_tool_use_id.as_ref()?;
+    let parent_conversation_id = snapshot.parent_conversation_id.as_ref()?;
+    let latest_run_id = latest_run.map(|run| run.agent_run_id.clone());
+    Some(AgentTaskCompletedPayload {
+        tool_use_id: parent_tool_use_id.clone(),
+        agent_id: latest_run_id.or_else(|| snapshot.delegated_agent_run_id.clone()),
+        status: Some(status.to_string()),
+        total_duration_ms: latest_run.and_then(delegated_duration_ms),
+        total_tokens: latest_run.and_then(delegated_total_tokens),
+        total_tool_use_count: None,
+        teammate_name: None,
+        delegated_job_id: Some(snapshot.job_id.clone()),
+        delegated_session_id: Some(snapshot.delegated_session_id.clone()),
+        delegated_conversation_id: snapshot.delegated_conversation_id.clone(),
+        delegated_agent_run_id: latest_run
+            .map(|run| run.agent_run_id.clone())
+            .or_else(|| snapshot.delegated_agent_run_id.clone()),
+        provider_harness: latest_run
+            .and_then(|run| run.harness.clone())
+            .or_else(|| Some(snapshot.harness.clone())),
+        provider_session_id: latest_run.and_then(|run| run.provider_session_id.clone()),
+        upstream_provider: latest_run.and_then(|run| run.upstream_provider.clone()),
+        provider_profile: latest_run.and_then(|run| run.provider_profile.clone()),
+        logical_model: latest_run.and_then(|run| run.logical_model.clone()),
+        effective_model_id: latest_run.and_then(|run| run.effective_model_id.clone()),
+        logical_effort: latest_run.and_then(|run| run.logical_effort.clone()),
+        effective_effort: latest_run.and_then(|run| run.effective_effort.clone()),
+        approval_policy: latest_run.and_then(|run| run.approval_policy.clone()),
+        sandbox_mode: latest_run.and_then(|run| run.sandbox_mode.clone()),
+        input_tokens: latest_run.and_then(|run| run.input_tokens),
+        output_tokens: latest_run.and_then(|run| run.output_tokens),
+        cache_creation_tokens: latest_run.and_then(|run| run.cache_creation_tokens),
+        cache_read_tokens: latest_run.and_then(|run| run.cache_read_tokens),
+        estimated_usd: latest_run.and_then(|run| run.estimated_usd),
+        text_output: text_output.map(str::to_string),
+        error: error.map(str::to_string),
+        conversation_id: parent_conversation_id.clone(),
+        context_type: snapshot.parent_context_type.clone(),
+        context_id: snapshot.parent_context_id.clone(),
+        seq,
+    })
 }
 
 fn delegated_run_summary(run: AgentRun) -> DelegatedRunSummary {
@@ -406,6 +534,18 @@ pub(crate) async fn start_delegate_impl(
     )
     .await;
     let harness = resolved_spawn.effective_harness;
+    let logical_effort = req
+        .logical_effort
+        .clone()
+        .or(resolved_spawn.logical_effort.clone());
+    let approval_policy = req
+        .approval_policy
+        .clone()
+        .or(resolved_spawn.approval_policy.clone());
+    let sandbox_mode = req
+        .sandbox_mode
+        .clone()
+        .or(resolved_spawn.sandbox_mode.clone());
     state
         .app_state
         .delegated_session_repo
@@ -461,15 +601,9 @@ pub(crate) async fn start_delegate_impl(
                 harness_override: Some(harness),
                 agent_name_override: Some(definition.name.clone()),
                 model_override: req.model.clone(),
-                logical_effort_override: req.logical_effort.or(resolved_spawn.logical_effort),
-                approval_policy_override: req
-                    .approval_policy
-                    .clone()
-                    .or(resolved_spawn.approval_policy.clone()),
-                sandbox_mode_override: req
-                    .sandbox_mode
-                    .clone()
-                    .or(resolved_spawn.sandbox_mode.clone()),
+                logical_effort_override: logical_effort.clone(),
+                approval_policy_override: approval_policy.clone(),
+                sandbox_mode_override: sandbox_mode.clone(),
                 is_external_mcp: true,
                 ..Default::default()
             },
@@ -501,10 +635,26 @@ pub(crate) async fn start_delegate_impl(
         )
         .await;
 
+    if let Some(app_handle) = state.app_state.app_handle.as_ref() {
+        let logical_effort_label = logical_effort.as_ref().map(|value| value.to_string());
+        if let Some(payload) = build_delegated_task_started_payload(
+            &snapshot,
+            req.model.as_deref(),
+            logical_effort_label.as_deref(),
+            approval_policy.as_deref(),
+            sandbox_mode.as_deref(),
+            delegated_event_seq(),
+        ) {
+            let _ = app_handle.emit(events::AGENT_TASK_STARTED, payload);
+        }
+    }
+
     let delegation_service = state.delegation_service.clone();
     let delegated_session_repo = state.app_state.delegated_session_repo.clone();
     let chat_message_repo = state.app_state.chat_message_repo.clone();
     let agent_run_repo = state.app_state.agent_run_repo.clone();
+    let app_handle = state.app_state.app_handle.clone();
+    let snapshot_for_events = snapshot.clone();
     let agent_run_id = send_result.agent_run_id.clone();
     let conversation_id = delegated_conversation.id;
     let delegated_session_id_for_task = delegated_session_id.clone();
@@ -518,6 +668,18 @@ pub(crate) async fn start_delegate_impl(
                 Ok(Some(run)) => run,
                 Ok(None) => continue,
                 Err(error) => {
+                    if let Some(handle) = app_handle.as_ref() {
+                        if let Some(payload) = build_delegated_task_completed_payload(
+                            &snapshot_for_events,
+                            None,
+                            "failed",
+                            None,
+                            Some(&error.to_string()),
+                            delegated_event_seq(),
+                        ) {
+                            let _ = handle.emit(events::AGENT_TASK_COMPLETED, payload);
+                        }
+                    }
                     delegation_service.mark_failed(&job_id, error.to_string()).await;
                     let _ = delegated_session_repo
                         .update_status(
@@ -534,6 +696,8 @@ pub(crate) async fn start_delegate_impl(
             if run.status == crate::domain::entities::AgentRunStatus::Running {
                 continue;
             }
+
+            let latest_run = delegated_run_summary(run.clone());
 
             match run.status {
                 crate::domain::entities::AgentRunStatus::Completed => {
@@ -562,6 +726,18 @@ pub(crate) async fn start_delegate_impl(
                         }
                         tokio::time::sleep(Duration::from_millis(25)).await;
                     }
+                    if let Some(handle) = app_handle.as_ref() {
+                        if let Some(payload) = build_delegated_task_completed_payload(
+                            &snapshot_for_events,
+                            Some(&latest_run),
+                            "completed",
+                            Some(&content),
+                            None,
+                            delegated_event_seq(),
+                        ) {
+                            let _ = handle.emit(events::AGENT_TASK_COMPLETED, payload);
+                        }
+                    }
                     delegation_service.mark_completed(&job_id, content).await;
                     let _ = delegated_session_repo
                         .update_status(
@@ -576,6 +752,18 @@ pub(crate) async fn start_delegate_impl(
                     let detail = run
                         .error_message
                         .unwrap_or_else(|| "Delegated run failed".to_string());
+                    if let Some(handle) = app_handle.as_ref() {
+                        if let Some(payload) = build_delegated_task_completed_payload(
+                            &snapshot_for_events,
+                            Some(&latest_run),
+                            "failed",
+                            None,
+                            Some(&detail),
+                            delegated_event_seq(),
+                        ) {
+                            let _ = handle.emit(events::AGENT_TASK_COMPLETED, payload);
+                        }
+                    }
                     delegation_service.mark_failed(&job_id, detail.clone()).await;
                     let _ = delegated_session_repo
                         .update_status(
@@ -587,6 +775,18 @@ pub(crate) async fn start_delegate_impl(
                         .await;
                 }
                 crate::domain::entities::AgentRunStatus::Cancelled => {
+                    if let Some(handle) = app_handle.as_ref() {
+                        if let Some(payload) = build_delegated_task_completed_payload(
+                            &snapshot_for_events,
+                            Some(&latest_run),
+                            "cancelled",
+                            None,
+                            None,
+                            delegated_event_seq(),
+                        ) {
+                            let _ = handle.emit(events::AGENT_TASK_COMPLETED, payload);
+                        }
+                    }
                     let _ = delegated_session_repo
                         .update_status(
                             &DelegatedSessionId::from_string(delegated_session_id_for_task.clone()),

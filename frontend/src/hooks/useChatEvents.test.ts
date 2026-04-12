@@ -992,6 +992,66 @@ describe("useChatEvents", () => {
       expect(task!.childToolCalls).toEqual([]);
     });
 
+    it("should enrich delegated streaming tasks from backend-native agent:task_started payloads", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:task_started", {
+          tool_use_id: "toolu_delegate_live_001",
+          tool_name: "delegate_start",
+          description: "ralphx-execution-reviewer",
+          subagent_type: "delegated",
+          model: "gpt-5.4",
+          delegated_job_id: "job-live-123",
+          delegated_session_id: "delegated-session-123",
+          delegated_conversation_id: "delegated-conv-123",
+          delegated_agent_run_id: "run-123",
+          provider_harness: "codex",
+          logical_model: "gpt-5.4",
+          logical_effort: "high",
+          approval_policy: "never",
+          sandbox_mode: "danger-full-access",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
+
+      const prevMap = new Map<string, StreamingTask>([
+        ["toolu_delegate_live_001", {
+          toolUseId: "toolu_delegate_live_001",
+          toolName: "delegate_start",
+          description: "Delegated specialist",
+          subagentType: "delegated",
+          model: "unknown",
+          status: "running",
+          startedAt: 12345,
+          delegatedJobId: "job-live-123",
+          childToolCalls: [],
+        }],
+      ]);
+      const nextMap = executeUpdater<Map<string, StreamingTask>>(
+        props.setStreamingTasks,
+        prevMap,
+      );
+
+      const delegated = nextMap.get("toolu_delegate_live_001");
+      expect(delegated).toBeDefined();
+      expect(delegated!.startedAt).toBe(12345);
+      expect(delegated!.description).toBe("ralphx-execution-reviewer");
+      expect(delegated!.model).toBe("gpt-5.4");
+      expect(delegated!.providerHarness).toBe("codex");
+      expect(delegated!.logicalModel).toBe("gpt-5.4");
+      expect(delegated!.logicalEffort).toBe("high");
+      expect(delegated!.approvalPolicy).toBe("never");
+      expect(delegated!.sandboxMode).toBe("danger-full-access");
+      expect(delegated!.delegatedSessionId).toBe("delegated-session-123");
+      expect(delegated!.delegatedConversationId).toBe("delegated-conv-123");
+      expect(delegated!.delegatedAgentRunId).toBe("run-123");
+    });
+
     it("should mark a streaming task as completed on agent:task_completed", () => {
       const props = makeProps();
       renderAndClear(props);
@@ -1038,6 +1098,91 @@ describe("useChatEvents", () => {
       expect(completed.totalToolUseCount).toBe(3);
       // Child tool calls should be preserved
       expect(completed.childToolCalls).toHaveLength(1);
+    });
+
+    it("should fold delegated terminal metadata from backend-native agent:task_completed payloads", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:task_completed", {
+          tool_use_id: "toolu_delegate_live_002",
+          agent_id: "run-xyz",
+          status: "failed",
+          delegated_job_id: "job-live-456",
+          delegated_session_id: "delegated-session-456",
+          delegated_conversation_id: "delegated-conv-456",
+          delegated_agent_run_id: "run-xyz",
+          provider_harness: "codex",
+          provider_session_id: "provider-thread-1",
+          upstream_provider: "openai",
+          provider_profile: "openai",
+          logical_model: "gpt-5.4",
+          effective_model_id: "gpt-5.4",
+          logical_effort: "high",
+          effective_effort: "high",
+          approval_policy: "never",
+          sandbox_mode: "danger-full-access",
+          total_duration_ms: 5000,
+          total_tokens: 148,
+          input_tokens: 100,
+          output_tokens: 40,
+          cache_creation_tokens: 6,
+          cache_read_tokens: 2,
+          estimated_usd: 0.12,
+          text_output: "Delegated reviewer found a blocking issue",
+          error: "Delegated reviewer failed validation",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
+
+      const prevMap = new Map<string, StreamingTask>([
+        ["toolu_delegate_live_002", {
+          toolUseId: "toolu_delegate_live_002",
+          toolName: "delegate_start",
+          description: "ralphx-execution-reviewer",
+          subagentType: "delegated",
+          model: "gpt-5.4",
+          status: "running",
+          startedAt: Date.now() - 5000,
+          delegatedJobId: "job-live-456",
+          childToolCalls: [],
+        }],
+      ]);
+      const nextMap = executeUpdater<Map<string, StreamingTask>>(
+        props.setStreamingTasks,
+        prevMap,
+      );
+
+      const delegated = nextMap.get("toolu_delegate_live_002");
+      expect(delegated).toBeDefined();
+      expect(delegated!.status).toBe("failed");
+      expect(delegated!.agentId).toBe("run-xyz");
+      expect(delegated!.providerHarness).toBe("codex");
+      expect(delegated!.providerSessionId).toBe("provider-thread-1");
+      expect(delegated!.upstreamProvider).toBe("openai");
+      expect(delegated!.providerProfile).toBe("openai");
+      expect(delegated!.logicalModel).toBe("gpt-5.4");
+      expect(delegated!.effectiveModelId).toBe("gpt-5.4");
+      expect(delegated!.logicalEffort).toBe("high");
+      expect(delegated!.effectiveEffort).toBe("high");
+      expect(delegated!.approvalPolicy).toBe("never");
+      expect(delegated!.sandboxMode).toBe("danger-full-access");
+      expect(delegated!.totalDurationMs).toBe(5000);
+      expect(delegated!.totalTokens).toBe(148);
+      expect(delegated!.inputTokens).toBe(100);
+      expect(delegated!.outputTokens).toBe(40);
+      expect(delegated!.cacheCreationTokens).toBe(6);
+      expect(delegated!.cacheReadTokens).toBe(2);
+      expect(delegated!.estimatedUsd).toBe(0.12);
+      expect(delegated!.textOutput).toBe("Delegated reviewer found a blocking issue");
+      expect(delegated!.delegatedSessionId).toBe("delegated-session-456");
+      expect(delegated!.delegatedConversationId).toBe("delegated-conv-456");
+      expect(delegated!.delegatedAgentRunId).toBe("run-xyz");
+      expect(delegated!.completedAt).toBeDefined();
     });
 
     it("should NOT subscribe to task events when supportsSubagentTasks is false", () => {

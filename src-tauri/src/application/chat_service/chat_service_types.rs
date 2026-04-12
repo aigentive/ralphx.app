@@ -284,6 +284,34 @@ pub struct AgentTaskStartedPayload {
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub teammate_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_job_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_conversation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_agent_run_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_harness: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_profile: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_model_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approval_policy: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sandbox_mode: Option<String>,
     pub conversation_id: String,
     pub context_type: String,
     pub context_id: String,
@@ -297,6 +325,8 @@ pub struct AgentTaskCompletedPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub total_duration_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_tokens: Option<u64>,
@@ -304,6 +334,48 @@ pub struct AgentTaskCompletedPayload {
     pub total_tool_use_count: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub teammate_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_job_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_conversation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delegated_agent_run_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_harness: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_profile: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_model_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approval_policy: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sandbox_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_creation_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_usd: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_output: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     pub conversation_id: String,
     pub context_type: String,
     pub context_id: String,
