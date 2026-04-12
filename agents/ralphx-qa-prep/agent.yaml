@@ -14,6 +14,9 @@ harnesses:
       - Edit
       - Bash
       - NotebookEdit
+    skills:
+      - acceptance-criteria-writing
+      - qa-step-generation
   codex:
     runtime_features:
       shell_tool: false

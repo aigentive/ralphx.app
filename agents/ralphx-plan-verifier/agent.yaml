@@ -33,6 +33,7 @@ harnesses:
       - Write
       - Edit
       - NotebookEdit
+    max_turns: 80
   codex:
     runtime_features:
       shell_tool: false

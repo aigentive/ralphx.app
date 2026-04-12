@@ -208,6 +208,31 @@ const CANONICAL_CLAUDE_DISALLOWED_TOOL_OWNED_AGENTS: &[(&str, &[&str])] = &[
     ("ralphx-ideation-critic", &["Write", "Edit", "NotebookEdit", "Bash"]),
 ];
 
+const CANONICAL_CLAUDE_HARNESS_OWNED_AGENTS: &[&str] = &[
+    "ralphx-execution-reviewer",
+    "ralphx-execution-team-lead",
+    "ralphx-ideation",
+    "ralphx-ideation-readonly",
+    "ralphx-ideation-team-lead",
+    "ralphx-plan-verifier",
+    "ralphx-plan-critic-completeness",
+    "ralphx-plan-critic-implementation-feasibility",
+    "ralphx-qa-executor",
+    "ralphx-qa-prep",
+    "ralphx-research-deep-researcher",
+    "ralphx-ideation-specialist-backend",
+    "ralphx-ideation-specialist-code-quality",
+    "ralphx-ideation-specialist-frontend",
+    "ralphx-ideation-specialist-infra",
+    "ralphx-ideation-specialist-intent",
+    "ralphx-ideation-specialist-pipeline-safety",
+    "ralphx-ideation-specialist-prompt-quality",
+    "ralphx-ideation-specialist-state-machine",
+    "ralphx-ideation-specialist-ux",
+    "ralphx-ideation-advocate",
+    "ralphx-ideation-critic",
+];
+
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
@@ -326,6 +351,24 @@ fn canonical_claude_disallowed_tools_match_loader_for_current_owned_agents() {
                 .map(|tool| (*tool).to_string())
                 .collect::<Vec<_>>(),
             "root canonical Claude disallowed_tools should stay aligned for {agent_name}"
+        );
+    }
+}
+
+#[test]
+fn canonical_claude_harness_metadata_matches_loader_for_owned_agents() {
+    let root = project_root();
+
+    for agent_name in CANONICAL_CLAUDE_HARNESS_OWNED_AGENTS {
+        let definition = load_canonical_agent_definition(&root, agent_name)
+            .unwrap_or_else(|| panic!("expected canonical definition for {agent_name}"));
+        let metadata = try_load_canonical_claude_metadata(&root, agent_name)
+            .unwrap_or_else(|_| panic!("expected Claude metadata for {agent_name}"));
+
+        assert_eq!(
+            definition.harnesses.claude,
+            metadata,
+            "root canonical Claude harness metadata should stay aligned for {agent_name}"
         );
     }
 }

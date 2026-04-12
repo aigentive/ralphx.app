@@ -18,6 +18,7 @@ harnesses:
       - Edit
       - NotebookEdit
       - Bash
+    max_turns: 10
   codex:
     runtime_features:
       shell_tool: false

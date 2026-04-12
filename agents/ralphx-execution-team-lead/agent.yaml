@@ -2,3 +2,13 @@
 name: ralphx-execution-team-lead
 role: worker_team_lead
 description: "Coordinates coder teams for wave-based task execution with validation gates"
+harnesses:
+  claude:
+    frontmatter_name: worker-team
+    disallowed_tools:
+      - Write
+      - Edit
+      - NotebookEdit
+    skills:
+      - task-decomposition
+      - dependency-analysis

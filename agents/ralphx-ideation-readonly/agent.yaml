@@ -1,6 +1,12 @@
 name: ralphx-ideation-readonly
 role: ideation_orchestrator_readonly
 description: "Read-only ideation assistant for accepted sessions"
+harnesses:
+  claude:
+    disallowed_tools:
+      - Write
+      - Edit
+      - NotebookEdit
 delegation:
   allowed_targets:
     - ralphx-ideation-specialist-backend
