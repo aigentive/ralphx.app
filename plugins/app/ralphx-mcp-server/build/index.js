@@ -621,7 +621,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             result = await callTauriGet(`parent_session_context/${session_id}`);
         }
         else if (name === "delegate_start") {
-            result = await callTauri("coordination/delegate/start", args);
+            result = await callTauri("coordination/delegate/start", {
+                ...args,
+                caller_agent_name: AGENT_TYPE,
+            });
         }
         else if (name === "delegate_wait") {
             result = await callTauri("coordination/delegate/wait", args);

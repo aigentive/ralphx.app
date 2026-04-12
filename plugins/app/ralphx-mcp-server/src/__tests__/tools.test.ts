@@ -35,6 +35,9 @@ import {
   PLAN_VERIFIER,
   PLAN_CRITIC_COMPLETENESS,
   PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY,
+  REVIEWER,
+  WORKER,
+  MERGER,
 } from '../agentNames.js';
 
 describe('getAllowedToolNames', () => {
@@ -97,6 +100,13 @@ describe('getAllowedToolNames', () => {
     // Should return env var list, not agent type allowlist
     expect(tools).toEqual(['get_session_plan']);
     expect(tools).not.toEqual(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]);
+  });
+
+  it('should strip delegation tools from env override for non-delegating agents', () => {
+    setAgentType(IDEATION_TEAM_LEAD);
+    process.env.RALPHX_ALLOWED_MCP_TOOLS = 'delegate_start,get_session_plan,delegate_wait';
+    const tools = getAllowedToolNames();
+    expect(tools).toEqual(['get_session_plan']);
   });
 });
 
@@ -989,7 +999,7 @@ describe('delegation bridge tools', () => {
     expect(tool?.inputSchema.properties).toHaveProperty('message_limit');
   });
 
-  it.each([ORCHESTRATOR_IDEATION, IDEATION_TEAM_LEAD, PLAN_VERIFIER])(
+  it.each([ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, PLAN_VERIFIER])(
     '%s should expose delegation bridge tools',
     (agent) => {
       expect(TOOL_ALLOWLIST[agent]).toContain('delegate_start');
@@ -998,13 +1008,16 @@ describe('delegation bridge tools', () => {
     }
   );
 
-  it('ralphx-ideation-readonly should expose delegation bridge tools', () => {
-    expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).toContain('delegate_start');
-    expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).toContain('delegate_wait');
-    expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).toContain('delegate_cancel');
-  });
+  it.each([WORKER, REVIEWER, MERGER])(
+    '%s should expose delegation bridge tools in the fallback allowlist',
+    (agent) => {
+      expect(TOOL_ALLOWLIST[agent]).toContain('delegate_start');
+      expect(TOOL_ALLOWLIST[agent]).toContain('delegate_wait');
+      expect(TOOL_ALLOWLIST[agent]).toContain('delegate_cancel');
+    }
+  );
 
-  it.each([ORCHESTRATOR_IDEATION, IDEATION_TEAM_LEAD, PLAN_VERIFIER])(
+  it.each([ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, PLAN_VERIFIER, WORKER, REVIEWER, MERGER])(
     '%s should return delegate_start from getFilteredTools',
     (agent) => {
       setAgentType(agent);
@@ -1012,6 +1025,14 @@ describe('delegation bridge tools', () => {
       expect(toolNames).toContain('delegate_start');
     }
   );
+
+  it('ideation team lead should not receive delegation bridge tools from getFilteredTools', () => {
+    setAgentType(IDEATION_TEAM_LEAD);
+    const toolNames = getFilteredTools().map((tool) => tool.name);
+    expect(toolNames).not.toContain('delegate_start');
+    expect(toolNames).not.toContain('delegate_wait');
+    expect(toolNames).not.toContain('delegate_cancel');
+  });
 });
 
 // ===========================================================================

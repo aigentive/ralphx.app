@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { getAllowedToolNames, getFilteredTools, isToolAllowed, setAgentType, getAllTools, getToolRecoveryHint, formatToolErrorMessage, TOOL_ALLOWLIST, parseAllowedToolsFromArgs, } from '../tools.js';
 import { PLAN_TOOLS } from '../plan-tools.js';
-import { IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_MEMBER, ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_SPECIALIST_CODE_QUALITY, IDEATION_SPECIALIST_PROMPT_QUALITY, IDEATION_SPECIALIST_INTENT, IDEATION_SPECIALIST_PIPELINE_SAFETY, IDEATION_SPECIALIST_STATE_MACHINE, IDEATION_CRITIC, IDEATION_ADVOCATE, PLAN_VERIFIER, PLAN_CRITIC_COMPLETENESS, PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY, } from '../agentNames.js';
+import { IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_MEMBER, ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_SPECIALIST_CODE_QUALITY, IDEATION_SPECIALIST_PROMPT_QUALITY, IDEATION_SPECIALIST_INTENT, IDEATION_SPECIALIST_PIPELINE_SAFETY, IDEATION_SPECIALIST_STATE_MACHINE, IDEATION_CRITIC, IDEATION_ADVOCATE, PLAN_VERIFIER, PLAN_CRITIC_COMPLETENESS, PLAN_CRITIC_IMPLEMENTATION_FEASIBILITY, REVIEWER, WORKER, MERGER, } from '../agentNames.js';
 describe('getAllowedToolNames', () => {
     beforeEach(() => {
         // Clear env var before each test
@@ -57,6 +57,12 @@ describe('getAllowedToolNames', () => {
         // Should return env var list, not agent type allowlist
         expect(tools).toEqual(['get_session_plan']);
         expect(tools).not.toEqual(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]);
+    });
+    it('should strip delegation tools from env override for non-delegating agents', () => {
+        setAgentType(IDEATION_TEAM_LEAD);
+        process.env.RALPHX_ALLOWED_MCP_TOOLS = 'delegate_start,get_session_plan,delegate_wait';
+        const tools = getAllowedToolNames();
+        expect(tools).toEqual(['get_session_plan']);
     });
 });
 describe('getToolRecoveryHint', () => {
@@ -793,20 +799,27 @@ describe('delegation bridge tools', () => {
         expect(tool?.inputSchema.properties).toHaveProperty('include_messages');
         expect(tool?.inputSchema.properties).toHaveProperty('message_limit');
     });
-    it.each([ORCHESTRATOR_IDEATION, IDEATION_TEAM_LEAD, PLAN_VERIFIER])('%s should expose delegation bridge tools', (agent) => {
+    it.each([ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, PLAN_VERIFIER])('%s should expose delegation bridge tools', (agent) => {
         expect(TOOL_ALLOWLIST[agent]).toContain('delegate_start');
         expect(TOOL_ALLOWLIST[agent]).toContain('delegate_wait');
         expect(TOOL_ALLOWLIST[agent]).toContain('delegate_cancel');
     });
-    it('ralphx-ideation-readonly should expose delegation bridge tools', () => {
-        expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).toContain('delegate_start');
-        expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).toContain('delegate_wait');
-        expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).toContain('delegate_cancel');
+    it.each([WORKER, REVIEWER, MERGER])('%s should expose delegation bridge tools in the fallback allowlist', (agent) => {
+        expect(TOOL_ALLOWLIST[agent]).toContain('delegate_start');
+        expect(TOOL_ALLOWLIST[agent]).toContain('delegate_wait');
+        expect(TOOL_ALLOWLIST[agent]).toContain('delegate_cancel');
     });
-    it.each([ORCHESTRATOR_IDEATION, IDEATION_TEAM_LEAD, PLAN_VERIFIER])('%s should return delegate_start from getFilteredTools', (agent) => {
+    it.each([ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, PLAN_VERIFIER, WORKER, REVIEWER, MERGER])('%s should return delegate_start from getFilteredTools', (agent) => {
         setAgentType(agent);
         const toolNames = getFilteredTools().map((tool) => tool.name);
         expect(toolNames).toContain('delegate_start');
+    });
+    it('ideation team lead should not receive delegation bridge tools from getFilteredTools', () => {
+        setAgentType(IDEATION_TEAM_LEAD);
+        const toolNames = getFilteredTools().map((tool) => tool.name);
+        expect(toolNames).not.toContain('delegate_start');
+        expect(toolNames).not.toContain('delegate_wait');
+        expect(toolNames).not.toContain('delegate_cancel');
     });
 });
 // ===========================================================================

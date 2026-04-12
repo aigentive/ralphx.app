@@ -777,7 +777,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { session_id } = args as { session_id: string };
       result = await callTauriGet(`parent_session_context/${session_id}`);
     } else if (name === "delegate_start") {
-      result = await callTauri("coordination/delegate/start", args as Record<string, unknown>);
+      result = await callTauri("coordination/delegate/start", {
+        ...(args as Record<string, unknown>),
+        caller_agent_name: AGENT_TYPE,
+      });
     } else if (name === "delegate_wait") {
       result = await callTauri("coordination/delegate/wait", args as Record<string, unknown>);
     } else if (name === "delegate_cancel") {

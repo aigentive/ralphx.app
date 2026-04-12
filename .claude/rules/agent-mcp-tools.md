@@ -22,6 +22,8 @@ MCP access is controlled by **three distinct layers**. Changing only one layer i
 
 **How it works:** Rust `create_mcp_config()` reads `mcp_tools` from `ralphx.yaml` and injects `--allowed-tools=tool1,tool2,...` into the MCP config JSON args. MCP server parses this at startup. Frontmatter still matters because the active harness will not call a tool that is not listed in the prompt contract.
 
+**Delegation policy note:** Non-team RalphX-native delegation topology now belongs in canonical `agents/<agent>/agent.yaml` under `delegation.allowed_targets`; backend `delegate_start`, auto-generated delegation system instructions, and MCP delegation-tool visibility must derive from that same allowlist instead of prompt-only conventions.
+
 ## Alignment Rule (NON-NEGOTIABLE)
 
 When adding OR removing an MCP tool from an agent:

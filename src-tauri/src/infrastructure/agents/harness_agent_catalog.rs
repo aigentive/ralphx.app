@@ -15,6 +15,21 @@ pub struct CanonicalAgentDefinition {
     pub role: String,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
+    pub delegation: CanonicalDelegationMetadata,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct CanonicalDelegationMetadata {
+    #[serde(default)]
+    pub allowed_targets: Vec<String>,
+}
+
+impl CanonicalDelegationMetadata {
+    pub fn is_enabled(&self) -> bool {
+        !self.allowed_targets.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
@@ -137,9 +152,15 @@ pub fn load_harness_agent_prompt(
     agent_name: &str,
     harness: AgentPromptHarness,
 ) -> Option<String> {
+    let definition = load_canonical_agent_definition(project_root, agent_name)?;
     let prompt_path = resolve_harness_agent_prompt_path(project_root, agent_name, harness)?;
     let raw = std::fs::read_to_string(prompt_path).ok()?;
-    Some(raw.trim().to_string())
+    let mut prompt = raw.trim().to_string();
+    if let Some(generated_appendix) = build_generated_delegation_appendix(&definition) {
+        prompt.push_str("\n\n");
+        prompt.push_str(&generated_appendix);
+    }
+    Some(prompt)
 }
 
 fn load_harness_agent_metadata(
@@ -152,6 +173,35 @@ fn load_harness_agent_metadata(
         .join(harness.as_dir())
         .join(AGENT_FILE_NAME);
     std::fs::read_to_string(metadata_path).ok()
+}
+
+fn build_generated_delegation_appendix(
+    definition: &CanonicalAgentDefinition,
+) -> Option<String> {
+    let policy = &definition.delegation;
+    if !policy.is_enabled() {
+        return None;
+    }
+
+    let lines = vec![
+        "## RalphX Delegation Policy (AUTO-GENERATED)".to_string(),
+        "This agent is allowed to delegate only through RalphX-native delegation tools. This policy is enforced outside the prompt as well.".to_string(),
+        format!(
+            "- Allowed delegate targets: {}",
+            policy
+                .allowed_targets
+                .iter()
+                .map(|target| format!("`{target}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        "- Use `delegate_start` to launch an allowed canonical agent with a bounded prompt and exact output contract.".to_string(),
+        "- Use `delegate_wait` before depending on delegated output.".to_string(),
+        "- Use `delegate_cancel` only when delegated work is stale, superseded, or invalidated.".to_string(),
+        "- The MCP transport injects caller identity automatically; do not spoof another agent.".to_string(),
+    ];
+
+    Some(lines.join("\n"))
 }
 
 #[cfg(test)]

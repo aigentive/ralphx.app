@@ -2,3 +2,16 @@
 name: ralphx-plan-verifier
 role: plan_verifier
 description: "Dedicated plan verification agent. Owns the adversarial round loop \u2014 spawning Layer 1 and Layer 2 critics, merging gaps, revising the plan, and checking convergence. Always runs as a verification child session of an ideation session."
+delegation:
+  allowed_targets:
+    - ralphx-plan-critic-completeness
+    - ralphx-plan-critic-implementation-feasibility
+    - ralphx-ideation-specialist-backend
+    - ralphx-ideation-specialist-frontend
+    - ralphx-ideation-specialist-infra
+    - ralphx-ideation-specialist-ux
+    - ralphx-ideation-specialist-code-quality
+    - ralphx-ideation-specialist-prompt-quality
+    - ralphx-ideation-specialist-intent
+    - ralphx-ideation-specialist-pipeline-safety
+    - ralphx-ideation-specialist-state-machine

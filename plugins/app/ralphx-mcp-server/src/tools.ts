@@ -4,6 +4,7 @@
  */
 
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { applyDelegationToolPolicy } from "./delegation-policy.js";
 import { safeError } from "./redact.js";
 import { PLAN_TOOLS } from "./plan-tools.js";
 import { WORKER_CONTEXT_TOOLS } from "./worker-context-tools.js";
@@ -1946,6 +1947,9 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     // specific review tools
     "complete_review",
     "create_followup_session",
+    "delegate_start",
+    "delegate_wait",
+    "delegate_cancel",
     // issue tools (re-review workflow)
     "get_task_issues",
     "get_step_progress",
@@ -2013,6 +2017,9 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_sub_steps",
     "execution_complete",
     "create_followup_session",
+    "delegate_start",
+    "delegate_wait",
+    "delegate_cancel",
     // issue tools (re-execution workflow)
     "get_task_issues",
     "mark_issue_in_progress",
@@ -2069,6 +2076,9 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "report_incomplete",
     "complete_merge",
     "get_merge_target",
+    "delegate_start",
+    "delegate_wait",
+    "delegate_cancel",
     // project analysis tools
     "get_project_analysis",
     // common context tools
@@ -2152,9 +2162,6 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     // Session linking tools
     "create_child_session",
     "get_parent_session_context",
-    "delegate_start",
-    "delegate_wait",
-    "delegate_cancel",
     // Session context recovery
     "get_session_messages",
     // Verification tools
@@ -2409,23 +2416,25 @@ export function parseAllowedToolsFromArgs(): string[] | undefined {
  * @returns Array of tool names this agent is allowed to use
  */
 export function getAllowedToolNames(): string[] {
+  const agentType = getAgentType();
+
   // 1. Env var override — standalone testing only.
   //    In production, Claude CLI does not propagate env vars to MCP servers — use --allowed-tools instead.
   const envAllowedTools = process.env.RALPHX_ALLOWED_MCP_TOOLS;
   if (envAllowedTools) {
-    return envAllowedTools.split(',').map(t => t.trim()).filter(t => t.length > 0);
+    const tools = envAllowedTools.split(',').map(t => t.trim()).filter(t => t.length > 0);
+    return applyDelegationToolPolicy(tools, agentType);
   }
 
   // 2. --allowed-tools CLI arg — production path from Rust spawner via MCP config JSON
   const cliTools = parseAllowedToolsFromArgs();
   if (cliTools !== undefined) {
-    return cliTools;
+    return applyDelegationToolPolicy(cliTools, agentType);
   }
 
   // 3. Fallback to TOOL_ALLOWLIST — emit deprecation warning so developers know they're in fallback mode
   console.error(`[RalphX MCP] WARN: --allowed-tools not provided, using fallback TOOL_ALLOWLIST (may be stale)`);
-  const agentType = getAgentType();
-  return TOOL_ALLOWLIST[agentType] || [];
+  return applyDelegationToolPolicy(TOOL_ALLOWLIST[agentType] || [], agentType);
 }
 
 /**

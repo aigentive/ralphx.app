@@ -39,6 +39,55 @@ fn json_error(status: StatusCode, error: impl Into<String>) -> JsonError {
     )
 }
 
+fn resolve_delegation_policy(
+    project_root: &std::path::Path,
+    caller_agent_name: &str,
+    target_agent_name: &str,
+) -> Result<
+    (
+        crate::infrastructure::agents::harness_agent_catalog::CanonicalAgentDefinition,
+        crate::infrastructure::agents::harness_agent_catalog::CanonicalAgentDefinition,
+    ),
+    JsonError,
+> {
+    let caller = load_canonical_agent_definition(project_root, caller_agent_name).ok_or_else(|| {
+        json_error(
+            StatusCode::BAD_REQUEST,
+            format!("Unknown canonical caller agent '{}'", caller_agent_name),
+        )
+    })?;
+    let target = load_canonical_agent_definition(project_root, target_agent_name).ok_or_else(|| {
+        json_error(
+            StatusCode::BAD_REQUEST,
+            format!("Unknown canonical agent '{}'", target_agent_name),
+        )
+    })?;
+
+    if !caller.delegation.is_enabled() {
+        return Err(json_error(
+            StatusCode::FORBIDDEN,
+            format!("Agent '{}' is not allowed to delegate", caller.name),
+        ));
+    }
+
+    if !caller
+        .delegation
+        .allowed_targets
+        .iter()
+        .any(|candidate| candidate == &target.name)
+    {
+        return Err(json_error(
+            StatusCode::FORBIDDEN,
+            format!(
+                "Agent '{}' may not delegate to '{}'",
+                caller.name, target.name
+            ),
+        ));
+    }
+
+    Ok((caller, target))
+}
+
 async fn resolve_delegated_session_id(
     state: &HttpServerState,
     req: &DelegateStartRequest,
@@ -602,7 +651,12 @@ pub(crate) async fn start_delegate_impl(
     state: &HttpServerState,
     req: DelegateStartRequest,
 ) -> Result<DelegationJobSnapshot, JsonError> {
-    let delegated_session_id = resolve_delegated_session_id(state, &req).await?;
+    let caller_agent_name = req.caller_agent_name.as_deref().ok_or_else(|| {
+        json_error(
+            StatusCode::BAD_REQUEST,
+            "delegate_start requires caller_agent_name from the MCP transport",
+        )
+    })?;
     let parent_conversation_id = resolve_parent_conversation_id(state, &req).await?;
     let (project_id, working_directory) =
         load_parent_project_working_directory(state, &req.parent_session_id).await?;
@@ -620,6 +674,11 @@ pub(crate) async fn start_delegate_impl(
     )
     .await;
     let harness = resolved_spawn.effective_harness;
+    let plugin_dir = resolve_harness_plugin_dir(harness, &working_directory);
+    let project_root = resolve_project_root_from_plugin_dir(&plugin_dir);
+    let (_caller_definition, definition) =
+        resolve_delegation_policy(&project_root, caller_agent_name, &req.agent_name)?;
+    let delegated_session_id = resolve_delegated_session_id(state, &req).await?;
     let logical_effort = req
         .logical_effort
         .clone()
@@ -646,15 +705,6 @@ pub(crate) async fn start_delegate_impl(
             json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to update delegated session status: {error}"),
-            )
-        })?;
-    let plugin_dir = resolve_harness_plugin_dir(harness, &working_directory);
-    let project_root = resolve_project_root_from_plugin_dir(&plugin_dir);
-    let definition =
-        load_canonical_agent_definition(&project_root, &req.agent_name).ok_or_else(|| {
-            json_error(
-                StatusCode::BAD_REQUEST,
-                format!("Unknown canonical agent '{}'", req.agent_name),
             )
         })?;
 

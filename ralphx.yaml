@@ -554,6 +554,9 @@ agents:
         ask_user_question,
         create_child_session,
         get_parent_session_context,
+        delegate_start,
+        delegate_wait,
+        delegate_cancel,
         # session context recovery
         get_session_messages,
         # verification tools
@@ -595,6 +598,9 @@ agents:
         get_parent_session_context,
         # session linking tools
         create_child_session,
+        delegate_start,
+        delegate_wait,
+        delegate_cancel,
         # verification tools
         get_plan_verification,
         # memory read tools
@@ -713,6 +719,9 @@ agents:
         mark_issue_addressed,
         get_project_analysis,
         create_followup_session,
+        delegate_start,
+        delegate_wait,
+        delegate_cancel,
         # execution completion signal
         execution_complete,
         # memory read tools
@@ -803,6 +812,9 @@ agents:
         get_issue_progress,
         get_project_analysis,
         create_followup_session,
+        delegate_start,
+        delegate_wait,
+        delegate_cancel,
         # memory read tools
         search_memories,
         get_memory,
@@ -875,6 +887,9 @@ agents:
         report_incomplete,
         complete_merge,
         get_merge_target,
+        delegate_start,
+        delegate_wait,
+        delegate_cancel,
         get_task_context,
         get_project_analysis,
         # memory read tools
@@ -951,6 +966,9 @@ agents:
         get_session_messages,
         get_verification_round_artifacts,
         get_parent_session_context,
+        delegate_start,
+        delegate_wait,
+        delegate_cancel,
         report_verification_round,
         complete_plan_verification,
         get_plan_verification,

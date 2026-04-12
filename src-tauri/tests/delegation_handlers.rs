@@ -167,6 +167,7 @@ async fn test_delegate_start_creates_delegated_session_and_completes_with_mock_c
     let start = start_delegate(
         State(state.clone()),
         Json(DelegateStartRequest {
+            caller_agent_name: Some("ralphx-ideation".to_string()),
             parent_session_id: parent.id.as_str().to_string(),
             parent_turn_id: Some("turn-42".to_string()),
             parent_message_id: Some("msg-99".to_string()),
@@ -174,7 +175,7 @@ async fn test_delegate_start_creates_delegated_session_and_completes_with_mock_c
             parent_tool_use_id: Some("toolu-parent-1".to_string()),
             delegated_session_id: None,
             child_session_id: None,
-            agent_name: "ralphx-ideation".to_string(),
+            agent_name: "ralphx-ideation-specialist-backend".to_string(),
             prompt: "Review the proposal set and summarize the main implementation risks."
                 .to_string(),
             title: Some("Delegated Risk Review".to_string()),
@@ -195,7 +196,7 @@ async fn test_delegate_start_creates_delegated_session_and_completes_with_mock_c
     assert_eq!(start.parent_turn_id.as_deref(), Some("turn-42"));
     assert_eq!(start.parent_message_id.as_deref(), Some("msg-99"));
     assert_eq!(start.parent_tool_use_id.as_deref(), Some("toolu-parent-1"));
-    assert_eq!(start.agent_name, "ralphx-ideation");
+    assert_eq!(start.agent_name, "ralphx-ideation-specialist-backend");
     assert_eq!(start.harness, "codex");
     assert_eq!(start.status, "running");
     assert_ne!(start.delegated_session_id, parent.id.as_str());
@@ -301,6 +302,7 @@ async fn test_delegate_start_rejects_unknown_agent_name() {
     let error = start_delegate(
         State(state),
         Json(DelegateStartRequest {
+            caller_agent_name: Some("ralphx-ideation".to_string()),
             parent_session_id: parent.id.as_str().to_string(),
             parent_turn_id: Some("turn-bad".to_string()),
             parent_message_id: Some("msg-bad".to_string()),
@@ -328,6 +330,84 @@ async fn test_delegate_start_rejects_unknown_agent_name() {
             .as_str()
             .unwrap_or_default()
             .contains("Unknown canonical agent")
+    );
+}
+
+#[tokio::test]
+async fn test_delegate_start_rejects_missing_caller_agent_name() {
+    let state = build_state(Arc::new(AppState::new_sqlite_test()));
+    let parent = create_parent_session(&state).await;
+
+    let error = start_delegate(
+        State(state),
+        Json(DelegateStartRequest {
+            caller_agent_name: None,
+            parent_session_id: parent.id.as_str().to_string(),
+            parent_turn_id: None,
+            parent_message_id: None,
+            parent_conversation_id: None,
+            parent_tool_use_id: None,
+            delegated_session_id: None,
+            child_session_id: None,
+            agent_name: "ralphx-ideation-specialist-backend".to_string(),
+            prompt: "noop".to_string(),
+            title: None,
+            inherit_context: true,
+            harness: Some(AgentHarnessKind::Codex),
+            model: None,
+            logical_effort: None,
+            approval_policy: None,
+            sandbox_mode: None,
+        }),
+    )
+    .await
+    .unwrap_err();
+
+    assert_eq!(error.0, axum::http::StatusCode::BAD_REQUEST);
+    assert!(
+        error.1 .0["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("caller_agent_name")
+    );
+}
+
+#[tokio::test]
+async fn test_delegate_start_rejects_disallowed_target_for_caller() {
+    let state = build_state(Arc::new(AppState::new_sqlite_test()));
+    let parent = create_parent_session(&state).await;
+
+    let error = start_delegate(
+        State(state),
+        Json(DelegateStartRequest {
+            caller_agent_name: Some("ralphx-execution-worker".to_string()),
+            parent_session_id: parent.id.as_str().to_string(),
+            parent_turn_id: None,
+            parent_message_id: None,
+            parent_conversation_id: None,
+            parent_tool_use_id: None,
+            delegated_session_id: None,
+            child_session_id: None,
+            agent_name: "ralphx-ideation-specialist-backend".to_string(),
+            prompt: "noop".to_string(),
+            title: None,
+            inherit_context: true,
+            harness: Some(AgentHarnessKind::Codex),
+            model: None,
+            logical_effort: None,
+            approval_policy: None,
+            sandbox_mode: None,
+        }),
+    )
+    .await
+    .unwrap_err();
+
+    assert_eq!(error.0, axum::http::StatusCode::FORBIDDEN);
+    assert!(
+        error.1 .0["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("may not delegate")
     );
 }
 

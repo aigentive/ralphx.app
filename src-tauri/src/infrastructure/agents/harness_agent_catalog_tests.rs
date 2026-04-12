@@ -565,6 +565,31 @@ fn codex_spawn_capable_prompts_reference_explicit_delegation_tools() {
 }
 
 #[test]
+fn canonical_delegation_policy_appendix_is_injected_only_for_delegating_agents() {
+    let root = project_root();
+
+    for agent_name in CODEX_DELEGATION_GUIDE_AGENTS {
+        let prompt = load_harness_agent_prompt(&root, agent_name, AgentPromptHarness::Codex)
+            .unwrap_or_else(|| panic!("missing codex prompt for {agent_name}"));
+        assert!(
+            prompt.contains("## RalphX Delegation Policy (AUTO-GENERATED)"),
+            "delegating codex prompt for {agent_name} should include the generated delegation appendix"
+        );
+    }
+
+    let session_namer = load_harness_agent_prompt(
+        &root,
+        "ralphx-utility-session-namer",
+        AgentPromptHarness::Codex,
+    )
+    .expect("missing session namer codex prompt");
+    assert!(
+        !session_namer.contains("## RalphX Delegation Policy (AUTO-GENERATED)"),
+        "non-delegating codex prompt should not include the generated delegation appendix"
+    );
+}
+
+#[test]
 fn codex_execution_prompts_avoid_claude_only_team_and_task_syntax() {
     let root = project_root();
     let banned_terms = [
