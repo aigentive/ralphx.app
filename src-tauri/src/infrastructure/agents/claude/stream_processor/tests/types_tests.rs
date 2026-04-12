@@ -7,6 +7,7 @@ fn test_tool_call_serialization() {
         name: "create_task_proposal".to_string(),
         arguments: serde_json::json!({"title": "Test task"}),
         result: None,
+        parent_tool_use_id: Some("toolu_parent_123".to_string()),
         diff_context: None,
         stats: None,
     };
@@ -14,11 +15,13 @@ fn test_tool_call_serialization() {
     let json = serde_json::to_string(&tool_call).unwrap();
     assert!(json.contains("toolu_01ABC"));
     assert!(json.contains("create_task_proposal"));
+    assert!(json.contains("parent_tool_use_id"));
     // diff_context: None should be skipped via skip_serializing_if
     assert!(!json.contains("diff_context"));
 
     let parsed: ToolCall = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed.name, "create_task_proposal");
+    assert_eq!(parsed.parent_tool_use_id.as_deref(), Some("toolu_parent_123"));
     assert!(parsed.diff_context.is_none());
 }
 
@@ -29,6 +32,7 @@ fn test_tool_call_with_diff_context_serialization() {
         name: "Edit".to_string(),
         arguments: serde_json::json!({"file_path": "src/main.rs", "old_string": "old", "new_string": "new"}),
         result: None,
+        parent_tool_use_id: None,
         diff_context: Some(DiffContext {
             old_content: Some("fn main() {\n    old\n}\n".to_string()),
             file_path: "/project/src/main.rs".to_string(),
@@ -55,6 +59,7 @@ fn test_tool_call_diff_context_new_file() {
         name: "Write".to_string(),
         arguments: serde_json::json!({"file_path": "src/new.rs", "content": "fn new() {}"}),
         result: None,
+        parent_tool_use_id: None,
         diff_context: Some(DiffContext {
             old_content: None,
             file_path: "/project/src/new.rs".to_string(),
@@ -132,6 +137,7 @@ fn test_tool_call_stats_serialized_as_camel_case() {
         name: "Task".to_string(),
         arguments: serde_json::json!({"prompt": "do something"}),
         result: Some(serde_json::json!("task output")),
+        parent_tool_use_id: None,
         diff_context: None,
         stats: Some(ToolCallStats {
             model: Some("claude-sonnet-4-6".to_string()),
@@ -173,6 +179,7 @@ fn test_tool_call_without_stats_field_is_absent() {
         name: "Read".to_string(),
         arguments: serde_json::json!({"file_path": "src/main.rs"}),
         result: Some(serde_json::json!("file contents")),
+        parent_tool_use_id: None,
         diff_context: None,
         stats: None,
     };
@@ -186,6 +193,7 @@ fn test_tool_call_without_stats_field_is_absent() {
     let old_json = r#"{"id":"toolu_old","name":"Read","arguments":{},"result":"output"}"#;
     let old: ToolCall = serde_json::from_str(old_json).unwrap();
     assert!(old.stats.is_none(), "old rows without stats key should deserialize to None");
+    assert!(old.parent_tool_use_id.is_none());
 }
 
 #[test]

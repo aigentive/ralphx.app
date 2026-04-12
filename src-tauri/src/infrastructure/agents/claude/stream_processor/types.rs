@@ -184,6 +184,8 @@ pub struct ToolCall {
     pub arguments: serde_json::Value,
     pub result: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_tool_use_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub diff_context: Option<DiffContext>,
     /// Stats for Task/Agent tool calls — populated at TaskCompleted time.
     /// Field is absent (not null) for old rows and non-Task tool calls.
@@ -203,6 +205,8 @@ pub enum ContentBlockItem {
         name: String,
         arguments: serde_json::Value,
         result: Option<serde_json::Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        parent_tool_use_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         diff_context: Option<serde_json::Value>,
     },

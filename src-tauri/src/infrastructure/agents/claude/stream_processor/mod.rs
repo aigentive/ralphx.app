@@ -192,6 +192,7 @@ impl StreamProcessor {
                         name: self.current_tool_name.clone(),
                         arguments: args.clone(),
                         result: None,
+                        parent_tool_use_id: parent_tool_use_id.clone(),
                         diff_context: None,
                         stats: None,
                     };
@@ -204,6 +205,7 @@ impl StreamProcessor {
                         name: self.current_tool_name.clone(),
                         arguments: args,
                         result: None,
+                        parent_tool_use_id: parent_tool_use_id.clone(),
                         diff_context: None,
                     });
 
@@ -322,6 +324,7 @@ impl StreamProcessor {
                                 name: name.clone(),
                                 arguments: input.clone(),
                                 result: None,
+                                parent_tool_use_id: parent_tool_use_id.clone(),
                                 diff_context: None,
                                 stats: None,
                             };
@@ -333,6 +336,7 @@ impl StreamProcessor {
                                 name,
                                 arguments: input,
                                 result: None,
+                                parent_tool_use_id: parent_tool_use_id.clone(),
                                 diff_context: None,
                             });
                             events.push(StreamEvent::ToolCallCompleted {

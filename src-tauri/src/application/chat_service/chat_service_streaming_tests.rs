@@ -82,6 +82,7 @@ fn codex_tool_call_content_block_preserves_orderable_tool_payload() {
         name: "ralphx::get_task_context".to_string(),
         arguments: serde_json::json!({ "task_id": "task-1" }),
         result: Some(serde_json::json!({ "title": "Task" })),
+        parent_tool_use_id: Some("toolu-parent-1".to_string()),
         diff_context: None,
         stats: None,
     };
@@ -94,12 +95,14 @@ fn codex_tool_call_content_block_preserves_orderable_tool_payload() {
             name,
             arguments,
             result,
+            parent_tool_use_id,
             diff_context,
         } => {
             assert_eq!(id.as_deref(), Some("tool-1"));
             assert_eq!(name, "ralphx::get_task_context");
             assert_eq!(arguments, serde_json::json!({ "task_id": "task-1" }));
             assert_eq!(result, Some(serde_json::json!({ "title": "Task" })));
+            assert_eq!(parent_tool_use_id.as_deref(), Some("toolu-parent-1"));
             assert!(diff_context.is_none());
         }
         other => panic!("expected tool_use block, got {other:?}"),
@@ -113,6 +116,7 @@ fn upsert_codex_tool_call_snapshot_updates_existing_tool_call_in_place() {
         name: "ralphx::get_session_plan".to_string(),
         arguments: serde_json::json!({ "session_id": "s1" }),
         result: None,
+        parent_tool_use_id: Some("toolu-parent-1".to_string()),
         diff_context: None,
         stats: None,
     }];
@@ -126,6 +130,7 @@ fn upsert_codex_tool_call_snapshot_updates_existing_tool_call_in_place() {
             name: "ralphx::get_session_plan".to_string(),
             arguments: serde_json::json!({ "session_id": "s1" }),
             result: Some(serde_json::json!({ "plan": null })),
+            parent_tool_use_id: Some("toolu-parent-1".to_string()),
             diff_context: None,
             stats: None,
         },
@@ -134,6 +139,7 @@ fn upsert_codex_tool_call_snapshot_updates_existing_tool_call_in_place() {
     assert_eq!(tool_calls.len(), 1);
     assert_eq!(tool_calls[0].id.as_deref(), Some("item_1"));
     assert_eq!(tool_calls[0].result, Some(serde_json::json!({ "plan": null })));
+    assert_eq!(tool_calls[0].parent_tool_use_id.as_deref(), Some("toolu-parent-1"));
 
     assert_eq!(content_blocks.len(), 1);
     match &content_blocks[0] {
@@ -158,6 +164,7 @@ fn upsert_codex_tool_call_snapshot_appends_new_tool_ids_in_order() {
             name: "ralphx::get_session_plan".to_string(),
             arguments: serde_json::json!({ "session_id": "s1" }),
             result: None,
+            parent_tool_use_id: None,
             diff_context: None,
             stats: None,
         },
@@ -170,6 +177,7 @@ fn upsert_codex_tool_call_snapshot_appends_new_tool_ids_in_order() {
             name: "ralphx::list_session_proposals".to_string(),
             arguments: serde_json::json!({ "session_id": "s1" }),
             result: None,
+            parent_tool_use_id: None,
             diff_context: None,
             stats: None,
         },
@@ -227,6 +235,7 @@ async fn persist_assistant_message_snapshot_keeps_codex_tool_lifecycle_deduped_a
             name: "ralphx::get_task_context".to_string(),
             arguments: serde_json::json!({ "task_id": "task-1" }),
             result: None,
+            parent_tool_use_id: Some("toolu-parent-task".to_string()),
             diff_context: None,
             stats: None,
         },
@@ -249,6 +258,7 @@ async fn persist_assistant_message_snapshot_keeps_codex_tool_lifecycle_deduped_a
             name: "ralphx::get_task_context".to_string(),
             arguments: serde_json::json!({ "task_id": "task-1" }),
             result: Some(serde_json::json!({ "title": "Task" })),
+            parent_tool_use_id: Some("toolu-parent-task".to_string()),
             diff_context: None,
             stats: None,
         },
@@ -287,6 +297,10 @@ async fn persist_assistant_message_snapshot_keeps_codex_tool_lifecycle_deduped_a
     assert_eq!(stored_tool_calls.len(), 1);
     assert_eq!(stored_tool_calls[0].id.as_deref(), Some("item_1"));
     assert_eq!(
+        stored_tool_calls[0].parent_tool_use_id.as_deref(),
+        Some("toolu-parent-task")
+    );
+    assert_eq!(
         stored_tool_calls[0].result,
         Some(serde_json::json!({ "title": "Task" }))
     );
@@ -304,9 +318,15 @@ async fn persist_assistant_message_snapshot_keeps_codex_tool_lifecycle_deduped_a
         other => panic!("expected first block to be text, got {other:?}"),
     }
     match &stored_blocks[1] {
-        ContentBlockItem::ToolUse { id, result, .. } => {
+        ContentBlockItem::ToolUse {
+            id,
+            result,
+            parent_tool_use_id,
+            ..
+        } => {
             assert_eq!(id.as_deref(), Some("item_1"));
             assert_eq!(result, &Some(serde_json::json!({ "title": "Task" })));
+            assert_eq!(parent_tool_use_id.as_deref(), Some("toolu-parent-task"));
         }
         other => panic!("expected second block to be tool_use, got {other:?}"),
     }

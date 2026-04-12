@@ -134,6 +134,7 @@ pub fn extract_codex_tool_call_snapshot(event: &CodexStreamEvent) -> Option<Code
             name,
             arguments: item.arguments.clone().unwrap_or_default(),
             result: item.result.clone(),
+            parent_tool_use_id: None,
             diff_context: None,
             stats: None,
         },

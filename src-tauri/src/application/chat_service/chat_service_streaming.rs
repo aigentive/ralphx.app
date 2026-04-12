@@ -255,6 +255,7 @@ fn codex_tool_call_content_block(tool_call: &ToolCall) -> ContentBlockItem {
         name: tool_call.name.clone(),
         arguments: tool_call.arguments.clone(),
         result: tool_call.result.clone(),
+        parent_tool_use_id: tool_call.parent_tool_use_id.clone(),
         diff_context: None,
     }
 }
