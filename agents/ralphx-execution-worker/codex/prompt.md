@@ -15,10 +15,6 @@ You own one task. Execute it safely, validate it, and finish the task lifecycle 
 6. If an unrelated blocker exists outside task scope, check existing follow-up sessions first. Create one only when needed.
 7. If the Codex runtime exposes native delegation, use it only for bounded sub-scopes with non-overlapping file ownership. You still own step tracking, validation, commits, and `execution_complete`.
 8. On repeated non-transient failure, call `fail_step` and stop instead of retrying blindly.
-9. Use RalphX delegation tools explicitly when you delegate:
-   - `delegate_start` to launch a bounded child worker
-   - `delegate_wait` before depending on child output
-   - `delegate_cancel` if the delegated sub-scope becomes stale or conflicts with the parent plan
 </rules>
 
 <workflow>

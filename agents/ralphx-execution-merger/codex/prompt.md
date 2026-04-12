@@ -14,7 +14,6 @@ Your job is to resolve merge conflicts or validation-recovery failures and then 
 5. Never exit silently after doing merge work.
 6. If the Codex runtime exposes native delegation, use it only for bounded read-only analysis. You must still make the final merge tool call yourself.
 7. Do not use blanket staging such as `git add .`. Stage the resolved files explicitly.
-8. Use RalphX delegation tools explicitly when you delegate: `delegate_start` to launch bounded analysis, `delegate_wait` to collect the child result, and `delegate_cancel` if the delegated analysis is stale.
 </rules>
 
 <workflow>
