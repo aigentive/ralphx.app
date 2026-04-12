@@ -17,6 +17,13 @@ import {
   extractDelegationMetadata,
   isDelegationStartToolCall,
 } from "./delegation-tool-calls";
+import { TaskToolCallDelegatedTranscript } from "./TaskToolCallDelegatedTranscript";
+import {
+  EMPTY_STATS,
+  extractChildToolCalls,
+  extractTaskArgs,
+  extractTaskStats,
+} from "./TaskToolCallCard.utils";
 import {
   formatMessageAttributionTooltip,
   formatProviderHarnessLabel,
@@ -33,216 +40,10 @@ interface TaskToolCallCardProps {
   className?: string;
 }
 
-interface TaskArgs {
-  description: string | undefined;
-  subagent_type: string | undefined;
-  model: string | undefined;
-  prompt: string | undefined;
-  /** Agent-specific: named agent */
-  name: string | undefined;
-  /** Agent-specific: isolation mode (e.g. "worktree") */
-  isolation: string | undefined;
-  /** Agent-specific: whether to run in background */
-  run_in_background: boolean | undefined;
-}
-
-interface TaskStats {
-  /** True when result was parsed (even if all fields are undefined). False when no parseable result. */
-  statsAvailable: boolean;
-  agentId: string | undefined;
-  totalDurationMs: number | undefined;
-  totalTokens: number | undefined;
-  totalToolUseCount: number | undefined;
-  model: string | undefined;
-  textOutput: string | undefined;
-  estimatedUsd?: number;
-}
-
 // ============================================================================
 // Helpers
 // ============================================================================
 
-const EMPTY_ARGS: TaskArgs = {
-  description: undefined,
-  subagent_type: undefined,
-  model: undefined,
-  prompt: undefined,
-  name: undefined,
-  isolation: undefined,
-  run_in_background: undefined,
-};
-
-/** Extract Task/Agent arguments (description, subagent_type, model, and Agent-specific fields) */
-function extractTaskArgs(args: unknown): TaskArgs {
-  if (!args || typeof args !== "object") return EMPTY_ARGS;
-  const a = args as Record<string, unknown>;
-  return {
-    description: typeof a.description === "string" ? a.description : undefined,
-    subagent_type: typeof a.subagent_type === "string" ? a.subagent_type : undefined,
-    model: typeof a.model === "string" ? a.model : undefined,
-    prompt: typeof a.prompt === "string" ? a.prompt : undefined,
-    name: typeof a.name === "string" ? a.name : undefined,
-    isolation: typeof a.isolation === "string" ? a.isolation : undefined,
-    run_in_background: typeof a.run_in_background === "boolean" ? a.run_in_background : undefined,
-  };
-}
-
-/**
- * Parse the Task tool result to extract stats.
- *
- * The result text typically looks like:
- * ```
- * [subagent output text here]
- * agentId: abc1234 (for resuming...)
- * <usage>total_tokens: 12345
- * tool_uses: 8
- * duration_ms: 45000</usage>
- * ```
- */
-const EMPTY_STATS: TaskStats = {
-  statsAvailable: false,
-  agentId: undefined,
-  totalDurationMs: undefined,
-  totalTokens: undefined,
-  totalToolUseCount: undefined,
-  model: undefined,
-  textOutput: undefined,
-};
-
-/**
- * Extract child tool calls from the Task result content blocks.
- *
- * When result is an array of content blocks, tool_use blocks represent
- * tool calls made by the subagent. We pair each tool_use with its
- * subsequent tool_result (matched by tool_use_id) to build ToolCall objects.
- */
-function extractChildToolCalls(result: unknown): ToolCall[] {
-  if (!Array.isArray(result)) return [];
-
-  const toolUseBlocks: Array<{ id: string; name: string; input: unknown }> = [];
-  const toolResultMap = new Map<string, unknown>();
-
-  for (const block of result) {
-    if (!block || typeof block !== "object") continue;
-    const b = block as Record<string, unknown>;
-
-    if (b.type === "tool_use" && typeof b.name === "string" && typeof b.id === "string") {
-      toolUseBlocks.push({ id: b.id, name: b.name, input: b.input });
-    } else if (b.type === "tool_result" && typeof b.tool_use_id === "string") {
-      toolResultMap.set(b.tool_use_id, b.content);
-    }
-  }
-
-  return toolUseBlocks.map((tu) => {
-    const tc: ToolCall = { id: tu.id, name: tu.name, arguments: tu.input };
-    const resultContent = toolResultMap.get(tu.id);
-    if (resultContent != null) {
-      tc.result = resultContent;
-    }
-    return tc;
-  });
-}
-
-/** Text-parsing fallback: extract stats and textOutput from raw result content. Used for old DB rows without a structured stats field. */
-function extractTaskStatsFromResult(result: unknown): TaskStats {
-  if (result == null) return EMPTY_STATS;
-
-  // Result can be a string, array of content blocks, or JSON object
-  let text: string;
-  if (typeof result === "string") {
-    text = result;
-  } else if (Array.isArray(result)) {
-    // Array of content blocks — join text blocks
-    const textBlocks = result.filter(
-      (b: unknown) => b && typeof b === "object" && (b as Record<string, unknown>).type === "text",
-    );
-    if (textBlocks.length === 0) {
-      // tool_use-only array or empty — result exists but no text stats available
-      return { ...EMPTY_STATS, statsAvailable: false };
-    }
-    text = textBlocks.map((b: unknown) => (b as Record<string, unknown>).text as string).join("\n");
-  } else if (typeof result === "object") {
-    // Single content block object — extract .text field if present
-    const obj = result as Record<string, unknown>;
-    if (typeof obj.text === "string") {
-      text = obj.text;
-    } else {
-      return { ...EMPTY_STATS, statsAvailable: false };
-    }
-  } else {
-    return EMPTY_STATS;
-  }
-
-  let agentId: string | undefined;
-  let totalDurationMs: number | undefined;
-  let totalTokens: number | undefined;
-  let totalToolUseCount: number | undefined;
-  let textOutput: string | undefined;
-
-  // Extract agentId (case-insensitive — defensive, CLI currently emits lowercase)
-  const agentIdMatch = text.match(/agentId:\s*([a-fA-F0-9]+)/i);
-  if (agentIdMatch) {
-    agentId = agentIdMatch[1];
-  }
-
-  // Extract usage stats from <usage> block
-  const usageMatch = text.match(/<usage>([\s\S]*?)<\/usage>/);
-  if (usageMatch) {
-    const usage = usageMatch[1] ?? "";
-    const tokensMatch = usage.match(/total_tokens:\s*(\d+)/);
-    const toolsMatch = usage.match(/tool_uses:\s*(\d+)/);
-    const durationMatch = usage.match(/duration_ms:\s*(\d+)/);
-
-    if (tokensMatch) totalTokens = parseInt(tokensMatch[1]!, 10);
-    if (toolsMatch) totalToolUseCount = parseInt(toolsMatch[1]!, 10);
-    if (durationMatch) totalDurationMs = parseInt(durationMatch[1]!, 10);
-  }
-
-  // Extract text output (everything before agentId/usage block).
-  // Use (?:^|\n) to handle agentId at start of text (no preceding newline)
-  const agentIdPos = text.search(/(?:^|\n)agentId:/);
-  if (agentIdPos >= 0) {
-    // Slice up to the match position (0 if agentId is first line → empty output)
-    textOutput = text.slice(0, agentIdPos).trim() || undefined;
-  } else if (!usageMatch) {
-    // No agentId or usage block — the whole result is text output
-    textOutput = text.trim() || undefined;
-  }
-
-  return { statsAvailable: true, agentId, totalDurationMs, totalTokens, totalToolUseCount, model: undefined, textOutput };
-}
-
-/**
- * Extract stats for a Task/Agent tool call.
- *
- * Structured path (new DB rows): checks toolCall.stats first — directly uses camelCase fields
- * persisted by the backend at TaskCompleted time. agentId and textOutput still come from result.
- *
- * Text-parsing fallback (old DB rows): if toolCall.stats is absent/undefined, falls back to
- * parsing the result text for embedded <usage> tags and agentId lines.
- */
-function extractTaskStats(toolCall: ToolCall): TaskStats {
-  // Structured path: use stats field if present (new DB rows — camelCase from backend)
-  if (toolCall.stats !== undefined) {
-    // Still extract agentId + textOutput from result text (not in stats field)
-    const fromResult = extractTaskStatsFromResult(toolCall.result);
-    return {
-      statsAvailable: true,
-      agentId: fromResult.agentId,
-      totalDurationMs: toolCall.stats.durationMs,
-      totalTokens: toolCall.stats.totalTokens,
-      totalToolUseCount: toolCall.stats.totalToolUses,
-      model: toolCall.stats.model,
-      textOutput: fromResult.textOutput,
-    };
-  }
-
-  // Text-parsing fallback for old DB rows without structured stats
-  if (import.meta.env.DEV) {
-    console.debug("[extractTaskStats] text-parsing fallback for tool call:", toolCall.id);
-  }
-  return extractTaskStatsFromResult(toolCall.result);
-}
 
 // ============================================================================
 // Component
@@ -345,6 +146,7 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
   const subagentColor = getSubagentTypeColor(subagentType);
   const modelColor = model ? getModelColor(model) : null;
   const bodyText = delegation.textOutput ?? taskStats.textOutput;
+  const delegatedConversationId = isDelegateCall ? delegation.delegatedConversationId ?? null : null;
   const statusBadge = isDelegateCall && delegation.status && delegation.status !== "completed"
     ? delegation.status
     : null;
@@ -591,7 +393,12 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
           )}
 
           {/* Subagent text output */}
-          {bodyText && (
+          {delegatedConversationId ? (
+            <TaskToolCallDelegatedTranscript
+              conversationId={delegatedConversationId}
+              fallbackText={bodyText}
+            />
+          ) : bodyText ? (
             <pre
               className="text-[11px] px-2 py-1.5 rounded overflow-x-auto max-h-64"
               style={{
@@ -604,7 +411,7 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
             >
               {bodyText}
             </pre>
-          )}
+          ) : null}
         </div>
       )}
     </div>

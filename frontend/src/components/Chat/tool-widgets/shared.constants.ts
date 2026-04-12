@@ -31,6 +31,8 @@ export interface ToolCall {
   arguments: unknown;
   /** Result returned from the tool (can be any JSON value) */
   result?: unknown;
+  /** Parent tool_use id when this call belongs to a delegated/child task transcript */
+  parentToolUseId?: string;
   /** Error message if tool call failed */
   error?: string;
   /** Diff context for Edit/Write tool calls (old file content for computing diffs) */

@@ -85,6 +85,7 @@ export function parseContentBlocks(raw: unknown): ContentBlockItem[] {
       name: block.name,
       arguments: block.arguments,
       result: block.result,
+      parentToolUseId: block.parent_tool_use_id ?? block.parentToolUseId,
     };
     // Transform diff_context (snake_case) to diffContext (camelCase) for tool_use blocks
     if (block.type === "tool_use" && block.diff_context) {
@@ -115,6 +116,7 @@ export function parseToolCalls(raw: unknown): ToolCall[] {
       name: tc.name ?? "unknown",
       arguments: tc.arguments ?? {},
       result: tc.result,
+      parentToolUseId: tc.parent_tool_use_id ?? tc.parentToolUseId,
       error: tc.error,
     };
     if (tc.diff_context) {

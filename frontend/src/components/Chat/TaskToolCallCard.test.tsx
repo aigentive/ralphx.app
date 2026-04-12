@@ -6,11 +6,14 @@
  * so the same component renders both.
  */
 
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { TaskToolCallCard } from "./TaskToolCallCard";
 import type { ToolCall } from "./ToolCallIndicator";
+import { createTestQueryClient } from "@/test/store-utils";
+import { chatApi, type ChatMessageResponse } from "@/api/chat";
 
 // ============================================================================
 // Test Data
@@ -82,6 +85,17 @@ function makeDelegateToolCall(overrides?: Partial<ToolCall>): ToolCall {
     ...overrides,
   };
 }
+
+function renderWithQueryClient(ui: React.ReactElement) {
+  const queryClient = createTestQueryClient();
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  );
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 // ============================================================================
 // Tests
@@ -314,6 +328,127 @@ describe("TaskToolCallCard — RalphX native delegation", () => {
 
     await user.click(screen.getByRole("button", { name: /delegated task: ralphx-execution-reviewer/i }));
     expect(screen.getByText("Delegated review finished")).toBeInTheDocument();
+  });
+
+  it("does not fetch the delegated conversation until the card is expanded", () => {
+    const getConversationSpy = vi.spyOn(chatApi, "getConversation").mockResolvedValue({
+      conversation: {
+        id: "child-conv-1",
+        contextType: "project",
+        contextId: "project-1",
+        claudeSessionId: null,
+        providerSessionId: "thread-123",
+        providerHarness: "codex",
+        upstreamProvider: "openai",
+        providerProfile: "openai",
+        title: "Delegated reviewer",
+        messageCount: 0,
+        lastMessageAt: null,
+        createdAt: "2026-04-12T10:00:00Z",
+        updatedAt: "2026-04-12T10:00:00Z",
+      },
+      messages: [],
+    });
+
+    renderWithQueryClient(
+      <TaskToolCallCard
+        toolCall={makeDelegateToolCall({
+          result: [{
+            type: "text",
+            text: JSON.stringify({
+              job_id: "job-123",
+              status: "completed",
+              delegated_conversation_id: "child-conv-1",
+              content: "Delegated review finished",
+            }),
+          }],
+        })}
+      />,
+    );
+
+    expect(getConversationSpy).not.toHaveBeenCalled();
+  });
+
+  it("renders the delegated conversation transcript inside the expanded card", async () => {
+    const getConversationSpy = vi.spyOn(chatApi, "getConversation").mockResolvedValue({
+      conversation: {
+        id: "child-conv-1",
+        contextType: "project",
+        contextId: "project-1",
+        claudeSessionId: null,
+        providerSessionId: "thread-123",
+        providerHarness: "codex",
+        upstreamProvider: "openai",
+        providerProfile: "openai",
+        title: "Delegated reviewer",
+        messageCount: 2,
+        lastMessageAt: "2026-04-12T10:00:06Z",
+        createdAt: "2026-04-12T10:00:00Z",
+        updatedAt: "2026-04-12T10:00:06Z",
+      },
+      messages: [
+        {
+          id: "child-msg-1",
+          sessionId: null,
+          projectId: null,
+          taskId: null,
+          role: "user",
+          content: "Please inspect the patch",
+          metadata: null,
+          parentMessageId: null,
+          conversationId: "child-conv-1",
+          toolCalls: null,
+          contentBlocks: null,
+          sender: null,
+          createdAt: "2026-04-12T10:00:00Z",
+        } satisfies ChatMessageResponse,
+        {
+          id: "child-msg-2",
+          sessionId: null,
+          projectId: null,
+          taskId: null,
+          role: "assistant",
+          content: "Review complete with no blockers",
+          metadata: null,
+          parentMessageId: null,
+          conversationId: "child-conv-1",
+          toolCalls: [
+            {
+              id: "child-tool-1",
+              name: "bash",
+              arguments: { command: "git diff --stat" },
+            },
+          ],
+          contentBlocks: null,
+          sender: null,
+          createdAt: "2026-04-12T10:00:06Z",
+        } satisfies ChatMessageResponse,
+      ],
+    });
+    const user = userEvent.setup();
+
+    renderWithQueryClient(
+      <TaskToolCallCard
+        toolCall={makeDelegateToolCall({
+          result: [{
+            type: "text",
+            text: JSON.stringify({
+              job_id: "job-123",
+              status: "completed",
+              delegated_conversation_id: "child-conv-1",
+              content: "Delegated review finished",
+            }),
+          }],
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /delegated task: ralphx-execution-reviewer/i }));
+
+    await waitFor(() => expect(getConversationSpy).toHaveBeenCalledWith("child-conv-1"));
+    expect(await screen.findByText("Delegated conversation")).toBeInTheDocument();
+    expect(screen.getByText("Please inspect the patch")).toBeInTheDocument();
+    expect(screen.getByText("Review complete with no blockers")).toBeInTheDocument();
   });
 });
 

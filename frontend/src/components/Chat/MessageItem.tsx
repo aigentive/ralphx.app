@@ -42,6 +42,7 @@ export interface ContentBlockItem {
   name?: string;
   arguments?: unknown;
   result?: unknown;
+  parentToolUseId?: string;
   /** Diff context for Edit/Write tool calls (old file content for computing diffs) */
   diffContext?: {
     oldContent?: string;

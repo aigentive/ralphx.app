@@ -35,10 +35,31 @@ describe("chat api", () => {
     expect(parsed[0]).toMatchObject({ id: "t1", name: "bash" });
   });
 
+  it("preserves parent tool linkage on parsed tool calls", () => {
+    const parsed = parseToolCalls('[{"id":"t1","name":"bash","arguments":{"command":"ls"},"parent_tool_use_id":"delegate-1"}]');
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]).toMatchObject({
+      id: "t1",
+      name: "bash",
+      parentToolUseId: "delegate-1",
+    });
+  });
+
   it("parses content blocks", () => {
     const parsed = parseContentBlocks('[{"type":"text","text":"hello"}]');
     expect(parsed).toHaveLength(1);
     expect(parsed[0]).toMatchObject({ type: "text", text: "hello" });
+  });
+
+  it("preserves parent tool linkage on parsed content blocks", () => {
+    const parsed = parseContentBlocks('[{"type":"tool_use","id":"tool-1","name":"bash","arguments":{"command":"ls"},"parent_tool_use_id":"delegate-1"}]');
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]).toMatchObject({
+      type: "tool_use",
+      id: "tool-1",
+      name: "bash",
+      parentToolUseId: "delegate-1",
+    });
   });
 
   it("lists conversations", async () => {
